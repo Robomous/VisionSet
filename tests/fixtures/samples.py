@@ -77,7 +77,10 @@ SCHEMA_VERSION = AnnotationSchema(
     classes=(
         LabelClass(
             name="sign",
-            geometry=GeometryType.BBOX,
+            # Two, so the round-trip gate exercises a set rather than a list that
+            # happens to hold one thing — a projection that dropped every element
+            # after the first would pass against a singleton.
+            geometries=(GeometryType.BBOX, GeometryType.POLYGON),
             color="#ff0000",
             attributes=(
                 Attribute(

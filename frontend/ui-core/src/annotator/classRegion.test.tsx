@@ -33,7 +33,7 @@ function schemaOf(n: number): AnnotationSchema {
     provenance: "curated",
     classes: Array.from({ length: n }, (_unused, index) => ({
       name: `class-${index + 1}`,
-      geometry: index % 2 === 0 ? "bbox" : "polygon",
+      geometries: index % 2 === 0 ? ["bbox"] : ["polygon"],
       color: null,
       attributes: [],
     })),
@@ -134,5 +134,109 @@ describe("the empty schema", () => {
 
     expect(screen.getByTestId("classes-empty")).toBeDefined();
     expect(screen.queryByTestId("class-list")).toBeNull();
+  });
+});
+
+describe("the shape picker on the armed row (#584)", () => {
+  /** One class taking two shapes, one taking a third, one taking only a tag. */
+  const MIXED = {
+    project_id: "p",
+    version: 1,
+    description: null,
+    created_at: null,
+    provenance: "curated",
+    classes: [
+      { name: "car", geometries: ["bbox", "polygon"], color: null, attributes: [] },
+      { name: "lane", geometries: ["polyline"], color: null, attributes: [] },
+      { name: "weather", geometries: ["classification_tag"], color: null, attributes: [] },
+    ],
+  } as unknown as AnnotationSchema;
+
+  function mountMixed(overrides: Partial<Parameters<typeof ClassRegion>[0]> = {}): JSX.Element {
+    return (
+      <ClassRegion
+        schema={MIXED}
+        activeClass="car"
+        onActivateClass={vi.fn()}
+        activeTool="bbox"
+        onActivateTool={vi.fn()}
+        {...overrides}
+      />
+    );
+  }
+
+  it("offers one control per drawable shape, with the active one pressed", () => {
+    render(mountMixed());
+
+    const box = screen.getByTestId("class-row-car-shape-bbox");
+    const polygon = screen.getByTestId("class-row-car-shape-polygon");
+    expect(box.getAttribute("aria-pressed")).toBe("true");
+    expect(polygon.getAttribute("aria-pressed")).toBe("false");
+    // The word, not the wire value — the row is where the vocabulary is read.
+    expect(box.textContent).toBe("box");
+  });
+
+  it("changes the tool and not the class, which is the whole point of it being here", () => {
+    // The retarget guard, from the panel's side. `ToolPalette` already holds this
+    // rule and is tested in both directions; a second caller getting it wrong
+    // would silently move somebody's labels to a different class than the one
+    // they had armed — and with a two-shape class there is no visible tell.
+    const onActivateClass = vi.fn();
+    const onActivateTool = vi.fn();
+    render(mountMixed({ onActivateClass, onActivateTool }));
+
+    screen.getByTestId("class-row-car-shape-polygon").click();
+
+    expect(onActivateTool).toHaveBeenCalledWith("polygon");
+    expect(onActivateClass).not.toHaveBeenCalled();
+  });
+
+  it("shows no picker on a row that is not armed", () => {
+    // An unarmed row has no live choice. Fifty classes would otherwise carry
+    // fifty controls for one decision.
+    render(mountMixed({ activeClass: "lane" }));
+
+    expect(screen.queryByTestId("class-row-car-shape-bbox")).toBeNull();
+  });
+
+  it("shows no picker on an armed class that accepts only one shape", () => {
+    render(mountMixed({ activeClass: "lane" }));
+
+    expect(screen.queryByTestId("class-row-lane-shape-polyline")).toBeNull();
+  });
+
+  it("counts drawable shapes, so a tag beside a box is not a second tool", () => {
+    // A class may accept a tag *and* a box. The tag has no canvas gesture, so it
+    // is not a choice the canvas could answer — one drawable shape means no
+    // picker, exactly as if the tag were not declared.
+    const tagAndBox = {
+      ...MIXED,
+      classes: [
+        { name: "car", geometries: ["bbox", "classification_tag"], color: null, attributes: [] },
+      ],
+    } as unknown as AnnotationSchema;
+    render(mountMixed({ schema: tagAndBox }));
+
+    expect(screen.queryByTestId("class-row-car-shape-bbox")).toBeNull();
+    expect(screen.queryByTestId("class-row-car-shape-classification_tag")).toBeNull();
+  });
+
+  it("lights the shape that would actually be drawn, not the raw preference", () => {
+    // The held tool may be one this class forbids — arriving from a class that
+    // allowed it. `toolForClass` resolves that to the class's first drawable
+    // shape, and the lit segment has to be that, or the panel and the canvas
+    // disagree about what the next drag produces.
+    render(mountMixed({ activeTool: "polyline" }));
+
+    expect(screen.getByTestId("class-row-car-shape-bbox").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+  });
+
+  it("renders a plain row, one tab stop, when no host takes the answer", () => {
+    // A picker nothing listens to is worse than none.
+    render(mountMixed({ onActivateTool: undefined }));
+
+    expect(screen.queryByTestId("class-row-car-shape-polygon")).toBeNull();
   });
 });

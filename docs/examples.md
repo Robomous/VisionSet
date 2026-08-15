@@ -127,9 +127,11 @@ for Pillow - it is not carrying a determinism argument about folds.)
 
 ## Why three classes for "two classes"
 
-A `LabelClass` is bound to exactly one `GeometryType` - `geometry` is singular. Showing a
-bounding box, a polygon and a whole-frame classification therefore takes three classes
-(`stop-sign`, `lane-marking`, `weather`), not one class listing three shapes. Exactly one
+A `LabelClass` accepts a *set* of geometries, so one class could carry all three shapes - and
+these are three classes anyway, because they mean three different things rather than three
+shapes of one thing. `stop-sign`, `lane-marking` and `weather` is what an ontology looks like;
+a single class accepting a box and an outline is what one *object* looks like from two
+distances. Exactly one
 attribute is *required* (`occlusion` on `stop-sign`), which is what makes
 `MissingRequiredAttribute` a live rule in the example rather than a paragraph.
 

@@ -28,10 +28,10 @@ const SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",
   version: 1,
   classes: [
-    { name: "vehicle", geometry: "bbox", color: "#38bdf8", attributes: [] },
-    { name: "pedestrian", geometry: "bbox", color: null, attributes: [] },
-    { name: "lane", geometry: "polygon", color: "#f97316", attributes: [] },
-    { name: "daytime", geometry: "classification_tag", color: "#a3e635", attributes: [] },
+    { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
+    { name: "pedestrian", geometries: ["bbox"], color: null, attributes: [] },
+    { name: "lane", geometries: ["polygon"], color: "#f97316", attributes: [] },
+    { name: "daytime", geometries: ["classification_tag"], color: "#a3e635", attributes: [] },
   ],
 };
 
@@ -168,7 +168,7 @@ describe("what the picker does", () => {
         "true",
       );
     }
-    expect(screen.getByTestId("canvas-reclass-lane").textContent).toContain("needs a polygon");
+    expect(screen.getByTestId("canvas-reclass-lane").textContent).toContain("needs polygon");
   });
 
   it("checks the class the shape already carries", () => {

@@ -58,7 +58,7 @@ const ASSET: AssetDescriptor = { id: "asset-7", width: 640, height: 480 };
 /** A tag class carrying attributes, so the draft's seeding is visible here too. */
 const WEATHER: LabelClass = {
   name: "weather",
-  geometry: "classification_tag",
+  geometries: ["classification_tag"],
   color: "#00a0ff",
   attributes: [
     { name: "heavy", kind: "boolean", required: false, options: null, default: false },
@@ -69,15 +69,15 @@ const WEATHER: LabelClass = {
 /** A second tag class, bare — the "multiple classes tag one asset" other half. */
 const NIGHT: LabelClass = {
   name: "night",
-  geometry: "classification_tag",
+  geometries: ["classification_tag"],
   color: null,
   attributes: [],
 };
 
-const SIGN: LabelClass = { name: "sign", geometry: "bbox", color: null, attributes: [] };
-const LANE: LabelClass = { name: "lane", geometry: "polygon", color: null, attributes: [] };
+const SIGN: LabelClass = { name: "sign", geometries: ["bbox"], color: null, attributes: [] };
+const LANE: LabelClass = { name: "lane", geometries: ["polygon"], color: null, attributes: [] };
 /** Declarable in a schema, never carryable by an annotation. Not taggable either. */
-const RAIL: LabelClass = { name: "rail", geometry: "polyline", color: null, attributes: [] };
+const RAIL: LabelClass = { name: "rail", geometries: ["polyline"], color: null, attributes: [] };
 
 const SCHEMA: AnnotationSchema = {
   project_id: "project-7",
@@ -160,7 +160,7 @@ describe("which classes can be tagged", () => {
     // Reads the vocabulary rather than restating it, so a ninth kernel geometry
     // arriving in `GEOMETRY_TYPES` cannot silently become taggable.
     const taggable = GEOMETRY_TYPES.filter((geometry) =>
-      isTaggableClass({ name: "x", geometry, color: null, attributes: [] }),
+      isTaggableClass({ name: "x", geometries: [geometry], color: null, attributes: [] }),
     );
     expect(taggable).toEqual(["classification_tag"]);
   });

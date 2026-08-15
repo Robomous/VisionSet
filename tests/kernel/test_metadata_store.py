@@ -131,7 +131,7 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
             classes=[
                 LabelClass(
                     name="car",
-                    geometry=GeometryType.BBOX,
+                    geometries=(GeometryType.BBOX,),
                     color="#ff0000",
                     attributes=[Attribute(name="occluded", kind="boolean", required=True)],
                 )
@@ -373,7 +373,7 @@ def test_schema_classes_and_attributes_round_trip(tmp_path: Path) -> None:
         schema = uow.schemas.get(_seed(uow)[6][1])
         assert schema is not None
         label_class = schema.classes[0]
-        assert label_class.geometry is GeometryType.BBOX
+        assert label_class.geometries == (GeometryType.BBOX,)
         assert label_class.attributes[0] == Attribute(
             name="occluded", kind="boolean", required=True
         )

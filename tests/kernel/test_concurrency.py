@@ -274,7 +274,7 @@ def _open_job(root: Path) -> tuple[UUID, list[UUID]]:
     try:
         project = ProjectService(workspace).create("p")
         SchemaService(workspace).create_version(
-            project.id, [LabelClass(name="sign", geometry=GeometryType.BBOX)]
+            project.id, [LabelClass(name="sign", geometries=(GeometryType.BBOX,))]
         )
         assets = []
         for seed in ("a", "b", "c"):

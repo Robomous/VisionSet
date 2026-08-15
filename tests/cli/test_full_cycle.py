@@ -29,7 +29,7 @@ SCHEMA = {
     "classes": [
         {
             "name": "sign",
-            "geometry": "bbox",
+            "geometries": ["bbox"],
             "attributes": [{"name": "occluded", "kind": "boolean"}],
         }
     ]

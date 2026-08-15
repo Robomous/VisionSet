@@ -495,10 +495,10 @@ def _validate(annotation: Annotation, schema: AnnotationSchema) -> None:
     a remove plus an add there, and what makes ``LabelClass.name`` stored
     stripped here.
 
-    The geometry rule is per-class equality, not membership: a ``LabelClass``
-    declares one ``geometry``. ``SchemaService.allowed_geometries`` is the union
-    across a version's classes, which answers "what may this project draw?" and
-    would happily let a polygon through under a bbox class.
+    The geometry rule is membership in **this class's** set. That is not the same
+    test as ``SchemaService.allowed_geometries``, which is the union across a
+    version's classes: it answers "what may this project draw?" and would happily
+    let a polygon through under a class that only accepts boxes.
 
     Pure, and given the schema rather than reading one, so the whole rule can be
     exercised without a workspace.
@@ -511,9 +511,10 @@ def _validate(annotation: Annotation, schema: AnnotationSchema) -> None:
             f"which declares {known}"
         )
 
-    if annotation.geometry.type != label_class.geometry:
+    if annotation.geometry.type not in label_class.geometries:
+        allowed = ", ".join(geometry.value for geometry in label_class.geometries)
         raise DisallowedGeometry(
-            f"class {label_class.name!r} is a {label_class.geometry.value} in schema version "
+            f"class {label_class.name!r} accepts {allowed} in schema version "
             f"{schema.version}, but this annotation carries a {annotation.geometry.type.value}"
         )
 

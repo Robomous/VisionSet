@@ -326,7 +326,7 @@ def _walk(client: Client, base_url: str, downloads: Path) -> Summary:
             "classes": [
                 {
                     "name": "nodule",
-                    "geometry": "bbox",
+                    "geometries": ["bbox"],
                     "attributes": [{"name": "malignant", "kind": "boolean", "required": True}],
                 }
             ]

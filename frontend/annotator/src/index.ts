@@ -130,7 +130,7 @@ export {
   type PointerButton,
 } from "./core/interaction/events";
 export { NO_EFFECTS, type Effect, type EffectKind } from "./core/interaction/effects";
-export { drawableGeometry, toolFor, type Tool } from "./core/interaction/tool";
+export { drawableGeometries, toolFor, toolForClass, type Tool } from "./core/interaction/tool";
 export {
   NO_TARGET,
   nearestInsertion,

@@ -21,7 +21,7 @@ DESTRUCTIVE = ChangeKind.DESTRUCTIVE
 
 
 def _class(name: str = "sign", **overrides: object) -> LabelClass:
-    return LabelClass(name=name, **{"geometry": GeometryType.BBOX, **overrides})  # type: ignore[arg-type]
+    return LabelClass(name=name, **{"geometries": (GeometryType.BBOX,), **overrides})  # type: ignore[arg-type]
 
 
 def _with(*attributes: Attribute) -> LabelClass:
@@ -37,7 +37,7 @@ CASES: list[tuple[str, tuple[LabelClass, ...], tuple[LabelClass, ...], set[objec
     (
         "first version is all additive",
         (),
-        (SIGN, _class("lane", geometry=GeometryType.POLYGON)),
+        (SIGN, _class("lane", geometries=(GeometryType.POLYGON,))),
         {(ADDITIVE, "sign", None), (ADDITIVE, "lane", None)},
     ),
     ("class added", (SIGN,), (SIGN, _class("lane")), {(ADDITIVE, "lane", None)}),
@@ -55,9 +55,24 @@ CASES: list[tuple[str, tuple[LabelClass, ...], tuple[LabelClass, ...], set[objec
         {(ADDITIVE, "Sign", None), (DESTRUCTIVE, "sign", None)},
     ),
     (
-        "class geometry changed",
+        # A geometry set moves in two independent directions, and only one of
+        # them can orphan a label — so the swap below is *both* at once, and the
+        # two rows beneath it are each direction on its own.
+        "class geometry swapped is a removal plus an addition",
         (SIGN,),
-        (_class(geometry=GeometryType.POLYGON),),
+        (_class(geometries=(GeometryType.POLYGON,)),),
+        {(ADDITIVE, "sign", None), (DESTRUCTIVE, "sign", None)},
+    ),
+    (
+        "class gains a geometry",
+        (SIGN,),
+        (_class(geometries=(GeometryType.BBOX, GeometryType.POLYGON)),),
+        {(ADDITIVE, "sign", None)},
+    ),
+    (
+        "class loses a geometry",
+        (_class(geometries=(GeometryType.BBOX, GeometryType.POLYGON)),),
+        (SIGN,),
         {(DESTRUCTIVE, "sign", None)},
     ),
     ("class color changed is not a change", (SIGN,), (_class(color="#ff0000"),), set()),

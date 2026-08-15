@@ -58,35 +58,35 @@ export const PALETTE_ASSET: AssetDescriptor = { id: "asset-46", width: 800, heig
 /** Digit 1. */
 export const SIGN: LabelClass = {
   name: "sign",
-  geometry: "bbox",
+  geometries: ["bbox"],
   color: null,
   attributes: [],
 };
 /** Digit 2. */
 export const LANE: LabelClass = {
   name: "lane",
-  geometry: "polygon",
+  geometries: ["polygon"],
   color: null,
   attributes: [],
 };
 /** Digit 3 — tagged, never drawn. */
 export const WEATHER: LabelClass = {
   name: "weather",
-  geometry: "classification_tag",
+  geometries: ["classification_tag"],
   color: null,
   attributes: [],
 };
 /** Digit 4 — a lane. Drawable, since `polyline` has a tool. */
 export const RAIL: LabelClass = {
   name: "rail",
-  geometry: "polyline",
+  geometries: ["polyline"],
   color: null,
   attributes: [],
 };
 /** Digit 5 — a second bbox class, so "same tool" has a witness. */
 export const STOP: LabelClass = {
   name: "stop",
-  geometry: "bbox",
+  geometries: ["bbox"],
   color: null,
   attributes: [],
 };
@@ -103,12 +103,26 @@ export const STOP: LabelClass = {
  */
 export const POSE: LabelClass = {
   name: "pose",
-  geometry: "keypoints",
+  geometries: ["keypoints"],
   color: null,
   attributes: [],
 };
 
-export const PALETTE: readonly LabelClass[] = [SIGN, LANE, WEATHER, RAIL, STOP, POSE];
+/**
+ * Digit 7 — a tag *and* a box, which #584 made expressible.
+ *
+ * The two questions stopped being each other's negation, so this is the class
+ * that tells `isTaggableClass` apart from "not drawable": a digit pressed on it
+ * must arm it, not tag the asset. Appended, for `POSE`'s reason.
+ */
+export const KIOSK: LabelClass = {
+  name: "kiosk",
+  geometries: ["bbox", "classification_tag"],
+  color: null,
+  attributes: [],
+};
+
+export const PALETTE: readonly LabelClass[] = [SIGN, LANE, WEATHER, RAIL, STOP, POSE, KIOSK];
 
 export const PALETTE_SCHEMA: AnnotationSchema = {
   project_id: "project-46",
@@ -135,7 +149,7 @@ export function wideSchema(count: number): AnnotationSchema {
     ...PALETTE_SCHEMA,
     classes: Array.from({ length: count }, (_unused, index) => ({
       name: `c${index + 1}`,
-      geometry: "bbox" as const,
+      geometries: ["bbox"] as const,
       color: null,
       attributes: [],
     })),
@@ -218,6 +232,10 @@ export function recordingHost(
     get activeClass(): string | null {
       return current;
     },
+    // No preference, so `toolFor` falls to each class's first geometry — the
+    // behaviour these tests were written against. A case about a host holding a
+    // tool sets it on the returned object.
+    activeTool: null,
     activateClass(labelClass: string | null): void {
       current = labelClass;
       activated.push(labelClass);

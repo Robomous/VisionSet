@@ -156,7 +156,9 @@ def label_class(value: LabelClass) -> dict[str, Any]:
     """One class of a schema version. Also the *input* shape ``schema apply`` reads."""
     return {
         "name": value.name,
-        "geometry": value.geometry.value,
+        # Already sorted and deduplicated by the domain, so the list is one
+        # value rather than one of several spellings of it.
+        "geometries": [geometry.value for geometry in value.geometries],
         "color": value.color,
         "attributes": [attribute(a) for a in value.attributes],
     }

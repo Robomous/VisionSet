@@ -50,7 +50,7 @@ class Fixture:
         self.workspace = WorkspaceService.init(self.root)
         self.project = ProjectService(self.workspace).create("membership")
         SchemaService(self.workspace).create_version(
-            self.project.id, [LabelClass(name="sign", geometry=GeometryType.BBOX)]
+            self.project.id, [LabelClass(name="sign", geometries=(GeometryType.BBOX,))]
         )
         self.assets = [self._asset(index) for index in range(4)]
         self.batch = BatchService(self.workspace).create(self.project.id, "draft", self.assets[:2])

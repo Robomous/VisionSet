@@ -109,7 +109,11 @@ def test_allow_destructive_is_the_retry_word_for_narrowing_a_contract(
 ) -> None:
     named = schema(monkeypatch, tmp_path)
     refusal = error(
-        call("create_schema_version", project=named, classes=[{"name": "car", "geometry": "bbox"}])
+        call(
+            "create_schema_version",
+            project=named,
+            classes=[{"name": "car", "geometries": ["bbox"]}],
+        )
     )
     assert refusal["retry_with"] == "allow_destructive"
 

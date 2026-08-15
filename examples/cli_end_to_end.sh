@@ -60,7 +60,7 @@ cat > "$DEST/schema.json" <<'JSON'
   "classes": [
     {
       "name": "sign",
-      "geometry": "bbox",
+      "geometries": ["bbox"],
       "color": "#ff0000",
       "attributes": [{"name": "occluded", "kind": "boolean", "default": false}]
     }

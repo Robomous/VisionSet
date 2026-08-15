@@ -65,9 +65,14 @@ from visionset.kernel.errors import UnserializableManifest
 #: ``DatasetChange.operation`` makes, where forward-compatibility wins because a
 #: log is advisory. Here the document is hash-pinned evidence, and
 #: half-understanding one is worse than refusing it. This field is what lets the
-#: refusal say "format 2, and this build reads 1" rather than complain about an
+#: refusal say "format 3, and this build reads 2" rather than complain about an
 #: unrecognised key.
-MANIFEST_VERSION: int = 1
+#:
+#: **2** since #584, which made ``LabelClass.geometries`` plural and so changed
+#: the shape of ``classes`` here. A version-1 document still loads — ``LabelClass``
+#: reads the old singular key — so every release published before that stays
+#: verifiable, with its bytes and its hash untouched.
+MANIFEST_VERSION: int = 2
 
 
 class ManifestAnnotation(BaseModel):
@@ -437,7 +442,14 @@ class ClassExportStatus(StrEnum):
 
 
 class ClassCompatibility(BaseModel):
-    """One class of a release, judged against one format's declared capabilities.
+    """One class and one of its geometries, judged against one format.
+
+    A class accepts a *set* of geometries, and a format's answer can differ
+    across that set — a class holding boxes and polygons is, to a boxes-only
+    format, one half written whole and one half reduced. So the row is per
+    ``(label_class, geometry)`` and a class contributes as many rows as it has
+    geometries. One row per class could only report one of the two answers, and
+    would describe the output wrongly whichever it picked.
 
     Per class rather than per annotation, and the counts are what make it useful:
     "polygon is unsupported" is a fact about the schema, while "polygon is

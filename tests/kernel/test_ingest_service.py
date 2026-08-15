@@ -256,7 +256,7 @@ class Fixture:
     def freeze(self, batch_id: UUID) -> None:
         """Approve the batch, creating the schema version approval has to pin."""
         SchemaService(self.workspace).create_version(
-            self.project.id, [LabelClass(name="thing", geometry=GeometryType.BBOX)]
+            self.project.id, [LabelClass(name="thing", geometries=(GeometryType.BBOX,))]
         )
         self.batches.approve(batch_id)
 

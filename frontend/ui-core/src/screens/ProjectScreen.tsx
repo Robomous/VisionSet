@@ -85,6 +85,7 @@ import {
 } from "lucide-react";
 import { useState, type ComponentType, type FormEvent, type JSX } from "react";
 
+import { formatGeometries } from "../data/geometryCategory";
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
@@ -1039,10 +1040,12 @@ function AnnotationRun({
   );
 }
 
-/** `name (geometry)`, in the schema's own authored order — which is the palette's. */
+/** `name (geometries)`, in the schema's own authored order — which is the palette's. */
 function summarise(version: SchemaVersion): string {
   if (version.classes.length === 0) return "no classes";
-  return version.classes.map((declared) => `${declared.name} (${declared.geometry})`).join(", ");
+  return version.classes
+    .map((declared) => `${declared.name} (${formatGeometries(declared.geometries)})`)
+    .join(", ");
 }
 
 function RenameDialog({

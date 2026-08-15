@@ -43,8 +43,8 @@ import type { Suggestion, SuggestionState } from "./suggestion";
 
 const ASSET: AssetDescriptor = { id: "asset-424", width: 800, height: 600 };
 
-function classOf(name: string, geometry: LabelClass["geometry"]): LabelClass {
-  return { name, geometry, color: null, attributes: [] };
+function classOf(name: string, ...geometries: LabelClass["geometries"]): LabelClass {
+  return { name, geometries, color: null, attributes: [] };
 }
 
 const CAR = classOf("car", "bbox");

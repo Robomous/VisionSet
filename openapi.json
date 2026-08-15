@@ -2757,7 +2757,7 @@
       "JsonValue": {},
       "LabelClassBody": {
         "additionalProperties": false,
-        "description": "One labelable class, bound to a geometry.",
+        "description": "One labelable class, and the geometries an annotation of it may carry.",
         "properties": {
           "attributes": {
             "default": [],
@@ -2778,8 +2778,13 @@
             ],
             "title": "Color"
           },
-          "geometry": {
-            "$ref": "#/components/schemas/GeometryType"
+          "geometries": {
+            "items": {
+              "$ref": "#/components/schemas/GeometryType"
+            },
+            "minItems": 1,
+            "title": "Geometries",
+            "type": "array"
           },
           "name": {
             "title": "Name",
@@ -2788,7 +2793,7 @@
         },
         "required": [
           "name",
-          "geometry"
+          "geometries"
         ],
         "title": "LabelClassBody",
         "type": "object"

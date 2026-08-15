@@ -139,7 +139,7 @@ def test_a_select_with_no_options_exits_two_in_the_domains_words(
         [
             {
                 "name": "sign",
-                "geometry": "bbox",
+                "geometries": ["bbox"],
                 "attributes": [{"name": "condition", "kind": "select"}],
             }
         ],
@@ -155,7 +155,7 @@ def test_a_select_with_no_options_exits_two_in_the_domains_words(
 
 
 def test_a_blank_class_name_exits_two_and_says_where(root: Path, tmp_path: Path) -> None:
-    path = _document(tmp_path, [{"name": "   ", "geometry": "bbox"}])
+    path = _document(tmp_path, [{"name": "   ", "geometries": ["bbox"]}])
     result = run(root, "schema", "apply", str(path), "-p", "road-signs")
     assert result.exit_code == 2, result.output
     assert "classes.0.name" in usage_error(result)
@@ -164,7 +164,7 @@ def test_a_blank_class_name_exits_two_and_says_where(root: Path, tmp_path: Path)
 def test_an_unimplemented_geometry_exits_one(root: Path, tmp_path: Path) -> None:
     # ``mask`` is a legal ``GeometryType`` member, so the document parses; it is
     # the *service* that refuses it. A domain refusal, therefore exit 1.
-    path = _document(tmp_path, [{"name": "road", "geometry": "mask"}])
+    path = _document(tmp_path, [{"name": "road", "geometries": ["mask"]}])
     result = run(root, "schema", "apply", str(path), "-p", "road-signs")
     assert result.exit_code == 1, result.output
     assert "Error:" in result.stderr
@@ -175,7 +175,7 @@ def test_an_unimplemented_geometry_exits_one(root: Path, tmp_path: Path) -> None
 
 def test_removing_a_class_exits_one_until_the_flag(root: Path, tmp_path: Path) -> None:
     ok(root, "schema", "apply", str(schema_file(tmp_path)), "-p", "road-signs")
-    narrowed = _document(tmp_path, [{"name": "lane", "geometry": "bbox"}])
+    narrowed = _document(tmp_path, [{"name": "lane", "geometries": ["bbox"]}])
     refused = run(root, "schema", "apply", str(narrowed), "-p", "road-signs")
     assert refused.exit_code == 1, refused.output
     assert ok(root, "schema", "apply", str(narrowed), "-p", "road-signs", "--allow-destructive")

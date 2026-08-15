@@ -19,14 +19,14 @@ import { CLASS_FILL_OPACITY, classColor, hexColor, type LabelClass } from "./pal
 
 const withColour: LabelClass = {
   name: "vehicle",
-  geometry: "bbox",
+  geometries: ["bbox"],
   color: "#38bdf8",
   attributes: [],
 };
 
 const without: LabelClass = {
   name: "pedestrian",
-  geometry: "bbox",
+  geometries: ["bbox"],
   color: null,
   attributes: [],
 };
@@ -128,7 +128,7 @@ describe("hexColor", () => {
     // declared colour is convertible. The moment that stops holding, the editor
     // goes grey again.
     for (const name of ["lane", "vehicle", "pedestrian", "weather", "", "ünïcodé", "a".repeat(64)]) {
-      const derived = classColor({ name, geometry: "bbox", color: null, attributes: [] }, name);
+      const derived = classColor({ name, geometries: ["bbox"], color: null, attributes: [] }, name);
       expect(derived).toMatch(/^hsl\(/);
       expect(hexColor(derived)).toMatch(/^#[0-9a-f]{6}$/);
     }

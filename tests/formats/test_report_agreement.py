@@ -350,7 +350,7 @@ LANE_DRAWING: dict[int, list[Annotation]] = {
     2: [_box(x=1, y=1, width=8, height=8), _tag()],
 }
 
-LANE_CLASSES = (*CLASSES, LabelClass(name="centerline", geometry=GeometryType.POLYLINE))
+LANE_CLASSES = (*CLASSES, LabelClass(name="centerline", geometries=(GeometryType.POLYLINE,)))
 
 
 def _tusimple_lanes(root: Path) -> int:
@@ -488,3 +488,86 @@ def test_the_three_general_formats_declare_polyline_truthfully(
     assert lane.status is ClassExportStatus.DROPPED
     assert lane.annotations == 3
     assert written["centerline"] == 0
+
+
+# --- one class, two shapes ----------------------------------------------------
+
+#: A single class labelled both ways, which is what #584 made expressible. YOLO
+#: writes the boxes whole and reduces the polygons; COCO carries both intact.
+MIXED_CLASSES = (LabelClass(name="sign", geometries=(GeometryType.BBOX, GeometryType.POLYGON)),)
+
+#: Two boxes and one polygon, all under ``sign``, on two assets.
+MIXED_DRAWING: dict[int, list[Annotation]] = {
+    0: [_box(x=8, y=6, width=20, height=22), _polygon()],
+    1: [_box(x=2, y=2, width=10, height=10)],
+}
+
+
+@pytest.fixture
+def mixed(tmp_path: Path) -> Fixture:
+    fixture = Fixture(tmp_path, classes=MIXED_CLASSES)
+    fixture.label(
+        {
+            position: [one.model_copy(update={"label_class": "sign"}) for one in drawn]
+            for position, drawn in MIXED_DRAWING.items()
+        }
+    )
+    return fixture
+
+
+@pytest.mark.parametrize("format_name", sorted(COUNTERS))
+def test_a_class_labelled_two_ways_gets_a_report_row_for_each(
+    tmp_path: Path, mixed: Fixture, format_name: str
+) -> None:
+    """The defect a per-class report cannot express, and the reason it is per shape.
+
+    Under YOLO one class here is two different answers at once — the boxes are
+    written whole, the polygons are written as their bounding box and lose their
+    shape. A report with one row per class could carry only one of those verdicts,
+    and would describe half its own output wrongly whichever it picked.
+
+    The counts are read off the artifact, like every other test in this file: the
+    rows a format wrote under the class name must equal the sum of the rows it did
+    not report as dropped.
+    """
+    release_id = mixed.publish()
+    dest = tmp_path / f"out-{format_name}"
+    report = _export(mixed, release_id, _installed()[format_name], dest)
+    written = COUNTERS[format_name](dest)
+    mixed.close()
+
+    rows = [one for one in report.classes if one.label_class == "sign"]
+    assert {one.geometry for one in rows} == {GeometryType.BBOX, GeometryType.POLYGON}
+    assert sum(one.annotations for one in rows) == 3
+
+    carried = sum(one.annotations for one in rows if one.status is not ClassExportStatus.DROPPED)
+    assert written["sign"] == carried, (
+        f"{format_name} reports {[(one.geometry.value, one.status.value) for one in rows]} "
+        f"and wrote {written['sign']} row(s)"
+    )
+
+
+def test_yolo_splits_one_mixed_class_into_a_whole_half_and_a_degraded_half(
+    tmp_path: Path, mixed: Fixture
+) -> None:
+    """The verdicts themselves, named — the parametrized test above only compares counts.
+
+    Written against YOLO specifically because it is the format whose two answers
+    differ: ``supported_geometries`` is ``{bbox}`` and ``degraded_geometries`` is
+    ``{polygon}``, so one class produces one of each. COCO carries both and would
+    make the assertion vacuous.
+    """
+    release_id = mixed.publish()
+    report = _export(mixed, release_id, _installed()["yolo"], tmp_path / "out")
+    mixed.close()
+
+    verdicts = {one.geometry: one.status for one in report.classes if one.label_class == "sign"}
+    assert verdicts == {
+        GeometryType.BBOX: ClassExportStatus.SUPPORTED,
+        GeometryType.POLYGON: ClassExportStatus.DEGRADED,
+    }
+    # Nothing is lost, so consent is still asked for — a degraded export is not a
+    # compatible one, which is the call `_compatibility` already made.
+    assert report.excluded_annotations == 0
+    assert report.degraded_annotations == 1
+    assert report.compatible is False

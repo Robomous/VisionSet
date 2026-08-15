@@ -11,7 +11,7 @@ the best guidance an agent gets about what a class *is*. Re-spelling the model
 here would throw that away and add a second definition to keep in step.
 
 **The one wart it inherits, stated rather than hidden**: a discriminated union's
-tag carries a default in the domain — ``LabelClass.geometry`` does not, but
+tag carries a default in the domain — ``LabelClass.geometries`` does not, but
 ``Geometry`` and ``Partition`` do — so the generated schema shows ``type`` as
 optional while pydantic needs it in the input dict to pick a variant. The REST
 surface fixes that by dropping the defaults from its own bodies; here it is
@@ -124,9 +124,10 @@ def preview_schema_change(project: ProjectRef, classes: ClassesParam) -> dict[st
     only way to find out that a change is destructive without attempting it.
 
     `diff.is_destructive` true means the proposal narrows the contract: a class or
-    an attribute is gone, or a geometry moved. `diff.destructive_classes` names
-    them, and applying it then needs `allow_destructive=true`. Adding classes or
-    optional attributes is additive and needs no flag.
+    an attribute is gone, or a class lost one of its geometries.
+    `diff.destructive_classes` names them, and applying it then needs
+    `allow_destructive=true`. Adding classes, optional attributes, or another
+    geometry to a class is additive and needs no flag.
 
     **`is_refused` is the answer no flag changes.** True means annotations already
     exist under a class this proposal drops, so `create_schema_version` refuses
@@ -140,9 +141,10 @@ def preview_schema_change(project: ProjectRef, classes: ClassesParam) -> dict[st
     the publish, in which case the publish refuses and that refusal is the
     authoritative one.
 
-    Each entry of `classes` must carry `geometry` as one of the declared geometry
-    types; matching against the current version is by exact class name, so
-    renaming a class reads here as one removal plus one addition.
+    Each entry of `classes` must carry `geometries`, a non-empty list of declared
+    geometry types — a class may be labeled as more than one shape. Matching
+    against the current version is by exact class name, so renaming a class reads
+    here as one removal plus one addition.
     """
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)
@@ -200,7 +202,7 @@ def create_schema_version(
     It is stored verbatim and can never be edited, so write it as a record rather
     than as a note to yourself. Omitting it is legal.
 
-    Three refusals to expect. A class bound to a geometry VisionSet has not
+    Three refusals to expect. A class naming a geometry VisionSet has not
     implemented is rejected outright. A narrowing change is rejected until you
     pass `allow_destructive=true`. And a narrowing change that would orphan
     annotations already written under an affected class is rejected with **no**

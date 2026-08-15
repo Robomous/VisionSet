@@ -12,7 +12,7 @@ const WIRE = {
   schema: {
     project_id: "11111111-1111-4111-8111-111111111111",
     version: 1,
-    classes: [{ name: "box", geometry: "bbox", color: null, attributes: [] }],
+    classes: [{ name: "box", geometries: ["bbox"], color: null, attributes: [] }],
   },
   annotations: [
     {

@@ -264,7 +264,7 @@ export const checkAttributeBody: Check<Schemas["AttributeBody"]> =
   /*#__PURE__*/ object({ "default": [false, either([isBoolean, isNumber, isString, isNull] as const)], "kind": [true, oneOf(["string", "number", "boolean", "select"] as const)], "name": [true, isString], "options": [false, either([arrayOf(isString), isNull] as const)], "required": [true, isBoolean] } as const);
 
 export const checkLabelClassBody: Check<Schemas["LabelClassBody"]> =
-  /*#__PURE__*/ object({ "attributes": [true, arrayOf(checkAttributeBody)], "color": [false, either([isString, isNull] as const)], "geometry": [true, checkGeometryType], "name": [true, isString] } as const);
+  /*#__PURE__*/ object({ "attributes": [true, arrayOf(checkAttributeBody)], "color": [false, either([isString, isNull] as const)], "geometries": [true, arrayOf(checkGeometryType)], "name": [true, isString] } as const);
 
 export const checkSchemaProvenance: Check<Schemas["SchemaProvenance"]> =
   /*#__PURE__*/ oneOf(["curated", "annotation"] as const);

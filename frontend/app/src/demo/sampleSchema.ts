@@ -36,13 +36,13 @@ export const SAMPLE_SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",
   version: 1,
   classes: [
-    { name: "vehicle", geometry: "bbox", color: "#38bdf8", attributes: [] },
-    { name: "lane", geometry: "polygon", color: "#f97316", attributes: [] },
-    { name: "daytime", geometry: "classification_tag", color: "#a3e635", attributes: [] },
+    { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
+    { name: "lane", geometries: ["polygon"], color: "#f97316", attributes: [] },
+    { name: "daytime", geometries: ["classification_tag"], color: "#a3e635", attributes: [] },
     // No colour: `classColor` derives a stable hue from the name instead, which is
     // the branch `LabelClass.color`'s own docstring blesses.
-    { name: "pedestrian", geometry: "bbox", color: null, attributes: [] },
-    { name: "centerline", geometry: "polyline", color: "#c084fc", attributes: [] },
-    { name: "pose", geometry: "keypoints", color: "#facc15", attributes: [] },
+    { name: "pedestrian", geometries: ["bbox"], color: null, attributes: [] },
+    { name: "centerline", geometries: ["polyline"], color: "#c084fc", attributes: [] },
+    { name: "pose", geometries: ["keypoints"], color: "#facc15", attributes: [] },
   ],
 } as const;

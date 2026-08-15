@@ -30,10 +30,10 @@ const SCHEMA: AnnotationSchema = {
   created_at: "2026-08-06T00:00:00Z",
   provenance: null,
   classes: [
-    { name: "sign", geometry: "bbox", color: null, attributes: [] },
-    { name: "lane", geometry: "polygon", color: null, attributes: [] },
-    { name: "centerline", geometry: "polyline", color: null, attributes: [] },
-    { name: "weather", geometry: "classification_tag", color: null, attributes: [] },
+    { name: "sign", geometries: ["bbox"], color: null, attributes: [] },
+    { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
+    { name: "centerline", geometries: ["polyline"], color: null, attributes: [] },
+    { name: "weather", geometries: ["classification_tag"], color: null, attributes: [] },
   ],
 };
 

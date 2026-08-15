@@ -23,14 +23,14 @@ from tests.server._jobs import InlineDispatcher
 #: payload able to be wrong in an interesting way.
 SIGN: Final[dict[str, Any]] = {
     "name": "sign",
-    "geometry": "bbox",
+    "geometries": ["bbox"],
     "attributes": [{"name": "occluded", "kind": "boolean", "required": True}],
 }
-LANE: Final[dict[str, Any]] = {"name": "lane", "geometry": "polygon"}
+LANE: Final[dict[str, Any]] = {"name": "lane", "geometries": ["polygon"]}
 #: The lane geometry. NOT in the default schema: four tests elsewhere count the
 #: classes `project_with_schema` declares, so a suite that needs a lane passes
 #: `classes=[SIGN, LANE, CENTERLINE]` rather than widening what everyone gets.
-CENTERLINE: Final[dict[str, Any]] = {"name": "centerline", "geometry": "polyline"}
+CENTERLINE: Final[dict[str, Any]] = {"name": "centerline", "geometries": ["polyline"]}
 
 
 def image_parts(tmp_path: Path, count: int) -> list[tuple[str, tuple[str, bytes, str]]]:

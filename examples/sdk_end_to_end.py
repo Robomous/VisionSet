@@ -86,7 +86,7 @@ MODEL_LABELED_FRAME = 2
 CLASSES: tuple[LabelClass, ...] = (
     LabelClass(
         name="stop-sign",
-        geometry=GeometryType.BBOX,
+        geometries=(GeometryType.BBOX,),
         color="#d62828",
         attributes=(
             # The one required attribute: an annotation without it is refused by
@@ -103,10 +103,10 @@ CLASSES: tuple[LabelClass, ...] = (
             Attribute(name="damaged", kind="boolean", default=False),
         ),
     ),
-    LabelClass(name="lane-marking", geometry=GeometryType.POLYGON, color="#f4a261"),
+    LabelClass(name="lane-marking", geometries=(GeometryType.POLYGON,), color="#f4a261"),
     LabelClass(
         name="weather",
-        geometry=GeometryType.CLASSIFICATION_TAG,
+        geometries=(GeometryType.CLASSIFICATION_TAG,),
         color="#264653",
         attributes=(Attribute(name="condition", kind="select", options=("clear", "rain", "fog")),),
     ),

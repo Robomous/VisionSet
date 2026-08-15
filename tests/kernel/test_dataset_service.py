@@ -47,7 +47,7 @@ from visionset.kernel.services import (
     WorkspaceService,
 )
 
-SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
+SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 
 UNANNOTATED = AssetProgress.UNANNOTATED
 ANNOTATED = AssetProgress.ANNOTATED
@@ -691,7 +691,7 @@ def test_per_class_counts_come_back_in_class_name_order(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
     fixture.schemas.create_version(
         fixture.project.id,
-        [SIGN, LabelClass(name="alpha", geometry=GeometryType.BBOX)],
+        [SIGN, LabelClass(name="alpha", geometries=(GeometryType.BBOX,))],
         allow_destructive=True,
     )
     (job,) = fixture.working()

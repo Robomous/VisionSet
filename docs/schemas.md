@@ -1,7 +1,7 @@
 # Annotation schemas
 
-A schema is a project's ontology. It defines the classes being labeled, the geometry for each
-class, and the additional information carried by a label. The previous system called this the
+A schema is a project's ontology. It defines the classes being labeled, the geometries each
+class may be drawn as, and the additional information carried by a label. The previous system called this the
 "task type," but a task type remained fixed for the life of a project. A schema is
 **versioned**, and every version is immutable.
 
@@ -19,13 +19,15 @@ with WorkspaceService.open("./road-signs") as workspace:
 
     sign = LabelClass(
         name="sign",
-        geometry=GeometryType.BBOX,
+        # A set: the same sign is worth boxing at the end of the street and
+        # worth outlining close up, and it is one class either way.
+        geometries=(GeometryType.BBOX, GeometryType.POLYGON),
         attributes=[
             Attribute(name="occluded", kind="boolean", default=False),
             Attribute(name="weather", kind="select", options=["dry", "wet"]),
         ],
     )
-    lane = LabelClass(name="lane", geometry=GeometryType.POLYGON)
+    lane = LabelClass(name="lane", geometries=(GeometryType.POLYGON,))
 
     published = schemas.create_version(project.id, [sign, lane])
     published.published.version  # 1
@@ -34,7 +36,7 @@ with WorkspaceService.open("./road-signs") as workspace:
     schemas.get_active(project.id)  # the highest version
     schemas.get(project.id, 1)  # any version, forever
     schemas.list_versions(project.id)  # oldest first
-    schemas.allowed_geometries(project.id)  # {BBOX, POLYGON}
+    schemas.allowed_geometries(project.id)  # {BBOX, POLYGON} — the union, not the test
 ```
 
 **Over HTTP:** `POST`/`GET /projects/{project_id}/schema/versions`,
@@ -193,15 +195,33 @@ not damage.
 
 ## Geometries a class may use
 
+**A class accepts a set, not one.** `LabelClass.geometries` is non-empty, deduplicated, and
+kept in one sorted order; an annotation carries **one** of them, and `AnnotationService`
+tests membership in *that class's* set. Splitting `car` into `car` and `car_polygon` to label
+the same object two ways is what this replaces - two classes that mean one thing, which every
+consumer downstream then has to re-unify.
+
+The order is sorted rather than authored on purpose. `release.canonical_bytes` dumps these
+straight into the document it hashes, so a set whose order depended on how a caller typed it
+would make two identical schemas produce two different release hashes. Class *order* is
+authored and preserved; geometry order carries no meaning and nobody can read one into it.
+
 `GeometryType` names eight geometries; four have a model in the `Geometry` union today -
 `bbox`, `polygon`, `polyline` and `classification_tag`.
 `IMPLEMENTED_GEOMETRIES` is read *off* the union, so shipping a variant widens it with no
-second edit, and `create_version` refuses anything outside it:
+second edit, and `create_version` refuses a class naming anything outside it:
 
 ```python
-LabelClass(name="road", geometry=GeometryType.MASK)  # constructs fine
+LabelClass(name="road", geometries=(GeometryType.MASK,))  # constructs fine
 schemas.create_version(project.id, [that])  # UnsupportedGeometry
 ```
+
+A document written before this was plural spells the field `geometry` and singular.
+`LabelClass` reads one and lifts it into a set of one, which is why #584 needed **no
+migration**: schema classes live in a JSON column and release manifests carry these
+verbatim, so every stored version and every published release still loads. The REST body
+deliberately does *not* accept the old key - a client sending it is told so rather than
+silently reinterpreted.
 
 Declaring a class whose geometry has no implementation would create a class nobody could
 ever label. Refusing at the schema is better than discovering it at the first annotation.
@@ -228,10 +248,11 @@ categorises it. Nothing on the wire carries a category, and an exporter's capabi
 declaration never names one: `supported_geometries` is per geometry, because a lane exporter
 supports `polyline` and has said nothing at all about `cuboid_3d`.
 
-`allowed_geometries` is the flip side, derived the same way: the set of geometries a
-version's classes are bound to. It is what an annotation's `geometry.type` is
-membership-tested against - the union's discriminator values *are* `GeometryType` members,
-so nothing translates in between.
+`allowed_geometries` is the flip side, derived the same way: the **union** across a version's
+classes. It answers *what may this project draw?* and it is deliberately **not** the test a
+write goes through - an annotation is judged against its own class's `geometries`, which the
+union is wider than as soon as two classes accept different shapes. The union's discriminator
+values *are* `GeometryType` members, so nothing translates in between.
 
 ## Publishing catches the open batches up
 
@@ -260,7 +281,8 @@ annotation that was valid under the previous version stay valid under this one?*
 | Class added | additive |
 | Class removed | **destructive** |
 | Class renamed | **destructive** (a removal) plus an addition |
-| Class geometry changed | **destructive** |
+| Geometry added to a class | additive |
+| Geometry removed from a class | **destructive** |
 | Class color changed | not a change at all |
 | Optional attribute added | additive |
 | Required attribute added | **destructive** |
@@ -386,7 +408,7 @@ The file is **JSON**, and it is byte-for-byte the same document
   "classes": [
     {
       "name": "sign",
-      "geometry": "bbox",
+      "geometries": ["bbox"],
       "color": "#ff0000",
       "attributes": [
         {"name": "occluded", "kind": "boolean", "required": false, "default": false}
@@ -441,3 +463,52 @@ both questions about a *draft* before it publishes; `compare` remains the questi
 *published* versions, which is what the version navigator asks. See
 [ui.md](ui.md#the-schema-editor-and-the-two-409s) and
 [api.md](api.md#asking-before-you-are-refused).
+
+
+## The rescue flow, when a class already exists
+
+Creating a class whose name the published version already declares is **not** answered with
+an error. It is answered with an offer: the annotator's add-a-class dialog says what that
+class accepts today and what publishing would add to it, and its primary button reads
+`Add polygon to "sign"`. Somebody typing a name that exists almost always wants to draw that
+class as a shape it does not have yet, and the product can simply do that.
+
+The widening carries the **existing** class's colour and attributes, not the form's: the
+dialog was opened to make a new class, so publishing its blank colour would quietly wipe what
+the class already declared. Only the geometries move. It goes out through the ordinary
+`create_version` path, so it is an ordinary schema change - additive, needing no flag, and
+producing the next version like any other.
+
+Two collisions, and only one of them is an offer. A name typed twice in **one sitting** stays
+a refusal: both entries are being written now, so merging them would be guessing which of the
+two was meant.
+
+Class names are still unique within a version, ignoring case. What changed is what the
+interface does about it.
+
+## Taking a geometry away refuses more than it has to
+
+Widening is the direction this feature is for, and narrowing has a stated limit. Removing one
+of a class's geometries is destructive, so it needs `allow_destructive` — and if *any*
+annotation exists under that class, it is refused outright by `SchemaChangeWouldOrphan`, which
+no flag overrides.
+
+That refusal is coarser than the question. A `car` accepting `bbox · polygon` whose labels are
+all boxes loses nothing when `polygon` goes, and the publish is refused anyway: the orphan gate
+matches on the class **name**, never on the pair of class and shape. While a class held one
+geometry the two were the same question. They are not any more. Filed as
+[#592](https://github.com/Robomous/VisionSet/issues/592), pinned by a named kernel test, and
+conservative in the safe direction — it refuses rather than orphaning.
+
+## Export is unchanged
+
+A format declares which geometries it can carry and which it carries reduced, and every
+exporter branches on the geometry **an annotation** holds - never on its class. So a class
+accepting two shapes needs no exporter change: YOLO writes its boxes whole and writes its
+polygons as bounding boxes, COCO carries both, and the pre-export report names all of it
+before anything is written. See [releases.md](releases.md).
+
+The one thing that did move is the report's shape. It is now one row per `(class, geometry)`
+rather than per class, because a class holding boxes and polygons is *two* answers under a
+boxes-only format and a single row could only carry one of them - describing half its own
+output wrongly whichever it picked.

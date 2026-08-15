@@ -34,7 +34,7 @@ def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
 
 
 def a_class(name: str = "sign", **overrides: Any) -> dict[str, Any]:
-    return {"name": name, "geometry": "bbox", **overrides}
+    return {"name": name, "geometries": ["bbox"], **overrides}
 
 
 #: `sign` exactly as the fixture declares it, attribute included. Re-sending it

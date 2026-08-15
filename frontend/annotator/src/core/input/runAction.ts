@@ -118,6 +118,7 @@ import { copiedEntries, pastedAnnotations } from "../interaction/clipboard";
 import type { Clipboard } from "../interaction/clipboard";
 import { toggleTagCommand } from "../interaction/tags";
 import { toolFor } from "../interaction/tool";
+import type { Tool } from "../interaction/tool";
 import {
   addAnnotationCommand,
   composeCommands,
@@ -131,15 +132,27 @@ import type { Action, SentEvent } from "./actions";
 /**
  * The capabilities core does not have.
  *
- * All three members are required. An optional one would make "I declined" and "I
+ * All four members are required. An optional one would make "I declined" and "I
  * forgot" the same program, with the compiler blessing the second; a host with no
  * zoom writes `run: () => false` in one line, which is honest. That is this
  * package's posture everywhere — `tagCommand` answers `null`, `store.discard`
- * answers `false`, `drawableGeometry` answers `null`: a refusal is always a value.
+ * answers `false`, `drawableGeometries` answers `[]`: a refusal is always a value.
  */
 export interface InputHost {
   /** The class a drawing gesture will carry. `null` is select mode. */
   readonly activeClass: string | null;
+  /**
+   * The tool the host would rather keep, when the class it is holding allows it.
+   *
+   * Required since #584, when a class started accepting a set of geometries and
+   * `toolFor` stopped being a function of the class alone. Without it, this
+   * module computes the tool before and after a class change from the class's
+   * *first* geometry, and so misses a real move: a host drawing polygons under a
+   * both-shapes class that switches to a boxes-only one really does change tool,
+   * and a polygon in flight has to be cancelled. `null` means no preference,
+   * which is what a host that never lets the user pick a tool writes.
+   */
+  readonly activeTool: Tool | null;
   /** Make this the active class. Core reads it back; it never stores it. */
   activateClass(labelClass: string | null): void;
   /** Anything core cannot do — a zoom, a help sheet. Answers whether it did. */
@@ -275,8 +288,11 @@ export function runAction(action: Action, context: ActionContext): ActionOutcome
       ) {
         return UNCHANGED;
       }
-      const before = toolFor(document, host.activeClass);
-      const after = toolFor(document, action.labelClass);
+      // Both readings take the host's preference, so the comparison is between
+      // the tool that *was* resolved and the one that will be — not between two
+      // class defaults, which would agree while the real tool moved.
+      const before = toolFor(document, host.activeClass, host.activeTool);
+      const after = toolFor(document, action.labelClass, host.activeTool);
       host.activateClass(action.labelClass);
       if (before === after) return CHANGED;
       return { changed: true, events: [{ type: "tool-changed" }] };

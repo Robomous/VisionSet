@@ -1,18 +1,26 @@
 /**
- * Which tool is active — derived from the class the user is holding, never
- * stored.
+ * Which tool is active — resolved against the class the user is holding, never
+ * stored here.
  *
- * `types.ts` states the rule this file implements: *"`geometry` is singular, and
- * that is the rule an annotator is built around: picking a class picks a tool."*
+ * ## A class accepts a set, so the class alone no longer answers
  *
- * ## Derived, because v1 needed two mechanisms to keep a stored one honest
+ * Until #584 a class was bound to one geometry and the tool was a pure function
+ * of the class. A class accepting both boxes and polygons has no single answer,
+ * so `toolFor` takes what the host currently has active and *resolves*: it keeps
+ * that tool when the class accepts it, and otherwise falls to the class's first
+ * drawable geometry. The fallback is the whole guarantee — **an active tool the
+ * selected class forbids is unrepresentable**, because there is one function
+ * that decides and it never returns one.
+ *
+ * ## Resolved rather than stored, because v1 needed two mechanisms otherwise
  *
  * v1 held `activeTool` as its own state and then had to defend the invariant
  * twice: `ensureToolAllowed` refused a tool outside the project's list, and a
  * `useEffect` re-forced the tool whenever the task changed underneath it. Both
  * exist only because `activeTool` and the available geometries were two facts
- * free to disagree. Derivation makes the disagreement unrepresentable, and it
- * deletes both mechanisms.
+ * free to disagree. Resolving through one function keeps that disagreement
+ * unrepresentable, and still deletes both mechanisms: the host's preference is an
+ * *input* to the answer, never the answer.
  *
  * It also removes v1's strangest behaviour: clicking any annotation body while a
  * drawing tool was active called `ensureToolAllowed("select")`, so the canvas
@@ -22,9 +30,9 @@
  * `if (activeTool !== "select") return;` guard on every start-move handler, kept,
  * minus the escape hatch.
  *
- * ## The active class itself is the HOST's, and stays there
+ * ## The active class — and now the preferred tool — are the HOST's
  *
- * Nothing in `core/` stores it. It arrives as `InteractionContext.labelClass` on
+ * Nothing in `core/` stores either. The class arrives as `InteractionContext.labelClass` on
  * every turn, and `finishDrawing` stamps it onto the annotation the gesture
  * produced, which is how a drawn shape gets its class.
  * Moving it into `AnnotatorStore` was considered and declined: the
@@ -55,12 +63,16 @@
  *    split `types.ts` keeps. `polyline` is not in this list, because it has a tool;
  *    the ones left are the ones with no `Geometry` variant to carry.
  *
- * `drawableGeometry` is exported separately so a class palette can distinguish
+ * `drawableGeometries` is exported separately so a class palette can distinguish
  * 3 and 4 from 1 and 2 and say "this class cannot be drawn here" rather than
  * silently behaving like select. Telling the user is a panel's job; conflating
- * the four would take the information away from it. It answers `null` for 3 and
+ * the four would take the information away from it. It answers `[]` for 3 and
  * 4 alike, which is why `tags.ts` exports `isTaggableClass`: the two together
- * split "tagged instead of drawn" from "not usable here at all".
+ * split "tagged instead of drawn" from "not usable here at all". It is also what
+ * a tool strip filters itself by once a class is selected.
+ *
+ * A class may accept a tag *and* a shape, so 3 is no longer exclusive with the
+ * rest: `classification_tag` simply contributes nothing to the drawable list.
  */
 
 import { classNamed } from "../state/document";
@@ -70,23 +82,33 @@ import type { LabelClass } from "../types";
 /** The four modes the canvas has. Three draw; one edits what is already there. */
 export type Tool = "select" | "bbox" | "polygon" | "polyline";
 
+/** The tools that draw, in the order a strip filtered by one class offers them. */
+const DRAWING_TOOLS = ["bbox", "polygon", "polyline"] as const satisfies readonly Tool[];
+
+type DrawingTool = (typeof DRAWING_TOOLS)[number];
+
 /**
- * The geometry this class draws, or `null` when it draws nothing.
+ * The geometries of this class that can actually be drawn, possibly none.
  *
- * `null` covers both a tag (no coordinates) and a geometry the wire declares but
- * no annotation may carry.
+ * Empty covers a class that is only a tag (no coordinates) and one whose every
+ * geometry the wire declares but no annotation may carry. Order is
+ * `DRAWING_TOOLS`', not the class's, so two classes offering the same shapes
+ * offer them in the same order and the fallback below is stable.
  */
-export function drawableGeometry(
-  labelClass: LabelClass,
-): "bbox" | "polygon" | "polyline" | null {
-  if (labelClass.geometry === "bbox") return "bbox";
-  if (labelClass.geometry === "polygon") return "polygon";
-  if (labelClass.geometry === "polyline") return "polyline";
-  return null;
+export function drawableGeometries(labelClass: LabelClass): readonly DrawingTool[] {
+  return DRAWING_TOOLS.filter((tool) => labelClass.geometries.includes(tool));
 }
 
 /**
- * The tool the active class implies. `select` for all four causes above.
+ * The tool the active class permits, preferring the one the host already holds.
+ *
+ * `select` for all four causes above. Otherwise `preferred` when the class
+ * accepts it, and the class's first drawable geometry when it does not — which
+ * is what stops a class switch from stranding a tool the new class forbids.
+ *
+ * `preferred` is consulted only when it draws: `select` is expressed by having
+ * no active class (which is what `v` does), so honouring it here would make two
+ * spellings of one state and leave a class armed that nothing could draw with.
  *
  * Takes the document rather than a `LabelClass` so a caller holding only the
  * name — which is what a palette selection is — does not have to resolve it
@@ -95,9 +117,28 @@ export function drawableGeometry(
 export function toolFor(
   document: AnnotationDocument,
   activeClass: string | null,
+  preferred: Tool | null = null,
 ): Tool {
   if (activeClass === null) return "select";
   const declared = classNamed(document, activeClass);
   if (declared === undefined) return "select";
-  return drawableGeometry(declared) ?? "select";
+  return toolForClass(declared, preferred);
+}
+
+/**
+ * The same resolution, for a caller that already holds the class.
+ *
+ * `toolFor` above takes a document because a palette selection is a *name* and
+ * resolving it is where the "not declared" case is got wrong. A surface
+ * rendering `schema.classes` is iterating the resolved things already and has no
+ * document to hand — a class list, or anything drawing one row per class.
+ *
+ * Exported so that surface does not write `drawable.find(…) ?? drawable[0]` for
+ * itself. Two spellings of a fallback is how a strip and a panel come to disagree
+ * about which shape is lit, which is the one thing they must not do.
+ */
+export function toolForClass(labelClass: LabelClass, preferred: Tool | null = null): Tool {
+  const drawable = drawableGeometries(labelClass);
+  if (drawable.length === 0) return "select";
+  return drawable.find((tool) => tool === preferred) ?? drawable[0];
 }

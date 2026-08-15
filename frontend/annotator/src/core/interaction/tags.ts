@@ -133,17 +133,21 @@ import type { Annotation, LabelClass } from "../types";
 import { draftAnnotation } from "./draft";
 
 /**
- * Whether this class is tagged rather than drawn.
+ * Whether this class can be tagged — that is, whether it accepts a tag at all.
  *
- * `drawableGeometry`'s missing half: that one answers `null` for a tag class and
- * for a `polyline` class alike, so a palette holding only it cannot tell "usable,
+ * `drawableGeometries`' missing half: that one answers `[]` for a tag class and
+ * for a `mask` class alike, so a palette holding only it cannot tell "usable,
  * just not on the canvas" from "not usable here at all". Takes a `LabelClass`
- * rather than a name, to match `drawableGeometry` — a palette iterating
+ * rather than a name, to match `drawableGeometries` — a palette iterating
  * `schema.classes` already holds one, and a caller holding only a name uses
  * `tagCommand`, which resolves it internally.
+ *
+ * The two are no longer exclusive: a class accepting both a tag and a box is
+ * taggable *and* drawable, so a caller must ask both questions rather than
+ * treating one as the negation of the other.
  */
 export function isTaggableClass(labelClass: LabelClass): boolean {
-  return labelClass.geometry === "classification_tag";
+  return labelClass.geometries.includes("classification_tag");
 }
 
 /** Whether this annotation is a tag carrying this class. Geometry first. */

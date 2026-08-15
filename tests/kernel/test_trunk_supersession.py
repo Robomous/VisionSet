@@ -56,7 +56,7 @@ from visionset.kernel.services import (
     WorkspaceService,
 )
 
-SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
+SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 
 UNANNOTATED = AssetProgress.UNANNOTATED
 ANNOTATED = AssetProgress.ANNOTATED
@@ -291,7 +291,7 @@ def test_a_correction_replaces_the_assets_labels_rather_than_adding_a_round(
     first, _ = fixture.assets
     fixture.schemas.create_version(
         fixture.project.id,
-        [SIGN, LabelClass(name="lamp", geometry=GeometryType.BBOX)],
+        [SIGN, LabelClass(name="lamp", geometries=(GeometryType.BBOX,))],
     )
     parent_job = fixture.open_batch("first", [first])
     fixture.annotations.add(parent_job.id, [_box(first)])
@@ -395,7 +395,7 @@ def test_whichever_batch_wrote_last_is_what_the_trunk_projects(
     first, _ = fixture.assets
     fixture.schemas.create_version(
         fixture.project.id,
-        [SIGN, LabelClass(name="lamp", geometry=GeometryType.BBOX)],
+        [SIGN, LabelClass(name="lamp", geometries=(GeometryType.BBOX,))],
     )
     parent_job = fixture.open_batch("first", [first])
     fixture.annotations.add(parent_job.id, [_box(first)])

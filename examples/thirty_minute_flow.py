@@ -94,8 +94,8 @@ EXTRACTION_FPS = 5.0
 BOX_COUNT = 50
 
 CLASSES: tuple[LabelClass, ...] = (
-    LabelClass(name="vehicle", geometry=GeometryType.BBOX, color="#eb5a47"),
-    LabelClass(name="sign", geometry=GeometryType.BBOX, color="#2a9d8f"),
+    LabelClass(name="vehicle", geometries=(GeometryType.BBOX,), color="#eb5a47"),
+    LabelClass(name="sign", geometries=(GeometryType.BBOX,), color="#2a9d8f"),
 )
 
 SPLIT = SplitRecipe(train=0.7, val=0.15, test=0.15, seed=42)

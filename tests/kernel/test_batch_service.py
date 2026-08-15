@@ -57,8 +57,8 @@ from visionset.kernel.services import (
     WorkspaceService,
 )
 
-SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
-LANE = LabelClass(name="lane", geometry=GeometryType.POLYGON)
+SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
+LANE = LabelClass(name="lane", geometries=(GeometryType.POLYGON,))
 
 
 class Fixture:

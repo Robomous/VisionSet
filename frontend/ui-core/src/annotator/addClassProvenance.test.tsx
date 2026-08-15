@@ -37,7 +37,7 @@ const ASSET = "44444444-4444-4444-8444-444444444444";
 const SCHEMA = {
   project_id: PROJECT,
   version: 1,
-  classes: [{ name: "sign", geometry: "bbox", color: null, attributes: [] }],
+  classes: [{ name: "sign", geometries: ["bbox"], color: null, attributes: [] }],
   description: null,
   created_at: null,
   provenance: "curated",
