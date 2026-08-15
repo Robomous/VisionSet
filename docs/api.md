@@ -584,6 +584,11 @@ Every row but `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZ
 in `server/errors.py`, which `tests/server/test_errors.py` holds in exact correspondence with
 `kernel/errors.py`. A new kernel error fails that suite until somebody maps it.
 
+**That same suite reads this table.** It parses the rows above and holds them to `ERROR_RULES`
+in both directions — a code that ships without a row here fails, and so does a row naming a code
+that no longer exists or sitting under the wrong status. The table is a mirror, and an unchecked
+mirror drifts: this one was nineteen codes behind before anybody noticed (#524).
+
 `CORRUPT_MEDIA` and `UNSUPPORTED_MEDIA` carry `detail.reason`. The file's *name* is deliberately
 absent from both the detail and the message: on the ingest path it is an absolute path inside a
 directory the operator, not the client, pointed at.
