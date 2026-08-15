@@ -315,9 +315,9 @@ export function ClassListRow({
           onClick={onSelect}
           {...(testId === undefined ? {} : { "data-testid": `${testId}-name` })}
           aria-current={selected ? "true" : undefined}
-          // `title` carries the full name, which is what pays for the geometry
-          // words costing the name its width: at three shapes it truncates, and
-          // hovering is how it comes back.
+          // `title` carries the full name. The chips are press targets and keep
+          // their width, so this is the row where a long name still truncates —
+          // hovering is how it comes back. #596 bought it the hotkey's ~28px.
           title={name}
           className={cn(
             "min-w-0 flex-1 truncate text-left text-body",
@@ -344,11 +344,12 @@ export function ClassListRow({
             {shape.label}
           </button>
         ))}
-        {hotkey != null && (
-          <kbd className="shrink-0 rounded-sm border border-border px-1 font-mono text-meta text-muted-foreground">
-            {hotkey}
-          </kbd>
-        )}
+        {/* No hotkey chip while picking, and it is bought rather than dropped:
+            every shape here is a press target and truncating a control is worse
+            than truncating a label, so the ~28px the chip and its gap take comes
+            out of the name instead. The digit's job is to *arm* the class, and
+            this row is the armed one — the badge is a reminder for the rows that
+            are not. #596 */}
       </div>
     );
   }
@@ -375,11 +376,24 @@ export function ClassListRow({
               the tool while every "is it selected?" assertion still passed. */}
           <span
             {...(testId === undefined ? {} : { "data-testid": `${testId}-name` })}
+            // The same recovery the group variant's name button already carries:
+            // this side now wins the space, but a name long enough to truncate
+            // against a *short* shape list is still reachable by hovering.
+            title={name}
             className={cn("min-w-0 flex-1 truncate text-body", selected && "font-semibold")}
           >
             {name}
           </span>
-          <span className="shrink-0 text-meta text-muted-foreground">{geometry}</span>
+          {/* Shrinks, where it used to be `shrink-0`, and that one word was the
+              whole of #596. The name is `flex-1`, so its flex basis is zero and
+              it receives only the *leftover* — a four-shape phrase took 176px of
+              a 240px row and left the name 34px, two characters of it. The row's
+              identity is the name; the shapes are metadata about it, and metadata
+              is what gives way. `summariseGeometries` keeps this off the common
+              path, but a long name with two shapes still needs it. */}
+          <span className="min-w-0 shrink truncate text-meta text-muted-foreground">
+            {geometry}
+          </span>
           {/* Rendered only where the key works — `hotkeyForClass` answers null
               past the ninth class, and a chip on a row no digit reaches would be
               the same lie `ReassignMenu` refuses to tell one column over. */}

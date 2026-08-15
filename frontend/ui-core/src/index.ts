@@ -237,6 +237,7 @@ export {
   formatGeometries,
   geometryLabel,
   groupGeometries,
+  summariseGeometries,
   type GeometryCategory,
   type GeometryGroup,
 } from "./data/geometryCategory.js";

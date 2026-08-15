@@ -51,7 +51,7 @@ import {
 import { Plus } from "lucide-react";
 import { useState, type JSX, type RefObject } from "react";
 
-import { formatGeometries, geometryLabel } from "../data/geometryCategory";
+import { geometryLabel, summariseGeometries } from "../data/geometryCategory";
 import { classColor } from "../palette";
 import { Button } from "../primitives/Button";
 import { Input } from "../primitives/Input";
@@ -301,7 +301,10 @@ function ClassRow({
     <ClassListRow
         testId={`class-row-${declared.name}`}
         name={declared.name}
-        geometry={formatGeometries(declared.geometries)}
+        // Summarised, not spelled out: this row is 36px beside a class *name*,
+        // and a four-shape phrase is wider than the name it sits next to. The
+        // full set is one press away, as chips, on the armed row. #596
+        geometry={summariseGeometries(declared.geometries)}
         {...(picker === undefined ? {} : { shapes: picker })}
         // `classColor` — schema colour first, else a hash of the name — is the
         // single spelling, shared with the canvas, so a swatch here and a box out
