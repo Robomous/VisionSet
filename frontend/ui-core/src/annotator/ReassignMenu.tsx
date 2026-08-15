@@ -50,6 +50,7 @@ import type { Annotation, AnnotationSchema, LabelClass } from "@visionset/annota
 import { Check } from "lucide-react";
 import type { JSX, KeyboardEvent } from "react";
 
+import { formatGeometries } from "../data/geometryCategory";
 import { classColor } from "../palette";
 import { DropdownMenuContent, DropdownMenuItem } from "../primitives/Menu";
 
@@ -91,8 +92,12 @@ export function ReassignMenu({
 }: ReassignMenuProps): JSX.Element {
   const geometry = annotation.geometry.type;
 
+  // Membership, not equality: a class accepting boxes *and* polygons can take
+  // either, so the menu offers it for both — which is the whole reason a class
+  // holds a set. A shape can only ever be reclassed to a class that accepts the
+  // shape it already is; reassignment never converts one geometry into another.
   function fits(declared: LabelClass): boolean {
-    return declared.geometry === geometry;
+    return declared.geometries.includes(geometry);
   }
 
   function byHotkey(event: KeyboardEvent<HTMLDivElement>): void {
@@ -147,7 +152,11 @@ export function ReassignMenu({
               )
             ) : (
               <span className="shrink-0 text-meta text-muted-foreground">
-                needs a {declared.geometry}
+                {/* Named in full rather than "does not take a {geometry}": the
+                    question somebody has is what this class *does* take, and a
+                    refusal that only repeats what they already selected answers
+                    nothing. */}
+                needs {formatGeometries(declared.geometries)}
               </span>
             )}
           </DropdownMenuItem>

@@ -33,7 +33,7 @@ function schemaOf(n: number): AnnotationSchema {
     provenance: "curated",
     classes: Array.from({ length: n }, (_unused, index) => ({
       name: `class-${index + 1}`,
-      geometry: index % 2 === 0 ? "bbox" : "polygon",
+      geometries: index % 2 === 0 ? ["bbox"] : ["polygon"],
       color: null,
       attributes: [],
     })),

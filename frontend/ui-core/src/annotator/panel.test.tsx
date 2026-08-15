@@ -24,18 +24,20 @@ const SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",
   version: 1,
   classes: [
-    { name: "vehicle", geometry: "bbox", color: "#38bdf8", attributes: [] },
-    { name: "pedestrian", geometry: "bbox", color: null, attributes: [] },
-    { name: "lane", geometry: "polygon", color: "#f97316", attributes: [] },
-    { name: "daytime", geometry: "classification_tag", color: "#a3e635", attributes: [] },
-    { name: "centerline", geometry: "polyline", color: "#eb5a47", attributes: [] },
+    { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
+    { name: "pedestrian", geometries: ["bbox"], color: null, attributes: [] },
+    { name: "lane", geometries: ["polygon"], color: "#f97316", attributes: [] },
+    { name: "daytime", geometries: ["classification_tag"], color: "#a3e635", attributes: [] },
+    { name: "centerline", geometries: ["polyline"], color: "#eb5a47", attributes: [] },
   ],
 };
 
 /** The same schema with its one tag class removed — the strip's absent case. */
 const UNTAGGABLE_SCHEMA = {
   ...SCHEMA,
-  classes: SCHEMA.classes.filter((declared) => declared.geometry !== "classification_tag"),
+  classes: SCHEMA.classes.filter(
+    (declared) => !declared.geometries.includes("classification_tag"),
+  ),
 };
 
 function annotation(
@@ -313,8 +315,8 @@ describe("reassigning a class from a row", () => {
     for (const name of ["lane", "centerline", "daytime"]) {
       expect(screen.getByTestId(`reclass-0-${name}`).getAttribute("aria-disabled")).toBe("true");
     }
-    expect(screen.getByTestId("reclass-0-lane").textContent).toContain("needs a polygon");
-    expect(screen.getByTestId("reclass-0-centerline").textContent).toContain("needs a polyline");
+    expect(screen.getByTestId("reclass-0-lane").textContent).toContain("needs polygon");
+    expect(screen.getByTestId("reclass-0-centerline").textContent).toContain("needs polyline");
   });
 
   it("will not reassign to a class the kernel would refuse", async () => {

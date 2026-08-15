@@ -39,8 +39,8 @@ const SCHEMA = {
   project_id: PROJECT,
   version: 1,
   classes: [
-    { name: "sign", geometry: "bbox", color: null, attributes: [] },
-    { name: "vehicle", geometry: "bbox", color: null, attributes: [] },
+    { name: "sign", geometries: ["bbox"], color: null, attributes: [] },
+    { name: "vehicle", geometries: ["bbox"], color: null, attributes: [] },
   ],
   description: null,
   created_at: null,

@@ -127,3 +127,24 @@ export function groupGeometries(
     geometries: offered.filter((geometry) => GEOMETRY_CATEGORY[geometry] === category),
   })).filter((group) => group.geometries.length > 0);
 }
+
+/**
+ * A class's geometry set, as one phrase for a row, a badge or a refusal.
+ *
+ * One spelling, product-wide, for the reason `classColor` is one: a class list, a
+ * reassignment menu and a schema row all name the same set, and three joins would
+ * be three chances to render `bbox,polygon` beside `bbox, polygon` beside
+ * `bbox or polygon`.
+ *
+ * "or" rather than a comma at the end, because the set is a *choice* — an
+ * annotation carries one of them, never several — and a comma list reads as
+ * things a class has all of.
+ *
+ * The order is the caller's, which for anything off the wire is the kernel's own
+ * sorted order. Nothing re-sorts here: a surface that grouped by category would
+ * hand them over grouped, and this would silently undo it.
+ */
+export function formatGeometries(geometries: readonly GeometryType[]): string {
+  if (geometries.length <= 2) return geometries.join(" or ");
+  return `${geometries.slice(0, -1).join(", ")} or ${geometries[geometries.length - 1]}`;
+}

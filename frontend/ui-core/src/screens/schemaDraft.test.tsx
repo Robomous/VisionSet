@@ -37,8 +37,8 @@ const PROJECT = "11111111-1111-4111-8111-111111111111";
 const OTHER = "33333333-3333-4333-8333-333333333333";
 
 const CLASSES = [
-  { name: "vehicle", geometry: "bbox", color: "#38bdf8", attributes: [] },
-  { name: "lane", geometry: "polygon", color: null, attributes: [] },
+  { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
+  { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
 ];
 
 /** What the server is currently answering for `GET .../schema`. Mutable on purpose. */
@@ -442,5 +442,5 @@ describe("saving twice with nothing edited in between", () => {
   });
 });
 
-const PEDESTRIAN = { name: "pedestrian", geometry: "bbox", color: null, attributes: [] };
-const TRAFFIC_LIGHT = { name: "traffic light", geometry: "bbox", color: null, attributes: [] };
+const PEDESTRIAN = { name: "pedestrian", geometries: ["bbox"], color: null, attributes: [] };
+const TRAFFIC_LIGHT = { name: "traffic light", geometries: ["bbox"], color: null, attributes: [] };

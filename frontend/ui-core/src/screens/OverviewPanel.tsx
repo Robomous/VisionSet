@@ -438,7 +438,7 @@ function swatchFor(declared: readonly LabelClassBody[] | undefined, labelClass: 
       ? undefined
       : {
           name: found.name,
-          geometry: found.geometry,
+          geometries: found.geometries,
           color: found.color ?? null,
           attributes: [],
         },

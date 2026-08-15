@@ -93,6 +93,7 @@
 import { Plus, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
+import { formatGeometries } from "../data/geometryCategory";
 import { asApiError } from "../data/errors";
 import { Alert, Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
@@ -383,7 +384,7 @@ export function SchemaEditor({
   }
 
   function addClass(): void {
-    edit([...classes, { name: "", geometry: "bbox", color: null, attributes: [] }]);
+    edit([...classes, { name: "", geometries: ["bbox"], color: null, attributes: [] }]);
     // Selected, and the filter cleared — a new class has an empty name, so any
     // filter at all would hide the row that was just created.
     setSelected(classes.length);
@@ -563,7 +564,7 @@ export function SchemaEditor({
                   <div key={index} data-row={index} className="contents">
                     <ClassListRow
                       name={declared.name === "" ? "New class" : declared.name}
-                      geometry={declared.geometry}
+                      geometry={formatGeometries(declared.geometries)}
                       count={countOf(declared.name)}
                       color={swatchOf(declared, index)}
                       selected={index === selected}
@@ -806,7 +807,7 @@ function PastVersion({ declared }: { readonly declared: SchemaVersion }): JSX.El
             style={{ backgroundColor: swatchOf(entry, index) }}
           />
           <span className="text-body font-medium">{entry.name}</span>
-          <Badge variant="outline">{entry.geometry}</Badge>
+          <Badge variant="outline">{formatGeometries(entry.geometries)}</Badge>
           {entry.attributes.length > 0 && (
             <span className="text-meta text-muted-foreground">
               {formatCount(entry.attributes.length)}{" "}

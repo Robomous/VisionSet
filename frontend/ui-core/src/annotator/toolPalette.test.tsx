@@ -24,11 +24,11 @@ const SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",
   version: 1,
   classes: [
-    { name: "vehicle", geometry: "bbox", color: "#38bdf8", attributes: [] },
-    { name: "pedestrian", geometry: "bbox", color: null, attributes: [] },
-    { name: "lane", geometry: "polygon", color: "#f97316", attributes: [] },
-    { name: "daytime", geometry: "classification_tag", color: "#a3e635", attributes: [] },
-    { name: "kerb", geometry: "polyline", color: null, attributes: [] },
+    { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
+    { name: "pedestrian", geometries: ["bbox"], color: null, attributes: [] },
+    { name: "lane", geometries: ["polygon"], color: "#f97316", attributes: [] },
+    { name: "daytime", geometries: ["classification_tag"], color: "#a3e635", attributes: [] },
+    { name: "kerb", geometries: ["polyline"], color: null, attributes: [] },
   ],
 } as unknown as Parameters<typeof toolChoices>[0];
 
@@ -40,7 +40,9 @@ function mount(
       <ToolPalette
         schema={SCHEMA}
         tool="select"
+        activeClass={null}
         onActivateClass={vi.fn()}
+        onActivateTool={vi.fn()}
         onToggleHelp={vi.fn()}
         hand={{ active: false, onToggle: vi.fn() }}
         {...overrides}
@@ -126,7 +128,7 @@ describe("the tools a schema can reach", () => {
     // nobody declared would be a roadmap, not a tool strip.
     const noLanes = {
       ...SCHEMA,
-      classes: SCHEMA.classes.filter((declared) => declared.geometry !== "polyline"),
+      classes: SCHEMA.classes.filter((declared) => !declared.geometries.includes("polyline")),
     } as typeof SCHEMA;
     render(mount({ schema: noLanes }));
 
@@ -145,7 +147,7 @@ describe("the tools a schema can reach", () => {
   it("shows only select when no class draws anything", () => {
     const tagsOnly = {
       ...SCHEMA,
-      classes: [{ name: "daytime", geometry: "classification_tag", color: null, attributes: [] }],
+      classes: [{ name: "daytime", geometries: ["classification_tag"], color: null, attributes: [] }],
     } as unknown as typeof SCHEMA;
 
     render(mount({ schema: tagsOnly }));
@@ -277,8 +279,8 @@ describe("the suggest tool (#424)", () => {
     const tagsOnly = {
       ...(SCHEMA as unknown as { classes: unknown[] }),
       classes: [
-        { name: "daytime", geometry: "classification_tag", color: null, attributes: [] },
-        { name: "kerb", geometry: "polyline", color: null, attributes: [] },
+        { name: "daytime", geometries: ["classification_tag"], color: null, attributes: [] },
+        { name: "kerb", geometries: ["polyline"], color: null, attributes: [] },
       ],
     } as unknown as Parameters<typeof toolChoices>[0];
     render(mount({ schema: tagsOnly, suggest: { active: false, onToggle: vi.fn() } }));

@@ -44,6 +44,7 @@ import { hotkeyForClass, type AnnotationSchema, type LabelClass } from "@visions
 import { Plus } from "lucide-react";
 import { useState, type JSX, type RefObject } from "react";
 
+import { formatGeometries } from "../data/geometryCategory";
 import { classColor } from "../palette";
 import { Button } from "../primitives/Button";
 import { Input } from "../primitives/Input";
@@ -246,7 +247,7 @@ function ClassRow({
     <ClassListRow
         testId={`class-row-${declared.name}`}
         name={declared.name}
-        geometry={declared.geometry}
+        geometry={formatGeometries(declared.geometries)}
         // `classColor` — schema colour first, else a hash of the name — is the
         // single spelling, shared with the canvas, so a swatch here and a box out
         // there are the same colour by construction rather than by two formulas

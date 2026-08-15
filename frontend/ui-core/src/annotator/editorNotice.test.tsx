@@ -40,7 +40,7 @@ const SCHEMA = {
   description: null,
   created_at: null,
   provenance: "curated",
-  classes: [{ name: "vehicle", geometry: "bbox", color: "#3355ff", attributes: [] }],
+  classes: [{ name: "vehicle", geometries: ["bbox"], color: "#3355ff", attributes: [] }],
 };
 
 /** The batch's state, which decides whether the page tries to open it. */

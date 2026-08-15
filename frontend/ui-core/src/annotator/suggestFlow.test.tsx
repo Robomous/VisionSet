@@ -49,13 +49,13 @@ const SCHEMA = {
   created_at: null,
   provenance: "curated",
   classes: [
-    { name: "vehicle", geometry: "bbox", color: "#3355ff", attributes: [] },
-    { name: "lane-area", geometry: "polygon", color: null, attributes: [] },
+    { name: "vehicle", geometries: ["bbox"], color: "#3355ff", attributes: [] },
+    { name: "lane-area", geometries: ["polygon"], color: null, attributes: [] },
     // Drawable, and not suggestible: a mask narrows to a region and a lane is an
     // open path. It is what parks the tool, and it is a `polyline` rather
     // than a tag on purpose — a class that can still be drawn on is the case where
     // a parked tool swallowing presses would be a bug rather than a nuisance.
-    { name: "lane", geometry: "polyline", color: null, attributes: [] },
+    { name: "lane", geometries: ["polyline"], color: null, attributes: [] },
   ],
 };
 
