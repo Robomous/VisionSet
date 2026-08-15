@@ -349,7 +349,13 @@ export function ClassListRow({
             than truncating a label, so the ~28px the chip and its gap take comes
             out of the name instead. The digit's job is to *arm* the class, and
             this row is the armed one — the badge is a reminder for the rows that
-            are not. #596 */}
+            are not. #596
+
+            It is not enough on its own: a long name beside three chips still
+            truncates, measured at 57px of 185. The chips are press targets and
+            keep their width, and wrapping is closed off by the list's
+            `rows * CLASS_ROW_PX` height rule, so the remedy is a design change
+            rather than a class — filed as #597. */}
       </div>
     );
   }
