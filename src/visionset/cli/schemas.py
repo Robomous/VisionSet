@@ -96,9 +96,10 @@ def schema_apply(
 ) -> None:
     """Add the next schema version from a JSON file.
 
-    Versions are 1..N and none of them ever changes, so this always *adds* one —
-    there is no edit and no rollback, and applying an unchanged document still
-    makes a new version.
+    Versions are 1..N and none of them ever changes, so this *adds* one — there
+    is no edit and no rollback. Applying the document already in force adds
+    nothing and prints the version that was already there, so re-running this in
+    a script is free.
 
     A change that removes a class or an attribute, or narrows one, is refused
     until `--allow-destructive`. A change that would orphan annotations already

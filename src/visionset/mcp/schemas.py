@@ -176,10 +176,12 @@ def create_schema_version(
 ) -> dict[str, Any]:
     """Create the next schema version from a complete list of classes.
 
-    Versions are 1..N and never edited or deleted; this always inserts a new one
-    and the highest becomes active. Batches already approved keep the version
-    they pinned, so this does not retroactively change how existing work is
-    judged.
+    Versions are 1..N and never edited or deleted; this inserts a new one and the
+    highest becomes active. Batches already approved keep the version they
+    pinned, so this does not retroactively change how existing work is judged.
+
+    Sending the classes already in force adds nothing and returns the version
+    that was already active, so calling this to be sure is free.
 
     Send the whole contract every time — a class omitted is a class removed.
     Call `preview_schema_change` first if you are not creating the first version.

@@ -64,6 +64,13 @@ def create_schema_version(
 
     The body is the whole proposed version; versions are never edited in place.
 
+    **Sending the classes that are already in force writes nothing.** The answer
+    is the version that was already active, and it is not an error: the version
+    a client holds afterwards is the one in force either way, which is the only
+    thing it asked for. Identical means the classes match exactly — names,
+    geometries, colours, attributes and order — so a colour change is a change
+    and does publish a version.
+
     `description` is this version's commit message — written once, here, and
     never afterwards, because a version is immutable and there is no route that
     edits one. Blank is legal and comes back as null. `created_at` is stamped by

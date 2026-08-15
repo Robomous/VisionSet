@@ -108,8 +108,10 @@ def test_the_first_version_of_a_schema_is_one(tmp_path: Path) -> None:
 def test_versions_are_numbered_one_past_the_highest_stored(tmp_path: Path) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
-    for expected in (1, 2, 3):
-        assert schemas.create_version(project.id, [SIGN, LANE]).version == expected
+    # A different contract each time, because publishing the one already in force
+    # is a no-op — see `test_an_identical_version_is_a_no_op`.
+    for expected, classes in enumerate(([SIGN], [SIGN, LANE], [SIGN, LANE, RICH]), start=1):
+        assert schemas.create_version(project.id, classes).version == expected
     assert [s.version for s in schemas.list_versions(project.id)] == [1, 2, 3]
     workspace.close()
 
@@ -144,16 +146,72 @@ def test_creating_a_version_never_rewrites_an_earlier_one(tmp_path: Path) -> Non
     workspace.close()
 
 
-def test_an_identical_version_is_still_a_new_version(tmp_path: Path) -> None:
-    """Versions are cheap, and refusing a no-op would need an equality rule we
-    would then have to defend against reordering and colors."""
+def test_an_identical_version_is_a_no_op(tmp_path: Path) -> None:
+    """Publishing the contract that is already in force writes nothing.
+
+    Replaces `test_an_identical_version_is_still_a_new_version`, which asserted
+    the behaviour reported as a defect: a schema editor that saved twice with no
+    edits in between left a v2 the version panel itself described as "nothing
+    changed". That test's docstring worried an equality rule would have to be
+    defended against reordering and colors — it does not, because the rule is
+    equality of the stored classes and therefore *includes* both.
+    """
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     first = schemas.create_version(project.id, [SIGN])
     again = schemas.create_version(project.id, [SIGN])
 
-    assert (again.version, again.classes) == (2, first.classes)
-    assert again.id != first.id
+    assert again == first
+    assert [s.version for s in schemas.list_versions(project.id)] == [1]
+    workspace.close()
+
+
+def test_an_identical_version_is_a_no_op_only_against_the_active_one(tmp_path: Path) -> None:
+    """Only the version in force is compared — an earlier one does not match.
+
+    Otherwise reverting to v1's contract from v2 would silently answer v1 and
+    leave v2 active, which is the opposite of what the caller asked for.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [SIGN])
+    schemas.create_version(project.id, [SIGN, LANE])
+    back = schemas.create_version(project.id, [SIGN], allow_destructive=True)
+
+    assert back.version == 3
+    workspace.close()
+
+
+def test_a_colour_only_change_is_a_change(tmp_path: Path) -> None:
+    """The boundary of the no-op rule, and the reason it is equality not the diff.
+
+    `diff_classes` deliberately ignores `color` — it classifies whether existing
+    annotations survive, and a swatch does not decide that. So an empty diff is
+    *not* the same question as identical content, and gating the no-op on the
+    diff would answer "saved" to somebody who changed a colour and then throw the
+    colour away.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [SIGN])
+    recoloured = schemas.create_version(
+        project.id, [LabelClass(name="sign", geometry=GeometryType.BBOX, color="#eb5a47")]
+    )
+
+    assert recoloured.version == 2
+    assert recoloured.classes[0].color == "#eb5a47"
+    workspace.close()
+
+
+def test_reordering_the_classes_is_a_change(tmp_path: Path) -> None:
+    """Order is part of what a version stores — it is the palette's own order."""
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [SIGN, LANE])
+    swapped = schemas.create_version(project.id, [LANE, SIGN])
+
+    assert swapped.version == 2
+    assert [c.name for c in swapped.classes] == ["lane", "sign"]
     workspace.close()
 
 
@@ -740,10 +798,16 @@ def test_provenance_is_not_part_of_what_a_version_declares(tmp_path: Path) -> No
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("roads")
     schemas.create_version(project.id, [SIGN], provenance=SchemaProvenance.CURATED)
-    schemas.create_version(project.id, [SIGN], provenance=SchemaProvenance.ANNOTATION)
+    # Two versions declaring the same classes have to be reached the long way
+    # round now: republishing the active contract writes nothing, so v3 gets back
+    # to v1's classes through a v2 that differs.
+    schemas.create_version(project.id, [SIGN, LANE], provenance=SchemaProvenance.CURATED)
+    schemas.create_version(
+        project.id, [SIGN], provenance=SchemaProvenance.ANNOTATION, allow_destructive=True
+    )
 
-    assert schemas.compare(project.id, 1, 2).changes == ()
-    assert not schemas.compare(project.id, 1, 2).is_destructive
+    assert schemas.compare(project.id, 1, 3).changes == ()
+    assert not schemas.compare(project.id, 1, 3).is_destructive
     workspace.close()
 
 
@@ -753,7 +817,7 @@ def test_each_version_carries_its_own_provenance(tmp_path: Path) -> None:
     project = projects.create("roads")
     schemas.create_version(project.id, [SIGN], provenance=SchemaProvenance.CURATED)
     schemas.create_version(project.id, [SIGN, LANE], provenance=SchemaProvenance.ANNOTATION)
-    schemas.create_version(project.id, [SIGN, LANE])
+    schemas.create_version(project.id, [SIGN, LANE, RICH])
 
     assert [v.provenance for v in schemas.list_versions(project.id)] == [
         SchemaProvenance.CURATED,

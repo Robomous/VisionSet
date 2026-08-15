@@ -176,6 +176,26 @@ class SchemaService:
         1..N with no gaps and no reuse. Nothing is edited: this always inserts,
         which is what makes an old version safe to read forever.
 
+        **Publishing the contract that is already in force writes nothing** and
+        returns the active version unchanged. A history whose entries include
+        "and then nothing changed" is a history somebody has to read past, and a
+        schema editor that answers "saved" is impossible to tell from one that
+        answered "already saved" — so the two are made the same thing.
+
+        Identical means the classes compare equal, which — the models being
+        frozen — covers names, geometries, colours, attributes and order. That is
+        deliberately *not* the same question as an empty ``diff_classes``:
+        ``domain/schema_diff.py`` classifies whether existing annotations survive
+        and ignores ``color`` on purpose, so gating this on the diff would answer
+        "saved" to somebody who changed a swatch and then discard the swatch.
+        Equality implies an empty diff, never the other way round, so the diff
+        remains the one definition of *changed in a way that matters* and no
+        second one is written here.
+
+        Only the **active** version is compared. Re-publishing an older
+        version's contract is a real change — it is what a revert is — and
+        answering it with that old version would leave the newer one in force.
+
         ``description`` is the version's **commit message**: written here and
         never afterwards, because there is no ``update`` on this service and the
         model is frozen. Blank is legal and stored as ``None`` — an empty commit
@@ -216,6 +236,9 @@ class SchemaService:
                 _require_coherent(proposed)
 
                 active = self.active(uow, project_id)
+                if active is not None and proposed == active.classes:
+                    return active
+
                 diff = diff_classes(() if active is None else active.classes, proposed)
                 if diff.is_destructive:
                     self._refuse_narrowing(uow, project_id, diff, allow_destructive)

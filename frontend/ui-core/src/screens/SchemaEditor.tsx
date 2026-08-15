@@ -168,9 +168,41 @@ export interface SchemaEditorProps {
   readonly onDraftChange: (draft: SchemaDraft | null) => void;
 }
 
-/** The comparison `dirty` has always used — deep, and cheap at a schema's size. */
+/**
+ * Two sets of classes describing the same contract, compared as contracts.
+ *
+ * Not `JSON.stringify` over the objects, which is what this used to be. The draft
+ * and the wire describe one class with differently *shaped* objects: a class
+ * added here is a literal in this file's key order, and one that came off the
+ * wire carries every optional field `LabelClassBody` declares — a hand-added
+ * attribute has no `options` key at all where the server sends `null`. Stringify
+ * calls those unequal, and a comparison that answers "changed" about an
+ * unchanged contract is exactly the bug this comparison exists to prevent.
+ *
+ * So the projection, in `LabelClassBody`'s own field order, with every optional
+ * field defaulted the way the wire defaults it. Cheap at a schema's size.
+ */
 function same(a: readonly LabelClassBody[], b: readonly LabelClassBody[]): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return canonical(a) === canonical(b);
+}
+
+function canonical(classes: readonly LabelClassBody[]): string {
+  return JSON.stringify(
+    classes.map((declared) => [
+      declared.name,
+      declared.geometry,
+      declared.color ?? null,
+      (declared.attributes ?? []).map((attribute) => [
+        attribute.name,
+        attribute.kind,
+        attribute.required ?? false,
+        // Order is authored and part of the contract, so options are compared as
+        // given rather than sorted.
+        attribute.options ?? null,
+        attribute.default ?? null,
+      ]),
+    ]),
+  );
 }
 
 export function SchemaEditor({
@@ -223,7 +255,24 @@ export function SchemaEditor({
   const classes = showing.classes;
   const note = showing.note;
   const failure = publish.isError ? asApiError(publish.error) : null;
-  const dirty = !same(classes, showing.seed);
+  /**
+   * Whether saving would change anything — measured against **the version in
+   * force**, not against the snapshot the draft was seeded from.
+   *
+   * That is the same question `SchemaService.create_version` now answers, so the
+   * two cannot disagree: what the client declines to send is exactly what the
+   * kernel would decline to write.
+   *
+   * Measuring it against `seed` was the defect. The re-base that refreshes
+   * `seed` after a save rides on the callback passed to `publish.mutate`, and
+   * TanStack drops those when the observer's component unmounts — which is what
+   * happens on a project that had no schema, because the invalidated 404 goes
+   * back to `pending` and `SchemaSection` swaps this editor for a loading state
+   * while the refetch flies. The draft came back holding an empty `seed`, read
+   * as dirty, and a second press published a version identical to the first.
+   * `active` is a prop and cannot be missed that way.
+   */
+  const dirty = !same(classes, active?.classes ?? []);
   /**
    * The version that arrived while this draft was being written, or `null`.
    *
