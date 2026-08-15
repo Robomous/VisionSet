@@ -257,6 +257,9 @@ export const checkSchemaChangeOut: Check<Schemas["SchemaChangeOut"]> =
 export const checkSchemaDiffOut: Check<Schemas["SchemaDiffOut"]> =
   /*#__PURE__*/ object({ "changes": [true, arrayOf(checkSchemaChangeOut)], "destructive_classes": [true, arrayOf(isString)], "is_destructive": [true, isBoolean] } as const);
 
+export const checkSchemaChangePreviewOut: Check<Schemas["SchemaChangePreviewOut"]> =
+  /*#__PURE__*/ object({ "blockers": [true, arrayOf(checkClassCountOut)], "diff": [true, checkSchemaDiffOut], "is_refused": [true, isBoolean] } as const);
+
 export const checkAttributeBody: Check<Schemas["AttributeBody"]> =
   /*#__PURE__*/ object({ "default": [false, either([isBoolean, isNumber, isString, isNull] as const)], "kind": [true, oneOf(["string", "number", "boolean", "select"] as const)], "name": [true, isString], "options": [false, either([arrayOf(isString), isNull] as const)], "required": [true, isBoolean] } as const);
 
@@ -379,6 +382,7 @@ export const checkListReleases = checkReleasePage;
 export const checkListSchemaVersions = checkSchemaVersionPage;
 export const checkListSources = checkSourcePage;
 export const checkNextPendingAssets = checkAssetPage;
+export const checkPreviewSchemaChange = checkSchemaChangePreviewOut;
 export const checkPromoteBatch = checkAssetPage;
 export const checkPublishRelease = checkReleaseOut;
 export const checkRegisterImageSource = checkSourceOut;

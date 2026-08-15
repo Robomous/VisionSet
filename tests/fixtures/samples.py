@@ -53,6 +53,7 @@ from visionset.kernel.domain import (
     Release,
     ReleaseVerification,
     SchemaChange,
+    SchemaChangePreview,
     SchemaDiff,
     Source,
     SourceKind,
@@ -115,6 +116,14 @@ SCHEMA_DIFF = SchemaDiff(
             detail="attribute removed",
         ),
     ),
+)
+
+#: ``blockers`` is deliberately non-empty, per this module's rule: an empty tuple
+#: here would leave the nested ``ClassCount`` projection unchecked, which is the
+#: half of the payload a client actually renders.
+SCHEMA_CHANGE_PREVIEW = SchemaChangePreview(
+    diff=SCHEMA_DIFF,
+    blockers=(ClassCount(label_class="sign", annotations=5, assets=2),),
 )
 
 SOURCE = Source(

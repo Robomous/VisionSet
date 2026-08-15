@@ -27,8 +27,9 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
+from visionset.kernel.domain.dataset import ClassCount
 from visionset.kernel.domain.schema import Attribute, LabelClass
 
 
@@ -72,6 +73,53 @@ class SchemaDiff(BaseModel):
     def describe(self, kind: ChangeKind) -> str:
         """The details of one kind, joined for an error message."""
         return "; ".join(change.detail for change in self.changes if change.kind is kind)
+
+
+class SchemaChangePreview(BaseModel):
+    """A proposed version's verdict, and what stands in the way of publishing it.
+
+    :class:`SchemaDiff` answers whether the change narrows the contract, which is
+    a question about two class lists and nothing else. This adds the half no
+    caller can compute for itself — which of the classes being dropped already
+    carry labels, and how many — so a surface can say *this will be refused, over
+    these* **before** it asks rather than after. That is what
+    ``SchemaService.preview`` has promised since it was written and what nothing
+    on the wire could answer.
+
+    ``blockers`` is the same report :class:`SchemaChangeWouldOrphan` carries, and
+    deliberately so: one shape for the warning and for the refusal means a client
+    renders both with one piece of code, and the two cannot drift into
+    disagreeing about a question they are both answering.
+
+    Empty ``blockers`` under a destructive ``diff`` is the ordinary safe
+    narrowing — the change removes something nobody has used — and is exactly the
+    case ``allow_destructive`` exists to confirm rather than refuse.
+
+    Sorted by class name in a validator, on ``Manifest``'s terms: a report two
+    callers may compare has one order, and it is not the order a dict happened to
+    iterate in.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    diff: SchemaDiff
+    blockers: tuple[ClassCount, ...] = ()
+
+    @field_validator("blockers")
+    @classmethod
+    def _ordered(cls, value: tuple[ClassCount, ...]) -> tuple[ClassCount, ...]:
+        return tuple(sorted(value, key=lambda count: count.label_class))
+
+    @property
+    def is_refused(self) -> bool:
+        """Whether ``create_version`` would refuse this outright, flag or no flag.
+
+        Published rather than left to the caller, for the reason ``is_destructive``
+        is: a client deciding whether to offer a way forward must not re-derive
+        the rule from ``blockers`` and get it subtly wrong — that is the
+        hand-mirrored table the ``ui-capabilities`` contract bans, in miniature.
+        """
+        return bool(self.blockers)
 
 
 def diff_classes(previous: Sequence[LabelClass], proposed: Sequence[LabelClass]) -> SchemaDiff:

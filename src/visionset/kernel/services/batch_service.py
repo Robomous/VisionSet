@@ -52,6 +52,7 @@ from visionset.kernel.domain import (
     BatchCompleted,
     BatchState,
     ChangeKind,
+    ClassCount,
     MembershipChange,
     Partition,
     Project,
@@ -559,7 +560,8 @@ class BatchService:
             raise DestructiveSchemaChange(
                 f"re-pinning batch {batch.name!r} onto the active schema version narrows what "
                 f"it allows ({diff.describe(ChangeKind.DESTRUCTIVE)}); pass "
-                f"allow_destructive=True to proceed"
+                f"allow_destructive=True to proceed",
+                classes=tuple(sorted(diff.destructive_classes)),
             )
 
     def _refuse_orphaning(self, uow: UnitOfWork, batch: Batch, guarded: frozenset[str]) -> NoReturn:
@@ -572,13 +574,14 @@ class BatchService:
         annotated = _annotated_classes(uow, batch)
         affected = sorted(guarded & annotated.keys()) or sorted(guarded)
         counted = ", ".join(
-            f"{name!r} ({annotated[name]})" if name in annotated else repr(name)
+            f"{name!r} ({annotated[name].annotations})" if name in annotated else repr(name)
             for name in affected
         )
         raise SchemaChangeWouldOrphan(
             f"cannot re-pin batch {batch.name!r}: it already holds annotations under "
             f"{counted}. Migrating them onto a new version is not supported yet, and "
-            f"the kernel will not orphan them"
+            f"the kernel will not orphan them",
+            blockers=tuple(annotated[name] for name in affected if name in annotated),
         )
 
     # --- the transition table, consulted rather than restated ---------------
@@ -651,8 +654,8 @@ def _subject(batch: Batch) -> str:
     return f"batch {batch.name!r}"
 
 
-def _annotated_classes(uow: UnitOfWork, batch: Batch) -> dict[str, int]:
-    """How many annotations each label class has *inside this batch*.
+def _annotated_classes(uow: UnitOfWork, batch: Batch) -> dict[str, ClassCount]:
+    """How much of each label class this batch holds.
 
     ``SchemaService._annotated_classes`` over one batch's membership rather than
     a whole project, and N + 1 for the same reason: ``Repository.list`` takes a
@@ -663,11 +666,16 @@ def _annotated_classes(uow: UnitOfWork, batch: Batch) -> dict[str, int]:
     asset rows themselves are not wanted, only their annotations, and a missing
     membership row would refuse a re-pin over a fact this question does not need.
     """
-    counts: dict[str, int] = {}
+    annotations: dict[str, int] = {}
+    assets: dict[str, set[UUID]] = {}
     for asset_id in batch.asset_ids:
         for annotation in uow.annotations.list(asset_id):
-            counts[annotation.label_class] = counts.get(annotation.label_class, 0) + 1
-    return counts
+            annotations[annotation.label_class] = annotations.get(annotation.label_class, 0) + 1
+            assets.setdefault(annotation.label_class, set()).add(asset_id)
+    return {
+        name: ClassCount(label_class=name, annotations=count, assets=len(assets[name]))
+        for name, count in annotations.items()
+    }
 
 
 def _already_labeled(uow: UnitOfWork, asset_ids: Iterable[UUID]) -> set[UUID]:

@@ -3475,6 +3475,32 @@
         "title": "SchemaChangeOut",
         "type": "object"
       },
+      "SchemaChangePreviewOut": {
+        "description": "What publishing a proposed version would do, and what would stop it.",
+        "properties": {
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/ClassCountOut"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "diff": {
+            "$ref": "#/components/schemas/SchemaDiffOut"
+          },
+          "is_refused": {
+            "title": "Is Refused",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "diff",
+          "blockers",
+          "is_refused"
+        ],
+        "title": "SchemaChangePreviewOut",
+        "type": "object"
+      },
       "SchemaDiffOut": {
         "description": "Every difference between two schema versions, and the verdict on them.",
         "properties": {
@@ -10053,6 +10079,105 @@
           }
         ],
         "summary": "Compare Schema Versions",
+        "tags": [
+          "schemas"
+        ]
+      }
+    },
+    "/projects/{project_id}/schema/preview": {
+      "post": {
+        "description": "Say what publishing these classes would do, without publishing anything.\n\nWrites nothing, and answers both gates at once. `diff` is the classification\n`GET /compare` returns \u2014 whether this narrows the contract, and over which\nclasses \u2014 so `diff.is_destructive` decides whether the publish needs\n`allow_destructive=true`.\n\n**`is_refused` is the answer no flag changes.** True means annotations already\nexist under a class this proposal drops, so `POST /versions` answers 409\n`SCHEMA_CHANGE_WOULD_ORPHAN` however it is called, and `blockers` names each\nsuch class with how many annotations and how many assets carry it. That is the\n**same structure** the refusal itself puts in `detail`, so one renderer serves\nthe warning and the refusal. Retrying with `allow_destructive=true` against a\nrefused preview is the loop `code` exists to prevent.\n\nA POST because the proposal is the whole class list and a class list does not\nbelong in a query string. It is still a read: nothing is written, nothing is\nlocked, and nothing is reserved. Somebody can label a class between this call\nand the publish, in which case the publish refuses and **that** refusal is the\nauthoritative one \u2014 this removes the round trip that was doomed before it was\nsent, not the need to handle being refused.\n\nThe body is the same shape `POST /versions` takes, so a client previews and\npublishes the identical document. `description` and `provenance` are accepted\nand ignored: neither enters a diff, and requiring a client to strip them would\nmake the two calls differ for no reason.",
+        "operationId": "preview_schema_change",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchemaVersionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaChangePreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Schema Change",
         "tags": [
           "schemas"
         ]

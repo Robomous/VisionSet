@@ -24,6 +24,7 @@ from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
     DestructiveQuery,
+    SchemaChangePreviewOut,
     SchemaDiffOut,
     SchemaVersionCreate,
     SchemaVersionOut,
@@ -98,6 +99,41 @@ def create_schema_version(
         allow_destructive=allow_destructive,
     )
     return SchemaVersionOut.of(created)
+
+
+@router.post("/preview", responses=documented(404))
+def preview_schema_change(
+    workspace: WorkspaceDep, project_id: UUID, body: SchemaVersionCreate
+) -> SchemaChangePreviewOut:
+    """Say what publishing these classes would do, without publishing anything.
+
+    Writes nothing, and answers both gates at once. `diff` is the classification
+    `GET /compare` returns — whether this narrows the contract, and over which
+    classes — so `diff.is_destructive` decides whether the publish needs
+    `allow_destructive=true`.
+
+    **`is_refused` is the answer no flag changes.** True means annotations already
+    exist under a class this proposal drops, so `POST /versions` answers 409
+    `SCHEMA_CHANGE_WOULD_ORPHAN` however it is called, and `blockers` names each
+    such class with how many annotations and how many assets carry it. That is the
+    **same structure** the refusal itself puts in `detail`, so one renderer serves
+    the warning and the refusal. Retrying with `allow_destructive=true` against a
+    refused preview is the loop `code` exists to prevent.
+
+    A POST because the proposal is the whole class list and a class list does not
+    belong in a query string. It is still a read: nothing is written, nothing is
+    locked, and nothing is reserved. Somebody can label a class between this call
+    and the publish, in which case the publish refuses and **that** refusal is the
+    authoritative one — this removes the round trip that was doomed before it was
+    sent, not the need to handle being refused.
+
+    The body is the same shape `POST /versions` takes, so a client previews and
+    publishes the identical document. `description` and `provenance` are accepted
+    and ignored: neither enters a diff, and requiring a client to strip them would
+    make the two calls differ for no reason.
+    """
+    classes = [label_class.to_domain() for label_class in body.classes]
+    return SchemaChangePreviewOut.of(SchemaService(workspace).preview(project_id, classes))
 
 
 @router.get("/versions", responses=documented(404))
