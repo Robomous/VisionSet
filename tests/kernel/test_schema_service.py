@@ -15,6 +15,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
+from typing import NoReturn
 from uuid import UUID, uuid4
 
 import pytest
@@ -43,6 +44,7 @@ from visionset.kernel.domain import (
     LabelClass,
     SchemaProvenance,
 )
+from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services import ProjectService, SchemaService, WorkspaceService
 
 SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
@@ -505,6 +507,45 @@ def test_the_missing_flag_is_reported_before_the_labels_are_counted(tmp_path: Pa
 
     with pytest.raises(DestructiveSchemaChange):
         schemas.create_version(project.id, [SIGN])
+    workspace.close()
+
+
+class _DeletingSchemaService(SchemaService):
+    """Deletes the offending labels between the guard firing and the report.
+
+    The one arrangement that reaches `_refuse_orphaning`'s empty-count branch,
+    and it is a real state rather than a contrived one: the guard is evaluated by
+    the insert, the counts are read after it, and somebody clearing the labels in
+    between is exactly the remedy the refusal asks for.
+    """
+
+    def _refuse_orphaning(
+        self, uow: UnitOfWork, project_id: UUID, guarded: frozenset[str]
+    ) -> NoReturn:
+        for asset in uow.assets.list(project_id):
+            for annotation in uow.annotations.list(asset.id):
+                uow.annotations.delete(annotation.id)
+        super()._refuse_orphaning(uow, project_id, guarded)
+
+
+def test_a_refusal_still_names_the_class_when_the_labels_went_away(tmp_path: Path) -> None:
+    """The guard decided; the count only reports. An empty count is not a reprieve.
+
+    Without the fallback the sentence names nothing at all — a refusal that has
+    stopped saying what it refused over — and the temptation is to read the empty
+    count as "nothing to orphan" and let the version through, which would publish
+    over a label the guard had already seen.
+    """
+    workspace, projects, _ = _services(tmp_path)
+    project = projects.create("signs")
+    schemas = _DeletingSchemaService(workspace)
+    schemas.create_version(project.id, [SIGN, LANE])
+    _annotate(workspace, project.id, "lane")
+
+    with pytest.raises(SchemaChangeWouldOrphan, match="'lane'") as caught:
+        schemas.create_version(project.id, [SIGN], allow_destructive=True)
+    assert "(" not in str(caught.value).split(".")[0], "a count was reported for no labels"
+    assert [s.version for s in schemas.list_versions(project.id)] == [1]
     workspace.close()
 
 
