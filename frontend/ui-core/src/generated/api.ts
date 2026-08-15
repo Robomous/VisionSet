@@ -1732,9 +1732,21 @@ export interface paths {
         put?: never;
         /**
          * Create Schema Version
-         * @description Append the next version of the project's schema.
+         * @description Append the next version of the project's schema, and catch the open batches up.
          *
          *     The body is the whole proposed version; versions are never edited in place.
+         *
+         *     **A version that only widens the contract moves every open batch onto it**,
+         *     in the same transaction, and `advanced_batches` names the ones that moved. A
+         *     wider contract cannot invalidate a label already drawn, so nothing is at risk
+         *     — which is exactly why a narrowing version moves nothing, `allow_destructive`
+         *     or not. A batch is *open* if it is `approved` or `in_annotation`; a draft has
+         *     no pin yet and takes the active version at approval, and a completed batch's
+         *     pin is the record of what its work was judged against.
+         *
+         *     `advanced_batches` is empty when nothing followed, which is ordinary. A client
+         *     that renders "published" without it cannot tell a version that moved two
+         *     batches from one that moved none.
          *
          *     **Sending the classes that are already in force writes nothing.** The answer
          *     is the version that was already active, and it is not an error: the version
@@ -3776,6 +3788,18 @@ export interface components {
          * @enum {string}
          */
         SchemaProvenance: "curated" | "annotation";
+        /**
+         * SchemaPublicationOut
+         * @description A published version, and the open batches that moved onto it.
+         */
+        SchemaPublicationOut: {
+            /**
+             * Advanced Batches
+             * @default []
+             */
+            advanced_batches: string[];
+            published: components["schemas"]["SchemaVersionOut"];
+        };
         /**
          * SchemaVersionCreate
          * @description The whole proposed version. There is no partial edit of a schema.
@@ -8637,7 +8661,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SchemaVersionOut"];
+                    "application/json": components["schemas"]["SchemaPublicationOut"];
                 };
             };
             /** @description Missing or invalid bearer token */

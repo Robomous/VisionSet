@@ -143,8 +143,14 @@ beforeEach(() => {
         // The published version, echoed back the way the API would — carrying the
         // classes it was actually sent, so a later read of the pin sees them.
         publishedSchema = { version: 2, classes: JSON.parse(body).classes };
+        // A **publication** since #381: the version, plus the open batches the
+        // kernel moved onto it in the same transaction. This job's batch is one
+        // of them, which is why nothing here re-pins any more.
         return new Response(
-          JSON.stringify({ ...SCHEMA, ...publishedSchema, provenance: "annotation" }),
+          JSON.stringify({
+            published: { ...SCHEMA, ...publishedSchema, provenance: "annotation" },
+            advanced_batches: [BATCH],
+          }),
           { status: 201, headers: { "content-type": "application/json" } },
         );
       }

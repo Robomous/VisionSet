@@ -261,7 +261,12 @@ describe("the schema draft survives a version published underneath", () => {
   it("re-bases on the version it just published, and empties the message", async () => {
     on("POST", /schema\/versions$/, {
       status: 201,
-      body: { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] },
+      // A publication since #381 — the version, and the batches it moved. None
+      // here: this project has no batch in the stub.
+      body: {
+        published: { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] },
+        advanced_batches: [],
+      },
     });
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
@@ -343,7 +348,7 @@ describe("saving twice with nothing edited in between", () => {
           version: (published?.version ?? 0) + 1,
           classes: [PEDESTRIAN],
         };
-        return { status: 201, body: published };
+        return { status: 201, body: { published, advanced_batches: [] } };
       }
       return undefined;
     });
@@ -414,7 +419,7 @@ describe("saving twice with nothing edited in between", () => {
             },
           ],
         };
-        return { status: 201, body: published };
+        return { status: 201, body: { published, advanced_batches: [] } };
       }
       return undefined;
     });

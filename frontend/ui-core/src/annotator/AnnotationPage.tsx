@@ -201,7 +201,6 @@ import {
   useJobProgress,
   usePinnedSchema,
   useJobTransition,
-  useRepinBatch,
   useSaveAnnotations,
   useSetAssetProgress,
 } from "./jobQueries";
@@ -1210,7 +1209,6 @@ function Workspace({
   // ask" that could drift.
   const activeSchema = useActiveSchema(projectId, addingClass || pinOpen);
   const createVersion = useCreateSchemaVersion(projectId);
-  const repin = useRepinBatch(batchId);
   const setProgress = useSetAssetProgress(jobId);
   const startBatch = useBatchTransition(batchId, "start");
   const startJob = useJobTransition(jobId, "start");
@@ -1345,7 +1343,6 @@ function Workspace({
     async (added: readonly LabelClassBody[], note: string): Promise<void> => {
       if (activeSchema.data === undefined || added.length === 0) return;
       createVersion.reset();
-      repin.reset();
       try {
         await runAddClass({
           save: commit,
@@ -1358,7 +1355,6 @@ function Workspace({
             createVersion.mutateAsync({ classes, description, provenance: "annotation" }),
           // Asked before anything is published, which is the whole of F23: the
           // chain used to publish and *then* discover the pin would not move.
-          repin: canRepin ? () => repin.mutateAsync() : null,
           activeClasses: activeSchema.data.classes,
           added,
           note,
@@ -1390,7 +1386,7 @@ function Workspace({
         // Rethrowing would reach no handler and surface as an unhandled rejection.
       }
     },
-    [activateClass, activeSchema.data, canRepin, commit, createVersion, repin],
+    [activateClass, activeSchema.data, commit, createVersion],
   );
 
   /**
@@ -2716,10 +2712,10 @@ function Workspace({
         active={activeSchema.data ?? null}
         pinnedVersion={schemaVersion}
         canRepin={canRepin}
-        pending={save.isPending || createVersion.isPending || repin.isPending}
+        pending={save.isPending || createVersion.isPending}
         // Whichever step refused, in the order they run — so the message is about
         // the call that actually stopped, not about the last mutation touched.
-        error={save.error ?? createVersion.error ?? repin.error ?? null}
+        error={save.error ?? createVersion.error ?? null}
         // `addClass` already catches everything and holds the refusal on the
         // mutations the dialog reads, so there is nothing left to reject — but
         // `void` on a promise is the pattern F7 is about, and a `catch` that can

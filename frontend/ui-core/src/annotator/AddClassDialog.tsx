@@ -8,7 +8,7 @@
  * — because the old one pins the old version — and re-partition. The class they
  * wanted was two minutes and a lost place in the queue away.
  *
- * ## Three calls, and the order is the whole design
+ * ## Two calls, and the order is the whole design
  *
  * 1. **Save the pending annotations.** They are valid under the *old* schema and
  *    the change is additive, so this cannot be refused.
@@ -16,34 +16,39 @@
  *    the new one — never on the batch's pin. Versions are linear: composing on a
  *    pin that is behind the active version would silently delete every class
  *    published since, which is a destructive change nobody asked for.
- * 3. **Re-pin the batch** onto that version, which is what makes the class
- *    usable *here* rather than in the next batch somebody makes.
  *
- * **Step 1 must come first, and a test asserts the order.** `Workspace` builds the
- * annotator store in a `useMemo` keyed on the schema, so the refetch that follows
- * step 3 *rebuilds the store* — discarding unsaved edits and the undo history. Do
- * step 2 before step 1 and the user's last few boxes are gone, with a success
- * toast on screen. Losing undo history at a save boundary is the page's existing,
- * documented behaviour ("saving is a diff, and then a reload"); losing *work* is
- * not, and the ordering is the only thing standing between them.
+ * **There was a third call and it is gone** (#381). The chain used to re-pin the
+ * batch afterwards, which is what made the new class usable *here* rather than in
+ * the next batch somebody makes. The kernel does that now, inside the same
+ * transaction as the publish: adding a class is additive, and an additive version
+ * takes every open batch with it. So the step this dialog used to orchestrate is
+ * no longer a step.
+ *
+ * **Step 1 must still come first, and a test asserts the order.** `Workspace`
+ * builds the annotator store in a `useMemo` keyed on the schema, so the refetch
+ * that follows the publish *rebuilds the store* — discarding unsaved edits and the
+ * undo history. Publish before saving and the user's last few boxes are gone, with
+ * a success toast on screen. Losing undo history at a save boundary is the page's
+ * existing, documented behaviour ("saving is a diff, and then a reload"); losing
+ * *work* is not, and the ordering is the only thing standing between them.
  *
  * Teaching the headless core to swap a schema into a live document was considered
  * and declined: it touches the document model for marginal gain over saving first.
  *
  * ## Nothing is half-applied, and where it can stop
  *
- * The three calls are not a transaction, and cannot be — they are three requests.
+ * The two calls are not a transaction, and cannot be — they are two requests.
  * What each failure leaves behind is stated rather than hidden:
  *
  * | fails at | what exists afterwards |
  * | --- | --- |
  * | save | nothing published, nothing moved; the edits are still on screen |
  * | version | the edits are saved; no new version |
- * | re-pin | **the version exists and the pin has not moved** |
  *
- * The last row is the one worth naming to the user, because the remedy is not
- * "try again with a flag" — it is that somebody else narrowed the schema past this
- * batch's pin, and the Schema tab is where that gets looked at.
+ * **Finding F23's row is gone from that table**, and not because it is handled:
+ * it was *the version exists and the pin has not moved*, which needed a
+ * `canRepin` preflight to avoid. Publishing and moving the pin are now one
+ * transaction, so that state is unrepresentable rather than guarded against.
  *
  * ## One dialog session is one published version
  *
@@ -156,22 +161,6 @@ export async function runAddClass(steps: {
   readonly save: () => Promise<unknown>;
   /** Publish the next version. Given the whole class list, composed by the caller. */
   readonly publish: (classes: readonly LabelClassBody[], note: string) => Promise<unknown>;
-  /**
-   * Move this batch's pin onto it — or `null` when the batch will not take one.
-   *
-   * **The chain used to run this unconditionally, and that was finding F23.**
-   * `REPINNABLE_STATES` excludes `completed`, so on a settled batch the version
-   * published and the pin then refused: a new schema version in the project, a
-   * batch still judged against the old one, and a dialog showing an error about
-   * a step the user never asked for. Half-applied, and unwindable only by
-   * publishing again.
-   *
-   * `null` is the caller having asked the batch first. The publish still happens
-   * — it is a project-level act and a perfectly good one — and the *user was
-   * told* that is all it would be before they pressed. What must not happen is
-   * discovering it afterwards.
-   */
-  readonly repin: (() => Promise<unknown>) | null;
   /** The **active** version's classes. Never the batch's pin — versions are linear. */
   readonly activeClasses: readonly LabelClassBody[];
   /**
@@ -187,7 +176,6 @@ export async function runAddClass(steps: {
 }): Promise<void> {
   await steps.save();
   await steps.publish([...steps.activeClasses, ...steps.added], steps.note);
-  await steps.repin?.();
 }
 
 export interface AddClassDialogProps {
