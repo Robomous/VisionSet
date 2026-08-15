@@ -892,6 +892,30 @@ def test_a_repin_dropping_a_shape_this_batch_drew_is_still_refused(tmp_path: Pat
     fixture.close()
 
 
+def test_the_repin_refusal_counts_only_what_it_would_orphan(tmp_path: Path) -> None:
+    """Two boxes and one polygon in the batch: the report says **1**, not 3.
+
+    ``SchemaService``'s count has the same rule and its own test; this is the
+    batch scope, and it exists because a mutation proved the two were not the
+    same assertion — dropping the filter here left every test green while the
+    refusal described a blast radius three times the real one.
+    """
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, _CAR_BOTH])
+    batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, _CAR_BOX], allow_destructive=True)
+    _annotate(fixture, fixture.assets[0], "car", version=2, geometry=_A_BOX)
+    _annotate(fixture, fixture.assets[1], "car", version=2, geometry=_A_BOX)
+    _annotate(fixture, fixture.assets[0], "car", version=2, geometry=_A_POLYGON)
+
+    with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)") as caught:
+        fixture.batches.repin(batch_id, allow_destructive=True)
+    assert [(one.label_class, one.annotations, one.assets) for one in caught.value.blockers] == [
+        ("car", 1, 1)
+    ]
+    fixture.close()
+
+
 def test_a_label_in_another_batch_does_not_block_this_one(tmp_path: Path) -> None:
     """The scope is what makes this different from ``SchemaService``'s refusal.
 
