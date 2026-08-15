@@ -167,10 +167,12 @@ from visionset.kernel.domain.schema import (
 )
 from visionset.kernel.domain.schema_diff import (
     ChangeKind,
+    ClassShape,
     SchemaChange,
     SchemaChangePreview,
     SchemaDiff,
     diff_classes,
+    orphanable_shapes,
 )
 from visionset.kernel.domain.segmentation import (
     AssetSegmentation,
@@ -305,6 +307,7 @@ __all__ = [
     "BySegments",
     "BySize",
     "ChangeKind",
+    "ClassShape",
     "ClassCount",
     "ClassificationGeometry",
     "ConnectionSetupState",
@@ -397,6 +400,7 @@ __all__ = [
     "canonical_bytes",
     "canonical_path",
     "diff_classes",
+    "orphanable_shapes",
     "generate_secret",
     "hash_secret",
     "initial_progress",
