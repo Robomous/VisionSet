@@ -172,8 +172,13 @@ describe("the shape picker on the armed row (#584)", () => {
     const polygon = screen.getByTestId("class-row-car-shape-polygon");
     expect(box.getAttribute("aria-pressed")).toBe("true");
     expect(polygon.getAttribute("aria-pressed")).toBe("false");
-    // The word, not the wire value — the row is where the vocabulary is read.
-    expect(box.textContent).toBe("box");
+    // The chip draws the tool strip's glyph (#597), so the word survives as the
+    // **accessible** name rather than as text — which is the stronger assertion:
+    // it is what a screen reader announces and what the tooltip shows, and it is
+    // still the display word rather than the wire value.
+    expect(box.getAttribute("aria-label")).toBe("box");
+    expect(box.getAttribute("title")).toBe("box");
+    expect(polygon.getAttribute("aria-label")).toBe("polygon");
   });
 
   it("changes the tool and not the class, which is the whole point of it being here", () => {

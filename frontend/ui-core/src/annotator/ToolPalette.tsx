@@ -97,15 +97,13 @@ import { geometryLabel } from "../data/geometryCategory";
 import {
   CircleHelp,
   Hand,
-  MousePointer2,
   Plus,
   Redo2,
   Sparkles,
-  Spline,
-  Square,
   Undo2,
-  Waypoints,
 } from "lucide-react";
+
+import { GeometryIcon } from "./GeometryIcon";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
 import { Button } from "../primitives/Button";
@@ -577,12 +575,12 @@ function PaletteButton({
   );
 }
 
-/** `DESIGN.md` pins the three icons. */
+/**
+ * The strip's own name for the shared glyph.
+ *
+ * The map moved to `GeometryIcon` when the armed class row started drawing the
+ * same shapes — see that file for why it is one spelling rather than two.
+ */
 function ToolIcon({ tool }: { readonly tool: ToolChoice["tool"] }): JSX.Element {
-  if (tool === "bbox") return <Square className="size-4" />;
-  if (tool === "polygon") return <Spline className="size-4" />;
-  // A lane is a path, and `Waypoints` is the one icon in the set that reads as an
-  // open one — `Spline` is already the polygon's and would say "closed".
-  if (tool === "polyline") return <Waypoints className="size-4" />;
-  return <MousePointer2 className="size-4" />;
+  return <GeometryIcon tool={tool} />;
 }
