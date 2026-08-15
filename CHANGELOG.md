@@ -253,6 +253,24 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **A narrowing schema change is judged by the shape it removes, not by the class that held
+  it** (#592). Since a label class began accepting a set of geometries (#584), taking one shape
+  away from a class was refused whenever *any* annotation of that class existed — including when
+  every one of them was drawn as a shape the change keeps, so nothing would have been orphaned.
+  The refusal is the one no flag overrides, so there was no way past it.
+
+  An annotation carries one class **and one shape**, and that pair is now what the guard matches
+  on. A `car` accepting `bbox · polygon` whose labels are all boxes may drop `polygon`; the same
+  change is still refused the moment one `car` polygon exists. A class removed outright, and any
+  attribute narrowed, still doom every annotation of that class whatever its shape — enumerated
+  as every shape the class used to declare, which is complete because each annotation was
+  validated against that declaration when it was written.
+
+  The counts moved with the gate: a refusal, and the `blockers` `preview` publishes ahead of it,
+  now report the annotations that would actually be orphaned rather than everything the class
+  holds. Both gates changed together — publishing a version and re-pinning a batch ask the same
+  question at different scopes — and no wire shape moved.
+
 - **A broken internal doc link now fails a test instead of landing quietly at the top of the
   page** (#337). Renaming a `##` heading invalidates every inbound `#fragment` pointing at it, and
   nothing anywhere says so — the link still works, it just goes somewhere else, which is

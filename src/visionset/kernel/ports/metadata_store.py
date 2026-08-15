@@ -22,6 +22,7 @@ from visionset.kernel.domain import (
     AssetProgress,
     BackgroundJob,
     Batch,
+    ClassShape,
     Dataset,
     DatasetChange,
     DatasetMember,
@@ -342,9 +343,9 @@ class UnitOfWork(Protocol):
         ...
 
     def add_schema_version_unless_annotated(
-        self, schema: AnnotationSchema, guarded_classes: frozenset[str]
+        self, schema: AnnotationSchema, guarded_shapes: frozenset[ClassShape]
     ) -> AnnotationSchema | None:
-        """Publish the version, and only if none of ``guarded_classes`` is in use.
+        """Publish the version, and only if none of ``guarded_shapes`` is in use.
 
         ``Repository.add`` with the orphan check moved **inside the statement that
         writes**, which is :meth:`set_asset_progress`' bargain and is here for the
@@ -356,13 +357,19 @@ class UnitOfWork(Protocol):
         window is one walk over every asset in the project, so it is wide, and it
         grows with the project.
 
-        ``guarded_classes`` is what the caller decided it may remove, so the
-        contended datum is *whether any annotation names one of them* — a
+        ``guarded_shapes`` is what the caller decided it may remove, so the
+        contended datum is *whether any annotation carries one of them* — a
         predicate, not a row, which is why there is no version column to compare:
         a stamp on the schema would say nothing about the annotations, and a
         stamp on every annotation would be a second name for the rows themselves.
 
-        Empty ``guarded_classes`` means an unguarded insert. A change that removes
+        **A pair, never a class name.** An annotation carries one class and one
+        shape, so that pair is the grain the question has; guarding by name
+        refuses a change that takes one shape from a class whose labels all carry
+        another, which orphans nothing. ``orphanable_shapes`` computes the set and
+        owns the argument for what belongs in it. — #592
+
+        Empty ``guarded_shapes`` means an unguarded insert. A change that removes
         nothing has nothing to orphan, and a predicate over an empty set would
         refuse to say so.
 
@@ -385,9 +392,9 @@ class UnitOfWork(Protocol):
         ...
 
     def repin_batch_unless_annotated(
-        self, batch_id: UUID, schema_version: int, guarded_classes: frozenset[str]
+        self, batch_id: UUID, schema_version: int, guarded_shapes: frozenset[ClassShape]
     ) -> bool:
-        """Move the batch's pin, and only if none of ``guarded_classes`` is in use *here*.
+        """Move the batch's pin, and only if none of ``guarded_shapes`` is in use *here*.
 
         :meth:`add_schema_version_unless_annotated` one scope down, and the scope
         is the whole difference: a re-pin can only orphan labels written into
@@ -396,7 +403,8 @@ class UnitOfWork(Protocol):
         the same reason.
 
         ``True`` when the pin moved, ``False`` when the guard refused it. Empty
-        ``guarded_classes`` is an unguarded update, as above.
+        ``guarded_shapes`` is an unguarded update, as above, and the pair rather
+        than the name is the grain here too.
 
         Raises ``EntityNotFound`` if there is no such batch — which tells that
         apart from a guard that fired, since both would otherwise write nothing.

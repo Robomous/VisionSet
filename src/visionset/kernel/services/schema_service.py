@@ -44,6 +44,7 @@ from visionset.kernel.domain import (
     AnnotationSchema,
     ChangeKind,
     ClassCount,
+    ClassShape,
     GeometryType,
     LabelClass,
     Project,
@@ -52,6 +53,7 @@ from visionset.kernel.domain import (
     SchemaProvenance,
     SchemaPublication,
     diff_classes,
+    orphanable_shapes,
 )
 from visionset.kernel.errors import (
     ConstraintViolated,
@@ -185,9 +187,14 @@ class SchemaService:
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
             active = self.active(uow, project_id)
-            diff = diff_classes(() if active is None else active.classes, classes)
+            previous = () if active is None else active.classes
+            diff = diff_classes(previous, classes)
+            # The *same* set the guard will match on, not a name-level
+            # approximation of it: a preview that warned about a class whose
+            # doomed shape nobody has drawn would promise a refusal that never
+            # comes, which is the disagreement this model exists to prevent.
             return SchemaChangePreview(
-                diff=diff, blockers=_blockers(uow, project_id, diff.destructive_classes)
+                diff=diff, blockers=_blockers(uow, project_id, orphanable_shapes(previous, diff))
             )
 
     # --- writing: the only door --------------------------------------------
@@ -272,11 +279,12 @@ class SchemaService:
                     # caught a lagging batch up would be a no-op with an effect.
                     return SchemaPublication(published=active)
 
-                diff = diff_classes(() if active is None else active.classes, proposed)
-                guarded: frozenset[str] = frozenset()
+                previous = () if active is None else active.classes
+                diff = diff_classes(previous, proposed)
+                guarded: frozenset[ClassShape] = frozenset()
                 if diff.is_destructive:
                     self._refuse_narrowing(uow, project_id, diff, allow_destructive)
-                    guarded = diff.destructive_classes
+                    guarded = orphanable_shapes(previous, diff)
 
                 stored = uow.add_schema_version_unless_annotated(
                     AnnotationSchema(
@@ -333,7 +341,7 @@ class SchemaService:
             )
 
     def _refuse_orphaning(
-        self, uow: UnitOfWork, project_id: UUID, guarded: frozenset[str]
+        self, uow: UnitOfWork, project_id: UUID, guarded: frozenset[ClassShape]
     ) -> NoReturn:
         """Name the classes the guarded insert refused over, and their counts.
 
@@ -350,8 +358,11 @@ class SchemaService:
         without counts rather than a refusal being downgraded to a success
         nobody asked for.
         """
-        annotated = _annotated_classes(uow, project_id)
-        affected = sorted(guarded & annotated.keys()) or sorted(guarded)
+        annotated = _annotated_classes(uow, project_id, guarded)
+        # Named by class even though the guard matched pairs: a class losing two
+        # of its shapes is one thing to fix, and the counts are already only the
+        # annotations that carry a doomed shape.
+        affected = sorted(annotated.keys()) or sorted({name for name, _ in guarded})
         counted = ", ".join(
             f"{name!r} ({annotated[name].annotations})" if name in annotated else repr(name)
             for name in affected
@@ -480,7 +491,9 @@ def _require_coherent(classes: Sequence[LabelClass]) -> None:
         seen[folded] = label_class.name
 
 
-def _blockers(uow: UnitOfWork, project_id: UUID, guarded: frozenset[str]) -> tuple[ClassCount, ...]:
+def _blockers(
+    uow: UnitOfWork, project_id: UUID, guarded: frozenset[ClassShape]
+) -> tuple[ClassCount, ...]:
     """Which of ``guarded`` already carry labels, counted — the report, not a gate.
 
     The read half of what the guarded insert decides, shared by
@@ -495,8 +508,8 @@ def _blockers(uow: UnitOfWork, project_id: UUID, guarded: frozenset[str]) -> tup
     """
     if not guarded:
         return ()
-    annotated = _annotated_classes(uow, project_id)
-    return tuple(annotated[name] for name in sorted(guarded & annotated.keys()))
+    annotated = _annotated_classes(uow, project_id, guarded)
+    return tuple(annotated[name] for name in sorted(annotated))
 
 
 def _advance_pins(
@@ -561,8 +574,20 @@ def _advance_pins(
     return tuple(moved)
 
 
-def _annotated_classes(uow: UnitOfWork, project_id: UUID) -> dict[str, ClassCount]:
-    """How much of each label class this project currently holds.
+def _annotated_classes(
+    uow: UnitOfWork, project_id: UUID, guarded: frozenset[ClassShape]
+) -> dict[str, ClassCount]:
+    """How much of this project is at risk from ``guarded``, per class.
+
+    **Counts the annotations the guard would actually orphan**, which since #592
+    is a question about the pair an annotation carries and not about its class:
+    a ``car`` losing its polygon must not be reported as *12 car annotations* when
+    eleven of them are boxes that survive. So an annotation is counted only when
+    its own ``(class, shape)`` is in ``guarded``.
+
+    Keyed by class name all the same, because a class is what somebody fixes —
+    two of its shapes going at once is one problem, not two — and because
+    ``ClassCount`` is the shape both the warning and the refusal already publish.
 
     Walks the project's assets and reads each one's annotations, because the
     persistence port has no cross-table query: ``Repository.list`` takes a single
@@ -583,6 +608,8 @@ def _annotated_classes(uow: UnitOfWork, project_id: UUID) -> dict[str, ClassCoun
     assets: dict[str, set[UUID]] = {}
     for asset in uow.assets.list(project_id):
         for annotation in uow.annotations.list(asset.id):
+            if (annotation.label_class, annotation.geometry.type) not in guarded:
+                continue
             annotations[annotation.label_class] = annotations.get(annotation.label_class, 0) + 1
             assets.setdefault(annotation.label_class, set()).add(asset.id)
     return {
