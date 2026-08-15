@@ -347,8 +347,21 @@ export function SchemaEditor({
         provenance: "curated",
       },
       {
-        onSuccess: (created) => {
+        onSuccess: (publication) => {
+          const created = publication.published;
           setConfirming(false);
+          // What the publish did to the rest of the project, said once. An
+          // additive version moves every open batch onto it (#381), and a screen
+          // that answered only "saved" would leave somebody to discover that from
+          // a batch they open later — or, worse, not discover it at all.
+          const moved = publication.advanced_batches.length;
+          if (moved > 0) {
+            toast.success(
+              moved === 1
+                ? "Published — 1 open batch moved onto it"
+                : `Published — ${moved} open batches moved onto it`,
+            );
+          }
           // The tab returns to the editor: after a save the version somebody was
           // reading is no longer the newest, and staying put would silently show
           // a past version as though nothing had happened.

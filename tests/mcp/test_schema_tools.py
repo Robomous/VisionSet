@@ -66,7 +66,10 @@ def test_adding_a_class_is_additive_and_needs_no_flag(
     assert preview["diff"]["is_destructive"] is False
     assert preview["diff"]["destructive_classes"] == []
     assert preview["is_refused"] is False
-    assert payload(call("create_schema_version", project=named, classes=BOTH))["version"] == 2
+    assert (
+        payload(call("create_schema_version", project=named, classes=BOTH))["published"]["version"]
+        == 2
+    )
 
 
 def test_preview_names_what_a_change_would_remove_without_writing_anything(
@@ -95,7 +98,7 @@ def test_a_narrowing_change_is_refused_and_names_the_flag_that_allows_it(
     assert (
         payload(
             call("create_schema_version", project=named, classes=CAR_ONLY, allow_destructive=True)
-        )["version"]
+        )["published"]["version"]
         == 2
     )
 
@@ -182,8 +185,8 @@ def test_a_version_carries_the_description_the_agent_wrote(
         )
     )
 
-    assert created["description"] == "the first contract"
-    assert created["created_at"] is not None
+    assert created["published"]["description"] == "the first contract"
+    assert created["published"]["created_at"] is not None
 
     read = payload(call("get_schema", project=named))
     assert read["schema"]["description"] == "the first contract"
@@ -203,9 +206,9 @@ def test_a_version_created_without_one_reports_null_rather_than_omitting_it(
         )
     )
 
-    assert "description" in created
-    assert created["description"] is None
-    assert created["created_at"] is not None
+    assert "description" in created["published"]
+    assert created["published"]["description"] is None
+    assert created["published"]["created_at"] is not None
 
 
 # --- comparing two versions ---------------------------------------------------
@@ -294,7 +297,7 @@ def test_an_agent_publishing_a_version_records_it_as_curated(
 
     created = payload(call("create_schema_version", project=named, classes=BOTH))
 
-    assert created["provenance"] == "curated"
+    assert created["published"]["provenance"] == "curated"
 
 
 def test_an_agent_may_state_the_annotation_provenance_explicitly(
@@ -307,7 +310,7 @@ def test_an_agent_may_state_the_annotation_provenance_explicitly(
         call("create_schema_version", project=named, classes=BOTH, provenance="annotation")
     )
 
-    assert created["provenance"] == "annotation"
+    assert created["published"]["provenance"] == "annotation"
 
 
 def test_a_provenance_the_enum_does_not_declare_is_a_malformed_request(

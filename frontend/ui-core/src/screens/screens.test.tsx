@@ -762,7 +762,10 @@ describe("the schema version history", () => {
       description: "added pedestrians",
       created_at: "2026-08-02T09:00:00Z",
     };
-    on("POST", /schema\/versions$/, { status: 201, body: published });
+    on("POST", /schema\/versions$/, {
+      status: 201,
+      body: { published, advanced_batches: [] },
+    });
     await open();
     await userEvent.click(screen.getByTestId("add-class"));
     await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
@@ -772,7 +775,10 @@ describe("the schema version history", () => {
     handlers.length = 0;
     withHistory([...VERSIONS, published], published);
     withDiff(NOTHING);
-    on("POST", /schema\/versions$/, { status: 201, body: published });
+    on("POST", /schema\/versions$/, {
+      status: 201,
+      body: { published, advanced_batches: [] },
+    });
     await userEvent.click(screen.getByTestId("save-schema"));
 
     await waitFor(() =>

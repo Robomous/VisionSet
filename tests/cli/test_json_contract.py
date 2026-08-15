@@ -48,6 +48,7 @@ from tests.fixtures.samples import (
     RELEASE,
     SCHEMA_CHANGE_PREVIEW,
     SCHEMA_DIFF,
+    SCHEMA_PUBLICATION,
     SCHEMA_VERSION,
     SOURCE,
     SPLIT,
@@ -68,6 +69,11 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
     ("connection", wire.connection(INFERENCE_CONNECTION), models.ConnectionOut),
     ("dataset", wire.dataset(DATASET), models.DatasetOut),
     ("schema_version", wire.schema_version(SCHEMA_VERSION), models.SchemaVersionOut),
+    (
+        "schema_publication",
+        wire.schema_publication(SCHEMA_PUBLICATION),
+        models.SchemaPublicationOut,
+    ),
     ("schema_diff", wire.schema_diff(SCHEMA_DIFF), models.SchemaDiffOut),
     (
         "schema_change_preview",

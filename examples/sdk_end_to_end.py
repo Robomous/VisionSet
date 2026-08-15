@@ -288,7 +288,7 @@ def main(dest: Path) -> Summary:
 
         # (3) Version 1 of the labeling contract. Versions are 1..N and are never
         # edited; "active" is derived (the highest), never a stored column.
-        schema = schemas.create_version(project.id, CLASSES)
+        schema = schemas.create_version(project.id, CLASSES).published
         _say(f"schema v{schema.version}: {', '.join(c.name for c in schema.classes)}")
 
         # (4) Six generated frames on disk, and the directory holding them

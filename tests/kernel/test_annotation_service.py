@@ -383,8 +383,14 @@ def test_the_stored_version_is_the_batch_pin_not_the_projects_active_one(
 ) -> None:
     fixture = Fixture(tmp_path)
     job = fixture.working()
-    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE, KIOSK, GHOST])
+    # **A narrowing version, and it has to be**: an additive one now moves this
+    # batch's pin onto it (#381), so the divergence this test is about would not
+    # exist. Dropping `kiosk` while adding `ghost` is destructive, so the pin stays
+    # where it was and the two versions genuinely differ — which is the only state
+    # in which "the pin judges, not the active version" is a claim at all.
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE, GHOST], allow_destructive=True)
     assert fixture.schemas.get_active(fixture.project.id).version == 2
+    assert fixture.batches.get(fixture.batch.id).schema_version == 1
 
     (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0], schema_version=99)])
     assert stored.schema_version == 1

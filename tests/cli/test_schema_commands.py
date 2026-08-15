@@ -66,9 +66,14 @@ def test_applying_the_same_document_again_adds_nothing(root: Path, tmp_path: Pat
 
 
 def test_the_classes_survive_the_round_trip(root: Path, tmp_path: Path) -> None:
+    # `--json` answers a publication since #381: the version, plus the open
+    # batches that moved onto it.
     document = payload(root, "schema", "apply", str(schema_file(tmp_path)), "-p", "road-signs")
-    assert [c["name"] for c in document["classes"]] == ["sign"]
-    assert document["classes"][0]["attributes"][0]["name"] == "occluded"
+    version = document["published"]
+    assert [c["name"] for c in version["classes"]] == ["sign"]
+    assert version["classes"][0]["attributes"][0]["name"] == "occluded"
+    # A fresh project has no batch to move, and empty is the ordinary answer.
+    assert document["advanced_batches"] == []
 
 
 def test_apply_records_the_version_as_curated(root: Path, tmp_path: Path) -> None:
@@ -79,7 +84,7 @@ def test_apply_records_the_version_as_curated(root: Path, tmp_path: Path) -> Non
     REST wire publishes.
     """
     document = payload(root, "schema", "apply", str(schema_file(tmp_path)), "-p", "road-signs")
-    assert document["provenance"] == "curated"
+    assert document["published"]["provenance"] == "curated"
 
 
 def test_the_same_document_is_a_valid_request_body(tmp_path: Path) -> None:

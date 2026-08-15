@@ -272,6 +272,9 @@ export const checkSchemaProvenance: Check<Schemas["SchemaProvenance"]> =
 export const checkSchemaVersionOut: Check<Schemas["SchemaVersionOut"]> =
   /*#__PURE__*/ object({ "classes": [true, arrayOf(checkLabelClassBody)], "created_at": [false, either([isString, isNull] as const)], "description": [false, either([isString, isNull] as const)], "project_id": [true, isString], "provenance": [false, either([checkSchemaProvenance, isNull] as const)], "version": [true, isInteger] } as const);
 
+export const checkSchemaPublicationOut: Check<Schemas["SchemaPublicationOut"]> =
+  /*#__PURE__*/ object({ "advanced_batches": [true, arrayOf(isString)], "published": [true, checkSchemaVersionOut] } as const);
+
 export const checkSchemaVersionPage: Check<Schemas["SchemaVersionPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkSchemaVersionOut)], "total": [true, isInteger] } as const);
 
@@ -333,7 +336,7 @@ export const checkCreateBatch = checkBatchOut;
 export const checkCreateCorrectionBatch = checkBatchOut;
 export const checkCreateInferenceConnection = checkConnectionOut;
 export const checkCreateProject = checkProjectOut;
-export const checkCreateSchemaVersion = checkSchemaVersionOut;
+export const checkCreateSchemaVersion = checkSchemaPublicationOut;
 export const checkDatasetStats = checkDatasetStatsOut;
 export const checkDeleteAnnotations = checkNoContent;
 export const checkDeleteBatch = checkNoContent;

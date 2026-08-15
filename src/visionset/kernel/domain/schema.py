@@ -269,3 +269,38 @@ class AnnotationSchema(BaseModel):
         if value is not None and value.tzinfo is None:
             raise ValueError("created_at must be timezone-aware (UTC)")
         return value
+
+
+class SchemaPublication(BaseModel):
+    """What one call to ``SchemaService.create_version`` did.
+
+    Two facts, because publishing is now two facts. The version is the contract
+    that was written; ``advanced_batches`` names the open batches whose pin moved
+    onto it in the same transaction.
+
+    The second one exists because a publish that silently moved three batches is a
+    thing somebody needs told. It is also the only way a caller can *tell the
+    cases apart*: an additive version with two open batches, an additive version
+    with none, and a narrowing version that deliberately moved nothing all return
+    a version and differ only here.
+
+    Empty is the ordinary answer and never an error. It means the project had no
+    batch in a state that takes a pin, or the change narrowed the contract and so
+    was not allowed to follow — see :data:`REPINNABLE_STATES` and
+    ``SchemaService.create_version``.
+
+    A tuple in the order the batches were created, which is ``Repository.list``'s
+    own order. Nothing sorts it: there is no ranking between batches, and imposing
+    one would invent a meaning the caller would then read into it.
+
+    ``published`` rather than ``schema``, which is the obvious name and is taken:
+    pydantic warns that a field called ``schema`` shadows ``BaseModel.schema``.
+    It also reads correctly on the one path where nothing was written — a publish
+    of the contract already in force returns the version in force, which #583
+    made the same answer on purpose.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    published: AnnotationSchema
+    advanced_batches: tuple[UUID, ...] = ()

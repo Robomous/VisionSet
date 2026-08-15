@@ -60,7 +60,7 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
             ],
         )
     )
-    assert schema["version"] == 1
+    assert schema["published"]["version"] == 1
     assert ok(call("get_schema", project="road-signs"))["active_version"] == 1
 
     # 3. Read the folder in. One call, synchronous, and the batch comes back.

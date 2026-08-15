@@ -108,7 +108,7 @@ def schema_apply(
     classes = _read_classes(file)
     with opened_workspace(workspace) as service:
         resolved = resolve_project(service, project)
-        version = SchemaService(service).create_version(
+        published = SchemaService(service).create_version(
             resolved.id,
             classes,
             # Applying a whole authored document from a file is the curated act
@@ -120,10 +120,17 @@ def schema_apply(
             allow_destructive=allow_destructive,
         )
     if json_out:
-        document(wire.schema_version(version))
+        document(wire.schema_publication(published))
         return
-    note(f"Applied schema version {version.version} to {resolved.name!r}.")
-    typer.echo(str(version.version))
+    note(f"Applied schema version {published.published.version} to {resolved.name!r}.")
+    # Said only when it happened. A line reading "0 batches" on every ordinary
+    # apply would be noise in front of the one number this command exists to
+    # print, and stdout stays one datum so `$(visionset schema apply …)` is still
+    # exactly the version.
+    if published.advanced_batches:
+        moved = len(published.advanced_batches)
+        note(f"Moved {moved} open batch{'es' if moved != 1 else ''} onto it.")
+    typer.echo(str(published.published.version))
 
 
 @schema_app.command("list")
