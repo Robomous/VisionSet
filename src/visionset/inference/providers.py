@@ -202,7 +202,13 @@ def _local(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
     }
     family = family_of(connection, cache_dir=cache_dir)
     if family in SEGMENTER_FAMILIES:
-        return LocalSamProvider(connection.model_id, connection.model_revision, **common)
+        # The family travels into the segmenter because more than one architecture
+        # answers a point now, and they do not load through the same
+        # ``transformers`` classes. It is not on ``common``: the detector resolves
+        # its own classes through one ``Auto`` model and has nothing to vary.
+        return LocalSamProvider(
+            connection.model_id, connection.model_revision, family=family, **common
+        )
     if family in DETECTOR_FAMILIES:
         return LocalTransformersProvider(connection.model_id, connection.model_revision, **common)
     raise InferenceConnectionNotRunnable(_no_adapter_for(connection, family))

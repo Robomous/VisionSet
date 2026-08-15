@@ -30,22 +30,35 @@ from typing import Final
 from visionset.inference._extra import imported
 from visionset.kernel.domain import InferenceConnection, ModelCapability
 
-SEGMENTER_FAMILIES: Final[frozenset[str]] = frozenset({"sam2", "sam2_video"})
+SEGMENTER_FAMILIES: Final[frozenset[str]] = frozenset(
+    {"sam2", "sam2_video", "sam3", "sam3_tracker"}
+)
 """``model_type`` values this build serves with the point-prompted adapter.
 
-**Two spellings of one architecture, and the second is not a door held open for
-later.** The published SAM 2 checkpoints — including the one the connection form
-suggests — declare ``sam2_video``, and ``transformers`` loads such a checkpoint
-into the image model deliberately, saying so as it does: *"loading a
+**Two spellings per architecture, and the second of each is not a door held open
+for later.** The published SAM 2 checkpoints — including the one the connection
+form suggests — declare ``sam2_video``, and ``transformers`` loads such a
+checkpoint into the image model deliberately, saying so as it does: *"loading a
 ``sam2_video`` checkpoint into ``Sam2Model``"*. Naming only ``sam2`` sends the
 commonest point-prompt model in the product to the detector adapter, which then
 refuses a click with a sentence about text prompts.
 
-Whole models only. The locked ``transformers`` also registers
-``sam2_vision_model`` and ``sam2_hiera_det_model``, which are the encoder halves
-a full config nests rather than checkpoints anything can prompt. A connection
-naming one of those is refused by ``provider_for``, not handed to an adapter that
-would look for a mask decoder and find none.
+The SAM 3 pair is the same shape for a sharper reason. ``sam3`` is what a
+repository publishing the whole model declares, and that model answers *both*
+concepts and points; ``sam3_tracker`` is what :class:`Sam3TrackerConfig` declares
+in its own right, which is what a checkpoint publishing only the promptable half
+would carry. Both are served here through the tracker classes, because the point
+prompt is the only half this build asks for — see ``sam_provider._CLASSES``, where
+that choice is made and argued. Asking such a connection with words is refused by
+the adapter in the port's vocabulary, not answered by a model nobody selected.
+
+Whole models only. The locked ``transformers`` registers a dozen further
+``sam3_*`` types — ``sam3_vision_model``, ``sam3_detr_decoder``,
+``sam3_mask_decoder`` and the rest, beside SAM 2's ``sam2_vision_model`` and
+``sam2_hiera_det_model``. Those are the halves a full config nests rather than
+checkpoints anything can prompt. A connection naming one of them is refused by
+``provider_for``, not handed to an adapter that would look for a mask decoder and
+find none.
 """
 
 DETECTOR_FAMILIES: Final[frozenset[str]] = frozenset({"grounding-dino", "mm-grounding-dino"})

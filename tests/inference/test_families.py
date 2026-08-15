@@ -57,9 +57,36 @@ def a_local(connections: InferenceConnectionService) -> Any:
 # --- the sets themselves ------------------------------------------------------
 
 
-def test_both_spellings_of_the_one_architecture_are_named() -> None:
-    """A set rather than a string, and both members are load-bearing today."""
-    assert {"sam2", "sam2_video"} <= SEGMENTER_FAMILIES
+def test_both_spellings_of_each_architecture_are_named() -> None:
+    """A set rather than a string, and every member is load-bearing today.
+
+    Each architecture is registered twice because a checkpoint declares the
+    variant it was published as rather than the half this build asks for: SAM 2's
+    published checkpoints say ``sam2_video``, and a repository publishing the
+    whole of SAM 3 says ``sam3`` while one publishing only its promptable half
+    says ``sam3_tracker``. Naming one spelling of a pair sends the other to the
+    detector adapter, which refuses a click with a sentence about text prompts.
+    """
+    assert {"sam2", "sam2_video", "sam3", "sam3_tracker"} <= SEGMENTER_FAMILIES
+
+
+def test_the_nested_halves_of_a_config_are_not_offered_as_models() -> None:
+    """A register of whole models, so an encoder half is refused rather than loaded.
+
+    The runtime registers a ``model_type`` for every nested piece of these
+    architectures as well as for the wholes. A connection naming one of those is
+    something the resolver must decline; admitting it here would hand the adapter
+    a config with no mask decoder in it and turn a refusal into a failure inside a
+    forward pass.
+    """
+    halves = {
+        "sam2_vision_model",
+        "sam2_hiera_det_model",
+        "sam3_vision_model",
+        "sam3_mask_decoder",
+        "sam3_detr_decoder",
+    }
+    assert not halves & SUPPORTED_FAMILIES
 
 
 def test_the_two_families_are_disjoint_and_are_the_whole_of_what_is_supported() -> None:
