@@ -19,7 +19,7 @@
  *    is labelled. The tool did not move, so nothing moves.
  * 2. The strip shows only the tools **this schema can reach** — `select`, plus one
  *    button per distinct drawable geometry among the declared classes. It is built
- *    from `drawableGeometry`, the export `tool.ts` provides for exactly this: a
+ *    from `drawableGeometries`, the export `tool.ts` provides for exactly this: a
  *    `classification_tag` and a `polyline` both answer `null`, and neither gets a
  *    canvas tool. The demo's schema declares both, so both omissions are visible
  *    rather than theoretical.
@@ -42,7 +42,7 @@
  * not extended, when the real icon set arrives.
  */
 
-import { drawableGeometry, hotkeyForClass } from "@visionset/annotator";
+import { drawableGeometries, hotkeyForClass } from "@visionset/annotator";
 import type { AnnotationSchema, Tool } from "@visionset/annotator";
 import type { CSSProperties, JSX, MouseEvent, ReactNode } from "react";
 
@@ -51,13 +51,13 @@ import { COLOR, RADIUS, SHADOW, SPACE, TEXT } from "./theme";
 /** A schema's tools, in the order the strip lists them. */
 
 /**
- * What each drawing tool is called. Total over what `drawableGeometry` answers, so
+ * What each drawing tool is called. Total over what `drawableGeometries` answers, so
  * a fourth geometry gaining a tool cannot reach the strip unnamed — which is what
  * a ternary would let `polyline` do, silently reading "Polygon".
  *
  * The showcase keeps its own strip on purpose (see `ToolPalette.tsx`), so this is
  * a second table rather than an import; what it must not be is a second *rule*,
- * and it is not — `drawableGeometry` is still the only thing deciding which tools
+ * and it is not — `drawableGeometries` is still the only thing deciding which tools
  * exist.
  */
 const TOOL_LABELS: Readonly<Record<"bbox" | "polygon" | "polyline", string>> = {
@@ -86,15 +86,15 @@ function toolChoices(schema: AnnotationSchema): readonly ToolChoice[] {
     { tool: "select", label: "Select", labelClass: null, hotkey: "V" },
   ];
   for (const declared of schema.classes) {
-    const geometry = drawableGeometry(declared);
-    if (geometry === null) continue;
-    if (choices.some((choice) => choice.tool === geometry)) continue;
-    choices.push({
-      tool: geometry,
-      label: TOOL_LABELS[geometry],
-      labelClass: declared.name,
-      hotkey: hotkeyForClass(schema, declared.name) ?? "—",
-    });
+    for (const geometry of drawableGeometries(declared)) {
+      if (choices.some((choice) => choice.tool === geometry)) continue;
+      choices.push({
+        tool: geometry,
+        label: TOOL_LABELS[geometry],
+        labelClass: declared.name,
+        hotkey: hotkeyForClass(schema, declared.name) ?? "—",
+      });
+    }
   }
   return choices;
 }

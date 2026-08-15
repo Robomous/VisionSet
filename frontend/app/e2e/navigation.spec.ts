@@ -44,7 +44,7 @@ const NO_PROGRESS = {
 const SCHEMA = {
   project_id: PROJECT,
   version: 1,
-  classes: [{ name: "vehicle", geometry: "bbox", color: "#38bdf8", attributes: [] }],
+  classes: [{ name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] }],
 };
 
 /** A 1x1 PNG, so the annotator has real pixels to lay out. */

@@ -73,6 +73,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   classColor,
+  formatGeometries,
   toast,
 } from "@visionset/ui-core";
 import { MousePointer2, Plus, Square, Trash2 } from "lucide-react";
@@ -80,11 +81,11 @@ import type { JSX, ReactNode } from "react";
 
 /** The demo schema, borrowed so the swatches show the real palette rule. */
 const CLASSES = [
-  { name: "vehicle", geometry: "bbox", color: "#38bdf8", attributes: [] },
-  { name: "lane", geometry: "polygon", color: "#f97316", attributes: [] },
-  { name: "daytime", geometry: "classification_tag", color: "#a3e635", attributes: [] },
+  { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
+  { name: "lane", geometries: ["polygon"], color: "#f97316", attributes: [] },
+  { name: "daytime", geometries: ["classification_tag"], color: "#a3e635", attributes: [] },
   // No colour — `classColor` derives a stable hue from the name instead.
-  { name: "pedestrian", geometry: "bbox", color: null, attributes: [] },
+  { name: "pedestrian", geometries: ["bbox"], color: null, attributes: [] },
 ] as const;
 
 const BATCHES = [
@@ -208,7 +209,9 @@ export function Styleguide(): JSX.Element {
                   style={{ background: classColor(declared, declared.name) }}
                 />
                 {declared.name}
-                <span className="text-meta text-muted-foreground">{declared.geometry}</span>
+                <span className="text-meta text-muted-foreground">
+                  {formatGeometries(declared.geometries)}
+                </span>
               </span>
             ))}
           </div>

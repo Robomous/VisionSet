@@ -233,6 +233,7 @@ export {
 export {
   GEOMETRY_CATEGORIES,
   GEOMETRY_CATEGORY,
+  formatGeometries,
   groupGeometries,
   type GeometryCategory,
   type GeometryGroup,

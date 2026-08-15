@@ -23,12 +23,12 @@ const SCHEMA = {
   project_id: PROJECT,
   version: 3,
   classes: [
-    { name: "vehicle", geometry: "bbox", color: "#38bdf8", attributes: [] },
-    { name: "lane", geometry: "polygon", color: "#f97316", attributes: [] },
+    { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
+    { name: "lane", geometries: ["polygon"], color: "#f97316", attributes: [] },
     // A second **bbox** class, so a reassignment has somewhere to land.
     // It adds no tool — the palette is per geometry — and one hotkey row, which
     // the shortcut-sheet scenario below counts.
-    { name: "pedestrian", geometry: "bbox", color: "#22c55e", attributes: [] },
+    { name: "pedestrian", geometries: ["bbox"], color: "#22c55e", attributes: [] },
   ],
 };
 
@@ -152,7 +152,7 @@ function schemaOfSize(size: SchemaSize | undefined): typeof SCHEMA {
       ...SCHEMA.classes,
       ...Array.from({ length: want - SCHEMA.classes.length }, (_unused, index) => ({
         name: `filler-${index + 1}`,
-        geometry: "bbox",
+        geometries: ["bbox"],
         color: "#94a3b8",
         attributes: [],
       })),

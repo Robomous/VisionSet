@@ -232,10 +232,26 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       await page.getByTestId("add-class").click();
       await page.getByTestId(`class-name-${index}`).fill(name);
       if (geometry !== "bbox") {
-        await page.getByTestId(`class-geometry-${index}`).click();
-        await page.getByRole("option", { name: geometry, exact: true }).click();
+        // Tick the wanted shape *before* clearing the default, which is also the
+        // only order the control permits: a class never passes through accepting
+        // nothing, so the last ticked box refuses to come off.
+        await page.getByTestId(`class-geometry-${index}-${geometry}`).click();
+        await page.getByTestId(`class-geometry-${index}-bbox`).click();
       }
     }
+
+    /*
+     * One class, two shapes, against a real `create_version` (#584).
+     *
+     * The whole point of a geometry set is that a class labelled as a box on some
+     * frames and as an outline on others is one class — and the only place that
+     * can be shown end to end is here, where the kernel actually judges the
+     * document. `vehicle` keeps its box and gains a polygon.
+     */
+    await page.locator('[data-row="0"] button').first().click();
+    await page.getByTestId("class-geometry-0-polygon").click();
+    await expect(page.getByTestId("class-geometry-0-bbox")).toBeChecked();
+    await expect(page.getByTestId("class-geometry-0-polygon")).toBeChecked();
 
     /*
      * The draft survives leaving the tab, in a real DOM.
