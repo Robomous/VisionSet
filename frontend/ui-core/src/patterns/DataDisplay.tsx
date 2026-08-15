@@ -235,7 +235,19 @@ export interface ClassListRowProps {
    */
   readonly shapes?: readonly {
     readonly value: string;
+    /**
+     * The shape's name, which is its **accessible** name whether or not it is
+     * the thing drawn. A caller passing `icon` still owes this one.
+     */
     readonly label: string;
+    /**
+     * The glyph to draw instead of the word, or absent to render the word.
+     *
+     * A `ReactNode` rather than an icon name, because this component is generic
+     * and has no business knowing what a polygon looks like — the annotator does,
+     * and `GeometryIcon` is where it says so once for the strip and the row. #597
+     */
+    readonly icon?: ReactNode;
     readonly active: boolean;
     readonly onPick: () => void;
   }[];
@@ -334,14 +346,21 @@ export function ClassListRow({
             aria-pressed={shape.active}
             data-active={shape.active ? "true" : "false"}
             data-testid={testId === undefined ? undefined : `${testId}-shape-${shape.value}`}
+            // The word is the accessible name whichever is drawn, so a chip that
+            // shows a glyph is still announced as "polygon" and still hoverable
+            // for it. #597 traded the words for pictures because three of them
+            // beside a class name is ~128px of a 240px row.
+            aria-label={shape.label}
+            title={shape.label}
             className={cn(
-              "shrink-0 rounded-sm px-1.5 text-meta transition-colors",
+              "flex shrink-0 items-center justify-center rounded-sm text-meta transition-colors",
+              shape.icon === undefined ? "px-1.5" : "size-6",
               shape.active
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-card hover:text-foreground",
             )}
           >
-            {shape.label}
+            {shape.icon ?? shape.label}
           </button>
         ))}
         {/* No hotkey chip while picking, and it is bought rather than dropped:
