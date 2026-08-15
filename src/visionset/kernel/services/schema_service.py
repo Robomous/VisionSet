@@ -119,19 +119,23 @@ class SchemaService:
     def allowed_geometries(
         self, project_id: UUID, version: int | None = None
     ) -> frozenset[GeometryType]:
-        """Which geometries a version permits: the ones its classes are bound to.
+        """Which geometries a version permits: the union across its classes.
 
-        Derived rather than stored, so it cannot disagree with the classes. This
-        is the set an annotation's ``geometry.type`` is membership-tested against
-        — the discriminator's values *are* ``GeometryType`` members, so no
-        translation sits in between.
+        Derived rather than stored, so it cannot disagree with the classes. It
+        answers "what may this project draw?", and it is deliberately **not** the
+        test a write goes through: an annotation is judged against its own
+        class's ``geometries``, which this union is wider than as soon as two
+        classes accept different shapes. ``AnnotationService._validate`` owns
+        that narrower test.
 
         Raises:
             ProjectNotFound: no such project in this workspace.
             SchemaNotFound: no such version, or no schema at all.
         """
         schema = self.get_active(project_id) if version is None else self.get(project_id, version)
-        return frozenset(label_class.geometry for label_class in schema.classes)
+        return frozenset(
+            geometry for label_class in schema.classes for geometry in label_class.geometries
+        )
 
     # --- comparing ---------------------------------------------------------
 
@@ -451,13 +455,18 @@ def _require_coherent(classes: Sequence[LabelClass]) -> None:
     to everybody except the code.
     """
     unsupported = sorted(
-        {c.geometry.value for c in classes if c.geometry not in IMPLEMENTED_GEOMETRIES}
+        {
+            geometry.value
+            for c in classes
+            for geometry in c.geometries
+            if geometry not in IMPLEMENTED_GEOMETRIES
+        }
     )
     if unsupported:
         supported = ", ".join(sorted(geometry.value for geometry in IMPLEMENTED_GEOMETRIES))
         raise UnsupportedGeometry(
             f"no geometry implementation for {', '.join(repr(g) for g in unsupported)}; "
-            f"a class can only use one of {supported}"
+            f"a class can only use {supported}"
         )
 
     seen: dict[str, str] = {}

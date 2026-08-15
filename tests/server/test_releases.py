@@ -35,6 +35,7 @@ from tests.server._exports import (
 from tests.server._flow import dataset_of, promoted_dataset
 from tests.server._jobs import InlineDispatcher
 
+from visionset.kernel.domain import MANIFEST_VERSION
 from visionset.kernel.services.release_service import EXPORT_REPORT_FILENAME
 
 RECIPE = {"train": 0.6, "val": 0.2, "test": 0.2, "seed": 42}
@@ -208,7 +209,7 @@ def test_the_manifest_is_served_as_json_and_parses(client: TestClient, release: 
 
     assert response.headers["content-type"].startswith("application/json")
     document = response.json()
-    assert document["manifest_version"] == 1
+    assert document["manifest_version"] == MANIFEST_VERSION
     assert document["schema_version"] == 1
     assert len(document["assets"]) == 3
 

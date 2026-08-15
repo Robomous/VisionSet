@@ -64,7 +64,7 @@ def test_a_class_nobody_used_does_not_appear_in_the_stats(
             # drop its `occluded` attribute, which is a narrowing change and needs
             # `allow_destructive` — a good demonstration of why `create_schema_version`
             # says "a class left out is a class removed".
-            classes=[*SCHEMA_CLASSES, {"name": "pedestrian", "geometry": "bbox"}],
+            classes=[*SCHEMA_CLASSES, {"name": "pedestrian", "geometries": ["bbox"]}],
         )
     )
     stats = payload(call("dataset_stats", project=named))

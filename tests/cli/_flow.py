@@ -32,7 +32,7 @@ SCHEMA_DOCUMENT = {
     "classes": [
         {
             "name": "sign",
-            "geometry": "bbox",
+            "geometries": ["bbox"],
             "color": "#ff0000",
             "attributes": [{"name": "occluded", "kind": "boolean", "default": False}],
         }

@@ -43,7 +43,7 @@ const SCHEMA = {
   description: null,
   created_at: null,
   provenance: "curated",
-  classes: [{ name: "vehicle", geometry: "bbox", color: "#3355ff", attributes: [] }],
+  classes: [{ name: "vehicle", geometries: ["bbox"], color: "#3355ff", attributes: [] }],
 };
 
 type Progress = "unannotated" | "annotated" | "skipped" | "review_pending" | "accepted";

@@ -3381,7 +3381,7 @@ export interface components {
         JsonValue: unknown;
         /**
          * LabelClassBody
-         * @description One labelable class, bound to a geometry.
+         * @description One labelable class, and the geometries an annotation of it may carry.
          */
         LabelClassBody: {
             /**
@@ -3391,7 +3391,8 @@ export interface components {
             attributes: components["schemas"]["AttributeBody"][];
             /** Color */
             color?: string | null;
-            geometry: components["schemas"]["GeometryType"];
+            /** Geometries */
+            geometries: components["schemas"]["GeometryType"][];
             /** Name */
             name: string;
         };

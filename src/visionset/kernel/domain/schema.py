@@ -170,14 +170,52 @@ class Attribute(BaseModel):
 
 
 class LabelClass(BaseModel):
-    """One labelable class in a schema, bound to a geometry type."""
+    """One labelable class in a schema, and the geometries it may be drawn as.
+
+    ``geometries`` is a set in meaning and a **sorted tuple** in representation.
+    A class labelled as a box on some frames and as a polygon on others is one
+    class; splitting it in two would make every consumer downstream re-unify
+    them. Which of the allowed shapes a given label carries is the annotation's
+    own business, and ``AnnotationService`` tests it for membership here.
+
+    Sorted, deduplicated, and a tuple rather than a ``frozenset``, because
+    ``release.canonical_bytes`` hashes ``model_dump(mode='json')``: a set's
+    iteration order is not stable across processes, so a set-valued field would
+    make a release hash irreproducible. Sorting also means the order carries no
+    meaning and nobody can read one into it — unlike ``AnnotationSchema.classes``,
+    which is authored.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
-    geometry: GeometryType
+    geometries: tuple[GeometryType, ...] = Field(min_length=1)
     color: str | None = None
     attributes: tuple[Attribute, ...] = ()
+
+    @model_validator(mode="before")
+    @classmethod
+    def _one_geometry_is_a_set_of_one(cls, data: object) -> object:
+        """Read a pre-#584 document, which spelled this ``geometry`` and singular.
+
+        The single back-compatibility point, and it serves three readers at once:
+        schema rows (``annotation_schema.classes`` is a JSON column), release
+        manifests (``Manifest.classes`` carries these verbatim, and an existing
+        release must stay verifiable), and MCP, which takes this model directly
+        as a tool parameter — so an agent written against either spelling works.
+
+        Deliberately *not* mirrored on ``LabelClassBody``: a REST client sending
+        the old key should get a clean refusal naming the field, not a silent
+        reinterpretation of what it asked for.
+        """
+        if not isinstance(data, Mapping) or "geometry" not in data:
+            return data
+        if "geometries" in data:
+            # A document carrying both is not one this ever wrote. Leave it be and
+            # let ``extra='forbid'`` refuse the stray key, which names it.
+            return data
+        rest = {key: value for key, value in data.items() if key != "geometry"}
+        return rest | {"geometries": (data["geometry"],)}
 
     @field_validator("name")
     @classmethod
@@ -187,6 +225,12 @@ class LabelClass(BaseModel):
         if not stripped:
             raise ValueError("a class name must contain at least one non-blank character")
         return stripped
+
+    @field_validator("geometries")
+    @classmethod
+    def _a_set_in_a_fixed_order(cls, value: tuple[GeometryType, ...]) -> tuple[GeometryType, ...]:
+        """Deduplicated and sorted, so two ways of writing one set are one value."""
+        return tuple(sorted(set(value), key=lambda geometry: geometry.value))
 
     @model_validator(mode="after")
     def _attribute_names_unique(self) -> LabelClass:

@@ -125,6 +125,7 @@ import {
   type Polarity,
   type Suggestion,
   type SuggestionState,
+  type Tool,
   type Viewport,
 } from "@visionset/annotator";
 import { AnnotatorStore as Store } from "@visionset/annotator";
@@ -544,6 +545,22 @@ function JobScreen({
   const [activeClass, setActiveClass] = useState<string | null>(null);
 
   /**
+   * Which of the held class's shapes to draw, when it accepts more than one.
+   *
+   * Beside `activeClass` and at the same scope, deliberately: they are one
+   * decision read two ways, and a preference kept at a scope those query keys
+   * could move would be lost by a mutation with nothing on screen to say so —
+   * the `ui-capabilities` rule the drawing class already lives under.
+   *
+   * A *preference*, never the answer. `toolFor` resolves it against what the
+   * class actually accepts and falls back when it cannot be honoured, so this
+   * being stale is harmless and an active tool the class forbids is
+   * unrepresentable. `null` means no preference, which is the state a schema of
+   * one-shape classes never leaves.
+   */
+  const [activeTool, setActiveTool] = useState<Tool | null>(null);
+
+  /**
    * The suggest tool's vertex density, held here for `activeClass`'s reason.
    *
    * A choice about how to work rather than a fact about the workspace, so it is
@@ -635,9 +652,11 @@ function JobScreen({
       counts={progress.data ?? null}
       clipboard={clipboard}
       activeClass={activeClass}
+      activeTool={activeTool}
       detail={detail}
       onDetail={setDetail}
       onActivateClass={activateClass}
+      onActivateTool={setActiveTool}
       onNavigate={setChosen}
       {...(onConfigureInference === undefined ? {} : { onConfigureInference })}
       {...(onOpenGallery === undefined
@@ -714,7 +733,10 @@ interface WorkspaceProps {
   readonly onDetail: (detail: Detail) => void;
   /** Also `JobScreen`'s, and for a sharper reason — see the note where it is declared. */
   readonly activeClass: string | null;
+  /** `JobScreen`'s too, and at that scope for the same reason the class is. */
+  readonly activeTool: Tool | null;
   readonly onActivateClass: (labelClass: string | null) => void;
+  readonly onActivateTool: (tool: Tool | null) => void;
   readonly onNavigate: (index: number) => void;
   readonly onOpenGallery?: () => void;
   /** Where to set up a model connection, if the host has such a screen. */
@@ -761,7 +783,9 @@ function Workspace({
   detail,
   onDetail: setDetail,
   activeClass,
+  activeTool,
   onActivateClass: armClass,
+  onActivateTool,
   onNavigate,
   onOpenGallery,
   onConfigureInference,
@@ -2425,6 +2449,7 @@ function Workspace({
                 // greyed-out toolbar does not stop a drag from drawing a box.
                 readOnly={readOnly}
                 activeClass={readOnly ? null : activeClass}
+                activeTool={activeTool}
                 onActivateClass={activateClass}
                 onViewChange={setView}
                 hiddenIds={hiddenIds}
@@ -2480,10 +2505,12 @@ function Workspace({
             would mean the engine shipping chrome, and putting it outside the stage
             would mean it was not floating over the picture.
 
-            `toolFor` is read here rather than held: the tool is derived from the
-            active class and never stored (`core/interaction/tool.ts`), and a second
-            copy on this page would be the pair v1 spent two mechanisms keeping in
-            step.
+            `toolFor` is read here rather than held: the tool is *resolved* from
+            the active class and the preference beside it and never stored
+            (`core/interaction/tool.ts`), and a second copy of the answer on this
+            page would be the pair v1 spent two mechanisms keeping in step. What
+            this page does hold is the preference, which is an input to that
+            function rather than a second copy of its output.
           */}
           {/*
             A viewer gets the strip, carrying the hand and the shortcut sheet and
@@ -2500,8 +2527,10 @@ function Workspace({
             readOnly={readOnly}
             hand={{ active: handTool, onToggle: () => setHandTool((on) => !on) }}
             schema={store.document.schema}
-            tool={toolFor(store.document, activeClass)}
+            tool={toolFor(store.document, activeClass, activeTool)}
+            activeClass={activeClass}
             onActivateClass={activateClass}
+            onActivateTool={onActivateTool}
             onToggleHelp={() => setHelpOpen((open) => !open)}
             // Empty, unlike the class field's create row: `+` means "I want a
             // class", not a particular one, and carrying the previous
@@ -2695,6 +2724,8 @@ function Workspace({
           onHiddenChange={setHiddenIds}
           activeClass={activeClass}
           onActivateClass={activateClass}
+          activeTool={activeTool}
+          onActivateTool={onActivateTool}
           classFilterRef={classFilterRef}
           // The name comes from whoever asked: the no-match row hands over what
           // was typed (the WS4 prefill), and the header's `+` hands over "" —

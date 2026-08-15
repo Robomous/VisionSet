@@ -47,13 +47,13 @@ from visionset.kernel.domain import (
 from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services import ProjectService, SchemaService, WorkspaceService
 
-SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
-LANE = LabelClass(name="lane", geometry=GeometryType.POLYGON)
+SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
+LANE = LabelClass(name="lane", geometries=(GeometryType.POLYGON,))
 
 #: One class using every attribute kind, so the round-trip test covers them all.
 RICH = LabelClass(
     name="vehicle",
-    geometry=GeometryType.BBOX,
+    geometries=(GeometryType.BBOX,),
     color="#3355ff",
     attributes=(
         Attribute(name="note", kind="string", default="none"),
@@ -337,7 +337,7 @@ def test_two_classes_cannot_share_a_name(tmp_path: Path, duplicate: str) -> None
     project = projects.create("signs")
     with pytest.raises(InvalidSchema, match="unique within a version"):
         schemas.create_version(
-            project.id, [SIGN, LabelClass(name=duplicate, geometry=GeometryType.POLYGON)]
+            project.id, [SIGN, LabelClass(name=duplicate, geometries=(GeometryType.POLYGON,))]
         )
     assert schemas.list_versions(project.id) == []
     workspace.close()
@@ -354,7 +354,7 @@ def test_a_class_bound_to_an_unimplemented_geometry_is_refused(
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     with pytest.raises(UnsupportedGeometry, match="no geometry implementation"):
-        schemas.create_version(project.id, [LabelClass(name="thing", geometry=geometry)])
+        schemas.create_version(project.id, [LabelClass(name="thing", geometries=(geometry,))])
     assert schemas.list_versions(project.id) == []
     workspace.close()
 
@@ -364,9 +364,9 @@ def test_every_implemented_geometry_is_accepted(tmp_path: Path, geometry: Geomet
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     schema = schemas.create_version(
-        project.id, [LabelClass(name="thing", geometry=geometry)]
+        project.id, [LabelClass(name="thing", geometries=(geometry,))]
     ).published
-    assert schema.classes[0].geometry is geometry
+    assert schema.classes[0].geometries == (geometry,)
     workspace.close()
 
 
@@ -375,7 +375,9 @@ def test_an_unsupported_geometry_is_reported_as_an_invalid_schema(tmp_path: Path
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     with pytest.raises(InvalidSchema):
-        schemas.create_version(project.id, [LabelClass(name="road", geometry=GeometryType.MASK)])
+        schemas.create_version(
+            project.id, [LabelClass(name="road", geometries=(GeometryType.MASK,))]
+        )
     workspace.close()
 
 
@@ -413,7 +415,7 @@ def test_one_class_cannot_carry_two_attributes_with_the_same_name() -> None:
     with pytest.raises(ValidationError, match="same name"):
         LabelClass(
             name="sign",
-            geometry=GeometryType.BBOX,
+            geometries=(GeometryType.BBOX,),
             attributes=(
                 Attribute(name="weather", kind="string"),
                 Attribute(name="WEATHER", kind="boolean"),
@@ -474,6 +476,39 @@ def test_a_narrowing_change_is_refused_once_labels_exist_under_the_class(
 
     with pytest.raises(SchemaChangeWouldOrphan, match="'lane' \\(1\\)"):
         schemas.create_version(project.id, [SIGN], allow_destructive=True)
+    assert [s.version for s in schemas.list_versions(project.id)] == [1]
+    workspace.close()
+
+
+def test_dropping_one_geometry_of_several_is_refused_by_the_class_not_the_shape(
+    tmp_path: Path,
+) -> None:
+    """Today's behaviour, pinned deliberately: the gate over-refuses. See #592.
+
+    ``car`` accepts both shapes and the project holds one **bbox** ``car``. Taking
+    ``polygon`` away orphans nothing — that annotation is still valid under the
+    narrower class — and it is refused anyway, by the refusal no flag overrides.
+
+    The reason is that ``destructive_classes`` is a set of *names*, and it is that
+    set which reaches ``add_schema_version_unless_annotated``; the predicate asks
+    whether the project holds any ``car``, never whether it holds a ``car`` drawn
+    as the shape being removed. Before a class could hold a set the two questions
+    had one answer, so the name was exact. It no longer is.
+
+    Pinned rather than fixed because making it exact changes the port method and
+    the guarded-insert contract #589 landed for the TOCTOU race — argued in #592.
+    This test is the tripwire for that work: it should be *inverted* when the gate
+    learns about geometry, never quietly deleted.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    both = LabelClass(name="car", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
+    schemas.create_version(project.id, [both])
+    _annotate(workspace, project.id, "car")  # a bbox, which the narrower class still allows
+
+    box_only = LabelClass(name="car", geometries=(GeometryType.BBOX,))
+    with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)"):
+        schemas.create_version(project.id, [box_only], allow_destructive=True)
     assert [s.version for s in schemas.list_versions(project.id)] == [1]
     workspace.close()
 
@@ -561,7 +596,7 @@ def test_a_renamed_class_is_refused_like_a_removed_one(tmp_path: Path) -> None:
     with pytest.raises(SchemaChangeWouldOrphan, match="'sign'"):
         schemas.create_version(
             project.id,
-            [LabelClass(name="signal", geometry=GeometryType.BBOX)],
+            [LabelClass(name="signal", geometries=(GeometryType.BBOX,))],
             allow_destructive=True,
         )
     workspace.close()
@@ -916,3 +951,85 @@ def test_each_version_carries_its_own_provenance(tmp_path: Path) -> None:
         None,
     ]
     workspace.close()
+
+
+def test_a_schema_row_written_before_geometries_were_plural_still_loads(
+    tmp_path: Path,
+) -> None:
+    """The one back-compatibility point, exercised against a real stored row.
+
+    ``annotation_schema.classes`` is a JSON column, so #584 needed no migration —
+    which means nothing rewrote the documents already on disk, and every one of
+    them spells the field ``geometry`` and singular. The rewrite lives in
+    ``LabelClass``'s own before-validator, and this is the only test that can see
+    it working on the shape it exists for: a document this build never wrote.
+
+    Rewritten through the store rather than through a service for the reason the
+    provenance test above gives — no service can produce this state, and that is
+    the point.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(
+        project.id,
+        [LabelClass(name="sign", geometries=(GeometryType.BBOX, GeometryType.POLYGON))],
+    )
+    workspace.close()
+
+    store = SqliteMetadataStore(tmp_path / "ws" / "visionset.db")
+    with store.engine.begin() as connection:
+        connection.execute(
+            text("update annotation_schema set classes = :classes"),
+            {"classes": '[{"name": "sign", "geometry": "bbox", "color": null, "attributes": []}]'},
+        )
+    store.close()
+
+    reopened = WorkspaceService.open(tmp_path / "ws")
+    (loaded,) = SchemaService(reopened).get(project.id, 1).classes
+    assert loaded.geometries == (GeometryType.BBOX,)
+    reopened.close()
+
+
+def test_the_old_and_new_spellings_of_one_class_are_the_same_value(tmp_path: Path) -> None:
+    """Equal, not merely both loadable — so the rewrite cannot drift into a second shape."""
+    old = LabelClass.model_validate({"name": "sign", "geometry": "bbox"})
+    assert old == LabelClass(name="sign", geometries=(GeometryType.BBOX,))
+
+
+def test_a_class_carrying_both_spellings_is_refused(tmp_path: Path) -> None:
+    """No build ever wrote one, so guessing which the author meant would be guessing."""
+    with pytest.raises(ValidationError, match="geometry"):
+        LabelClass.model_validate({"name": "sign", "geometry": "bbox", "geometries": ["polygon"]})
+
+
+def test_a_geometry_set_is_stored_deduplicated_and_in_one_order(tmp_path: Path) -> None:
+    """Two spellings of one set are one value, which is what keeps a release hash stable.
+
+    ``release.canonical_bytes`` dumps this field straight into the document it
+    hashes, so an order that depended on how the caller happened to type the set
+    would make two identical schemas produce two different manifests.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    written = schemas.create_version(
+        project.id,
+        [
+            LabelClass(
+                name="sign",
+                geometries=(
+                    GeometryType.POLYGON,
+                    GeometryType.BBOX,
+                    GeometryType.POLYGON,
+                ),
+            )
+        ],
+    ).published
+
+    assert written.classes[0].geometries == (GeometryType.BBOX, GeometryType.POLYGON)
+    workspace.close()
+
+
+def test_a_class_must_accept_at_least_one_geometry() -> None:
+    """A class nobody could ever label is refused where it is written, not later."""
+    with pytest.raises(ValidationError, match="at least 1 item"):
+        LabelClass(name="sign", geometries=())

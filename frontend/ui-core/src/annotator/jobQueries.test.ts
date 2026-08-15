@@ -23,8 +23,8 @@ const SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",
   version: 2,
   classes: [
-    { name: "vehicle", geometry: "bbox", color: null, attributes: [] },
-    { name: "pedestrian", geometry: "bbox", color: null, attributes: [] },
+    { name: "vehicle", geometries: ["bbox"], color: null, attributes: [] },
+    { name: "pedestrian", geometries: ["bbox"], color: null, attributes: [] },
   ],
 };
 

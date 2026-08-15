@@ -46,7 +46,7 @@ from visionset.kernel.services import (
     WorkspaceService,
 )
 
-SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
+SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 
 UNANNOTATED = AssetProgress.UNANNOTATED
 ANNOTATED = AssetProgress.ANNOTATED

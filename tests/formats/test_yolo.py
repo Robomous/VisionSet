@@ -54,9 +54,9 @@ from visionset.kernel.services import (
 #: happened to pass under sorting would fail here — which is the whole point of
 #: The "classes come from the frozen schema" rule.
 CLASSES = (
-    LabelClass(name="sign", geometry=GeometryType.BBOX),
-    LabelClass(name="lane", geometry=GeometryType.POLYGON),
-    LabelClass(name="weather", geometry=GeometryType.CLASSIFICATION_TAG),
+    LabelClass(name="sign", geometries=(GeometryType.BBOX,)),
+    LabelClass(name="lane", geometries=(GeometryType.POLYGON,)),
+    LabelClass(name="weather", geometries=(GeometryType.CLASSIFICATION_TAG,)),
 )
 
 IMAGE_SIZE = (64, 48)
@@ -199,7 +199,7 @@ def test_a_class_name_that_would_break_yaml_is_quoted(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
     fixture.schemas.create_version(
         fixture.project.id,
-        [*CLASSES, LabelClass(name='odd: "name"', geometry=GeometryType.BBOX)],
+        [*CLASSES, LabelClass(name='odd: "name"', geometries=(GeometryType.BBOX,))],
     )
     fixture.label({})
     out = fixture.export(fixture.publish(), tmp_path / "out")

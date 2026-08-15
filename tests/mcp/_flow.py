@@ -46,7 +46,7 @@ from visionset.mcp.main import build_server, server
 SCHEMA_CLASSES: list[dict[str, Any]] = [
     {
         "name": "sign",
-        "geometry": "bbox",
+        "geometries": ["bbox"],
         "color": "#ff0000",
         "attributes": [{"name": "occluded", "kind": "boolean", "default": False}],
     }
@@ -54,7 +54,7 @@ SCHEMA_CLASSES: list[dict[str, Any]] = [
 """The smallest schema that is not trivial: one class, one optional attribute."""
 
 #: The lane class, for the suites that write one. Not in ``SCHEMA_CLASSES``.
-CENTERLINE: dict[str, Any] = {"name": "centerline", "geometry": "polyline"}
+CENTERLINE: dict[str, Any] = {"name": "centerline", "geometries": ["polyline"]}
 
 BBOX: dict[str, Any] = {"type": "bbox", "x": 1.0, "y": 2.0, "width": 8.0, "height": 6.0}
 """A box that fits inside the fixtures' 64x48 images. ``type`` is always spelled out."""

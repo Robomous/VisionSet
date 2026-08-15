@@ -25,6 +25,9 @@ import { firstMismatch } from "./check";
 import {
   GEOMETRY_CATEGORIES,
   GEOMETRY_CATEGORY,
+  GEOMETRY_LABELS,
+  formatGeometries,
+  geometryLabel,
   groupGeometries,
   type GeometryCategory,
 } from "./geometryCategory";
@@ -97,5 +100,63 @@ describe("grouping what a surface offers", () => {
 
   it("groups nothing when nothing is offered", () => {
     expect(groupGeometries([])).toEqual([]);
+  });
+});
+
+
+describe("what a geometry is called on screen", () => {
+  it("is total over the wire's geometry union", () => {
+    // Same shape as the category map's own claim above, and for the same reason:
+    // the `satisfies` is the proof, this is the copy of it that does not move
+    // when somebody edits the declaration.
+    const total: Record<GeometryType, string> = GEOMETRY_LABELS;
+    expect(Object.keys(total).length).toBeGreaterThan(0);
+  });
+
+  it("names nothing the wire does not call a geometry", () => {
+    for (const geometry of Object.keys(GEOMETRY_LABELS)) {
+      expect(firstMismatch(checkGeometryType, geometry)).toBeNull();
+    }
+  });
+
+  it("does not print the wire value where the two differ", () => {
+    // **The assertion that matters.** A map whose every entry equalled its key
+    // would type-check, satisfy totality, and be exactly the defect this exists
+    // to remove — the interface showing users identifiers. These are the two the
+    // kernel spells for itself rather than for a person, so they are the two that
+    // prove the map is doing work.
+    expect(geometryLabel("bbox")).toBe("box");
+    expect(geometryLabel("classification_tag")).toBe("tag");
+  });
+
+  it("never starts with a capital, because the same word goes in a sentence", () => {
+    // A capital reads fine as a chip and wrong mid-sentence ("Publishing adds
+    // Polygon to it"). The tool strip capitalises at its own control instead.
+    //
+    // **Starts** lowercase rather than *is* lowercase, and the difference is a
+    // real one this caught: `3D box` is an acronym, and a rule demanding the
+    // whole string be lowercase would have forced `3d box`, which is wrong in
+    // every position. Only the first letter is a sentence-position question.
+    for (const label of Object.values(GEOMETRY_LABELS)) {
+      expect(label).toBe(label.charAt(0).toLowerCase() + label.slice(1));
+    }
+  });
+});
+
+describe("a set of geometries, as one phrase", () => {
+  it("joins with a middot, in the order it was given", () => {
+    expect(formatGeometries(["bbox", "polygon"])).toBe("box · polygon");
+  });
+
+  it("uses the display words, so a tag class does not print its enum member", () => {
+    // ~110px of a 248px row, before this. The single largest width saving
+    // available in the class list, larger than widening the panel.
+    expect(formatGeometries(["classification_tag"])).toBe("tag");
+  });
+
+  it("says nothing for an empty set, rather than a stray separator", () => {
+    // The kernel cannot produce one, but a refusal renders `?? []` while a class
+    // is being typed, and " · " alone would read as damage.
+    expect(formatGeometries([])).toBe("");
   });
 });

@@ -22,16 +22,14 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { JSX } from "react";
 
-import { groupGeometries } from "../data/geometryCategory";
+import { geometryLabel, groupGeometries } from "../data/geometryCategory";
 import { classColor, hexColor } from "../palette";
 import { Button } from "../primitives/Button";
 import { FieldHint, Input, Label } from "../primitives/Input";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "../primitives/Select";
@@ -57,6 +55,22 @@ const GEOMETRIES = [
 /** `Attribute.kind`, from the wire enum. */
 const KINDS = ["string", "number", "boolean", "select"] as const;
 type Kind = (typeof KINDS)[number];
+
+/**
+ * What the chosen set means, said once under the group.
+ *
+ * The hint used to read *"Singular — picking a class picks a tool"*, which is no
+ * longer true: a class accepts a set, and picking one narrows the tool strip
+ * rather than deciding it. Naming the count rather than restating the rule keeps
+ * the sentence useful in the case somebody is most likely to have got wrong —
+ * having ticked one box and not realised a second was allowed.
+ */
+export function describeGeometries(geometries: readonly GeometryType[]): string {
+  if (geometries.length <= 1) {
+    return "One shape for now. Tick another and this class accepts both.";
+  }
+  return `An annotation of this class may be any of the ${geometries.length}.`;
+}
 
 export interface ClassFieldsProps {
   readonly declared: LabelClassBody;
@@ -88,39 +102,87 @@ export function ClassFields({
             onChange={(event) => onChange({ ...declared, name: event.target.value })}
           />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`class-geometry-${slot}`}>Geometry</Label>
-          <Select
-            value={declared.geometry}
-            onValueChange={(geometry) =>
-              onChange({ ...declared, geometry: geometry as GeometryType })
-            }
+        <fieldset className="flex flex-col gap-1.5">
+          {/* A `fieldset`/`legend` rather than a `Label`, because the thing being
+              labelled is now a group of controls rather than one control: a
+              `<label for>` can only point at a single input, and pointing it at
+              the first checkbox would say that box is "Geometry". */}
+          <legend className="text-label pb-1.5">Geometry</legend>
+          <div
+            className="flex flex-col gap-2"
+            data-testid={`class-geometry-${slot}`}
+            role="group"
+            aria-label="Geometry"
           >
-            <SelectTrigger id={`class-geometry-${slot}`} data-testid={`class-geometry-${slot}`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {/* Grouped, not flat: a flat list of every name the product
-                  can address says nothing about which ones belong to the work
-                  somebody is actually doing, and the list only grows. The
-                  headings are presentation — `SelectLabel` is Radix's own
-                  non-selectable label, so the keyboard walks past them. */}
-              {groupGeometries(GEOMETRIES).map((group) => (
-                <SelectGroup key={group.category}>
-                  <SelectLabel data-testid={`geometry-category-${group.category}`}>
-                    {group.category}
-                  </SelectLabel>
-                  {group.geometries.map((geometry) => (
-                    <SelectItem key={geometry} value={geometry}>
-                      {geometry}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              ))}
-            </SelectContent>
-          </Select>
-          <FieldHint>Singular — picking a class picks a tool.</FieldHint>
-        </div>
+            {/* Grouped, not flat, for the reason the dropdown was: a flat list of
+                every name the product can address says nothing about which ones
+                belong to the work somebody is actually doing, and the list only
+                grows. Native checkboxes rather than a new primitive — the
+                attribute `required` flag below is the same answer to the same
+                question, and a multi-select dropdown would hide the answer behind
+                a click on a control whose whole job is to show it. */}
+            {groupGeometries(GEOMETRIES).map((group) => (
+              <div key={group.category} className="flex flex-col gap-1">
+                <span className="text-meta" data-testid={`geometry-category-${group.category}`}>
+                  {group.category}
+                </span>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {group.geometries.map((geometry) => {
+                    const checked = declared.geometries.includes(geometry);
+                    // The last one standing does not come off. A class accepting
+                    // nothing is refused by the kernel and by the wire, so the
+                    // honest control is one that says why rather than one that
+                    // lets you build a version the API will reject — and a bare
+                    // disabled box would be principle 9's forbidden shape.
+                    const last = checked && declared.geometries.length === 1;
+                    return (
+                      <label
+                        key={geometry}
+                        className="flex items-center gap-2 text-meta"
+                        title={last ? "A class needs at least one geometry" : undefined}
+                      >
+                        <input
+                          type="checkbox"
+                          className="accent-primary"
+                          data-testid={`class-geometry-${slot}-${geometry}`}
+                          checked={checked}
+                          onChange={(event) => {
+                            const next = event.target.checked
+                              ? [...declared.geometries, geometry]
+                              : declared.geometries.filter((one) => one !== geometry);
+                            // The refusal lives **here**, not in a
+                            // `preventDefault` on the click. React synthesises a
+                            // checkbox's `onChange` from the same native click,
+                            // so cancelling the click does not cancel the change:
+                            // the first draft did exactly that and left the class
+                            // with an empty set while the tick stayed on screen —
+                            // a control that lies about what it just did. Refusing
+                            // where the value is computed cannot come apart.
+                            if (next.length === 0) return;
+                            onChange({ ...declared, geometries: next });
+                          }}
+                          // `aria-disabled`, never the real attribute: a disabled
+                          // input is skipped by the keyboard and answers no
+                          // pointer, so the `title` explaining it would be
+                          // unreachable by exactly the people who need it.
+                          aria-disabled={last || undefined}
+                        />
+                        {/* The word, never the wire value: the `data-testid`
+                            above keeps the enum so a test addresses the box by
+                            what it *is*, and the person reading the form sees
+                            what it is called. */}
+                        {geometryLabel(geometry)}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+          <FieldHint>
+            {describeGeometries(declared.geometries)}
+          </FieldHint>
+        </fieldset>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -185,7 +247,7 @@ export function swatchOf(declared: LabelClassBody, index: number): string {
   return classColor(
     {
       name: declared.name,
-      geometry: declared.geometry,
+      geometries: declared.geometries,
       color: declared.color ?? null,
       attributes: [],
     },

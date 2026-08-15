@@ -48,7 +48,7 @@ def version_of(response: Any) -> Any:
 
 
 def a_class(name: str = "sign", **overrides: Any) -> dict[str, Any]:
-    return {"name": name, "geometry": "bbox", **overrides}
+    return {"name": name, "geometries": ["bbox"], **overrides}
 
 
 # --- the empty start ---------------------------------------------------------
@@ -87,7 +87,7 @@ def test_creating_the_first_version_answers_201_and_numbers_it_1(
 def test_the_next_version_is_numbered_one_higher(client: TestClient, project: str) -> None:
     post_version(client, project, a_class())
 
-    response = post_version(client, project, a_class(), a_class("lane", geometry="polygon"))
+    response = post_version(client, project, a_class(), a_class("lane", geometries=("polygon",)))
 
     assert response.status_code == 201
     assert version_of(response)["version"] == 2
@@ -193,7 +193,7 @@ def test_a_class_with_an_unimplemented_geometry_is_422_unsupported_geometry(
     The wire model keeps all eight members deliberately, so naming one gets this
     rather than "not a valid enumeration member".
     """
-    response = post_version(client, project, a_class(geometry="mask"))
+    response = post_version(client, project, a_class(geometries=("mask",)))
 
     assert response.status_code == 422
     assert response.json()["code"] == "UNSUPPORTED_GEOMETRY"
@@ -202,7 +202,7 @@ def test_a_class_with_an_unimplemented_geometry_is_422_unsupported_geometry(
 def test_a_geometry_outside_the_enum_is_422_validation_error(
     client: TestClient, project: str
 ) -> None:
-    response = post_version(client, project, a_class(geometry="hexagon"))
+    response = post_version(client, project, a_class(geometries=("hexagon",)))
 
     assert response.status_code == 422
     assert response.json()["code"] == "VALIDATION_ERROR"
@@ -275,7 +275,7 @@ def test_attributes_and_colors_survive_the_round_trip(client: TestClient, projec
     body = client.get(f"/projects/{project}/schema").json()
 
     assert body["classes"] == [
-        {"name": "sign", "geometry": "bbox", "color": "#ff0000", "attributes": [attribute]}
+        {"name": "sign", "geometries": ["bbox"], "color": "#ff0000", "attributes": [attribute]}
     ]
 
 

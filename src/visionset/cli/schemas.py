@@ -4,10 +4,16 @@
 The document is **JSON**, read with the standard library, and it is
 byte-for-byte the same document ``POST /projects/{id}/schema/versions`` takes::
 
-    {"classes": [{"name": "sign", "geometry": "bbox", "color": "#ff0000",
+    {"classes": [{"name": "sign", "geometries": ["bbox", "polygon"],
+                  "color": "#ff0000",
                   "attributes": [{"name": "occluded", "kind": "boolean",
                                   "required": true, "options": null,
                                   "default": false}]}]}
+
+``geometries`` is a set: a class labeled as a box on some frames and as a polygon
+on others is one class. A document written before that was plural may still spell
+it ``"geometry": "bbox"``, and ``LabelClass`` reads one — so an old schema file
+still applies.
 
 No YAML, and the reason is not taste: a second file format means a runtime
 dependency in every wheel, a second parser to keep honest, and two shapes that
@@ -152,7 +158,7 @@ def schema_list(
             (
                 str(v.version),
                 str(len(v.classes)),
-                ",".join(sorted({c.geometry.value for c in v.classes})),
+                ",".join(sorted({g.value for c in v.classes for g in c.geometries})),
             )
             for v in versions
         ],

@@ -127,3 +127,66 @@ export function groupGeometries(
     geometries: offered.filter((geometry) => GEOMETRY_CATEGORY[geometry] === category),
   })).filter((group) => group.geometries.length > 0);
 }
+
+/**
+ * What each geometry is **called on screen**, which is not what it is called on
+ * the wire.
+ *
+ * `GeometryType`'s members are the kernel's identifiers — `bbox` because that is
+ * the discriminator every payload carries, `classification_tag` because that is
+ * what the variant is. Neither is a word to show somebody. Until this map existed
+ * the product had **two vocabularies**: the tool strip's private `TOOL_LABELS`
+ * said `Box`, and every other surface — class rows, the reassignment menu, the
+ * add-a-class dialog's checkboxes and prose, the schema editor's badges, the
+ * project summary — printed the enum. So one thing was `Box` on the left of the
+ * canvas and `bbox` on the right, and a tag class's row spent about 110px of a
+ * 248px row saying `classification_tag`.
+ *
+ * **Lowercase**, because the same word is used two ways and only lowercase reads
+ * correctly in both: as a chip in a dense row (`box · polygon`) and inside a
+ * sentence (*"Publishing adds polygon to it"*). A control that wants a capital
+ * — the tool strip's `Box (1)` — capitalises at the point of use, so there is one
+ * source and one transform rather than two lists free to drift apart again.
+ *
+ * Total over the union by `satisfies`, exactly as `GEOMETRY_CATEGORY` above, so a
+ * ninth member fails the build until somebody names it. The four with no
+ * implementation are named too: a schema may legally declare `mask`, and the
+ * surface that has to refuse it should refuse it in words.
+ */
+export const GEOMETRY_LABELS = {
+  bbox: "box",
+  polygon: "polygon",
+  polyline: "polyline",
+  classification_tag: "tag",
+  mask: "mask",
+  keypoints: "keypoints",
+  cuboid_3d: "3D box",
+  polyline_3d: "3D polyline",
+} as const satisfies Record<GeometryType, string>;
+
+/** What to call this geometry on screen. Never the wire value. */
+export function geometryLabel(geometry: GeometryType): string {
+  return GEOMETRY_LABELS[geometry];
+}
+
+/**
+ * A class's geometry set, as one phrase for a row, a badge or a refusal.
+ *
+ * One spelling, product-wide, for the reason `classColor` is one: a class list, a
+ * reassignment menu and a schema row all name the same set, and three joins would
+ * be three chances to render `box,polygon` beside `box, polygon` beside
+ * `box or polygon`.
+ *
+ * **A middot, not "or".** The set is a choice — an annotation carries one of them,
+ * never several — and a comma list would read as things a class has all of. "or"
+ * says that correctly and costs four characters in a row where the class *name*
+ * is what those characters come out of. `·` is what a set reads as at this
+ * density, and the row has no room to be polite.
+ *
+ * The order is the caller's, which for anything off the wire is the kernel's own
+ * sorted order. Nothing re-sorts here: a surface that grouped by category would
+ * hand them over grouped, and this would silently undo it.
+ */
+export function formatGeometries(geometries: readonly GeometryType[]): string {
+  return geometries.map(geometryLabel).join(" · ");
+}

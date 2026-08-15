@@ -11,12 +11,12 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { defaultNote, runAddClass } from "./AddClassDialog";
+import { composeVersion, defaultNote, runAddClass } from "./AddClassDialog";
 import type { LabelClassBody } from "../screens/queries";
 
-const SIGN: LabelClassBody = { name: "sign", geometry: "bbox", color: null, attributes: [] };
-const LANE: LabelClassBody = { name: "lane", geometry: "polygon", color: null, attributes: [] };
-const NEW: LabelClassBody = { name: "crossing", geometry: "bbox", color: "#eb5a47", attributes: [] };
+const SIGN: LabelClassBody = { name: "sign", geometries: ["bbox"], color: null, attributes: [] };
+const LANE: LabelClassBody = { name: "lane", geometries: ["polygon"], color: null, attributes: [] };
+const NEW: LabelClassBody = { name: "crossing", geometries: ["bbox"], color: "#eb5a47", attributes: [] };
 
 /** Two recorders writing into one list, so the order is a single assertion. */
 function recorders(overrides: Partial<Record<"save" | "publish", () => Promise<never>>> = {}) {
@@ -202,3 +202,41 @@ describe("what the chain is given", () => {
  * true: a completed batch keeps its version, and somebody publishing from inside
  * one should be told that before they press.
  */
+describe("composing the version a sitting publishes", () => {
+  const WIDENED: LabelClassBody = {
+    name: "sign",
+    geometries: ["bbox", "polygon"],
+    color: null,
+    attributes: [],
+  };
+
+  it("appends a class the active version does not have", () => {
+    expect(composeVersion([SIGN, LANE], [NEW])).toEqual([SIGN, LANE, NEW]);
+  });
+
+  it("replaces a class of the same name rather than adding a second", () => {
+    // Two classes with one name is what `create_version` refuses outright, so an
+    // append here would turn the widening flow into a 422 naming nothing the user
+    // did.
+    expect(composeVersion([SIGN, LANE], [WIDENED])).toEqual([WIDENED, LANE]);
+  });
+
+  it("replaces in place, so the authored class order does not move", () => {
+    // Not cosmetic: the class list renders in this order and the digit hotkeys
+    // are positions in it, so appending the widened class would silently
+    // renumber somebody's keyboard.
+    expect(composeVersion([SIGN, LANE], [WIDENED]).map((one) => one.name)).toEqual([
+      "sign",
+      "lane",
+    ]);
+  });
+
+  it("matches the name the way the API does, ignoring case", () => {
+    const shouted: LabelClassBody = { ...WIDENED, name: "SIGN" };
+    expect(composeVersion([SIGN, LANE], [shouted])).toEqual([shouted, LANE]);
+  });
+
+  it("does both at once, for a sitting that widens one class and adds another", () => {
+    expect(composeVersion([SIGN, LANE], [WIDENED, NEW])).toEqual([WIDENED, LANE, NEW]);
+  });
+});

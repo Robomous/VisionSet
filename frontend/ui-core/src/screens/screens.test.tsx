@@ -100,8 +100,8 @@ function mount(node: ReactNode): JSX.Element {
 }
 
 const CLASSES = [
-  { name: "vehicle", geometry: "bbox", color: "#38bdf8", attributes: [] },
-  { name: "lane", geometry: "polygon", color: null, attributes: [] },
+  { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
+  { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
 ];
 
 describe("the project list", () => {
@@ -352,17 +352,21 @@ describe("the schema editor", () => {
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
 
-    await userEvent.click(screen.getByTestId("class-geometry-0"));
     // `polyline` is offered even where no tool draws one: the API
     // accepts it, the exporters need it, and the tool strip is where a person
     // learns there is nothing to draw with. Offering it is not offering a refusal.
+    //
+    // Addressed by `data-testid`, which keeps the **wire** value, while the label
+    // beside it is the display word — so this asserts which geometries are on
+    // offer without also asserting what they are called, which is
+    // `geometryCategory.test.ts`'s job.
     for (const geometry of ["bbox", "polygon", "polyline", "classification_tag"]) {
-      expect(screen.getAllByText(geometry).length).toBeGreaterThan(0);
+      expect(screen.getByTestId(`class-geometry-0-${geometry}`)).toBeTruthy();
     }
     // `GeometryType` has eight members; four are refused at write time with
     // `UnsupportedGeometry`, so offering them would be offering a refusal.
     for (const geometry of ["mask", "keypoints", "cuboid_3d", "polyline_3d"]) {
-      expect(screen.queryByRole("option", { name: geometry })).toBeNull();
+      expect(screen.queryByTestId(`class-geometry-0-${geometry}`)).toBeNull();
     }
   });
 
@@ -380,19 +384,21 @@ describe("the schema editor", () => {
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
 
-    await userEvent.click(screen.getByTestId("class-geometry-0"));
-
+    // No press: the boxes are on the page, which is the point of the control
+    // being a checkbox group rather than a dropdown — what a class accepts is
+    // readable without opening anything.
     const basic = screen.getByTestId("geometry-category-Basic Computer Vision");
     const robotics = screen.getByTestId("geometry-category-Robotics and AD");
-    // Radix labels a group by its `SelectLabel`, so the members under a heading
-    // are that group's — read from the DOM rather than from the map, which is
-    // what makes this a check on the rendering and not on the table.
+    // Read from the DOM rather than from the map, which is what makes this a
+    // check on the rendering and not on the table.
     const membersOf = (label: HTMLElement): string[] =>
-      [...(label.parentElement?.querySelectorAll('[role="option"]') ?? [])].map(
+      [...(label.parentElement?.querySelectorAll("label") ?? [])].map(
         (option) => option.textContent ?? "",
       );
 
-    expect(membersOf(basic)).toEqual(["bbox", "polygon", "classification_tag"]);
+    // The display words, not the wire values: `classification_tag` is an
+    // identifier and `tag` is what it is called.
+    expect(membersOf(basic)).toEqual(["box", "polygon", "tag"]);
     expect(membersOf(robotics)).toEqual(["polyline"]);
     // Order of the sections is the map's declaration order, and it is the order
     // somebody reads down the list in.
@@ -404,16 +410,41 @@ describe("the schema editor", () => {
    * changed what selecting one does, it would have silently rewritten the schema
    * editor's only real interaction.
    */
-  it("still writes the picked geometry onto the class", async () => {
+  it("adds a geometry to a class rather than replacing the one it had", async () => {
     projectWithSchema();
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
 
-    await userEvent.click(screen.getByTestId("class-geometry-0"));
+    const before = screen.getByTestId("class-geometry-0-bbox") as HTMLInputElement;
+    expect(before.checked).toBe(true);
+
     // Across a group boundary deliberately: `polyline` is the only member of the
-    // second category, so picking it proves a grouped option is still an option.
-    await userEvent.click(screen.getByRole("option", { name: "polyline" }));
-    expect(screen.getByTestId("class-geometry-0").textContent).toContain("polyline");
+    // second category, so ticking it proves a grouped box is still a box.
+    await userEvent.click(screen.getByTestId("class-geometry-0-polyline"));
+
+    // Both, which is the whole feature — a control that replaced would leave the
+    // first box clear and this would still find the second one ticked.
+    expect((screen.getByTestId("class-geometry-0-bbox") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByTestId("class-geometry-0-polyline") as HTMLInputElement).checked).toBe(
+      true,
+    );
+  });
+
+  it("refuses to untick the last geometry, and says why rather than greying out", async () => {
+    projectWithSchema();
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+
+    const only = screen.getByTestId("class-geometry-0-bbox") as HTMLInputElement;
+    expect(only.checked).toBe(true);
+
+    await userEvent.click(only);
+
+    expect((screen.getByTestId("class-geometry-0-bbox") as HTMLInputElement).checked).toBe(true);
+    // Principle 9: the control that will not move carries the reason. `title`
+    // rather than the `disabled` attribute, so a keyboard still reaches it.
+    expect(only.closest("label")?.getAttribute("title")).toMatch(/at least one geometry/i);
+    expect(only.getAttribute("aria-disabled")).toBe("true");
   });
 
   /**
@@ -435,7 +466,7 @@ describe("the schema editor", () => {
     // *agreement* — a change to the palette moves both sides together, and only a
     // swatch that stopped reading `classColor` fails.
     const derived = hexColor(
-      classColor({ name: "lane", geometry: "polygon", color: null, attributes: [] }, "lane"),
+      classColor({ name: "lane", geometries: ["polygon"], color: null, attributes: [] }, "lane"),
     );
     expect(derived).not.toBeNull();
     // One panel at a time, so each class is asserted from its own.
@@ -495,7 +526,7 @@ describe("the schema editor", () => {
     await userEvent.click(screen.getByTestId("clear-color-0"));
 
     const derived = hexColor(
-      classColor({ name: "vehicle", geometry: "bbox", color: null, attributes: [] }, "vehicle"),
+      classColor({ name: "vehicle", geometries: ["bbox"], color: null, attributes: [] }, "vehicle"),
     );
     expect(screen.getByTestId("class-color-0")).toHaveProperty("value", derived);
     // The button still means something: the stored value went back to null, which
@@ -803,7 +834,7 @@ describe("the schema editor's two panels", () => {
   /** Fifty classes: an ordinary Physical AI ontology, and what the stack broke at. */
   const MANY = Array.from({ length: 50 }, (_, index) => ({
     name: `class-${String(index).padStart(2, "0")}`,
-    geometry: "bbox",
+    geometries: ["bbox"],
     color: null,
     attributes: [],
   }));
@@ -863,8 +894,8 @@ describe("the schema editor's two panels", () => {
 
   it("filters case-insensitively on a substring", async () => {
     withClasses([
-      { name: "Vehicle", geometry: "bbox", color: null, attributes: [] },
-      { name: "lane", geometry: "polygon", color: null, attributes: [] },
+      { name: "Vehicle", geometries: ["bbox"], color: null, attributes: [] },
+      { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
     ]);
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("class-filter");
@@ -1192,7 +1223,7 @@ describe("version history", () => {
     // `findBy` on the row, not on the card: the card renders immediately and holds
     // the skeletons, so a `getBy` here asserts against a loading state.
     await within(history).findByTestId("version-1");
-    expect(within(history).getByTestId("version-1").textContent).toContain("vehicle (bbox)");
+    expect(within(history).getByTestId("version-1").textContent).toContain("vehicle (box)");
     expect(within(history).getByTestId("version-2").textContent).toContain("lane (polygon)");
 
     // Active is *derived* — the highest version, never a stored flag.
@@ -1331,7 +1362,7 @@ describe("version history", () => {
       expect(run.textContent).toContain("lane (polygon)");
       // And not v2's, which declares one class — the assertion above is only a
       // claim about *which* version is summarised because the two differ.
-      expect(run.textContent).toContain("vehicle (bbox)");
+      expect(run.textContent).toContain("vehicle (box)");
     });
 
     it("gives back every row when it is expanded", async () => {

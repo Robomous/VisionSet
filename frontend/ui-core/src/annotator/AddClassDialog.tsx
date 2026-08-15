@@ -84,12 +84,13 @@ import {
   DialogTitle,
 } from "../primitives/Dialog";
 import { Input, Label } from "../primitives/Input";
+import { formatGeometries } from "../data/geometryCategory";
 import { ClassFields } from "../patterns/ClassFields";
 import type { LabelClassBody, SchemaVersion } from "../screens/queries";
 
 /** A fresh class, in the shape the wire takes. */
 function blank(): LabelClassBody {
-  return { name: "", geometry: "bbox", color: null, attributes: [] };
+  return { name: "", geometries: ["bbox"], color: null, attributes: [] };
 }
 
 /**
@@ -175,7 +176,41 @@ export async function runAddClass(steps: {
   readonly note: string;
 }): Promise<void> {
   await steps.save();
-  await steps.publish([...steps.activeClasses, ...steps.added], steps.note);
+  await steps.publish(composeVersion(steps.activeClasses, steps.added), steps.note);
+}
+
+/** Case-insensitively, because that is how `create_version` compares class names. */
+function sameName(one: string, other: string): boolean {
+  return one.toLowerCase() === other.toLowerCase();
+}
+
+/**
+ * The whole contract the next version declares: the active classes, with this
+ * sitting's written **into** them.
+ *
+ * A name already in the active version **replaces its entry in place** rather
+ * than being appended, and both halves of that matter. Appending would publish
+ * two classes with one name, which `create_version` refuses outright — so the
+ * rescue flow (widening an existing class rather than making a second one)
+ * would fail at the API with a 422 that named nothing the user did. And
+ * replacing *in place* rather than at the end keeps the authored class order,
+ * which is not cosmetic: the class list renders in it and the digit hotkeys are
+ * positions in it, so appending would silently renumber somebody's keyboard.
+ *
+ * Exported for its own test: it is the one piece of this chain that composes
+ * rather than sequences, and the order it preserves is invisible from outside.
+ */
+export function composeVersion(
+  activeClasses: readonly LabelClassBody[],
+  added: readonly LabelClassBody[],
+): readonly LabelClassBody[] {
+  const updated = activeClasses.map(
+    (existing) => added.find((one) => sameName(one.name, existing.name)) ?? existing,
+  );
+  const fresh = added.filter(
+    (one) => !activeClasses.some((existing) => sameName(existing.name, one.name)),
+  );
+  return [...updated, ...fresh];
 }
 
 export interface AddClassDialogProps {
@@ -240,16 +275,43 @@ export function AddClassDialog({
 
   const name = declared.name.trim();
   const failure = error === null || error === undefined ? null : asApiError(error);
-  // Case-insensitively, because `create_version` refuses a collision that way —
-  // mirroring the API's rule rather than inventing a second one. The session is
-  // checked alongside the active version, because two classes in one press go
-  // into one contract and `create_version` judges that contract as a whole: a
-  // collision inside the session is refused by exactly the same rule, and
-  // discovering it from a 409 after the save would be the worst place to learn it.
-  const collides = (candidate: string): boolean =>
-    (active?.classes.some((entry) => entry.name.toLowerCase() === candidate.toLowerCase()) ??
-      false) || session.some((entry) => entry.name.toLowerCase() === candidate.toLowerCase());
-  const taken = name !== "" && collides(name);
+
+  // Case-insensitively throughout, because `create_version` compares names that
+  // way — mirroring the API's rule rather than inventing a second one. Checked
+  // here rather than learned from the 422 afterwards, because the dialog needs
+  // the answer *before* the press to know what the press will do.
+  //
+  // **The two collisions are different questions and only one of them is a
+  // refusal.** A name already in the published version is a class that exists,
+  // and wanting to draw it as another shape is a thing somebody legitimately
+  // wants — so it becomes an offer to widen that class. A name typed twice in
+  // this sitting is a mistake with nothing to offer: both entries are being
+  // written now, and merging them would be guessing which of the two the user
+  // meant.
+  /** The published class this name lands on, if there is one. */
+  const existing =
+    name === "" ? undefined : active?.classes.find((entry) => sameName(entry.name, name));
+  const inSession = name !== "" && session.some((entry) => sameName(entry.name, name));
+  /** What this form would add to that class. Empty when it asks for nothing new. */
+  const widening =
+    existing === undefined
+      ? []
+      : declared.geometries.filter((geometry) => !existing.geometries.includes(geometry));
+  const taken = inSession || (existing !== undefined && widening.length === 0);
+
+  /**
+   * What this form publishes: a new class, or the existing one widened.
+   *
+   * The widening carries the **existing** class's colour and attributes, not the
+   * form's. This is an update to a class that already has both, and the form was
+   * opened to make a *new* one — so publishing its blank colour and empty
+   * attribute list would quietly wipe what the class already declared, which is
+   * not what "add polygon to it" says. Only the geometries move.
+   */
+  const formEntry: LabelClassBody =
+    existing === undefined
+      ? { ...declared, name }
+      : { ...existing, geometries: [...existing.geometries, ...widening] };
 
   /**
    * What pressing the primary publishes: the session, plus whatever is in the
@@ -261,9 +323,7 @@ export function AddClassDialog({
    * the implementation has two places to look.
    */
   const readyForm = name !== "" && !taken;
-  const publishing: readonly LabelClassBody[] = readyForm
-    ? [...session, { ...declared, name }]
-    : session;
+  const publishing: readonly LabelClassBody[] = readyForm ? [...session, formEntry] : session;
   const description = touched ? note : defaultNote(publishing.map((entry) => entry.name));
 
   function reset(): void {
@@ -323,6 +383,20 @@ export function AddClassDialog({
     >
       <DialogContent
         data-testid="add-class-dialog"
+        // **Wider than the default `max-w-lg`, and the reason is not taste.**
+        // `ClassFields` splits Name | Geometry on `md:`, which is a *viewport*
+        // breakpoint rather than a container one — so on any desktop the grid
+        // splits however narrow the box is, and at 512px each column was ~224px
+        // against a geometry row needing ~269px. The box has to be wide enough
+        // for a split it cannot prevent. `2xl` is the smallest that clears it;
+        // `3xl` is what DESIGN.md gives a whole forms *page*.
+        //
+        // The height pair is a second defect, fixed here because it is the same
+        // string: this dialog had no `max-h` and no scroll, and `DialogContent`
+        // is centred with `-translate-y-1/2`, so content taller than the viewport
+        // overflowed off both edges and took the footer with it. A class with a
+        // few attributes reaches that. Spelled as `ShortcutSheet` spells it.
+        className="max-h-[85vh] max-w-2xl overflow-y-auto"
         // ⌘Enter banks the class and clears the form — the chord for "and
         // another", so a session is typed without the hand leaving the keyboard.
         // On the content rather than on the name field, because the geometry
@@ -374,7 +448,9 @@ export function AddClassDialog({
                     }}
                   />
                   {entry.name}
-                  <span className="text-muted-foreground">{entry.geometry}</span>
+                  <span className="text-muted-foreground">
+                    {formatGeometries(entry.geometries)}
+                  </span>
                   <button
                     type="button"
                     aria-label={`Remove ${entry.name}`}
@@ -400,7 +476,7 @@ export function AddClassDialog({
             swatch={classColor(
               {
                 name: declared.name,
-                geometry: declared.geometry,
+                geometries: declared.geometries,
                 color: declared.color ?? null,
                 attributes: [],
               },
@@ -451,16 +527,32 @@ export function AddClassDialog({
             </Alert>
           )}
 
+          {/*
+            A name already published is **not** a refusal, and this is where that
+            shows. It used to be one — a red box saying the name was taken, which
+            answered a question nobody asked: somebody typing a class that exists
+            usually wants to draw it as a shape it does not have yet, and the
+            product can simply do that. So the collision renders as an offer, and
+            the primary below carries it. The only refusal left is a name typed
+            twice in this one sitting, where there is nothing to offer.
+          */}
+          {existing !== undefined && widening.length > 0 && (
+            <Alert title={`“${existing.name}” already exists`} data-testid="widen-offer">
+              Version {active?.version} declares it as{" "}
+              {formatGeometries(existing.geometries)}. Publishing adds{" "}
+              {formatGeometries(widening)} to it, and leaves its colour and
+              attributes alone.
+            </Alert>
+          )}
+
           {taken && (
             <Alert variant="destructive" title="That name is taken">
-              {/* Which of the two rules refused it, because the remedies differ:
-                  a collision with the published version is a class that already
-                  exists to pick, and one inside the session is a name typed
-                  twice. */}
-              {session.some((entry) => entry.name.toLowerCase() === name.toLowerCase())
-                ? `You have already added a class called “${name}” to this version.`
-                : `Version ${active?.version} already declares a class called “${name}”.`}{" "}
-              Class names are unique within a version, ignoring case.
+              {/* Which of the two rules refused it, because the remedies differ —
+                  and each names what would clear it, which is what lets the
+                  primary below stay disabled without being a bare grey box. */}
+              {inSession
+                ? `You have already added a class called “${name}” to this version. Rename one of them, or take the banked one back out.`
+                : `Version ${active?.version} already declares “${name}” as ${formatGeometries(existing?.geometries ?? [])}, and this form adds nothing to it. Tick a shape it does not have, or choose another name.`}
             </Alert>
           )}
 
@@ -563,11 +655,17 @@ export function AddClassDialog({
                 */}
                 {pending
                   ? "Publishing…"
-                  : canRepin
-                    ? publishing.length > 1
+                  : !canRepin
+                    ? "Publish without re-pinning"
+                    : publishing.length > 1
                       ? `Add ${publishing.length} classes`
-                      : "Add class"
-                    : "Publish without re-pinning"}
+                      : // The one action the offer above promises, spelled as
+                        // what it does. A press labelled "Add class" that in fact
+                        // widened an existing one would be the interface doing
+                        // something other than what it said.
+                        existing !== undefined && widening.length > 0
+                        ? `Add ${formatGeometries(widening)} to “${existing.name}”`
+                        : "Add class"}
               </Button>
             </>
           )}

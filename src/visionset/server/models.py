@@ -295,7 +295,7 @@ class AttributeBody(BaseModel):
 
 # Request and response, for the reason above ``AttributeBody``.
 class LabelClassBody(BaseModel):
-    """One labelable class, bound to a geometry."""
+    """One labelable class, and the geometries an annotation of it may carry."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -305,7 +305,13 @@ class LabelClassBody(BaseModel):
     # UNSUPPORTED_GEOMETRY from ``SchemaService``. Narrowing the enum here would
     # be a second list to keep in step with ``IMPLEMENTED_GEOMETRIES`` — which is
     # derived off the ``Geometry`` union precisely so no second list exists.
-    geometry: GeometryType
+    #
+    # A response always carries this sorted and deduplicated, because the domain
+    # does; a request need not, and gets it back canonicalised. The old singular
+    # ``geometry`` key is deliberately *not* accepted here, although ``LabelClass``
+    # itself reads one — a stored document has to keep loading, while a client
+    # sending the retired spelling is better told so than silently reinterpreted.
+    geometries: tuple[GeometryType, ...] = Field(min_length=1)
     color: str | None = None
     attributes: tuple[AttributeBody, ...] = ()
 
@@ -318,7 +324,7 @@ class LabelClassBody(BaseModel):
     def to_domain(self) -> LabelClass:
         return LabelClass(
             name=self.name,
-            geometry=self.geometry,
+            geometries=self.geometries,
             color=self.color,
             attributes=tuple(attribute.to_domain() for attribute in self.attributes),
         )
@@ -327,7 +333,7 @@ class LabelClassBody(BaseModel):
     def of(cls, label_class: LabelClass) -> Self:
         return cls(
             name=label_class.name,
-            geometry=label_class.geometry,
+            geometries=label_class.geometries,
             color=label_class.color,
             attributes=tuple(AttributeBody.of(a) for a in label_class.attributes),
         )

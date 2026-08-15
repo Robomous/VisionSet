@@ -29,7 +29,7 @@ from visionset.kernel.domain import (
     sha256_hex,
 )
 
-SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
+SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 BOX = BboxGeometry(x=1.0, y=2.0, width=3.0, height=4.0)
 
 
@@ -137,7 +137,7 @@ def test_attribute_values_are_ordered_by_key_and_not_by_insertion() -> None:
 
 def test_the_bytes_are_utf_eight_with_no_incidental_whitespace() -> None:
     manifest = Manifest(
-        schema_version=1, classes=(LabelClass(name="señal", geometry=SIGN.geometry),)
+        schema_version=1, classes=(LabelClass(name="señal", geometries=SIGN.geometries),)
     )
     raw = canonical_bytes(manifest)
     assert b"se\xc3\xb1al" in raw

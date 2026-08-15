@@ -39,8 +39,8 @@ const SCHEMA = {
   created_at: null,
   provenance: "curated",
   classes: [
-    { name: "vehicle", geometry: "bbox", color: "#3355ff", attributes: [] },
-    { name: "lane-area", geometry: "polygon", color: null, attributes: [] },
+    { name: "vehicle", geometries: ["bbox"], color: "#3355ff", attributes: [] },
+    { name: "lane-area", geometries: ["polygon"], color: null, attributes: [] },
   ],
 };
 
@@ -273,18 +273,25 @@ describe("the class list, now in the panel (#420)", () => {
     expect(screen.getByTestId("class-row-lane-area").textContent).toContain("2");
   });
 
-  it("changes the derived tool when the class picked declares another geometry", async () => {
-    // The tool is *derived* from the active class and never stored
-    // (`core/interaction/tool.ts`), so this asserts the derivation still runs
-    // through the panel — it does not re-derive anything itself.
+  it("changes the tool, and the strip, when the class picked accepts another geometry", async () => {
+    // The tool is *resolved* from the active class and the held preference and
+    // never stored (`core/interaction/tool.ts`), so this asserts the resolution
+    // still runs through the panel — it does not re-derive anything itself.
+    //
+    // The strip narrows with it, which is the visible half of #584: with a
+    // polygon-only class held, a box is not something that could be drawn here,
+    // and offering the button would answer "what can I draw?" with a lie. Both
+    // fixture classes accept exactly one shape, so each selection leaves exactly
+    // one drawing tool.
     await open();
     await userEvent.click(screen.getByTestId("class-row-vehicle"));
     expect(screen.getByTestId("tool-bbox").getAttribute("data-active")).toBe("true");
+    expect(screen.queryByTestId("tool-polygon")).toBeNull();
 
     await userEvent.click(screen.getByTestId("class-row-lane-area"));
 
     expect(screen.getByTestId("tool-polygon").getAttribute("data-active")).toBe("true");
-    expect(screen.getByTestId("tool-bbox").getAttribute("data-active")).toBe("false");
+    expect(screen.queryByTestId("tool-bbox")).toBeNull();
   });
 
   it("focuses the panel's filter on `c`, which is the whole point of the host action", async () => {

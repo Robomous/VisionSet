@@ -26,7 +26,7 @@ const BOX: Geometry = { type: "bbox", x: 10, y: 20, width: 30, height: 40 };
 /** Every attribute kind, one with a default and one without, on one class. */
 const SIGN: LabelClass = {
   name: "sign",
-  geometry: "bbox",
+  geometries: ["bbox"],
   color: "#ff0000",
   attributes: [
     { name: "occluded", kind: "boolean", required: false, options: null, default: false },
@@ -45,7 +45,7 @@ const SIGN: LabelClass = {
 };
 
 /** No attributes at all — the ordinary case, and what `_sample.ts` uses. */
-const BARE: LabelClass = { name: "bare", geometry: "bbox", color: null, attributes: [] };
+const BARE: LabelClass = { name: "bare", geometries: ["bbox"], color: null, attributes: [] };
 
 const SCHEMA: AnnotationSchema = {
   project_id: "project-7",

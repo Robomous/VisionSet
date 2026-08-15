@@ -42,6 +42,7 @@ import {
   annotationsInDrawOrder,
   classColor,
   hotkeyForClass,
+  drawableGeometries,
   isTaggableClass,
   randomUuid,
   selectedAnnotations,
@@ -200,11 +201,13 @@ export function AnnotatorDemo(): JSX.Element {
               testId={`class-${declared.name}`}
               hotkey={hotkeyForClass(schema, declared.name) ?? "—"}
               name={declared.name}
-              note={declared.geometry}
+              note={declared.geometries.join(" or ")}
               swatch={classColor(declared, declared.name)}
               active={activeClass === declared.name}
               onClick={() =>
-                isTaggableClass(declared)
+                // Drawable wins: since #584 a class may accept a tag *and* a
+                // shape, and the two stopped being each other's negation.
+                isTaggableClass(declared) && drawableGeometries(declared).length === 0
                   ? toggleTag(declared.name)
                   : setActiveClass(declared.name)
               }

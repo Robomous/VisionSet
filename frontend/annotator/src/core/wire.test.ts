@@ -177,7 +177,7 @@ describe("rule 4: an input-only mirror survives a server that grew a field", () 
     const schema = parseSchema({
       project_id: "p",
       version: 3,
-      classes: [{ name: "sign", geometry: "bbox" }],
+      classes: [{ name: "sign", geometries: ["bbox"] }],
       description: "why",
       created_at: "2026-08-02T12:00:00Z",
       published_by: "someone in a later release",
@@ -189,7 +189,7 @@ describe("rule 4: an input-only mirror survives a server that grew a field", () 
   it("parses a label class and an attribute carrying one too", () => {
     const labelClass = parseLabelClass({
       name: "sign",
-      geometry: "bbox",
+      geometries: ["bbox"],
       shortcut_key: "s",
     });
     expect(labelClass.name).toBe("sign");
@@ -215,7 +215,7 @@ describe("rule 4: an input-only mirror survives a server that grew a field", () 
     // server failing to send something the parser reads, which no amount of
     // version skew excuses.
     expect(() => parseSchema({ version: 3, classes: [] })).toThrow(/missing project_id/);
-    expect(() => parseLabelClass({ name: "sign" })).toThrow(/missing geometry/);
+    expect(() => parseLabelClass({ name: "sign" })).toThrow(/missing geometries/);
   });
 
   it("does not extend that tolerance to the annotation path", () => {
@@ -260,7 +260,7 @@ describe("the attribute vocabulary", () => {
 describe("parsing the schema the kernel produced", () => {
   it("parses it, and finds a class per carryable geometry", () => {
     const schema = parseSchema(fixture.schema);
-    expect(schema.classes.map((c) => c.geometry).sort()).toEqual([
+    expect([...new Set(schema.classes.flatMap((c) => c.geometries))].sort()).toEqual([
       ...fixture.implemented_geometry_types,
     ]);
   });
@@ -328,10 +328,10 @@ describe("parsing the schema the kernel produced", () => {
   it("applies the wire's own defaults when an optional key is absent", () => {
     // Rule 4: the schema is input-only, so absence is legal here where it is not
     // for an annotation. A host assembling a class by hand writes two fields.
-    const parsed = parseLabelClass({ name: "sign", geometry: "bbox" });
+    const parsed = parseLabelClass({ name: "sign", geometries: ["bbox"] });
     expect(parsed).toEqual({
       name: "sign",
-      geometry: "bbox",
+      geometries: ["bbox"],
       color: null,
       attributes: [],
     });
@@ -343,7 +343,7 @@ describe("parsing the schema the kernel produced", () => {
     // the class comes back with the default colour instead of an error. That is
     // the price of surviving a server one version ahead, and `types.ts` is what
     // catches the typo for anyone compiling against this package.
-    const parsed = parseLabelClass({ name: "sign", geometry: "bbox", colour: "#fff" });
+    const parsed = parseLabelClass({ name: "sign", geometries: ["bbox"], colour: "#fff" });
     expect(parsed.name).toBe("sign");
     expect(parsed).not.toHaveProperty("colour");
   });
@@ -351,13 +351,26 @@ describe("parsing the schema the kernel produced", () => {
   it("accepts a class declaring a geometry no annotation can carry", () => {
     // Eight names, three models. A schema may legally say `polyline`; refusing it
     // here would make one such class cost the whole class list.
-    const parsed = parseLabelClass({ name: "lane", geometry: "polyline" });
-    expect(parsed.geometry).toBe("polyline");
+    const parsed = parseLabelClass({ name: "lane", geometries: ["polyline"] });
+    expect(parsed.geometries).toEqual(["polyline"]);
   });
 
   it("refuses a geometry that is not in the vocabulary at all", () => {
-    expect(() => parseLabelClass({ name: "lane", geometry: "squiggle" })).toThrow(
+    expect(() => parseLabelClass({ name: "lane", geometries: ["squiggle"] })).toThrow(
       /not a GeometryType/,
+    );
+    // Every member is checked, not just the first — a loop that returned after
+    // one would let the bad half of a mixed class through.
+    expect(() => parseLabelClass({ name: "lane", geometries: ["bbox", "squiggle"] })).toThrow(
+      /not a GeometryType/,
+    );
+  });
+
+  it("refuses a class that accepts nothing", () => {
+    // The kernel cannot write one, and every reader downstream — `toolFor`
+    // included — assumes a class has at least one shape.
+    expect(() => parseLabelClass({ name: "lane", geometries: [] })).toThrow(
+      /declares no geometries/,
     );
   });
 
@@ -365,7 +378,7 @@ describe("parsing the schema the kernel produced", () => {
     expect(() =>
       parseLabelClass({
         name: "sign",
-        geometry: "bbox",
+        geometries: ["bbox"],
         attributes: [{ name: "note", kind: "text" }],
       }),
     ).toThrow(/kind "text" is not one of/);

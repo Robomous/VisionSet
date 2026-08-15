@@ -79,7 +79,7 @@ def test_an_external_client_drives_the_cycle_from_ingest_to_an_exported_release(
                 "classes": [
                     {
                         "name": "nodule",
-                        "geometry": "bbox",
+                        "geometries": ["bbox"],
                         "attributes": [{"name": "malignant", "kind": "boolean", "required": True}],
                     }
                 ]

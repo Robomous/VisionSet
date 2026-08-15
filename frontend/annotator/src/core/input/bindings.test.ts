@@ -217,6 +217,17 @@ describe("classAction", () => {
     });
   });
 
+  it("arms a class that accepts a tag and a shape, rather than tagging with it", () => {
+    // The two are no longer exclusive, so the order of the tests inside
+    // `classAction` is the rule: taggable *and* drawable arms. A toggle changes
+    // no tool, so folding this into `toggle-tag` would silently tag the asset
+    // where somebody pressing a class digit on a canvas meant to arm the class.
+    expect(classAction(PALETTE_SCHEMA, "kiosk")).toEqual({
+      kind: "activate-class",
+      labelClass: "kiosk",
+    });
+  });
+
   it("refuses a class the schema does not declare", () => {
     expect(classAction(PALETTE_SCHEMA, "unicorn")).toBeNull();
     expect(classAction(EMPTY_SCHEMA, "sign")).toBeNull();
@@ -234,12 +245,14 @@ describe("classHotkeys", () => {
       // A class no annotation can carry still gets its digit: arming it is legal,
       // and the palette is where "this cannot be drawn here" is said (`tool.ts`).
       { chord: "6", action: { kind: "activate-class", labelClass: "pose" } },
+      // Taggable and drawable at once: it arms, because it has a tool.
+      { chord: "7", action: { kind: "activate-class", labelClass: "kiosk" } },
     ]);
   });
 
   it("does not filter, so a tag class occupies its own row rather than shifting the rest", () => {
     const bound = classHotkeys(PALETTE_SCHEMA);
-    expect(bound.map((binding) => binding.chord)).toEqual(["1", "2", "3", "4", "5", "6"]);
+    expect(bound.map((binding) => binding.chord)).toEqual(["1", "2", "3", "4", "5", "6", "7"]);
     expect(bound).toHaveLength(PALETTE.length);
   });
 

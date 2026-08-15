@@ -24,8 +24,8 @@ const ACTIVE = {
   project_id: "11111111-1111-4111-8111-111111111111",
   version: 3,
   classes: [
-    { name: "sign", geometry: "bbox", color: null, attributes: [] },
-    { name: "lane", geometry: "polygon", color: "#f97316", attributes: [] },
+    { name: "sign", geometries: ["bbox"], color: null, attributes: [] },
+    { name: "lane", geometries: ["polygon"], color: "#f97316", attributes: [] },
   ],
   description: null,
   created_at: null,
@@ -58,16 +58,59 @@ describe("what the dialog refuses before it asks", () => {
     expect(screen.getByTestId("add-class-submit")).toHaveProperty("disabled", false);
   });
 
-  it("will not submit a name the active version already declares, ignoring case", async () => {
-    // `create_version` refuses a collision case-insensitively, so this mirrors the
-    // API's rule rather than inventing a second one — and it explains beside the
-    // field instead of failing after a round trip.
-    render(mount());
+  it("offers to widen a class the active version already declares, ignoring case", async () => {
+    // A name that exists is not a refusal. `create_version` compares names
+    // case-insensitively, so "SIGN" lands on "sign" — and what somebody typing it
+    // wants is almost always to draw that class as a shape it does not have yet.
+    const onSubmit = vi.fn();
+    render(mount({ onSubmit }));
 
     await userEvent.type(screen.getByTestId("class-name-new"), "SIGN");
+    // The form starts on `bbox`, which "sign" already accepts, so there is
+    // nothing to add yet and *that* is the refusal — with the remedy named.
+    expect(screen.getByTestId("add-class-submit")).toHaveProperty("disabled", true);
+    expect(screen.getByText(/adds nothing to it/)).toBeTruthy();
+
+    await userEvent.click(screen.getByTestId("class-geometry-new-polygon"));
+
+    const offer = screen.getByTestId("widen-offer");
+    expect(offer.textContent).toContain("“sign” already exists");
+    expect(offer.textContent).toContain("declares it as box");
+    const submit = screen.getByTestId("add-class-submit");
+    expect(submit).toHaveProperty("disabled", false);
+    // The button says what it does, rather than "Add class".
+    expect(submit.textContent).toContain("Add polygon to “sign”");
+  });
+
+  it("widens the existing class rather than writing a second one", async () => {
+    const onSubmit = vi.fn();
+    render(mount({ onSubmit }));
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "SIGN");
+    await userEvent.click(screen.getByTestId("class-geometry-new-polygon"));
+    await userEvent.click(screen.getByTestId("add-class-submit"));
+
+    // The **existing** class's own name and colour, widened — not the form's. The
+    // form was opened to make a new class, so publishing its blank colour would
+    // quietly wipe what "sign" already declared.
+    expect(onSubmit).toHaveBeenCalledWith(
+      [{ name: "sign", geometries: ["bbox", "polygon"], color: null, attributes: [] }],
+      expect.anything(),
+    );
+  });
+
+  it("still refuses a name typed twice in one sitting, which has nothing to offer", async () => {
+    // The other collision, and the one that stays a refusal: both entries are
+    // being written now, so merging them would be guessing which was meant.
+    render(mount());
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "crossing");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.type(screen.getByTestId("class-name-new"), "CROSSING");
 
     expect(screen.getByTestId("add-class-submit")).toHaveProperty("disabled", true);
-    expect(screen.getByText(/already declares a class/)).toBeTruthy();
+    expect(screen.getByText(/already added a class/)).toBeTruthy();
+    expect(screen.queryByTestId("widen-offer")).toBeNull();
   });
 
   it("will not submit before the active version has loaded", async () => {
@@ -97,7 +140,7 @@ describe("what it submits", () => {
     await userEvent.click(screen.getByTestId("add-class-submit"));
 
     expect(submit).toHaveBeenCalledWith(
-      [expect.objectContaining({ name: "crossing", geometry: "bbox" })],
+      [expect.objectContaining({ name: "crossing", geometries: ["bbox"] })],
       'Added class "crossing" from the annotation view',
     );
   });
@@ -144,16 +187,15 @@ describe("what it submits", () => {
   it("groups the geometries under their category, the same as the Schema tab", async () => {
     render(mount());
 
-    await userEvent.click(screen.getByTestId("class-geometry-new"));
-
+    // No press: the boxes are already on the page. See the Schema tab's twin.
     const basic = screen.getByTestId("geometry-category-Basic Computer Vision");
     const robotics = screen.getByTestId("geometry-category-Robotics and AD");
     const membersOf = (label: HTMLElement): string[] =>
-      [...(label.parentElement?.querySelectorAll('[role="option"]') ?? [])].map(
+      [...(label.parentElement?.querySelectorAll("label") ?? [])].map(
         (option) => option.textContent ?? "",
       );
 
-    expect(membersOf(basic)).toEqual(["bbox", "polygon", "classification_tag"]);
+    expect(membersOf(basic)).toEqual(["box", "polygon", "tag"]);
     expect(membersOf(robotics)).toEqual(["polyline"]);
   });
 
@@ -162,17 +204,35 @@ describe("what it submits", () => {
    * `toolFor` reads to decide which tool a hotkey arms, so a picker that grouped
    * its options and stopped writing one would break drawing rather than layout.
    */
-  it("still writes the picked geometry onto the class it will publish", async () => {
+  it("writes every geometry ticked onto the class it will publish", async () => {
     const onSubmit = vi.fn();
     render(mount({ onSubmit }));
 
     await userEvent.type(screen.getByTestId("class-name-new"), "centre-line");
-    await userEvent.click(screen.getByTestId("class-geometry-new"));
-    await userEvent.click(screen.getByRole("option", { name: "polyline" }));
+    // Tick the second before clearing the first, which is also the only order
+    // the control allows: a class never passes through accepting nothing.
+    await userEvent.click(screen.getByTestId("class-geometry-new-polyline"));
+    await userEvent.click(screen.getByTestId("class-geometry-new-bbox"));
     await userEvent.click(screen.getByTestId("add-class-submit"));
 
     expect(onSubmit).toHaveBeenCalledWith(
-      [expect.objectContaining({ name: "centre-line", geometry: "polyline" })],
+      [expect.objectContaining({ name: "centre-line", geometries: ["polyline"] })],
+      expect.anything(),
+    );
+  });
+
+  it("publishes a class accepting two shapes, which is what a set is for", async () => {
+    const onSubmit = vi.fn();
+    render(mount({ onSubmit }));
+
+    // A name the active version does not hold: "sign" would land on the widening
+    // path below, which is a different test.
+    await userEvent.type(screen.getByTestId("class-name-new"), "kerb");
+    await userEvent.click(screen.getByTestId("class-geometry-new-polygon"));
+    await userEvent.click(screen.getByTestId("add-class-submit"));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      [expect.objectContaining({ name: "kerb", geometries: ["bbox", "polygon"] })],
       expect.anything(),
     );
   });

@@ -335,6 +335,15 @@ base**, line-height 1.6. One scale — reuse it, don't invent sizes:
   not qualify, however often it is visited.
 - **Page widths**: lists/dashboards/detail `max-w-7xl`; forms/settings `max-w-3xl`;
   centered, `px-4 md:px-6 py-6`.
+- **Dialog widths**: the primitive's default `max-w-lg` for a confirmation or a form of
+  stacked single fields; **`max-w-2xl`** for a form whose fields sit side by side, because
+  `ClassFields`' grid splits on `md:` — a *viewport* breakpoint — so the box must be wide
+  enough for a split it cannot prevent; `max-w-3xl` for a dialog whose content is a grid
+  rather than a form (`FrameGallery`). Three sizes, and a fourth needs a reason written here
+  rather than picked by eye. **Any dialog whose content grows with the data carries
+  `max-h-[85vh] overflow-y-auto`** — `DialogContent` is centred with `-translate-y-1/2`, so
+  one taller than the viewport overflows off both edges and takes its own footer with it,
+  which is not a state a person can recover from.
 - **Page header**: title + subtitle left, actions right, `border-b` below, `mb-8`.
 - **Grids**: cards at `gap-6`, 2/3 columns by breakpoint; 16px is the default layout
   unit, 24px separates page sections. Detail two-column: `1fr / 320px`, stacking below
@@ -916,7 +925,7 @@ The page the reference design shows (#56), with measurements verified in v1's so
   class selection lives. It was the side panel's Labels tab, then a `Combobox` in the
   centre of the top bar, and it is a **list** now — because what is being chosen between
   is the ontology, and a picker keeps all of it one click away, so the answer to *what can
-  I draw here* was never on screen. Rows carry swatch · name · geometry · hotkey badge, in
+  I draw here* was never on screen. Rows carry swatch · name · geometries · hotkey badge, in
   the **schema's authored order and only that**: a persistent list that reordered itself
   by recency would move rows under the cursor, and the digits are schema positions, so a
   recency-ordered list would print `3` against the row sitting first. `c` focuses its
@@ -935,6 +944,25 @@ The page the reference design shows (#56), with measurements verified in v1's so
   a promise the page can keep. It stops at the job's edge, the same scope the clipboard
   has (#123) and for the same reason — a paste and a drawing class both belong to one
   pinned schema.
+
+  **On the armed row, the geometry words are the shape picker** (#584). A class accepts a
+  *set* of geometries, so arming one no longer picks the shape — and until this the only
+  place that answer lived was the tool strip at the far left of the canvas while the class
+  was chosen on the right: one decision split across the width of the picture, in a loop
+  repeated hundreds of times a job. The active shape is lit; pressing another switches the
+  tool and **never the class**, which is the same retarget rule the strip holds. Only the
+  armed row carries it, and the accessible answer and the density answer agree: a row
+  `<button>` cannot contain buttons, so a row offering a choice becomes a group — and an
+  unarmed row has no live choice, so fifty classes would otherwise mean fifty controls for
+  one decision. A class accepting a single shape shows nothing.
+
+  Geometry words are **display labels, never wire values** — `box`, not `bbox`; `tag`, not
+  `classification_tag`. One map, `GEOMETRY_LABELS`, shared with the tool strip, which
+  capitalises at its own control; lowercase, because the same word is read as a chip in a
+  row and inside a sentence. A set joins with `·`, which is what a set reads as at this
+  density. **The ceiling, stated**: at three or more shapes the class name truncates and the
+  full name is on hover — the row is 36px in a 288px panel and those characters come out of
+  the name.
 - **Pinned version badge** (#229, made an answer by #368): `v{n}` in the left zone names
   the version *this batch is judged against* — not the project's active one, since #229
   made the pin movable. Pressing it opens a small panel that says whether that is still
@@ -952,7 +980,13 @@ The page the reference design shows (#56), with measurements verified in v1's so
   how many it will publish (`Add 3 classes`). Opened from the class list's create row it
   starts on the name that was typed; opened from the tool strip's `+` or the region's own
   `+` it starts empty,
-  because that press means "I want a class", not a particular one. When it lands, the
+  because that press means "I want a class", not a particular one. **A name the published
+  version already declares is an offer, not an error** (#584): the dialog says what that
+  class accepts today and what publishing would add, and the primary reads `Add polygon to
+  "sign"`. It carries the existing class's colour and attributes, so a form opened to make a
+  new class cannot quietly overwrite what the old one declared. A name typed twice in one
+  sitting stays a refusal, because both are being written now and merging them would be
+  guessing which was meant. When it lands, the
   **last** class written becomes the drawing class and a toast says so — a session
   publishes one version and arms one class, neither of which anybody watched happen.
   Cancelling with classes banked **asks**, and it asks on Escape and the overlay too:
@@ -974,7 +1008,14 @@ The page the reference design shows (#56), with measurements verified in v1's so
   surface, `border`, 12px radius, 8px padding; 36px icon buttons; **active tool = primary
   variant** (the near-black), inactive = ghost; a `h-px w-6` divider; help at the bottom.
   Tooltips open right with the shortcut ("Select (V)", "Box (B)", "Polygon (P)").
-  Icons: MousePointer2 / Square / Spline; only tools the schema's geometries allow.
+  Icons: MousePointer2 / Square / Spline; only tools the schema's geometries allow — and,
+  **with a class selected, only that class's own** (#584). A class accepts a set of
+  geometries, so what can be drawn depends on which class is held: offering a polygon
+  button under a boxes-only class would answer *what can I draw here* with a lie. With no
+  class selected it is the schema's union, which is still the right answer to *what does
+  this project label*. Switching to a class that forbids the active tool never strands it —
+  `toolFor` resolves to the class's first allowed shape — and the route to a different
+  class's geometry is the class list, which is where choosing a class belongs.
   **Last of them, below the `+`, the hand** (#576, `Hand`, `H`) — the one button here that
   the schema does not gate, because it answers a question about the *device* rather than
   about the project: a pan had exactly one spelling, a middle- or secondary-button drag,
@@ -997,6 +1038,11 @@ The page the reference design shows (#56), with measurements verified in v1's so
   in constantly — every freshly opened frame — and a control that vanished and reappeared
   as they worked would be worse than one that explains itself.
 - **Side panel** (#126, reshaped by #368, split in two by #420): 288px (`w-72`) column,
+  **320px (`2xl:w-80`) from 1536px** — headroom for a class naming three shapes, not a fix,
+  and withheld below that on purpose: `ANNOTATOR_MIN_VIEWPORT_PX` is 768, where a collapsed
+  rail already leaves a 384px stage, and a width chosen on a large monitor must not be
+  charged to the smallest screen the editor opens on at all. `EditorNotice`'s clearance
+  arithmetic is stated at 1280px and is unaffected. Otherwise:
   `muted` surface, `border`, 12px radius. **Two stacked regions, no tabs and no
   splitter.** It was Objects | Labels tabs until #368, which sent class selection to the
   top bar; #420 brings it back and deliberately does not bring the tabs with it. A tab is

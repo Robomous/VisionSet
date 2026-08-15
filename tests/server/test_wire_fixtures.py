@@ -95,7 +95,7 @@ def test_the_schema_declares_one_class_per_carryable_geometry() -> None:
     how two spellings of a contract start.
     """
     payload = committed()
-    declared = {c["geometry"] for c in payload["schema"]["classes"]}
+    declared = {g for c in payload["schema"]["classes"] for g in c["geometries"]}
     assert declared == set(payload["implemented_geometry_types"])
 
 

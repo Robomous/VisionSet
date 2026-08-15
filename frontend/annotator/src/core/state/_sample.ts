@@ -22,12 +22,12 @@ export const SCHEMA: AnnotationSchema = {
   project_id: "project-1",
   version: 1,
   classes: [
-    { name: "sign", geometry: "bbox", color: "#ff0000", attributes: [] },
-    { name: "lane", geometry: "polygon", color: null, attributes: [] },
+    { name: "sign", geometries: ["bbox"], color: "#ff0000", attributes: [] },
+    { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
     // The path tool needs a class to draw with, and the whole point of `toolFor` is
     // that a class is the only way to pick one. Declared last so the two before it
     // keep their positions — a class palette's hotkeys are its rows in order.
-    { name: "path", geometry: "polyline", color: null, attributes: [] },
+    { name: "path", geometries: ["polyline"], color: null, attributes: [] },
   ],
   description: null,
   created_at: null,

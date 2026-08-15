@@ -209,6 +209,16 @@ against one format's declaration and returns an `ExportCompatibility`:
 }
 ```
 
+**One row per `(label_class, geometry)`, not per class.** A class accepts a *set* of
+geometries ([schemas.md](schemas.md)), and a format's answer can differ across it: a class
+labelled both as boxes and as outlines is, to YOLO, one half written whole and one half
+written reduced. It contributes two rows. A single row could carry only one of those verdicts
+and would describe half its own output wrongly whichever it picked - the same defect
+`compatible: bool` had before three statuses replaced it, one level down.
+
+A class the schema declares and nobody used still gets a row per geometry, at zero. Zero
+excludes nothing, so it never makes a report incompatible however unsupported its shape is.
+
 ### Dropped is not degraded, and one word for both was a lie
 
 `status` has three values, and the reason is #158. Until then a class was `supported: true` or
@@ -361,8 +371,8 @@ many. A classification tag has no location at all and is dropped rather than giv
 
 **v1 had two COCO exporters and neither described a dataset.** One skipped every annotation that
 was not a box, the other every one that was not a polygon, so a project holding both - the
-ordinary case, and the reason a schema declares a geometry per class - had to pick an export and
-silently lose the other half. There is one exporter here: COCO has always carried both, and
+ordinary case, and now expressible in a single class since a class declares a *set* of
+geometries - had to pick an export and silently lose the other half. There is one exporter here: COCO has always carried both, and
 `bbox` is a required field on every annotation whether or not it also has a `segmentation`.
 
 **`area` is the polygon's own area, by the shoelace formula, not its bounding box's.** v1 wrote

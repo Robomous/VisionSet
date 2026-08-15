@@ -98,7 +98,7 @@ FFMPEG_MISSING = (
 #: approval pins the active version forever — but this example writes no labels,
 #: so the contract only has to exist.
 CLASSES: tuple[LabelClass, ...] = (
-    LabelClass(name="vehicle", geometry=GeometryType.BBOX, color="#2a9d8f"),
+    LabelClass(name="vehicle", geometries=(GeometryType.BBOX,), color="#2a9d8f"),
 )
 
 
