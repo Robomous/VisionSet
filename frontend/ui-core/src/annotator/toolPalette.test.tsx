@@ -123,6 +123,60 @@ describe("the tools a schema can reach", () => {
     ]);
   });
 
+  describe("a class that accepts more than one shape (#584)", () => {
+    /** One class, two shapes — the whole point of a geometry set. */
+    const BOTH = {
+      ...SCHEMA,
+      classes: [
+        { name: "sign", geometries: ["bbox", "polygon"], color: "#38bdf8", attributes: [] },
+        { name: "kerb", geometries: ["polyline"], color: null, attributes: [] },
+      ],
+    } as typeof SCHEMA;
+
+    it("offers both of the held class's shapes and nothing else", () => {
+      render(mount({ schema: BOTH, activeClass: "sign", tool: "bbox" }));
+
+      expect(screen.getByTestId("tool-bbox")).toBeTruthy();
+      expect(screen.getByTestId("tool-polygon")).toBeTruthy();
+      // `kerb`'s shape is not something this class could draw.
+      expect(screen.queryByTestId("tool-polyline")).toBeNull();
+    });
+
+    it("changes only the tool when the held class already accepts the shape", () => {
+      // **The retarget guard.** Pressing polygon here means "draw this class as a
+      // polygon", not "switch to whatever class declares polygon first". A strip
+      // that re-armed the geometry's first declaring class would silently move
+      // somebody's labels to a different class than the one they had selected —
+      // and with a two-shape class there is no visible tell that it happened.
+      const onActivateClass = vi.fn();
+      const onActivateTool = vi.fn();
+      render(
+        mount({ schema: BOTH, activeClass: "sign", tool: "bbox", onActivateClass, onActivateTool }),
+      );
+
+      fireEvent.click(screen.getByTestId("tool-polygon"));
+
+      expect(onActivateTool).toHaveBeenCalledWith("polygon");
+      expect(onActivateClass).not.toHaveBeenCalled();
+    });
+
+    it("moves the class when the held one cannot draw the shape pressed", () => {
+      // The other direction of the same site, which a single-direction mutation
+      // leaves green: with no class held, nothing accepts the tool, so the press
+      // has to arm the class that declares it.
+      const onActivateClass = vi.fn();
+      const onActivateTool = vi.fn();
+      render(
+        mount({ schema: BOTH, activeClass: null, tool: "select", onActivateClass, onActivateTool }),
+      );
+
+      fireEvent.click(screen.getByTestId("tool-polyline"));
+
+      expect(onActivateTool).toHaveBeenCalledWith("polyline");
+      expect(onActivateClass).toHaveBeenCalledWith("kerb");
+    });
+  });
+
   it("offers no polyline button at all when the schema declares no lane class", () => {
     // The affordance is about *this* schema. A strip advertising a geometry
     // nobody declared would be a roadmap, not a tool strip.
