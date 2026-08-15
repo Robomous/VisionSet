@@ -75,7 +75,7 @@ describe("what the dialog refuses before it asks", () => {
 
     const offer = screen.getByTestId("widen-offer");
     expect(offer.textContent).toContain("“sign” already exists");
-    expect(offer.textContent).toContain("declares it as bbox");
+    expect(offer.textContent).toContain("declares it as box");
     const submit = screen.getByTestId("add-class-submit");
     expect(submit).toHaveProperty("disabled", false);
     // The button says what it does, rather than "Add class".
@@ -195,7 +195,7 @@ describe("what it submits", () => {
         (option) => option.textContent ?? "",
       );
 
-    expect(membersOf(basic)).toEqual(["bbox", "polygon", "classification_tag"]);
+    expect(membersOf(basic)).toEqual(["box", "polygon", "tag"]);
     expect(membersOf(robotics)).toEqual(["polyline"]);
   });
 

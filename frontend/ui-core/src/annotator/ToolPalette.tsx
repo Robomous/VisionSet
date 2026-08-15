@@ -89,8 +89,11 @@ import {
   hotkeyForClass,
   schemaCanSuggest,
   type AnnotationSchema,
+  type GeometryType,
   type Tool,
 } from "@visionset/annotator";
+
+import { geometryLabel } from "../data/geometryCategory";
 import {
   CircleHelp,
   Hand,
@@ -125,15 +128,16 @@ const PENDING_TOOLS: Readonly<Record<string, string>> = {};
 /**
  * What each drawing tool is called on the strip.
  *
- * Total over what `drawableGeometries` can answer, so a fourth geometry gaining a
- * tool cannot reach the strip unnamed — which is what the ternary this replaced
- * would have let it do, silently reading "Polygon".
+ * Read off the product's one geometry vocabulary rather than kept here. This used
+ * to be a private map saying `Box` while every other surface printed `bbox`, so
+ * the same tool had two names depending on which side of the canvas you read it
+ * from. `geometryLabel` is now the single source; this only capitalises, because
+ * a control label takes a capital and a word inside a sentence does not.
  */
-const TOOL_LABELS: Readonly<Record<"bbox" | "polygon" | "polyline", string>> = {
-  bbox: "Box",
-  polygon: "Polygon",
-  polyline: "Polyline",
-};
+function toolLabel(geometry: GeometryType): string {
+  const word = geometryLabel(geometry);
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
 
 /** A schema's tools, in the order the strip lists them. */
 interface ToolChoice {
@@ -189,7 +193,7 @@ export function toolChoices(
       if (choices.some((choice) => choice.tool === geometry)) continue;
       choices.push({
         tool: geometry,
-        label: TOOL_LABELS[geometry],
+        label: toolLabel(geometry),
         labelClass: declared.name,
         hotkey: hotkeyForClass(schema, declared.name) ?? "—",
         unavailable: null,

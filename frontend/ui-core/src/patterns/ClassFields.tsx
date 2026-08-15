@@ -22,7 +22,7 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { JSX } from "react";
 
-import { groupGeometries } from "../data/geometryCategory";
+import { geometryLabel, groupGeometries } from "../data/geometryCategory";
 import { classColor, hexColor } from "../palette";
 import { Button } from "../primitives/Button";
 import { FieldHint, Input, Label } from "../primitives/Input";
@@ -167,7 +167,11 @@ export function ClassFields({
                           // unreachable by exactly the people who need it.
                           aria-disabled={last || undefined}
                         />
-                        {geometry}
+                        {/* The word, never the wire value: the `data-testid`
+                            above keeps the enum so a test addresses the box by
+                            what it *is*, and the person reading the form sees
+                            what it is called. */}
+                        {geometryLabel(geometry)}
                       </label>
                     );
                   })}

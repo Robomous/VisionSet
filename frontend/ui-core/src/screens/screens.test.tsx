@@ -352,17 +352,21 @@ describe("the schema editor", () => {
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
 
-    await userEvent.click(screen.getByTestId("class-geometry-0"));
     // `polyline` is offered even where no tool draws one: the API
     // accepts it, the exporters need it, and the tool strip is where a person
     // learns there is nothing to draw with. Offering it is not offering a refusal.
+    //
+    // Addressed by `data-testid`, which keeps the **wire** value, while the label
+    // beside it is the display word — so this asserts which geometries are on
+    // offer without also asserting what they are called, which is
+    // `geometryCategory.test.ts`'s job.
     for (const geometry of ["bbox", "polygon", "polyline", "classification_tag"]) {
-      expect(screen.getAllByText(geometry).length).toBeGreaterThan(0);
+      expect(screen.getByTestId(`class-geometry-0-${geometry}`)).toBeTruthy();
     }
     // `GeometryType` has eight members; four are refused at write time with
     // `UnsupportedGeometry`, so offering them would be offering a refusal.
     for (const geometry of ["mask", "keypoints", "cuboid_3d", "polyline_3d"]) {
-      expect(screen.queryByRole("option", { name: geometry })).toBeNull();
+      expect(screen.queryByTestId(`class-geometry-0-${geometry}`)).toBeNull();
     }
   });
 
@@ -392,7 +396,9 @@ describe("the schema editor", () => {
         (option) => option.textContent ?? "",
       );
 
-    expect(membersOf(basic)).toEqual(["bbox", "polygon", "classification_tag"]);
+    // The display words, not the wire values: `classification_tag` is an
+    // identifier and `tag` is what it is called.
+    expect(membersOf(basic)).toEqual(["box", "polygon", "tag"]);
     expect(membersOf(robotics)).toEqual(["polyline"]);
     // Order of the sections is the map's declaration order, and it is the order
     // somebody reads down the list in.
@@ -1217,7 +1223,7 @@ describe("version history", () => {
     // `findBy` on the row, not on the card: the card renders immediately and holds
     // the skeletons, so a `getBy` here asserts against a loading state.
     await within(history).findByTestId("version-1");
-    expect(within(history).getByTestId("version-1").textContent).toContain("vehicle (bbox)");
+    expect(within(history).getByTestId("version-1").textContent).toContain("vehicle (box)");
     expect(within(history).getByTestId("version-2").textContent).toContain("lane (polygon)");
 
     // Active is *derived* — the highest version, never a stored flag.
@@ -1356,7 +1362,7 @@ describe("version history", () => {
       expect(run.textContent).toContain("lane (polygon)");
       // And not v2's, which declares one class — the assertion above is only a
       // claim about *which* version is summarised because the two differ.
-      expect(run.textContent).toContain("vehicle (bbox)");
+      expect(run.textContent).toContain("vehicle (box)");
     });
 
     it("gives back every row when it is expanded", async () => {
