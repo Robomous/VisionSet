@@ -1100,8 +1100,14 @@ The page the reference design shows (#56), with measurements verified in v1's so
   tag-capable class and as many classes as the schema declares, which is the kernel's own
   rule (`DuplicateClassificationTag` is keyed `(asset, class)`), so the chips enforce
   nothing the kernel would contradict. `shrink-0` with a capped scroller of its own, so
-  thirty tag classes cannot push the objects region off the panel; past ~20 it carries a
-  filter, per the lists rule.
+  thirty tag classes cannot push the objects region off the panel.
+
+  **No filter, and it is the one place the lists rule is not applied.** That rule is about
+  *rows* — a vertical list where the twenty-first is a scroll away and indistinguishable
+  from the twentieth. These are chips in a wrapping cloud: twenty of them are about seven
+  short lines, read at a glance, and each carries a colour and a digit. A third filter
+  input inside a 288px panel that already has two would cost more attention than it saves.
+  Revisit if a real schema arrives with enough tag classes to disprove it.
 
   **Annotations (lower).** Takes all remaining height and scrolls independently, and holds
   **drawn shapes only** — a tag has no coordinates, renders in neither canvas layer, and is
