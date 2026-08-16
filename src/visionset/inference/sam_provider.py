@@ -155,6 +155,28 @@ def best_of(iou_scores: list[float]) -> tuple[int, float]:
     return best, min(1.0, max(0.0, float(iou_scores[best])))
 
 
+def _rows(mask: Any) -> list[bytes]:
+    """One binary mask as a buffer per row, at the asset's own size.
+
+    **A copy per row rather than a boxed pixel per pixel.** ``tolist`` was here,
+    and on a 4K frame it built two thousand lists of four thousand Python objects
+    — eight million pointer stores and refcount bumps, on the click path, in
+    front of a pipeline that never reads a pixel individually. It scans rows with
+    ``index``, which on ``bytes`` is ``memchr``; so this hands over the thing that
+    scan wants and the conversion becomes one ``memcpy`` per row.
+
+    ``force=True`` is doing three jobs and is the reason this is one call rather
+    than a chain: it brings a GPU-resident mask back to the host, detaches it, and
+    resolves a non-contiguous view — each of which ``tolist`` tolerated silently
+    and ``numpy`` refuses outright.
+
+    Boolean pixels come across as ``0`` and ``1``, one byte each, which is what
+    makes the result a ``Mask``: the port asks for rows of integers where a lit
+    pixel is truthy, never for booleans in particular.
+    """
+    return [row.tobytes() for row in mask.numpy(force=True)]
+
+
 class LocalSamProvider:
     """Runs a point-promptable segmenter here, on this machine.
 
@@ -304,7 +326,7 @@ class LocalSamProvider:
         if confidence < minimum_confidence:
             return ()
         mask = lifted.reshape(-1, *lifted.shape[-2:])[chosen]
-        return (SegmentedMask(mask=mask.tolist(), score=confidence),)
+        return (SegmentedMask(mask=_rows(mask), score=confidence),)
 
     def _embedding(
         self,

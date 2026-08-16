@@ -48,6 +48,18 @@ PNG = (
 """A real one-pixel PNG, because the adapter genuinely decodes what it is handed."""
 
 
+def in_bytes(mask: list[list[bool]]) -> list[bytes]:
+    """The same mask, spelled the way the adapter hands it across.
+
+    A row is a buffer rather than a list of boxed booleans, which is what stops a
+    4K frame costing eight million Python objects on the click path. The pipeline
+    reads a mask through ``len`` and ``index`` alone, so the two spellings are
+    interchangeable to it — ``tests/inference/test_masks.py`` is where that is
+    proved, over the whole pipeline; here it is only what the adapter emits.
+    """
+    return [bytes(row) for row in mask]
+
+
 def built(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -143,7 +155,7 @@ def test_a_click_comes_back_as_the_mask_carrying_the_models_confidence(
     assert answer.model_ref == "some/segmenter@abc123"
     (segment,) = answer.segments
     assert segment.score == pytest.approx(0.87)
-    assert segment.mask == disc(20), "handed over intact, with no shape decided"
+    assert segment.mask == in_bytes(disc(20)), "handed over intact, with no shape decided"
 
 
 def test_the_mask_crosses_at_the_assets_own_size(
@@ -162,7 +174,7 @@ def test_an_empty_mask_is_an_ordinary_answer_with_nothing_in_it(
     """A click on sky. Empty rather than raising, and still saying who was asked."""
     provider, _, _ = built(monkeypatch, masks=[blank()], scores=[0.9])
     (answer,) = list(provider.segment(asked(one_click())))
-    assert answer.segments[0].mask == blank(), "an empty grid is a mask, not an absence"
+    assert answer.segments[0].mask == in_bytes(blank()), "an empty grid is a mask, not an absence"
 
 
 def test_a_model_less_sure_than_the_caller_asked_answers_nothing(

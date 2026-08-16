@@ -501,3 +501,59 @@ def test_closing_a_notch_reaches_the_polygon_and_leaves_the_box_alone() -> None:
 
 def test_a_mask_with_nothing_in_it_proposes_nothing() -> None:
     assert shapes_from(empty(), allowed=BOTH, at=[(5.0, 5.0)]) == []
+
+
+# --- the two spellings of a row ------------------------------------------------
+#
+# The adapter hands rows over as `bytes`, because converting a 4K mask into boxed
+# booleans cost more than the pipeline it fed. These tests are what make that
+# safe: the rule is that a row is a sequence of integers where a lit pixel is
+# truthy, and `bytes` and a list of booleans are two spellings of it rather than
+# two types. Everything above reads a mask through `len` and `index` alone, and
+# both answer those identically — so if any of it ever reaches for `is True`, or
+# for a method only a list has, these go red.
+
+
+def in_bytes(mask: list[list[bool]] | list[list[int]]) -> list[bytes]:
+    """The same mask, spelled the way the adapter spells it."""
+    return [bytes(row) for row in mask]
+
+
+@pytest.mark.parametrize("allowed", [BOTH, BOX_ONLY, POLYGON_ONLY], ids=["both", "box", "polygon"])
+def test_bytes_rows_and_boolean_rows_propose_the_same_shapes(
+    allowed: list[GeometryType],
+) -> None:
+    """The whole pipeline, over a mask holding several pieces and a prompt."""
+    at = [(3.0, 5.0)]
+    assert shapes_from(in_bytes(speckled()), allowed=allowed, at=at) == shapes_from(
+        speckled(), allowed=allowed, at=at
+    )
+
+
+def test_bytes_rows_survive_the_close_that_rebuilds_the_mask() -> None:
+    """The one step that hands a *different* spelling to the step after it.
+
+    ``filled`` returns lists of booleans whatever it was given, so a bytes-row
+    mask changes representation halfway down the pipeline. That is fine and it is
+    load-bearing that it is fine, because it is the only place the two spellings
+    meet inside one call — which is exactly the seam a mask carried as an array
+    would not have survived.
+    """
+    notch = notched(2, size=64)
+    assert closing_radius(in_bytes(notch)) >= 1, "the fixture must reach the close"
+    assert shapes_from(in_bytes(notch), allowed=POLYGON_ONLY) == shapes_from(
+        notch, allowed=POLYGON_ONLY
+    )
+
+
+def test_the_row_scans_agree_before_anything_is_shaped() -> None:
+    """``spans`` and ``runs`` directly, so a failure names the scan and not the shape."""
+    grid = speckled()
+    assert masks.runs(in_bytes(grid)) == masks.runs(grid)
+    assert spans(in_bytes(grid)) == spans(grid)
+    assert bbox_from(in_bytes(grid)) == bbox_from(grid)
+
+
+def test_an_empty_bytes_row_mask_proposes_nothing() -> None:
+    """``index`` raising is how an unlit row is detected, and ``bytes`` raises the same."""
+    assert shapes_from(in_bytes(empty()), allowed=BOTH, at=[(5.0, 5.0)]) == []
