@@ -135,6 +135,38 @@ require_node_modules() {
   fi
 }
 
+# **`.nvmrc` is the single source of truth for the Node version**, read here and by
+# every `actions/setup-node` in `.github/workflows/` through `node-version-file`.
+# Before it existed the version was eight copies of the literal `24` in CI and
+# nothing at all anywhere a developer's machine could see, so the gate's answer
+# depended on whatever `node` happened to be on PATH.
+#
+# It is checked because the failure it produces does not look like a version
+# problem. Node 26 ships a built-in `globalThis.localStorage` that is inert unless
+# the runtime is started with `--localstorage-file`, and it takes precedence over
+# the one the test environment supplies — so eight `ui-core` tests across two files
+# fail on storage they never touched, which reads as a broken change rather than as
+# a wrong interpreter.
+#
+# The major is all that is compared. `.nvmrc` names one because that is what CI
+# installs and what a patch release must not invalidate; taking the major of both
+# sides means a future `.nvmrc` naming a full version still works here.
+require_node_version() {
+  local want found found_major
+  want="$(sed -e 's/^v//' -e 's/[^0-9].*$//' "$root/.nvmrc" | head -n 1)"
+  if ! command -v node >/dev/null 2>&1; then
+    echo "error: no node on PATH — this repository is pinned to Node $want by .nvmrc" >&2
+    exit 2
+  fi
+  found="$(node --version)"
+  found_major="${found#v}"
+  found_major="${found_major%%.*}"
+  if [[ $found_major != "$want" ]]; then
+    echo "error: node is $found but this repository is pinned to Node $want by .nvmrc — the frontend suites do not pass under other majors" >&2
+    exit 2
+  fi
+}
+
 run_frontend() {
   require_node_modules
   # Build first, and it is not merely an optimisation: `frontend/app` resolves
@@ -355,6 +387,20 @@ elif [[ $fast -eq 1 && " ${groups[*]} " == *" browser "* ]]; then
   echo "error: --fast and an explicit 'browser' group contradict each other" >&2
   exit 2
 fi
+
+# Verified here rather than inside the groups that need it, and that placement is
+# the point: `python` runs first and takes minutes, so a check living beside
+# `require_node_modules` would let a wrong-version run reach the frontend suites
+# several minutes in and fail there, looking like a code defect. `python` is the
+# one group that needs no Node, so a run asking only for it is left alone.
+for group in "${groups[@]}"; do
+  case "$group" in
+    frontend | generated | browser | docs)
+      require_node_version
+      break
+      ;;
+  esac
+done
 
 for group in "${groups[@]}"; do
   case "$group" in
