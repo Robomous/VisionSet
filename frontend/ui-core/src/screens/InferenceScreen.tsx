@@ -976,6 +976,7 @@ function ConnectionDialog({
                       </FieldHint>
                     </div>
                   </div>
+                  <AccessLine modelId={modelId.trim()} />
                   <DownloadSizeLine modelId={modelId.trim()} revision={revision.trim()} />
                 </>
               ) : (
@@ -1034,6 +1035,46 @@ function ConnectionDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * What has to be cleared before this model can be fetched, said before it is.
+ *
+ * Principle 9: no requirement is discovered by crashing into it. A gated model
+ * refuses its download with a sentence naming the remedy, which is the right
+ * refusal and still the wrong place to learn it — by then somebody has chosen a
+ * model, created a connection and pressed a button. This is the same fact, one
+ * step earlier, while the choice is still being made.
+ *
+ * **Looked up by model id alone, and deliberately not through
+ * {@link curatedEntry}.** That helper answers "is this row showing exactly this
+ * curated entry", which compares the revision too — the right question for the
+ * select, and the wrong one here. An access gate belongs to the *repository*:
+ * pinning some other commit of the same model does not exempt anybody from its
+ * terms, so a line that disappeared when the revision was edited would be hiding
+ * a requirement that still applies.
+ *
+ * A model id nobody curated gets nothing here, and that is honest rather than a
+ * gap — whether an arbitrary repository is gated is not something this build
+ * knows before asking, and the refusal is what answers it.
+ */
+function AccessLine({ modelId }: { readonly modelId: string }): JSX.Element {
+  const access = CURATED_BY_ID.get(modelId)?.access;
+  if (access === undefined) return <></>;
+  return (
+    <p className="text-meta text-muted-foreground" data-testid="model-access">
+      {access.note}{" "}
+      <a
+        className="underline underline-offset-2"
+        href={access.href}
+        target="_blank"
+        rel="noreferrer"
+      >
+        Request access
+      </a>
+      .
+    </p>
   );
 }
 

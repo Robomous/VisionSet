@@ -179,9 +179,13 @@ const BLOCKER_COPY: Readonly<
   // Ranked *below* `not-ready` by `usableConnection`, and the copy relies on it:
   // this sentence is only ever read where something is downloaded and running,
   // so "the model you have" is a model that is genuinely here.
+  // The sentence names what the model has to *do* rather than which family does
+  // it. More than one architecture answers a point now, so a copy naming one of
+  // them was a second place the supported list lived — and the one that goes
+  // stale silently, because no build fails when prose falls behind a register.
   "not-capable": {
     title: "That model answers a different question",
-    body: "Suggesting a shape needs a model that takes points — the SAM 2 family. The connections that are ready here answer something else, so a click would come back refused.",
+    body: "Suggesting a shape needs a model that takes points and answers with a region. The connections that are ready here answer something else, so a click would come back refused.",
     action: "Set up a connection",
     tone: "warn",
   },

@@ -705,6 +705,82 @@ it("stacks each option: the id on one line, what it costs on the next (#472)", a
   expect(custom.querySelector(".text-muted-foreground")).not.toBeNull();
 });
 
+it("states a model's access requirement while it is being chosen, not when it is downloaded", async () => {
+  // Principle 9, on the one entry that has a requirement: a gated model refuses
+  // its own download with a sentence naming the remedy, and by the time that
+  // arrives somebody has chosen a model, created a connection and pressed a
+  // button. This is the same fact while the choice is still open.
+  const gated = CURATED_MODELS.flatMap((group) => group.models).find(
+    (model) => model.access !== undefined,
+  )!;
+  listing([]);
+  sizeIs(1_200_000_000);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-local"));
+
+  // The form opens on an entry anybody can fetch, so there is nothing to say.
+  expect(screen.queryByTestId("model-access")).toBeNull();
+
+  await userEvent.click(await screen.findByTestId("connection-model"));
+  await userEvent.click(screen.getByRole("option", { name: new RegExp(gated.modelId) }));
+
+  const line = await screen.findByTestId("model-access");
+  expect(line.textContent).toContain(gated.access!.note);
+  expect(line.querySelector("a")?.getAttribute("href")).toBe(gated.access!.href);
+  // Nothing has been created and nothing has been fetched: the requirement is on
+  // screen strictly before either becomes possible.
+  expect(sent.some((one) => one.method === "POST")).toBe(false);
+});
+
+it("drops the access line again when the choice moves back to an open model", async () => {
+  // The line describes the current choice rather than the dialog's history. One
+  // left behind would tell somebody a model they are not using needs approval,
+  // which is the same defect as never showing it, pointed the other way.
+  const gated = CURATED_MODELS.flatMap((group) => group.models).find(
+    (model) => model.access !== undefined,
+  )!;
+  listing([]);
+  sizeIs(1_200_000_000);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-local"));
+
+  await userEvent.click(await screen.findByTestId("connection-model"));
+  await userEvent.click(screen.getByRole("option", { name: new RegExp(gated.modelId) }));
+  expect(await screen.findByTestId("model-access")).not.toBeNull();
+
+  await userEvent.click(await screen.findByTestId("connection-model"));
+  await userEvent.click(screen.getByRole("option", { name: new RegExp(DEFAULT_MODEL.modelId) }));
+  expect(screen.queryByTestId("model-access")).toBeNull();
+});
+
+it("keeps saying a model needs access when it is pinned to another commit", async () => {
+  // An access gate belongs to the repository, not to the revision: choosing a
+  // different commit of the same model does not exempt anybody from its terms.
+  // The line is therefore looked up by model id alone, where the select's own
+  // "is this the curated entry" test compares both halves — a distinction no
+  // other test in this file could see, and the reason this one exists.
+  const gated = CURATED_MODELS.flatMap((group) => group.models).find(
+    (model) => model.access !== undefined,
+  )!;
+  listing([
+    connection({
+      name: "pinned-elsewhere",
+      model_id: gated.modelId,
+      model_revision: "0000000000000000000000000000000000000000",
+      allowed_actions: ["update", "delete"],
+    }),
+  ]);
+  sizeIs(1_200_000_000);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-pinned-elsewhere"));
+  await userEvent.click(await screen.findByTestId("action-edit"));
+
+  const line = await screen.findByTestId("model-access");
+  expect(line.textContent).toContain(gated.access!.note);
+});
+
 it("curates without restricting: Custom reveals the free model and revision", async () => {
   listing([]);
   sizeIs(1_200_000_000);

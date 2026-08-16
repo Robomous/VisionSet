@@ -442,6 +442,144 @@ def test_a_download_failure_arrives_in_the_kernels_vocabulary(
     assert "Repository Not Found" in str(raised.value)
 
 
+class _HubErrors:
+    """The hub client's exception tree, in the shape the real one has.
+
+    The inheritance is the point rather than scenery. ``GatedRepoError`` really
+    does derive from ``RepositoryNotFoundError``, so a handler naming the parent
+    first swallows the gated case; a flat pair of unrelated classes here would let
+    that mistake pass every test in this file.
+    """
+
+    class RepositoryNotFoundError(OSError):
+        pass
+
+    class GatedRepoError(RepositoryNotFoundError):
+        pass
+
+
+def _refusing(raised: BaseException) -> type:
+    """A hub whose every call fails that way, with its error tree attached."""
+
+    class FakeHub:
+        errors = _HubErrors
+
+        @staticmethod
+        def snapshot_download(**_: object) -> str:
+            raise raised
+
+        @staticmethod
+        def model_info(*_: object, **__: object) -> object:
+            raise raised
+
+    return FakeHub
+
+
+def _a_connection() -> InferenceConnection:
+    return InferenceConnection(
+        name="local-gated",
+        connection_type=ConnectionType.LOCAL,
+        model_id="somebody/gated-model",
+        model_revision="abc123",
+        device="cpu",
+        precision="fp32",
+    )
+
+
+GATED = _HubErrors.GatedRepoError(
+    "401 Client Error. (Request ID: Root=1-6a8074a4-3bc3584f53a6fc7333db2091)\n\n"
+    "Cannot access gated repo for url https://huggingface.co/somebody/gated-model/resolve/"
+    "main/config.json.\nAccess to model somebody/gated-model is restricted. You must have "
+    "access to it and be authenticated to access it. Please log in."
+)
+"""The real thing, kept verbatim: this is what an unauthenticated fetch raises."""
+
+
+def test_a_model_behind_an_access_gate_says_so_and_names_the_remedy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """What happened and what to do, with none of the transport in between.
+
+    The library's own text opens with a status line and a request id, and the
+    general translation would carry both into the sentence a person reads on a
+    failed job. Neither is actionable, and a status code in particular invites the
+    reader to go and look up a number instead of clearing the gate.
+    """
+    monkeypatch.setattr(weights_module, "imported", lambda name: _refusing(GATED))
+    with pytest.raises(LocalInferenceUnavailable) as raised:
+        download(_a_connection(), into=tmp_path / MODELS_DIRNAME)
+
+    message = str(raised.value)
+    assert "have to be accepted" in message
+    assert "https://huggingface.co/somebody/gated-model" in message
+    assert "HF_TOKEN" in message
+    assert "401" not in message, "no status code reaches a reader"
+    assert "Request ID" not in message
+    assert "Client Error" not in message
+
+
+def test_reading_a_size_behind_the_gate_gives_the_same_remedy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The other call that reaches the hub, and the same answer.
+
+    A gate is on the files rather than on the listing, so this is unreachable for
+    a merely gated repository and is the private-repository path. It is asserted
+    because the two call sites translate separately, and one of them having the
+    sentence is what makes the other's absence invisible.
+    """
+    monkeypatch.setattr(weights_module, "imported", lambda name: _refusing(GATED))
+    with pytest.raises(LocalInferenceUnavailable) as raised:
+        weights_module.measure("somebody/gated-model", "abc123")
+
+    assert "have to be accepted" in str(raised.value)
+    assert "Request ID" not in str(raised.value)
+
+
+def test_a_repository_that_is_not_there_is_not_reported_as_a_licence_to_accept(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The discrimination the whole translation turns on.
+
+    A gated repository and a mistyped one both answer **401** to an
+    unauthenticated caller, so a branch on the status code would send somebody
+    whose model id has a typo to a page that does not exist, to ask for access to
+    a model nobody publishes. Only the exception's class separates them, and this
+    is the case that proves the class is what is being read.
+    """
+    missing = _HubErrors.RepositoryNotFoundError("401 Client Error. Repository Not Found")
+    monkeypatch.setattr(weights_module, "imported", lambda name: _refusing(missing))
+    with pytest.raises(LocalInferenceUnavailable) as raised:
+        download(_a_connection(), into=tmp_path / MODELS_DIRNAME)
+
+    message = str(raised.value)
+    assert "could not fetch somebody/gated-model at abc123" in message
+    assert "have to be accepted" not in message
+    assert "HF_TOKEN" not in message
+
+
+def test_a_client_too_old_to_name_the_error_still_reports_the_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The floor is a floor rather than a pin, so the class may not be there.
+
+    An installation predating the name answers with the general translation, which
+    is what every release did before this one. Looking the class up defensively is
+    what keeps that a degraded message rather than an ``AttributeError`` raised
+    while handling the original failure.
+    """
+
+    class OldHub:
+        @staticmethod
+        def snapshot_download(**_: object) -> str:
+            raise OSError("something went wrong")
+
+    monkeypatch.setattr(weights_module, "imported", lambda name: OldHub)
+    with pytest.raises(LocalInferenceUnavailable) as raised:
+        download(_a_connection(), into=tmp_path / MODELS_DIRNAME)
+    assert "could not fetch somebody/gated-model at abc123" in str(raised.value)
+
+
 def test_the_cache_directory_is_created_by_the_download(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

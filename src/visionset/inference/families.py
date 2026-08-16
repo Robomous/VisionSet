@@ -30,22 +30,45 @@ from typing import Final
 from visionset.inference._extra import imported
 from visionset.kernel.domain import InferenceConnection, ModelCapability
 
-SEGMENTER_FAMILIES: Final[frozenset[str]] = frozenset({"sam2", "sam2_video"})
+SEGMENTER_FAMILIES: Final[frozenset[str]] = frozenset({"sam2", "sam2_video", "sam3_video"})
 """``model_type`` values this build serves with the point-prompted adapter.
 
-**Two spellings of one architecture, and the second is not a door held open for
-later.** The published SAM 2 checkpoints — including the one the connection form
-suggests — declare ``sam2_video``, and ``transformers`` loads such a checkpoint
-into the image model deliberately, saying so as it does: *"loading a
-``sam2_video`` checkpoint into ``Sam2Model``"*. Naming only ``sam2`` sends the
-commonest point-prompt model in the product to the detector adapter, which then
-refuses a click with a sentence about text prompts.
+**Every entry is a string some published checkpoint actually declares, read out of
+its config — never a name reasoned about from a class.** The published SAM 2
+checkpoints, including the one the connection form suggests, declare
+``sam2_video``, and ``transformers`` loads such a checkpoint into the image model
+deliberately, saying so as it does: *"loading a ``sam2_video`` checkpoint into
+``Sam2Model``"*. Naming only ``sam2`` sends the commonest point-prompt model in
+the product to the detector adapter, which then refuses a click with a sentence
+about text prompts.
 
-Whole models only. The locked ``transformers`` also registers
-``sam2_vision_model`` and ``sam2_hiera_det_model``, which are the encoder halves
-a full config nests rather than checkpoints anything can prompt. A connection
-naming one of those is refused by ``provider_for``, not handed to an adapter that
-would look for a mask decoder and find none.
+``sam3_video`` is the same shape and was very nearly got wrong the same way.
+``facebook/sam3`` publishes one artifact carrying the whole architecture, and its
+config declares **``sam3_video``** — not ``sam3``, which is what the *detector*
+half declares one level down, and not ``sam3_tracker``. The nesting is worth
+knowing, because two of those three names are traps:
+
+.. code-block:: text
+
+    Sam3VideoConfig            model_type = sam3_video          <- what a connection resolves on
+    |-- detector_config        model_type = sam3                <- concepts and words
+    +-- tracker_config         model_type = sam3_tracker_video  <- the promptable half
+
+So **``sam3`` is deliberately absent**: it names the concept detector, and
+admitting it here would hand a text model to the point adapter — a confident wrong
+answer of exactly the kind this module's opening warns about. ``sam3_tracker`` is
+absent for the opposite reason: it is a real config class, no checkpoint is known
+to declare it, and a set entry nobody has measured is a guess wearing a
+frozenset's clothes. Either becomes one word to add the day a checkpoint declares
+it.
+
+Whole models only. The locked ``transformers`` registers a dozen further
+``sam3_*`` types — ``sam3_vision_model``, ``sam3_detr_decoder``,
+``sam3_mask_decoder`` and the rest, beside SAM 2's ``sam2_vision_model`` and
+``sam2_hiera_det_model``. Those are the halves a full config nests rather than
+checkpoints anything can prompt. A connection naming one of them is refused by
+``provider_for``, not handed to an adapter that would look for a mask decoder and
+find none.
 """
 
 DETECTOR_FAMILIES: Final[frozenset[str]] = frozenset({"grounding-dino", "mm-grounding-dino"})

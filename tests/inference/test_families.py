@@ -57,9 +57,63 @@ def a_local(connections: InferenceConnectionService) -> Any:
 # --- the sets themselves ------------------------------------------------------
 
 
-def test_both_spellings_of_the_one_architecture_are_named() -> None:
-    """A set rather than a string, and both members are load-bearing today."""
-    assert {"sam2", "sam2_video"} <= SEGMENTER_FAMILIES
+def test_every_published_checkpoint_this_build_curates_is_named() -> None:
+    """The strings real checkpoints declare, read out of their configs.
+
+    A checkpoint declares the variant it was *published* as rather than the half
+    this build asks for, so these are the spellings a resolver actually meets:
+    the SAM 2.1 ladder says ``sam2_video`` and ``facebook/sam3`` says
+    ``sam3_video``. Missing one sends that model to the detector adapter, which
+    then refuses a click with a sentence about text prompts.
+    """
+    assert {"sam2", "sam2_video", "sam3_video"} <= SEGMENTER_FAMILIES
+
+
+@pytest.mark.parametrize(
+    ("family", "what_it_is"),
+    [
+        ("sam3", "the concept detector nested at detector_config — it answers words"),
+        ("sam3_tracker", "a config class no known checkpoint declares"),
+        ("sam3_tracker_video", "the video tracker nested at tracker_config"),
+    ],
+)
+def test_the_names_around_the_published_one_are_not_mistaken_for_it(
+    family: str, what_it_is: str
+) -> None:
+    """The three near-misses, and why each is absent. This is a regression test.
+
+    An earlier revision of this register carried ``sam3`` and ``sam3_tracker``,
+    derived from the names of the ``transformers`` classes rather than read from a
+    config, and the whole feature was unreachable: ``facebook/sam3`` declares
+    ``sam3_video`` at the top level and neither of those anywhere a resolver
+    looks. Every test agreed, because they had all been written against the same
+    guess the implementation made.
+
+    ``sam3`` is the worse of the two to admit. It is what the *detector* half
+    declares, so serving it here would hand a text-prompt model to the point
+    adapter — the confident wrong answer this module's opening warns about, rather
+    than a gap somebody notices.
+    """
+    assert family not in SEGMENTER_FAMILIES, what_it_is
+
+
+def test_the_nested_halves_of_a_config_are_not_offered_as_models() -> None:
+    """A register of whole models, so an encoder half is refused rather than loaded.
+
+    The runtime registers a ``model_type`` for every nested piece of these
+    architectures as well as for the wholes. A connection naming one of those is
+    something the resolver must decline; admitting it here would hand the adapter
+    a config with no mask decoder in it and turn a refusal into a failure inside a
+    forward pass.
+    """
+    halves = {
+        "sam2_vision_model",
+        "sam2_hiera_det_model",
+        "sam3_vision_model",
+        "sam3_mask_decoder",
+        "sam3_detr_decoder",
+    }
+    assert not halves & SUPPORTED_FAMILIES
 
 
 def test_the_two_families_are_disjoint_and_are_the_whole_of_what_is_supported() -> None:

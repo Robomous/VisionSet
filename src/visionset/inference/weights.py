@@ -55,7 +55,7 @@ import threading
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 from uuid import UUID
 
 from visionset.inference._extra import imported
@@ -298,6 +298,49 @@ def _awaiting_a_family(connection: InferenceConnection) -> bool:
     )
 
 
+def _needs_approved_access(hub: Any, exc: BaseException) -> bool:
+    """Whether the hub declined because nobody has cleared that model's terms.
+
+    **Told by the exception's class and never by its status code.** A gated
+    repository answers **401** to an unauthenticated caller — not the 403 the word
+    "gated" suggests — and so does a repository that is private, and so does one
+    whose id was mistyped and does not exist. Branching on the number would report
+    a typo as a licence somebody has to go and accept, sending a reader to a page
+    that is not there. ``huggingface_hub`` separates the cases itself, and
+    ``GatedRepoError`` is the one that means what this asks.
+
+    The lookup is defensive because the class is being read off a runtime this
+    build declares a floor for rather than a pin: an installation old enough not to
+    publish the name answers ``False`` and takes the general message, which is the
+    behaviour every release had before this one.
+
+    Order matters at the call site and is the reason this is a function rather than
+    an ``except`` clause. ``GatedRepoError`` **inherits from**
+    ``RepositoryNotFoundError``, so a handler naming the parent first swallows the
+    gated case and reports a missing model — the trap the media adapter records for
+    ``UnidentifiedImageError`` under ``OSError``, and the persistence adapter for
+    ``IntegrityError`` under ``DatabaseError``.
+    """
+    gated = getattr(getattr(hub, "errors", None), "GatedRepoError", None)
+    return gated is not None and isinstance(exc, gated)
+
+
+def _access_remedy(model_id: str) -> str:
+    """What happened and what to do about it, for a model behind an access gate.
+
+    Two sentences, on the boundary's own error contract: one naming the state, one
+    naming the action that changes it. The hub's own text is deliberately dropped
+    rather than appended — it opens with a status line and a request id, and a
+    reader who has not been granted access needs neither.
+    """
+    return (
+        f"the weights for {model_id} are published under terms that have to be accepted before "
+        f"they can be downloaded, and this machine has not been authorised for them; request "
+        f"access at https://huggingface.co/{model_id}, then set HF_TOKEN to a token belonging to "
+        "an account that has been granted it and run the download again"
+    )
+
+
 def download(
     connection: InferenceConnection,
     *,
@@ -362,6 +405,12 @@ def download(
         # kernel's vocabulary is the same translation ``_built`` does for
         # pydantic, and it is what keeps a failed job carrying a sentence
         # instead of a library traceback nobody can act on.
+        #
+        # One of those ways has a remedy a person can act on, so it gets its own
+        # sentence rather than arriving inside the general one carrying an HTTP
+        # status line and a request id.
+        if _needs_approved_access(hub, exc):
+            raise LocalInferenceUnavailable(_access_remedy(connection.model_id)) from exc
         raise LocalInferenceUnavailable(
             f"could not fetch {connection.model_id} at {connection.model_revision}: {exc}"
         ) from exc
@@ -491,6 +540,13 @@ def measure(model_id: str, model_revision: str) -> DownloadSize:
     try:
         info = hub.model_info(model_id, revision=model_revision, files_metadata=True)
     except Exception as exc:  # noqa: BLE001 — ``download``'s reason, one call earlier
+        # A gate is on the *files*, not on the listing: the hub sizes a gated
+        # repository for anybody, which is what lets somebody see what a download
+        # costs before deciding whether to go and ask for it. So this branch is
+        # unreachable for a merely gated model and is kept for the private one,
+        # where the same sentence is the same remedy.
+        if _needs_approved_access(hub, exc):
+            raise LocalInferenceUnavailable(_access_remedy(model_id)) from exc
         raise LocalInferenceUnavailable(
             f"could not read the size of {model_id} at {model_revision}: {exc}"
         ) from exc

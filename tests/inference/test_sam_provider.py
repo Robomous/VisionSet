@@ -23,6 +23,7 @@ import pytest
 from tests.inference.stubs import StubModel, StubProcessor, StubTorch, blank, disc
 
 from visionset.inference import sam_provider
+from visionset.inference.families import SEGMENTER_FAMILIES
 from visionset.inference.sam_provider import (
     NEGATIVE,
     POSITIVE,
@@ -51,6 +52,7 @@ def built(
     *,
     masks: list[list[list[bool]]] | None = None,
     scores: list[float] | None = None,
+    family: str = "sam2",
 ) -> tuple[LocalSamProvider, StubProcessor, StubModel]:
     """A provider whose model is a script, with everything else as shipped."""
     processor = StubProcessor(masks or [disc(20)], scores or [0.9])
@@ -58,6 +60,7 @@ def built(
     provider = LocalSamProvider(
         "some/segmenter",
         "abc123",
+        family=family,
         device="cpu",
         precision=None,
         cache_dir=Path("/nowhere"),
@@ -220,3 +223,117 @@ def test_the_cache_is_bounded_and_evicts_the_least_recently_used(
         list(provider.segment(asked(one_click(), one)))
 
     assert provider.encodes == 4, "the first asset was evicted by the third and re-encoded"
+
+
+# --- which classes a family loads through -------------------------------------
+
+
+class _Loaded:
+    """Whatever ``from_pretrained`` handed back, remembering how it was asked for."""
+
+    def __init__(self, model_id: str, options: dict[str, Any]) -> None:
+        self.model_id = model_id
+        self.options = options
+
+    def to(self, _: str) -> _Loaded:
+        return self
+
+    def eval(self) -> _Loaded:
+        return self
+
+
+class _Recorder:
+    """A stand-in ``transformers`` that records which classes a load reached for.
+
+    Deliberately answers *every* attribute rather than only the expected ones, so
+    a row naming a class this build does not ship fails on the assertion about
+    which names were asked for rather than on an ``AttributeError`` that would
+    read as a broken stub.
+    """
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+        self.loaded: list[_Loaded] = []
+
+    def __getattr__(self, name: str) -> Any:
+        self.asked.append(name)
+        recorder = self
+
+        class _Class:
+            @staticmethod
+            def from_pretrained(model_id: str, **options: Any) -> _Loaded:
+                made = _Loaded(model_id, options)
+                recorder.loaded.append(made)
+                return made
+
+        return _Class
+
+    def load(self, provider: LocalSamProvider, monkeypatch: pytest.MonkeyPatch) -> None:
+        torch = StubTorch()
+        monkeypatch.setattr(
+            sam_provider, "imported", lambda name: torch if name == "torch" else self
+        )
+        provider._load()
+
+
+def a_provider(family: str) -> LocalSamProvider:
+    return LocalSamProvider(
+        "some/segmenter",
+        "abc123",
+        family=family,
+        device="cpu",
+        precision=None,
+        cache_dir=Path("/nowhere"),
+        connection_name="local",
+    )
+
+
+def test_the_class_table_covers_every_segmenter_family() -> None:
+    """The two registers agree, and nothing else makes them.
+
+    The resolver sends a connection here on the strength of its family being in
+    ``SEGMENTER_FAMILIES``; the loader then looks that family up in ``_CLASSES``.
+    A family added to the first and forgotten in the second resolves to this
+    adapter and dies on a ``KeyError`` inside a load — past every refusal, in a
+    place whose message names a dictionary rather than a model.
+    """
+    assert set(sam_provider._CLASSES) == SEGMENTER_FAMILIES
+
+
+@pytest.mark.parametrize(
+    ("family", "expected"),
+    [
+        ("sam2", ["AutoProcessor", "Sam2Model"]),
+        ("sam2_video", ["AutoProcessor", "Sam2Model"]),
+        ("sam3_video", ["Sam3TrackerProcessor", "Sam3TrackerModel"]),
+    ],
+)
+def test_each_family_loads_through_its_own_classes(
+    family: str, expected: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Named rather than resolved, for the half that cannot be resolved correctly.
+
+    SAM 2 keeps ``AutoProcessor`` because the repositories it is pointed at
+    declare a processor that takes points. Asked about ``facebook/sam3`` the same
+    call answers ``Sam3VideoProcessor`` — measured against the real repository —
+    which is the video path, so resolving there would hand this adapter something
+    no single-image click can be expressed to and the failure would surface inside
+    a call rather than in a refusal.
+    """
+    recorder = _Recorder()
+    recorder.load(a_provider(family), monkeypatch)
+    assert recorder.asked == expected
+
+
+def test_a_load_never_reaches_the_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Weights are fetched when somebody asks for them and at no other time.
+
+    Both halves of the load carry it, which is what the assertion checks: a
+    processor quietly downloading its own config on first use would defeat the
+    rule as thoroughly as the model doing it, and it is the easier of the two to
+    leave out when a row is added.
+    """
+    recorder = _Recorder()
+    recorder.load(a_provider("sam3_video"), monkeypatch)
+    assert [one.options["local_files_only"] for one in recorder.loaded] == [True, True]
+    assert {one.options["revision"] for one in recorder.loaded} == {"abc123"}

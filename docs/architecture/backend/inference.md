@@ -148,9 +148,21 @@ Third-party inference and labeling-ecosystem frameworks are not taken as runtime
 dependencies; external work in that space is design reference only. A candidate
 that exists solely inside one is excluded on that ground alone.
 
-**Copyleft, business-source and custom-gated licenses are never bundled and never
-curated as defaults.** At most they are reachable through the **Custom model...**
-path a user types themselves, at that user's own compliance risk.
+**Copyleft and business-source licenses are never bundled and never curated.** At
+most they are reachable through the **Custom model...** path a user types
+themselves, at that user's own compliance risk.
+
+**A gated model may be curated, and may never be the default** (2026-08-15,
+superseding the narrower rule this replaces, which excluded gated licenses
+alongside copyleft ones). Nothing is bundled either way: weights are fetched by
+the user, from the publisher, after that user has accepted the publisher's terms
+themselves, which is the same act whether the id came from a curated list or was
+typed in. What curation adds is that the requirement is *stated* - the entry
+carries the sentence and the page where access is requested, and the form shows
+both before a download is offered. Leaving such a model out does not spare anybody
+its terms; it means the people who want it find the id elsewhere and type it in,
+having read nothing. The default entry must stay one that anybody can fetch, so
+that opening the form is never itself a refusal.
 
 **`transformers`-native is strongly preferred**, because it is one integration
 surface. A candidate published only as a raw `.pt` or `.onnx` checkpoint needs its
@@ -159,8 +171,10 @@ entry however small the model is.
 
 Curated entries live in
 [`inferenceCatalog.ts`](../../../frontend/ui-core/src/screens/inferenceCatalog.ts),
-which records a model id, a pinned revision and a download size per entry and
-asserts the license once, in the module's prose, for the whole list. Pinning the
+which records a model id, a pinned revision and a download size per entry. The
+module's prose asserts the license for the list and names its one exception by
+hand; an entry that carries a requirement of its own carries it as data, in
+`access`, because that is the half the interface has to render. Pinning the
 license per entry the way the revision is pinned is what would make a family-level
 assumption impossible to write by accident.
 
@@ -169,6 +183,7 @@ assumption impossible to write by accident.
 | Family (`model_type`) | Capability | Curated checkpoints | License |
 | --- | --- | --- | --- |
 | `sam2`, `sam2_video` | `point_suggest` | `facebook/sam2.1-hiera-{tiny,small,base-plus,large}` | Apache-2.0 |
+| `sam3_video` | `point_suggest` | `facebook/sam3` | SAM License, access granted by request |
 | `grounding-dino` | `text_detect` | `IDEA-Research/grounding-dino-{tiny,base}` | Apache-2.0 |
 | `mm-grounding-dino` | `text_detect` | none | - |
 
@@ -254,15 +269,54 @@ question and not a family entry.
 
 ### The gate a gated model hits
 
-`facebook/sam3` is a capability step-change - concept segmentation from text or
-exemplar prompts - and it is **gated**: the hub reports `gated: manual` and a
-`license: other`, and its `config.json` cannot be read without accepting terms.
+**Both blockers recorded here are now cleared, and `facebook/sam3` ships as a
+curated `point_suggest` entry.** What follows describes how, because the shape is
+what any future gated candidate inherits.
 
-Two separate blockers, and only the second is this build's. The license is not one
-the third rule above permits bundling or curating. And the download job has no
-notion of an authenticated fetch - no hub token, no terms acceptance - so a gated
-revision is unreachable regardless of its license. That is the gate any future
-gated candidate would hit, recorded here rather than as current debt.
+The hub reports `gated: manual` and a `license: other`, and the repository's
+`config.json` cannot be read without being granted access. The license question is
+answered by the gated-model rule above: nothing is bundled, the user fetches from
+the publisher after accepting the publisher's terms, and the requirement is stated
+in the form before a download is offered.
+
+The fetch question turned out to need no mechanism at all. The download job reaches
+the hub through its standard client, which resolves a token from the environment
+on its own, so an authenticated fetch is `HF_TOKEN` being set where the server or
+the CLI runs and nothing in a workspace. What was missing was not the capability
+but the *sentence*: an unauthenticated fetch raised an error whose text opened with
+a status line and a request id, and re-raising it carried both to a reader. That is
+now translated into the remedy.
+
+Two measurements worth keeping, because both contradict the assumption a reader
+would otherwise make. **Reading a size needs no access** - the hub answers
+`model_info` for a gated repository unauthenticated - which is what lets the size
+line work before anybody has asked for anything. And **a gated repository answers
+401 rather than 403**, the same status a repository that does not exist answers, so
+the two are told apart by the client's exception class and never by the code. A
+branch on the number would send somebody with a typo to request access to a model
+nobody publishes.
+
+Point prompts run through the tracker half of the architecture, which agrees with
+SAM 2 signature for signature; the concept segmentation the model is named for is
+not integrated, and the entry declares `point_suggest` alone.
+
+**Which name a connection resolves on is the trap here, and it cost a revision.**
+The repository publishes one artifact carrying the whole architecture, and the
+family is read from the top of its config:
+
+```
+Sam3VideoConfig            model_type = sam3_video          <- what resolves
+|-- detector_config        model_type = sam3                <- concepts and words
++-- tracker_config         model_type = sam3_tracker_video  <- the promptable half
+```
+
+Only `sam3_video` belongs in `SEGMENTER_FAMILIES`. `sam3` is the concept detector,
+and admitting it would route a text model to the point adapter. A register built
+by reasoning from the `transformers` class names produces `sam3` and
+`sam3_tracker`, neither of which any published checkpoint declares, and the
+capability is then unreachable while every test agrees with the guess that built
+it. The rule this restates: a family entry is a string read out of a config, and
+the test that holds it names the configs it was read from.
 
 ## Related
 
