@@ -27,10 +27,34 @@
  * instead of a fixed `h-9`. A single-line option still measures exactly 36px, so
  * every select that shipped before this is unmoved. Nothing truncates and nothing
  * ellipsises — an identifier cut off in the middle is not an identifier.
+ *
+ * ## The list scrolls; it never runs off the screen
+ *
+ * Two-line options make a list tall quickly, and a list taller than the room under
+ * its trigger used to be **clipped** rather than scrolled: the options past the
+ * edge stayed in the DOM and stayed reachable by keyboard, while a pointer had no
+ * way to get to them and nothing on screen said they were there. A list that looks
+ * complete and is not is worse than either a scrollbar or a shorter list. Measured
+ * before the fix, on a 600px-tall window, the list's bottom edge sat at 836px.
+ *
+ * So the content is bounded by `--radix-select-content-available-height` — Radix's
+ * own measurement of the gap between the trigger and the viewport edge, which
+ * tracks a window resize and a trigger near the bottom of the screen without a
+ * constant here guessing at either — and the viewport scrolls inside it.
+ *
+ * The scroll buttons are the affordance, not decoration. macOS hides overlay
+ * scrollbars until a scroll is already under way, so on a stock Mac a truncated
+ * list and a whole one look the same until somebody gambles on a gesture; Radix
+ * mounts the buttons only while there is somewhere to scroll to, which is exactly
+ * when that ambiguity exists.
+ *
+ * It is a property of layout under a real viewport, so `inference.spec.ts` asserts
+ * it in chromium. jsdom reports every height as zero and would agree with any
+ * implementation, including the broken one this replaced.
  */
 
 import * as SelectPrimitive from "@radix-ui/react-select";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import {
   forwardRef,
   type ComponentPropsWithoutRef,
@@ -84,13 +108,28 @@ export const SelectContent = forwardRef<
         ref={ref}
         position={position}
         className={cn(
-          "z-50 min-w-32 overflow-hidden rounded-lg border border-border bg-popover " +
+          "z-50 flex max-h-(--radix-select-content-available-height) min-w-32 flex-col " +
+            "overflow-hidden rounded-lg border border-border bg-popover " +
             "text-popover-foreground shadow-lg",
           className,
         )}
         {...props}
       >
-        <SelectPrimitive.Viewport className="p-1">{children}</SelectPrimitive.Viewport>
+        {/*
+          `overflow-hidden` above is what rounds the corners, and on its own it
+          silently clipped anything past the bottom edge. The bound and the
+          scrolling viewport are what turn that into a scroll; the module note
+          above carries the argument and the measurement.
+        */}
+        <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center bg-popover">
+          <ChevronUp className="size-4 text-muted-foreground" aria-hidden="true" />
+        </SelectPrimitive.ScrollUpButton>
+        <SelectPrimitive.Viewport className="overflow-y-auto p-1">
+          {children}
+        </SelectPrimitive.Viewport>
+        <SelectPrimitive.ScrollDownButton className="flex h-6 items-center justify-center bg-popover">
+          <ChevronDown className="size-4 text-muted-foreground" aria-hidden="true" />
+        </SelectPrimitive.ScrollDownButton>
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>
   );

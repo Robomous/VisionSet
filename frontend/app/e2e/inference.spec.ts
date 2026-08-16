@@ -404,3 +404,39 @@ test("a model whose weights have to be asked for says so before it can be downlo
     "https://huggingface.co/facebook/sam3",
   );
 });
+
+test("a model list taller than the window scrolls instead of running off it", async ({ page }) => {
+  // Layout under a real viewport, so it cannot live in `inference.test.tsx`:
+  // jsdom reports every height as zero and would pass against the implementation
+  // this replaced, which clipped the list and left the options past the bottom
+  // edge in the DOM, keyboard-reachable and unreachable with a pointer.
+  await serveApi(page, () => connection("ready", null));
+  await page.route("**/api/inference/download-size*", (route) =>
+    route.fulfill({
+      status: 200,
+      json: { model_id: "m", model_revision: "r", total_bytes: 1_200_000_000, file_count: 3 },
+    }),
+  );
+  // Short enough that the curated list cannot fit under its trigger whatever the
+  // catalog holds — the condition being tested, rather than a window size that
+  // happens to provoke it today.
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await openInference(page);
+  await page.getByTestId("new-connection").click();
+  await page.getByTestId("choose-local").click();
+  await page.getByTestId("connection-model").click();
+
+  const listbox = page.getByRole("listbox");
+  await expect(listbox).toBeVisible();
+  const box = (await listbox.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(600 + 1);
+
+  // The last entry is the one a clipped list loses, and it is reachable: Radix
+  // scrolls it into view, and clicking it selects it rather than hitting a
+  // control drawn past the bottom of the window.
+  const last = page.getByRole("option", { name: /Custom model/ });
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeVisible();
+  await last.click();
+  await expect(page.getByTestId("connection-custom-model")).toBeVisible();
+});
