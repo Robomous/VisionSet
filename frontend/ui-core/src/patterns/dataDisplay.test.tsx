@@ -250,6 +250,8 @@ describe("ClassListRow", () => {
     expect(name.className).not.toMatch(/\bbasis-/);
     const block = name.parentElement;
     expect(block?.className).toContain("flex-wrap");
+    // What keeps a wrapped line in the same right-hand column as every other row.
+    expect(block?.className).toContain("justify-end");
     // The chips live in the same wrapping block, or they could not wrap out of it.
     expect(block?.contains(screen.getByTestId("row-shape-bbox"))).toBe(true);
   });

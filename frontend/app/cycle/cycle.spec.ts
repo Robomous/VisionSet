@@ -690,12 +690,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     const row = page.getByTestId("class-row-pedestrian crossing");
     const rowBox = await row.boundingBox();
     const nameBox = await crossing.boundingBox();
-    // The **first** chip, and that is the whole of the assertion below: the chips
-    // are a row, so the second one starts 28px in (a 24px chip and a 4px gap) and
-    // comparing it against the name's left edge measures the gap rather than the
-    // indent.
+    // The **last** chip, because the claim below is about the right edge.
     const chipBox = await page
-      .getByTestId("class-row-pedestrian crossing-shape-bbox")
+      .getByTestId("class-row-pedestrian crossing-shape-polyline")
       .boundingBox();
     expect(rowBox).not.toBeNull();
     expect(nameBox).not.toBeNull();
@@ -704,9 +701,13 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     expect(rowBox!.height).toBeGreaterThan(36);
     // The chips are *below* the name, not beside it.
     expect(chipBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height);
-    // And they start at the name's left edge — indented past the swatch, which is
-    // what makes the second line read as belonging to this row.
-    expect(Math.abs(chipBox!.x - nameBox!.x)).toBeLessThanOrEqual(1);
+    // And they end where every other row's chips end. The name spans the first
+    // line, so its right edge is the column every unwrapped row aligns to; a
+    // wrapped line that started under the name instead would read as a different
+    // kind of row.
+    const chipRight = chipBox!.x + chipBox!.width;
+    const nameRight = nameBox!.x + nameBox!.width;
+    expect(Math.abs(chipRight - nameRight)).toBeLessThanOrEqual(1);
 
     // Every shape is a chip, and the tag is not among them: a tag has no canvas
     // gesture, and the Tags section below is where this class is tagged.

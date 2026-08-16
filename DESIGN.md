@@ -976,9 +976,10 @@ The page the reference design shows (#56), with measurements verified in v1's so
   capitalises at its own control; lowercase, because the same word is read as a chip in a
   row and inside a sentence. A set joins with `·` wherever it is still spelled as words.
 
-  **What gives way, stated**: the row's *height*. The chips wrap beneath the name,
-  left-aligned with it and indented past the swatch, so a long name gets the whole first
-  line. The name gave way once, then the shape list did; neither is available now that each
+  **What gives way, stated**: the row's *height*. The chips wrap beneath the name, so a
+  long name gets the whole first line — and they stay **right-aligned**, in the same column
+  every unwrapped row's chips sit in. A wrapped line that started under the name would read
+  as a different kind of row and break the one vertical edge the list is scanned down. The name gave way once, then the shape list did; neither is available now that each
   shape is a control, because truncating a control is worse than truncating a label. A row
   is therefore `min-h-9` rather than 36px exactly, and the classes region absorbs the
   difference in the scroller it already has — see the height rule above.

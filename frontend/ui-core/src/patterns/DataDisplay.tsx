@@ -320,14 +320,18 @@ export function ClassListRow({
         className={chrome}
       >
         {swatch}
-        {/* A sibling of the swatch, so a wrapped line starts under the name.
-
-            Flexbox breaks lines on each item's *flex base size*. Left at `auto`
+        {/* Flexbox breaks lines on each item's *flex base size*. Left at `auto`
             the name's base is its text width, so a long name pushes the chips to
             their own line and a short one leaves them beside it. `flex-1` would
             set that base to zero and nothing would ever wrap; a fixed `basis-*`
-            would wrap every row. */}
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+            would wrap every row.
+
+            `justify-end` keeps the chips in one right-hand column down the whole
+            list. It costs an unwrapped row nothing — the name is `grow`, so it
+            takes the free space and there is none left to distribute — and acts
+            only on a wrapped line, where the chips would otherwise sit under the
+            name and read as a different kind of row. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-2 gap-y-1">
           <button
             type="button"
             onClick={onSelect}
