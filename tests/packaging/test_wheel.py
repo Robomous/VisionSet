@@ -272,6 +272,7 @@ def test_the_installed_command_finds_every_exporter(installed: Path) -> None:
     names = [line.split()[0] for line in result.stdout.splitlines()[1:]]
     assert names == [
         "bdd100k-lane",
+        "classification",
         "coco",
         "culane",
         "curvelanes",

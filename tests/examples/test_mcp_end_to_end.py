@@ -113,6 +113,7 @@ def test_the_export_wrote_where_it_was_told(summary: Any) -> None:
     """`export_release` takes a local path — an agent runs beside the filesystem."""
     assert summary.formats == (
         "bdd100k-lane",
+        "classification",
         "coco",
         "culane",
         "curvelanes",

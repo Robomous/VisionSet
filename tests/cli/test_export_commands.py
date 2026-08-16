@@ -109,11 +109,12 @@ def test_format_list_names_the_installed_exporters() -> None:
     assert result.exit_code == 0, result.output
     rows = result.stdout.splitlines()
     assert rows[0].split() == ["NAME", "LOSSY"]
-    # Sorted by name, so `bdd100k-lane` leads and `yolo` closes. Five of the nine
+    # Sorted by name, so `bdd100k-lane` leads and `yolo` closes. Five of the ten
     # are the lane family, and every one of them is lossy — a lane file has
     # fields for a lane and none for an annotation's attributes or confidence.
     assert [row.split() for row in rows[1:]] == [
         ["bdd100k-lane", "yes"],
+        ["classification", "yes"],
         ["coco", "no"],
         ["culane", "yes"],
         ["curvelanes", "yes"],
@@ -151,6 +152,16 @@ def test_format_list_json_is_the_envelope() -> None:
             "name": "bdd100k-lane",
             "lossy": True,
             "geometries": ["polyline"],
+            "degraded_geometries": [],
+            "modalities": ["image"],
+        },
+        {
+            # The one format whose content is tags: a box has a location it
+            # cannot record, so nothing is reduced and everything else is
+            # dropped.
+            "name": "classification",
+            "lossy": True,
+            "geometries": ["classification_tag"],
             "degraded_geometries": [],
             "modalities": ["image"],
         },
