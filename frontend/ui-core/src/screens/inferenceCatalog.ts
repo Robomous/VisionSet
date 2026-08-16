@@ -57,7 +57,25 @@ export interface CuratedModel {
   readonly revision: string;
   /** The hub's figure for that revision, every file included. */
   readonly totalBytes: number;
-  /** One line, the difference between this rung and its neighbours. */
+  /**
+   * One line saying what this entry needs, in its own terms.
+   *
+   * **No word whose referent is somewhere else.** "Newer", "different", "other",
+   * "another", "improved", "latest" all point at something the reader is expected
+   * to already have in mind, and here there is nothing for them to point at: this
+   * product has no released history to be newer than, and {@link CURATED_MODELS}
+   * is grouped by the question a model answers rather than ranked, so there is no
+   * position in a list for an entry to be different *from*. A reader meets one of
+   * those words as a comparison whose first half is missing.
+   *
+   * Hardware and speed are the axes that survive being read alone. A ladder of
+   * rungs from one family may compare within itself, because the rungs are on
+   * screen together and the ordering is real; an entry that is nobody's rung says
+   * only what it is.
+   *
+   * The size and the access requirement are already rendered beside this line, so
+   * a hint restating either spends its one line saying nothing new.
+   */
   readonly hint: string;
   /**
    * What has to be cleared before this entry can be downloaded at all.
@@ -88,8 +106,8 @@ export interface CuratedGroup {
  * neutral-sources rule this product configures itself under: a curated list
  * points at originals, never at a re-publisher or a mirror.
  *
- * **Most of them are Apache-2.0 and one is not.** The last rung of the
- * point-prompt ladder is published under its trainer's own licence and behind an
+ * **Most of them are Apache-2.0 and one is not.** `facebook/sam3` is published
+ * under its trainer's own licence and behind an
  * access gate, and it is offered anyway because the alternative is worse: leaving
  * it out does not spare anybody the terms, it only means the people who want it
  * have to find the model id somewhere else and type it in, having read nothing.
@@ -139,7 +157,7 @@ export const CURATED_MODELS: readonly CuratedGroup[] = [
         // is about twice the size of the model it installs, and it is the figure
         // that belongs here: what lands on the disk, not what gets loaded.
         totalBytes: 6_895_093_624,
-        hint: "SAM 3 — a newer architecture, the largest download here, wants a GPU",
+        hint: "wants a GPU",
         access: {
           note: "Meta publishes these weights under the SAM License and grants access by request. Ask for it, then set HF_TOKEN before downloading.",
           href: "https://huggingface.co/facebook/sam3",
