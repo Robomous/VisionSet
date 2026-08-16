@@ -168,7 +168,7 @@ require_node_version() {
   found_major="${found#v}"
   found_major="${found_major%%.*}"
   if [[ $found_major != "$want" ]]; then
-    echo "error: node is $found but this repository is pinned to Node $want by .nvmrc — the frontend suites do not pass under other majors" >&2
+    echo "error: node is $found but this repository is pinned to Node $want by .nvmrc — run 'nvm use', which reads it" >&2
     exit 2
   fi
 }

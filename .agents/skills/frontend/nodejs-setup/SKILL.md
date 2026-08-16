@@ -16,7 +16,13 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, WebFetch, WebSearch, Task
 
 ## Environment
 
-- **Node.js 24**. With nvm on the host: `nvm use 24`.
+- **The Node major is pinned by `.nvmrc`**, which is the single source of truth — CI's
+  `actions/setup-node` steps read it through `node-version-file`, and `scripts/check.sh`
+  refuses to run any group that needs Node under a different major. With nvm on the host,
+  `nvm use` reads it; there is no version to type. The refusal exists because the failure
+  otherwise arrives disguised: Node 26 ships a built-in `globalThis.localStorage` that is
+  inert without `--localstorage-file` and takes precedence over the one the test
+  environment supplies, so eight `ui-core` tests fail on storage they never touched.
 - **pnpm** only (never npm, never yarn, never `npx`). Pinned via `packageManager` in
   the root `package.json` — enable it with `corepack enable`. To run a binary the
   workspace already has, `pnpm exec <bin>`; `npx` would *fetch and run* one it does
