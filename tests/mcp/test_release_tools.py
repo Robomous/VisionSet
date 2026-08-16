@@ -163,6 +163,16 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "modalities": ["image"],
             },
             {
+                # The one format whose content is tags: a box has a location it
+                # cannot record, so nothing is reduced and everything else is
+                # dropped.
+                "name": "classification",
+                "lossy": True,
+                "geometries": ["classification_tag"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+            },
+            {
                 # Lossless: boxes and polygons are native, and everything
                 # COCO has no field for rides in a `visionset` object.
                 "name": "coco",
@@ -232,7 +242,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "modalities": ["image"],
             },
         ],
-        "total": 9,
+        "total": 10,
     }
 
 

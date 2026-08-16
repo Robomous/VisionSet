@@ -179,6 +179,7 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
     formats = {one["name"]: one for one in ok(call("list_formats"))["items"]}
     assert set(formats) == {
         "bdd100k-lane",
+        "classification",
         "coco",
         "culane",
         "curvelanes",
