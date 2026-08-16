@@ -185,6 +185,20 @@ services:
       # port open to every interface would hand the workspace to the LAN. The two
       # lines belong together and neither is safe alone.
       VISIONSET_UI_SESSION: always
+      # Forwarded from whoever ran `docker compose`, empty when they have none.
+      # Some published weights are served only to accounts that have been granted
+      # them, and the refusal for fetching one without that names `HF_TOKEN` as
+      # the remedy. Without this line the remedy is unreachable from this stack:
+      # the reader sets the variable on the host, the container never sees it, and
+      # the same refusal comes back with nothing about it changed. A refusal
+      # naming a remedy nobody in that position can take is the mistake
+      # `NotAWorkspace` is the standing example of.
+      #
+      # It carries no default and belongs to no mode: a stack without the
+      # inference runtime never fetches anything, and one with it fetches ungated
+      # weights exactly as before, because the hub client treats an empty value
+      # as no token at all.
+      HF_TOKEN: ${HF_TOKEN:-}
     # Raw uvicorn rather than `visionset server`, and deliberately so: that
     # command also serves the compiled bundle at /app, which in development is
     # vite's job on :5173 — and building that bundle is exactly what this stack

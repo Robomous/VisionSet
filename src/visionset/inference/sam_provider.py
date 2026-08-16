@@ -37,7 +37,7 @@ reused rather than respelled — same ``_fp16.forward_guard``, same
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Final
@@ -56,6 +56,54 @@ from visionset.kernel.domain import (
     SegmentedMask,
 )
 from visionset.kernel.errors import UnsupportedPrompt
+
+_CLASSES: Final[Mapping[str, tuple[str, str]]] = {
+    "sam2": ("AutoProcessor", "Sam2Model"),
+    "sam2_video": ("AutoProcessor", "Sam2Model"),
+    "sam3_video": ("Sam3TrackerProcessor", "Sam3TrackerModel"),
+}
+"""Which ``transformers`` pair loads each family this adapter serves.
+
+Keyed by exactly the members of :data:`~visionset.inference.families.SEGMENTER_FAMILIES`
+— ``test_the_class_table_covers_every_segmenter_family`` holds the two together,
+because a family added to the register without an entry here would resolve to this
+adapter and then fail inside a load with a ``KeyError`` rather than in a refusal.
+
+**SAM 3's entry names its processor and SAM 2's does not, and the asymmetry is the
+point rather than an oversight.** ``AutoProcessor`` resolves against the
+repository's own declared ``processor_class``, which is the right answer for SAM 2:
+``facebook/sam2.1-hiera-base-plus`` declares ``Sam2VideoProcessor``, and that is
+what the shipped adapter has always loaded. Asked the same question about
+``facebook/sam3`` it answers **``Sam3VideoProcessor``** — measured, not predicted —
+which is the video path and not a thing a single-image click can be expressed to.
+Naming ``Sam3TrackerProcessor`` is what keeps the point prompt reaching a processor
+that takes points.
+
+The model class is named for the same reason and SAM 2's has been since this
+adapter shipped: a config declaring the video variant loads into the promptable
+image model deliberately. ``transformers`` says so itself when it happens, and
+names the older case while doing it — *"You are using a model of type
+``sam3_video`` to instantiate a model of type ``sam3_tracker``. This may be
+expected if you are loading a checkpoint that shares a subset of the architecture
+(e.g., loading a ``sam2_video`` checkpoint into ``Sam2Model``)"*. That warning is
+left where a reader can see it, on the shipped adapter's own precedent.
+
+**Both rows are measured against a real load, not reasoned about.** Asking
+``from_pretrained(..., output_loading_info=True)`` for ``facebook/sam3`` on CPU
+reports ``missing_keys: 0``, ``unexpected_keys: 0``, ``mismatched_keys: 0`` — the
+same clean result recorded below for SAM 2, so every parameter the tracker needs
+came out of the checkpoint and no weight is left randomly initialised. A point
+prompt then runs the whole way through: ``get_image_embeddings`` returns an
+embedding, the forward answers ``pred_masks`` of ``(1, 1, 3, 288, 288)`` beside
+``iou_scores`` of ``(1, 1, 3)``, and ``post_process_masks`` lifts them to
+``(1, 3, 240, 320)`` — three masks at the asset's own size, which is exactly the
+shape ``_segments`` below already reads.
+
+``Sam3TrackerModel`` and ``Sam2Model`` agree signature for signature on everything
+below this line — ``get_image_embeddings(pixel_values, **kwargs)``, ``forward``'s
+full keyword list, and ``post_process_masks(masks, original_sizes, …)`` — which is
+why one adapter serves both and only these two names move.
+"""
 
 POSITIVE: Final = 1
 NEGATIVE: Final = 0
@@ -122,6 +170,7 @@ class LocalSamProvider:
         model_id: str,
         model_revision: str,
         *,
+        family: str,
         device: str,
         precision: str | None,
         cache_dir: Path,
@@ -130,6 +179,7 @@ class LocalSamProvider:
     ) -> None:
         self._model_id = model_id
         self._model_revision = model_revision
+        self._family = family
         self._device = device
         self._precision = precision
         self._cache_dir = cache_dir
@@ -295,6 +345,12 @@ class LocalSamProvider:
     def _load(self) -> tuple[Any, Any, str, bool]:
         """Processor and model, once per provider.
 
+        **Which pair is loaded is the connection's family's answer, not this
+        method's.** :data:`_CLASSES` holds it, one row per family, and the argument
+        for each row is written there. What stays here is everything that does not
+        vary: the device resolution, the dtype, and ``local_files_only``, because
+        nothing on a load path may reach the network.
+
         **``transformers`` warns here on every load, and the warning is expected.**
         The published SAM 2 checkpoints declare ``model_type: sam2_video``, so
         loading one into ``Sam2Model`` prints *"You are using a model of type
@@ -329,8 +385,9 @@ class LocalSamProvider:
             "cache_dir": str(self._cache_dir),
             "local_files_only": True,
         }
-        processor = transformers.AutoProcessor.from_pretrained(self._model_id, **common)
-        model = transformers.Sam2Model.from_pretrained(
+        processor_class, model_class = _CLASSES[self._family]
+        processor = getattr(transformers, processor_class).from_pretrained(self._model_id, **common)
+        model = getattr(transformers, model_class).from_pretrained(
             self._model_id,
             dtype=torch.float16 if half else torch.float32,
             **common,

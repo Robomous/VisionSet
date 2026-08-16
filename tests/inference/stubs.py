@@ -166,6 +166,14 @@ class StubTorch:
     """
 
     float16 = "float16"
+    float32 = "float32"
+    """Both dtypes, because a load picks between them and only one had a stand-in.
+
+    ``float16`` was enough while every test entered below the loader with
+    ``_ready`` already stubbed. The tests that drive ``_load`` itself take the
+    other branch — full precision is what a CPU resolves to — and would otherwise
+    fail on the stub rather than on the code.
+    """
 
     def __init__(self, *, cuda: bool = False, mps: bool = False, mps_usable: bool = True) -> None:
         self.nn = SimpleNamespace(functional=Functional())

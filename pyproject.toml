@@ -85,7 +85,15 @@ dependencies = [
 local-inference = [
     "torch>=2.4",
     "torchvision>=0.19",
-    "transformers>=4.44",
+    # 5.0 is where `sam3` and `sam3_tracker` arrive, measured against the wheels
+    # rather than inferred from a changelog: 4.57.6 ships neither module and 5.0.0
+    # ships both, exporting `Sam3TrackerProcessor` and `Sam3TrackerModel` at the
+    # top level, which is what `sam_provider` names. It is a major bump for
+    # everybody, including the SAM 2 and Grounding DINO users who gain nothing
+    # from it — and it makes the floor honest rather than raising it. `uv.lock`
+    # has resolved 5.x for as long as this extra has existed, so `>=4.44` was a
+    # compatibility claim no run has ever tested.
+    "transformers>=5.0",
     "accelerate>=0.33",
     "huggingface-hub>=0.24",
 ]

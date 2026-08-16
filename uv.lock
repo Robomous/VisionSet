@@ -2643,7 +2643,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "torch", marker = "extra == 'local-inference'", specifier = ">=2.4" },
     { name = "torchvision", marker = "extra == 'local-inference'", specifier = ">=0.19" },
-    { name = "transformers", marker = "extra == 'local-inference'", specifier = ">=4.44" },
+    { name = "transformers", marker = "extra == 'local-inference'", specifier = ">=5.0" },
     { name = "typer", specifier = ">=0.12" },
     { name = "uvicorn", specifier = ">=0.52.0" },
 ]

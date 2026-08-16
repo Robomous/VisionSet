@@ -89,6 +89,7 @@ def gated(monkeypatch: pytest.MonkeyPatch, parties: int) -> tuple[LocalSamProvid
     provider = LocalSamProvider(
         "some/segmenter",
         "abc123",
+        family="sam2",
         device="cpu",
         precision=None,
         cache_dir=Path("/nowhere"),

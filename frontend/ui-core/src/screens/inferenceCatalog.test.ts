@@ -88,3 +88,25 @@ it("offers the devices every machine can be asked about", () => {
   // escape, because a Mac has exactly one.
   expect([...DEVICES]).toEqual(["cpu", "cuda", "mps"]);
 });
+
+it("carries an access note on the one entry that cannot simply be downloaded", () => {
+  // The list is mostly checkpoints anybody can fetch, and one that is not. The
+  // note is the whole reason that entry may be curated at all: leaving it out
+  // would not spare anybody the terms, it would only mean the people who want it
+  // type the id in from somewhere else having read nothing.
+  const gated = EVERY_MODEL.filter((model) => model.access !== undefined);
+  expect(gated.map((model) => model.modelId)).toEqual(["facebook/sam3"]);
+  for (const model of gated) {
+    expect(model.access!.note.trim()).not.toBe("");
+    // The note says a requirement exists; the link is where it is cleared. A
+    // note with nowhere to go is the dead-end this pair exists to avoid.
+    expect(model.access!.href).toMatch(/^https:\/\/huggingface\.co\/.+/);
+  }
+});
+
+it("keeps the gated entry off the default, so nobody meets a gate they did not choose", () => {
+  // Opening the form pre-fills a model. Pre-filling one that refuses its own
+  // download until somebody has been granted access would make the first
+  // experience of this screen a refusal.
+  expect(DEFAULT_MODEL.access).toBeUndefined();
+});
