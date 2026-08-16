@@ -251,9 +251,41 @@ export function GalleryScreen({
   // step and 191px at the widest.
   const rowHeight = Math.round(columnWidth * TILE_ASPECT) + CAPTION + GAP;
 
+  // **The density step is part of a row's identity, so a row measured at one step
+  // is not the same cached row at another.**
+  //
+  // A new estimate does not displace a measurement. The rows carry
+  // `measureElement` below, so their positions come from the cache its
+  // `ResizeObserver` fills — and that observer fires a frame *after* the wider
+  // tiles have been laid out. Changing density therefore painted one frame in
+  // which the tiles were already the new size while the rows were still a pitch
+  // apart at the old one: measured at step 0 → 3, row 1 sat at 419, the old
+  // pitch, with four overlapping pairs, and moved to 553 only on the next frame.
+  // That frame is #511 — it is what the suite was catching when it caught
+  // anything, which is why it read as a flake rather than as a defect.
+  //
+  // Keying the cache makes the stale entry unreachable rather than merely wrong,
+  // so the rows fall back to the estimate — computed from the *measured* column
+  // width, and already right — in the same render that widens the tiles.
+  //
+  // Two things this is deliberately not. **`virtualizer.measure()`**, which is
+  // the API that looks like the answer: from an effect it recalculates a frame
+  // late, which is exactly the frame the bug is, and from render it flushes
+  // React from inside a render and says so. And **`rowHeight`** as the key,
+  // which is this same fact one derivation later but also moves while the pane
+  // is first being measured, throwing the cache away several times per load.
+  //
+  // The cost, stated: forcing a re-measure makes the virtualizer notify
+  // synchronously from inside the commit, so a density change logs React's
+  // `flushSync was called from inside a lifecycle method` three times. It is a
+  // development-build notice — React falls back to a normal update, and the
+  // production build does not warn — and it is the price of the cache miss.
+  const rowKey = useCallback((index: number) => `${minColumn}:${index}`, [minColumn]);
+
   const virtualizer = useWindowVirtualizer({
     count: rows,
     estimateSize: () => rowHeight,
+    getItemKey: rowKey,
     // The grid does not start at the top of the document — the header, the
     // toolbar and the timeline are above it. Without this offset the virtualizer
     // believes row 0 sits at scroll position 0 and renders the wrong window for
@@ -486,7 +518,12 @@ export function GalleryScreen({
               >
                 {virtualRows.map((row) => (
                   <div
-                    key={row.key}
+                    // The row's *index*, not `row.key`: since the measurement
+                    // cache is keyed on the row height above, `row.key` changes
+                    // with the density, and a changed React key remounts the
+                    // subtree — every thumbnail in view would reload for a
+                    // slider drag. The two identities are different questions.
+                    key={row.index}
                     // Measured rather than trusted. The estimate above is exact
                     // for the picture and approximate for the caption, and this
                     // is what makes the difference a reflow instead of an
