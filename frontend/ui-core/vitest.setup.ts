@@ -103,10 +103,13 @@ if (typeof URL.revokeObjectURL !== "function") {
  * `undefined` and `localStorage.getItem(...)` is a `TypeError` on a property
  * read, not a storage that accepts writes and forgets them.
  *
- * `sessionStorage` is unaffected and arrives as jsdom's `Storage`, which is why
- * `data/session.ts` and its tests pass under both majors while `data/railState.ts`
- * and `data/prefs.ts` do not. Any explanation predicting both would break is
- * wrong.
+ * `sessionStorage` is declared by Node too, and vitest skips it for the same
+ * reason — so that global is *Node's* `Storage`, not jsdom's. It is unaffected
+ * only because Node's `sessionStorage` works with no flag while its
+ * `localStorage` is `undefined` without `--localstorage-file`. That is why
+ * `data/session.ts` and its tests pass under both majors while
+ * `data/railState.ts` and `data/prefs.ts` do not. Any explanation predicting
+ * both would break is wrong.
  *
  * The product code needs nothing: `storage()` in both modules probes with a write
  * and answers `null` from its `catch`, so the caller already gets the default —
@@ -124,7 +127,13 @@ if (typeof URL.revokeObjectURL !== "function") {
  * a stub that swallowed writes would turn that test green while proving nothing.
  * A `url` is mandatory — jsdom's default `about:blank` is an opaque origin and
  * throws `SecurityError` on the first access. Setup runs per test file, so each
- * worker gets its own empty store and nothing is shared across them.
+ * worker gets its own empty store and nothing is shared across them, so long as
+ * files stay isolated, which is vitest's default. Passing `--localstorage-file`
+ * is not the fix, tempting as it looks for the `ExperimentalWarning` this block
+ * leaves behind: it makes the `typeof` check above pass, so this block is
+ * skipped, and the suite runs against Node's one process-wide on-disk store —
+ * `railState.test.ts`'s `afterEach` `clear()` would wipe a concurrently running
+ * file's data.
  */
 if (typeof globalThis.localStorage?.setItem !== "function") {
   const { JSDOM } = await import("jsdom");
