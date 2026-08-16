@@ -79,6 +79,20 @@ in the kernel.**
    an import from a delivery module.
 4. Test against the Protocol with a fake; the default adapter gets its own test.
 
+## Check-then-write in services
+
+A check never rides in a transaction of its own — it rides inside the write. Two sanctioned
+shapes, and every service write path uses one of them:
+
+- **Push the check into the write method itself** — the `add_schema_version_unless_annotated`
+  shape: the insert is the first write and therefore the statement that opens the transaction,
+  so a prior read would sit in autocommit and reopen the race window. cf. #586, #589.
+- **Guard optimistically on the contended datum** — the `set_asset_progress` shape: pass
+  `expected=` and raise `StaleWrite` when somebody moved it first. cf. #302.
+
+The 2026-08-16 audit at `f31653d` verified every service write path conforms to one of these
+two shapes. Closed line of inquiry — do not re-derive it.
+
 ## Adding a format plugin
 
 - Implement the importer/exporter under `formats/`.
