@@ -25,7 +25,7 @@ typo answers a `VisionSetError` rather than a `KeyError` and a traceback.
 
 ## What ships
 
-Nine plugins in [`pyproject.toml`](../../../pyproject.toml)'s
+Ten plugins in [`pyproject.toml`](../../../pyproject.toml)'s
 `[project.entry-points."visionset.formats"]`:
 
 | Name | Module |
@@ -34,6 +34,7 @@ Nine plugins in [`pyproject.toml`](../../../pyproject.toml)'s
 | `yolo` | [`yolo/`](../../../src/visionset/formats/yolo/) |
 | `coco` | [`coco/`](../../../src/visionset/formats/coco/) |
 | `voc` | [`voc/`](../../../src/visionset/formats/voc/) |
+| `classification` | [`classification/`](../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
 | `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` | [`lanes/`](../../../src/visionset/formats/lanes/) - five plugins over one shared core |
 
 ## What a plugin declares
