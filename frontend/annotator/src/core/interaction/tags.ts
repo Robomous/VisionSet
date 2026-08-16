@@ -21,16 +21,12 @@
  * layering, which nothing on the frontend enforces and therefore nothing would
  * catch a second time.
  *
- * ## At most one tag per class is THIS package's invariant, not the kernel's
+ * ## At most one tag per class, held here and in the kernel
  *
- * The kernel does not enforce it and it is worth being exact about how thoroughly:
- * `AnnotationService._validate` never reads the store, so nothing compares a
- * proposed annotation against the ones already on the asset; `AnnotationRow`
- * carries no unique index and no migration adds one; no route and no MCP tool
- * dedupes. Two identical classification annotations in a single `add` call are
- * stored as two rows. So there is no idempotent add to lean on and no error to
- * catch — the invariant has to live somewhere, and this module is the only place
- * in the annotator that can author a tag.
+ * The kernel enforces it now — `AnnotationService._require_untagged`, keyed
+ * `(asset_id, label_class)`, behind a partial unique index. It did not when this
+ * module was written, which is why the rule lives here too; and holding it here is
+ * still what stops a write from being refused minutes later, blaming an index.
  *
  * It is enforced **structurally rather than by refusal**: `tagCommand` on a class
  * the asset already carries returns a command that changes nothing, and
@@ -153,16 +149,12 @@ export function isTaggableClass(labelClass: LabelClass): boolean {
 /**
  * Whether this annotation is a classification tag rather than a drawn shape.
  *
- * The class-level question is {@link isTaggableClass} — *may* this class be
- * tagged — and this is the annotation-level one: *is* this a tag. A surface
- * listing what has been drawn needs the second, because a tag has no coordinates
- * and belongs to the whole asset: it renders in neither canvas layer, it has no
- * geometry to name in a row, and offering it a hide button or a reassignment menu
- * would offer operations that mean nothing for it.
+ * {@link isTaggableClass} asks whether a class *may* be tagged; this asks whether
+ * an annotation *is* a tag. A surface listing what has been drawn needs the
+ * second — a tag has no coordinates, renders in neither layer, and a hide button
+ * over one would mean nothing.
  *
- * Exported so the panel does not spell the geometry comparison for itself. It was
- * already written twice in this file; a third copy living in a component is how
- * "what counts as a tag" comes to have two answers.
+ * Exported so a panel does not spell the comparison for itself.
  */
 export function isTagAnnotation(annotation: Annotation): boolean {
   return annotation.geometry.type === "classification_tag";

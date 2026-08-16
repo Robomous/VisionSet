@@ -193,11 +193,8 @@ describe("ClassListRow", () => {
   });
 
   it("keeps the hotkey badge on a row that is picking a shape", () => {
-    // It was dropped here to buy the name ~28px, on the argument that this was
-    // the *armed* row and the digit's job is to arm. Every row picks now, so that
-    // trade would take the digit off the whole list — and `hotkeyForClass` is the
-    // only place a person can read which number reaches which class. The chips
-    // wrap to a second line instead, which costs the name nothing.
+    // Every row picks, so dropping the badge here would take the digit off the
+    // whole list. The chips wrap instead, which costs the name nothing.
     const shapes = [
       { value: "bbox", label: "box", active: true, onPick: vi.fn() },
       { value: "polygon", label: "polygon", active: false, onPick: vi.fn() },
@@ -232,13 +229,9 @@ describe("ClassListRow", () => {
    * to itself, the chips landing under it — are a browser claim and are measured
    * in `cycle.spec.ts`.
    *
-   * It is worth pinning because every way of getting it wrong is silent. Without
-   * `flex-wrap` the chips never move. With `flex-1` the name's flex base is zero,
-   * so it shrinks away and the chips never *need* to move — #596 arriving again by
-   * another route. With a fixed `basis-*` the base stops tracking the text, and
-   * every three-chip row wraps whether or not it had to, `car` included. Left at
-   * `auto`, the base is the width of the name, which is the quantity the decision
-   * is actually about.
+   * Every way of getting it wrong is silent. Without `flex-wrap` the chips never
+   * move; with `flex-1` the name's base is zero so it shrinks away and they never
+   * need to; with a fixed `basis-*` every row wraps whether it had to or not.
    */
   it("lets the name's own width decide, inside a wrapping block", () => {
     render(
@@ -262,9 +255,8 @@ describe("ClassListRow", () => {
   });
 
   it("refuses to pick when the row is refused, however many shapes it is handed", () => {
-    // Principle 9 in the direction that matters: the group variant has no
-    // `disabled` to carry, so a refused row must fall through to the button that
-    // does — explained *and* inert, rather than explained and still pressable.
+    // The group variant has no `disabled` to carry, so a refused row falls through
+    // to the button that does: explained *and* inert.
     render(
       <ClassListRow
         testId="row"

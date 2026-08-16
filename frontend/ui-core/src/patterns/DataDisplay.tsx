@@ -172,14 +172,10 @@ export function DistributionBar({
  * "three rows minimum, one per class, eight maximum", and a rule stated in rows
  * needs the row to be a known quantity.
  *
- * It is the height of an **unwrapped** row — `min-h-9` — and since a picking row
- * may take a second line for its chips, it is now a floor rather than the whole
- * story. That is deliberate and it is where the region's arithmetic stops being
- * exact: `classListHeight` keeps sizing the viewport from the schema's *count*,
- * so a wrapped row is simply absorbed by the scroller the region already has,
- * exactly as a ninth class is. The alternative — a height that knew which rows
- * wrap — is a measurement, and a measurement would reflow the region under the
- * cursor on every resize and could be asserted nowhere but a real browser.
+ * It is the height of an **unwrapped** row, so it is a floor: a row carrying
+ * chips may take a second line. `classListHeight` still sizes the viewport from
+ * the class count, and the scroller absorbs the difference — a height that knew
+ * which rows wrap would be a measurement, and would reflow on every resize.
  */
 export const CLASS_ROW_PX = 36;
 
@@ -234,30 +230,13 @@ export interface ClassListRowProps {
    * a row carrying chips is a group with an inner name button instead, and the
    * `-name` handle addresses that button in both markups.
    *
-   * It was once spent on the armed row alone, on the argument that an unarmed row
-   * has no live choice. That was true while a chip could only *switch* a shape;
-   * it stopped being true when a chip on an unarmed row became "arm this class,
-   * with this shape" — a choice fifty rows genuinely offer, and the fastest way
-   * to reach the one you want.
-   *
    * A row carrying a `refusal` never picks, however many shapes are passed: see
    * `picking`.
    */
   readonly shapes?: readonly {
     readonly value: string;
-    /**
-     * The shape's name, which is its **accessible** name whether or not it is
-     * the thing drawn. A caller passing `icon` still owes this one.
-     */
+    /** The shape's name, shown on the chip and used as its accessible name. */
     readonly label: string;
-    /**
-     * The glyph to draw instead of the word, or absent to render the word.
-     *
-     * A `ReactNode` rather than an icon name, because this component is generic
-     * and has no business knowing what a polygon looks like — the annotator does,
-     * and `GeometryIcon` is where it says so once for the strip and the row. #597
-     */
-    readonly icon?: ReactNode;
     readonly active: boolean;
     readonly onPick: () => void;
   }[];
@@ -341,23 +320,13 @@ export function ClassListRow({
         className={chrome}
       >
         {swatch}
-        {/* The wrapping block, and it is a sibling of the swatch rather than its
-            parent so that a second line starts under the *name* and not under the
-            colour dot — the indent the design asks for costs no rule of its own.
+        {/* A sibling of the swatch, so a wrapped line starts under the name.
 
-            `flex-wrap` is the mechanism and **the absence of `flex-1` is what arms
-            it**. Flexbox breaks lines on each item's *flex base size*, before any
-            shrinking: left at `auto`, the name's base is the width of the text, so
-            a long name plus its chips overflows the row and the chips take a line
-            of their own — while a short name leaves them beside it. `flex-1` sets
-            the base to zero, which is why the name used to shrink away to nothing
-            and the chips never moved (#596, from the other side). A fixed
-            `basis-32` would be the opposite mistake: every three-chip row would
-            wrap, `car` included.
-
-            `grow` then lets the name fill whatever the line has left, and
-            `min-w-0` + `truncate` are the last resort for a name too long even
-            with the whole line to itself. */}
+            Flexbox breaks lines on each item's *flex base size*. Left at `auto`
+            the name's base is its text width, so a long name pushes the chips to
+            their own line and a short one leaves them beside it. `flex-1` would
+            set that base to zero and nothing would ever wrap; a fixed `basis-*`
+            would wrap every row. */}
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
           <button
             type="button"
@@ -385,34 +354,24 @@ export function ClassListRow({
                 aria-pressed={shape.active}
                 data-active={shape.active ? "true" : "false"}
                 data-testid={testId === undefined ? undefined : `${testId}-shape-${shape.value}`}
-                // The word is the accessible name whichever is drawn, so a chip
-                // that shows a glyph is still announced as "polygon" and still
-                // hoverable for it. #597 traded the words for pictures because
-                // three of them beside a class name is ~128px of a 240px row.
+                // `title` too, so a chip clipped by a narrow panel reads on hover.
                 aria-label={shape.label}
                 title={shape.label}
                 className={cn(
-                  "flex shrink-0 items-center justify-center rounded-sm text-meta transition-colors",
+                  "flex shrink-0 items-center justify-center rounded-sm px-1.5 text-meta transition-colors",
                   "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-                  shape.icon === undefined ? "px-1.5" : "size-6",
                   shape.active
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-card hover:text-foreground",
                 )}
               >
-                {shape.icon ?? shape.label}
+                {shape.label}
               </button>
             ))}
           </div>
         </div>
-        {/* The badge is back on this variant, and it had to come back: #598 spent
-            it to buy width for the name when exactly one row picked. Every row
-            picks now, so dropping it here would take the digit off every class in
-            the list — and `hotkeyForClass` is the only place the mapping is
-            written down for a person to read.
-
-            Outside the wrapping block, so it stays on the row rather than
-            travelling to the second line with the chips. */}
+        {/* Outside the wrapping block, so it stays on the first line rather than
+            travelling down with the chips. */}
         {hotkey != null && (
           <kbd className="shrink-0 rounded-sm border border-border px-1 font-mono text-meta text-muted-foreground">
             {hotkey}

@@ -945,13 +945,14 @@ The page the reference design shows (#56), with measurements verified in v1's so
   has (#123) and for the same reason — a paste and a drawing class both belong to one
   pinned schema.
 
-  **Every row's shapes are chips, and every chip is a press target** (#584, widened here).
-  A class accepts a *set* of geometries, so arming one no longer picks the shape — and
-  until #584 the only place that answer lived was the tool strip at the far left of the
-  canvas while the class was chosen on the right: one decision split across the width of
-  the picture, in a loop repeated hundreds of times a job. One chip per **drawable**
-  geometry, drawn as the tool strip's own glyph (`GeometryIcon`, one spelling for both
-  surfaces) with the word as its accessible name.
+  **Every row's shapes are chips, and every chip is a press target.** A class accepts a
+  *set* of geometries, so arming one no longer picks the shape — and the only place that
+  answer used to live was the tool strip at the far left of the canvas while the class was
+  chosen on the right: one decision split across the width of the picture, in a loop
+  repeated hundreds of times a job. One chip per **drawable** geometry, labelled with the
+  geometry **word**. Glyphs were tried and reverted: a square, a spline and a waypoint node
+  are not self-describing at chip size on the one row whose job is telling shapes apart,
+  and the strip can afford them only because it is five controls learned once.
 
   What a press does depends on the row, and the two readings are one rule — *this class,
   this shape*:
@@ -964,24 +965,22 @@ The page the reference design shows (#56), with measurements verified in v1's so
     *with that shape*, in one press where it used to be two.
   - Pressing the **name** arms the class with its first drawable shape.
 
-  Chips were the armed row's alone until every row could arm with one. The cost is that a
-  row carrying chips is a `role="group"` with an inner name button rather than one row-wide
-  `<button>` — HTML forbids interactive descendants inside a button — and the `-name`
-  handle addresses that button in both markups. A row carrying a **refusal** never picks:
-  it falls back to the plain button, which is the only one that can be `disabled`, so
-  principle 9 stays *explained and inert* rather than explained and still pressable.
+  The cost is that a row carrying chips is a `role="group"` with an inner name button
+  rather than one row-wide `<button>` — HTML forbids interactive descendants inside a
+  button — and the `-name` handle addresses that button in both markups. A row carrying a
+  **refusal** never picks: it falls back to the plain button, the only one that can be
+  `disabled`, so principle 9 stays *explained and inert*.
 
   Geometry words are **display labels, never wire values** — `box`, not `bbox`; `tag`, not
   `classification_tag`. One map, `GEOMETRY_LABELS`, shared with the tool strip, which
   capitalises at its own control; lowercase, because the same word is read as a chip in a
   row and inside a sentence. A set joins with `·` wherever it is still spelled as words.
 
-  **What gives way, stated**: the row's *height*. The name has a flex floor and the chips
-  wrap beneath it, left-aligned with the name and indented past the swatch, so a long name
-  gets the whole first line. It was the name that gave way once (34px of 176 — #596), then
-  the shape list, shortened to `box +3` (#598); neither is available now that each shape is
-  a control, because truncating a control is worse than truncating a label. A row is
-  therefore `min-h-9` rather than 36px exactly, and the classes region absorbs the
+  **What gives way, stated**: the row's *height*. The chips wrap beneath the name,
+  left-aligned with it and indented past the swatch, so a long name gets the whole first
+  line. The name gave way once, then the shape list did; neither is available now that each
+  shape is a control, because truncating a control is worse than truncating a label. A row
+  is therefore `min-h-9` rather than 36px exactly, and the classes region absorbs the
   difference in the scroller it already has — see the height rule above.
 
   **A class that declares only `classification_tag` is not in this list at all.** It has no

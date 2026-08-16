@@ -1016,12 +1016,8 @@ function Workspace({
         connectionId: connection.id,
         positive: prompt.positive,
         negative: prompt.negative,
-        // The shape the strip is showing, not every shape the class admits. A
-        // class accepting both is answered as a polygon whenever both are asked
-        // for, so sending the set would ignore the held tool — see
-        // `suggestGeometriesFor`. `activeTool` is the same preference the strip
-        // and the class row's lit chip resolve through, which is what makes the
-        // three agree by construction rather than by three rules matching.
+        // The shape the strip is showing, not every shape the class admits —
+        // sending the set would ignore the held tool. See `suggestGeometriesFor`.
         allowedGeometries: suggestGeometriesFor(declared, activeTool),
         adjustments: next.adjustments,
       },
@@ -1518,10 +1514,8 @@ function Workspace({
     attempt(() => setProgress.mutate({ assetId: asset.id, progress: "unannotated" }));
   }
 
-  // The badge on the picture says "N objects", and a tag is not one: it has no
-  // coordinates and renders in neither canvas layer, so counting it here made the
-  // number disagree with what a person could see. Same word, same rule, same
-  // filter as the panel's own counter — `isTagAnnotation` is the one spelling.
+  // A tag renders in neither canvas layer, so counting it here made the badge
+  // disagree with the picture. Same filter as the panel's own counter.
   const drawn = annotationsInDrawOrder(snapshot.document).filter(
     (annotation) => !isTagAnnotation(annotation),
   ).length;

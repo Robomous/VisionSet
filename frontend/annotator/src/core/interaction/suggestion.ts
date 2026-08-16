@@ -139,26 +139,20 @@ export function allowedGeometriesFor(
 }
 
 /**
- * The kinds to ask for, narrowed to the shape the host is actually holding.
+ * The kinds to ask for, narrowed to the shape the host is holding.
  *
- * {@link allowedGeometriesFor} answers what the class *can* hold, and while every
- * class declared exactly one geometry the two questions had one answer. Once a
- * class accepts a set they diverge, and the difference is a defect: the server
- * narrows a mask by preferring polygon over box whenever both are named, so a
- * `{bbox, polygon}` class asked for both is answered as a polygon **however the
- * tool strip is set**. Somebody drawing boxes gets outlines, and nothing on screen
- * said the tool would be ignored.
+ * {@link allowedGeometriesFor} answers what the class *can* hold. The server
+ * prefers polygon whenever both are named, so a `{bbox, polygon}` class asked for
+ * both comes back a polygon however the tool strip is set — somebody drawing
+ * boxes gets outlines, with nothing on screen to say the tool was ignored.
  *
- * So the resolution is {@link toolForClass}' — the very function the strip and the
- * class row's lit chip already read — and the answer is one kind rather than a
- * set. The request stays within `allowed_geometries`' contract, because the kind
- * asked for is still one the class admits; what changes is that the caller now
- * states which of them it wants for *this* request.
+ * The resolution is {@link toolForClass}', which the strip and the row's lit chip
+ * already read. Still within the field's contract: the kind asked for is one the
+ * class admits.
  *
- * Falls back to the full intersection when the resolved tool is not a kind a
- * segmenter can propose — a class taking a box and a lane, held on the lane tool.
- * Narrowing to nothing there would turn a working capability into an empty answer,
- * so it asks for what the class can hold, which is the old behaviour exactly.
+ * Falls back to the full intersection when the held tool is not a kind a
+ * segmenter proposes — a box-and-lane class on the lane tool — since narrowing to
+ * nothing would turn a working capability into an empty answer.
  */
 export function suggestGeometriesFor(
   labelClass: LabelClass,

@@ -19,40 +19,23 @@
  *
  * ## Three regions, no tabs, and no splitter
  *
- * There are no **Objects | Labels** tabs. A tab is a claim that two things are
- * alternatives, and these are not: they are three answers about one frame, read
- * in order — *what may I draw* (Classes), *what is true of the whole picture*
- * (Tags), *what have I drawn* (Annotations). So they are stacked and all three
- * are on screen.
+ * There are no **Objects | Labels** tabs. A tab claims two things are
+ * alternatives; these are three answers about one frame, read in order — *what
+ * may I draw*, *what is true of the whole picture*, *what have I drawn*.
  *
- * Tags used to be a chip strip *inside* the objects region, above its filter, on
- * the argument that a tag is a fact about this frame and so belongs beside the
- * things drawn on it. Two things were wrong with that. The chips sat under a
- * heading — **Annotations** — that named the numbered rows below them and not the
- * chips. And because the list was every annotation in the document, each tag was
- * *also* a row: counted as an object, given a hide button that hides nothing and
- * a reassignment menu onto classes that cannot hold it. A heading, a count and a
- * region of its own fixes both, and the filter below now unambiguously filters
- * the list it sits on.
+ * Tags used to be a chip strip *inside* the objects region, under a heading that
+ * named the rows below them and not the chips. Worse, the list was every
+ * annotation in the document, so each tag was *also* a row — counted as an
+ * object, with a hide button that hides nothing and a reassignment menu onto
+ * classes that cannot hold it.
  *
- * The splits follow a rule and are not draggable. `ClassRegion` is `shrink-0` and
- * sizes itself in rows; `TagRegion` is `shrink-0` with a capped scroller, so a
- * schema of thirty tag classes cannot push the rest off the panel; the objects
- * region is `min-h-0 flex-1` and takes whatever is left. Each region scrolls
- * inside itself, so a long ontology, a long tag list and a busy frame cannot push
- * each other off. A draggable splitter would add a piece of per-user state to a
- * surface whose whole point is that it is the same on every frame.
- *
- * Each region's heading, count and prose sit outside its scroller and never
- * scroll away. **A region with nothing to show is not rendered at all** — no
- * classes anything can be drawn with, or no class declaring a tag — because a
- * heading over an empty box is a claim that something is missing. The objects
- * region is the exception and always renders: its emptiness is the normal state
- * of a fresh frame, and it says so in words.
- *
- * The object filter renders even with nothing drawn. A control that appears once
- * a list is long enough is a control nobody finds, and the panel's width is
- * fixed, so there is no layout to protect by hiding it.
+ * The splits are a rule, not a handle. `ClassRegion` sizes itself in rows,
+ * `TagRegion` is capped, and the objects region takes what is left; each scrolls
+ * inside itself. **A region with nothing to show is not rendered**, and its
+ * divider goes with it — a heading over an empty box claims something is missing.
+ * Annotations is the exception: an empty frame is the normal state of a fresh
+ * one, and it says so in words. Its filter renders even with nothing drawn,
+ * because a control that appears once a list is long enough is one nobody finds.
  *
  * ## Every write goes through a command
  *
@@ -169,23 +152,15 @@ export function AnnotatorPanel({
   /**
    * What is on the picture — and tags are not.
    *
-   * `annotationsInDrawOrder` is every annotation in the document, so before this
-   * filter a tag appeared *twice*: once as a chip and once as a numbered row
-   * carrying a hide button that hides nothing, a delete, and a reassignment menu
-   * onto classes that cannot hold it. It also counted as an object, so a tagged
-   * asset with nothing drawn on it read `1 object`.
-   *
-   * The index the rows are numbered by comes from *this* list, so the numbers are
-   * the drawn shapes' own 1..N and a tag no longer takes one.
+   * The row numbers come from this list, so they are the drawn shapes' own 1..N.
    */
   const drawn = annotationsInDrawOrder(snapshot.document).filter(
     (annotation) => !isTagAnnotation(annotation),
   );
   const schema = snapshot.document.schema;
   const tagClasses = schema.classes.filter(isTaggableClass);
-  // A class that can only be tagged has no row in the classes region, so a schema
-  // of nothing but tag classes has no region at all — and no split rule either,
-  // which is why the composer asks rather than `ClassRegion` hiding itself.
+  // The composer asks, rather than `ClassRegion` hiding itself, because the split
+  // rule below goes with the region.
   const drawableClasses = schema.classes.filter(
     (declared) => drawableGeometries(declared).length > 0,
   );
@@ -271,12 +246,8 @@ export function AnnotatorPanel({
         </>
       )}
 
-      {/* Between the ontology and the objects, because that is what it is about:
-          the classes above say what may be drawn, these say what is true of the
-          whole frame, and the list below says what has been drawn on it.
-
-          Only when the pinned schema declares one — decision 2. A section with no
-          chips is a heading over nothing, and most schemas declare no tags at all. */}
+      {/* Only when the pinned schema declares a tag class — a section with no
+          chips is a heading over nothing, and most schemas declare none. */}
       {tagClasses.length > 0 && (
         <>
           <TagRegion
@@ -375,27 +346,14 @@ export function AnnotatorPanel({
  * and this is the only surface left that can name it — `hotkeyForClass`, so the chip
  * and the input layer cannot disagree about which number a class answers to.
  *
- * ## Why it left the objects region
+ * Assigning is multi-select and unbounded: an image carries one tag per
+ * tag-capable class and as many classes as it likes, which is the kernel's own
+ * rule (`DuplicateClassificationTag` is keyed `(asset, class)`). Nothing here
+ * enforces a limit the chips could disagree with.
  *
- * It used to sit inside it, above the object filter, on the argument that a tag is
- * a fact about *this frame* and so belongs beside the things drawn on the frame.
- * What that missed is the region's heading: everything under **Annotations** is
- * one of the numbered rows below it, and the chips were not. Worse, they were
- * *also* rows — the list was every annotation in the document, tags included, so a
- * tagged asset showed each tag twice and counted it as an object, with a hide
- * button that hides nothing and a reassignment menu onto classes that cannot hold
- * it.
- *
- * So: three sections, each with a heading, a count, and the things that heading
- * names. Assigning is multi-select and unbounded — an image carries one tag per
- * tag-capable class and as many classes as it likes — which is exactly the
- * kernel's own rule (`DuplicateClassificationTag` is keyed `(asset, class)`), so
- * nothing here enforces a limit the chips could disagree with.
- *
- * `shrink-0` with its own cap and its own scroller, so a schema declaring thirty
- * tag classes cannot push the objects region off the panel. The heading and the
- * one line under it sit outside that scroller and never scroll away, which is the
- * rule `ClassRegion`'s header already follows.
+ * `shrink-0` with a capped scroller, so thirty tag classes cannot push the
+ * objects region off the panel. The heading and the line under it sit outside
+ * that scroller.
  */
 function TagRegion({
   store,
@@ -422,10 +380,8 @@ function TagRegion({
     if (command !== null) store.execute(command);
   }
 
-  // Assigned, not "tagged with a class this schema still declares": a document
-  // can carry a tag whose class a later version removed, and it is still on the
-  // asset. The chips iterate the *schema*, so such a tag has no chip — counting it
-  // here would name a number the section cannot show.
+  // Counted over the chips, not the document: a tag whose class a later schema
+  // version removed has no chip, and a count the section cannot show is a lie.
   const assigned = tagClasses.filter((declared) => tagged.has(declared.name)).length;
 
   return (
@@ -437,9 +393,8 @@ function TagRegion({
         </span>
       </div>
 
-      {/* One line, and it earns its place: everything else in this panel is about
-          a thing on the picture, and the whole difference here is that these are
-          not. Sentence case, no exclamation — `DESIGN.md`'s copy rules. */}
+      {/* Everything else in this panel is about a thing on the picture. This is
+          the one line saying these are not. */}
       <p className="px-1 text-meta text-muted-foreground" data-testid="tag-note">
         Tags apply to the whole image.
       </p>
@@ -612,11 +567,8 @@ function ObjectRow({
           // inline colour, and the same `classColor` the canvas draws with.
           style={{ background: classColor(declared, annotation.label_class) }}
         />
-        {/* The geometry, because the class name stopped identifying the shape.
-            A class accepts a *set* now, so two rows reading `3. sign` may be a box
-            and a polygon — and the row is where somebody picks which one to select
-            or delete. `geometryLabel` is the display word, never the wire value,
-            shared with the tool strip and the class rows. */}
+        {/* A class accepts a *set*, so two rows reading `3. sign` may be a box and
+            a polygon, and this row is where one of them is picked. */}
         <span className="truncate">
           {index + 1}. {annotation.label_class}{" "}
           <span className="text-muted-foreground">· {geometryLabel(annotation.geometry.type)}</span>

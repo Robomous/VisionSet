@@ -1,12 +1,13 @@
 /**
  * The glyph for a drawable geometry, and there is exactly one of each.
  *
- * Promoted out of `ToolPalette` rather than copied, because there are now two
- * surfaces that draw a shape as a picture — the tool strip on the left of the
- * canvas and the armed class row on the right — and `DESIGN.md` pins the three
- * icons. Two spellings would be two chances for the same shape to be a square in
- * one place and a rectangle in the other, in a product where those two controls
- * are read against each other constantly.
+ * The tool strip is the only caller. It stays a module of its own because
+ * `DESIGN.md` pins these three glyphs as a contract rather than as one
+ * component's private detail.
+ *
+ * Worth knowing before reaching for it elsewhere: a class list went back to words
+ * because a square, a spline and a waypoint node are not self-describing at chip
+ * size. The strip can afford them — it is five controls learned once.
  */
 
 import { MousePointer2, Spline, Square, Waypoints } from "lucide-react";

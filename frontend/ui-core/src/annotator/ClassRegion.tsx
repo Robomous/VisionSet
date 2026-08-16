@@ -31,18 +31,15 @@
  * controls-moving-under-the-cursor problem the top bar's constant widths exist to
  * prevent. So typing narrows the list inside a region that does not move.
  *
- * A row may now take **two** lines — a long name pushes its shape chips under
- * itself — and the rule deliberately does not know which rows those are. Knowing
- * would take a measurement, which answers differently at two viewport widths and
- * can be asserted nowhere but a real browser; so a wrapped row is absorbed by the
- * scroller this region already has, exactly as a ninth class is.
+ * A row may take **two** lines — a long name pushes its chips under itself — and
+ * the rule does not know which rows those are. Knowing would take a measurement;
+ * a wrapped row is absorbed by the scroller instead, exactly as a ninth class is.
  *
  * ## Only classes something can be drawn with
  *
- * A class declaring nothing but `classification_tag` is not listed here at all —
- * it has no canvas gesture, and the Tags section below is where it is assigned.
- * That is also the count the height rule reads, so such a class does not size a
- * region it has no row in.
+ * A class declaring nothing but `classification_tag` is not listed here: it has
+ * no canvas gesture, and the Tags section below is where it is assigned. The
+ * height rule reads the same count, so it does not size a region it has no row in.
  *
  * ## Hotkeys are the schema's order and nothing else's
  *
@@ -65,7 +62,6 @@ import { Plus } from "lucide-react";
 import { useState, type JSX, type RefObject } from "react";
 
 import { formatGeometries, geometryLabel } from "../data/geometryCategory";
-import { GeometryIcon } from "./GeometryIcon";
 import { classColor } from "../palette";
 import { Button } from "../primitives/Button";
 import { Input } from "../primitives/Input";
@@ -137,16 +133,10 @@ export function ClassRegion({
   /**
    * The classes this region is about: the ones something can be drawn with.
    *
-   * A class declaring only `classification_tag` has no canvas gesture at all, and
-   * the Tags section is where it is assigned. Listing it here would put a row in
-   * the *drawing* list that arms a tool the canvas cannot answer — and it would
-   * be counted, sized for, and given a chip-less row that says nothing.
-   *
-   * This is the count everything below is derived from, so a tag-only class stops
-   * inflating the height rule as well as the list. `hotkeyForClass` is
-   * deliberately **not** derived from it: digits are positions in the *schema*,
-   * they are shown on the tag chips too, and renumbering them here would give one
-   * digit two meanings across two sections of the same panel.
+   * A tag-only class has no canvas gesture, so a row here would arm a tool the
+   * canvas cannot answer. Everything below counts from this, so it does not size
+   * the region either. `hotkeyForClass` is deliberately not derived from it —
+   * digits are schema positions and the tag chips show the same ones.
    */
   const drawableClasses = schema.classes.filter(
     (declared) => drawableGeometries(declared).length > 0,
@@ -306,25 +296,13 @@ function ClassRow({
   /**
    * The shapes this row offers, each one a press target.
    *
-   * One condition left — **a host that takes the answer**, because a picker
-   * nothing listens to is worse than none. The other two are gone, and each was
-   * paying for something the row no longer needs.
+   * Every row, not only the armed one: a chip that also arms its class turns
+   * "this class, then that shape" into one press. The only condition left is a
+   * host that takes the answer, since a picker nothing listens to is worse than
+   * none.
    *
-   * **Armed** was right while a chip could only *switch* the shape of the class
-   * you were already on: fifty rows of pickers would have been fifty controls for
-   * one decision. A chip that also arms its class is a live choice on every row —
-   * it is the difference between "this class, then that shape" and one press.
-   *
-   * **More than one drawable** went with the words. The row used to spell its
-   * geometries as text beside the name, so a single-shape class still answered
-   * *what happens if I draw with this*; with the chips carrying that answer, a row
-   * showing none would have stopped answering it.
-   *
-   * `drawableGeometries` rather than `geometries`: a class may accept a tag
-   * alongside a box, and a tag has no canvas gesture — offering it here would put
-   * a tool on the strip's vocabulary that the canvas cannot answer. It is also
-   * what keeps tags off these rows now that the Tags section is where they are
-   * assigned.
+   * `drawableGeometries` rather than `geometries` — a tag has no canvas gesture,
+   * and the Tags section is where it is assigned.
    */
   const drawable = drawableGeometries(declared);
   const picker =
@@ -332,25 +310,20 @@ function ClassRow({
       ? undefined
       : drawable.map((tool) => ({
           value: tool,
+          // The word, not a glyph. A square, a spline and a waypoint node are not
+          // self-describing at this size on the one row whose job is telling
+          // shapes apart; the strip can afford them because it is five controls
+          // learned once. The display word, never the wire value.
           label: geometryLabel(tool),
-          // The glyph the tool strip draws for this same shape — one spelling,
-          // because the two controls are read against each other constantly. The
-          // word survives as the accessible name. #597
-          icon: <GeometryIcon tool={tool} className="size-3.5" />,
-          // Lit only on the armed row: an unarmed row's chips are all offers, and
-          // one of them drawn as chosen would claim a state the canvas is not in.
-          //
-          // Through `toolFor`'s own resolution rather than a comparison with the
-          // raw preference: the held tool may be one this class forbids, and the
-          // lit chip must be the one that would actually be drawn.
+          // Lit only on the armed row — a chip drawn as chosen on a class nothing
+          // is armed to would claim a state the canvas is not in. Through
+          // `toolForClass`, because the held tool may be one this class forbids
+          // and the lit chip must be the shape that would actually be drawn.
           active: selected && toolForClass(declared, activeTool) === tool,
           onPick: () => {
-            // Arming and choosing a shape in one press — and the guard is what
-            // keeps them separable. On a row that is *already* armed this must not
-            // fire: not because the call would change anything, but because
-            // "changing the shape never moves the class" is what stops a shape
-            // switch silently retargeting labels, and a rule enforced by a no-op
-            // is a rule no test can watch fail.
+            // Arm and choose in one press. The guard keeps them separable:
+            // changing the shape must never move the class, and a rule enforced
+            // by a no-op is a rule no test can watch fail.
             if (!selected) onSelect();
             onActivateTool(tool);
           },
@@ -359,10 +332,8 @@ function ClassRow({
     <ClassListRow
         testId={`class-row-${declared.name}`}
         name={declared.name}
-        // What a host with no tool state falls back to: the chips carry the set
-        // when there are chips, and this spells it as words when there are not.
-        // Drawable only, either way — a tag is assigned in the Tags section and
-        // saying so here would offer it in the one place it cannot be pressed.
+        // The fallback for a host with no tool state, so it renders a plain list.
+        // Drawable only, like the chips.
         geometry={formatGeometries(drawable)}
         {...(picker === undefined || picker.length === 0 ? {} : { shapes: picker })}
         // `classColor` — schema colour first, else a hash of the name — is the
