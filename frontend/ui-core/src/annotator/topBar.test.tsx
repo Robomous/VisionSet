@@ -247,7 +247,7 @@ describe("the class list, now in the panel (#420)", () => {
     // rule about what "no drawing class" means.
     expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBeNull();
 
-    await userEvent.click(screen.getByTestId("class-row-vehicle"));
+    await userEvent.click(screen.getByTestId("class-row-vehicle-name"));
 
     expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBe("true");
   });
@@ -284,11 +284,11 @@ describe("the class list, now in the panel (#420)", () => {
     // fixture classes accept exactly one shape, so each selection leaves exactly
     // one drawing tool.
     await open();
-    await userEvent.click(screen.getByTestId("class-row-vehicle"));
+    await userEvent.click(screen.getByTestId("class-row-vehicle-name"));
     expect(screen.getByTestId("tool-bbox").getAttribute("data-active")).toBe("true");
     expect(screen.queryByTestId("tool-polygon")).toBeNull();
 
-    await userEvent.click(screen.getByTestId("class-row-lane-area"));
+    await userEvent.click(screen.getByTestId("class-row-lane-area-name"));
 
     expect(screen.getByTestId("tool-polygon").getAttribute("data-active")).toBe("true");
     expect(screen.queryByTestId("tool-bbox")).toBeNull();
@@ -849,7 +849,7 @@ describe("undo and redo on the tool strip", () => {
     await open();
     // Draw nothing; instead move the class, which is not a command — the point is
     // that a *non*-command leaves the history empty, so the buttons are honest.
-    await userEvent.click(screen.getByTestId("class-row-vehicle"));
+    await userEvent.click(screen.getByTestId("class-row-vehicle-name"));
 
     expect(screen.getByTestId("tool-undo").getAttribute("aria-disabled")).toBe("true");
   });

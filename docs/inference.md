@@ -327,10 +327,18 @@ clamped and nothing is dropped, because both would answer a question you did not
 segmenter handed a coordinate off the picture still returns a mask, with a confidence attached,
 and that confidence is about nowhere.
 
-**`allowed_geometries` is your schema, not a preference.** The answer comes back in one of the
-kinds you named or not at all: name `polygon` and you get the outline; name only `bbox` and you
-get that outline's extent; name a kind that holds no shape and `region` is `null`. Answering in a
-kind your schema would refuse would hand you a suggestion that cannot be accepted.
+**`allowed_geometries` is bounded by your schema, and chosen within it.** The answer comes back
+in one of the kinds you named or not at all: name `polygon` and you get the outline; name only
+`bbox` and you get that outline's extent; name a kind that holds no shape and `region` is `null`.
+Every kind you send must be one the class admits — answering in a kind your schema would refuse
+would hand you a suggestion that cannot be accepted.
+
+**Which of them to send is yours to decide, and it matters**, because this route prefers the
+polygon whenever both are named. A class accepting a box *and* a polygon, asked for both, always
+comes back as a polygon. If your user is holding a box tool, send `["bbox"]` alone — sending both
+answers past the tool they are holding, with nothing on their screen to say so. The annotator's
+own client does exactly this (`suggestGeometriesFor`, narrowed through the same resolution the
+tool strip reads).
 
 **An empty `regions` is a successful answer with nothing to propose** - a click on empty
 background, a model less sure than you asked for, or a shape too thin to be a polygon. `model_ref` is still there, because it is what an accepted suggestion has to

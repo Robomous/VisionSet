@@ -578,8 +578,7 @@ function PaletteButton({
 /**
  * The strip's own name for the shared glyph.
  *
- * The map moved to `GeometryIcon` when the armed class row started drawing the
- * same shapes — see that file for why it is one spelling rather than two.
+ * The map lives in `GeometryIcon`, because `DESIGN.md` pins the three glyphs.
  */
 function ToolIcon({ tool }: { readonly tool: ToolChoice["tool"] }): JSX.Element {
   return <GeometryIcon tool={tool} />;

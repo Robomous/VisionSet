@@ -160,6 +160,7 @@ export {
   hasPending,
   isAcceptable,
   isParked,
+  suggestGeometriesFor,
   isSuggestibleClass,
   promptOf,
   refused,
@@ -214,6 +215,7 @@ export {
 } from "./core/interaction/clipboard";
 // The classification tag tool — a panel, and the only tool not on the canvas
 export {
+  isTagAnnotation,
   isTaggableClass,
   tagCommand,
   taggedClassNames,

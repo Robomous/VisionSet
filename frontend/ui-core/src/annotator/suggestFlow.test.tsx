@@ -56,6 +56,12 @@ const SCHEMA = {
     // than a tag on purpose — a class that can still be drawn on is the case where
     // a parked tool swallowing presses would be a bug rather than a nuisance.
     { name: "lane", geometries: ["polyline"], color: null, attributes: [] },
+    // The only class here that accepts more than one shape, and the reason it had
+    // to be added: every fixture in this file was single-geometry, so the whole
+    // suite could not see which of a set the request asked for. Last, so
+    // `suggestClassFor`'s "the schema's first suggestible class" fallback still
+    // answers `vehicle` and no existing expectation moves.
+    { name: "sign", geometries: ["bbox", "polygon"], color: null, attributes: [] },
   ],
 };
 
@@ -365,7 +371,7 @@ describe("the active class moves and the tool stays armed", () => {
     await open();
     await arm();
 
-    await userEvent.click(screen.getByTestId("class-row-lane-area"));
+    await userEvent.click(screen.getByTestId("class-row-lane-area-name"));
 
     // Armed still — the panel is the tool's one voice, so its presence is the
     // armed state and its absence is the tool put away.
@@ -383,7 +389,7 @@ describe("the active class moves and the tool stays armed", () => {
     clickCanvas();
     await screen.findByTestId("suggestion-shape");
 
-    await userEvent.click(screen.getByTestId("class-row-lane-area"));
+    await userEvent.click(screen.getByTestId("class-row-lane-area-name"));
 
     // The shape was answered under `vehicle`'s allowed kinds; accepting it as a
     // `lane-area` could write a geometry that class does not admit.
@@ -398,7 +404,7 @@ describe("the active class moves and the tool stays armed", () => {
     await open();
     await arm();
 
-    await userEvent.click(screen.getByTestId("class-row-lane"));
+    await userEvent.click(screen.getByTestId("class-row-lane-name"));
 
     const parked = await screen.findByTestId("suggest-parked");
     expect(parked.textContent).toContain("lane");
@@ -413,7 +419,7 @@ describe("the active class moves and the tool stays armed", () => {
   it("leaves the canvas alone while parked, so the class can still be drawn", async () => {
     await open();
     await arm();
-    await userEvent.click(screen.getByTestId("class-row-lane"));
+    await userEvent.click(screen.getByTestId("class-row-lane-name"));
     await screen.findByTestId("suggest-parked");
 
     clickCanvas();
@@ -427,10 +433,10 @@ describe("the active class moves and the tool stays armed", () => {
   it("re-arms on the way back, with no second press", async () => {
     await open();
     await arm();
-    await userEvent.click(screen.getByTestId("class-row-lane"));
+    await userEvent.click(screen.getByTestId("class-row-lane-name"));
     await screen.findByTestId("suggest-parked");
 
-    await userEvent.click(screen.getByTestId("class-row-lane-area"));
+    await userEvent.click(screen.getByTestId("class-row-lane-area-name"));
 
     // Nobody pressed the tool again; the armed intent was remembered.
     await screen.findByTestId("suggest-idle");
@@ -440,7 +446,7 @@ describe("the active class moves and the tool stays armed", () => {
   it("offers a way out of the parked state, since the strip button is dimmed", async () => {
     await open();
     await arm();
-    await userEvent.click(screen.getByTestId("class-row-lane"));
+    await userEvent.click(screen.getByTestId("class-row-lane-name"));
     await screen.findByTestId("suggest-parked");
 
     await userEvent.click(screen.getByTestId("suggest-discard"));
@@ -480,6 +486,44 @@ describe("a click asks the model", () => {
     expect(ask["allowed_geometries"]).toEqual(["bbox"]);
     expect(ask["positive"]).toHaveLength(1);
     expect(ask["negative"]).toEqual([]);
+  });
+
+  /**
+   * A class accepting a set, and the shape the answer must come back in.
+   *
+   * The request carries `allowed_geometries`, and the server narrows a mask by
+   * preferring polygon over box whenever both are named (`masks.py::target_kind`).
+   * So a class taking both, asked for both, is answered as a polygon **whatever
+   * the tool strip is showing** — which is what shipped when a class became a set
+   * and nothing threaded the held tool into this request.
+   *
+   * Sending the one shape the strip resolved is what makes the two agree. It stays
+   * within the field's contract, since the kind asked for is still one the class
+   * admits.
+   */
+  it("asks for the shape the tool strip is showing", async () => {
+    await open();
+    // Arm the class first: the shape picker lives on the row, and `sign` is
+    // suggestible so arming the tool keeps it rather than falling back.
+    await userEvent.click(screen.getByTestId("class-row-sign-name"));
+    await arm();
+    clickCanvas();
+
+    await waitFor(() => expect(asks()).toHaveLength(1));
+    // Box, because `toolForClass` resolves the first drawable geometry with no
+    // preference held — the same answer the strip and the row's lit chip give.
+    expect(asks()[0]["allowed_geometries"]).toEqual(["bbox"]);
+  });
+
+  it("follows the shape picker to the other shape", async () => {
+    await open();
+    await userEvent.click(screen.getByTestId("class-row-sign-name"));
+    await userEvent.click(screen.getByTestId("class-row-sign-shape-polygon"));
+    await arm();
+    clickCanvas();
+
+    await waitFor(() => expect(asks()).toHaveLength(1));
+    expect(asks()[0]["allowed_geometries"]).toEqual(["polygon"]);
   });
 
   it("draws the answer as a preview, dashed and faint", async () => {

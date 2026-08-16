@@ -89,7 +89,6 @@ import {
   TOGGLE_SUGGEST,
   acceptedAnnotations,
   addAnnotationsCommand,
-  allowedGeometriesFor,
   answered,
   armed,
   atZoomCeiling,
@@ -101,6 +100,7 @@ import {
   documentFromWire,
   hasPending,
   isParked,
+  isTagAnnotation,
   parseGeometry,
   promptOf,
   randomUuid,
@@ -109,6 +109,7 @@ import {
   selectionOf,
   steppedDetail,
   suggestClassFor,
+  suggestGeometriesFor,
   suggestibleClassIn,
   toolFor,
   useAnnotatorSnapshot,
@@ -1015,7 +1016,9 @@ function Workspace({
         connectionId: connection.id,
         positive: prompt.positive,
         negative: prompt.negative,
-        allowedGeometries: allowedGeometriesFor(declared),
+        // The shape the strip is showing, not every shape the class admits —
+        // sending the set would ignore the held tool. See `suggestGeometriesFor`.
+        allowedGeometries: suggestGeometriesFor(declared, activeTool),
         adjustments: next.adjustments,
       },
       {
@@ -1511,7 +1514,11 @@ function Workspace({
     attempt(() => setProgress.mutate({ assetId: asset.id, progress: "unannotated" }));
   }
 
-  const drawn = annotationsInDrawOrder(snapshot.document).length;
+  // A tag renders in neither canvas layer, so counting it here made the badge
+  // disagree with the picture. Same filter as the panel's own counter.
+  const drawn = annotationsInDrawOrder(snapshot.document).filter(
+    (annotation) => !isTagAnnotation(annotation),
+  ).length;
 
 
   /**

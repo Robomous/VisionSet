@@ -418,11 +418,14 @@ export interface SuggestInput {
   readonly positive: readonly (readonly [number, number])[];
   readonly negative: readonly (readonly [number, number])[];
   /**
-   * The kinds the active class can hold — the caller's schema, not a preference.
+   * The kinds this ask will accept, every one of them a kind the class admits.
    *
-   * The route's own docstring is emphatic about this: an answer in a kind the
-   * schema would refuse is a suggestion that cannot be accepted, so the server
-   * narrows or answers nothing rather than proposing something unusable.
+   * An answer in a kind the schema would refuse is a suggestion that cannot be
+   * accepted, so the server narrows or answers nothing rather than proposing
+   * something unusable. That bound is the class's; **which** of the class's kinds
+   * to ask for is the caller's, because the server prefers a polygon whenever
+   * both are named and would otherwise answer past the tool somebody is holding.
+   * `suggestGeometriesFor` is where that choice is made once.
    */
   readonly allowedGeometries: readonly GeometryType[];
   /** Where the three settings stand. Sent on every ask, echoed by every answer. */

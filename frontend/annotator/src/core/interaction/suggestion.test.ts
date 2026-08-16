@@ -35,6 +35,7 @@ import {
   refused,
   schemaCanSuggest,
   suggestClassFor,
+  suggestGeometriesFor,
   suggestibleClassIn,
   withClass,
   withPoint,
@@ -51,6 +52,10 @@ const CAR = classOf("car", "bbox");
 const ROAD = classOf("road", "polygon");
 const LANE = classOf("lane", "polyline");
 const WEATHER = classOf("weather", "classification_tag");
+/** Both suggestible kinds at once — the case `suggestGeometriesFor` exists for. */
+const SIGN = classOf("sign", "bbox", "polygon");
+/** One suggestible kind and one that is not, so the fallback has a subject. */
+const KERB = classOf("kerb", "bbox", "polyline");
 
 function schemaOf(...classes: readonly LabelClass[]): AnnotationSchema {
   return {
@@ -135,6 +140,36 @@ describe("which classes the tool is offered for", () => {
   it("answers no allowed kinds for a class that can hold neither", () => {
     expect(allowedGeometriesFor(LANE)).toEqual([]);
     expect(allowedGeometriesFor(WEATHER)).toEqual([]);
+  });
+
+  it("asks a multi-shape class for the one shape the held tool resolves to", () => {
+    // The whole point: `allowedGeometriesFor` still answers both, because both is
+    // what the class *can* hold. What leaves in the request is one, because the
+    // server prefers polygon whenever both are named and would otherwise ignore
+    // the tool the person is holding.
+    expect(allowedGeometriesFor(SIGN)).toEqual(["bbox", "polygon"]);
+    expect(suggestGeometriesFor(SIGN, "bbox")).toEqual(["bbox"]);
+    expect(suggestGeometriesFor(SIGN, "polygon")).toEqual(["polygon"]);
+  });
+
+  it("resolves no preference the way the strip does — the first drawable shape", () => {
+    expect(suggestGeometriesFor(SIGN, null)).toEqual(["bbox"]);
+  });
+
+  it("narrows nothing for a single-shape class, however the tool is set", () => {
+    // The behaviour every class had before a class could be a set, and the reason
+    // no existing expectation moved.
+    expect(suggestGeometriesFor(CAR, "bbox")).toEqual(["bbox"]);
+    expect(suggestGeometriesFor(CAR, "polygon")).toEqual(["bbox"]);
+    expect(suggestGeometriesFor(ROAD, "bbox")).toEqual(["polygon"]);
+  });
+
+  it("keeps the whole set when the held tool is not a shape a segmenter proposes", () => {
+    // `kerb` accepts a box and a lane, and the lane tool is held: narrowing to the
+    // resolved tool would ask for `polyline`, which is not suggestible, and
+    // narrowing to nothing would turn a working capability into an empty answer.
+    expect(suggestGeometriesFor(KERB, "polyline")).toEqual(["bbox"]);
+    expect(suggestGeometriesFor(LANE, "polyline")).toEqual([]);
   });
 
   it("says a lane-and-tag schema cannot reach the tool at all — D3's third case", () => {

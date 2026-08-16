@@ -139,7 +139,7 @@ it("keeps the drawing class when the next frame opens", async () => {
   // keyed on the asset.
   render(mount(<AnnotationPage jobId={JOB} />));
 
-  await userEvent.click(await screen.findByTestId("class-row-vehicle"));
+  await userEvent.click(await screen.findByTestId("class-row-vehicle-name"));
   expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBe("true");
 
   await userEvent.click(screen.getByTestId("next-asset"));
@@ -157,7 +157,7 @@ it("does not carry it into a different job", async () => {
   // judged against somebody else's pinned schema.
   const { unmount } = render(mount(<AnnotationPage jobId={JOB} />));
 
-  await userEvent.click(await screen.findByTestId("class-row-vehicle"));
+  await userEvent.click(await screen.findByTestId("class-row-vehicle-name"));
   expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBe("true");
   unmount();
 

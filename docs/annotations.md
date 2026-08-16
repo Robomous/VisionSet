@@ -1015,10 +1015,30 @@ measure for no reason anybody asked for.
 
 ## The side panel
 
-`@visionset/ui-core`'s `AnnotatorPanel` is the Objects/Labels column beside the
-canvas. It is driven entirely by the `AnnotatorStore` the page already holds and
-adds no second door to the document: every write is a command that already existed,
-and the selection is one `Selection` seen twice rather than two kept in step.
+`@visionset/ui-core`'s `AnnotatorPanel` is the column beside the canvas: **three
+stacked regions, no tabs** - Classes, Tags, Annotations, read top to bottom as three
+answers about one frame (*what may I draw*, *what is true of the whole picture*,
+*what have I drawn*). It is driven entirely by the `AnnotatorStore` the page already
+holds and adds no second door to the document: every write is a command that already
+existed, and the selection is one `Selection` seen twice rather than two kept in step.
+
+**A tag is not an object.** The Annotations list holds drawn shapes only, filtered by
+`isTagAnnotation`. It used to hold everything in the document, so each tag was a chip
+*and* a numbered row - counted in `N objects` at both counting sites, and offered a
+hide button that hides nothing. Tags are assigned in their own region instead, as
+multi-select chips: one tag per class and as many classes as the schema declares,
+which is the kernel's rule (`DuplicateClassificationTag` is keyed
+`(asset, label_class)`) rather than one the panel invents.
+
+A region with nothing to show is not rendered, and its divider goes with it - no
+drawable class, or no tag class. Annotations is the exception: an empty frame is the
+normal state of a fresh one, and it says so in words.
+
+**A class row's shapes are chips, and each is a press target.** On an unarmed row a
+chip arms the class *with that shape*; on the armed row it switches the shape and
+never the class. Only drawable geometries appear, so a tag never does. A row whose
+name and chips do not fit wraps the chips to a second line rather than truncating a
+control.
 
 **Hiding is a view decision.** The core document has no `hidden` flag and must not
 grow one - hiding is per viewer and per session, and a field would travel to the API

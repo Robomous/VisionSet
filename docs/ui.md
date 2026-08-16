@@ -600,8 +600,8 @@ is what carries the install command when the optional runtime is absent.
 
 ### The annotation side panel
 
-`AnnotatorPanel` - Objects and Labels - lives in **`ui-core`**, not in the
-annotator's adapters. The annotator's whole claim is that it *"owns no UI a product
+`AnnotatorPanel` - Classes, Tags and Annotations, three stacked regions with no
+tabs - lives in **`ui-core`**, not in the annotator's adapters. The annotator's whole claim is that it *"owns no UI a product
 would want to restyle"*: it ships headless, with no Tailwind and no design tokens,
 so a styled panel inside `adapters/react` would be the first thing an embedder had
 to fight. `ui-core` already depends on the annotator, so the dependency runs the
@@ -625,6 +625,10 @@ Three rules the panel inherits:
   kernel judges geometry per class (`DisallowedGeometry`) - offering the rest would
   be offering a refusal. It applies behind a button, so a keyboard-driven picker
   does not fill the undo history with states nobody chose.
+- **The object list is drawn shapes only.** A classification tag has no coordinates
+  and renders in neither layer, so it is assigned in the Tags region and counted
+  there; listing it here gave it a hide button that hides nothing and made a
+  tagged-but-undrawn frame read `1 object` over an empty canvas.
 
 Visibility is view state and returns the **same document object** when nothing is
 hidden, which is what keeps `AnnotationLayer`'s `memo` bailing out - #49's finding
