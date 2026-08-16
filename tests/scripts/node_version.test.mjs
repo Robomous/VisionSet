@@ -7,11 +7,11 @@
 // `actions/setup-node` steps across two workflows and two Dockerfile base images —
 // and nothing at all that `scripts/check.sh` or a developer's shell could read. So
 // the gate's answer depended on whichever `node` happened to be on PATH, and the way
-// that failure arrives is the bad kind: Node 26 ships a built-in
-// `globalThis.localStorage` that is inert without `--localstorage-file` and takes
-// precedence over the one the test environment supplies, so eight `ui-core` tests
-// across two files fail on storage they never touched. Nothing in that output says
-// "wrong interpreter".
+// that failure arrives is the bad kind: Node 26 declares `localStorage` on the
+// global object and leaves it `undefined` unless `--localstorage-file` is passed,
+// so jsdom's never arrives and eight `ui-core` tests across two files fail with a
+// `TypeError` on storage they never touched. Nothing in that output says "wrong
+// interpreter". Making the suite pass under 26 is #607.
 //
 // The workflows read `.nvmrc` directly through `node-version-file`, so they cannot
 // drift and are checked here only for the absence of a literal creeping back. The

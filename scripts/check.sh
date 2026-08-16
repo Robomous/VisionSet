@@ -142,11 +142,12 @@ require_node_modules() {
 # depended on whatever `node` happened to be on PATH.
 #
 # It is checked because the failure it produces does not look like a version
-# problem. Node 26 ships a built-in `globalThis.localStorage` that is inert unless
-# the runtime is started with `--localstorage-file`, and it takes precedence over
-# the one the test environment supplies — so eight `ui-core` tests across two files
-# fail on storage they never touched, which reads as a broken change rather than as
-# a wrong interpreter.
+# problem. Node 26 declares `localStorage` on the global object and leaves it
+# `undefined` while `--localstorage-file` is absent, so jsdom's never arrives and
+# eight `ui-core` tests across two files fail with a `TypeError` on storage they
+# never touched — which reads as a broken change rather than as a wrong
+# interpreter. Tracked as #607; `sessionStorage` is unaffected, which is why the
+# credential's tests pass under both.
 #
 # The major is all that is compared. `.nvmrc` names one because that is what CI
 # installs and what a patch release must not invalidate; taking the major of both
