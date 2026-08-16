@@ -153,6 +153,12 @@ require_node_modules() {
 # sides means a future `.nvmrc` naming a full version still works here.
 require_node_version() {
   local want found found_major
+  # Named rather than left to `set -e`, which would abort on `sed`'s own error and
+  # print a message about a file the reader has no reason to connect to Node.
+  if [[ ! -f $root/.nvmrc ]]; then
+    echo "error: .nvmrc is missing — it is what pins this repository's Node version" >&2
+    exit 2
+  fi
   want="$(sed -e 's/^v//' -e 's/[^0-9].*$//' "$root/.nvmrc" | head -n 1)"
   if ! command -v node >/dev/null 2>&1; then
     echo "error: no node on PATH — this repository is pinned to Node $want by .nvmrc" >&2
