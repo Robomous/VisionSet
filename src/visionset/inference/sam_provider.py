@@ -165,10 +165,17 @@ def _rows(mask: Any) -> list[bytes]:
     ``index``, which on ``bytes`` is ``memchr``; so this hands over the thing that
     scan wants and the conversion becomes one ``memcpy`` per row.
 
-    ``force=True`` is doing three jobs and is the reason this is one call rather
-    than a chain: it brings a GPU-resident mask back to the host, detaches it, and
-    resolves a non-contiguous view — each of which ``tolist`` tolerated silently
-    and ``numpy`` refuses outright.
+    ``force=True`` is the reason this is one call rather than a chain. Plain
+    ``numpy`` converts only a tensor that is already on the CPU, carries no grad
+    and holds no conjugate or negative bit, and *refuses* outright otherwise —
+    where ``tolist`` tolerated all of it silently. ``force=True`` is torch's own
+    spelling of ``detach().cpu().resolve_conj().resolve_neg().numpy()``.
+
+    On today's path the device is the one that can actually bite: the forward
+    runs under ``no_grad`` so there is no grad to detach, and a binary mask has
+    no conjugate. It is written as the total rather than as the one, because the
+    day a caller runs this on a GPU is not the day to discover which of the four
+    mattered.
 
     Boolean pixels come across as ``0`` and ``1``, one byte each, which is what
     makes the result a ``Mask``: the port asks for rows of integers where a lit
