@@ -233,6 +233,12 @@ tool followed in #342, so a lane is drawn, hit-tested and edited on the canvas l
 shape. A polyline class is an ordinary class whichever way it is filled in: by hand, by a
 script, or by an agent with a person checking.
 
+**`classification_tag` now has an export path too.** It could always be declared and labelled,
+but until `visionset.formats.classification` existed there was nowhere for it to go on export —
+every other installed format has a branch that drops a tag outright, having nowhere to put a
+label with no location. The new plugin writes it as a multi-label CSV, one row per tag
+annotation, with `classes.txt` naming the tag-capable slice of the schema.
+
 ### The categories a picker groups them by
 
 The eight fall into two families, and the grouping is **presentation only** - the kernel has

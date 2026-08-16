@@ -20,6 +20,7 @@ fails until somebody chooses. A format cannot be added and quietly skipped.
 
 from __future__ import annotations
 
+import csv
 import json
 import xml.etree.ElementTree as ElementTree
 from collections import Counter
@@ -30,6 +31,7 @@ from uuid import UUID, uuid4
 import pytest
 from tests.formats.test_yolo import CLASSES, Fixture, _box
 
+from visionset.formats.classification import LABELS_FILENAME as CLASSIFICATION_LABELS
 from visionset.formats.coco import ANNOTATIONS_DIRNAME as COCO_ANNOTATIONS_DIRNAME
 from visionset.formats.lanes import LABELS_DIRNAME as LANE_LABELS_DIRNAME
 from visionset.formats.registry import exporters
@@ -135,11 +137,22 @@ def _coco_counts(root: Path) -> Counter[str]:
     return found
 
 
+def _classification_counts(root: Path) -> Counter[str]:
+    """Every label row, by the class name in its own column.
+
+    Read with ``csv`` rather than split on commas, for the reason the exporter
+    writes with it: a class name may hold one.
+    """
+    with (root / CLASSIFICATION_LABELS).open(encoding="utf-8", newline="") as handle:
+        return Counter(row["class"] for row in csv.DictReader(handle))
+
+
 #: How to count what each format actually wrote, keyed by ``format_name``.
 COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "yolo": _yolo_counts,
     "voc": _voc_counts,
     "coco": _coco_counts,
+    "classification": _classification_counts,
 }
 
 
@@ -308,6 +321,28 @@ def test_coco_is_unchanged_because_it_reduces_nothing(tmp_path: Path, labelled: 
     assert (report.excluded_annotations, report.degraded_annotations) == (1, 0)
     assert report.degraded == ()
     assert [one.label_class for one in report.excluded] == ["weather"]
+
+
+def test_classification_writes_the_tag_and_reports_everything_else_dropped(
+    tmp_path: Path, labelled: Fixture
+) -> None:
+    """The mirror image of the three formats above.
+
+    ``DRAWING`` holds three boxes, two polygons and one tag. Every other
+    installed format writes the boxes and drops the tag; this one writes the tag
+    and drops the rest, which is what makes the pair of assertions worth having
+    in the same file.
+    """
+    release_id = labelled.publish()
+    dest = tmp_path / "out"
+    report = _export(labelled, release_id, _installed()["classification"], dest)
+    written = _classification_counts(dest)
+    labelled.close()
+
+    assert written == Counter({"weather": 1})
+    assert (report.excluded_annotations, report.degraded_annotations) == (5, 0)
+    assert sorted(one.label_class for one in report.excluded) == ["lane", "sign"]
+    assert not report.compatible
 
 
 # --- the lane family ----------------------------------------------------------
