@@ -305,8 +305,7 @@ def test_the_class_table_covers_every_segmenter_family() -> None:
     [
         ("sam2", ["AutoProcessor", "Sam2Model"]),
         ("sam2_video", ["AutoProcessor", "Sam2Model"]),
-        ("sam3", ["Sam3TrackerProcessor", "Sam3TrackerModel"]),
-        ("sam3_tracker", ["Sam3TrackerProcessor", "Sam3TrackerModel"]),
+        ("sam3_video", ["Sam3TrackerProcessor", "Sam3TrackerModel"]),
     ],
 )
 def test_each_family_loads_through_its_own_classes(
@@ -315,11 +314,11 @@ def test_each_family_loads_through_its_own_classes(
     """Named rather than resolved, for the half that cannot be resolved correctly.
 
     SAM 2 keeps ``AutoProcessor`` because the repositories it is pointed at
-    declare a processor that takes points. A SAM 3 repository publishing the whole
-    model declares the concept processor instead — one that takes text and has no
-    ``input_points`` argument at all — so resolving there would hand this adapter
-    something no click can be expressed to, and the failure would surface inside a
-    call rather than in a refusal.
+    declare a processor that takes points. Asked about ``facebook/sam3`` the same
+    call answers ``Sam3VideoProcessor`` — measured against the real repository —
+    which is the video path, so resolving there would hand this adapter something
+    no single-image click can be expressed to and the failure would surface inside
+    a call rather than in a refusal.
     """
     recorder = _Recorder()
     recorder.load(a_provider(family), monkeypatch)
@@ -335,6 +334,6 @@ def test_a_load_never_reaches_the_network(monkeypatch: pytest.MonkeyPatch) -> No
     leave out when a row is added.
     """
     recorder = _Recorder()
-    recorder.load(a_provider("sam3"), monkeypatch)
+    recorder.load(a_provider("sam3_video"), monkeypatch)
     assert [one.options["local_files_only"] for one in recorder.loaded] == [True, True]
     assert {one.options["revision"] for one in recorder.loaded} == {"abc123"}

@@ -57,17 +57,44 @@ def a_local(connections: InferenceConnectionService) -> Any:
 # --- the sets themselves ------------------------------------------------------
 
 
-def test_both_spellings_of_each_architecture_are_named() -> None:
-    """A set rather than a string, and every member is load-bearing today.
+def test_every_published_checkpoint_this_build_curates_is_named() -> None:
+    """The strings real checkpoints declare, read out of their configs.
 
-    Each architecture is registered twice because a checkpoint declares the
-    variant it was published as rather than the half this build asks for: SAM 2's
-    published checkpoints say ``sam2_video``, and a repository publishing the
-    whole of SAM 3 says ``sam3`` while one publishing only its promptable half
-    says ``sam3_tracker``. Naming one spelling of a pair sends the other to the
-    detector adapter, which refuses a click with a sentence about text prompts.
+    A checkpoint declares the variant it was *published* as rather than the half
+    this build asks for, so these are the spellings a resolver actually meets:
+    the SAM 2.1 ladder says ``sam2_video`` and ``facebook/sam3`` says
+    ``sam3_video``. Missing one sends that model to the detector adapter, which
+    then refuses a click with a sentence about text prompts.
     """
-    assert {"sam2", "sam2_video", "sam3", "sam3_tracker"} <= SEGMENTER_FAMILIES
+    assert {"sam2", "sam2_video", "sam3_video"} <= SEGMENTER_FAMILIES
+
+
+@pytest.mark.parametrize(
+    ("family", "what_it_is"),
+    [
+        ("sam3", "the concept detector nested at detector_config — it answers words"),
+        ("sam3_tracker", "a config class no known checkpoint declares"),
+        ("sam3_tracker_video", "the video tracker nested at tracker_config"),
+    ],
+)
+def test_the_names_around_the_published_one_are_not_mistaken_for_it(
+    family: str, what_it_is: str
+) -> None:
+    """The three near-misses, and why each is absent. This is a regression test.
+
+    An earlier revision of this register carried ``sam3`` and ``sam3_tracker``,
+    derived from the names of the ``transformers`` classes rather than read from a
+    config, and the whole feature was unreachable: ``facebook/sam3`` declares
+    ``sam3_video`` at the top level and neither of those anywhere a resolver
+    looks. Every test agreed, because they had all been written against the same
+    guess the implementation made.
+
+    ``sam3`` is the worse of the two to admit. It is what the *detector* half
+    declares, so serving it here would hand a text-prompt model to the point
+    adapter — the confident wrong answer this module's opening warns about, rather
+    than a gap somebody notices.
+    """
+    assert family not in SEGMENTER_FAMILIES, what_it_is
 
 
 def test_the_nested_halves_of_a_config_are_not_offered_as_models() -> None:

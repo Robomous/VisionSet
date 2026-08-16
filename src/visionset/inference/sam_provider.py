@@ -60,8 +60,7 @@ from visionset.kernel.errors import UnsupportedPrompt
 _CLASSES: Final[Mapping[str, tuple[str, str]]] = {
     "sam2": ("AutoProcessor", "Sam2Model"),
     "sam2_video": ("AutoProcessor", "Sam2Model"),
-    "sam3": ("Sam3TrackerProcessor", "Sam3TrackerModel"),
-    "sam3_tracker": ("Sam3TrackerProcessor", "Sam3TrackerModel"),
+    "sam3_video": ("Sam3TrackerProcessor", "Sam3TrackerModel"),
 }
 """Which ``transformers`` pair loads each family this adapter serves.
 
@@ -74,23 +73,36 @@ adapter and then fail inside a load with a ``KeyError`` rather than in a refusal
 point rather than an oversight.** ``AutoProcessor`` resolves against the
 repository's own declared ``processor_class``, which is the right answer for SAM 2:
 ``facebook/sam2.1-hiera-base-plus`` declares ``Sam2VideoProcessor``, and that is
-what the shipped adapter has always loaded. A SAM 3 repository publishing the whole
-model declares the *concept* processor, which takes text and exemplars and has no
-``input_points`` argument at all — so ``AutoProcessor`` there would hand this
-adapter something that cannot express a click, and the failure would land inside a
-call rather than in the resolver. Naming ``Sam3TrackerProcessor`` is what keeps the
-point prompt reaching a processor that has one.
+what the shipped adapter has always loaded. Asked the same question about
+``facebook/sam3`` it answers **``Sam3VideoProcessor``** — measured, not predicted —
+which is the video path and not a thing a single-image click can be expressed to.
+Naming ``Sam3TrackerProcessor`` is what keeps the point prompt reaching a processor
+that takes points.
 
-The model classes are named for the same reason on both rows, and SAM 2's has been
-since this adapter shipped: a config declaring the video variant loads into the
-image model deliberately, and the tracker is SAM 3's spelling of that same
-promptable-image half.
+The model class is named for the same reason and SAM 2's has been since this
+adapter shipped: a config declaring the video variant loads into the promptable
+image model deliberately. ``transformers`` says so itself when it happens, and
+names the older case while doing it — *"You are using a model of type
+``sam3_video`` to instantiate a model of type ``sam3_tracker``. This may be
+expected if you are loading a checkpoint that shares a subset of the architecture
+(e.g., loading a ``sam2_video`` checkpoint into ``Sam2Model``)"*. That warning is
+left where a reader can see it, on the shipped adapter's own precedent.
 
-Verified against ``transformers`` 5.14.1 rather than assumed. ``Sam3TrackerModel``
-and ``Sam2Model`` agree signature for signature on everything below this line —
-``get_image_embeddings(pixel_values, **kwargs)``, ``forward``'s full keyword list,
-and ``post_process_masks(masks, original_sizes, …)`` — which is why one adapter
-serves both and only these two names move.
+**Both rows are measured against a real load, not reasoned about.** Asking
+``from_pretrained(..., output_loading_info=True)`` for ``facebook/sam3`` on CPU
+reports ``missing_keys: 0``, ``unexpected_keys: 0``, ``mismatched_keys: 0`` — the
+same clean result recorded below for SAM 2, so every parameter the tracker needs
+came out of the checkpoint and no weight is left randomly initialised. A point
+prompt then runs the whole way through: ``get_image_embeddings`` returns an
+embedding, the forward answers ``pred_masks`` of ``(1, 1, 3, 288, 288)`` beside
+``iou_scores`` of ``(1, 1, 3)``, and ``post_process_masks`` lifts them to
+``(1, 3, 240, 320)`` — three masks at the asset's own size, which is exactly the
+shape ``_segments`` below already reads.
+
+``Sam3TrackerModel`` and ``Sam2Model`` agree signature for signature on everything
+below this line — ``get_image_embeddings(pixel_values, **kwargs)``, ``forward``'s
+full keyword list, and ``post_process_masks(masks, original_sizes, …)`` — which is
+why one adapter serves both and only these two names move.
 """
 
 POSITIVE: Final = 1

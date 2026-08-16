@@ -183,7 +183,7 @@ assumption impossible to write by accident.
 | Family (`model_type`) | Capability | Curated checkpoints | License |
 | --- | --- | --- | --- |
 | `sam2`, `sam2_video` | `point_suggest` | `facebook/sam2.1-hiera-{tiny,small,base-plus,large}` | Apache-2.0 |
-| `sam3`, `sam3_tracker` | `point_suggest` | `facebook/sam3` | SAM License, access granted by request |
+| `sam3_video` | `point_suggest` | `facebook/sam3` | SAM License, access granted by request |
 | `grounding-dino` | `text_detect` | `IDEA-Research/grounding-dino-{tiny,base}` | Apache-2.0 |
 | `mm-grounding-dino` | `text_detect` | none | - |
 
@@ -299,6 +299,24 @@ nobody publishes.
 Point prompts run through the tracker half of the architecture, which agrees with
 SAM 2 signature for signature; the concept segmentation the model is named for is
 not integrated, and the entry declares `point_suggest` alone.
+
+**Which name a connection resolves on is the trap here, and it cost a revision.**
+The repository publishes one artifact carrying the whole architecture, and the
+family is read from the top of its config:
+
+```
+Sam3VideoConfig            model_type = sam3_video          <- what resolves
+|-- detector_config        model_type = sam3                <- concepts and words
++-- tracker_config         model_type = sam3_tracker_video  <- the promptable half
+```
+
+Only `sam3_video` belongs in `SEGMENTER_FAMILIES`. `sam3` is the concept detector,
+and admitting it would route a text model to the point adapter. A register built
+by reasoning from the `transformers` class names produces `sam3` and
+`sam3_tracker`, neither of which any published checkpoint declares, and the
+capability is then unreachable while every test agrees with the guess that built
+it. The rule this restates: a family entry is a string read out of a config, and
+the test that holds it names the configs it was read from.
 
 ## Related
 
