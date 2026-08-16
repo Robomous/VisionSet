@@ -515,8 +515,16 @@ def test_a_mask_with_nothing_in_it_proposes_nothing() -> None:
 
 
 def in_bytes(mask: list[list[bool]] | list[list[int]]) -> list[bytes]:
-    """The same mask, spelled the way the adapter spells it."""
-    return [bytes(row) for row in mask]
+    """The same mask, spelled the way the adapter spells it.
+
+    The assertion is not decoration. Every test below compares this against the
+    grid it came from, so a helper that quietly returned its argument would make
+    all of them compare a call to itself and pass without a buffer ever reaching
+    the pipeline — which is what a mutation run found them doing.
+    """
+    rows = [bytes(row) for row in mask]
+    assert all(isinstance(row, bytes) for row in rows), "the point is the buffer"
+    return rows
 
 
 @pytest.mark.parametrize("allowed", [BOTH, BOX_ONLY, POLYGON_ONLY], ids=["both", "box", "polygon"])
