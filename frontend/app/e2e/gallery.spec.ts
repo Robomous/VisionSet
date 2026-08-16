@@ -395,6 +395,96 @@ test("the grid renders more than one column, measured in a real browser", async 
   expect(second?.x ?? 0).toBeGreaterThan(first?.x ?? 0);
 });
 
+/**
+ * Wait until the tiles have stopped moving — two consecutive animation frames
+ * reporting identical geometry.
+ *
+ * A state, not a clock, and specifically **not** the state the callers assert.
+ * The wait this replaced was `tile-asset-0`'s width being greater than zero,
+ * which the *previous* density already satisfied: it returned on its first tick,
+ * so the measurement after it could land mid-transition and the suite reported a
+ * layout defect that was one frame old. That is #511, and it was a real frame —
+ * see the scenario below, which is the one that owns that claim.
+ */
+async function settled(page: Page): Promise<void> {
+  await page.evaluate(
+    async () =>
+      new Promise<void>((done) => {
+        const geometry = () =>
+          [...document.querySelectorAll('[data-testid^="tile-"]')]
+            .map((node) => {
+              const box = node.getBoundingClientRect();
+              return `${box.top}:${box.left}:${box.width}:${box.height}`;
+            })
+            .join("|");
+        let last = "";
+        const tick = (): void => {
+          const now = geometry();
+          if (now !== "" && now === last) return done();
+          last = now;
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+}
+
+test("a density change never paints a frame with tiles overlapping", async ({ page }) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent);
+  await page.getByTestId("density").fill("0");
+  await settled(page);
+
+  // The scenario below checks the layout a density change *arrives at*; this one
+  // checks every frame on the way, which is a different defect and was invisible
+  // to it except as a flake.
+  //
+  // A new row-height estimate does not displace a measurement: the rows carry the
+  // virtualizer's `measureElement`, so their positions come from the cache its
+  // `ResizeObserver` fills, and that observer fires a frame after the wider tiles
+  // have been laid out. So for one frame the tiles were the new size while the
+  // rows were still a pitch apart at the old one. Measured at step 0 → 3 before
+  // the fix: row 1 at 419 with four overlapping pairs, then 553 on the next frame.
+  await page.evaluate(() => {
+    const win = window as unknown as { __overlaps: number[] };
+    win.__overlaps = [];
+    const sample = (): void => {
+      const boxes = [...document.querySelectorAll('[data-testid^="tile-"]')].map((node) =>
+        node.getBoundingClientRect(),
+      );
+      let hits = 0;
+      for (let a = 0; a < boxes.length; a += 1) {
+        for (let b = a + 1; b < boxes.length; b += 1) {
+          const one = boxes[a]!;
+          const two = boxes[b]!;
+          if (
+            one.bottom - two.top > 0.5 &&
+            two.bottom - one.top > 0.5 &&
+            one.right - two.left > 0.5 &&
+            two.right - one.left > 0.5
+          ) {
+            hits += 1;
+          }
+        }
+      }
+      win.__overlaps.push(hits);
+      if (win.__overlaps.length < 8) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+
+  // The widest step, from the narrowest: the biggest jump the ladder can make, and
+  // the one that produced the most overlap.
+  await page.getByTestId("density").fill("3");
+  const sampled = async (): Promise<number[]> =>
+    await page.evaluate(() => (window as unknown as { __overlaps: number[] }).__overlaps);
+  await expect.poll(async () => (await sampled()).length).toBe(8);
+
+  expect(await sampled(), "a frame painted during the density change had overlapping tiles").toEqual(
+    [0, 0, 0, 0, 0, 0, 0, 0],
+  );
+});
+
 test("tiles never overlap, at any density", async ({ page }) => {
   const sent: Request[] = [];
   await openGallery(page, sent);
@@ -411,9 +501,7 @@ test("tiles never overlap, at any density", async ({ page }) => {
   // rectangles is trivially non-overlapping there.
   for (const step of ["0", "1", "2", "3"]) {
     await page.getByTestId("density").fill(step);
-    await expect
-      .poll(async () => (await page.getByTestId("tile-asset-0").boundingBox())?.width ?? 0)
-      .toBeGreaterThan(0);
+    await settled(page);
 
     const overlaps = await page.evaluate(() => {
       const boxes = [...document.querySelectorAll('[data-testid^="tile-"]')].map((node) => {
