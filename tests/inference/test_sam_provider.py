@@ -53,10 +53,17 @@ def built(
     masks: list[list[list[bool]]] | None = None,
     scores: list[float] | None = None,
     family: str = "sam2",
+    model: StubModel | None = None,
+    torch: StubTorch | None = None,
 ) -> tuple[LocalSamProvider, StubProcessor, StubModel]:
-    """A provider whose model is a script, with everything else as shipped."""
+    """A provider whose model is a script, with everything else as shipped.
+
+    ``model`` and ``torch`` are injectable for the tests that watch the encode
+    itself — a model that reports the guard it ran under needs to hold the same
+    torch stand-in the provider is handed, which a fresh-per-call stub cannot be.
+    """
     processor = StubProcessor(masks or [disc(20)], scores or [0.9])
-    model = StubModel(masks or [disc(20)], scores or [0.9])
+    model = model or StubModel(masks or [disc(20)], scores or [0.9])
     provider = LocalSamProvider(
         "some/segmenter",
         "abc123",
@@ -67,7 +74,7 @@ def built(
         connection_name="local",
     )
     monkeypatch.setattr(provider, "_ready", lambda: (processor, model, "cpu", False))
-    monkeypatch.setattr(sam_provider, "imported", lambda _: StubTorch())
+    monkeypatch.setattr(sam_provider, "imported", lambda _: torch or StubTorch())
     return provider, processor, model
 
 
@@ -223,6 +230,78 @@ def test_the_cache_is_bounded_and_evicts_the_least_recently_used(
         list(provider.segment(asked(one_click(), one)))
 
     assert provider.encodes == 4, "the first asset was evicted by the third and re-encoded"
+
+
+# --- the encode's guard, and what the cache is allowed to hold ----------------
+
+
+class _GuardWatchingModel(StubModel):
+    """A model whose encode reports which guard it ran under.
+
+    ``forward_guard``'s one observable fingerprint on a stub torch is the
+    ``grid_sample`` shim it installs for exactly the duration of the forward —
+    the same fingerprint ``test_fp16`` reads — so the encode checking whether
+    the shim is in place is the encode checking it is inside the guard.
+    """
+
+    def __init__(self, masks: Any, scores: Any, torch: StubTorch) -> None:
+        super().__init__(masks, scores)
+        self._torch = torch
+        self._pristine = torch.nn.functional.grid_sample
+        self.guarded_encodes: list[bool] = []
+
+    def get_image_embeddings(self, pixel_values: Any) -> str:
+        self.guarded_encodes.append(self._torch.nn.functional.grid_sample is not self._pristine)
+        return super().get_image_embeddings(pixel_values)
+
+
+class _Graphed:
+    """A tensor the way autograd hands one over: a graph attached, until detached."""
+
+    def __init__(self, *, detached: bool = False) -> None:
+        self.requires_grad = not detached
+        self.grad_fn = None if detached else object()
+
+    def detach(self) -> _Graphed:
+        return _Graphed(detached=True)
+
+
+class _GraphedModel(StubModel):
+    """A model whose embeddings carry an autograd graph, as a real forward's would."""
+
+    def get_image_embeddings(self, pixel_values: Any) -> _Graphed:
+        super().get_image_embeddings(pixel_values)
+        return _Graphed()
+
+
+def test_the_encode_runs_inside_the_forward_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The encoder is the largest forward of the request, so it runs under the
+    same no-grad guard the decoder does — not beside it with autograd on."""
+    torch = StubTorch()
+    model = _GuardWatchingModel([disc(20)], [0.9], torch)
+    provider, _, _ = built(monkeypatch, model=model, torch=torch)
+
+    list(provider.segment(asked(one_click())))
+
+    assert model.guarded_encodes == [True], "the encode ran outside the forward guard"
+
+
+def test_the_cached_embedding_carries_no_autograd_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What the cache holds is the embedding alone, never the encoder's graph —
+    an entry pinning the activations behind a ``grad_fn`` is many times the
+    size the cache's bound was reasoned about."""
+    provider, _, _ = built(monkeypatch, model=_GraphedModel([disc(20)], [0.9]))
+    asset = uuid4()
+
+    list(provider.segment(asked(one_click(), target(asset))))
+
+    held = provider._embeddings.get(asset)
+    assert held is not None
+    cached, _ = held
+    assert cached.requires_grad is False
+    assert cached.grad_fn is None
 
 
 # --- which classes a family loads through -------------------------------------
