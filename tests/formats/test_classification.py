@@ -34,6 +34,7 @@ from visionset.kernel.domain import (
     LabelClass,
     SplitRecipe,
 )
+from visionset.kernel.errors import ExportSourceUnreadable
 
 #: Four classes in authored order, and three of them are tags.
 #:
@@ -202,6 +203,27 @@ def test_a_class_name_holding_a_comma_survives_the_file(tmp_path: Path) -> None:
     fixture.close()
 
     assert [row["class"] for row in rows] == ["rain, heavy"]
+
+
+def test_a_class_name_holding_a_newline_is_refused(tmp_path: Path) -> None:
+    """The sibling of the comma test: carried where it parses, refused where it forks.
+
+    A comma survives ``labels.csv`` intact because that file is written through
+    the ``csv`` module. ``classes.txt`` has no such module — it is one class per
+    line with no escaping — so a class name holding a newline would silently
+    fork into two vocabulary entries there while staying one entry in the CSV.
+    The two files would disagree about the label space, so this is refused by
+    name instead of being written.
+    """
+    fixture = Fixture(
+        tmp_path,
+        classes=(LabelClass(name="rain\nheavy", geometries=(GeometryType.CLASSIFICATION_TAG,)),),
+    )
+    fixture.label({0: [_tag("rain\nheavy")]})
+
+    with pytest.raises(ExportSourceUnreadable):
+        _export(fixture, fixture.publish(), tmp_path / "out")
+    fixture.close()
 
 
 def test_the_plugin_declares_tags_supported_and_reduces_nothing() -> None:

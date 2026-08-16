@@ -454,12 +454,15 @@ The one installed format whose content *is* tags, and the only one that does not
 writes the pictures the way YOLO does - `images/<fold>/<content-hash>.<ext>` - plus two files at
 the root: `labels.csv`, and `classes.txt` naming the label space.
 
-`labels.csv` has three columns, `image,fold,class`, and **one row per `(image, tag)` pair**. An
-image carrying three tags appears three times, under one path, once per tag; its bytes are written
-once. The obvious alternative - a folder per class, which is what most single-label tooling reads -
-cannot express that at all: a multi-tagged image would have to be copied into every class
-directory, doubling the bytes and making one picture look like several examples. It would also
-disagree with the pre-export report, which counts annotations rather than images.
+`labels.csv` has three columns, `image,fold,class`, and **one row per tag annotation**. An image
+carrying three tags appears three times, under one path, once per tag; its bytes are written once.
+The kernel enforces no `(asset, class)` uniqueness for a classification tag, so two annotations of
+the same class on one image produce two identical rows - the count follows the annotations exactly,
+duplicates included, rather than deduplicating a label space this format does not own. The obvious
+alternative - a folder per class, which is what most single-label tooling reads - cannot express any
+of this: a multi-tagged image would have to be copied into every class directory, doubling the bytes
+and making one picture look like several examples. It would also disagree with the pre-export
+report, which counts annotations rather than images.
 
 `image` is relative to the export root, so the directory is movable to a training machine and still
 resolves. `fold` is derivable from that path and is written anyway, so a consumer reading one split
@@ -467,11 +470,18 @@ filters a column instead of parsing a path. The file is written through Python's
 by joining strings: a class name is normalized but not otherwise restricted, and one holding a
 comma would shift every later column of a hand-built row while still parsing.
 
-`classes.txt` is every class the release declares that can carry a tag, one per line, **in the
-authored schema order, including classes nothing was labelled with**. This is the rule YOLO's class
-index follows and for the same reason: a vocabulary derived from the annotations present changes
-silently between two releases of one project, and a model trained against the first is evaluated
-against a different label space.
+`classes.txt` is every *tag-capable* class the release declares, one per line, in the authored
+schema order, including classes nothing was labelled with. Filtering to tag-capable classes is a
+real departure from YOLO and COCO, which both name every declared class unfiltered - listing a
+bbox-only class here would let a trainer allocate an output for a class this format can never emit.
+So this format follows YOLO's class index on the *from-the-schema-not-the-data* half of its rule -
+deriving the list from the annotations present is what silently changes it between two releases of
+one project - and departs on the *every-class-gets-a-slot* half, which is the half that keeps a line
+index stable. An additive schema change that adds `classification_tag` to an existing class can
+therefore insert a name mid-vocabulary and shift every later line across two releases of one
+project. `labels.csv` names a class by string, never by index, so line order is not part of this
+format's contract - a consumer wanting a stable integer label builds its own name-to-index map from
+`classes.txt` and cannot assume that map holds across releases.
 
 `lossy = True`, because a row is a path and a class name - attributes, confidence, provenance and
 the annotation's id have nowhere to go. `supported_geometries` is `{classification_tag}` and

@@ -1,5 +1,5 @@
 # usage: from visionset.formats.classification import ClassificationExporter
-"""Image classification: the pictures, and one CSV row per (image, tag).
+"""Image classification: the pictures, and one CSV row per tag annotation.
 
 The first installed format that writes a classification tag at all. Every other
 plugin here has an explicit branch that drops one — a detection format has
@@ -7,19 +7,34 @@ nowhere to put a label with no location, and a lane format has fields for a lane
 — so the rule that a multi-tagged image is exported once per tag had nothing to
 attach to until this existed.
 
-**One row per ``(image, tag)``, and the image is written once.** The obvious
+**One row per tag annotation, and the image is written once.** The obvious
 alternative is a folder-per-class tree, which is what most single-label tooling
 reads, and it cannot express this at all: an image tagged ``rain`` and ``night``
 would have to be copied into two directories, doubling the bytes and making one
 picture look like two examples. It would also disagree with the pre-export
-compatibility report, which counts *annotations* rather than images.
+compatibility report, which counts *annotations* rather than images. The kernel
+enforces no ``(asset, class)`` uniqueness for a classification tag, so two
+``weather`` annotations on one asset are two rows, not one — the row count
+follows the annotations exactly, duplicates included, rather than deduplicating
+a label space this format does not own.
 
-**The vocabulary is the frozen schema's, not the data's.** ``classes.txt`` names
-every class the release declares that can carry a tag, in authored order,
-including ones nothing was labelled with. Deriving it from the annotations
-present is the defect the YOLO exporter's class index was rewritten to avoid:
-the list silently changes between two releases of one project, and a model
-trained against the first is evaluated against a different label space.
+**The vocabulary is the frozen schema's, not the data's, and it is filtered to
+tag-capable classes.** ``classes.txt`` names every class the release declares
+that can carry a tag, in authored order, including ones nothing was labelled
+with — a class that only allows ``bbox`` or ``polygon`` never appears, because
+listing it would let a trainer allocate an output for a class this format can
+never emit. That filter is a real departure from the YOLO and COCO exporters,
+which both name every declared class unfiltered: this format follows YOLO's
+class index on the *from-the-schema-not-the-data* half of its rule — deriving
+the list from the annotations present is what silently changes it between two
+releases of one project — and departs on the *every-class-gets-a-slot* half,
+which is the half that keeps a line index stable. An additive schema change
+that adds ``classification_tag`` to an existing class can therefore insert a
+name mid-vocabulary and shift every later line across two releases of one
+project. **``labels.csv`` names a class by string, never by index, so line
+order is not part of this format's contract** — a consumer wanting a stable
+integer label builds its own name-to-index map from ``classes.txt`` and cannot
+assume that map holds across releases.
 
 **An asset with no tags gets its bytes and no row.** There is no per-image file
 here to leave empty, unlike YOLO, so absence from ``labels.csv`` is the only
@@ -38,6 +53,7 @@ with a count before anything is written.
 from __future__ import annotations
 
 import csv
+import unicodedata
 from pathlib import Path
 from typing import Final
 
@@ -105,6 +121,18 @@ class ClassificationExporter:
             for one in manifest.classes
             if GeometryType.CLASSIFICATION_TAG in one.geometries
         ]
+        for name in vocabulary:
+            if _has_control_character(name):
+                # Refused by name, the same posture `_layout.dimensions_of` and
+                # `_suffix_for` take: `classes.txt` is one class per line with no
+                # escaping, and a newline inside a name would silently fork one
+                # class into two lines. Escaping instead (`json.dumps` per line)
+                # would make every consumer JSON-decode a file whose whole appeal
+                # is that it does not need to be.
+                raise ExportSourceUnreadable(
+                    f"class {name!r} holds a control character, so it cannot be "
+                    f"written as a plain line in {CLASSES_FILENAME}"
+                )
         folds = folds_of(release, manifest)
 
         rows: list[tuple[str, str, str]] = []
@@ -129,6 +157,16 @@ class ClassificationExporter:
         dest.joinpath(CLASSES_FILENAME).write_text(
             "".join(f"{name}\n" for name in vocabulary), encoding="utf-8"
         )
+
+
+def _has_control_character(name: str) -> bool:
+    """Whether ``name`` holds a Unicode control character, a newline included.
+
+    ``LabelClass._named`` only strips surrounding whitespace, so a class name
+    can carry an embedded ``\\n`` — invisible in a REST body, catastrophic in a
+    file with no per-line quoting.
+    """
+    return any(unicodedata.category(char) == "Cc" for char in name)
 
 
 def _write_labels(target: Path, rows: list[tuple[str, str, str]]) -> None:
