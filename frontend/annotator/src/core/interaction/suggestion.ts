@@ -96,6 +96,8 @@ import type { AnnotationDocument } from "../state/document";
 import type { IdFactory } from "../ids";
 import type { Annotation, AnnotationSchema, Geometry, GeometryType, LabelClass, Point } from "../types";
 import { draftAnnotation } from "./draft";
+import { toolForClass } from "./tool";
+import type { Tool } from "./tool";
 
 /**
  * The kinds a segmenter's answer can be narrowed into, and therefore the classes
@@ -134,6 +136,32 @@ export function allowedGeometriesFor(
   labelClass: LabelClass,
 ): readonly SuggestibleGeometryType[] {
   return SUGGESTIBLE_GEOMETRY_TYPES.filter((kind) => labelClass.geometries.includes(kind));
+}
+
+/**
+ * The kinds to ask for, narrowed to the shape the host is holding.
+ *
+ * {@link allowedGeometriesFor} answers what the class *can* hold. The server
+ * prefers polygon whenever both are named, so a `{bbox, polygon}` class asked for
+ * both comes back a polygon however the tool strip is set — somebody drawing
+ * boxes gets outlines, with nothing on screen to say the tool was ignored.
+ *
+ * The resolution is {@link toolForClass}', which the strip and the row's lit chip
+ * already read. Still within the field's contract: the kind asked for is one the
+ * class admits.
+ *
+ * Falls back to the full intersection when the held tool is not a kind a
+ * segmenter proposes — a box-and-lane class on the lane tool — since narrowing to
+ * nothing would turn a working capability into an empty answer.
+ */
+export function suggestGeometriesFor(
+  labelClass: LabelClass,
+  preferred: Tool | null = null,
+): readonly SuggestibleGeometryType[] {
+  const allowed = allowedGeometriesFor(labelClass);
+  const resolved = toolForClass(labelClass, preferred);
+  const asked = allowed.find((kind) => kind === resolved);
+  return asked === undefined ? allowed : [asked];
 }
 
 /**

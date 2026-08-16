@@ -90,17 +90,31 @@ function mount(
   );
 }
 
-describe("the two regions the panel is now", () => {
-  it("stacks them without tabs, so both subjects are on screen at once", () => {
+describe("the three regions the panel is now", () => {
+  it("stacks them without tabs, so all three subjects are on screen at once", () => {
     // One view rather than Objects | Labels tabs.
-    // A tab is a claim that two things are alternatives, and these are the two
-    // halves of one question — what may I draw, and what have I drawn.
+    // A tab is a claim that things are alternatives, and these are three answers
+    // about one frame: what may I draw, what is true of the whole picture, what
+    // have I drawn.
     render(mount(storeWith([annotation("a", "vehicle", "bbox")])));
 
     expect(screen.queryByRole("tablist")).toBeNull();
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
     expect(screen.getByTestId("class-region")).toBeDefined();
+    expect(screen.getByTestId("tag-region")).toBeDefined();
     expect(screen.getByTestId("objects-region")).toBeDefined();
+  });
+
+  it("orders them classes, tags, annotations", () => {
+    // The reading order is the argument for the arrangement, so it is pinned:
+    // the ontology, then what is true of the whole frame, then what is on it.
+    render(mount(storeWith([annotation("a", "vehicle", "bbox")])));
+
+    const panel = screen.getByTestId("annotator-panel");
+    const order = [...panel.querySelectorAll("[data-testid]")]
+      .map((node) => node.getAttribute("data-testid"))
+      .filter((id) => id === "class-region" || id === "tag-region" || id === "objects-region");
+    expect(order).toEqual(["class-region", "tag-region", "objects-region"]);
   });
 
   it("names itself and counts what is drawn", () => {
@@ -108,9 +122,29 @@ describe("the two regions the panel is now", () => {
     render(mount(store));
 
     expect(screen.getByTestId("annotator-panel").getAttribute("aria-label")).toBe(
-      "Classes and annotations",
+      "Classes, tags and annotations",
     );
     expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
+  });
+
+  it("renders no classes region when nothing in the schema can be drawn", () => {
+    // A heading over an empty box claims something is missing. A schema of
+    // nothing but tag classes has no drawing to offer, so the region goes — and
+    // the split rule goes with it, which is why the panel decides this and not
+    // `ClassRegion`.
+    const tagsOnly = {
+      ...SCHEMA,
+      classes: SCHEMA.classes.filter((declared) =>
+        declared.geometries.includes("classification_tag"),
+      ),
+    };
+    render(mount(storeWith([], tagsOnly)));
+
+    expect(screen.queryByTestId("class-region")).toBeNull();
+    expect(screen.queryByTestId("panel-split")).toBeNull();
+    // The other two are still there, and the tags one is the point of the schema.
+    expect(screen.getByTestId("tag-region")).toBeDefined();
+    expect(screen.getByTestId("objects-region")).toBeDefined();
   });
 });
 
@@ -121,6 +155,71 @@ describe("the object list", () => {
 
     expect(screen.getByTestId("object-row-0").textContent).toContain("1. vehicle");
     expect(screen.getByTestId("object-row-1").textContent).toContain("2. lane");
+  });
+
+  it("names each row's geometry, because the class name stopped identifying it", () => {
+    // A class accepts a *set*, so two rows reading `sign` may be a box and a
+    // polygon — and this row is where somebody picks which one to select or
+    // delete. The display word, never the wire value.
+    const multi = {
+      ...SCHEMA,
+      classes: [
+        { name: "sign", geometries: ["bbox", "polygon"], color: null, attributes: [] },
+        ...SCHEMA.classes,
+      ],
+    };
+    const store = storeWith(
+      [annotation("a", "sign", "bbox"), annotation("b", "sign", "polygon")],
+      multi,
+    );
+    render(mount(store));
+
+    expect(screen.getByTestId("object-row-0").textContent).toContain("1. sign · box");
+    expect(screen.getByTestId("object-row-1").textContent).toContain("2. sign · polygon");
+  });
+
+  it("leaves classification tags out of it entirely", async () => {
+    // They were in it, and twice over: the list was every annotation in the
+    // document, so a tag was a chip *and* a numbered row — counted as an object,
+    // with a hide button that hides nothing and a reassignment menu onto classes
+    // that cannot hold it. Nothing asserted it, which is how it shipped.
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    const { rerender } = render(mount(store));
+    expect(screen.getByTestId("object-count").textContent).toBe("1 object");
+
+    await userEvent.click(screen.getByTestId("tag-chip-daytime"));
+    rerender(mount(store));
+
+    // The document holds both; the list holds one.
+    expect(store.document.annotations.size).toBe(2);
+    expect(screen.getByTestId("object-count").textContent).toBe("1 object");
+    expect(screen.getByTestId("object-row-0").textContent).toContain("1. vehicle");
+    expect(screen.queryByTestId("object-row-1")).toBeNull();
+  });
+
+  it("says nothing is drawn on an asset that carries only a tag", async () => {
+    const store = storeWith([]);
+    const { rerender } = render(mount(store));
+
+    await userEvent.click(screen.getByTestId("tag-chip-daytime"));
+    rerender(mount(store));
+
+    expect(screen.getByTestId("object-count").textContent).toBe("0 objects");
+    expect(screen.getByTestId("objects-empty").textContent).toBe("Nothing drawn yet.");
+  });
+
+  it("hides all objects without reaching for a tag, which has nothing to hide", async () => {
+    const hidden = vi.fn();
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    const { rerender } = render(mount(store, { onHiddenChange: hidden }));
+    await userEvent.click(screen.getByTestId("tag-chip-daytime"));
+    rerender(mount(store, { onHiddenChange: hidden }));
+
+    await userEvent.click(screen.getByTestId("toggle-all-visibility"));
+
+    // The drawn one, and only it — a tag renders in neither canvas layer, so an
+    // id for it in the hidden set would be an instruction about nothing.
+    expect(hidden).toHaveBeenLastCalledWith(new Set(["a"]));
   });
 
   it("lists a lane like any other object, and selects it from its row", async () => {
@@ -241,10 +340,59 @@ describe("the filter", () => {
   });
 });
 
-describe("the classification-tag strip", () => {
+describe("the classification-tag section", () => {
   it("is absent when the pinned schema declares no tag class", () => {
     render(mount(storeWith([], UNTAGGABLE_SCHEMA)));
     expect(screen.queryByTestId("tag-strip")).toBeNull();
+    expect(screen.queryByTestId("tag-region")).toBeNull();
+    expect(screen.queryByTestId("panel-split-tags")).toBeNull();
+  });
+
+  it("is a section of its own, with a heading, a count and a sentence", () => {
+    render(mount(storeWith([])));
+
+    const region = screen.getByTestId("tag-region");
+    expect(within(region).getByText("Tags")).toBeDefined();
+    expect(screen.getByTestId("tag-count").textContent).toBe("0 assigned");
+    // The one thing that distinguishes these from everything else in the panel.
+    expect(screen.getByTestId("tag-note").textContent).toBe("Tags apply to the whole image.");
+  });
+
+  it("counts what is assigned, not what is offered", async () => {
+    const store = storeWith([]);
+    const { rerender } = render(mount(store));
+    expect(screen.getByTestId("tag-count").textContent).toBe("0 assigned");
+
+    await userEvent.click(screen.getByTestId("tag-chip-daytime"));
+    rerender(mount(store));
+
+    expect(screen.getByTestId("tag-count").textContent).toBe("1 assigned");
+  });
+
+  it("carries a tag per class, so an image can hold several at once", async () => {
+    // The kernel's own rule, and the whole reason this is multi-select rather
+    // than a picker: `DuplicateClassificationTag` is keyed `(asset, label_class)`,
+    // so one tag per class and as many classes as the schema declares.
+    const twoTags = {
+      ...SCHEMA,
+      classes: [
+        ...SCHEMA.classes,
+        { name: "raining", geometries: ["classification_tag"], color: null, attributes: [] },
+      ],
+    };
+    const store = storeWith([], twoTags);
+    const { rerender } = render(mount(store));
+
+    await userEvent.click(screen.getByTestId("tag-chip-daytime"));
+    await userEvent.click(screen.getByTestId("tag-chip-raining"));
+    rerender(mount(store));
+
+    expect(store.document.annotations.size).toBe(2);
+    expect(screen.getByTestId("tag-chip-daytime").dataset["active"]).toBe("true");
+    expect(screen.getByTestId("tag-chip-raining").dataset["active"]).toBe("true");
+    expect(screen.getByTestId("tag-count").textContent).toBe("2 assigned");
+    // And neither of them is an object.
+    expect(screen.getByTestId("object-count").textContent).toBe("0 objects");
   });
 
   it("shows the digit each tag answers to, from the same table the keyboard reads", () => {
@@ -266,8 +414,9 @@ describe("the classification-tag strip", () => {
     expect(screen.getByTestId("tag-chip-daytime").dataset["active"]).toBe("true");
     expect(screen.getByTestId("tag-chip-daytime").getAttribute("aria-pressed")).toBe("true");
 
-    // One tag per class, which the annotator holds structurally because the kernel
-    // enforces no uniqueness.
+    // One tag per class — which the annotator holds structurally *and* the kernel
+    // enforces, keyed `(asset, label_class)`. It did not always: the engine's
+    // identity command was the only guard when this was written.
     await userEvent.click(screen.getByTestId("tag-chip-daytime"));
     expect(store.document.annotations.size).toBe(0);
   });

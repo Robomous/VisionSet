@@ -480,7 +480,13 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("asset-position")).toContainText("3/3");
     await page.getByTestId("tag-chip-daytime").click();
     await expect(page.getByTestId("tag-chip-daytime")).toHaveAttribute("data-active", "true");
-    await expect(page.getByTestId("object-total")).toHaveText("1 object");
+    await expect(page.getByTestId("tag-count")).toHaveText("1 assigned");
+    // And it is counted where it is assigned, not where shapes are counted: a tag
+    // renders in neither canvas layer, so a badge on the picture reading
+    // `1 object` was a number nothing on screen could account for.
+    await expect(page.getByTestId("object-total")).toHaveText("0 objects");
+    await expect(page.getByTestId("object-count")).toHaveText("0 objects");
+    await expect(page.getByTestId("objects-empty")).toHaveText("Nothing drawn yet.");
     await saveNow(page);
     await expect(page.getByTestId("save-state")).toContainText("Saved");
 
@@ -538,7 +544,15 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // is named explicitly so the entry point and the frame agree.
     await page.goto(`./jobs/${jobId}?asset=${assetId}`);
     await expect(page.getByTestId("annotation-page")).toBeVisible();
-    await expect(page.getByTestId("object-total")).toHaveText("2 objects");
+    // One: the lane. The tag on this frame is not an object, and the count says so.
+    await expect(page.getByTestId("object-total")).toHaveText("1 object");
+    // Still assigned, and still counted in its own region — excluding it from the
+    // objects is not the same as losing it.
+    await expect(page.getByTestId("tag-chip-daytime")).toHaveAttribute("data-active", "true");
+    await expect(page.getByTestId("tag-count")).toHaveText("1 assigned");
+    // The row names the shape, which is what tells two annotations of one class
+    // apart now that a class accepts a set.
+    await expect(page.getByTestId("object-row-0")).toContainText("1. centerline · polyline");
     // Drawn as an open path. `<polyline>` and not `<polygon>` is the whole
     // difference between a lane and a closed ring, and it is the one thing a unit
     // test over the document model structurally cannot see.
@@ -546,7 +560,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // `TransientLayer` draws a `<polyline>` too, for the polygon being dragged.
     await expect(page.locator("[data-annotation-id] polyline")).toHaveCount(1);
     await expect(page.locator("[data-annotation-id] polyline")).toHaveAttribute("fill", "none");
-    await expect(page.getByTestId("object-row-1")).toContainText("centerline");
+    // Row **0**, where it used to be row 1: the tag on this frame took the first
+    // number, and does not any more.
+    await expect(page.getByTestId("object-row-1")).toHaveCount(0);
 
     // 3c — the lane tool is live, and it is live off a schema this server sent.
     //
@@ -615,6 +631,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
             name: "pedestrian crossing",
             geometries: ["bbox", "polygon", "polyline", "classification_tag"],
           },
+          // The control for it: the *same* three chips against a short name, which
+          // must stay on one line. Without it, "the long row wrapped" is satisfied
+          // by a layout that wraps every row — and a fixed flex basis would do
+          // exactly that while passing every assertion about the long one.
+          { name: "van", geometries: ["bbox", "polygon", "polyline"] },
         ],
         provenance: "curated",
       },
@@ -639,10 +660,15 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * a ~240px row — and the name is `flex-1`, so it took what was left: **34px,
      * two characters of it**. The row's identity was the first thing to go.
      *
+     * The first answer shortened the *set* to `box +3`. The set is now a row of
+     * chips, and every one of them is a press target, so shortening it is no
+     * longer available: what gives instead is the row's **height**. The name has a
+     * flex floor to push against and the chips wrap under it.
+     *
      * Here rather than in `e2e/`, and that is not a preference: the demo schema
-     * those 37 scenarios run against has no multi-shape class at all, and
-     * inflating a fixture the whole suite asserts on to make room for this would
-     * be the more expensive change. This walk publishes real classes anyway.
+     * those scenarios run against has no multi-shape class at all, and inflating a
+     * fixture the whole suite asserts on to make room for this would be the more
+     * expensive change. This walk publishes real classes anyway.
      *
      * jsdom cannot answer it — there is no layout — so the vitest half asserts the
      * *structure* (`dataDisplay.test.tsx`) and this asserts the pixels.
@@ -654,12 +680,56 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       needed: el.scrollWidth,
     }));
     expect(fit.needed).toBeGreaterThan(0);
-    // Not truncated at all: the name now takes what it needs and the shape list
-    // is what shortened. Against the old layout this reads ~34 of ~130.
+    // Not truncated at all: the name takes what it needs. Against the original
+    // layout this reads ~34 of ~130.
     expect(fit.shown).toBeGreaterThanOrEqual(fit.needed - 1);
-    // And the metadata says how many shapes without spelling them, so the width
-    // stops growing with the set.
-    await expect(page.getByTestId("class-row-pedestrian crossing")).toContainText("box +3");
+
+    // The chips went to a second line to pay for it, which is the whole
+    // mechanism — a row that stayed one line tall here would mean the name won
+    // its width by truncating a control instead.
+    const row = page.getByTestId("class-row-pedestrian crossing");
+    const rowBox = await row.boundingBox();
+    const nameBox = await crossing.boundingBox();
+    // The **last** chip, because the claim below is about the right edge.
+    const chipBox = await page
+      .getByTestId("class-row-pedestrian crossing-shape-polyline")
+      .boundingBox();
+    expect(rowBox).not.toBeNull();
+    expect(nameBox).not.toBeNull();
+    expect(chipBox).not.toBeNull();
+    // Taller than the 36px an unwrapped row stands at.
+    expect(rowBox!.height).toBeGreaterThan(36);
+    // The chips are *below* the name, not beside it.
+    expect(chipBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height);
+    // And they end where every other row's chips end. The name spans the first
+    // line, so its right edge is the column every unwrapped row aligns to; a
+    // wrapped line that started under the name instead would read as a different
+    // kind of row.
+    const chipRight = chipBox!.x + chipBox!.width;
+    const nameRight = nameBox!.x + nameBox!.width;
+    expect(Math.abs(chipRight - nameRight)).toBeLessThanOrEqual(1);
+
+    // Every shape is a chip, and the tag is not among them: a tag has no canvas
+    // gesture, and the Tags section below is where this class is tagged.
+    for (const shape of ["bbox", "polygon", "polyline"]) {
+      await expect(
+        page.getByTestId(`class-row-pedestrian crossing-shape-${shape}`),
+      ).toBeVisible();
+    }
+    await expect(
+      page.getByTestId("class-row-pedestrian crossing-shape-classification_tag"),
+    ).toHaveCount(0);
+
+    // The control: `van` carries the same three chips and a short name, and stays
+    // on one line. This is what separates "the row wrapped because it had to" from
+    // "every row wraps" — the second passes every assertion above.
+    const van = (await page.getByTestId("class-row-van").boundingBox())!;
+    expect(van.height).toBeLessThanOrEqual(36);
+    const vanName = (await page.getByTestId("class-row-van-name").boundingBox())!;
+    const vanChip = (await page.getByTestId("class-row-van-shape-polyline").boundingBox())!;
+    // Beside the name, not under it.
+    expect(vanChip.x).toBeGreaterThan(vanName.x);
+    expect(Math.abs(vanChip.y - vanName.y)).toBeLessThan(vanName.height);
 
     /*
      * 3a-ter — **the annotator's own add-a-class door, which is now two calls.**

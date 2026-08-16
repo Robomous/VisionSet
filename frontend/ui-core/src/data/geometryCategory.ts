@@ -190,32 +190,3 @@ export function geometryLabel(geometry: GeometryType): string {
 export function formatGeometries(geometries: readonly GeometryType[]): string {
   return geometries.map(geometryLabel).join(" · ");
 }
-
-/**
- * The same set, short enough to sit beside a class name on one 36px row.
- *
- * One or two shapes are the words; three or more collapse to the first shape and
- * a count — `box +2`. **The first is kept rather than dropped for a bare count**
- * because it is the shape the class draws by default, so the row still answers
- * *what happens if I arm this and draw*, which a count alone does not.
- *
- * **A separate function rather than a change to :func:`formatGeometries`, and
- * that is the whole reason this exists.** Eleven callers render the full phrase
- * and most of them are prose or a badge — *"needs box · polygon"*, *"Publishing
- * adds … to it"*, a version-history line. "needs box +2" is not a sentence. This
- * abbreviation is a *row layout* concern, so it is named as one and used only
- * where the row is.
- *
- * The threshold is a count and not a measurement, deliberately: a rule that read
- * the rendered width would need an observer, would answer differently at two
- * viewport sizes, and could not be asserted anywhere but a real browser. Two
- * shapes fit at every supported width; three never do.
- *
- * Empty in, empty out — a class always declares at least one geometry, so this is
- * a total function rather than a case anybody reaches.
- */
-export function summariseGeometries(geometries: readonly GeometryType[]): string {
-  if (geometries.length <= 2) return formatGeometries(geometries);
-  const [first, ...rest] = geometries;
-  return `${geometryLabel(first)} +${rest.length}`;
-}

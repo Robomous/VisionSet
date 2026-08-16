@@ -29,7 +29,6 @@ import {
   formatGeometries,
   geometryLabel,
   groupGeometries,
-  summariseGeometries,
   type GeometryCategory,
 } from "./geometryCategory";
 
@@ -159,44 +158,5 @@ describe("a set of geometries, as one phrase", () => {
     // The kernel cannot produce one, but a refusal renders `?? []` while a class
     // is being typed, and " · " alone would read as damage.
     expect(formatGeometries([])).toBe("");
-  });
-});
-
-describe("the same set, shortened for a 36px row", () => {
-  it("keeps the words for one shape", () => {
-    expect(summariseGeometries(["bbox"])).toBe("box");
-  });
-
-  it("keeps the words for two, which is the common multi-shape class", () => {
-    // `car` accepting box and polygon is the case #584 was built for, and it fits
-    // beside its name. Collapsing it would trade a real word for nothing.
-    expect(summariseGeometries(["bbox", "polygon"])).toBe("box · polygon");
-  });
-
-  it("collapses three to the first shape and a count", () => {
-    expect(summariseGeometries(["bbox", "polygon", "polyline"])).toBe("box +2");
-  });
-
-  it("collapses four the same way, so the width stops growing with the set", () => {
-    // The row this was filed over: `box · tag · polygon · polyline` is 176px, and
-    // the name beside it got 34. This is ~40px whatever the set holds.
-    expect(summariseGeometries(["bbox", "classification_tag", "polygon", "polyline"])).toBe(
-      "box +3",
-    );
-  });
-
-  it("names the first shape rather than only counting", () => {
-    // The kept word is the one the class draws by default, so the row still
-    // answers *what happens if I arm this and drag*. A bare "4 shapes" does not,
-    // and the two are the same width.
-    expect(summariseGeometries(["polyline", "bbox", "polygon"])).toBe("polyline +2");
-  });
-
-  it("agrees with the long phrase wherever it does not shorten", () => {
-    // One rule, not two: below the threshold this *is* `formatGeometries`, so a
-    // change to the separator cannot make the row and the prose disagree.
-    for (const set of [["bbox"], ["polygon", "polyline"]] as const) {
-      expect(summariseGeometries(set)).toBe(formatGeometries(set));
-    }
   });
 });

@@ -110,24 +110,48 @@ test("a panel delete is the keyboard's delete, and undo brings it back", async (
   await expectCounts(page, 1, 1);
 });
 
-test("the tag strip toggles a whole-asset tag, and the demo's own checkbox agrees", async ({
+test("the tags section toggles a whole-asset tag, and the demo's own checkbox agrees", async ({
   page,
 }) => {
   await frameOf(page);
 
-  // A tag is a command, not an active class — `classAction`'s split, and the
-  // strip is the only surface that offers one: it is not a shape, so no
+  // A tag is a command, not an active class — `classAction`'s split, and this
+  // section is the only surface that offers one: it is not a shape, so no
   // tool and no canvas gesture reaches it.
   await page.getByTestId("tag-chip-daytime").click();
   await expect(page.getByTestId("tag-chip-daytime")).toHaveAttribute("data-active", "true");
   // One document, two views of it: the demo's own checkbox reads the same store.
   await expect(page.getByTestId("tag-daytime")).toBeChecked();
-  // …and it is an annotation like any other, so it shows up in the list.
-  await expect(page.getByTestId("object-count")).toHaveText("1 object");
+  // It is counted where it is assigned…
+  await expect(page.getByTestId("tag-count")).toHaveText("1 assigned");
+  // …and **not** in the object list, which it used to be: a tag was a chip and a
+  // numbered row at once, with a hide button that hides nothing and a
+  // reassignment menu onto classes that cannot hold it.
+  await expect(page.getByTestId("object-count")).toHaveText("0 objects");
+  await expect(page.getByTestId("objects-empty")).toBeVisible();
 
   await page.getByTestId("tag-chip-daytime").click();
   await expect(page.getByTestId("tag-chip-daytime")).toHaveAttribute("data-active", "false");
   await expect(page.getByTestId("tag-daytime")).not.toBeChecked();
+  await expect(page.getByTestId("tag-count")).toHaveText("0 assigned");
+});
+
+test("the panel is three sections, and the tags one says what it is about", async ({ page }) => {
+  await frameOf(page);
+
+  const classes = (await page.getByTestId("class-region").boundingBox())!;
+  const tags = (await page.getByTestId("tag-region").boundingBox())!;
+  const objects = (await page.getByTestId("objects-region").boundingBox())!;
+
+  // Read top to bottom: what may I draw, what is true of the whole picture, what
+  // have I drawn.
+  expect(classes.y).toBeLessThan(tags.y);
+  expect(tags.y).toBeLessThan(objects.y);
+  await expect(page.getByTestId("tag-note")).toHaveText("Tags apply to the whole image.");
+  // The heading and its sentence stay put; only the chips scroll.
+  const note = (await page.getByTestId("tag-note").boundingBox())!;
+  const scroller = (await page.getByTestId("tag-scroller").boundingBox())!;
+  expect(note.y).toBeLessThan(scroller.y);
 });
 
 test("reassigning a class refuses the wrong geometry and says why, in one history entry", async ({

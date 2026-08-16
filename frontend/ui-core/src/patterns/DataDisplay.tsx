@@ -165,15 +165,17 @@ export function DistributionBar({
 }
 
 /**
- * The compact row's height, in CSS pixels — `h-9`, and exported because a
- * caller sizes a viewport in rows.
+ * The compact row's height, in CSS pixels, and exported because a caller sizes a
+ * viewport in rows.
  *
  * A number rather than a measurement: the classes region's height rule is
  * "three rows minimum, one per class, eight maximum", and a rule stated in rows
- * needs the row to be a known quantity. That is also why the compact variant
- * carries an explicit height instead of letting its content decide — a row whose
- * height depended on whether a hotkey badge was drawn would make the region
- * eight-and-a-bit rows tall.
+ * needs the row to be a known quantity.
+ *
+ * It is the height of an **unwrapped** row, so it is a floor: a row carrying
+ * chips may take a second line. `classListHeight` still sizes the viewport from
+ * the class count, and the scroller absorbs the difference — a height that knew
+ * which rows wrap would be a measurement, and would reflow on every resize.
  */
 export const CLASS_ROW_PX = 36;
 
@@ -215,39 +217,26 @@ export interface ClassListRowProps {
   readonly testId?: string;
   readonly className?: string;
   /**
-   * The shapes this class can be drawn as, when there is a choice between them.
+   * The shapes this class can be drawn as, each one a press target.
    *
-   * Absent is the ordinary row and the ordinary case: a class accepting one
-   * geometry has nothing to decide, and a list of fifty of them should carry
-   * fifty *names* rather than fifty controls. Present turns the geometry text
-   * into a segmented control — the active shape lit, pressing another switching
-   * the tool without moving the class.
+   * Present replaces the geometry *text* with a row of chips: the active shape
+   * lit, the rest outlined, and pressing one choosing that shape. Absent is the
+   * plain row, which is what a caller with no shape choice to offer wants — the
+   * schema editor's stacked variant and the styleguide both take it.
    *
    * **Present also changes the row's markup**, and that is not an implementation
-   * detail worth hiding. This component's whole shape is "a real `<button>`
+   * detail worth hiding. This component's original shape was "a real `<button>`
    * spanning the row"; HTML forbids interactive descendants inside a button, so
-   * a row that offers a choice has to become a group with an inner name button
-   * instead. The caller decides which rows are worth that, and `ClassRegion`
-   * spends it on exactly one — the armed row, which is the only one where the
-   * choice is live. The accessible answer and the density answer agree.
+   * a row carrying chips is a group with an inner name button instead, and the
+   * `-name` handle addresses that button in both markups.
    *
-   * `geometry` still renders when this is absent, so nothing else moves.
+   * A row carrying a `refusal` never picks, however many shapes are passed: see
+   * `picking`.
    */
   readonly shapes?: readonly {
     readonly value: string;
-    /**
-     * The shape's name, which is its **accessible** name whether or not it is
-     * the thing drawn. A caller passing `icon` still owes this one.
-     */
+    /** The shape's name, shown on the chip and used as its accessible name. */
     readonly label: string;
-    /**
-     * The glyph to draw instead of the word, or absent to render the word.
-     *
-     * A `ReactNode` rather than an icon name, because this component is generic
-     * and has no business knowing what a polygon looks like — the annotator does,
-     * and `GeometryIcon` is where it says so once for the strip and the row. #597
-     */
-    readonly icon?: ReactNode;
     readonly active: boolean;
     readonly onPick: () => void;
   }[];
@@ -287,14 +276,23 @@ export function ClassListRow({
   shapes,
 }: ClassListRowProps): JSX.Element {
   const compact = count === undefined;
-  const picking = shapes !== undefined && shapes.length > 0;
+  // A refused row never picks. The group variant has no `disabled` to carry —
+  // `disabled` is an attribute of the button this row stops being — so a refusal
+  // arriving with shapes would render an explained-but-live control, which is
+  // principle 9 failing in the direction that matters. The plain button below
+  // states the refusal and takes the press away; that is the one it must be.
+  const picking = shapes !== undefined && shapes.length > 0 && refusal === undefined;
   // One copy of the row's chrome, whichever element ends up carrying it. The
   // whole reason this component is shared with the schema editor is that the
   // selected treatment should not have two spellings; a group variant that
   // rebuilt it would be that drift arriving through the back door.
   const chrome = cn(
     "flex w-full items-center gap-2 border-l-2 px-3 text-left transition-colors",
-    compact ? "h-9 shrink-0" : "py-2",
+    // `min-h-9` rather than `h-9`: a picking row wraps its chips to a second line
+    // when the name needs the first one, so the row is a floor now and not a
+    // fixed quantity. `CLASS_ROW_PX` still describes the *unwrapped* row, which
+    // is what the classes region sizes itself in — see `classListHeight`.
+    compact ? "min-h-9 shrink-0 py-1" : "py-2",
     selected
       ? "border-l-primary bg-primary/10"
       : "border-l-transparent hover:bg-muted focus-visible:bg-muted",
@@ -322,59 +320,67 @@ export function ClassListRow({
         className={chrome}
       >
         {swatch}
-        <button
-          type="button"
-          onClick={onSelect}
-          {...(testId === undefined ? {} : { "data-testid": `${testId}-name` })}
-          aria-current={selected ? "true" : undefined}
-          // `title` carries the full name. The chips are press targets and keep
-          // their width, so this is the row where a long name still truncates —
-          // hovering is how it comes back. #596 bought it the hotkey's ~28px.
-          title={name}
-          className={cn(
-            "min-w-0 flex-1 truncate text-left text-body",
-            selected && "font-semibold",
-          )}
-        >
-          {name}
-        </button>
-        {shapes.map((shape) => (
+        {/* Flexbox breaks lines on each item's *flex base size*. Left at `auto`
+            the name's base is its text width, so a long name pushes the chips to
+            their own line and a short one leaves them beside it. `flex-1` would
+            set that base to zero and nothing would ever wrap; a fixed `basis-*`
+            would wrap every row.
+
+            `justify-end` keeps the chips in one right-hand column down the whole
+            list. It costs an unwrapped row nothing — the name is `grow`, so it
+            takes the free space and there is none left to distribute — and acts
+            only on a wrapped line, where the chips would otherwise sit under the
+            name and read as a different kind of row. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-2 gap-y-1">
           <button
-            key={shape.value}
             type="button"
-            onClick={shape.onPick}
-            aria-pressed={shape.active}
-            data-active={shape.active ? "true" : "false"}
-            data-testid={testId === undefined ? undefined : `${testId}-shape-${shape.value}`}
-            // The word is the accessible name whichever is drawn, so a chip that
-            // shows a glyph is still announced as "polygon" and still hoverable
-            // for it. #597 traded the words for pictures because three of them
-            // beside a class name is ~128px of a 240px row.
-            aria-label={shape.label}
-            title={shape.label}
+            onClick={onSelect}
+            {...(testId === undefined ? {} : { "data-testid": `${testId}-name` })}
+            aria-current={selected ? "true" : undefined}
+            // Still the recovery for a name too long even with the whole first
+            // line to itself.
+            title={name}
             className={cn(
-              "flex shrink-0 items-center justify-center rounded-sm text-meta transition-colors",
-              shape.icon === undefined ? "px-1.5" : "size-6",
-              shape.active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-card hover:text-foreground",
+              "min-w-0 grow truncate text-left text-body",
+              selected && "font-semibold",
             )}
           >
-            {shape.icon ?? shape.label}
+            {name}
           </button>
-        ))}
-        {/* No hotkey chip while picking, and it is bought rather than dropped:
-            every shape here is a press target and truncating a control is worse
-            than truncating a label, so the ~28px the chip and its gap take comes
-            out of the name instead. The digit's job is to *arm* the class, and
-            this row is the armed one — the badge is a reminder for the rows that
-            are not. #596
-
-            It is not enough on its own: a long name beside three chips still
-            truncates, measured at 57px of 185. The chips are press targets and
-            keep their width, and wrapping is closed off by the list's
-            `rows * CLASS_ROW_PX` height rule, so the remedy is a design change
-            rather than a class — filed as #597. */}
+          {/* One group, so the shapes wrap together and keep their order. Chips
+              breaking across two lines individually would read as two lists. */}
+          <div className="flex shrink-0 items-center gap-1">
+            {shapes.map((shape) => (
+              <button
+                key={shape.value}
+                type="button"
+                onClick={shape.onPick}
+                aria-pressed={shape.active}
+                data-active={shape.active ? "true" : "false"}
+                data-testid={testId === undefined ? undefined : `${testId}-shape-${shape.value}`}
+                // `title` too, so a chip clipped by a narrow panel reads on hover.
+                aria-label={shape.label}
+                title={shape.label}
+                className={cn(
+                  "flex shrink-0 items-center justify-center rounded-sm px-1.5 text-meta transition-colors",
+                  "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                  shape.active
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-card hover:text-foreground",
+                )}
+              >
+                {shape.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Outside the wrapping block, so it stays on the first line rather than
+            travelling down with the chips. */}
+        {hotkey != null && (
+          <kbd className="shrink-0 rounded-sm border border-border px-1 font-mono text-meta text-muted-foreground">
+            {hotkey}
+          </kbd>
+        )}
       </div>
     );
   }
@@ -414,8 +420,8 @@ export function ClassListRow({
               it receives only the *leftover* — a four-shape phrase took 176px of
               a 240px row and left the name 34px, two characters of it. The row's
               identity is the name; the shapes are metadata about it, and metadata
-              is what gives way. `summariseGeometries` keeps this off the common
-              path, but a long name with two shapes still needs it. */}
+              is what gives way. This is the variant with no chips to wrap, so
+              truncation is still how a long set ends. */}
           <span className="min-w-0 shrink truncate text-meta text-muted-foreground">
             {geometry}
           </span>

@@ -663,7 +663,7 @@ Presentational contracts, all in `ui-core`, all data-only — no fetching, no ro
 |---|---|
 | `StatCard` | muted meta-size label above a large value, tinted surface, **no border**. Used in grids of 3–4. Optional context line under the value. |
 | `DistributionBar` | one row of a bar chart: swatch · fixed-width label · proportional bar in the class colour · right-aligned count. **All bars in one chart share a single max-value scale.** |
-| `ClassListRow` | swatch + name + a `geometry · count` secondary line. Selected = tinted background + 2px left accent rule. The whole row is the click target, and it is a real `<button>`. |
+| `ClassListRow` | swatch + name + a `geometry · count` secondary line. Selected = tinted background + 2px left accent rule, covering the row's full height whether it takes one line or two. The whole row is the click target and a real `<button>` — **except** when it carries shape chips, which are press targets and cannot nest inside a button: that row is a `role="group"` with an inner name button, addressed by the same `-name` handle in both markups. A row carrying a `refusal` never takes the group form, because only the button can be `disabled`. |
 | `EmptyState` | icon + a headline naming the space + one line of body + a verb-first CTA. Never a bare "No items". |
 | `ThumbnailGrid` | square tiles, 6px gap, `sm` radius. The last tile becomes a `+N` overflow linking onward. Missing thumbnails show a photo icon on `muted` — **never a broken-image glyph**. |
 | Chip | `primitives/Badge.tsx`, which already is one. It gains variants; it is not reimplemented. |
@@ -945,24 +945,48 @@ The page the reference design shows (#56), with measurements verified in v1's so
   has (#123) and for the same reason — a paste and a drawing class both belong to one
   pinned schema.
 
-  **On the armed row, the geometry words are the shape picker** (#584). A class accepts a
-  *set* of geometries, so arming one no longer picks the shape — and until this the only
-  place that answer lived was the tool strip at the far left of the canvas while the class
-  was chosen on the right: one decision split across the width of the picture, in a loop
-  repeated hundreds of times a job. The active shape is lit; pressing another switches the
-  tool and **never the class**, which is the same retarget rule the strip holds. Only the
-  armed row carries it, and the accessible answer and the density answer agree: a row
-  `<button>` cannot contain buttons, so a row offering a choice becomes a group — and an
-  unarmed row has no live choice, so fifty classes would otherwise mean fifty controls for
-  one decision. A class accepting a single shape shows nothing.
+  **Every row's shapes are chips, and every chip is a press target.** A class accepts a
+  *set* of geometries, so arming one no longer picks the shape — and the only place that
+  answer used to live was the tool strip at the far left of the canvas while the class was
+  chosen on the right: one decision split across the width of the picture, in a loop
+  repeated hundreds of times a job. One chip per **drawable** geometry, labelled with the
+  geometry **word**. Glyphs were tried and reverted: a square, a spline and a waypoint node
+  are not self-describing at chip size on the one row whose job is telling shapes apart,
+  and the strip can afford them only because it is five controls learned once.
+
+  What a press does depends on the row, and the two readings are one rule — *this class,
+  this shape*:
+
+  - On the **armed** row the active chip is lit and pressing another switches the tool and
+    **never the class**, which is the same retarget rule the strip holds. Changing shape
+    must not move somebody's labels to a class they did not choose.
+  - On an **unarmed** row no chip is lit — a chip drawn as chosen on a class nothing is
+    armed to would claim a state the canvas is not in — and pressing one arms the class
+    *with that shape*, in one press where it used to be two.
+  - Pressing the **name** arms the class with its first drawable shape.
+
+  The cost is that a row carrying chips is a `role="group"` with an inner name button
+  rather than one row-wide `<button>` — HTML forbids interactive descendants inside a
+  button — and the `-name` handle addresses that button in both markups. A row carrying a
+  **refusal** never picks: it falls back to the plain button, the only one that can be
+  `disabled`, so principle 9 stays *explained and inert*.
 
   Geometry words are **display labels, never wire values** — `box`, not `bbox`; `tag`, not
   `classification_tag`. One map, `GEOMETRY_LABELS`, shared with the tool strip, which
   capitalises at its own control; lowercase, because the same word is read as a chip in a
-  row and inside a sentence. A set joins with `·`, which is what a set reads as at this
-  density. **The ceiling, stated**: at three or more shapes the class name truncates and the
-  full name is on hover — the row is 36px in a 288px panel and those characters come out of
-  the name.
+  row and inside a sentence. A set joins with `·` wherever it is still spelled as words.
+
+  **What gives way, stated**: the row's *height*. The chips wrap beneath the name, so a
+  long name gets the whole first line — and they stay **right-aligned**, in the same column
+  every unwrapped row's chips sit in. A wrapped line that started under the name would read
+  as a different kind of row and break the one vertical edge the list is scanned down. The name gave way once, then the shape list did; neither is available now that each
+  shape is a control, because truncating a control is worse than truncating a label. A row
+  is therefore `min-h-9` rather than 36px exactly, and the classes region absorbs the
+  difference in the scroller it already has — see the height rule above.
+
+  **A class that declares only `classification_tag` is not in this list at all.** It has no
+  canvas gesture; the Tags section is where it is assigned. It is also excluded from the
+  count the height rule reads, so it does not size a region it has no row in.
 - **Pinned version badge** (#229, made an answer by #368): `v{n}` in the left zone names
   the version *this batch is judged against* — not the project's active one, since #229
   made the pin movable. Pressing it opens a small panel that says whether that is still
@@ -1043,11 +1067,17 @@ The page the reference design shows (#56), with measurements verified in v1's so
   rail already leaves a 384px stage, and a width chosen on a large monitor must not be
   charged to the smallest screen the editor opens on at all. `EditorNotice`'s clearance
   arithmetic is stated at 1280px and is unaffected. Otherwise:
-  `muted` surface, `border`, 12px radius. **Two stacked regions, no tabs and no
-  splitter.** It was Objects | Labels tabs until #368, which sent class selection to the
-  top bar; #420 brings it back and deliberately does not bring the tabs with it. A tab is
-  a claim that two things are alternatives, and these are the two halves of one question —
-  *what may I draw* and *what have I drawn* — so both are on screen at once.
+  `muted` surface, `border`, 12px radius. **Three stacked regions, no tabs and no
+  splitter** — Classes, Tags, Annotations. It was Objects | Labels tabs until #368, which
+  sent class selection to the top bar; #420 brings it back and deliberately does not bring
+  the tabs with it. A tab is a claim that things are alternatives, and these are three
+  answers about one frame, read top to bottom: *what may I draw*, *what is true of the
+  whole picture*, *what have I drawn*. All three are on screen at once.
+
+  **A region with nothing to show is not rendered**, and its divider goes with it: no
+  class anything can be drawn with, or no class declaring a tag. A heading over an empty
+  box is a claim that something is missing. Annotations is the exception and always
+  renders — an empty frame is the normal state of a fresh one, and it says so in words.
 
   **Classes (upper).** Header — the word `Classes`, the class count in muted meta, and a
   24px `+` opening the add-a-class dialog; then a 32px `Filter classes…` input; then the
@@ -1055,17 +1085,38 @@ The page the reference design shows (#56), with measurements verified in v1's so
   in rows**: a floor of 3 rows' worth, one row per class after that, a ceiling of 8, after
   which the region is fixed and the list scrolls inside it. A small ontology gets a region
   proportional to what it holds; a large one cannot push the objects region off the bottom.
-  The count it is computed from is the **schema's**, never the filtered one — a height
-  that tracked the filter would reflow the region below it on every keystroke. The header
+  The count it is computed from is the **schema's drawable classes**, never the filtered
+  ones — a height that tracked the filter would reflow the region below it on every
+  keystroke — and a row that wrapped its chips to a second line is absorbed by the same
+  scroller a ninth class is, rather than by a rule that would have to measure. The header
   and the filter are not rows and do not scroll away.
 
-  **Annotations (lower).** Takes all remaining height and scrolls independently. Top to
-  bottom: **header** (the word `Annotations`, the object count in muted meta text, the
-  all-visibility toggle); the **tag chip strip**, rendered only when the pinned schema
-  declares a `classification_tag` class — rounded-full chips carrying swatch, name and
-  either the hotkey digit or a check; the **filter**, a 32px input that is *always*
-  rendered, because a control that appears once a list is long enough is a control nobody
-  finds; then the **object rows**: `rounded-md border px-1.5 py-1`, meta-size text
+  **Tags (middle).** Rendered only when the pinned schema declares a `classification_tag`
+  class. Header — the word `Tags` and the assigned count in muted meta — then one line of
+  meta-size prose, `Tags apply to the whole image.`, which is the whole difference between
+  this region and the two around it. Then the chips: rounded-full, swatch, name, and
+  either the hotkey digit or a check, `primary/10` with a `primary` border when assigned
+  and outlined muted when not. **Multi-select and unbounded**: an image carries one tag per
+  tag-capable class and as many classes as the schema declares, which is the kernel's own
+  rule (`DuplicateClassificationTag` is keyed `(asset, class)`), so the chips enforce
+  nothing the kernel would contradict. `shrink-0` with a capped scroller of its own, so
+  thirty tag classes cannot push the objects region off the panel.
+
+  **No filter, and it is the one place the lists rule is not applied.** That rule is about
+  *rows* — a vertical list where the twenty-first is a scroll away and indistinguishable
+  from the twentieth. These are chips in a wrapping cloud: twenty of them are about seven
+  short lines, read at a glance, and each carries a colour and a digit. A third filter
+  input inside a 288px panel that already has two would cost more attention than it saves.
+  Revisit if a real schema arrives with enough tag classes to disprove it.
+
+  **Annotations (lower).** Takes all remaining height and scrolls independently, and holds
+  **drawn shapes only** — a tag has no coordinates, renders in neither canvas layer, and is
+  assigned in the region above; counting it here gave a tagged-but-undrawn frame `1 object`
+  and offered it a hide button that hides nothing. Top to bottom: **header** (the word
+  `Annotations`, the object count in muted meta text, the all-visibility toggle); the
+  **filter**, a 32px input that is *always* rendered, because a control that appears once a
+  list is long enough is a control nobody finds; then the **object rows**:
+  `rounded-md border px-1.5 py-1`, meta-size text
   `N. class`; **selected = `border-primary` + `bg-primary/10`**; hidden = 50% opacity;
   per-row tag, eye and trash as 24px ghost icon buttons.
 
