@@ -21,7 +21,7 @@ Three rules place a domain error, not fifty:
 - **422** — the payload itself is wrong.
 
 5xx is opaque by default: the body carries a generic sentence and an
-``incident_id``, and the real message and traceback go to the log. Four errors
+``incident_id``, and the real message and traceback go to the log. Six errors
 opt out, each because its message *is* the operator's remedy — see
 ``expose_message`` below.
 """

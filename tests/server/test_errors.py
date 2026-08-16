@@ -10,6 +10,7 @@ from __future__ import annotations
 import inspect
 import re
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -232,6 +233,80 @@ def test_rule_for_declines_an_exception_it_does_not_know() -> None:
 
 def _rules_by_name() -> dict[str, ErrorRule]:
     return {cls.__name__: rule for cls, rule in ERROR_RULES.items()}
+
+
+# --- the table, as the document publishes it ------------------------------
+
+# ``docs/api.md`` is where a client author reads the inventory, and until now
+# nothing held it to the code. It fell nineteen codes behind before anybody
+# noticed, and syncing it was never the fix: an ungated mirror is a second
+# spelling waiting to drift. These tests are the same exact-correspondence
+# construction as ``test_the_status_and_code_of_every_error`` above, with the
+# markdown as the other side — ``frontend/ui-core/src/tokens.test.ts`` is the
+# precedent for holding a *document* this way. cf. #524.
+
+DOCS = Path(__file__).resolve().parents[2] / "docs" / "api.md"
+
+# The five codes the document lists that ``ERROR_RULES`` does not hold. None of
+# them has a kernel class to map: FastAPI raises the first, Starlette's router
+# the next two, the auth guard the fourth, and the last is what an exception no
+# rule covers becomes. The document is the only place they are written down,
+# which is why they are named here rather than derived.
+FRAMEWORK_CODES = {
+    "VALIDATION_ERROR",
+    "NOT_FOUND",
+    "METHOD_NOT_ALLOWED",
+    "UNAUTHORIZED",
+    "INTERNAL_ERROR",
+}
+
+
+def test_every_error_rule_appears_in_the_documented_table() -> None:
+    documented = _documented_codes()
+    undocumented = {(rule.code, rule.status) for rule in ERROR_RULES.values()} - documented
+    assert undocumented == set()
+
+
+def test_every_documented_code_still_exists() -> None:
+    mapped = {(rule.code, rule.status) for rule in ERROR_RULES.values()}
+    stale = {pair for pair in _documented_codes() if pair[0] not in FRAMEWORK_CODES} - mapped
+    assert stale == set()
+
+
+def test_the_published_message_table_matches_expose_message() -> None:
+    published = set(
+        re.findall(r"^\|\s*`([A-Z][A-Z0-9_]+)`\s*\|", _section("The 5xx contract"), re.MULTILINE)
+    )
+    assert published == {rule.code for rule in ERROR_RULES.values() if rule.expose_message}
+
+
+def _section(heading: str) -> str:
+    """The body under a ``##`` heading, up to the next one of that level."""
+    text = DOCS.read_text(encoding="utf-8")
+    marker = f"\n## {heading}\n"
+    if marker not in text:
+        raise AssertionError(f"docs/api.md no longer has a '## {heading}' section")
+    return re.split(r"^## ", text.split(marker, 1)[1], maxsplit=1, flags=re.MULTILINE)[0]
+
+
+def _documented_codes() -> set[tuple[str, int]]:
+    """``(code, status)`` pairs read off the status rows of the full table.
+
+    Pairs rather than a mapping, so one code listed under two statuses arrives
+    as two members and is caught, instead of one silently overwriting the other.
+    """
+    pairs: set[tuple[str, int]] = set()
+    for line in _section("The full table").splitlines():
+        row = re.match(r"\|\s*\*\*(\d{3})\*\*\s*\|(.+)\|", line)
+        if row is None:
+            continue
+        status = int(row.group(1))
+        pairs.update((code, status) for code in re.findall(r"`([A-Z][A-Z0-9_]+)`", row.group(2)))
+    # An empty parse would make the second test vacuous — a deleted or reshaped
+    # table must be a failure, not a gate that quietly stops guarding anything.
+    if not pairs:
+        raise AssertionError("the full table in docs/api.md parsed as no codes at all")
+    return pairs
 
 
 # --- the handlers ---------------------------------------------------------
