@@ -76,6 +76,8 @@ from visionset.kernel.domain import (
     Dataset,
     DatasetStats,
     DownloadSize,
+    DraftAttribute,
+    DraftLabelClass,
     ExportCompatibility,
     ExportResult,
     Geometry,
@@ -92,6 +94,7 @@ from visionset.kernel.domain import (
     SchemaChange,
     SchemaChangePreview,
     SchemaDiff,
+    SchemaDraft,
     SchemaPublication,
     Source,
     SplitRecipe,
@@ -177,6 +180,45 @@ def schema_version(value: AnnotationSchema) -> dict[str, Any]:
         "description": value.description,
         "created_at": None if value.created_at is None else _moment(value.created_at),
         "provenance": None if value.provenance is None else value.provenance.value,
+    }
+
+
+def draft_attribute(value: DraftAttribute) -> dict[str, Any]:
+    """One attribute of a class still being written. Every field may be unset."""
+    return {
+        "name": value.name,
+        "kind": value.kind,
+        "required": value.required,
+        "options": None if value.options is None else list(value.options),
+        "default": value.default,
+    }
+
+
+def draft_label_class(value: DraftLabelClass) -> dict[str, Any]:
+    """One class still being written: a name that may be blank, shapes that may be none."""
+    return {
+        "name": value.name,
+        "geometries": [geometry.value for geometry in value.geometries],
+        "color": value.color,
+        "attributes": [draft_attribute(a) for a in value.attributes],
+    }
+
+
+def schema_draft(value: SchemaDraft) -> dict[str, Any]:
+    """The schema version a project is still writing, of one kind.
+
+    ``revision`` is what the next write must name. ``based_on`` is the version the
+    draft was seeded from, so one that is behind the active version was written
+    against a contract that has since moved.
+    """
+    return {
+        "project_id": str(value.project_id),
+        "kind": value.kind.value,
+        "classes": [draft_label_class(c) for c in value.classes],
+        "note": value.note,
+        "based_on": value.based_on,
+        "revision": value.revision,
+        "updated_at": _moment(value.updated_at),
     }
 
 
