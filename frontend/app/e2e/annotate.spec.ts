@@ -1522,38 +1522,90 @@ test("the editor grows grips on selection, and hovering a shape stays a plain ar
  */
 test("selecting on the canvas scrolls the object's row into view", async ({ page }) => {
   const sent: Request[] = [];
-  await openJob(page, sent);
 
-  // Draw a column of boxes — enough that the first row scrolls out once the
-  // last is drawn and selected.
-  const canvas = page.getByTestId("annotator-canvas");
-  const frame = (await canvas.boundingBox())!;
-  await page.getByTestId("annotator-root").focus();
-  await page.keyboard.press("1");
-  const drawn = 14;
-  for (let index = 0; index < drawn; index += 1) {
-    const left = frame.x + frame.width * (0.05 + 0.9 * (index / drawn));
-    const top = frame.y + frame.height * 0.1;
-    await page.mouse.move(left, top);
-    await page.mouse.down();
-    await page.mouse.move(left + frame.width * 0.04, top + frame.height * 0.5, { steps: 4 });
-    await page.mouse.up();
-  }
-  await expect(page.getByTestId("object-total")).toHaveText(`${drawn} objects`);
+  // Seeded, not drawn: 20 real drags under a loaded ten-worker gate both
+  // starve the 20s test-timeout budget and can swallow a gesture entirely
+  // (#550) — the claim this scenario makes is selection→scroll, and drawing
+  // was only ever setup for it. Two rows of 10 non-overlapping boxes, well
+  // inside the stub's 640×480 asset frame (`asset()` above — not the demo
+  // page's 1280×720 `ASSET` in `_frame.ts`, a different fixture entirely) and
+  // at least 20px from every edge and every neighbour.
+  const seededCount = 20;
+  const seeded = Array.from({ length: seededCount }, (_, index) => ({
+    id: `seeded-${String(index + 1).padStart(2, "0")}`,
+    asset_id: "asset-1",
+    label_class: "vehicle",
+    schema_version: 3,
+    geometry: {
+      type: "bbox",
+      x: 20 + (index % 10) * 60,
+      y: index < 10 ? 40 : 300,
+      width: 40,
+      height: 60,
+    },
+    attributes: {},
+    provenance: "human",
+    model_ref: null,
+    confidence: null,
+    job_id: null,
+  }));
+  await openJob(page, sent, undefined, undefined, undefined, seeded);
+
+  // The render settle: with the objects seeded rather than drawn, this is no
+  // longer a wait for the last gesture to land — it is the checkpoint that
+  // the page finished mounting all 20 rows before anything is clicked.
+  await expect(page.getByTestId("object-total")).toHaveText(`${seededCount} objects`);
+
+  // The page opens in the select tool already (the suite's own "the palette
+  // is on the page as it opens, with select" scenario), so no arming press is
+  // needed. Select the *last* shape first — its row is the one the panel
+  // starts scrolled away from, so selecting it is what scrolls the list to
+  // the bottom and pushes row 0 out through the top.
+  const last = page.locator("[data-annotation-id]").last();
+  const lastTarget = (await last.boundingBox())!;
+  await page.mouse.click(lastTarget.x + lastTarget.width / 2, lastTarget.y + lastTarget.height / 2);
+
+  // Precondition, polled for the same after-paint reason as the bounds below:
+  // row 0 must have left through the scroller's top before the click on the
+  // first shape can bring it back. Without this, a scroll that never happens
+  // at all would pass the "comes back" claim vacuously.
+  const row = page.getByTestId("object-row-0");
+  const scroller = page.getByTestId("objects-scroller");
+  await expect
+    .poll(async () => {
+      const pane = (await scroller.boundingBox())!;
+      const where = (await row.boundingBox())!;
+      return pane.y - (where.y + where.height);
+    })
+    .toBeGreaterThanOrEqual(0);
 
   // Select the *first* box on the canvas while the list sits scrolled to the
-  // bottom (drawing kept appending). Its row must come back into the scroller.
-  await page.keyboard.press("v");
+  // bottom. Its row must come back into the scroller.
   const first = page.locator("[data-annotation-id]").first();
   const target = (await first.boundingBox())!;
   await page.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
 
-  const row = page.getByTestId("object-row-0");
   await expect(row).toHaveAttribute("data-selected", "true");
-  const scroller = (await page.getByTestId("objects-scroller").boundingBox())!;
-  const where = (await row.boundingBox())!;
-  expect(where.y).toBeGreaterThanOrEqual(scroller.y - 1);
-  expect(where.y + where.height).toBeLessThanOrEqual(scroller.y + scroller.height + 1);
+  // The scroll lands in a passive effect after paint (each ObjectRow watches its
+  // own `selected`), so `data-selected` flips a frame before the row has moved.
+  // Read once, the geometry races that frame — and under a loaded ten-worker run
+  // the race loses (#550). Both bounds are therefore polled: the claim is "the
+  // row ends up inside the scroller", not "it is inside by the time the
+  // attribute flips". Same ±1px tolerance as before, per bound.
+  await expect
+    .poll(async () => {
+      const pane = (await scroller.boundingBox())!;
+      const where = (await row.boundingBox())!;
+      return where.y - pane.y;
+    })
+    .toBeGreaterThanOrEqual(-1);
+  await expect
+    .poll(async () => {
+      const pane = (await scroller.boundingBox())!;
+      const where = (await row.boundingBox())!;
+      return pane.y + pane.height - (where.y + where.height);
+    })
+    .toBeGreaterThanOrEqual(-1);
 });
 
 /**
@@ -2621,6 +2673,12 @@ test("a refusal on the bar is a sentence now, not a kernel identifier", async ({
 test("a frame goes out for review, comes back, and is accepted the second time", async ({
   page,
 }) => {
+  // The longest walk in the file — four round trips over the review machine.
+  // Every step waits on state, but their sum under a loaded ten-worker run can
+  // cross the config's fixed 20s test budget, which reported as a flake a retry
+  // absorbed (#550). Playwright's own marker for exactly this: triple the
+  // budget, change nothing about what is asserted or waited on.
+  test.slow();
   const sent: Request[] = [];
   await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "annotated" }));
 
