@@ -1624,9 +1624,11 @@ describe("the gallery header's way into the annotator", () => {
 });
 
 describe("the jobs strip", () => {
-  function jobRow(assignee: string | null) {
+  const OTHER_JOB = "88888888-8888-4888-8888-888888888888";
+
+  function jobRow(assignee: string | null, id: string = JOB) {
     return {
-      id: JOB,
+      id,
       batch_id: BATCH,
       state: "in_progress" as JobState,
       asset_count: 3,
@@ -1641,15 +1643,22 @@ describe("the jobs strip", () => {
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
   }
 
-  it("shows each job with its assignee, and Unassigned when there is none", async () => {
+  it("shows each job's assignee, and an Assign control when there is none", async () => {
     handlers.push((request) => {
       const url = new URL(request.url);
       if (url.pathname === `/batches/${BATCH}/jobs`)
-        return { status: 200, body: { items: [jobRow("Dana Reyes")], total: 1 } };
+        return {
+          status: 200,
+          body: {
+            items: [jobRow("Dana Reyes", JOB), jobRow(null, OTHER_JOB)],
+            total: 2,
+          },
+        };
       return undefined;
     });
     renderGallery();
     expect(await screen.findByText("Dana Reyes")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Assign" })).toBeTruthy();
   });
 
   it("assigning sends the PUT and refetches the list", async () => {
