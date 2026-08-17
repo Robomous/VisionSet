@@ -1,4 +1,4 @@
-# usage: from visionset.inference.registry import installed, pick
+# usage: from visionset.inference.registry import registered, serving
 """Finding the drivers this installation has, and the one a family needs.
 
 Discovery is ``importlib.metadata`` over the ``visionset.providers`` group, never
@@ -8,8 +8,11 @@ indistinguishable from a built-in here.
 **Installing a provider does not let a workspace predict.** Nothing here fetches
 or loads anything, and no existing connection changes what it runs.
 
-Nothing is cached, on ``formats/registry.py``'s reason: the alternative is a
-process that has to be restarted after an install.
+:func:`installed` caches nothing, and :func:`registered` keeps one scan for the
+life of the process because a driver's declaration is read per connection row.
+That is where this parts company with ``formats/registry.py``, and the cost is
+named there: a driver installed while a server is running is not seen until it
+restarts.
 """
 
 from __future__ import annotations

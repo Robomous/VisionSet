@@ -10,6 +10,7 @@ would offer it.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -138,27 +139,51 @@ def test_the_two_families_are_disjoint_and_are_the_whole_of_what_is_supported() 
 # --- reading the family -------------------------------------------------------
 
 
+def a_snapshot(cache_dir: Path, declaring: object) -> None:
+    """Lay down the cache entry ``a_local``'s connection points at.
+
+    A real snapshot in the hub's real layout, written rather than doubled: the
+    thing worth proving is what this reads off a disk, and a fake reader agrees
+    with whatever the test already believes.
+    """
+    snapshot = cache_dir / "models--some--segmenter" / "snapshots" / "deadbeef"
+    snapshot.mkdir(parents=True, exist_ok=True)
+    (snapshot / "config.json").write_text(json.dumps(declaring), encoding="utf-8")
+    refs = cache_dir / "models--some--segmenter" / "refs"
+    refs.mkdir(parents=True, exist_ok=True)
+    (refs / "abc123").write_text("deadbeef", encoding="utf-8")
+
+
 def test_an_unreadable_config_answers_empty_rather_than_raising(
-    connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    connections: InferenceConnectionService, tmp_path: Path
 ) -> None:
     """Reading the config and deciding what to do about it stay separate.
 
     This function's job is to report what the files say; the refusal for "they
-    say nothing" is the resolver's, one level up.
+    say nothing" is the resolver's, one level up. Nothing is written to the cache
+    here, so there is no config to read at all.
     """
+    assert family_of(a_local(connections), cache_dir=tmp_path) == ""
 
-    class Broken:
-        class AutoConfig:
-            @staticmethod
-            def from_pretrained(*_: Any, **__: Any) -> Any:
-                raise OSError("nothing in the cache")
 
-    monkeypatch.setattr(families_module, "imported", lambda _: Broken())
+def test_a_config_that_is_not_json_answers_empty_too(
+    connections: InferenceConnectionService, tmp_path: Path
+) -> None:
+    """Damaged files are the other half of "it cannot say", and must not raise.
+
+    The file is present, so the lookup succeeds and the parse is what fails —
+    the path a truncated download leaves behind.
+    """
+    snapshot = tmp_path / "models--some--segmenter" / "snapshots" / "deadbeef"
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{not json", encoding="utf-8")
+    (tmp_path / "models--some--segmenter" / "refs").mkdir(parents=True)
+    (tmp_path / "models--some--segmenter" / "refs" / "abc123").write_text("deadbeef")
     assert family_of(a_local(connections), cache_dir=tmp_path) == ""
 
 
 def test_the_family_comes_from_the_config_and_never_from_the_model_id(
-    connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    connections: InferenceConnectionService, tmp_path: Path
 ) -> None:
     """A model id is something somebody typed; a config is what the publisher wrote.
 
@@ -166,15 +191,24 @@ def test_the_family_comes_from_the_config_and_never_from_the_model_id(
     detector. Any resolver that read the name would answer the opposite of the
     truth, confidently, and pick the adapter that cannot run it.
     """
-
-    class Detector:
-        class AutoConfig:
-            @staticmethod
-            def from_pretrained(*_: Any, **__: Any) -> Any:
-                return type("Config", (), {"model_type": "grounding-dino"})()
-
-    monkeypatch.setattr(families_module, "imported", lambda _: Detector())
+    a_snapshot(tmp_path, {"model_type": "grounding-dino"})
     assert family_of(a_local(connections), cache_dir=tmp_path) == "grounding-dino"
+
+
+def test_a_family_no_library_here_registers_is_still_read(
+    connections: InferenceConnectionService, tmp_path: Path
+) -> None:
+    """The declaration is read, not resolved — which is what makes discovery open.
+
+    ``transformers`` can only name a type it registers itself, so resolving
+    through it silently closes the set of legible families to the set one library
+    knows. A driver installed from outside this distribution serves families that
+    are in no such set, and its connections would then be refused with "the
+    downloaded config does not say what model type it is" while the config in
+    front of the reader declares exactly what they have.
+    """
+    a_snapshot(tmp_path, {"model_type": "acme_seg"})
+    assert family_of(a_local(connections), cache_dir=tmp_path) == "acme_seg"
 
 
 def test_a_build_without_the_runtime_cannot_look_and_says_so(
@@ -185,8 +219,13 @@ def test_a_build_without_the_runtime_cannot_look_and_says_so(
     "I looked and it declared nothing" is a finding. "I cannot look at all" is
     not, and recording it as one would let a machine that later installs the
     runtime go on believing an answer nobody ever produced.
+
+    A readable config is laid down first, so the refusal is the absent runtime
+    and not an empty cache the assertion would have been satisfied by anyway.
     """
     from visionset.kernel.errors import LocalInferenceUnavailable
+
+    a_snapshot(tmp_path, {"model_type": "grounding-dino"})
 
     def _absent(_: str) -> Any:
         raise LocalInferenceUnavailable("no runtime here")

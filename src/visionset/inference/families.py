@@ -11,7 +11,9 @@ takes, in one mapping, so an adapter and its declaration are the same edit.
 something somebody typed; the config is something the publisher wrote. Matching on
 the id gives a confident answer for every model this build has never heard of,
 and the wrongness is invisible until an adapter fails somewhere inside a forward
-pass.
+pass. Read *literally*, too: the string the config declares, not the string some
+library agrees to recognise, because the drivers that can serve it are whatever
+this installation has and no one library knows that set.
 
 **The capability vocabulary is the kernel's, and it stays closed.** A driver maps
 a family onto a member of ``ModelCapability`` and can never add one, so the set of
@@ -21,11 +23,17 @@ rendering it.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Final
 
 from visionset.inference._extra import imported
 from visionset.inference.registry import capabilities, registered
 from visionset.kernel.domain import InferenceConnection, ModelCapability
+
+CONFIG_FILE: Final = "config.json"
+"""The file in a snapshot that declares what the model is. The hub's own name for
+it, and the one every published checkpoint carries."""
 
 
 def capabilities_of(model_family: str | None) -> list[ModelCapability]:
@@ -61,6 +69,16 @@ def family_of(connection: InferenceConnection, *, cache_dir: Path) -> str:
     and "the config says something unknown" leave the resolver equally unable to
     pick an adapter honestly.
 
+    **The declaration is read, not resolved.** ``AutoConfig`` would answer this
+    question too, and it answers a narrower one: it can only name a type
+    ``transformers`` itself registers, so a family an installed driver serves and
+    ``transformers`` has never heard of comes back as ``""`` — the same answer as
+    a config that says nothing. That turns a plugin's family into an unreadable
+    one, and the refusal it produces tells somebody their downloaded files are
+    damaged when the config in front of it declares exactly what they have.
+    Discovery is open, so what is read here cannot be closed to the set one
+    library knows.
+
     Raises:
         LocalInferenceUnavailable: the optional runtime is not installed, so
             nothing here can read a config at all. Deliberately *not* folded into
@@ -68,14 +86,21 @@ def family_of(connection: InferenceConnection, *, cache_dir: Path) -> str:
             caller recording an answer must be able to tell that apart from a
             config that answered nothing.
     """
-    transformers = imported("transformers")
+    hub = imported("huggingface_hub")
     try:
-        config = transformers.AutoConfig.from_pretrained(
+        path = hub.try_to_load_from_cache(
             connection.model_id,
-            revision=connection.model_revision,
+            CONFIG_FILE,
             cache_dir=str(cache_dir),
-            local_files_only=True,
+            revision=connection.model_revision,
         )
+        # A miss is ``None`` and a known-absent file is a sentinel object; both
+        # are "no config here", which is what the empty string says.
+        if not isinstance(path, str):
+            return ""
+        declared = json.loads(Path(path).read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001 — see the docstring: this is a fallback, not a handler
         return ""
-    return str(getattr(config, "model_type", "") or "")
+    if not isinstance(declared, dict):
+        return ""
+    return str(declared.get("model_type", "") or "")
