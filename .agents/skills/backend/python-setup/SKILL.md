@@ -63,7 +63,7 @@ models, re-export `openapi.json` — it is a committed contract, a stale one is 
 counter, so a second one stacks to `-qq` — which drops the test count and the summary line and
 leaves the exit code as the only signal, on a log that ends mid-progress and reads as truncated.
 Plain `uv run pytest` already prints the count; where a wrapper you cannot edit has added a `-q`,
-one `-v` cancels it. — #341
+one `-v` cancels it.
 
 ## Formatting and lint
 
@@ -95,7 +95,7 @@ uv run ruff check --fix <path>
   with `def list(...)` makes a later `-> list[Batch]` resolve to *the method*, and mypy reports
   `"..." is not valid as a type` — which reads as a mystery until you notice the name. Declare
   annotated members above such a method, put helpers that need the builtin at module level, or
-  rename. The same applies to `dict`, `set` and `type`. — 2026-08 run, T9
+  rename. The same applies to `dict`, `set` and `type`.
 
 ## Versioning
 
