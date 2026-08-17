@@ -33,15 +33,18 @@ flowchart LR
     Fam -->|unknown| Refuse
 ```
 
-**There is no entry-point group**, and that is the decision rather than an
-omission. `Importer` and `Exporter` name `visionset.formats` because a format is a
-plugin a third party ships. A provider is not that shape: adapters are
-instantiated from **user-created connections** and never from a bundled default,
-which makes `InferenceConnection` the registry - a row naming a kind, a model and
-where it runs. A provider discovered by entry point would have nothing to be
-instantiated *from*, and a workspace could acquire the ability to predict through
-an unrelated `pip install`, which is precisely what "VisionSet never downloads a
-model on its own" exists to prevent.
+**Drivers are discovered through the `visionset.providers` entry-point group**,
+as importers and exporters are through `visionset.formats`. What the group yields
+is a `Provider` descriptor - it declares the families it serves and builds a
+runner when asked - rather than something holding weights, which is what makes it
+registrable at all: an adapter carrying a model, a device and a precision has
+nothing to be instantiated *from* before a connection exists.
+
+The connection stays the registry of what may be run - a row naming a kind, a
+model and where it runs - and discovery only supplies the driver table resolution
+consults. Installing a driver fetches nothing and loads nothing, so a workspace
+cannot acquire the ability to predict through an unrelated `pip install`, which is
+what "VisionSet never downloads a model on its own" exists to prevent.
 
 The connection's kind says *where*; the model's own config says *which family*.
 A family this build does not serve is refused rather than guessed at - a fallback
@@ -50,12 +53,12 @@ model the user does not have.
 
 ## One fact, two readings, one module
 
-`families.py` holds the family sets **and** the map from a family to what a
-connection may be asked for, because they are the same fact read twice: which
-adapter can run this model, and which prompts a caller may send it. The map is
-*derived* from the sets rather than listed beside them, so an adapter and its
-declaration are one edit - a family added to `SEGMENTER_FAMILIES` and forgotten in
-a hand-written map would run fine and declare nothing, and every client that
+Each driver declares the families it serves **and** what each one may be asked
+for, in one mapping, because they are the same fact read twice: which driver can
+run this model, and which prompts a caller may send it. The two are
+one declaration rather than a set and a map beside it, so an adapter and its
+capability are one edit - a family a driver served without declaring what it takes
+would run fine and declare nothing, and every client that
 filters on the declaration would stop offering it.
 
 The vocabulary itself is the kernel's (`ModelCapability`) and the mapping is not:
@@ -119,12 +122,16 @@ one.
 
 Most additions are cheap, and knowing which kind of cheap comes first. A family
 this build already resolves costs a curated catalog entry and nothing else. A new
-family in the same capability costs a `model_type` string in one of the sets in
-`families.py` plus a check that its post-processing signature matches what the
-existing adapter does. Only a genuinely new capability costs a family *and* an
-adapter - and because the capability map is derived from the sets rather than
-listed beside them, a family added to a set acquires its declared capability in
-the same edit.
+family in the same capability costs one entry in the serving driver's `families`
+mapping plus a check that its post-processing signature matches what that driver
+already does. Only a genuinely new capability costs a family *and* a driver - and
+because `families` maps a `model_type` straight onto the capability it takes, a
+family acquires its declared capability in the edit that adds it.
+
+The family a connection resolves on is read literally out of the snapshot's
+`config.json`, not resolved through `transformers`, which can only name a type it
+registers itself. That is what lets a driver installed from outside this
+distribution serve a family nothing here has heard of.
 
 What follows is the standing list of what could be added next, so that each
 addition starts here instead of from scratch. Every `model_type` quoted is what a
@@ -187,7 +194,8 @@ assumption impossible to write by accident.
 | `grounding-dino` | `text_detect` | `IDEA-Research/grounding-dino-{tiny,base}` | Apache-2.0 |
 | `mm-grounding-dino` | `text_detect` | none | - |
 
-`mm-grounding-dino` is in `DETECTOR_FAMILIES` and therefore already resolves; what
+`mm-grounding-dino` is declared by the shipped text-prompt driver and therefore
+already resolves; what
 it lacks is a curated entry. Resolvable versus curated is the first distinction to
 check about any candidate below.
 
@@ -197,7 +205,7 @@ Both of these declare `model_type: mm-grounding-dino` and the
 `MMGroundingDinoForObjectDetection` architecture, so they land in the shipped
 family set with no resolver change at all. Both need their post-processing
 signature confirmed against the locked `transformers` before curation, which is
-the thing `DETECTOR_FAMILIES` is narrow about.
+the thing that driver's declaration is narrow about.
 
 | Candidate | Publisher | License | Cost |
 | --- | --- | --- | --- |
@@ -263,7 +271,7 @@ are on record if one is ever designed for them.
 ### Video
 
 `sam2_video` is already resident: the published SAM 2.1 checkpoints declare it and
-`SEGMENTER_FAMILIES` names it. Beyond that, tracker families such as ByteTrack
+the shipped point-prompt driver serves it. Beyond that, tracker families such as ByteTrack
 (MIT) pair with any detector rather than replacing one, so they are a pipeline
 question and not a family entry.
 
@@ -310,7 +318,7 @@ Sam3VideoConfig            model_type = sam3_video          <- what resolves
 +-- tracker_config         model_type = sam3_tracker_video  <- the promptable half
 ```
 
-Only `sam3_video` belongs in `SEGMENTER_FAMILIES`. `sam3` is the concept detector,
+Only `sam3_video` belongs in the point-prompt driver's declaration. `sam3` is the concept detector,
 and admitting it would route a text model to the point adapter. A register built
 by reasoning from the `transformers` class names produces `sam3` and
 `sam3_tracker`, neither of which any published checkpoint declares, and the

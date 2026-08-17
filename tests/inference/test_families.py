@@ -2,31 +2,41 @@
 
 Two claims live here, and the second is the one that had never been made before:
 that the family is *read* rather than guessed, and that what a client is told a
-connection can do is derived from the same sets the adapters are chosen from. A
-capability written out by hand beside those sets would be a second encoding, and
-the day it fell behind, a model that runs would declare nothing and no client
+connection can do is derived from the same declaration the driver is chosen by. A
+capability written out by hand beside that declaration would be a second encoding,
+and the day it fell behind, a model that runs would declare nothing and no client
 would offer it.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.fixtures.local_inference import require_local_inference
 
 from visionset.inference import families as families_module
-from visionset.inference.families import (
-    CAPABILITY_BY_FAMILY,
-    DETECTOR_FAMILIES,
-    SEGMENTER_FAMILIES,
-    SUPPORTED_FAMILIES,
-    capabilities_of,
-    family_of,
-)
+from visionset.inference.families import capabilities_of, family_of
+from visionset.inference.registry import capabilities, families_served, registered
+from visionset.inference.sam_provider import SAM_FAMILIES
+from visionset.inference.stub_provider import STUB_FAMILIES
+from visionset.inference.transformers_provider import DINO_FAMILIES
 from visionset.kernel.domain import ConnectionType, ModelCapability
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
+
+INSTALLED = registered().providers
+SEGMENTER_FAMILIES = frozenset(SAM_FAMILIES) | frozenset(STUB_FAMILIES)
+DETECTOR_FAMILIES = frozenset(DINO_FAMILIES)
+SUPPORTED_FAMILIES = families_served(INSTALLED)
+"""The three declarations, read back from what is installed.
+
+Named so the assertions below read as they always did, while what they are *about*
+has moved: no longer constants this module owns, but the union of what the
+discovered drivers declare.
+"""
 
 
 @pytest.fixture()
@@ -66,7 +76,7 @@ def test_every_published_checkpoint_this_build_curates_is_named() -> None:
     ``sam3_video``. Missing one sends that model to the detector adapter, which
     then refuses a click with a sentence about text prompts.
     """
-    assert {"sam2", "sam2_video", "sam3_video"} <= SEGMENTER_FAMILIES
+    assert {"sam2", "sam2_video", "sam3_video"} <= frozenset(SAM_FAMILIES)
 
 
 @pytest.mark.parametrize(
@@ -94,7 +104,7 @@ def test_the_names_around_the_published_one_are_not_mistaken_for_it(
     adapter — the confident wrong answer this module's opening warns about, rather
     than a gap somebody notices.
     """
-    assert family not in SEGMENTER_FAMILIES, what_it_is
+    assert family not in SAM_FAMILIES, what_it_is
 
 
 def test_the_nested_halves_of_a_config_are_not_offered_as_models() -> None:
@@ -117,8 +127,12 @@ def test_the_nested_halves_of_a_config_are_not_offered_as_models() -> None:
 
 
 def test_the_two_families_are_disjoint_and_are_the_whole_of_what_is_supported() -> None:
-    """What the refusal lists is derived, so a family cannot be added to one set
-    and forgotten in the message."""
+    """What the refusal lists is what the installed drivers declare, so a family
+    cannot be added to a driver and forgotten in the message.
+
+    Disjointness is now a property of the *installation* rather than of two
+    constants: two drivers claiming one family is refused at resolution, and here
+    it would show as the point and text sets overlapping."""
     assert not SEGMENTER_FAMILIES & DETECTOR_FAMILIES
     assert SUPPORTED_FAMILIES == SEGMENTER_FAMILIES | DETECTOR_FAMILIES
 
@@ -126,27 +140,59 @@ def test_the_two_families_are_disjoint_and_are_the_whole_of_what_is_supported() 
 # --- reading the family -------------------------------------------------------
 
 
+def a_snapshot(cache_dir: Path, declaring: object) -> None:
+    """Lay down the cache entry ``a_local``'s connection points at.
+
+    A real snapshot in the hub's real layout, written rather than doubled: the
+    thing worth proving is what this reads off a disk, and a fake reader agrees
+    with whatever the test already believes.
+
+    Every test that calls this needs the runtime, and calls
+    ``require_local_inference`` first — not because reading a JSON file is heavy,
+    but because :func:`family_of` refuses before it looks when the extra is
+    absent, so on a base install there is no reading behaviour to assert. That
+    refusal has its own test below, which runs everywhere.
+    """
+    snapshot = cache_dir / "models--some--segmenter" / "snapshots" / "deadbeef"
+    snapshot.mkdir(parents=True, exist_ok=True)
+    (snapshot / "config.json").write_text(json.dumps(declaring), encoding="utf-8")
+    refs = cache_dir / "models--some--segmenter" / "refs"
+    refs.mkdir(parents=True, exist_ok=True)
+    (refs / "abc123").write_text("deadbeef", encoding="utf-8")
+
+
 def test_an_unreadable_config_answers_empty_rather_than_raising(
-    connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    connections: InferenceConnectionService, tmp_path: Path
 ) -> None:
     """Reading the config and deciding what to do about it stay separate.
 
     This function's job is to report what the files say; the refusal for "they
-    say nothing" is the resolver's, one level up.
+    say nothing" is the resolver's, one level up. Nothing is written to the cache
+    here, so there is no config to read at all.
     """
+    require_local_inference()
+    assert family_of(a_local(connections), cache_dir=tmp_path) == ""
 
-    class Broken:
-        class AutoConfig:
-            @staticmethod
-            def from_pretrained(*_: Any, **__: Any) -> Any:
-                raise OSError("nothing in the cache")
 
-    monkeypatch.setattr(families_module, "imported", lambda _: Broken())
+def test_a_config_that_is_not_json_answers_empty_too(
+    connections: InferenceConnectionService, tmp_path: Path
+) -> None:
+    """Damaged files are the other half of "it cannot say", and must not raise.
+
+    The file is present, so the lookup succeeds and the parse is what fails —
+    the path a truncated download leaves behind.
+    """
+    require_local_inference()
+    snapshot = tmp_path / "models--some--segmenter" / "snapshots" / "deadbeef"
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{not json", encoding="utf-8")
+    (tmp_path / "models--some--segmenter" / "refs").mkdir(parents=True)
+    (tmp_path / "models--some--segmenter" / "refs" / "abc123").write_text("deadbeef")
     assert family_of(a_local(connections), cache_dir=tmp_path) == ""
 
 
 def test_the_family_comes_from_the_config_and_never_from_the_model_id(
-    connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    connections: InferenceConnectionService, tmp_path: Path
 ) -> None:
     """A model id is something somebody typed; a config is what the publisher wrote.
 
@@ -154,15 +200,26 @@ def test_the_family_comes_from_the_config_and_never_from_the_model_id(
     detector. Any resolver that read the name would answer the opposite of the
     truth, confidently, and pick the adapter that cannot run it.
     """
-
-    class Detector:
-        class AutoConfig:
-            @staticmethod
-            def from_pretrained(*_: Any, **__: Any) -> Any:
-                return type("Config", (), {"model_type": "grounding-dino"})()
-
-    monkeypatch.setattr(families_module, "imported", lambda _: Detector())
+    require_local_inference()
+    a_snapshot(tmp_path, {"model_type": "grounding-dino"})
     assert family_of(a_local(connections), cache_dir=tmp_path) == "grounding-dino"
+
+
+def test_a_family_no_library_here_registers_is_still_read(
+    connections: InferenceConnectionService, tmp_path: Path
+) -> None:
+    """The declaration is read, not resolved — which is what makes discovery open.
+
+    ``transformers`` can only name a type it registers itself, so resolving
+    through it silently closes the set of legible families to the set one library
+    knows. A driver installed from outside this distribution serves families that
+    are in no such set, and its connections would then be refused with "the
+    downloaded config does not say what model type it is" while the config in
+    front of the reader declares exactly what they have.
+    """
+    require_local_inference()
+    a_snapshot(tmp_path, {"model_type": "acme_seg"})
+    assert family_of(a_local(connections), cache_dir=tmp_path) == "acme_seg"
 
 
 def test_a_build_without_the_runtime_cannot_look_and_says_so(
@@ -173,8 +230,13 @@ def test_a_build_without_the_runtime_cannot_look_and_says_so(
     "I looked and it declared nothing" is a finding. "I cannot look at all" is
     not, and recording it as one would let a machine that later installs the
     runtime go on believing an answer nobody ever produced.
+
+    A readable config is laid down first, so the refusal is the absent runtime
+    and not an empty cache the assertion would have been satisfied by anyway.
     """
     from visionset.kernel.errors import LocalInferenceUnavailable
+
+    a_snapshot(tmp_path, {"model_type": "grounding-dino"})
 
     def _absent(_: str) -> Any:
         raise LocalInferenceUnavailable("no runtime here")
@@ -205,7 +267,7 @@ def test_the_mapping_covers_exactly_what_this_build_can_run() -> None:
     capability for a family with no adapter is the opposite lie. Deriving the map
     from the two sets makes both impossible; this is what says so out loud.
     """
-    assert set(CAPABILITY_BY_FAMILY) == SUPPORTED_FAMILIES
+    assert set(capabilities(INSTALLED)) == SUPPORTED_FAMILIES
 
 
 @pytest.mark.parametrize(

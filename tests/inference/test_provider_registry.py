@@ -156,27 +156,22 @@ class TestTheVersionBackstop:
         assert set(registry.installed([entry]).providers) == {"acme"}
 
 
-class TestPickingTheDriverForAFamily:
+class TestServingAFamily:
     def test_the_one_driver_serving_it_is_returned(self) -> None:
         drivers: dict[str, Provider] = {
             "sam": Driver("sam", {"sam2": POINT}),
             "dino": Driver("dino", {"grounding-dino": TEXT}),
         }
-        assert registry.pick(drivers, "grounding-dino").provider_id == "dino"
+        found = registry.serving(drivers, "grounding-dino")
+        assert found is not None
+        assert found.provider_id == "dino"
 
-    def test_a_family_nothing_serves_is_refused_naming_what_is_installed(self) -> None:
+    def test_a_family_nothing_serves_answers_none_rather_than_raising(self) -> None:
+        """The sentence worth showing names the connection and the model it points
+        at, and only the caller holding one can write it. `providers.py` does."""
         drivers: dict[str, Provider] = {"sam": Driver("sam", {"sam2": POINT})}
-        with pytest.raises(InferenceConnectionNotRunnable, match="no installed provider serves"):
-            registry.pick(drivers, "yolo")
-        with pytest.raises(InferenceConnectionNotRunnable, match="sam2"):
-            registry.pick(drivers, "yolo")
-
-    def test_a_config_that_declared_nothing_gets_its_own_sentence(self) -> None:
-        """Different remedy from an unknown family: usually damaged files, so the
-        answer is to fetch again rather than to re-point the connection."""
-        drivers: dict[str, Provider] = {"sam": Driver("sam", {"sam2": POINT})}
-        with pytest.raises(InferenceConnectionNotRunnable, match="download its weights again"):
-            registry.pick(drivers, "")
+        assert registry.serving(drivers, "yolo") is None
+        assert registry.serving(drivers, "") is None
 
     def test_a_family_two_drivers_claim_is_refused_naming_both(self) -> None:
         """Never last-wins. Guessing which driver runs somebody's weights is what
@@ -186,7 +181,7 @@ class TestPickingTheDriverForAFamily:
             "zeta": Driver("zeta", {"sam2": POINT}),
         }
         with pytest.raises(InferenceConnectionNotRunnable) as refusal:
-            registry.pick(drivers, "sam2")
+            registry.serving(drivers, "sam2")
         assert "acme" in str(refusal.value)
         assert "zeta" in str(refusal.value)
 
@@ -197,7 +192,38 @@ class TestPickingTheDriverForAFamily:
             "acme": Driver("acme", {"sam2": POINT, "grounding-dino": TEXT}),
             "zeta": Driver("zeta", {"sam2": POINT}),
         }
-        assert registry.pick(drivers, "grounding-dino").provider_id == "acme"
+        found = registry.serving(drivers, "grounding-dino")
+        assert found is not None
+        assert found.provider_id == "acme"
+
+    def test_what_a_refusal_lists_is_what_the_drivers_declare(self) -> None:
+        drivers: dict[str, Provider] = {
+            "sam": Driver("sam", {"sam2": POINT, "sam2_video": POINT}),
+            "dino": Driver("dino", {"grounding-dino": TEXT}),
+        }
+        assert registry.families_served(drivers) == frozenset(
+            {"sam2", "sam2_video", "grounding-dino"}
+        )
+
+
+class TestTheKeptScan:
+    def test_the_scan_is_kept_rather_than_repeated(self) -> None:
+        """Measured, and the reason this diverges from the formats registry: the
+        answer is read per connection row, not once per listing."""
+        registry.reset()
+        first = registry.registered()
+        assert registry.registered() is first
+
+    def test_resetting_forgets_it(self) -> None:
+        registry.reset()
+        first = registry.registered()
+        registry.reset()
+        assert registry.registered() is not first
+
+    def test_the_three_shipped_drivers_are_discovered(self) -> None:
+        """Through installed metadata, not a hardcoded list — the plugin promise."""
+        registry.reset()
+        assert set(registry.registered().providers) == {"sam", "grounding-dino", "stub"}
 
 
 class TestMergingCapabilities:

@@ -132,6 +132,14 @@ bdd100k-lane = "visionset.formats.lanes:Bdd100kLaneExporter"
 culane = "visionset.formats.lanes:CuLaneExporter"
 openlane-2d = "visionset.formats.lanes:OpenLane2dExporter"
 
+# Inference driver discovery. A third-party distribution registers its own
+# provider in this same group, and pins the VisionSet it was built for in its
+# ordinary `dependencies` — discovery reads that pin and skips a mismatch.
+[project.entry-points."visionset.providers"]
+sam = "visionset.inference.sam_provider:SamProvider"
+grounding-dino = "visionset.inference.transformers_provider:GroundingDinoProvider"
+stub = "visionset.inference.stub_provider:StubProvider"
+
 [dependency-groups]
 dev = [
     "pytest>=8.2",
