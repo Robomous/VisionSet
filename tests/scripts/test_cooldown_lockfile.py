@@ -148,6 +148,7 @@ def test_the_scrub_leaves_a_lockfile_this_run_did_not_write(project: Path) -> No
 # any cutoff a test could run under", which is what keeps these cases from
 # depending on the day they run.
 
+
 def _entry(name: str, version: str, upload_time: str | None) -> str:
     """One `[[package]]` table. No `upload-time` means a path dependency."""
     body = (
@@ -215,9 +216,7 @@ def test_a_package_the_resolution_added_too_recently_is_reported(tmp_path: Path)
 
 
 def test_a_package_the_resolution_upgraded_too_recently_is_reported(tmp_path: Path) -> None:
-    candidate = _lock(
-        _entry("settled", "2.0.0", "2099-01-01T00:00:00.000Z"), YOUNG, ROOTED
-    )
+    candidate = _lock(_entry("settled", "2.0.0", "2099-01-01T00:00:00.000Z"), YOUNG, ROOTED)
     done = _audit(tmp_path, BASELINE_LOCK, candidate)
     assert done.returncode == 3, done.stdout
     assert done.stdout.strip() == "settled==2.0.0"
