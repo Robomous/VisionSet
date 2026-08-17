@@ -32,13 +32,34 @@ class Values:
 
 
 class Grid:
-    """One mask, and the only thing the adapter asks of it."""
+    """One mask, and the only thing the adapter asks of it.
+
+    ``numpy`` rather than ``tolist``, because the adapter hands rows across as
+    buffers now. Still one method, so the coupling this file measures did not
+    grow — it moved.
+
+    ``force`` is keyword-only and mandatory here, mirroring ``Tensor.numpy``,
+    where it is what makes the call legal on a mask that is on a GPU, attached to
+    a graph, or a non-contiguous view. Defaulting it would let the adapter drop
+    the argument and still pass every test on this stub, and then fail on the
+    only machine that has a real tensor — which is the machine none of these
+    tests run on.
+
+    The rows are ``memoryview`` rather than ``bytes`` so that ``tobytes`` is
+    reached the way it is on a real array, and stdlib provides it, so nothing
+    here imports numpy to imitate numpy.
+    """
 
     def __init__(self, mask: Mask) -> None:
         self._mask = mask
 
-    def tolist(self) -> Mask:
-        return self._mask
+    def numpy(self, *, force: bool = False) -> list[memoryview]:
+        if not force:
+            raise RuntimeError(
+                "can't convert a tensor that may require grad or live on another "
+                "device; use .numpy(force=True)"
+            )
+        return [memoryview(bytes(row)) for row in self._mask]
 
 
 class Stack:

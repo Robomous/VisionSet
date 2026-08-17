@@ -20,6 +20,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from tests.fixtures.local_inference import require_local_inference
 from tests.inference.stubs import StubModel, StubProcessor, StubTorch, blank, disc
 
 from visionset.inference import sam_provider
@@ -28,6 +29,7 @@ from visionset.inference.sam_provider import (
     NEGATIVE,
     POSITIVE,
     LocalSamProvider,
+    _rows,
     best_of,
     points_and_labels,
 )
@@ -46,6 +48,18 @@ PNG = (
     b"\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
 )
 """A real one-pixel PNG, because the adapter genuinely decodes what it is handed."""
+
+
+def in_bytes(mask: list[list[bool]]) -> list[bytes]:
+    """The same mask, spelled the way the adapter hands it across.
+
+    A row is a buffer rather than a list of boxed booleans, which is what stops a
+    4K frame costing eight million Python objects on the click path. The pipeline
+    reads a mask through ``len`` and ``index`` alone, so the two spellings are
+    interchangeable to it — ``tests/inference/test_masks.py`` is where that is
+    proved, over the whole pipeline; here it is only what the adapter emits.
+    """
+    return [bytes(row) for row in mask]
 
 
 def built(
@@ -143,7 +157,7 @@ def test_a_click_comes_back_as_the_mask_carrying_the_models_confidence(
     assert answer.model_ref == "some/segmenter@abc123"
     (segment,) = answer.segments
     assert segment.score == pytest.approx(0.87)
-    assert segment.mask == disc(20), "handed over intact, with no shape decided"
+    assert segment.mask == in_bytes(disc(20)), "handed over intact, with no shape decided"
 
 
 def test_the_mask_crosses_at_the_assets_own_size(
@@ -162,7 +176,7 @@ def test_an_empty_mask_is_an_ordinary_answer_with_nothing_in_it(
     """A click on sky. Empty rather than raising, and still saying who was asked."""
     provider, _, _ = built(monkeypatch, masks=[blank()], scores=[0.9])
     (answer,) = list(provider.segment(asked(one_click())))
-    assert answer.segments[0].mask == blank(), "an empty grid is a mask, not an absence"
+    assert answer.segments[0].mask == in_bytes(blank()), "an empty grid is a mask, not an absence"
 
 
 def test_a_model_less_sure_than_the_caller_asked_answers_nothing(
@@ -440,3 +454,37 @@ def test_a_load_never_reaches_the_network(monkeypatch: pytest.MonkeyPatch) -> No
     recorder.load(a_provider("sam3_video"), monkeypatch)
     assert [one.options["local_files_only"] for one in recorder.loaded] == [True, True]
     assert {one.options["revision"] for one in recorder.loaded} == {"abc123"}
+
+
+# --- the conversion, against the library the stub imitates ---------------------
+
+
+def test_a_real_tensor_becomes_the_masks_own_bytes() -> None:
+    """`_rows` on an actual tensor, which is the one thing a stand-in cannot prove.
+
+    Every other test in this module drives `StubModel`, which is what lets the
+    point-prompt path be exercised on a machine with no runtime — and it is also
+    why the stub's `numpy` is written to mirror `Tensor.numpy` rather than to be
+    convenient. Mirroring is a claim, so something has to check it: this skips on
+    a base install and is an *error* in the job that installs the extra.
+    """
+    require_local_inference()
+    import torch
+
+    grid = torch.tensor([[True, False, True], [False, False, False]])
+    assert _rows(grid) == [b"\x01\x00\x01", b"\x00\x00\x00"]
+
+
+def test_a_real_tensor_gives_one_byte_per_pixel_and_keeps_the_grids_shape() -> None:
+    """A row is as wide as the mask, and lit pixels are `1` rather than `255`.
+
+    Both halves are what make the result a `Mask`: the pipeline reads a row's
+    length as the image width, and finds a lit pixel with `index(True)` — which
+    matches `1` and would miss any other truthy byte.
+    """
+    require_local_inference()
+    import torch
+
+    rows = _rows(torch.ones((4, 7), dtype=torch.bool))
+    assert [len(row) for row in rows] == [7, 7, 7, 7]
+    assert set(b"".join(rows)) == {1}

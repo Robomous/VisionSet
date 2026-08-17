@@ -32,12 +32,26 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
-type Mask = Sequence[Sequence[bool]]
-"""Rows of columns, ``mask[y][x]``.
+type Mask = Sequence[Sequence[int]]
+"""Rows of columns, ``mask[y][x]``, where a lit pixel is truthy.
 
 The orientation every image library agrees on, in the asset's own pixels and at
 the asset's own size — never normalized and never at a preview's scale, on the
 rule every geometry in this domain follows.
+
+**A row is ``bytes`` in production and a list of booleans in a test, and the
+element type says ``int`` so that both are the same type rather than one being a
+cast.** ``bool`` is a subclass of ``int`` and ``Sequence`` is covariant, so a
+literal grid still satisfies this; ``bytes`` is a ``Sequence[int]`` and satisfies
+it too. Nothing widened to accommodate the numeric stack — ``bytes`` is a
+builtin, and what crosses is a buffer of noughts and ones rather than an array
+carrying a library's semantics.
+
+The reason it is worth spelling this way: the pipeline above never reads a pixel
+in Python. It scans rows with ``index``, which on ``bytes`` is ``memchr``. So the
+narrowest useful contract is *something with a length and a fast scan*, and
+asking for booleans in particular obliged an adapter to box a megapixel of them
+to say what a buffer already said.
 """
 
 
