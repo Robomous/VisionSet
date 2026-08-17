@@ -394,6 +394,38 @@ describe("the schema draft survives a version published underneath", () => {
 });
 
 /**
+ * "Load v{moved}" reloads *over* a draft the server still holds — the walk
+ * `SchemaEditor`'s own `freshFromActive` comment names. Asserted
+ * asynchronously, past the 400ms debounce — the two reload tests above pass
+ * against the unfixed code precisely because they assert synchronously,
+ * inside that window, before the write this breaks ever fires.
+ */
+describe("reloading over a draft the server still holds", () => {
+  it("lets the next autosave succeed, rather than repeating STALE_WRITE", async () => {
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    // The draft has to actually exist on the server for this walk — a
+    // revision the reload can carry, rather than the `null` of one nobody
+    // has saved yet.
+    await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 2000 });
+
+    // Somebody else publishes underneath while this draft is still held.
+    activeSchema = { project_id: PROJECT, version: 4, classes: [...CLASSES, TRAFFIC_LIGHT] };
+    await regainFocus();
+    await userEvent.click(await screen.findByTestId("schema-reload"));
+
+    const before = draftPuts;
+    // A `revision: null` reload names no revision against a draft the server
+    // still holds, which `SchemaDraftService.save` refuses as `STALE_WRITE` —
+    // and refuses again on every keystroke after, since the remedy it offers
+    // only re-seeds the very draft "Load v{moved}" just discarded.
+    await waitFor(() => expect(draftPuts).toBeGreaterThan(before), { timeout: 2000 });
+    expect(screen.queryByTestId("schema-stale-draft")).toBeNull();
+  });
+});
+
+/**
  * The third way a draft goes wrong, and the only one that reaches the wire.
  *
  * The two above are about a draft being *lost*. This one is about a draft whose

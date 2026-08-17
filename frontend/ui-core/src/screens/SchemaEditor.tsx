@@ -227,8 +227,13 @@ export interface SchemaEditorProps {
  *
  * So the projection, in `LabelClassBody`'s own field order, with every optional
  * field defaulted the way the wire defaults it. Cheap at a schema's size.
+ *
+ * Exported for `ProjectScreen`, which asks the same question for a different
+ * reason: not "does this differ from the active version" but "does this
+ * differ from what it was seeded from", which is what tells a programmatic
+ * re-seed apart from an actual edit before scheduling an autosave.
  */
-function same(a: readonly LabelClassBody[], b: readonly LabelClassBody[]): boolean {
+export function same(a: readonly LabelClassBody[], b: readonly LabelClassBody[]): boolean {
   return canonical(a) === canonical(b);
 }
 
@@ -325,17 +330,27 @@ export function SchemaEditor({
    * "load v{moved}" reload actually promises, regardless of which tier of
    * `showing` it is reloading away from. A published version's message
    * belongs to that version, so `note` empties rather than carrying the last
-   * one into the next save, and `revision` is `null` because this describes
-   * no draft the server holds.
+   * one into the next save.
+   *
+   * `revision` is the caller's to name, and the two call sites mean it
+   * differently. Defaulting to `null` is right for the fallback tier of
+   * `showing` below — a project with neither a held nor a server draft has
+   * none for this to describe. It is **wrong** for "Load v{moved}": that
+   * button only ever renders over a draft the server still holds, and a
+   * write naming no revision against one that exists is refused as
+   * `STALE_WRITE` — the exact refusal this draft was never actually stale
+   * for. That reload passes `showing.revision` so the write that follows
+   * overwrites the draft actually there, instead of asking to create a
+   * second one on top of it.
    */
-  function freshFromActive(): SchemaDraft {
+  function freshFromActive(revision: number | null = null): SchemaDraft {
     return {
       projectId,
       classes: active?.classes ?? [],
       seed: active?.classes ?? [],
       basedOn: version,
       note: "",
-      revision: null,
+      revision,
     };
   }
   const held = draft !== null && draft.projectId === projectId ? draft : null;
@@ -609,12 +624,15 @@ export function SchemaEditor({
           the new active version means discarding what they typed, which is
           exactly the choice a re-seeding effect makes for them.
 
-          `onDraftChange(freshFromActive())` rather than `onDraftChange(null)`:
-          `showing` can be `held` *or* the server draft, and passing `null`
-          only ever clears the first of those — over a draft seeded from the
-          server, with nothing local held, it is a no-op that leaves this very
-          banner on screen. Naming the destination directly reaches it from
-          either tier.
+          `onDraftChange(freshFromActive(showing.revision))` rather than
+          `onDraftChange(null)`: `showing` can be `held` *or* the server draft,
+          and passing `null` only ever clears the first of those — over a draft
+          seeded from the server, with nothing local held, it is a no-op that
+          leaves this very banner on screen. Naming the destination directly
+          reaches it from either tier, and carrying `showing.revision` rather
+          than a bare `null` is what keeps the write that follows from asking
+          to create a draft the server already has — see `freshFromActive`'s
+          own comment.
 
           Branched on that same `held`, because the two tiers are not the same
           claim. "Your changes are still here" is true of `held` — somebody in
@@ -640,7 +658,7 @@ export function SchemaEditor({
             size="sm"
             className="h-auto p-0 align-baseline text-meta"
             data-testid="schema-reload"
-            onClick={() => onDraftChange(freshFromActive())}
+            onClick={() => onDraftChange(freshFromActive(showing.revision))}
           >
             {held !== null ? <>Discard mine and load v{moved}</> : <>Load v{moved}</>}
           </Button>
