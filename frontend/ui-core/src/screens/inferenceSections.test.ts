@@ -20,7 +20,11 @@ import { expect, it } from "vitest";
 import { sectionsOf, UNDECLARED } from "./inferenceSections";
 import type { Connection } from "../data/inferenceQueries";
 
-function connection(name: string, capabilities: readonly string[]): Connection {
+function connection(
+  name: string,
+  capabilities: readonly string[],
+  overrides: Partial<Connection> = {},
+): Connection {
   return {
     id: `id-${name}`,
     name,
@@ -37,6 +41,7 @@ function connection(name: string, capabilities: readonly string[]): Connection {
     integrity_check: null,
     created_at: "2026-08-10T00:00:00Z",
     updated_at: "2026-08-10T00:00:00Z",
+    ...overrides,
   } as unknown as Connection;
 }
 
@@ -102,4 +107,53 @@ it("orders unnamed abilities the way the workspace lists them", () => {
 it("puts the connections that declare nothing after the abilities that do", () => {
   const sections = sectionsOf([connection("fresh", []), connection("sam", ["point_suggest"])]);
   expect(sections[sections.length - 1]!.key).toBe(UNDECLARED);
+});
+
+
+/*
+ * What the undeclared section *says*, which is a different question from which rows
+ * land in it. Three things put a connection here and they do not share a remedy: the
+ * weights have not been downloaded, the weights are here and nothing came of them, or
+ * it is an endpoint whose model this workspace never loads. One sentence covering all
+ * three told two thirds of the workspace something untrue about itself.
+ */
+
+function undeclared(rows: readonly Connection[]): string {
+  return sectionsOf(rows).find((section) => section.key === UNDECLARED)!.purpose;
+}
+
+it("says the weights are missing only where they are", () => {
+  const purpose = undeclared([connection("fresh", [], { setup_state: "not_set_up" })]);
+  expect(purpose).toContain("downloaded");
+  expect(purpose).not.toContain("endpoint");
+  expect(purpose).not.toContain("driver");
+});
+
+it("does not blame the download for a connection whose weights are here", () => {
+  // The bug this exists for. `ready` is set as the *last* step of a successful
+  // download, so these weights are on disk; saying the ability "cannot be declared
+  // until they are here" is a sentence about somebody else's connection.
+  const purpose = undeclared([connection("here", [], { setup_state: "ready" })]);
+  expect(purpose).toContain("driver");
+  expect(purpose).not.toContain("downloaded");
+});
+
+it("answers for an endpoint on its own terms", () => {
+  const purpose = undeclared([
+    connection("hosted", [], { connection_type: "http", setup_state: "ready" }),
+  ]);
+  expect(purpose).toContain("endpoint");
+  expect(purpose).not.toContain("downloaded");
+  expect(purpose).not.toContain("driver");
+});
+
+it("names every reason a mixed section actually holds, and only those", () => {
+  const purpose = undeclared([
+    connection("fresh", [], { setup_state: "not_set_up" }),
+    connection("here", [], { setup_state: "ready" }),
+    connection("hosted", [], { connection_type: "http", setup_state: "ready" }),
+  ]);
+  expect(purpose).toContain("downloaded");
+  expect(purpose).toContain("driver");
+  expect(purpose).toContain("endpoint");
 });
