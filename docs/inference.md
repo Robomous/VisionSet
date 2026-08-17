@@ -291,6 +291,14 @@ fallback rather than a preference - a workspace configured on a workstation shou
 laptop - but it is slower by a large factor, which is why it is said out loud rather than silently
 done.
 
+**A device that is there and full is a different answer.** Falling back covers a device this
+machine does not have; it cannot cover one that exists and does not have the memory for the model
+you chose, which is what a large checkpoint on a small GPU runs into. That surfaces as
+`INFERENCE_OUT_OF_MEMORY` at the moment of the run - the load is lazy, so the first prediction is
+where you meet it - and the message names the device that filled up and the ways off it: a smaller
+model from the curated list, the same connection moved to `cpu`, or whatever else is holding the
+device released. On the CPU the middle remedy is left out, because there is nowhere further to go.
+
 **Half precision applies on CUDA only**, and the kernel says so rather than absorbing it: a `cpu`
 or `mps` connection asking for `fp16` is refused at creation. On a CPU it was never the
 conservative choice it looks like - `float16` arithmetic outside CUDA's autocast is slower than the
@@ -664,7 +672,9 @@ workspace, compared without regard to case, so `local` and `Local` cannot name t
 | `PROMPT_POINT_OUT_OF_BOUNDS` | 422 | A suggest point falls outside the asset; the message names the coordinate and the size |
 | `LOCAL_INFERENCE_UNAVAILABLE` | 500 | The `local-inference` extra is not installed; the message carries the command |
 | `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | This build has no adapter for that kind of connection |
+| `INFERENCE_OUT_OF_MEMORY` | 500 | The device ran out of memory loading or running the model; the message names the device and what to do about it |
 
-The last two are 5xx because they are conditions of the *installation* rather than of the request:
-no state you can change and no retry makes either succeed, so neither is a 409. Both expose their
-message, because the message is the remedy - which is the same licence a missing `ffmpeg` gets.
+The last three are 5xx because they are conditions of the *machine* rather than of the request:
+no state you can change and no retry makes any of them succeed, so none is a 409. All three expose
+their message, because the message is the remedy - which is the same licence a missing `ffmpeg`
+gets.

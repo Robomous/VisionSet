@@ -538,7 +538,7 @@ sentence. The real message and traceback go to the server log under the same id 
 greps one string, and a response body never becomes a channel for filesystem paths, SQL text, or
 a stack trace.
 
-Six errors opt out and expose their real message, each because that message *is* the remedy:
+Seven errors opt out and expose their real message, each because that message *is* the remedy:
 
 | Code | Why the message is published |
 | --- | --- |
@@ -548,6 +548,7 @@ Six errors opt out and expose their real message, each because that message *is*
 | `MEDIA_TOOL_UNAVAILABLE` | Carries the install hint. Without it the error says nothing an operator did not suspect. |
 | `LOCAL_INFERENCE_UNAVAILABLE` | Carries the `pip install` for the optional runtime, on the same licence `ffmpeg` gets. |
 | `INFERENCE_CONNECTION_NOT_RUNNABLE` | Says this build has no adapter for that kind of connection, which is a fact about the installation rather than about the request. |
+| `INFERENCE_OUT_OF_MEMORY` | Names the device that ran out and the ways off it - a smaller model, the CPU, or freeing the device. Which of those exist depends on the device, so no generic sentence can carry it. |
 
 A **mapped** 5xx keeps its own code (`WORKSPACE_CORRUPT`, `CONSTRAINT_VIOLATED`). An exception no
 rule covers - a bug - gets `INTERNAL_ERROR`. That difference is how the two are told apart in a
@@ -581,7 +582,7 @@ argument for branching on `code`.
 | **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `TOKEN_NAME_TAKEN` · `INFERENCE_CONNECTION_NAME_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `STALE_WRITE` · `BATCH_NOT_EDITABLE` · `BATCH_IMMUTABLE` · `BATCH_NOT_IN_ANNOTATION` · `ASSET_NOT_WRITABLE` · `JOB_FINISHED` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` · `EXPORT_SOURCE_UNREADABLE` · `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` · `INFERENCE_CONNECTION_NOT_CHECKABLE` · `WEIGHTS_DAMAGED` · `INFERENCE_CONNECTION_NOT_SET_UP` |
 | **422** | `VALIDATION_ERROR` · `ASSET_NOT_IN_BATCH` · `INVALID_NAME` · `INFERENCE_CONNECTION_INVALID` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `DUPLICATE_CLASSIFICATION_TAG` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `UNKNOWN_JOB_TYPE` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` · `UNSUPPORTED_PROMPT` · `PROMPT_POINT_OUT_OF_BOUNDS` |
 | **503** | `WORKSPACE_BUSY` |
-| **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `MEDIA_TOOL_UNAVAILABLE` · `LOCAL_INFERENCE_UNAVAILABLE` · `INFERENCE_CONNECTION_NOT_RUNNABLE` · `INTERNAL_ERROR` |
+| **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `MEDIA_TOOL_UNAVAILABLE` · `LOCAL_INFERENCE_UNAVAILABLE` · `INFERENCE_CONNECTION_NOT_RUNNABLE` · `INFERENCE_OUT_OF_MEMORY` · `INTERNAL_ERROR` |
 
 Every row but `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED` and
 `INTERNAL_ERROR` — the five the framework and the auth guard raise — comes from `ERROR_RULES`
