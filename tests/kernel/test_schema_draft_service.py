@@ -227,7 +227,7 @@ def test_the_kind_becomes_the_versions_provenance(tmp_path: Path) -> None:
 
 
 def test_publishing_one_kind_leaves_the_other_alone(tmp_path: Path) -> None:
-    """#368 decision 6 survives: a dialog session publishes its own classes only."""
+    """A dialog session publishes its own classes only, never the editor's draft."""
     workspace, drafts, project = _drafts(tmp_path)
     curated = drafts.save(project.id, CURATED, classes=[DraftLabelClass(name="unfinished")])
     session = drafts.save(
@@ -275,6 +275,29 @@ def test_an_unfinished_class_is_refused_at_publish_and_named(tmp_path: Path) -> 
         classes=[
             DraftLabelClass(name="car", geometries=(GeometryType.BBOX,)),
             DraftLabelClass(name="", geometries=(GeometryType.BBOX,)),
+        ],
+    )
+    with pytest.raises(InvalidSchema) as refused:
+        drafts.publish(project.id, CURATED, expected_revision=saved.revision)
+    assert "classes.1" in str(refused.value)
+    workspace.close()
+
+
+def test_an_attribute_with_no_kind_is_refused_at_publish_and_named(tmp_path: Path) -> None:
+    """The bare ``ValueError`` path: ``to_attribute`` raises it directly, never through
+    pydantic's ``ValidationError``, because it fires before ``Attribute`` is constructed.
+    """
+    workspace, drafts, project = _drafts(tmp_path)
+    saved = drafts.save(
+        project.id,
+        CURATED,
+        classes=[
+            DraftLabelClass(name="ok", geometries=(GeometryType.BBOX,)),
+            DraftLabelClass(
+                name="car",
+                geometries=(GeometryType.BBOX,),
+                attributes=(DraftAttribute(name="occlusion"),),
+            ),
         ],
     )
     with pytest.raises(InvalidSchema) as refused:
