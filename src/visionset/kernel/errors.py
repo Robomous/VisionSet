@@ -219,6 +219,19 @@ class SchemaNotFound(VisionSetError):
     """
 
 
+class SchemaDraftNotFound(VisionSetError):
+    """The project has no draft of that kind.
+
+    Its own refusal rather than ``SchemaNotFound``, which says the project has no
+    published *version*. The two are answered by different things and have
+    different remedies — one is fixed by publishing, the other by starting a
+    draft — and a client that could not tell them apart would offer the wrong
+    one. Most projects have no draft most of the time, which is why
+    ``SchemaDraftService.get`` answers ``None`` instead and only a caller that
+    *needs* one raises this.
+    """
+
+
 class DestructiveSchemaChange(VisionSetError):
     """A proposed version narrows the contract and was not allowed to.
 

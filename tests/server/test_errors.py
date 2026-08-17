@@ -50,6 +50,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     # 404 — the caller named something that is not there
     "ProjectNotFound": (404, "PROJECT_NOT_FOUND"),
     "SchemaNotFound": (404, "SCHEMA_NOT_FOUND"),
+    "SchemaDraftNotFound": (404, "SCHEMA_DRAFT_NOT_FOUND"),
     "BatchNotFound": (404, "BATCH_NOT_FOUND"),
     "JobNotFound": (404, "JOB_NOT_FOUND"),
     "IngestJobNotFound": (404, "INGEST_JOB_NOT_FOUND"),

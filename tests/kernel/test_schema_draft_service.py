@@ -13,12 +13,13 @@ from visionset.kernel.domain import (
     DraftAttribute,
     DraftLabelClass,
     GeometryType,
+    LabelClass,
     Project,
     SchemaDraft,
     SchemaProvenance,
 )
-from visionset.kernel.errors import ProjectNotFound, StaleWrite
-from visionset.kernel.services import SchemaDraftService, WorkspaceService
+from visionset.kernel.errors import InvalidSchema, ProjectNotFound, SchemaDraftNotFound, StaleWrite
+from visionset.kernel.services import SchemaDraftService, SchemaService, WorkspaceService
 
 CURATED = SchemaProvenance.CURATED
 
@@ -188,4 +189,111 @@ def test_a_project_in_another_workspace_reads_as_missing(tmp_path: Path) -> None
     workspace, drafts, _project = _drafts(tmp_path)
     with pytest.raises(ProjectNotFound):
         drafts.get(uuid4(), CURATED)
+    workspace.close()
+
+
+# --- SchemaDraftService.publish ------------------------------------------------
+
+
+def test_publishing_a_draft_creates_a_version_and_clears_the_draft(tmp_path: Path) -> None:
+    workspace, drafts, project = _drafts(tmp_path)
+    saved = drafts.save(
+        project.id,
+        CURATED,
+        classes=[DraftLabelClass(name="car", geometries=(GeometryType.BBOX,))],
+        note="first pass",
+    )
+    published = drafts.publish(project.id, CURATED, expected_revision=saved.revision)
+    assert published.published.version == 1
+    assert [c.name for c in published.published.classes] == ["car"]
+    assert published.published.description == "first pass"
+    assert published.published.provenance is CURATED
+    assert drafts.get(project.id, CURATED) is None
+    workspace.close()
+
+
+def test_the_kind_becomes_the_versions_provenance(tmp_path: Path) -> None:
+    workspace, drafts, project = _drafts(tmp_path)
+    saved = drafts.save(
+        project.id,
+        SchemaProvenance.ANNOTATION,
+        classes=[DraftLabelClass(name="lane", geometries=(GeometryType.BBOX,))],
+    )
+    published = drafts.publish(
+        project.id, SchemaProvenance.ANNOTATION, expected_revision=saved.revision
+    )
+    assert published.published.provenance is SchemaProvenance.ANNOTATION
+    workspace.close()
+
+
+def test_publishing_one_kind_leaves_the_other_alone(tmp_path: Path) -> None:
+    """#368 decision 6 survives: a dialog session publishes its own classes only."""
+    workspace, drafts, project = _drafts(tmp_path)
+    curated = drafts.save(project.id, CURATED, classes=[DraftLabelClass(name="unfinished")])
+    session = drafts.save(
+        project.id,
+        SchemaProvenance.ANNOTATION,
+        classes=[DraftLabelClass(name="lane", geometries=(GeometryType.BBOX,))],
+    )
+    published = drafts.publish(
+        project.id, SchemaProvenance.ANNOTATION, expected_revision=session.revision
+    )
+    assert [c.name for c in published.published.classes] == ["lane"]
+    assert drafts.get(project.id, CURATED).revision == curated.revision
+    workspace.close()
+
+
+def test_publishing_an_expired_revision_is_refused_and_writes_nothing(tmp_path: Path) -> None:
+    workspace, drafts, project = _drafts(tmp_path)
+    schemas = SchemaService(workspace)
+    saved = drafts.save(
+        project.id,
+        CURATED,
+        classes=[DraftLabelClass(name="car", geometries=(GeometryType.BBOX,))],
+    )
+    drafts.save(project.id, CURATED, classes=[], expected_revision=saved.revision)
+    with pytest.raises(StaleWrite):
+        drafts.publish(project.id, CURATED, expected_revision=saved.revision)
+    assert schemas.list_versions(project.id) == []
+    assert drafts.get(project.id, CURATED) is not None
+    workspace.close()
+
+
+def test_publishing_a_draft_that_is_not_there_is_a_refusal_of_its_own(tmp_path: Path) -> None:
+    workspace, drafts, project = _drafts(tmp_path)
+    with pytest.raises(SchemaDraftNotFound):
+        drafts.publish(project.id, CURATED, expected_revision=1)
+    workspace.close()
+
+
+def test_an_unfinished_class_is_refused_at_publish_and_named(tmp_path: Path) -> None:
+    """Validation is not weakened by the permissive store — it moves to here."""
+    workspace, drafts, project = _drafts(tmp_path)
+    saved = drafts.save(
+        project.id,
+        CURATED,
+        classes=[
+            DraftLabelClass(name="car", geometries=(GeometryType.BBOX,)),
+            DraftLabelClass(name="", geometries=(GeometryType.BBOX,)),
+        ],
+    )
+    with pytest.raises(InvalidSchema) as refused:
+        drafts.publish(project.id, CURATED, expected_revision=saved.revision)
+    assert "classes.1" in str(refused.value)
+    workspace.close()
+
+
+def test_a_draft_that_publishes_nothing_new_still_clears(tmp_path: Path) -> None:
+    """`create_version` answers a no-op with the active version; the draft is spent either way."""
+    workspace, drafts, project = _drafts(tmp_path)
+    schemas = SchemaService(workspace)
+    schemas.create_version(project.id, [LabelClass(name="car", geometries=(GeometryType.BBOX,))])
+    saved = drafts.save(
+        project.id,
+        CURATED,
+        classes=[DraftLabelClass(name="car", geometries=(GeometryType.BBOX,))],
+    )
+    published = drafts.publish(project.id, CURATED, expected_revision=saved.revision)
+    assert published.published.version == 1
+    assert drafts.get(project.id, CURATED) is None
     workspace.close()

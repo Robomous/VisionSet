@@ -21,14 +21,19 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from visionset.kernel.domain import (
     DraftLabelClass,
+    LabelClass,
     Project,
     SchemaDraft,
     SchemaProvenance,
+    SchemaPublication,
 )
-from visionset.kernel.errors import ProjectNotFound, StaleWrite
+from visionset.kernel.errors import InvalidSchema, ProjectNotFound, SchemaDraftNotFound, StaleWrite
 from visionset.kernel.ports import UnitOfWork
+from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.workspace_service import WorkspaceService
 
 
@@ -140,6 +145,62 @@ class SchemaDraftService:
                 return False
             return uow.schema_drafts.delete(stored.id)
 
+    def publish(
+        self,
+        project_id: UUID,
+        kind: SchemaProvenance,
+        *,
+        expected_revision: int,
+        allow_destructive: bool = False,
+    ) -> SchemaPublication:
+        """Turn the draft into the next version, and spend it.
+
+        The draft's ``note`` becomes the version's commit message and its ``kind``
+        becomes the version's provenance — which is the whole reason the kind is
+        part of the key: a dialog session and a deliberate composition publish
+        under different words without either surface having to remember to say so.
+
+        **Not one transaction, and it cannot be.** ``create_version`` opens its own
+        unit of work, so a crash between the publish and the discard leaves a
+        draft whose ``based_on`` is now behind the active version. That is a state
+        every surface already announces — a version arrived underneath — rather
+        than a new failure mode, and the alternative is a service reaching inside
+        another service's transaction.
+
+        The discard happens even when nothing was written. ``create_version``
+        answers a publish of the contract already in force with the version
+        already in force, and a draft that proposed exactly that has nothing left
+        to say.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+            SchemaDraftNotFound: the project has no draft of that kind.
+            StaleWrite: the draft has moved since ``expected_revision`` was read.
+            InvalidSchema: a class in the draft is unfinished or invalid, named by
+                its position.
+            UnsupportedGeometry, DestructiveSchemaChange, SchemaChangeWouldOrphan,
+                SchemaVersionConflict: unchanged, from ``create_version``.
+        """
+        draft = self.get(project_id, kind)
+        if draft is None:
+            raise SchemaDraftNotFound(
+                f"project {project_id} has no {kind.value} schema draft to publish"
+            )
+        if draft.revision != expected_revision:
+            raise StaleWrite(
+                f"the {kind.value} schema draft of project {project_id} is at revision "
+                f"{draft.revision}, not {expected_revision}; read it again before publishing"
+            )
+        published = SchemaService(self._workspace).create_version(
+            project_id,
+            _as_label_classes(draft),
+            description=draft.note or None,
+            provenance=kind,
+            allow_destructive=allow_destructive,
+        )
+        self.discard(project_id, kind)
+        return published
+
     # --- lookups shared by the operations above ----------------------------
 
     def _require_project(self, uow: UnitOfWork, project_id: UUID) -> Project:
@@ -168,3 +229,35 @@ class SchemaDraftService:
         return next(
             (draft for draft in uow.schema_drafts.list(project_id) if draft.kind == kind), None
         )
+
+
+def _as_label_classes(draft: SchemaDraft) -> tuple[LabelClass, ...]:
+    """The draft as a proposed version, or a refusal naming which class is not ready.
+
+    The one crossing from permissive to strict, and the position matters more than
+    the rule that fired: a person looking at fifteen rows needs to be told which
+    one, and ``classes.7`` is the same locator the REST and CLI surfaces already
+    use for a malformed class.
+    """
+    published: list[LabelClass] = []
+    for index, declared in enumerate(draft.classes):
+        try:
+            published.append(declared.to_label_class())
+        except ValueError as exc:
+            raise InvalidSchema(f"classes.{index}: {_reason(exc)}") from exc
+    return tuple(published)
+
+
+def _reason(exc: ValueError) -> str:
+    """The refusal in one fragment, whichever of the two kinds it is.
+
+    pydantic reports a path and a message; a hand-raised ``ValueError`` is already
+    a sentence. Both reach here because ``ValidationError`` is a ``ValueError``,
+    which is what lets one ``except`` cover a rule stated in a validator and a rule
+    stated in a conversion.
+    """
+    if isinstance(exc, ValidationError):
+        first = exc.errors()[0]
+        location = ".".join(str(part) for part in first["loc"])
+        return f"{location}: {first['msg']}" if location else str(first["msg"])
+    return str(exc)
