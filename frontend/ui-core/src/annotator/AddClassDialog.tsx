@@ -72,6 +72,17 @@
  * publishing them on this person's say-so. Cancelling with classes pending still
  * *asks*, because closing now discards the shared draft too — not only this
  * browser's memory of it.
+ *
+ * **Both discard buttons hold their local "it is gone" state until the
+ * server agrees.** Clearing the session and closing the dialog *before* the
+ * `DELETE` resolves would tell somebody the shared draft is gone when a
+ * refusal can still be sitting in `onDiscardDraft`'s rejected promise — they
+ * would meet the same classes again next time, having been told they were
+ * discarded. So both buttons disable themselves and every bank
+ * (`addAnother` checks `pending` directly, since ⌘Enter reaches it without
+ * going through a disabled attribute) for the length of that one request, and
+ * only act on success; a refusal is left on screen through `error`, exactly
+ * where every other refusal here renders.
  */
 
 import { Plus, X } from "lucide-react";
@@ -300,10 +311,16 @@ export interface AddClassDialogProps {
    */
   readonly onBank?: (classes: readonly LabelClassBody[]) => void;
   /**
-   * Throw the stored draft away — the server half of Cancel's discard, fired
-   * alongside the local `reset()`.
+   * Throw the stored draft away — the server half of Cancel's discard and of
+   * the resumed-draft banner's own button.
+   *
+   * A promise, not a fire-and-forget call: both callers hold the local
+   * "it is gone" state (clearing the session, closing the dialog) until this
+   * settles, so a refused DELETE cannot make somebody believe a shared draft
+   * is discarded when it is still sitting on the server for the next opening
+   * to meet again.
    */
-  readonly onDiscardDraft?: () => void;
+  readonly onDiscardDraft?: () => Promise<unknown>;
 }
 
 export function AddClassDialog({
@@ -434,9 +451,18 @@ export function AddClassDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, draftPending]);
 
-  /** Bank the form and clear it, so the next class starts from nothing. */
+  /**
+   * Bank the form and clear it, so the next class starts from nothing.
+   *
+   * `pending` is checked here, not only on the button's `disabled` — ⌘Enter
+   * calls this directly and a keyboard shortcut walks straight past a
+   * disabled attribute. Without it, a bank fired while the discard button's
+   * DELETE is still in flight would race that unconditional delete: if the
+   * server takes the bank's `PUT` first and the `DELETE` second, the class
+   * this press just banked is gone, and nothing here would know to say so.
+   */
   function addAnother(): void {
-    if (!readyForm) return;
+    if (!readyForm || pending) return;
     const banked = [...session, { ...declared, name }];
     setSession(banked);
     onBank?.(banked);
@@ -534,13 +560,35 @@ export function AddClassDialog({
                 <Button
                   variant="secondary"
                   data-testid="discard-resumed"
+                  disabled={pending}
                   onClick={() => {
-                    setSession([]);
-                    setResumedNames([]);
-                    onDiscardDraft?.();
+                    // Held until the DELETE actually lands — clearing first and
+                    // unconditionally is what let a refused discard tell somebody
+                    // the shared draft was gone when it was not. `pending`
+                    // already covers `onDiscardDraft`'s own mutation, so the
+                    // button is disabled the moment this fires, and a second
+                    // press (or a race with a bank, guarded in `addAnother`)
+                    // cannot land while this one is still out.
+                    const discarded = onDiscardDraft?.();
+                    if (discarded === undefined) {
+                      setSession([]);
+                      setResumedNames([]);
+                      return;
+                    }
+                    void discarded.then(
+                      () => {
+                        setSession([]);
+                        setResumedNames([]);
+                      },
+                      () => {
+                        // Left exactly as it was. The refusal reaches the
+                        // screen through `error`, which the caller folds the
+                        // discard mutation's own failure into.
+                      },
+                    );
                   }}
                 >
-                  Discard the pending {resumedNames.length === 1 ? "class" : "classes"}
+                  {pending ? "Discarding…" : `Discard the pending ${resumedNames.length === 1 ? "class" : "classes"}`}
                 </Button>
               </div>
             </Alert>
@@ -715,19 +763,52 @@ export function AddClassDialog({
         <DialogFooter>
           {discarding ? (
             <>
-              <Button variant="secondary" data-testid="keep-editing" onClick={() => setDiscarding(false)}>
+              {/*
+                Disabled while the discard is in flight along with its
+                neighbour: "Keep editing" changing `discarding` back to false
+                does not cancel the DELETE already sent, and a press through
+                that window would abandon this screen while `onClick` below is
+                still waiting on the promise that closes it.
+              */}
+              <Button
+                variant="secondary"
+                data-testid="keep-editing"
+                disabled={pending}
+                onClick={() => setDiscarding(false)}
+              >
                 Keep editing
               </Button>
               <Button
                 variant="destructive"
                 data-testid="discard-confirm"
+                disabled={pending}
                 onClick={() => {
-                  onDiscardDraft?.();
-                  reset();
-                  onOpenChange(false);
+                  // The close is held until the DELETE resolves — see the
+                  // module docstring. Closing first, as this used to, told
+                  // whoever pressed it that the shared draft was gone the
+                  // instant they saw the dialog close, which was true only
+                  // when the request happened to succeed.
+                  const discarded = onDiscardDraft?.();
+                  if (discarded === undefined) {
+                    reset();
+                    onOpenChange(false);
+                    return;
+                  }
+                  void discarded.then(
+                    () => {
+                      reset();
+                      onOpenChange(false);
+                    },
+                    () => {
+                      // Stays open, still on the ask — `failure` renders below
+                      // it from the same `error` prop the rest of the dialog
+                      // reads, and the session is untouched because nothing
+                      // was actually thrown away.
+                    },
+                  );
                 }}
               >
-                Discard
+                {pending ? "Discarding…" : "Discard"}
               </Button>
             </>
           ) : (

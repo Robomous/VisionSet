@@ -337,42 +337,61 @@ describe("the session, backed by the project's annotation draft", () => {
    * flushes the composed contract to the draft before publishing it through
    * `usePublishSchemaDraft` — the same two-call shape `addClass` uses.
    */
-  function harness(): ReactNode {
+  function harness(options: { readonly startOpen?: boolean } = {}): ReactNode {
     function Harness(): ReactNode {
-      const [open, setOpen] = useState(true);
-      const draft = useSchemaDraft(PROJECT, "annotation");
+      const [open, setOpen] = useState(options.startOpen ?? true);
+      // Gated exactly the way `Workspace` gates it: only while the dialog is
+      // open, so a mount that never opens the dialog makes no request. See
+      // `"the gate"` below for the assertion that pins this.
+      const draft = useSchemaDraft(PROJECT, "annotation", open);
       const saveDraft = useSaveSchemaDraft(PROJECT, "annotation");
       const discardDraft = useDiscardSchemaDraft(PROJECT, "annotation");
       const publishDraft = usePublishSchemaDraft(PROJECT, "annotation");
 
-      return createElement(AddClassDialog, {
-        open,
-        onOpenChange: setOpen,
-        active: ACTIVE,
-        pinnedVersion: ACTIVE.version,
-        canRepin: true,
-        pending: false,
-        error: null,
-        serverDraft: draft.data ?? null,
-        draftPending: draft.isPending,
-        onBank: (classes: readonly LabelClassBody[]) =>
-          saveDraft.mutate({
-            classes: classes.map((entry) => ({ ...entry })),
-            note: "",
-            basedOn: ACTIVE.version,
-            revision: draft.data?.revision ?? null,
-          }),
-        onDiscardDraft: () => discardDraft.mutate(),
-        onSubmit: async (added: readonly LabelClassBody[], note: string) => {
-          const written = await saveDraft.mutateAsync({
-            classes: composeVersion(ACTIVE.classes, added),
-            note,
-            basedOn: ACTIVE.version,
-            revision: draft.data?.revision ?? null,
-          });
-          await publishDraft.mutateAsync({ revision: written.revision });
-        },
-      });
+      return createElement(
+        "div",
+        null,
+        createElement(
+          "button",
+          { type: "button", "data-testid": "open-dialog", onClick: () => setOpen(true) },
+          "open",
+        ),
+        createElement(AddClassDialog, {
+          open,
+          onOpenChange: setOpen,
+          active: ACTIVE,
+          pinnedVersion: ACTIVE.version,
+          canRepin: true,
+          // The same composite `AnnotationPage` builds, `discardDraft`
+          // included — Finding 2's own fix: while a discard is in flight,
+          // banking and the discard buttons must both be unusable, or a bank
+          // races the unconditional `DELETE`.
+          pending:
+            saveDraft.isPending || publishDraft.isPending || discardDraft.isPending,
+          error: saveDraft.error ?? publishDraft.error ?? discardDraft.error ?? null,
+          serverDraft: draft.data ?? null,
+          draftPending: draft.isPending,
+          onBank: (classes: readonly LabelClassBody[]) =>
+            saveDraft.mutate({
+              classes: classes.map((entry) => ({ ...entry })),
+              note: "",
+              basedOn: ACTIVE.version,
+              revision: draft.data?.revision ?? null,
+            }),
+          // `mutateAsync`, matching `AnnotationPage`'s own wiring — the
+          // dialog holds its local "it is gone" state until this settles.
+          onDiscardDraft: () => discardDraft.mutateAsync(),
+          onSubmit: async (added: readonly LabelClassBody[], note: string) => {
+            const written = await saveDraft.mutateAsync({
+              classes: composeVersion(ACTIVE.classes, added),
+              note,
+              basedOn: ACTIVE.version,
+              revision: draft.data?.revision ?? null,
+            });
+            await publishDraft.mutateAsync({ revision: written.revision });
+          },
+        }),
+      );
     }
 
     return createElement(ApiProvider, {
@@ -517,5 +536,189 @@ describe("the session, backed by the project's annotation draft", () => {
     await waitFor(() => {
       expect(findSent("DELETE", /\/schema\/drafts\/annotation$/)).toBeDefined();
     });
+  });
+
+  /**
+   * The gate — `useSchemaDraft`'s own `enabled` parameter, wired the way
+   * `activeSchema` already is. A mount that read this on every job open would
+   * be a request the annotator has no business making until the dialog is
+   * actually open; `annotate.spec.ts:433`'s e2e sibling covers the same
+   * discipline for `useActiveSchema` and does not reach this endpoint.
+   */
+  it("reads the annotation draft only while the dialog is open", async () => {
+    noDraft();
+
+    render(harness({ startOpen: false }));
+
+    // Given a moment for a stray request to have shown up, if one were going to.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(findSent("GET", /\/schema\/drafts\/annotation$/)).toBeUndefined();
+
+    await userEvent.click(screen.getByTestId("open-dialog"));
+
+    await waitFor(() => {
+      expect(findSent("GET", /\/schema\/drafts\/annotation$/)).toBeDefined();
+    });
+  });
+
+  /**
+   * A refused discard, from the resumed-draft banner's own button.
+   *
+   * Clearing the session first and unconditionally is what let a refused
+   * `DELETE` tell somebody the shared draft was gone when it was not — they
+   * would meet the same classes again the next time this opened, having been
+   * told they were discarded. Nothing here is swallowed: the classes stay
+   * banked, the banner stays up, and the refusal renders.
+   */
+  it("keeps the pending classes and shows the refusal when a discard fails", async () => {
+    on("GET", /\/schema\/drafts\/annotation$/, {
+      status: 200,
+      body: {
+        project_id: PROJECT,
+        kind: "annotation",
+        classes: [{ name: "cone", geometries: ["bbox"], color: null, attributes: [] }],
+        note: "",
+        based_on: 3,
+        revision: 4,
+        updated_at: "2026-08-16T00:00:00Z",
+      },
+    });
+    on("DELETE", /\/schema\/drafts\/annotation$/, {
+      status: 500,
+      body: { code: "INTERNAL_ERROR", message: "the draft could not be discarded" },
+    });
+
+    render(harness());
+    await screen.findByTestId("resumed-draft");
+
+    await userEvent.click(screen.getByTestId("discard-resumed"));
+
+    await screen.findByTestId("add-class-error");
+    // Still here — nothing was actually thrown away.
+    expect(screen.getByTestId("resumed-draft")).toBeTruthy();
+    expect(screen.getByTestId("session-class-cone")).toBeTruthy();
+  });
+
+  /**
+   * The same failure, from Cancel's confirm — the path that used to close the
+   * dialog the instant the `DELETE` was *sent*, regardless of what it
+   * answered. The close is held until it resolves; on a refusal, the dialog
+   * stays exactly where it was, still asking, with the refusal on screen.
+   */
+  it("keeps the dialog open on Cancel's confirm when the discard fails", async () => {
+    noDraft();
+    on("PUT", /\/schema\/drafts\/annotation$/, {
+      status: 200,
+      body: {
+        project_id: PROJECT,
+        kind: "annotation",
+        classes: [{ name: "cone", geometries: ["bbox"], color: null, attributes: [] }],
+        note: "",
+        based_on: 3,
+        revision: 1,
+        updated_at: "2026-08-16T00:00:00Z",
+      },
+    });
+    on("DELETE", /\/schema\/drafts\/annotation$/, {
+      status: 500,
+      body: { code: "INTERNAL_ERROR", message: "the draft could not be discarded" },
+    });
+
+    render(harness());
+    await screen.findByTestId("add-class-dialog");
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.click(screen.getByTestId("add-class-cancel"));
+    await userEvent.click(screen.getByTestId("discard-confirm"));
+
+    await screen.findByTestId("add-class-error");
+    // The dialog never closed, and the ask is still the screen showing.
+    expect(screen.getByTestId("add-class-dialog")).toBeTruthy();
+    expect(screen.getByTestId("discard-session")).toBeTruthy();
+  });
+
+  /**
+   * The race Finding 2 named: a discard fires, and before its `DELETE`
+   * resolves the person types and banks a new class. An unconditional delete
+   * is cheaper than a validating upsert, so the server could easily take the
+   * bank's `PUT` first and the `DELETE` second — deleting the class this
+   * press just banked, with nothing left to say so.
+   *
+   * `⌘Enter` is the route that matters: it calls `addAnother` directly from
+   * `onKeyDown`, walking straight past the button's own `disabled` attribute,
+   * so only a check inside `addAnother` itself closes this.
+   */
+  it("blocks a bank from racing a discard still in flight", async () => {
+    let releaseDelete: (() => void) | undefined;
+    const deleteGate = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(String(input), init);
+      sent.push(request);
+      const path = new URL(request.url).pathname;
+
+      if (request.method === "GET" && /\/schema\/drafts\/annotation$/.test(path)) {
+        return new Response(
+          JSON.stringify({
+            project_id: PROJECT,
+            kind: "annotation",
+            classes: [{ name: "cone", geometries: ["bbox"], color: null, attributes: [] }],
+            note: "",
+            based_on: 3,
+            revision: 4,
+            updated_at: "2026-08-16T00:00:00Z",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (request.method === "DELETE" && /\/schema\/drafts\/annotation$/.test(path)) {
+        // Held open deliberately — this is the window a racing bank has to
+        // land in, if it is going to.
+        await deleteGate;
+        return new Response(null, { status: 204 });
+      }
+      if (request.method === "PUT" && /\/schema\/drafts\/annotation$/.test(path)) {
+        return new Response(
+          JSON.stringify({
+            project_id: PROJECT,
+            kind: "annotation",
+            classes: [{ name: "barrier", geometries: ["bbox"], color: null, attributes: [] }],
+            note: "",
+            based_on: 3,
+            revision: 5,
+            updated_at: "2026-08-16T00:00:00Z",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ code: "NO_STUB", message: request.url }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    render(harness());
+    await screen.findByTestId("resumed-draft");
+
+    await userEvent.click(screen.getByTestId("discard-resumed"));
+    await waitFor(() => {
+      expect(findSent("DELETE", /\/schema\/drafts\/annotation$/)).toBeDefined();
+    });
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "barrier");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+
+    expect(findSent("PUT", /\/schema\/drafts\/annotation$/)).toBeUndefined();
+
+    releaseDelete?.();
+    await waitFor(() => {
+      expect(screen.queryByTestId("resumed-draft")).toBeNull();
+    });
+    // Cleared on the discard that actually landed, not on the blocked bank.
+    expect(findSent("PUT", /\/schema\/drafts\/annotation$/)).toBeUndefined();
   });
 });

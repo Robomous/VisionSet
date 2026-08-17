@@ -2859,7 +2859,12 @@ function Workspace({
         active={activeSchema.data ?? null}
         pinnedVersion={schemaVersion}
         canRepin={canRepin}
-        pending={save.isPending || saveDraft.isPending || publishDraft.isPending}
+        // `discardDraft` is in here too, for the reason it is in `error` below:
+        // while a discard is out, both discard buttons and every bank must be
+        // unusable, or a bank fired in that window races the DELETE.
+        pending={
+          save.isPending || saveDraft.isPending || publishDraft.isPending || discardDraft.isPending
+        }
         // Whichever step refused, in the order they run — so the message is about
         // the call that actually stopped, not about the last mutation touched.
         // `DESTRUCTIVE_SCHEMA_CHANGE` and a stale schema version now surface off
@@ -2867,7 +2872,10 @@ function Workspace({
         // the flush before it has landed; an ordinary bank's own `STALE_WRITE`
         // surfaces off `saveDraft` — the draft is shared, and a refused write is
         // exactly the "somebody else is here" this dialog must not swallow.
-        error={save.error ?? saveDraft.error ?? publishDraft.error ?? null}
+        // `discardDraft` closes the set: a refused `DELETE` is the one this
+        // dialog used to drop silently, believing the shared draft gone when it
+        // was not.
+        error={save.error ?? saveDraft.error ?? publishDraft.error ?? discardDraft.error ?? null}
         // `addClass` already catches everything and holds the refusal on the
         // mutations the dialog reads, so there is nothing left to reject — but
         // `void` on a promise is the pattern F7 is about, and a `catch` that can
@@ -2887,7 +2895,10 @@ function Workspace({
             revision: schemaDraft.data?.revision ?? null,
           })
         }
-        onDiscardDraft={() => discardDraft.mutate()}
+        // `mutateAsync`, not `mutate` — the dialog holds the local "it is
+        // gone" state (clearing the session, closing on Cancel's confirm)
+        // until this settles, which needs the promise to await.
+        onDiscardDraft={() => discardDraft.mutateAsync()}
         onSubmit={(added, note) => {
           void addClass(added, note).catch(() => {});
         }}
