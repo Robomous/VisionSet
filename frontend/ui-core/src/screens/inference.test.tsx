@@ -533,7 +533,7 @@ it("never re-reads a list nothing is moving in", async () => {
   const first = reads;
   await new Promise((done) => setTimeout(done, CONNECTION_POLL_MS * 2));
   expect(reads).toBe(first);
-}, 15_000);
+});
 
 it("shows no progress for a connection that has never been downloaded", async () => {
   listing([connection()]);
@@ -964,7 +964,7 @@ it("follows a transfer to its end with no reload and no click", async () => {
   const settled = reads;
   await new Promise((done) => setTimeout(done, CONNECTION_POLL_MS * 1.5));
   expect(reads).toBe(settled);
-}, 15_000);
+});
 
 it("surfaces a failed download as prose, and leaves the same action as the retry", async () => {
   // Read off the row, so a transfer that died while nobody was watching still has
@@ -1321,7 +1321,7 @@ it("polls while a check is live, and stops when it settles", async () => {
   const settled = reads;
   await new Promise((done) => setTimeout(done, CONNECTION_POLL_MS * 1.5));
   expect(reads).toBe(settled);
-}, 15_000);
+});
 
 // --- editing and deleting ------------------------------------------------------
 
