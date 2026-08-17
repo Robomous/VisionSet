@@ -653,8 +653,7 @@ def test_what_a_driver_builds_satisfies_the_port_its_capability_implies(
     )
 
     assert isinstance(built, PORT_FOR[capability]), (
-        f"{provider_id} declares {family!r} as {capability.value} and built "
-        f"{type(built).__name__}"
+        f"{provider_id} declares {family!r} as {capability.value} and built {type(built).__name__}"
     )
 
 
