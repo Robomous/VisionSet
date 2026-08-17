@@ -394,8 +394,53 @@ export function bareWheelZooms(wheel: WheelShape, sawPreciseDevice: boolean): bo
  * are — a person who reaches for the wheel and a person who reaches for the
  * button move the picture by the same amount. It was 400, which is 1.35 a
  * notch and agreed with nothing.
+ *
+ * It is the **fallback** now rather than the main path: `detentZoomFactor`
+ * counts detents where the browser reports them, which holds that identity on
+ * every device instead of only where a detent happens to be 120 pixels wide.
+ * This still carries a pinch, and a wheel in a browser that reports no
+ * `wheelDelta` at all.
  */
 const WHEEL_SOFTNESS = 538;
+
+/**
+ * One press of a zoom-in button, and one detent of a wheel. The same number.
+ *
+ * It lives here rather than in the host because the wheel now honours it
+ * directly — `detentZoomFactor` raises it to a fraction of a detent — and a
+ * host holding its own copy would be a second spelling free to drift from the
+ * gesture that is supposed to match it. The host imports this for its `+` and
+ * `−`, so the identity is one constant rather than a claim in a comment.
+ */
+export const ZOOM_STEP = 1.25;
+
+/**
+ * The zoom a wheel event asks for, counted in **detents** rather than pixels.
+ *
+ * `wheelDeltaY` is the one field with a device-independent unit: **120 is one
+ * detent**, by the convention every wheel driver is built to, and a
+ * high-resolution wheel reports a fraction of 120 for a fraction of a detent.
+ * So the count of detents an event carries is `wheelDeltaY / 120`, and one
+ * detent is worth exactly one press of `+` on every device that has ever
+ * reported the field.
+ *
+ * This is what `WHEEL_SOFTNESS` was reaching for and could not hold.
+ * `120 / ln(1.25)` makes a detent worth a button press only where a detent is
+ * also 120 *pixels* — true of a low-resolution wheel on some systems and of
+ * nothing else. A high-resolution wheel sends about 53 pixels per detent and
+ * landed on 1.10x; macOS accelerates `deltaY` so the same detent is worth a
+ * different amount depending on how fast it was turned. Counting detents is
+ * immune to all of it, because the operating system's acceleration lands on
+ * `deltaY` and never on the tick count.
+ *
+ * Answers `null` where the browser fills in no `wheelDelta` — Firefox reporting
+ * lines — leaving the caller to fall back to the pixel path rather than
+ * inventing a detent count from a field that is not there.
+ */
+export function detentZoomFactor(wheelDeltaY: number): number | null {
+  if (!Number.isFinite(wheelDeltaY) || wheelDeltaY === 0) return null;
+  return ZOOM_STEP ** (wheelDeltaY / WHEEL_NOTCH_UNITS);
+}
 
 /** The same for a trackpad pinch, whose deltas are an order of magnitude smaller. */
 const PINCH_SOFTNESS = 100;

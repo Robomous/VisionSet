@@ -194,6 +194,7 @@ import { randomUuid } from "../ids";
 import {
   IDENTITY_VIEWPORT,
   bareWheelZooms,
+  detentZoomFactor,
   fitToViewport,
   imageRenderingAt,
   isPreciseDevice,
@@ -764,9 +765,17 @@ export function AnnotatorCanvas({
         applyViewport(
           zoomAbout(
             viewNow.current,
-            // Only the modifier path can be a pinch; a bare event reaching
-            // here has already been judged a mouse.
-            wheelZoomFactor(dy, modifierHeld),
+            /**
+             * A bare event is a wheel — that is what `bareWheelZooms` just
+             * decided — so it is counted in detents, the one unit that means
+             * the same on every device and makes one detent one press of the
+             * host's `+`. The pixel path stays for the modifier, where a pinch
+             * lives and has no detents to count, and for a browser that reports
+             * no `wheelDelta` for the detents to be in.
+             */
+            modifierHeld
+              ? wheelZoomFactor(dy, true)
+              : (detentZoomFactor(wheelDeltaY) ?? wheelZoomFactor(dy, false)),
             event.clientX - rect.left,
             event.clientY - rect.top,
           ),

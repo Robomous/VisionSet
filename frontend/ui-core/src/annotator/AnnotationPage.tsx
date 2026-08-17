@@ -77,6 +77,7 @@ import {
   DISCARD_SUGGESTION,
   MAX_ZOOM,
   MIN_ZOOM,
+  ZOOM_STEP,
   COARSER_SUGGESTION,
   DEFAULT_ADJUSTMENTS,
   FINER_SUGGESTION,
@@ -285,8 +286,6 @@ export const REVIEW_ACTIONS: readonly {
   },
 ];
 
-/** One notch, matching what a wheel step feels like on the same stage. */
-const ZOOM_STEP = 1.25;
 
 /**
  * The wire's suggestion as the engine's, or `null` for an answer with nothing in
