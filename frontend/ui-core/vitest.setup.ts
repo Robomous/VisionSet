@@ -12,9 +12,22 @@
  */
 
 import { cleanup } from "@testing-library/react";
+import { toast } from "sonner";
 import { afterEach } from "vitest";
 
 afterEach(cleanup);
+
+/**
+ * Sonner's toast store is module-global and outlives `cleanup()` — unmounting a
+ * `<Toaster />` removes its DOM, not the store's memory of what was announced.
+ * Since sonner 2.0.8 a freshly mounted `<Toaster />` replays every toast still
+ * in that store, so a toast fired in one test reappears beside the next test's
+ * own — `getByText` on a toast message then fails with "found multiple
+ * elements", in whichever test happens to announce the same thing second.
+ * `dismiss()` with no id marks every active toast dismissed synchronously, and
+ * the replay path skips dismissed ids.
+ */
+afterEach(() => toast.dismiss());
 
 /**
  * Two DOM methods jsdom does not implement, which Radix's `Select` and
