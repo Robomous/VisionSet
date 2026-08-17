@@ -417,6 +417,51 @@ export function ProjectScreen({
   }, [schemaDraft?.classes, schemaDraft?.note, schemaDraft?.basedOn, projectId, client]);
 
   /**
+   * The debounce's other blind side: a page that unloads mid-timer.
+   *
+   * A tab switch and a project switch both leave the SPA running, so the ref
+   * dance above is enough to outlive either — but a reload, a typed URL or a
+   * closed tab tears the whole JS context down, timer and all, and a reload a
+   * keystroke after the last edit is the ordinary way somebody checks that
+   * their work stuck, not a rare one. `pagehide` fires for exactly that unload
+   * and for nothing else — a tab change inside this SPA never reaches it —
+   * and unlike `beforeunload` it asks nothing of the user and holds no
+   * navigation open.
+   *
+   * `keepalive` is the point: an ordinary `fetch` started here is not
+   * guaranteed to finish once the page is already unloading, which is the
+   * same loss under a different name. Sent through `saveSchemaDraftRequest`
+   * directly rather than the mutation object, for the same reason the project
+   * -switch flush above does — nothing is left mounted to hand a response to.
+   */
+  useEffect(() => {
+    function flushOnUnload(): void {
+      if (draftTimer.current === null) return;
+      clearTimeout(draftTimer.current);
+      draftTimer.current = null;
+      const held = latestSchemaDraft.current;
+      if (held === null || held.projectId !== latestProjectId.current) return;
+      void saveSchemaDraftRequest(
+        client,
+        held.projectId,
+        "curated",
+        {
+          classes: held.classes,
+          note: held.note,
+          basedOn: held.basedOn,
+          revision: held.revision,
+        },
+        { keepalive: true },
+      ).catch(() => {
+        // Best-effort: the page is already gone by the time this settles, so
+        // there is nowhere left to announce a refusal.
+      });
+    }
+    window.addEventListener("pagehide", flushOnUnload);
+    return () => window.removeEventListener("pagehide", flushOnUnload);
+  }, [client]);
+
+  /**
    * Cancel the pending debounce and write now — the flush the Save button
    * awaits so a publish never races the keystroke that triggered it. A write
    * already in flight is awaited rather than duplicated.

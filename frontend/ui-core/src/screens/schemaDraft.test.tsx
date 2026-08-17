@@ -709,6 +709,35 @@ describe("the draft lives on the server", () => {
     expect(draftProjectId(new URL(put!.url).pathname)).toBe(PROJECT);
   });
 
+  /**
+   * The other thing a pending timer does not survive: not a tab switch and not
+   * a project switch, but the page itself going away. A reload a keystroke
+   * after the last edit is the ordinary way somebody checks that their work
+   * stuck, and the setTimeout scheduled for it dies with the JS context that
+   * held it — `pagehide` is the one signal that fires for that unload and for
+   * nothing an in-app navigation reaches.
+   */
+  it("flushes a pending write when the page is about to unload, without waiting out the debounce", async () => {
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    // Still inside the 400ms debounce window — nothing has been sent yet.
+    expect(sent.some((request) => request.method === "PUT")).toBe(false);
+
+    window.dispatchEvent(new Event("pagehide"));
+
+    // Well under the 400ms debounce: a `waitFor` with no ceiling here would
+    // pass just as well once the untouched timer eventually fired on its own,
+    // and prove nothing about `pagehide` at all.
+    await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 100 });
+    const puts = sent.filter(
+      (request) => request.method === "PUT" && draftProjectId(new URL(request.url).pathname) === PROJECT,
+    );
+    // Exactly one — the handler cancels the timer before writing, so the
+    // debounce it preempted never fires a second one behind it.
+    expect(puts).toHaveLength(1);
+  });
+
   it("announces STALE_WRITE and offers to reload rather than merging", async () => {
     handlers.push((request) => {
       const path = new URL(request.url).pathname;

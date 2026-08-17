@@ -490,12 +490,19 @@ export interface SaveSchemaDraftInput {
  * the render landed, not wherever the draft came from. `ProjectScreen`'s flush
  * on a project switch is exactly that caller, and this is its door: a plain
  * function closing over nothing but its own arguments.
+ *
+ * `keepalive` is the same door for a second caller: a page unloading mid-debounce
+ * — a reload pressed a keystroke after the last edit, which is the ordinary case
+ * rather than a rare one — tears down an ordinary in-flight `fetch` along with
+ * everything else, and the write is lost with no error to show for it. Passed
+ * through to `fetch` unset by default, so every other caller is unchanged.
  */
 export async function saveSchemaDraftRequest(
   client: VisionSetClient,
   projectId: string,
   kind: SchemaDraftKind,
   input: SaveSchemaDraftInput,
+  options?: { readonly keepalive?: boolean },
 ): Promise<ServerSchemaDraft> {
   return unwrap(
     await client.PUT("/projects/{project_id}/schema/drafts/{kind}", {
@@ -506,6 +513,7 @@ export async function saveSchemaDraftRequest(
         based_on: input.basedOn,
         ...(input.revision === null ? {} : { revision: input.revision }),
       },
+      ...(options?.keepalive === undefined ? {} : { keepalive: options.keepalive }),
     }),
     checkSaveSchemaDraft,
   );

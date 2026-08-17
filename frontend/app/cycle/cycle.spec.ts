@@ -290,6 +290,34 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       await expect(page.getByTestId("class-list")).toContainText(name);
     }
 
+    /*
+     * And the draft survives a **reload**, which is a claim about the server
+     * rather than about React.
+     *
+     * The tab-switch check above proves only that state held above the tabs
+     * outlived a component being destroyed — everything it asserts is still true
+     * of a draft that never leaves the browser. A reload discards the whole
+     * page, so four unsaved classes coming back can only mean the server was
+     * holding them: the editor autosaves each edit through
+     * `PUT .../schema/drafts/curated` and seeds from `GET` on the way back up.
+     * That is the promise this feature exists to make, and jsdom cannot make it
+     * — there "reload" is a remount against a stub, which proves the stub.
+     *
+     * Nothing has been published at this point, so a version-1 fallback cannot
+     * be what answers: the project is still schema-less, and anything on screen
+     * after this reload came out of the draft.
+     */
+    await page.reload();
+    await expect(page.getByTestId("schema-editor")).toContainText("Saving creates version 1");
+    for (const name of ["vehicle", "lane", "daytime", "centerline"]) {
+      await expect(page.getByTestId("class-list")).toContainText(name);
+    }
+    // The two shapes on `vehicle` survive too, so what came back is the draft as
+    // edited rather than a re-seed from the four names alone.
+    await page.locator('[data-row="0"] button').first().click();
+    await expect(page.getByTestId("class-geometry-0-bbox")).toBeChecked();
+    await expect(page.getByTestId("class-geometry-0-polygon")).toBeChecked();
+
     await page.getByTestId("save-schema").click();
     // The history nests inside the Schema tab now: it is a view *of* the schema
     // rather than a peer of it, so the published version is checked further down
