@@ -25,7 +25,7 @@
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
@@ -1657,8 +1657,9 @@ describe("the jobs strip", () => {
       return undefined;
     });
     renderGallery();
-    expect(await screen.findByText("Dana Reyes")).toBeTruthy();
-    expect(await screen.findByRole("button", { name: "Assign" })).toBeTruthy();
+    const strip = within(await screen.findByTestId("jobs-strip"));
+    expect(strip.getByText("Dana Reyes")).toBeTruthy();
+    expect(strip.getByRole("button", { name: "Assign" })).toBeTruthy();
   });
 
   it("assigning sends the PUT and refetches the list", async () => {
@@ -1677,11 +1678,74 @@ describe("the jobs strip", () => {
       return undefined;
     });
     renderGallery();
-    await userEvent.click(await screen.findByRole("button", { name: /assign/i }));
+    const strip = within(await screen.findByTestId("jobs-strip"));
+    await userEvent.click(strip.getByRole("button", { name: /assign/i }));
     await userEvent.keyboard("Dana Reyes{Enter}");
     const put = sent.find((request) => request.method === "PUT");
     expect(put).toBeTruthy();
     expect(JSON.parse(bodies.get(put!) ?? "")).toEqual({ assignee: "Dana Reyes" });
-    expect(await screen.findByText("Dana Reyes")).toBeTruthy();
+    expect(await strip.findByText("Dana Reyes")).toBeTruthy();
+  });
+
+  it("commits the typed name on blur, not only on Enter", async () => {
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === `/batches/${BATCH}/jobs`)
+        return { status: 200, body: { items: [jobRow(null)], total: 1 } };
+      if (request.method === "PUT" && url.pathname === `/jobs/${JOB}/assignee`)
+        return { status: 200, body: jobRow("Dana Reyes") };
+      return undefined;
+    });
+    renderGallery();
+    const strip = within(await screen.findByTestId("jobs-strip"));
+    await userEvent.click(strip.getByRole("button", { name: /assign/i }));
+    await userEvent.type(strip.getByLabelText(/Assignee for job/), "Dana Reyes");
+    await userEvent.tab();
+    const put = sent.find((request) => request.method === "PUT");
+    expect(put).toBeTruthy();
+    expect(JSON.parse(bodies.get(put!) ?? "")).toEqual({ assignee: "Dana Reyes" });
+  });
+
+  it("Escape discards the draft, and the blur it causes sends no PUT", async () => {
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === `/batches/${BATCH}/jobs`)
+        return { status: 200, body: { items: [jobRow(null)], total: 1 } };
+      return undefined;
+    });
+    renderGallery();
+    const strip = within(await screen.findByTestId("jobs-strip"));
+    await userEvent.click(strip.getByRole("button", { name: /assign/i }));
+    await userEvent.type(strip.getByLabelText(/Assignee for job/), "Dana Reyes");
+    await userEvent.keyboard("{Escape}");
+    expect(await strip.findByRole("button", { name: "Assign" })).toBeTruthy();
+    expect(sent.some((request) => request.method === "PUT")).toBe(false);
+  });
+
+  it("blurring an unchanged or empty draft just closes the editor", async () => {
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === `/batches/${BATCH}/jobs`)
+        return { status: 200, body: { items: [jobRow(null)], total: 1 } };
+      return undefined;
+    });
+    renderGallery();
+    const strip = within(await screen.findByTestId("jobs-strip"));
+    await userEvent.click(strip.getByRole("button", { name: /assign/i }));
+    await userEvent.tab();
+    expect(await strip.findByRole("button", { name: "Assign" })).toBeTruthy();
+    expect(sent.some((request) => request.method === "PUT")).toBe(false);
+  });
+
+  it("shows an error instead of vanishing when the jobs read fails", async () => {
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === `/batches/${BATCH}/jobs`)
+        return { status: 500, body: { code: "INTERNAL_ERROR", message: "jobs are unreachable" } };
+      return undefined;
+    });
+    renderGallery();
+    expect(await screen.findByText("jobs are unreachable")).toBeTruthy();
+    expect(screen.queryByTestId("jobs-strip")).toBeNull();
   });
 });

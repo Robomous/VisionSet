@@ -841,9 +841,14 @@ function BatchHeader({
  * exist (`showsProgress`), which is also why it never needs an empty state for
  * a draft. Assignment is a name, not an account — see `JobService.assign` —
  * so the control is always live; there is nothing to gate it on.
+ *
+ * A failed read is shown, not swallowed — an empty list and a failed list look
+ * identical to `undefined`-or-zero-items, and only one of them means nothing to
+ * assign.
  */
 function JobsStrip({ batchId }: { readonly batchId: string }): JSX.Element | null {
   const jobs = useBatchJobs(batchId);
+  if (jobs.isError) return <FieldError>{jobs.error.message}</FieldError>;
   if (jobs.data === undefined || jobs.data.items.length === 0) return null;
   return (
     <section
@@ -870,12 +875,22 @@ function JobRow({
   const assign = useAssignJob(batchId, job.id);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
-  function submit(): void {
+  // Escape closes the editor WITHOUT committing, and it does so by unmounting
+  // the input — which is what fires the blur a naive `onBlur={commit}` would
+  // then read as "the user tabbed away, save it". This flag is how Escape's
+  // own blur is told apart from every other one: set immediately before the
+  // state change that causes it, read (and cleared) by the blur that follows.
+  const discarding = useRef(false);
+  function commit(): void {
     const name = draft.trim();
-    if (name.length > 0) assign.mutate(name, { onSuccess: () => setEditing(false) });
+    if (name.length === 0 || name === (job.assignee ?? "")) {
+      setEditing(false);
+      return;
+    }
+    assign.mutate(name, { onSuccess: () => setEditing(false) });
   }
   return (
-    <div className="flex flex-wrap items-center gap-3" data-testid={`job-row-${ordinal}`}>
+    <div className="flex flex-wrap items-center gap-3">
       <span className="text-meta text-muted-foreground">
         Job {ordinal} · {job.asset_count} frames · {job.state.replace("_", " ")}
       </span>
@@ -883,13 +898,24 @@ function JobRow({
         <Input
           autoFocus
           value={draft}
+          placeholder="Name, then Enter"
+          disabled={assign.isPending}
           aria-label={`Assignee for job ${ordinal}`}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") submit();
-            if (event.key === "Escape") setEditing(false);
+            if (event.key === "Enter") commit();
+            if (event.key === "Escape") {
+              discarding.current = true;
+              setEditing(false);
+            }
           }}
-          onBlur={() => setEditing(false)}
+          onBlur={() => {
+            if (discarding.current) {
+              discarding.current = false;
+              return;
+            }
+            commit();
+          }}
           className="h-8 w-40"
         />
       ) : (
@@ -897,6 +923,7 @@ function JobRow({
           type="button"
           variant="ghost"
           size="sm"
+          disabled={assign.isPending}
           onClick={() => {
             setDraft(job.assignee ?? "");
             setEditing(true);
@@ -909,6 +936,7 @@ function JobRow({
         <button
           type="button"
           aria-label={`Clear assignee for job ${ordinal}`}
+          disabled={assign.isPending}
           onClick={() => assign.mutate(null)}
           className="text-muted-foreground hover:text-foreground"
         >
