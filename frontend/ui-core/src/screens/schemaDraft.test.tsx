@@ -680,6 +680,35 @@ describe("the draft lives on the server", () => {
     expect(draftPuts).toBe(1);
   });
 
+  /**
+   * `ProjectScreen` is *re-rendered* rather than remounted when the route's
+   * `:projectId` changes — its own docstring says so — so the debounce effect's
+   * dependencies (including `projectId`) change under a pending timer exactly
+   * the way a keystroke changes them, and the same cleanup fires either way.
+   * Cancelling outright rather than flushing on this specific departure would
+   * be the silent loss this whole feature exists to remove, reachable by
+   * ordinary fast navigation rather than an exotic race.
+   */
+  it("flushes a pending write for the departing project when the project changes", async () => {
+    const view = render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    // Still inside the 400ms debounce window — nothing has been sent yet.
+    expect(sent.some((request) => request.method === "PUT")).toBe(false);
+
+    view.rerender(mount(<ProjectScreen projectId={OTHER} tab="schema" />));
+
+    await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 2000 });
+    const put = sent.find(
+      (request) => request.method === "PUT" && draftProjectId(new URL(request.url).pathname) === PROJECT,
+    );
+    // The departing project's id, not the one just navigated to — a flush
+    // addressed to `OTHER` would silently lose the typing all the same, just
+    // by writing it to the wrong place instead of nowhere.
+    expect(put).toBeDefined();
+    expect(draftProjectId(new URL(put!.url).pathname)).toBe(PROJECT);
+  });
+
   it("announces STALE_WRITE and offers to reload rather than merging", async () => {
     handlers.push((request) => {
       const path = new URL(request.url).pathname;
@@ -703,6 +732,49 @@ describe("the draft lives on the server", () => {
     expect(screen.getByTestId("schema-reload-draft")).toBeDefined();
     // Nothing is discarded before Reload is pressed.
     expect(screen.getByTestId("schema-editor").textContent).toContain("pedestrian");
+  });
+
+  /**
+   * `SchemaDraftService.publish` runs its own revision check independently of
+   * `save` — not a cousin of the save-side refusal, the exact same one — and it
+   * is the *only* place a second writer's conflict can appear over a draft
+   * seeded straight from the server: with nothing held locally, `save()` skips
+   * the flush and publishes with `showing.revision` directly, so the publish
+   * response is where the 409 lands. Stubbing only the PUT, as the test above
+   * does, cannot reach this path at all — which is exactly how it went unseen.
+   */
+  it("announces STALE_WRITE from the publish call too, not only the save", async () => {
+    curatedDrafts.set(PROJECT, {
+      project_id: PROJECT,
+      kind: "curated",
+      classes: [{ name: "cyclist", geometries: ["bbox"], color: null, attributes: [] }],
+      note: "",
+      based_on: 3,
+      revision: 9,
+      updated_at: "2024-01-01T00:00:00Z",
+    });
+    on("POST", /schema\/drafts\/curated\/publish$/, {
+      status: 409,
+      body: {
+        code: "STALE_WRITE",
+        message: "someone else changed this while you were working on it",
+      },
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    const editor = await screen.findByTestId("schema-editor");
+    // Seeded from the server, dirty against `active` — nothing typed here, so
+    // `held` stays null and `save()` publishes `showing.revision` directly.
+    expect(editor.textContent).toContain("cyclist");
+
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    await screen.findByTestId("schema-stale-draft", {}, { timeout: 2000 });
+    expect(screen.getByTestId("schema-reload-draft")).toBeDefined();
+    // The raw code never reaches the generic alert — the one this finding was
+    // about.
+    expect(screen.queryByTestId("schema-error")).toBeNull();
+    expect(screen.getByTestId("schema-editor").textContent).toContain("cyclist");
   });
 
   it("flushes the pending autosave before publishing", async () => {

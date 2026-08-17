@@ -357,7 +357,26 @@ export function SchemaEditor({
   const note = showing.note;
   const failure = publish.isError ? asApiError(publish.error) : null;
   const draftFailure = draftSaveError == null ? null : asApiError(draftSaveError);
-  const staleDraft = draftFailure?.code === STALE_DRAFT;
+  /**
+   * `STALE_WRITE`, whichever of the two calls surfaced it.
+   *
+   * `SchemaDraftService.publish` runs its own revision check independently of
+   * `save` — `expected_revision != stored.revision` there is the exact same
+   * refusal, not a cousin of it — and it is the *only* place a second writer's
+   * conflict can appear over a draft seeded straight from the server: `save()`
+   * skips the flush entirely when nothing is locally held, publishing with
+   * `showing.revision` directly. A version that reached only `draftSaveError`
+   * would leave that path's `STALE_WRITE` to fall through to the generic alert
+   * below and render as the bare code — the exact "raw refusal code as UI"
+   * `ui-capabilities` bans.
+   */
+  const staleDraftError =
+    draftFailure?.code === STALE_DRAFT
+      ? draftSaveError
+      : failure?.code === STALE_DRAFT
+        ? publish.error
+        : null;
+  const staleDraft = staleDraftError !== null;
   /**
    * Whether saving would change anything — measured against **the version in
    * force**, not against the snapshot the draft was seeded from.
@@ -633,16 +652,27 @@ export function SchemaEditor({
           last read and its last save, so the local copy no longer names a
           revision the server recognises. The remedy is the same shape for the
           same reason — reloading discards what is here, so nothing is thrown
-          away before the button is pressed. */}
+          away before the button is pressed.
+
+          Reached from either mutation — `staleDraftError` is whichever one
+          actually carries the code — so `publish.reset()` runs alongside
+          `onReloadDraft()` the same way `DestructiveDialog`'s Cancel and
+          `OrphanDialog`'s Close already reset it: without this, a `STALE_WRITE`
+          that reached this banner via a *publish* would leave `publish.isError`
+          true after the reload, and the banner would still be here to greet the
+          freshly reloaded draft. */}
       {past === undefined && staleDraft && (
         <p className="text-meta text-muted-foreground" data-testid="schema-stale-draft">
-          {refusalProse(draftSaveError)}{" "}
+          {refusalProse(staleDraftError)}{" "}
           <Button
             variant="link"
             size="sm"
             className="h-auto p-0 align-baseline text-meta"
             data-testid="schema-reload-draft"
-            onClick={onReloadDraft}
+            onClick={() => {
+              publish.reset();
+              onReloadDraft();
+            }}
           >
             Reload the draft
           </Button>
@@ -667,11 +697,14 @@ export function SchemaEditor({
         onView={setViewing}
       />
 
-      {failure !== null && failure.code !== DESTRUCTIVE && failure.code !== WOULD_ORPHAN && (
-        <Alert variant="destructive" title={failure.code} data-testid="schema-error">
-          {failure.message}
-        </Alert>
-      )}
+      {failure !== null &&
+        failure.code !== DESTRUCTIVE &&
+        failure.code !== WOULD_ORPHAN &&
+        failure.code !== STALE_DRAFT && (
+          <Alert variant="destructive" title={failure.code} data-testid="schema-error">
+            {failure.message}
+          </Alert>
+        )}
 
       {past !== undefined ? (
         <PastVersion declared={past} />

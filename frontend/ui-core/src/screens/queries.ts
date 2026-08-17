@@ -32,6 +32,7 @@ import { useApiClient } from "../data/ApiProvider";
 import { usePollingQuery } from "../data/polling";
 import { asApiError, unwrap } from "../data/errors";
 import type { Refusal } from "../data/refusals";
+import type { VisionSetClient } from "../client";
 import {
   checkApproveBatch,
   checkAssignJob,
@@ -460,6 +461,47 @@ export function useSchemaDraft(
   });
 }
 
+/** What `useSaveSchemaDraft`'s mutation, and only that mutation, sends. */
+export interface SaveSchemaDraftInput {
+  readonly classes: readonly DraftLabelClassBody[];
+  readonly note: string;
+  readonly basedOn: number | null;
+  readonly revision: number | null;
+}
+
+/**
+ * The wire call `useSaveSchemaDraft` wraps, with `projectId` an ordinary
+ * parameter rather than baked into a hook's closure.
+ *
+ * `useMutation` does not key its observer on its arguments: `useSaveSchemaDraft`
+ * reconfigures the *same* observer's `mutationFn` on every render that calls it
+ * with a different `projectId`, so a caller that needs to flush a draft for a
+ * project the component has already re-rendered *away from* cannot reach it
+ * through the hook — by the time such a caller runs, the hook targets wherever
+ * the render landed, not wherever the draft came from. `ProjectScreen`'s flush
+ * on a project switch is exactly that caller, and this is its door: a plain
+ * function closing over nothing but its own arguments.
+ */
+export async function saveSchemaDraftRequest(
+  client: VisionSetClient,
+  projectId: string,
+  kind: SchemaDraftKind,
+  input: SaveSchemaDraftInput,
+): Promise<ServerSchemaDraft> {
+  return unwrap(
+    await client.PUT("/projects/{project_id}/schema/drafts/{kind}", {
+      params: { path: { project_id: projectId, kind } },
+      body: {
+        classes: [...input.classes],
+        note: input.note,
+        based_on: input.basedOn,
+        ...(input.revision === null ? {} : { revision: input.revision }),
+      },
+    }),
+    checkSaveSchemaDraft,
+  );
+}
+
 /**
  * Write the whole draft, and **do not invalidate the query this feeds**.
  *
@@ -478,24 +520,8 @@ export function useSaveSchemaDraft(projectId: string, kind: SchemaDraftKind) {
   const client = useApiClient();
   const queries = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      classes: readonly DraftLabelClassBody[];
-      note: string;
-      basedOn: number | null;
-      revision: number | null;
-    }) =>
-      unwrap(
-        await client.PUT("/projects/{project_id}/schema/drafts/{kind}", {
-          params: { path: { project_id: projectId, kind } },
-          body: {
-            classes: [...input.classes],
-            note: input.note,
-            based_on: input.basedOn,
-            ...(input.revision === null ? {} : { revision: input.revision }),
-          },
-        }),
-        checkSaveSchemaDraft,
-      ),
+    mutationFn: async (input: SaveSchemaDraftInput) =>
+      saveSchemaDraftRequest(client, projectId, kind, input),
     onSuccess: (saved) => {
       queries.setQueryData(queryKeys.schemaDraft(projectId, kind), saved);
     },

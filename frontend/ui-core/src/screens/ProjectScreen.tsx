@@ -87,6 +87,7 @@ import { useEffect, useRef, useState, type ComponentType, type FormEvent, type J
 
 import { formatGeometries } from "../data/geometryCategory";
 import { Async } from "../data/Async";
+import { useApiClient } from "../data/ApiProvider";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { Breadcrumb } from "../patterns/Breadcrumb";
@@ -124,6 +125,7 @@ import {
   useProjectReadiness,
   useProjectStats,
   useRenameProject,
+  saveSchemaDraftRequest,
   useSaveSchemaDraft,
   useSchemaDraft,
   useSchemaVersions,
@@ -279,12 +281,24 @@ export function ProjectScreen({
    * layer down.
    */
   const [schemaDraft, setSchemaDraft] = useState<SchemaDraft | null>(null);
+  const client = useApiClient();
   const saveSchemaDraft = useSaveSchemaDraft(projectId, "curated");
   // The pending debounce timer and the write it is about to start — refs rather
   // than state, because neither is ever rendered and a render on every tick
   // would be pure waste.
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftWrite = useRef<Promise<number | null> | null>(null);
+  // Updated every render, read only from an *earlier* render's effect
+  // cleanup — see the debounce effect below for why a departing project's
+  // timer needs to tell itself apart from an ordinary reschedule.
+  const latestProjectId = useRef(projectId);
+  latestProjectId.current = projectId;
+  // Same shape, same reason, for the draft itself: the debounce effect below
+  // reads this once at schedule time rather than naming `schemaDraft` in its
+  // own dependency list, which would restart the timer on every
+  // `revision`-only update the write's own success produces.
+  const latestSchemaDraft = useRef(schemaDraft);
+  latestSchemaDraft.current = schemaDraft;
   // The write itself, reached through a ref that is reassigned every render
   // rather than named directly in the effect below. `writeSchemaDraft` closes
   // over this render's `schemaDraft` and `saveSchemaDraft`, which is exactly
@@ -337,14 +351,19 @@ export function ProjectScreen({
   }
   writeSchemaDraftRef.current = writeSchemaDraft;
 
-  // Read outside the effect and named in its deps as a primitive, not as
-  // `schemaDraft` itself: the effect only needs to know *whether* there is a
-  // local draft to schedule a write for, and depending on the draft's own
-  // identity would pull its `revision`-only updates back into this list too.
-  const hasLocalDraft = schemaDraft !== null && schemaDraft.projectId === projectId;
-
   useEffect(() => {
-    if (!hasLocalDraft) return;
+    // Read from the ref, not the closed-over `schemaDraft` directly — see
+    // `latestSchemaDraft`'s own comment. At this point in a render the ref is
+    // already this render's value, so it is exactly what a direct read would
+    // have given, without needing the draft's identity listed below.
+    const current = latestSchemaDraft.current;
+    if (current === null || current.projectId !== projectId) return;
+    // Captured here, at schedule time — not read from `writeSchemaDraftRef`
+    // below, which by the time this fires has already been reassigned to a
+    // closure over whatever project the *next* render landed on. The
+    // cleanup needs the project this specific timer was scheduled for.
+    const scheduledForProject = projectId;
+    const scheduledDraft = current;
     // 400ms after the draft stops changing, not after every keystroke — typing
     // three characters resets this timer three times and writes once.
     const timer = setTimeout(() => {
@@ -355,12 +374,47 @@ export function ProjectScreen({
     return () => {
       clearTimeout(timer);
       if (draftTimer.current === timer) draftTimer.current = null;
+      // Every dependency change below runs this same cleanup, including an
+      // ordinary keystroke — which reschedules the very same project's timer
+      // a moment later and must not also fire a write early. Only a project
+      // switch leaves `latestProjectId` disagreeing with what this timer was
+      // scheduled for, and that is the one case with no later timer of its
+      // own to rely on: `ProjectScreen` is *re-rendered* rather than
+      // remounted on a route change, so without this, a pending write is
+      // simply thrown away, cancelled by the cleanup and never replaced.
+      if (scheduledForProject !== latestProjectId.current) {
+        void saveSchemaDraftRequest(client, scheduledForProject, "curated", {
+          classes: scheduledDraft.classes,
+          note: scheduledDraft.note,
+          basedOn: scheduledDraft.basedOn,
+          revision: scheduledDraft.revision,
+        })
+          .then((saved) => {
+            // Only if that project's draft is still the one held — it may
+            // itself have been superseded (a fresh edit back on this same
+            // project after returning to it) while this request was in
+            // flight, and this must not clobber that with a stale revision.
+            setSchemaDraft((current) =>
+              current !== null && current.projectId === scheduledForProject
+                ? { ...current, revision: saved.revision }
+                : current,
+            );
+          })
+          .catch(() => {
+            // Best-effort: nothing on screen belongs to the departing
+            // project any more to announce a refusal on. Reopening it later
+            // reads as an ordinary stale draft and is announced the same
+            // way any other one is.
+          });
+      }
     };
     // `schemaDraft?.classes/.note/.basedOn` decide *when* to reschedule — a
-    // keystroke resets the timer — without the effect body reading them: the
-    // write itself always goes through `writeSchemaDraftRef`, which closes
-    // over the latest values at the moment it actually runs.
-  }, [hasLocalDraft, schemaDraft?.classes, schemaDraft?.note, schemaDraft?.basedOn]);
+    // keystroke resets the timer, by changing one of these — without the
+    // body reading them directly, which is what keeps a `revision`-only
+    // update from also resetting it. The debounced write itself always goes
+    // through `writeSchemaDraftRef`, closing over the latest values at the
+    // moment it actually runs.
+  }, [schemaDraft?.classes, schemaDraft?.note, schemaDraft?.basedOn, projectId, client]);
 
   /**
    * Cancel the pending debounce and write now — the flush the Save button
