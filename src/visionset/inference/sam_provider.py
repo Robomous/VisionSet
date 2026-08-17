@@ -65,9 +65,13 @@ _CLASSES: Final[Mapping[str, tuple[str, str]]] = {
 """Which ``transformers`` pair loads each family this adapter serves.
 
 Keyed by exactly the members of :data:`~visionset.inference.families.SEGMENTER_FAMILIES`
-— ``test_the_class_table_covers_every_segmenter_family`` holds the two together,
-because a family added to the register without an entry here would resolve to this
-adapter and then fail inside a load with a ``KeyError`` rather than in a refusal.
+that load through ``transformers`` at all — a test holds the two together, because a
+family added to the register without an entry here would resolve to this adapter and
+then fail inside a load with a ``KeyError`` rather than in a refusal. The single
+exception is
+:data:`~visionset.inference.stub_provider.STUB_FAMILY`, this build's own no-op
+segmenter, which ``provider_for`` answers before reaching this adapter and which
+therefore has no pair to name.
 
 **SAM 3's entry names its processor and SAM 2's does not, and the asymmetry is the
 point rather than an oversight.** ``AutoProcessor`` resolves against the

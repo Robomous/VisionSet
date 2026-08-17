@@ -646,9 +646,17 @@ function RunProgress({
  */
 function DownloadProgress({ download }: { readonly download: WeightDownload }): JSX.Element {
   const { state, bytes_done: done, bytes_total: total } = download;
-  const known = total !== null && total > 0;
+  // **Known and measurable are two questions, and folding them lost one.**
+  // `total > 0` was doing both jobs, so a download of *nothing* — the built-in
+  // stand-in has no weights to fetch — rendered "the published size could not be
+  // read", which is a sentence about a failure in front of a total that was read
+  // and is zero. A bar still needs a positive total to divide by, hence the
+  // second name rather than one loosened test.
+  const known = total !== null;
+  const measurable = known && total > 0;
   const settling = known && done >= total;
-  const percent = known && state !== "queued" ? Math.min(100, Math.round((done / total) * 100)) : null;
+  const percent =
+    measurable && state !== "queued" ? Math.min(100, Math.round((done / total) * 100)) : null;
   return (
     <RunProgress
       testId="download-progress"
@@ -659,7 +667,7 @@ function DownloadProgress({ download }: { readonly download: WeightDownload }): 
         ? "Queued — starts as soon as a worker is free."
         : settling
           ? "Checking what arrived…"
-          : known
+          : measurable
             ? `${bytes(done)} of ${bytes(total)} · ${percent}%`
             : `${bytes(done)} so far — the published size could not be read.`}
     </RunProgress>
