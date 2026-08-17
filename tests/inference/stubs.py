@@ -106,19 +106,6 @@ class StubProcessor:
         return [Stack(self._masks)]
 
 
-class Embedding(str):
-    """An embedding stand-in that survives the adapter's detach at the cache boundary.
-
-    A ``str`` so every assertion comparing embeddings by value keeps reading the
-    way it always has; ``detach`` answers itself the way a graph-free tensor
-    answers a graph-free twin, because the adapter detaches whatever it is about
-    to cache and a bare string has no such method.
-    """
-
-    def detach(self) -> Embedding:
-        return self
-
-
 class StubModel:
     """A segmenter that answers from a fixed script, and counts its encodes."""
 
@@ -129,9 +116,19 @@ class StubModel:
         self.prompts: list[tuple[Any, Any]] = []
         self.embeddings_seen: list[Any] = []
 
-    def get_image_embeddings(self, pixel_values: Any) -> Embedding:
+    def get_image_embeddings(self, pixel_values: Any) -> list[str]:
+        """One encode, answered the shape a real one answers in.
+
+        **A list, because that is what the real method returns** — the multi-scale
+        feature maps arrive together, and both model classes this build serves
+        declare ``list[torch.Tensor]``. A stand-in that hands back a bare value
+        instead lets the adapter reach for a tensor's methods and pass, and then
+        fail on the only machine that has a real one. That is not hypothetical:
+        it is how a ``detach`` on the cache write shipped green and answered
+        ``AttributeError`` to every click.
+        """
         self.encodes += 1
-        return Embedding(f"embedding-{self.encodes}")
+        return [f"embedding-{self.encodes}"]
 
     def __call__(
         self,

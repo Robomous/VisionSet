@@ -208,7 +208,7 @@ def test_a_second_click_on_the_same_asset_decodes_without_encoding_again(
     assert model.encodes == 1
     assert processor.encodes == 1
     assert processor.decodes == 2, "but both clicks were answered"
-    assert model.embeddings_seen == ["embedding-1", "embedding-1"]
+    assert model.embeddings_seen == [["embedding-1"], ["embedding-1"]]
 
 
 def test_a_different_asset_pays_its_own_encode(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -216,7 +216,7 @@ def test_a_different_asset_pays_its_own_encode(monkeypatch: pytest.MonkeyPatch) 
     list(provider.segment(asked(one_click(), target())))
     list(provider.segment(asked(one_click(), target())))
     assert provider.encodes == 2
-    assert model.embeddings_seen == ["embedding-1", "embedding-2"]
+    assert model.embeddings_seen == [["embedding-1"], ["embedding-2"]]
 
 
 def test_the_cache_is_bounded_and_evicts_the_least_recently_used(
@@ -250,28 +250,29 @@ class _GuardWatchingModel(StubModel):
         self._pristine = torch.nn.functional.grid_sample
         self.guarded_encodes: list[bool] = []
 
-    def get_image_embeddings(self, pixel_values: Any) -> str:
+    def get_image_embeddings(self, pixel_values: Any) -> list[str]:
         self.guarded_encodes.append(self._torch.nn.functional.grid_sample is not self._pristine)
         return super().get_image_embeddings(pixel_values)
 
 
-class _Graphed:
-    """A tensor the way autograd hands one over: a graph attached, until detached."""
+class _Opaque:
+    """Something with no members at all, standing in for one feature map.
 
-    def __init__(self, *, detached: bool = False) -> None:
-        self.requires_grad = not detached
-        self.grad_fn = None if detached else object()
+    The point is the absence. Reaching for *any* attribute on this raises, so a
+    test driving a provider whose encode answers a list of these proves the
+    adapter treats the encode's output as something it carries rather than
+    something it inspects.
+    """
 
-    def detach(self) -> _Graphed:
-        return _Graphed(detached=True)
+    __slots__ = ()
 
 
-class _GraphedModel(StubModel):
-    """A model whose embeddings carry an autograd graph, as a real forward's would."""
+class _OpaqueModel(StubModel):
+    """A model whose encode answers feature maps this adapter may not touch."""
 
-    def get_image_embeddings(self, pixel_values: Any) -> _Graphed:
+    def get_image_embeddings(self, pixel_values: Any) -> list[_Opaque]:
         super().get_image_embeddings(pixel_values)
-        return _Graphed()
+        return [_Opaque(), _Opaque()]
 
 
 def test_the_encode_runs_inside_the_forward_guard(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -286,13 +287,25 @@ def test_the_encode_runs_inside_the_forward_guard(monkeypatch: pytest.MonkeyPatc
     assert model.guarded_encodes == [True], "the encode ran outside the forward guard"
 
 
-def test_the_cached_embedding_carries_no_autograd_graph(
+def test_what_the_encode_answered_is_cached_and_decoded_without_being_touched(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """What the cache holds is the embedding alone, never the encoder's graph —
-    an entry pinning the activations behind a ``grad_fn`` is many times the
-    size the cache's bound was reasoned about."""
-    provider, _, _ = built(monkeypatch, model=_GraphedModel([disc(20)], [0.9]))
+    """The encode's output crosses to the cache and to the decoder as it came.
+
+    **Nothing here is a tensor, and that is the assertion.** The real method
+    answers a *list* of multi-scale feature maps, so an adapter reaching for a
+    tensor's own methods on it — ``detach`` was the one that shipped — raises
+    ``AttributeError`` for every click while every stub that hands back a bare
+    tensor-shaped stand-in stays green. A list of members with no attributes at
+    all is what tells those two apart.
+
+    Keeping the encoder's activation graph out of the cache is real and is
+    ``forward_guard``'s job, asserted by its own test above: the guard enters
+    ``no_grad`` on both branches, so there is no ``grad_fn`` on anything this
+    ever holds.
+    """
+    model = _OpaqueModel([disc(20)], [0.9])
+    provider, _, _ = built(monkeypatch, model=model)
     asset = uuid4()
 
     list(provider.segment(asked(one_click(), target(asset))))
@@ -300,8 +313,8 @@ def test_the_cached_embedding_carries_no_autograd_graph(
     held = provider._embeddings.get(asset)
     assert held is not None
     cached, _ = held
-    assert cached.requires_grad is False
-    assert cached.grad_fn is None
+    assert isinstance(cached, list) and len(cached) == 2, "the maps arrive together"
+    assert model.embeddings_seen == [cached], "the decoder was handed that same object"
 
 
 # --- which classes a family loads through -------------------------------------
