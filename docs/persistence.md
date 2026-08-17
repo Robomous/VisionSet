@@ -160,12 +160,13 @@ MIGRATIONS: list[Migration] = [
     Migration(version=6, name="inference_connections", upgrade=_add_inference_connections),
     Migration(version=7, name="model_family", upgrade=_add_model_family),
     Migration(version=8, name="progress_touched", upgrade=_add_progress_touched),
-    Migration(version=9, name="schema_drafts", upgrade=_add_schema_drafts),
+    Migration(version=9, name="job_assignee", upgrade=_add_job_assignee),
+    Migration(version=10, name="schema_drafts", upgrade=_add_schema_drafts),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 9
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 10
 ```
 
-**Generation 1 is the baseline, and the eight entries after it are ordinary migrations.** A long
+**Generation 1 is the baseline, and the nine entries after it are ordinary migrations.** A long
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus
@@ -178,7 +179,7 @@ force again for every entry appended after the baseline.
 `tests/kernel/test_migrations.py` that builds an old-looking file. The failure is the silent
 kind: a column left in place makes its own migration find the column already there and return
 early, so `test_a_fresh_database_and_a_migrated_one_have_the_same_schema` compares a file
-against itself and passes while proving nothing. The table-creating migrations - 4, 6 and 9 -
+against itself and passes while proving nothing. The table-creating migrations - 4, 6 and 10 -
 are the standing exception: dropping a whole table in the helper would exercise SQLite rather
 than this module.
 
