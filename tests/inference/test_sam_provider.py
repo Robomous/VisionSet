@@ -16,12 +16,13 @@ highest-scoring mask intact, and encode an image once.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
 import pytest
 from tests.fixtures.local_inference import require_local_inference
-from tests.inference.stubs import StubModel, StubProcessor, StubTorch, blank, disc
+from tests.inference.stubs import PNG, StubModel, StubProcessor, StubTorch, blank, disc
 
 from visionset.inference import sam_provider
 from visionset.inference.sam_provider import (
@@ -39,14 +40,7 @@ from visionset.kernel.domain import (
     PredictionTarget,
     TextPrompt,
 )
-from visionset.kernel.errors import UnsupportedPrompt
-
-PNG = (
-    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
-    b"\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00"
-    b"\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
-)
-"""A real one-pixel PNG, because the adapter genuinely decodes what it is handed."""
+from visionset.kernel.errors import InferenceOutOfMemory, UnsupportedPrompt
 
 
 def in_bytes(mask: list[list[bool]]) -> list[bytes]:
@@ -487,3 +481,138 @@ def test_a_real_tensor_gives_one_byte_per_pixel_and_keeps_the_grids_shape() -> N
     rows = _rows(torch.ones((4, 7), dtype=torch.bool))
     assert [len(row) for row in rows] == [7, 7, 7, 7]
     assert set(b"".join(rows)) == {1}
+
+
+# --- what a full device is answered with --------------------------------------
+
+OUT_OF_MEMORY = "CUDA out of memory. Tried to allocate 2.44 GiB. GPU 0 has 8.00 GiB in total"
+"""What an allocator writes when the device cannot fit the next tensor."""
+
+
+class _StarvedModel(StubModel):
+    """A model whose decode dies the way a full device does."""
+
+    def __call__(self, **_: Any) -> Any:
+        raise RuntimeError(OUT_OF_MEMORY)
+
+
+class _StarvedEncoder(StubModel):
+    """A model whose *encode* dies that way — the largest allocation a click makes."""
+
+    def get_image_embeddings(self, pixel_values: Any) -> Any:
+        raise RuntimeError(OUT_OF_MEMORY)
+
+
+class _BrokenModel(StubModel):
+    """A model whose forward dies of an ordinary defect."""
+
+    def __call__(self, **_: Any) -> Any:
+        raise RuntimeError("expected scalar type Half but found Float")
+
+
+class _StarvedClass:
+    """A ``transformers`` auto-class that cannot fit the weights it was asked for."""
+
+    @staticmethod
+    def from_pretrained(*_: Any, **__: Any) -> Any:
+        raise RuntimeError(OUT_OF_MEMORY)
+
+
+class _HeavyClass:
+    """A ``transformers`` auto-class whose weights load, but do not fit the device."""
+
+    @staticmethod
+    def from_pretrained(*_: Any, **__: Any) -> _HeavyClass:
+        return _HeavyClass()
+
+    def to(self, _: str) -> Any:
+        raise RuntimeError(OUT_OF_MEMORY)
+
+
+def test_a_decode_that_runs_out_of_memory_is_refused_with_a_remedy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, _, _ = built(monkeypatch, model=_StarvedModel([disc(20)], [0.9]))
+    with pytest.raises(InferenceOutOfMemory) as raised:
+        list(provider.segment(asked(one_click())))
+    said = str(raised.value)
+    assert "some/segmenter@abc123" in said, "a person needs to know which model did not fit"
+    assert "smaller model" in said
+
+
+def test_an_encode_that_runs_out_of_memory_is_refused_too(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The encode is the biggest allocation of a click, and sits under the same wrap.
+
+    Its own case rather than the decode's, so that a refactor lifting the
+    embedding out from under that wrap fails here instead of shipping.
+    """
+    provider, _, _ = built(monkeypatch, model=_StarvedEncoder([disc(20)], [0.9]))
+    with pytest.raises(InferenceOutOfMemory):
+        list(provider.segment(asked(one_click())))
+
+
+def test_a_forward_that_fails_for_another_reason_is_still_a_defect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Anything that is not an allocation failure keeps its traceback and its incident id."""
+    provider, _, _ = built(monkeypatch, model=_BrokenModel([disc(20)], [0.9]))
+    with pytest.raises(RuntimeError, match="scalar type"):
+        list(provider.segment(asked(one_click())))
+
+
+def test_a_load_that_runs_out_of_memory_is_refused_with_a_remedy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Moving a checkpoint onto a device is where a large model most often dies.
+
+    It happens on the first click rather than at download, because the load is
+    lazy — so a person meets it mid-suggestion and needs the sentence the forward
+    would have given.
+    """
+    torch = StubTorch()
+    transformers = SimpleNamespace(AutoProcessor=_StarvedClass, Sam2Model=_StarvedClass)
+    monkeypatch.setattr(
+        sam_provider, "imported", lambda name: torch if name == "torch" else transformers
+    )
+    provider = LocalSamProvider(
+        "some/segmenter",
+        "abc123",
+        family="sam2",
+        device="cpu",
+        precision=None,
+        cache_dir=Path("/nowhere"),
+        connection_name="local",
+    )
+    with pytest.raises(InferenceOutOfMemory) as raised:
+        list(provider.segment(asked(one_click())))
+    assert "some/segmenter@abc123" in str(raised.value)
+
+
+def test_moving_a_loaded_model_onto_a_full_device_is_refused_with_a_remedy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`.to(device)` is the load's largest allocation, and the wrap covers it too.
+
+    Both classes load cleanly here, unlike the case above — so this is the test
+    that actually reaches `model.to(device)`, the call `_load`'s docstring names
+    as the largest single allocation a connection ever makes.
+    """
+    torch = StubTorch()
+    transformers = SimpleNamespace(AutoProcessor=_HeavyClass, Sam2Model=_HeavyClass)
+    monkeypatch.setattr(
+        sam_provider, "imported", lambda name: torch if name == "torch" else transformers
+    )
+    provider = LocalSamProvider(
+        "some/segmenter",
+        "abc123",
+        family="sam2",
+        device="cpu",
+        precision=None,
+        cache_dir=Path("/nowhere"),
+        connection_name="local",
+    )
+    with pytest.raises(InferenceOutOfMemory) as raised:
+        list(provider.segment(asked(one_click())))
+    assert "some/segmenter@abc123" in str(raised.value)

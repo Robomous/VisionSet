@@ -111,6 +111,7 @@ def suggest(
         InferenceConnectionNotRunnable: nothing in this build runs that kind of
             connection, or that model type.
         LocalInferenceUnavailable: the optional runtime is not installed.
+        InferenceOutOfMemory: the device ran out of memory loading or running the model.
         UnsupportedPrompt: that connection's model answers words, not places.
         ProjectNotFound: no such project.
         AssetNotFound: no such asset in that project.

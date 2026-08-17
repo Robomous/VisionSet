@@ -45,7 +45,7 @@ from uuid import UUID
 
 from PIL import Image
 
-from visionset.inference import _device, _fp16
+from visionset.inference import _device, _fp16, _memory
 from visionset.inference._extra import imported
 from visionset.inference.cache import DEFAULT_EMBEDDING_CAPACITY, BoundedCache, KeyedLocks
 from visionset.inference.weights import HuggingFaceWeights, cache_root
@@ -292,32 +292,39 @@ class LocalSamProvider:
         torch: Any,
         minimum_confidence: float,
     ) -> AssetSegmentation:
-        """One image, one prompt, one mask at most."""
+        """One image, one prompt, one mask at most.
+
+        The whole body runs inside the allocation guard rather than only the
+        forward: the processor's tensors, the embedding, and the lift back to the
+        asset's own size are allocations too, and a click that dies on any of
+        them died for the same reason and has the same remedy.
+        """
         processor, model, device, half = self._ready()
-        embedding, size = self._embedding(
-            target, processor=processor, model=model, device=device, torch=torch, half=half
-        )
-        height, width = size
-        inputs = processor(
-            original_sizes=[[height, width]],
-            input_points=[[points]],
-            input_labels=[[labels]],
-            return_tensors="pt",
-        ).to(device)
-        with _fp16.forward_guard(torch, device_type=device.split(":")[0], half=half):
-            outputs = model(
-                input_points=inputs["input_points"],
-                input_labels=inputs["input_labels"],
-                image_embeddings=embedding,
-                multimask_output=True,
+        with _memory.translated(torch, device=device, model_ref=self.model_ref):
+            embedding, size = self._embedding(
+                target, processor=processor, model=model, device=device, torch=torch, half=half
             )
-        return AssetSegmentation(
-            asset_id=target.asset_id,
-            model_ref=self.model_ref,
-            segments=self._segments(
-                outputs, processor=processor, size=size, minimum_confidence=minimum_confidence
-            ),
-        )
+            height, width = size
+            inputs = processor(
+                original_sizes=[[height, width]],
+                input_points=[[points]],
+                input_labels=[[labels]],
+                return_tensors="pt",
+            ).to(device)
+            with _fp16.forward_guard(torch, device_type=device.split(":")[0], half=half):
+                outputs = model(
+                    input_points=inputs["input_points"],
+                    input_labels=inputs["input_labels"],
+                    image_embeddings=embedding,
+                    multimask_output=True,
+                )
+            return AssetSegmentation(
+                asset_id=target.asset_id,
+                model_ref=self.model_ref,
+                segments=self._segments(
+                    outputs, processor=processor, size=size, minimum_confidence=minimum_confidence
+                ),
+            )
 
     def _segments(
         self,
@@ -431,6 +438,12 @@ class LocalSamProvider:
         vary: the device resolution, the dtype, and ``local_files_only``, because
         nothing on a load path may reach the network.
 
+        **The load is guarded as well as the forward.** Moving a checkpoint onto a
+        device is the largest single allocation a connection ever makes, and it
+        happens on the first prediction rather than at download — so a device too
+        small for the model chosen fails here, mid-request, and needs the same
+        answer the forward gives.
+
         **``transformers`` warns here on every load, and the warning is expected.**
         The published SAM 2 checkpoints declare ``model_type: sam2_video``, so
         loading one into ``Sam2Model`` prints *"You are using a model of type
@@ -466,13 +479,16 @@ class LocalSamProvider:
             "local_files_only": True,
         }
         processor_class, model_class = _CLASSES[self._family]
-        processor = getattr(transformers, processor_class).from_pretrained(self._model_id, **common)
-        model = getattr(transformers, model_class).from_pretrained(
-            self._model_id,
-            dtype=torch.float16 if half else torch.float32,
-            **common,
-        )
-        return processor, model.to(device).eval(), device, half
+        with _memory.translated(torch, device=device, model_ref=self.model_ref):
+            processor = getattr(transformers, processor_class).from_pretrained(
+                self._model_id, **common
+            )
+            model = getattr(transformers, model_class).from_pretrained(
+                self._model_id,
+                dtype=torch.float16 if half else torch.float32,
+                **common,
+            )
+            return processor, model.to(device).eval(), device, half
 
 
 SAM_FAMILIES: Final[Mapping[str, ModelCapability]] = {
