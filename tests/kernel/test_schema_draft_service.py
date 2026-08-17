@@ -168,6 +168,38 @@ def test_creating_over_an_existing_draft_is_refused(tmp_path: Path) -> None:
     workspace.close()
 
 
+def test_omitting_based_on_on_a_second_save_preserves_the_stored_value(tmp_path: Path) -> None:
+    """A read-modify-write through a surface with no ``based_on`` parameter at all
+    — the CLI's ``schema draft set``, ``set_schema_draft`` — must not silently null
+    out a value it never had the means to carry.
+    """
+    workspace, drafts, project = _drafts(tmp_path)
+    first = drafts.save(project.id, CURATED, classes=[DraftLabelClass(name="car")], based_on=3)
+    second = drafts.save(
+        project.id,
+        CURATED,
+        classes=[DraftLabelClass(name="car"), DraftLabelClass(name="lane")],
+        expected_revision=first.revision,
+    )
+    assert second.based_on == 3
+    workspace.close()
+
+
+def test_based_on_explicitly_passed_as_none_still_clears_it(tmp_path: Path) -> None:
+    """Omitted and explicit-``None`` are different requests, and only the first preserves."""
+    workspace, drafts, project = _drafts(tmp_path)
+    first = drafts.save(project.id, CURATED, classes=[DraftLabelClass(name="car")], based_on=3)
+    second = drafts.save(
+        project.id,
+        CURATED,
+        classes=[DraftLabelClass(name="car")],
+        based_on=None,
+        expected_revision=first.revision,
+    )
+    assert second.based_on is None
+    workspace.close()
+
+
 def test_the_two_kinds_do_not_see_each_other(tmp_path: Path) -> None:
     workspace, drafts, project = _drafts(tmp_path)
     drafts.save(project.id, CURATED, classes=[DraftLabelClass(name="car")])

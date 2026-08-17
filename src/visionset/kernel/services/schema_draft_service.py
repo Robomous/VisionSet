@@ -37,6 +37,18 @@ from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.workspace_service import WorkspaceService
 
 
+class _Omitted:
+    """Marks ``based_on`` as not passed, distinct from passed as ``None``.
+
+    A plain ``None`` default could not tell "the caller wants this cleared"
+    from "the caller's surface has nowhere to name it at all" — and ``save``
+    has to answer those two differently.
+    """
+
+
+_OMITTED = _Omitted()
+
+
 class SchemaDraftService:
     """Read, write, discard and publish the drafts of one project."""
 
@@ -64,7 +76,7 @@ class SchemaDraftService:
         *,
         classes: Sequence[DraftLabelClass],
         note: str = "",
-        based_on: int | None = None,
+        based_on: int | None | _Omitted = _OMITTED,
         expected_revision: int | None = None,
     ) -> SchemaDraft:
         """Write the whole draft, and refuse a write decided against a stale read.
@@ -77,6 +89,14 @@ class SchemaDraftService:
         ``None`` means *create*, so a caller that never read cannot silently
         replace one that did — a writer with no revision in hand has, by
         definition, not seen what it is about to overwrite.
+
+        ``based_on`` **omitted** preserves whatever the stored draft already
+        names — a read-modify-write through a surface with no parameter for it
+        (the CLI's ``set`` command, ``set_schema_draft``) must not silently null
+        out a value it never had the means to carry. Passed explicitly, including
+        as ``None``, it replaces the stored value the ordinary way. A draft being
+        created for the first time has no stored value to preserve, so an
+        omitted ``based_on`` there starts the draft at ``None``.
 
         Unlike ``JobService.mark``, this is **not** exempted when the stored value
         already matches what is asked for. A draft write is not idempotent by
@@ -106,7 +126,7 @@ class SchemaDraftService:
                         kind=kind,
                         classes=tuple(classes),
                         note=note,
-                        based_on=based_on,
+                        based_on=None if isinstance(based_on, _Omitted) else based_on,
                         revision=1,
                         updated_at=now,
                     )
@@ -126,7 +146,7 @@ class SchemaDraftService:
                     update={
                         "classes": tuple(classes),
                         "note": note,
-                        "based_on": based_on,
+                        "based_on": stored.based_on if isinstance(based_on, _Omitted) else based_on,
                         "revision": stored.revision + 1,
                         "updated_at": now,
                     }
