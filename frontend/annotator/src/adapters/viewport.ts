@@ -281,6 +281,8 @@ export interface WheelShape {
   /** 0 pixels, 1 lines, 2 pages — see `DELTA_SCALE`. */
   readonly deltaMode: number;
   readonly deltaX: number;
+  /** Needed beside `deltaX`: one axis is a scroll, both at once is a hand. */
+  readonly deltaY: number;
   /** The legacy `WheelEvent.wheelDeltaY`, or 0 where the browser has none. */
   readonly wheelDeltaY: number;
 }
@@ -318,6 +320,71 @@ export function isMouseWheel(wheel: WheelShape): boolean {
 }
 
 /**
+ * Positive evidence that a *precise* pointing device sent this — a trackpad.
+ *
+ * **Travel on both axes at once is the one thing no wheel can fake**, and the
+ * "at once" is the whole rule. A vertical wheel reports `deltaX === 0` always. A
+ * horizontal wheel — a tilt wheel, or the thumb wheel every MX Master carries as
+ * `REL_HWHEEL` — reports `deltaY === 0` always. Each is one axis at a time,
+ * because each is one physical wheel. Two fingers on glass are not: they drift,
+ * and a drifting gesture puts a component on both axes in the same event.
+ *
+ * Reading `deltaX` alone would therefore condemn a mouse for a nudge of its own
+ * thumb wheel — flagging it a trackpad, and taking its zoom away for good.
+ *
+ * That asymmetry is what makes this usable as *evidence* rather than as a test.
+ * Asked of one event it is weak, because a trackpad's individual event may well
+ * be dead vertical. Accumulated it is strong, and it only ever points one way: a
+ * wheel cannot produce it at all, so seeing it once is conclusive and never
+ * seeing it is what a mouse looks like.
+ */
+export function isPreciseDevice(wheel: WheelShape): boolean {
+  return wheel.deltaMode === 0 && wheel.deltaX !== 0 && wheel.deltaY !== 0;
+}
+
+/**
+ * Whether a bare wheel event zooms.
+ *
+ * `isMouseWheel` answers where the numbers carry an answer, and for one whole
+ * class of device they do not. A **high-resolution wheel** — every Logitech MX
+ * Master, Microsoft's wheels, and a growing share of the rest — reports a
+ * fraction of a detent per event rather than a whole one, and the kernel's own
+ * specification declines to bound that fraction: *"the API does not specify the
+ * smallest fraction a wheel supports"*. A trackpad reports fractions of the same
+ * size, over the same axis, in the same `deltaMode`. At the level a single wheel
+ * event describes them, **they are the same event**, and no arithmetic on one
+ * event separates them.
+ *
+ * So this stops interrogating the event and asks which device is on the desk.
+ * **It assumes a mouse and makes the trackpad prove itself**, through
+ * `sawPreciseDevice`. The burden of proof sits this way round because the two
+ * mistakes are not the same size:
+ *
+ * - guess "mouse" wrongly and a trackpad zooms for the one gesture it takes to
+ *   drift, after which it is right forever;
+ * - guess "trackpad" wrongly and a mouse **never zooms at all**, because a wheel
+ *   emits no evidence that could ever overturn the guess. That is the defect
+ *   this is fixing, and it is unbounded.
+ *
+ * A recoverable error beats an unrecoverable one, so the recoverable one is the
+ * one taken.
+ *
+ * `isMouseWheel` is asked first and outranks the evidence, which is what serves
+ * a laptop carrying both: once its trackpad has been seen, an external mouse
+ * reporting whole notches still zooms. A *high-resolution* mouse beside a
+ * trackpad is the one arrangement nothing here can separate, because that is the
+ * case where the two devices send the same event.
+ */
+export function bareWheelZooms(wheel: WheelShape, sawPreciseDevice: boolean): boolean {
+  if (isMouseWheel(wheel)) return true;
+  // Any horizontal component at all: a two-finger drift, or a scroll on a
+  // horizontal wheel. Both are pans, so one clause answers them and there is no
+  // separate case for "sideways only" — this already covers it.
+  if (wheel.deltaX !== 0) return false;
+  return !sawPreciseDevice;
+}
+
+/**
  * How much wheel travel doubles the zoom. Larger is gentler.
  *
  * Derived rather than picked. One notch of a mouse wheel is 120 pixels of
@@ -352,10 +419,23 @@ const MOUSE_NOTCH_PX = 40;
  *
  * Multiplicative because zoom is: two notches out and two notches back land
  * exactly where they started, which additive steps do not.
+ *
+ * **`mayBePinch` is why this takes a second argument.** The magnitude split
+ * below exists for one situation only: `ctrl`/`cmd` is held, and a trackpad
+ * pinch and a mouse wheel then arrive identically, so size is all that is left
+ * to tell them apart. A **bare** event is not in that situation — it only
+ * reaches a zoom at all once the device has been judged a mouse — and putting it
+ * through the split anyway is a measured defect, not a theoretical one: a
+ * high-resolution wheel sends 6-13 pixel fractions of a detent, every one of
+ * them lands under the threshold, and the whole gesture is zoomed on the pinch
+ * curve at **5.4x** the intended rate. Measured in a browser at 103 against an
+ * intended 538. So the caller says whether a pinch is even possible, rather than
+ * this guessing from a number that cannot answer.
  */
-export function wheelZoomFactor(delta: number): number {
+export function wheelZoomFactor(delta: number, mayBePinch = true): number {
   if (!Number.isFinite(delta)) return 1;
-  const softness = Math.abs(delta) >= MOUSE_NOTCH_PX ? WHEEL_SOFTNESS : PINCH_SOFTNESS;
+  const softness =
+    mayBePinch && Math.abs(delta) < MOUSE_NOTCH_PX ? PINCH_SOFTNESS : WHEEL_SOFTNESS;
   return Math.exp(-delta / softness);
 }
 

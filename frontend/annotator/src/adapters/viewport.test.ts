@@ -18,7 +18,9 @@ import {
   fitToViewport,
   imageRenderingAt,
   imageToScreen,
+  bareWheelZooms,
   isMouseWheel,
+  isPreciseDevice,
   normalizedWheel,
   panBy,
   pinchBetween,
@@ -303,36 +305,136 @@ describe("a wheel event's travel is read in screen pixels whatever it was report
 
 describe("a bare wheel event is read as a mouse or as a trackpad", () => {
   it("reads a Chrome wheel notch as a mouse", () => {
-    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, wheelDeltaY: -120 })).toBe(true);
+    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, deltaY: -1, wheelDeltaY: -120 })).toBe(true);
   });
 
   it("reads a fast spin, which arrives as several notches at once, as a mouse", () => {
-    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, wheelDeltaY: 360 })).toBe(true);
+    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, deltaY: -1, wheelDeltaY: 360 })).toBe(true);
   });
 
   it("reads Firefox's line deltas as a mouse, since nothing else reports lines", () => {
-    expect(isMouseWheel({ deltaMode: 1, deltaX: 0, wheelDeltaY: 0 })).toBe(true);
+    expect(isMouseWheel({ deltaMode: 1, deltaX: 0, deltaY: -1, wheelDeltaY: 0 })).toBe(true);
   });
 
   it("reads a trackpad's own quantum as a trackpad", () => {
     // A precise device's `wheelDeltaY` is `-3 * deltaY`, so 12 pixels of
     // two-finger travel arrive as 36 and no notch is a multiple of 36.
-    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, wheelDeltaY: -36 })).toBe(false);
+    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, deltaY: -1, wheelDeltaY: -36 })).toBe(false);
   });
 
   it("reads anything sideways as a trackpad, whatever the vertical looks like", () => {
     // The one case a magnitude test alone gets wrong: a scroll that travelled an
     // exact multiple of 40 pixels vertically is notch-shaped by accident, and the
     // sideways component is what still says it came from two fingers.
-    expect(isMouseWheel({ deltaMode: 0, deltaX: -4, wheelDeltaY: -120 })).toBe(false);
+    expect(isMouseWheel({ deltaMode: 0, deltaX: -4, deltaY: -8, wheelDeltaY: -120 })).toBe(false);
   });
 
   it("reads a browser that fills in no wheel delta as a trackpad, not as a mouse", () => {
-    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, wheelDeltaY: 0 })).toBe(false);
+    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, deltaY: -1, wheelDeltaY: 0 })).toBe(false);
+  });
+
+  // The device this exists for. A Logitech MX Master 3 over Bluetooth advertises
+  // `REL_WHEEL_HI_RES`, so the kernel reports a fraction of a detent per event
+  // and Chrome passes the fraction on. No multiple of 120 ever arrives, and the
+  // clause above has no case that fires — which is why `bareWheelZooms` exists
+  // rather than a fourth clause here.
+  it("cannot recognise a high-resolution wheel, which is the limit this heuristic has", () => {
+    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, deltaY: -1, wheelDeltaY: -15 })).toBe(false);
+    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, deltaY: -1, wheelDeltaY: -45 })).toBe(false);
+  });
+});
+
+describe("both axes at once is the one thing no wheel can fake", () => {
+  it("reads simultaneous horizontal and vertical travel as a trackpad", () => {
+    expect(isPreciseDevice({ deltaMode: 0, deltaX: -4, deltaY: -8, wheelDeltaY: -36 })).toBe(true);
+  });
+
+  /**
+   * The MX Master's thumb wheel, and every tilt wheel: `REL_HWHEEL`, horizontal
+   * only. Reading `deltaX` alone would condemn a mouse for a nudge of its own
+   * second wheel — and, since the sighting is remembered, take its zoom away for
+   * good. One axis at a time is what a wheel is.
+   */
+  it("does not accuse a mouse of being a trackpad for using its thumb wheel", () => {
+    expect(isPreciseDevice({ deltaMode: 0, deltaX: -30, deltaY: 0, wheelDeltaY: 0 })).toBe(false);
+  });
+
+  it("reads dead-vertical travel as nothing either way, which most trackpad events are", () => {
+    expect(isPreciseDevice({ deltaMode: 0, deltaX: 0, deltaY: -1, wheelDeltaY: -36 })).toBe(false);
+  });
+
+  it("never accuses Firefox's line-mode mouse, whatever else the event carries", () => {
+    expect(isPreciseDevice({ deltaMode: 1, deltaX: -4, deltaY: -8, wheelDeltaY: 0 })).toBe(false);
+  });
+});
+
+describe("a bare wheel assumes a mouse and makes the trackpad prove itself", () => {
+  const HI_RES_WHEEL = { deltaMode: 0, deltaX: 0, deltaY: -6, wheelDeltaY: -15 } as const;
+  const TRACKPAD_VERTICAL = { deltaMode: 0, deltaX: 0, deltaY: -12, wheelDeltaY: -36 } as const;
+  const TRACKPAD_DRIFTING = { deltaMode: 0, deltaX: -4, deltaY: -12, wheelDeltaY: -36 } as const;
+  const THUMB_WHEEL = { deltaMode: 0, deltaX: -30, deltaY: 0, wheelDeltaY: 0 } as const;
+  const NOTCH = { deltaMode: 0, deltaX: 0, deltaY: -53, wheelDeltaY: -120 } as const;
+
+  /**
+   * The defect, and the reason the burden of proof is this way round. A
+   * high-resolution wheel emits no evidence at all, so a rule waiting for proof
+   * of a mouse waits forever and the wheel never zooms once.
+   */
+  it("zooms a high-resolution wheel, which no arithmetic on one event could recognise", () => {
+    expect(isMouseWheel(HI_RES_WHEEL)).toBe(false);
+    expect(bareWheelZooms(HI_RES_WHEEL, false)).toBe(true);
+  });
+
+  it("still zooms an ordinary notch, by the device test rather than by the assumption", () => {
+    expect(bareWheelZooms(NOTCH, false)).toBe(true);
+  });
+
+  it("pans the moment a trackpad drifts across both axes", () => {
+    expect(bareWheelZooms(TRACKPAD_DRIFTING, false)).toBe(false);
+  });
+
+  /**
+   * The cost, stated exactly: a trackpad's dead-vertical event zooms *until* the
+   * gesture drifts, and never again after. Bounded and self-correcting, where
+   * the failure it replaces was permanent.
+   */
+  it("keeps panning every later event once the trackpad has shown itself", () => {
+    expect(bareWheelZooms(TRACKPAD_VERTICAL, false)).toBe(true);
+    expect(bareWheelZooms(TRACKPAD_VERTICAL, true)).toBe(false);
+  });
+
+  it("pans a purely sideways scroll, which has no vertical travel to zoom with", () => {
+    expect(bareWheelZooms(THUMB_WHEEL, false)).toBe(false);
+  });
+
+  /**
+   * A laptop carrying both. `isMouseWheel` is asked first and outranks the
+   * sighting, so an external mouse reporting whole notches still zooms after the
+   * built-in trackpad has been seen.
+   */
+  it("still zooms a notch from a second device after a trackpad was seen", () => {
+    expect(bareWheelZooms(NOTCH, true)).toBe(true);
   });
 });
 
 describe("the wheel's zoom factor", () => {
+  /**
+   * The bare-wheel path says a pinch is impossible, and that is what keeps a
+   * high-resolution wheel off the pinch curve. Its sub-detent fractions are all
+   * under the 40px threshold, so left to the magnitude split every one of them
+   * zooms at 5.4x the intended rate — measured in a browser at a softness of
+   * 103 where 538 was meant.
+   */
+  it("keeps a small bare-wheel delta on the wheel curve, not the pinch curve", () => {
+    expect(wheelZoomFactor(-6, false)).toBeCloseTo(Math.exp(6 / 538), 6);
+    // The same number through the modifier path, where a pinch really is possible.
+    expect(wheelZoomFactor(-6, true)).toBeCloseTo(Math.exp(6 / 100), 6);
+  });
+
+  it("is unchanged for a full notch, whichever path asked", () => {
+    expect(wheelZoomFactor(-120, true)).toBeCloseTo(wheelZoomFactor(-120, false), 10);
+  });
+
   it("makes one mouse notch worth one press of a 1.25 step button", () => {
     expect(wheelZoomFactor(-120)).toBeCloseTo(1.25, 3);
   });

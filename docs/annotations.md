@@ -476,6 +476,54 @@ the failure #576 fixed, while a mouse this declines - a Magic Mouse reports as a
 still zooms with the modifier, with the widget's `-`/`+`, and with `mod+0` to refit. The cost of
 being wrong is one stray notch inside a hard flick, never a device with no gesture at all.
 
+### The class of device no single event can name, and how the tie is broken
+
+There is one whole class it declines permanently rather than at the margin, and the cost there is
+not a stray notch: it is a mouse with no zoom. A **high-resolution wheel** - every Logitech MX
+Master, Microsoft's wheels, and a growing share of everything else - reports a *fraction* of a
+detent per event instead of a whole one. No multiple of 120 ever arrives, so the third signal has
+no case that ever fires, and the wheel pans forever.
+
+The tempting fix is a fourth signal on the event, and there is no such signal. Linux's own
+specification for the axis these devices report on declines to bound the fraction - *"the API does
+not specify the smallest fraction a wheel supports"* - and an accumulated value need not align
+with a multiple of 120 either. A trackpad reports fractions of the same size, over the same axis,
+in the same `deltaMode`. **At the level a single wheel event describes them, the two are the same
+event.**
+
+So the model stops interrogating the event and asks which device is on the desk. **It assumes a
+mouse and makes the trackpad prove itself**, on the one thing no wheel can fake: **travel on both
+axes at once**. `isPreciseDevice` is that evidence, and the "at once" is the whole rule. A vertical
+wheel reports `deltaX === 0` always; a horizontal one - a tilt wheel, or the thumb wheel every MX
+Master carries as `REL_HWHEEL` - reports `deltaY === 0` always. Each is one axis at a time, because
+each is one physical wheel. Two fingers are not, and a drifting gesture puts a component on both
+axes in the same event. Reading `deltaX` alone would condemn a mouse for a nudge of its own thumb
+wheel, and take its zoom away for good.
+
+Asked of one event the evidence is weak - a trackpad's individual event may well be dead vertical -
+but it only ever points one way, so seeing it once is conclusive and never seeing it is what a
+mouse looks like.
+
+**The burden of proof sits this way round because the two mistakes are not the same size.** Guess
+"mouse" wrongly and a trackpad zooms for the one gesture it takes to drift, after which it is
+right forever. Guess "trackpad" wrongly and a mouse *never zooms at all*, because a wheel emits no
+evidence that could ever overturn the guess - that is the defect being fixed here, and it is
+unbounded. A recoverable error beats an unrecoverable one, so the recoverable one is taken.
+
+The sighting is written down rather than re-derived: the canvas reports it through
+`onPreciseDevice`, and the host stores it at `visionset.prefs.annotator.precise-device` - this
+browser, not the workspace, because it describes the hardware on the desk. A trackpad therefore
+spends at most one gesture zooming, once, ever.
+
+`isMouseWheel` is asked **first** and outranks the sighting, which is what serves a laptop carrying
+both: once its trackpad has been seen, an external mouse reporting whole notches still zooms. A
+*high-resolution* mouse beside a trackpad is the one arrangement nothing here separates, because
+that is precisely the case where the two devices send the same event.
+
+There is deliberately **no setting**. An earlier draft of this carried one - a three-way control on
+the zoom widget - and it was surface for a case the inference already covers: it existed only while
+the default was wrong.
+
 What `ctrlKey` can no longer do is tell a pinch from a mouse wheel, since it is now set by both.
 `wheelZoomFactor` tells them apart by **magnitude** instead: a notch is a large quantised value -
 120 pixels, three lines, one page - and a pinch is a stream of small continuous ones, so a
@@ -483,6 +531,15 @@ threshold at 40 sits in a gap rather than in a distribution. Being wrong about i
 that zooms too briskly, never a wrong answer. The softness on the wheel side is derived rather
 than picked: `120 / ln(1.25)` is about 538, which makes one notch worth exactly one press of the
 `+` button.
+
+**The split is asked only where the question is real.** It exists because a held `ctrl`/`cmd`
+makes a pinch and a wheel arrive identically, and size is then all that is left. A *bare* event is
+never in that position - it reaches a zoom at all only once the device has been judged a mouse -
+so `wheelZoomFactor` takes `mayBePinch` and the bare path passes `false`. Putting a bare event
+through the split anyway was a measured defect rather than a tidiness one: a high-resolution wheel
+sends 6-13 pixel fractions of a detent, every one lands under the 40px threshold, and the whole
+gesture is zoomed on the pinch curve. Measured in a browser at a softness of **103** where 538 was
+intended - **5.4x** the designed rate, which is what it felt like.
 
 The rest of the model is more spellings of the same two verbs.
 

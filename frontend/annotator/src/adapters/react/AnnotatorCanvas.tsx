@@ -193,9 +193,10 @@ import type { Point } from "../../core/types";
 import { randomUuid } from "../ids";
 import {
   IDENTITY_VIEWPORT,
+  bareWheelZooms,
   fitToViewport,
   imageRenderingAt,
-  isMouseWheel,
+  isPreciseDevice,
   normalizedWheel,
   panBy,
   pinchBetween,
@@ -461,6 +462,15 @@ export interface AnnotatorCanvasProps {
    * devices that have neither.
    */
   readonly panTool?: boolean;
+  readonly onPreciseDevice?: () => void;
+  /**
+   * A trackpad has already proved itself on this browser, so assume nothing.
+   *
+   * The host's memory of `onPreciseDevice`, handed back. Without it a trackpad
+   * would spend its first gesture zooming after every reload rather than once
+   * ever, which is the difference between a quirk and a defect.
+   */
+  readonly preciseDeviceSeen?: boolean;
 }
 
 /** What a host can do to the stage. Read the position through `onViewChange`. */
@@ -495,6 +505,8 @@ export function AnnotatorCanvas({
   suggestion = null,
   onSuggestPoint,
   panTool = false,
+  preciseDeviceSeen = false,
+  onPreciseDevice,
 }: AnnotatorCanvasProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const { asset, schema } = snapshot.document;
@@ -668,6 +680,23 @@ export function AnnotatorCanvas({
     [applyViewport, fit],
   );
 
+  /**
+   * Whether a trackpad has shown itself here.
+   *
+   * A ref, not state: nothing renders differently for it, and the wheel listener
+   * — attached once, on `[applyViewport]` — needs it synchronously, in the same
+   * event that sets it. It starts from what the host already knows, because a
+   * trackpad proved once stays proved and re-proving it would cost a gesture on
+   * every reload.
+   */
+  const sawPrecise = useRef(preciseDeviceSeen);
+
+  // The host's own callback is a fresh function every render, so naming it in
+  // the listener's dependencies would tear down and re-attach the `wheel`
+  // handler on each one. Through a ref it stays current without doing that.
+  const onPreciseDeviceNow = useRef(onPreciseDevice);
+  onPreciseDeviceNow.current = onPreciseDevice;
+
   // React attaches `wheel` **passively** at its root container, so `onWheel` plus
   // `preventDefault()` silently does nothing and the page scrolls instead of the
   // image zooming. An imperative non-passive listener is the only way, and it is
@@ -690,10 +719,11 @@ export function AnnotatorCanvas({
        * Second, for a bare event: which device sent it? A two-finger scroll is
        * the ordinary way anybody moves around a canvas, and a wheel notch is the
        * ordinary way anybody zooms — #576 gave the whole event to the first and
-       * so took the second away, which is what this restores. `isMouseWheel`
-       * decides, and it is a heuristic: it answers "trackpad" whenever it is
-       * unsure, so a mouse it declines still zooms with the modifier while a
-       * trackpad never zooms when it was asked to scroll.
+       * so took the second away, which is what this restores. `bareWheelZooms`
+       * decides: the host's answer where it has one, and otherwise the device
+       * test, which is a heuristic and answers "trackpad" whenever it is unsure.
+       * A mouse it declines still zooms with the modifier, and a trackpad never
+       * zooms when it was asked to scroll.
        *
        * A pan reads both axes; a zoom reads `dy` alone, since a notch has no
        * sideways component to spend. The pan's sign is inverted because a scroll
@@ -706,16 +736,37 @@ export function AnnotatorCanvas({
        * without it lands on the pan.
        */
       const { wheelDeltaY = 0 } = event as WheelEvent & { readonly wheelDeltaY?: number };
-      const zooming =
-        event.ctrlKey ||
-        event.metaKey ||
-        isMouseWheel({ deltaMode: event.deltaMode, deltaX: event.deltaX, wheelDeltaY });
+      const shape = {
+        deltaMode: event.deltaMode,
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        wheelDeltaY,
+      };
+
+      /**
+       * A trackpad announcing itself, which a wheel cannot do.
+       *
+       * Told to the host as well as remembered here, so the correction outlives
+       * the page: a trackpad that has proved itself once should never again
+       * spend a gesture zooming, and a ref alone would forget at every reload.
+       * Reported once — `sawPrecise` guards the call, not just the answer —
+       * because the host writes storage on it.
+       */
+      if (!sawPrecise.current && isPreciseDevice(shape)) {
+        sawPrecise.current = true;
+        onPreciseDeviceNow.current?.();
+      }
+
+      const modifierHeld = event.ctrlKey || event.metaKey;
+      const zooming = modifierHeld || bareWheelZooms(shape, sawPrecise.current);
       if (zooming) {
         const rect = pane.getBoundingClientRect();
         applyViewport(
           zoomAbout(
             viewNow.current,
-            wheelZoomFactor(dy),
+            // Only the modifier path can be a pinch; a bare event reaching
+            // here has already been judged a mouse.
+            wheelZoomFactor(dy, modifierHeld),
             event.clientX - rect.left,
             event.clientY - rect.top,
           ),

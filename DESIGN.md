@@ -1195,6 +1195,21 @@ The page the reference design shows (#56), with measurements verified in v1's so
   be the defect over again. The shortcut sheet's **Navigate** section is the one place this
   is written for a user, and it is hand-written rather than derived — a gesture has no
   chord to be read off.
+- **Where one event cannot name the device, assume the mouse and make the trackpad prove
+  itself.** A high-resolution wheel — the MX Master class, and increasingly the default —
+  reports a fraction of a detent, which is the shape a trackpad reports on the same axis in
+  the same units; the kernel specification declines to bound that fraction, so no arithmetic
+  on a single event separates them. The evidence that does separate them is **travel on both
+  axes at once**, which drifting fingers produce constantly and no wheel can produce at all —
+  a vertical wheel is always `deltaX === 0` and a thumb or tilt wheel always `deltaY === 0`,
+  each being one physical wheel. Reading the horizontal axis *alone* would condemn a mouse for
+  a nudge of its own thumb wheel. The burden of proof sits this way round because the mistakes
+  are different sizes: a wrongly-assumed mouse costs a trackpad one gesture before it corrects
+  itself, while a wrongly-assumed trackpad costs a mouse its zoom **permanently**, since a
+  wheel emits nothing that could ever overturn the guess. A recoverable error beats an
+  unrecoverable one. The sighting is persisted per browser, so a trackpad pays that gesture
+  once and never again. **There is no setting for this** — an inference that is right without
+  being asked does not need a control, and one was drafted and cut for exactly that reason.
 
 ### The read-only mode
 
