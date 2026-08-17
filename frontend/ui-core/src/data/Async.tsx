@@ -22,20 +22,22 @@
  * real answer about a real dataset. Passing `empty` at all is opt-in; a screen
  * that does not is a screen where empty has no distinct meaning.
  *
- * ## The error branch shows the code
+ * ## The error branch leads with the sentence and keeps the code
  *
- * `ErrorState` takes the code because `docs/api.md` says a client branches on it,
- * and because the code is the half a person can act on: `PROJECT_NOT_FOUND` is a
- * bad link, `WORKSPACE_BUSY` is worth retrying, `INTERNAL_ERROR` is worth
- * reporting with the incident id beside it. The message is a sentence whose
- * wording the contract explicitly does not promise, so it is shown but never
- * matched on.
+ * The heading is the sentence `refusalProse` gives, because a kernel identifier
+ * is not what a person should have to read first. The code still renders, on the
+ * meta line beside the incident id: `docs/api.md` says a client branches on it,
+ * and it is the half a person can act on — `PROJECT_NOT_FOUND` is a bad link,
+ * `WORKSPACE_BUSY` is worth retrying, `INTERNAL_ERROR` is worth reporting with
+ * the incident id beside it. The server's own message is a sentence whose wording
+ * the contract explicitly does not promise, so it is never matched on.
  */
 
 import type { JSX, ReactNode } from "react";
 
 import { EmptyState, ErrorState, LoadingState, type EmptyStateProps } from "../patterns/AsyncStates";
 import { asApiError } from "./errors";
+import { refusalProse } from "./refusals";
 
 /**
  * The part of TanStack Query's result this needs.
@@ -75,7 +77,7 @@ export function Async<T>({
     return (
       <ErrorState
         code={failure.code}
-        message={failure.message}
+        message={refusalProse(query.error)}
         {...(failure.incidentId === undefined ? {} : { incidentId: failure.incidentId })}
         {...(query.refetch === undefined ? {} : { onRetry: () => void query.refetch?.() })}
       />

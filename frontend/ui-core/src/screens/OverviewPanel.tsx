@@ -254,7 +254,7 @@ function Pipeline({
         label="Dataset"
         data-testid="pipeline-dataset"
         value={stats.data === undefined ? "—" : formatCount(stats.data.asset_count)}
-        context={stats.data === undefined ? undefined : "assets promoted to the trunk"}
+        context={stats.data === undefined ? undefined : "assets promoted to the dataset"}
         {...(onBrowseDataset === undefined ? {} : { onGo: onBrowseDataset })}
       />
       <StatCard
