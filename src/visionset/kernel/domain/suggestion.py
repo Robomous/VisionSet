@@ -33,7 +33,8 @@ Pure, and in the domain rather than beside the code that computes the pipeline,
 on ``capabilities.py``'s terms: a question about domain values, answered from a
 domain table, with no I/O. What the members *numerically* mean is a property of
 the simplification algorithm and lives beside it, the way ``ModelCapability``
-lives here and ``CAPABILITY_BY_FAMILY`` lives with the adapters that satisfy it.
+lives here and the family-to-capability mapping is declared by each driver that
+satisfies it.
 """
 
 from __future__ import annotations

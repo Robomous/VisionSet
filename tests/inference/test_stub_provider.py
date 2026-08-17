@@ -16,10 +16,11 @@ import pytest
 from pydantic import ValidationError
 from tests.fixtures.media import write_image
 
-from visionset.inference.families import SEGMENTER_FAMILIES, capabilities_of
+from visionset.inference.families import capabilities_of
 from visionset.inference.providers import provider_for
 from visionset.inference.stub_provider import (
     SCORE,
+    STUB_FAMILIES,
     STUB_FAMILY,
     STUB_MODEL_ID,
     StubSegmenter,
@@ -214,7 +215,7 @@ def test_its_download_costs_nothing_and_says_so_without_asking_anybody() -> None
 
 
 def test_it_declares_the_capability_that_makes_the_editor_offer_the_tool() -> None:
-    """Derived from :data:`SEGMENTER_FAMILIES` rather than written twice — the
+    """Derived from :data:`STUB_FAMILIES` rather than written twice — the
     property that made listing the family there worth doing."""
-    assert STUB_FAMILY in SEGMENTER_FAMILIES
+    assert STUB_FAMILY in STUB_FAMILIES
     assert capabilities_of(STUB_FAMILY) == [ModelCapability.POINT_SUGGEST]

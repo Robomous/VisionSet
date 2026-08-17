@@ -85,9 +85,9 @@ class ConnectionSetupState(StrEnum):
 # whether a request can be made at all.
 #
 # Declared here and **mapped to model families outside**: which `model_type`
-# values a build can serve is a fact about that build's optional runtime, and the
-# kernel has no view of one. `visionset.inference.families` owns the mapping,
-# beside the family sets it reads.
+# values a build can serve is a fact about which drivers are installed, and the
+# kernel has no view of that. Each driver declares its own families and the
+# capability each one takes.
 #
 # The reasoning is a comment because this enum is *published*: FastAPI copies a
 # docstring verbatim into `openapi.json`, where RST markup ships as literal

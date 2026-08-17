@@ -1,4 +1,4 @@
-# usage: from visionset.inference.registry import installed, pick
+# usage: from visionset.inference.registry import registered, serving
 """Finding the drivers this installation has, and the one a family needs.
 
 Discovery is ``importlib.metadata`` over the ``visionset.providers`` group, never
@@ -8,8 +8,11 @@ indistinguishable from a built-in here.
 **Installing a provider does not let a workspace predict.** Nothing here fetches
 or loads anything, and no existing connection changes what it runs.
 
-Nothing is cached, on ``formats/registry.py``'s reason: the alternative is a
-process that has to be restarted after an install.
+:func:`installed` caches nothing, and :func:`registered` keeps one scan for the
+life of the process because a driver's declaration is read per connection row.
+That is where this parts company with ``formats/registry.py``, and the cost is
+named there: a driver installed while a server is running is not seen until it
+restarts.
 """
 
 from __future__ import annotations
@@ -161,45 +164,62 @@ def capabilities(providers: Mapping[str, Provider]) -> Mapping[str, ModelCapabil
     return {family: capability for family, capability in seen.items() if family not in contested}
 
 
-def pick(providers: Mapping[str, Provider], family: str) -> Provider:
-    """The one driver serving that family.
+def families_served(providers: Mapping[str, Provider]) -> frozenset[str]:
+    """Every family some installed driver serves — what a refusal lists."""
+    return frozenset(family for provider in providers.values() for family in provider.families)
 
-    Split from :func:`installed` so the refusal has one wording whoever scanned.
+
+def serving(providers: Mapping[str, Provider], family: str) -> Provider | None:
+    """The one driver serving that family, or ``None`` if none does.
+
+    ``None`` rather than a raise for the empty case, because the sentence worth
+    showing names the connection and the model it points at, and only the caller
+    holding one can write it. A contested family *is* raised here: that answer is
+    about the installation and reads the same whoever asked.
 
     Raises:
-        InferenceConnectionNotRunnable: nothing serves that family, or more than
-            one does. Both are answers about the installation rather than about a
-            connection.
+        InferenceConnectionNotRunnable: more than one installed driver serves it.
     """
-    serving = sorted(
+    claimants = sorted(
         provider_id for provider_id, provider in providers.items() if family in provider.families
     )
-    if not serving:
-        raise InferenceConnectionNotRunnable(_nothing_serves(providers, family))
-    if len(serving) > 1:
+    if not claimants:
+        return None
+    if len(claimants) > 1:
         raise InferenceConnectionNotRunnable(
             f"model type {family!r} is served by more than one installed provider "
-            f"({', '.join(serving)}), so this build cannot tell which one should run it; "
+            f"({', '.join(claimants)}), so this build cannot tell which one should run it; "
             "uninstall one of them"
         )
-    return providers[serving[0]]
+    return providers[claimants[0]]
 
 
-def _nothing_serves(providers: Mapping[str, Provider], family: str) -> str:
-    """Why nothing runs that family, and what this installation does run.
+_REGISTERED: list[Discovery] = []
+"""The kept scan. A list because rebinding a module global from a function needs
+a ``global`` statement, and a one-slot list makes the mutation local and the
+reset obvious."""
 
-    Two openings: a family nobody serves is a model choice, a config that declared
-    nothing is usually damaged files, and the remedies differ.
+
+def registered() -> Discovery:
+    """The process-wide scan, kept rather than repeated.
+
+    **This is where the formats registry's "nothing is cached" stops applying,
+    and the reason is measured.** An exporter listing scans once per request; a
+    driver's declaration is read *per connection row*, by both serializers that
+    build a connection's `capabilities`. A scan costs 1.3 ms and a scan with
+    ``load()`` costs 11 ms on this machine, so a workspace with a hundred
+    connections would spend over a second of a listing on rediscovering the same
+    plugins.
+
+    The cost is that a driver installed while a process is running is not seen
+    until it restarts, which is already true of a worker and is the ordinary
+    expectation for a Python plugin.
     """
-    served = ", ".join(sorted({family for p in providers.values() for family in p.families}))
-    known = served or "no model types at all, because no provider is installed"
-    if not family:
-        return (
-            "the downloaded config does not say what model type it is, so this build cannot "
-            f"tell which provider would answer for it; it serves {known} — point the connection "
-            "at one of those, or download its weights again if those files are damaged"
-        )
-    return (
-        f"no installed provider serves model type {family!r}; this build serves {known} — "
-        "point the connection at a model of one of those types"
-    )
+    if not _REGISTERED:
+        _REGISTERED.append(installed())
+    return _REGISTERED[0]
+
+
+def reset() -> None:
+    """Forget the kept scan. What a test does between cases."""
+    _REGISTERED.clear()

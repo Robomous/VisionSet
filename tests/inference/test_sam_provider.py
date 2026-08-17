@@ -24,16 +24,15 @@ from tests.fixtures.local_inference import require_local_inference
 from tests.inference.stubs import StubModel, StubProcessor, StubTorch, blank, disc
 
 from visionset.inference import sam_provider
-from visionset.inference.families import SEGMENTER_FAMILIES
 from visionset.inference.sam_provider import (
     NEGATIVE,
     POSITIVE,
+    SAM_FAMILIES,
     LocalSamProvider,
     _rows,
     best_of,
     points_and_labels,
 )
-from visionset.inference.stub_provider import STUB_FAMILY
 from visionset.kernel.domain import (
     PointPrompt,
     PredictionRequest,
@@ -399,7 +398,7 @@ def test_the_class_table_covers_every_segmenter_family_that_loads_through_it() -
     """The two registers agree, and nothing else makes them.
 
     The resolver sends a connection here on the strength of its family being in
-    ``SEGMENTER_FAMILIES``; the loader then looks that family up in ``_CLASSES``.
+    ``SAM_FAMILIES``; the loader then looks that family up in ``_CLASSES``.
     A family added to the first and forgotten in the second resolves to this
     adapter and dies on a ``KeyError`` inside a load — past every refusal, in a
     place whose message names a dictionary rather than a model.
@@ -414,7 +413,7 @@ def test_the_class_table_covers_every_segmenter_family_that_loads_through_it() -
     asserts. Without that companion the subtraction would be a hole rather than
     an exemption.
     """
-    assert set(sam_provider._CLASSES) == SEGMENTER_FAMILIES - {STUB_FAMILY}
+    assert set(sam_provider._CLASSES) == set(SAM_FAMILIES)
 
 
 @pytest.mark.parametrize(

@@ -37,7 +37,7 @@ reused rather than respelled — same ``_fp16.forward_guard``, same
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Final
@@ -48,8 +48,13 @@ from PIL import Image
 from visionset.inference import _device, _fp16
 from visionset.inference._extra import imported
 from visionset.inference.cache import DEFAULT_EMBEDDING_CAPACITY, BoundedCache, KeyedLocks
+from visionset.inference.weights import HuggingFaceWeights, cache_root
 from visionset.kernel.domain import (
     AssetSegmentation,
+    CuratedModel,
+    DownloadSize,
+    InferenceConnection,
+    ModelCapability,
     PointPrompt,
     PredictionRequest,
     PredictionTarget,
@@ -64,7 +69,7 @@ _CLASSES: Final[Mapping[str, tuple[str, str]]] = {
 }
 """Which ``transformers`` pair loads each family this adapter serves.
 
-Keyed by exactly the members of :data:`~visionset.inference.families.SEGMENTER_FAMILIES`
+Keyed by exactly the members of :data:`SAM_FAMILIES`
 that load through ``transformers`` at all — a test holds the two together, because a
 family added to the register without an entry here would resolve to this adapter and
 then fail inside a load with a ``KeyError`` rather than in a refusal. The single
@@ -468,3 +473,124 @@ class LocalSamProvider:
             **common,
         )
         return processor, model.to(device).eval(), device, half
+
+
+SAM_FAMILIES: Final[Mapping[str, ModelCapability]] = {
+    "sam2": ModelCapability.POINT_SUGGEST,
+    "sam2_video": ModelCapability.POINT_SUGGEST,
+    "sam3_video": ModelCapability.POINT_SUGGEST,
+}
+"""``model_type`` values this driver serves, and what each can be asked.
+
+**Every entry is a string a published checkpoint actually declares**, read out of
+its config rather than reasoned about from a class name. The published SAM 2
+checkpoints, the connection form's own default among them, declare ``sam2_video``
+— naming only ``sam2`` sends the commonest point-prompt model to the detector and
+refuses a click with a sentence about text prompts.
+
+``facebook/sam3`` publishes one artifact carrying the whole architecture and its
+config declares ``sam3_video``. Two neighbouring names are traps: ``sam3`` is what
+the *detector* half declares one level down, so admitting it would hand a text
+model to the point adapter, and ``sam3_tracker`` is a real config class no known
+checkpoint declares. Either becomes one line here the day a checkpoint declares it.
+
+Whole models only. The locked runtime registers a dozen further ``sam3_*`` and
+``sam2_*`` types — vision models, mask decoders — which are halves a full config
+nests rather than checkpoints anything can prompt.
+"""
+
+CURATED: Final[tuple[CuratedModel, ...]] = (
+    CuratedModel(
+        model_id="facebook/sam2.1-hiera-tiny",
+        model_revision="de431c4043854a71d8101e17995dfe596bf101a5",
+        family="sam2_video",
+        hint="tiny — fastest, comfortable on a CPU",
+    ),
+    CuratedModel(
+        model_id="facebook/sam2.1-hiera-small",
+        model_revision="ee5bba1d82bb8749febdf90f45e84b687142ba03",
+        family="sam2_video",
+        hint="small — a little more accurate, still light",
+    ),
+    CuratedModel(
+        model_id="facebook/sam2.1-hiera-base-plus",
+        model_revision="b7320756a13354e7530a63935656d35b2f91a290",
+        family="sam2_video",
+        hint="base-plus — the balanced default",
+    ),
+    CuratedModel(
+        model_id="facebook/sam2.1-hiera-large",
+        model_revision="665f8e2ad61cf5f53d65644ff27c8ee525124610",
+        family="sam2_video",
+        hint="large — the most accurate, wants a GPU",
+    ),
+    CuratedModel(
+        model_id="facebook/sam3",
+        model_revision="3c879f39826c281e95690f02c7821c4de09afae7",
+        family="sam3_video",
+        hint="wants a GPU",
+        access_note=(
+            "Meta publishes these weights under the SAM License and grants access by "
+            "request. Ask for it, then set HF_TOKEN before downloading."
+        ),
+        access_url="https://huggingface.co/facebook/sam3",
+    ),
+)
+"""The point-prompt ladder, complete on purpose.
+
+Offering only a middle rung would make the choice between "runs on this laptop"
+and "as accurate as this build gets" something a person leaves the form to
+discover. Every entry is published by the people who trained it — a curated list
+points at originals, never at a re-publisher.
+
+One entry is behind an access gate and is offered anyway, because leaving it out
+spares nobody the terms: it only means whoever wants it types the id from
+somewhere else, having read nothing. Nothing about that licence reaches this
+project's own — the adapter is ours, and the weights are fetched by the person
+using it, from the publisher, after they accept the terms.
+"""
+
+
+class SamProvider:
+    """The driver for point-promptable segmenters that run on this machine."""
+
+    provider_id: Final = "sam"
+    families: Final = SAM_FAMILIES
+    curated: Final = CURATED
+
+    def __init__(self) -> None:
+        self._weights = HuggingFaceWeights()
+
+    def build(
+        self, connection: InferenceConnection, *, family: str, workspace_root: Path
+    ) -> LocalSamProvider:
+        # `device` is non-null on a local connection — the domain's cross-field
+        # rule is what makes that true — so this narrows for the type checker.
+        assert connection.device is not None
+        cache_dir = cache_root(workspace_root)
+        # The family travels in because more than one architecture answers a
+        # point and they do not load through the same runtime classes.
+        return LocalSamProvider(
+            connection.model_id,
+            connection.model_revision,
+            family=family,
+            device=connection.device,
+            precision=connection.precision,
+            cache_dir=cache_dir,
+            connection_name=connection.name,
+        )
+
+    def price(self, model_id: str, model_revision: str) -> DownloadSize:
+        return self._weights.price(model_id, model_revision)
+
+    def family_of(self, connection: InferenceConnection, *, cache_dir: Path) -> str:
+        return self._weights.family_of(connection, cache_dir=cache_dir)
+
+    def fetch(
+        self,
+        connection: InferenceConnection,
+        *,
+        into: Path,
+        on_bytes: Callable[[int], None] | None = None,
+    ) -> Path:
+        return self._weights.fetch(connection, into=into, on_bytes=on_bytes)
