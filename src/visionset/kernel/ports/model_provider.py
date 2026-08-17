@@ -29,22 +29,22 @@ schema version a batch pinned, which a remote one cannot and a local one should
 not. So a provider answers in its own terms and the write gate turns that into
 labels, which is why this port ships with no annotation writing anywhere near it.
 
-## Discovery: there is no entry-point group, and that is the decision
+## Discovery: a driver is found by entry point, a runner is built from a row
 
-``Importer`` and ``Exporter`` name the ``visionset.formats`` group because a
-format is a *plugin*: a third-party distribution ships one and the product must
-find it without knowing it exists. A provider is not that shape. Adapters are
-instantiated **from user-created model connections** and never from a bundled
-default, which makes ``InferenceConnection`` the registry — a row somebody wrote,
-naming a kind, a model and where it runs. A provider discovered by entry point
-would have nothing to be instantiated *from*, and a workspace could acquire the
-ability to predict by an unrelated ``pip install``, which is precisely what
-"VisionSet never downloads a model on its own" exists to prevent.
+What the ``visionset.providers`` group yields is a
+:class:`~visionset.kernel.ports.Provider` — a descriptor that declares what it
+serves, not something holding weights. An adapter is still instantiated **from a
+user-created connection**, which remains the registry: a row somebody wrote,
+naming a kind, a model and where it runs. Discovery supplies the driver table
+resolution consults, in place of family names written into this build.
 
-So resolution is by :class:`~visionset.kernel.domain.ConnectionType`, in the
-composition root, outside the kernel — ``visionset.inference`` — for the reason
-``ReleaseService`` takes an ``Exporter`` instance rather than a format name: the
-kernel may not import what would run.
+The constraint that shaped this still holds and is why a descriptor is what gets
+registered: a workspace must not acquire the ability to predict through an
+unrelated ``pip install``. Installing a driver fetches nothing and loads nothing.
+
+Resolution stays in the composition root, outside the kernel —
+``visionset.inference`` — for the reason ``ReleaseService`` takes an ``Exporter``
+instance rather than a format name: the kernel may not import what would run.
 
 ## What a provider owes, and what it does not
 
