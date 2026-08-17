@@ -19,17 +19,15 @@ tidy: a base install starts a server, runs a worker and imports this module
 without the optional runtime present, and
 ``tests/architecture/test_optional_runtime.py`` proves it in a fresh interpreter.
 
-**There is no plugin registry, and resolution happens in two steps.** Adapters
-are instantiated from user-created model connections and never from a bundled
-default, which makes ``InferenceConnection`` the registry: a row somebody wrote,
-naming a kind, a model and where it runs. A
-provider discovered by entry point would have nothing to be instantiated *from*,
-and a workspace could acquire the ability to predict through an unrelated ``pip
-install`` — which is exactly what "VisionSet never downloads a model on its own"
-exists to prevent. ``providers`` does the resolving: the connection's kind says
-*where*, and the model's own config says *which family*, because a local
-connection may hold a detector that answers words or a segmenter that answers
-places and those are not interchangeable.
+**Drivers are discovered, and resolution still happens in two steps.**
+``registry`` scans the ``visionset.providers`` entry-point group for ``Provider``
+descriptors, so a third-party driver is found without this build knowing it
+exists. An adapter is still instantiated from a user-created connection, which
+remains the registry of what may be run: installing a driver fetches nothing and
+loads nothing — it becomes reachable, and no model becomes present. ``providers``
+does the resolving: the connection's kind says *where*, and the model's own config
+says *which family*, because a local connection may hold a detector that answers
+words or a segmenter that answers places and those are not interchangeable.
 
 **One environment variable is set as this module is read**, and it is the only
 side effect importing this package has. ``PYTORCH_ENABLE_MPS_FALLBACK`` is what

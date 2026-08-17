@@ -43,6 +43,15 @@ dependencies = [
     # declared: an upload surface resting on somebody else's dependency tree
     # breaks the day that tree changes.
     "python-multipart>=0.0.9",
+    # Version specifiers, for the check that decides whether an installed provider
+    # plugin was built for this VisionSet. A plugin states its compatibility as an
+    # ordinary dependency pin, so reading it means parsing a requirement and
+    # testing a specifier — including against a pre-release, which is what this
+    # project's own version is and what a hand-rolled comparison gets wrong first.
+    # Installed here already as a transitive dependency, which is exactly why it is
+    # declared: a compatibility gate resting on somebody else's dependency tree
+    # breaks the day that tree changes.
+    "packaging>=24.0",
 ]
 
 # The runtime for `local`-type inference connections (#418). An **extra**, not a

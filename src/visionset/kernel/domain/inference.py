@@ -295,6 +295,80 @@ class DownloadSize(BaseModel):
     file_count: int = Field(ge=0)
 
 
+COMMIT_PATTERN: Final = re.compile(r"^[0-9a-f]{40}$")
+"""What a curated revision must be: a whole commit, in lower-case hex.
+
+A branch, a tag and an abbreviated hash are each either movable or ambiguous, and
+any of them makes :class:`CuratedModel`'s promise untrue without changing a
+character of the entry that made it.
+"""
+
+
+class CuratedModel(BaseModel):
+    """One checkpoint a provider offers by name, for a form to put on screen.
+
+    Curation guides and never restricts: any model id remains typeable at any
+    revision. Declared by the provider that runs it, so the offered list is a
+    property of the installation rather than of this repository.
+
+    **The revision is a commit and never a branch** — :data:`COMMIT_PATTERN` is
+    the whole of it. Pinning is what lets the rest of an entry stay true: an
+    immutable snapshot has one config, one family and one size.
+
+    **No size.** What a download costs is :class:`DownloadSize`, read live and
+    ahead of the confirmation. A copy here is only ever read while somebody is
+    still deciding, so nothing would notice it going stale.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    model_id: str
+    model_revision: str
+    #: The ``model_type`` this checkpoint's config declares, opaque here for
+    #: :attr:`InferenceConnection.model_family`'s reason. It must be one the
+    #: declaring provider serves; an entry cannot see the provider holding it, so
+    #: the conformance suite is where that is checked.
+    family: str
+    #: One line on what this entry is — neither the size nor the access
+    #: requirement, both already on screen beside it.
+    hint: str
+    #: What must be cleared before this can be fetched, and where. Present as a
+    #: pair or not at all: either half alone is a requirement a form cannot finish
+    #: stating before it offers the download.
+    access_note: str | None = None
+    access_url: str | None = None
+
+    @field_validator("model_id", "family", "hint")
+    @classmethod
+    def _is_not_blank(cls, value: str, info: object) -> str:
+        field = getattr(info, "field_name", "value")
+        if not value.strip():
+            raise ValueError(f"{field} must contain at least one non-blank character")
+        return value
+
+    @field_validator("model_revision")
+    @classmethod
+    def _is_a_commit(cls, value: str) -> str:
+        """Blankness is covered here rather than above: an empty revision and a
+        branch name are the same mistake, so they get one sentence."""
+        if not COMMIT_PATTERN.match(value):
+            raise ValueError(
+                f"model_revision must be a whole 40-character commit hash, not {value!r}; "
+                "a branch or a tag moves, so an entry pinned to one would describe "
+                "whatever it pointed at last"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _access_is_stated_whole(self) -> Self:
+        if (self.access_note is None) != (self.access_url is None):
+            raise ValueError(
+                "access_note and access_url are given together or not at all; "
+                "either half alone is a requirement a form cannot finish stating"
+            )
+        return self
+
+
 WEIGHT_DOWNLOAD_JOB_TYPE: Final = "inference.download_weights"
 """The background job that fetches a local connection's weights."""
 
