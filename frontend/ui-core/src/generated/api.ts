@@ -1724,6 +1724,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/schema/drafts/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Schema Draft
+         * @description The schema version this project is still writing, of that kind.
+         *
+         *     A project holds at most one draft per kind and they are shared: there are no
+         *     per-user drafts, because the workspace has no users — a credential is not a
+         *     person. `curated` is the one a schema editor writes; `annotation` is the one
+         *     that accumulates while somebody is labeling and needs a class.
+         *
+         *     404 means nobody has started one, which is the ordinary state of most
+         *     projects. It is deliberately not the same refusal as a project with no
+         *     published version, and the two carry different codes.
+         */
+        get: operations["get_schema_draft"];
+        /**
+         * Save Schema Draft
+         * @description Write the whole draft, creating it if there is none.
+         *
+         *     The body is the entire draft; there is no partial edit, for the reason there
+         *     is none of a version. Classes here are **not** validated as a contract would
+         *     be: a class with no name and no geometry is stored exactly as sent, which is
+         *     what lets somebody put the work down mid-sentence.
+         *
+         *     `revision` is the revision this write was decided against, and omitting it
+         *     asks to create. Either one refused answers 409 `STALE_WRITE`, which means
+         *     somebody else wrote the draft first and this write was judged against an
+         *     answer that had expired. Read it again and resubmit — nothing is merged, and
+         *     nothing is overwritten.
+         *
+         *     The response carries the new `revision`, which is what the next write and the
+         *     publish must name.
+         */
+        put: operations["save_schema_draft"];
+        post?: never;
+        /**
+         * Discard Schema Draft
+         * @description Throw the draft away.
+         *
+         *     Unconditional and revisionless, unlike every other write here: discarding is
+         *     what somebody does having decided the work is not wanted, and making them
+         *     read it first would be a round trip whose only purpose is to delete what it
+         *     fetched. Discarding a draft that is not there is a 204 as well — the state
+         *     afterwards is the state that was asked for.
+         */
+        delete: operations["discard_schema_draft"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/schema/drafts/{kind}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Schema Draft
+         * @description Turn the draft into the next schema version, and clear it.
+         *
+         *     The classes are the draft's, so nothing is sent here but the revision — which
+         *     is what makes it impossible to publish something other than what the draft
+         *     holds. The draft's note becomes the version's commit message and its kind
+         *     becomes the version's `provenance`.
+         *
+         *     Every refusal `POST /versions` can give, this can give, for the same reasons
+         *     and with the same overrides: 409 `DESTRUCTIVE_SCHEMA_CHANGE` until
+         *     `allow_destructive=true`, and 409 `SCHEMA_CHANGE_WOULD_ORPHAN` with no
+         *     override at all. One more is its own: 422 `INVALID_SCHEMA` when a class in
+         *     the draft is not finished — a blank name, no geometry, a select with no
+         *     options — naming it by position, `classes.3`. A draft is allowed to hold
+         *     those; a version is not.
+         *
+         *     409 `STALE_WRITE` means the draft moved since `revision` was read, and no
+         *     version was created.
+         *
+         *     The draft is gone afterwards even when nothing was written: publishing the
+         *     contract already in force answers with the version already in force, and the
+         *     draft that proposed it has nothing left to say.
+         */
+        post: operations["publish_schema_draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/schema/preview": {
         parameters: {
             query?: never;
@@ -2525,6 +2622,7 @@ export interface components {
              */
             required: boolean;
         };
+        AttributeValue: boolean | number | string;
         /**
          * BackgroundJobOut
          * @description One unit of background work, and how far it has got.
@@ -3132,6 +3230,59 @@ export interface components {
             model_revision: string;
             /** Total Bytes */
             total_bytes: number;
+        };
+        /**
+         * DraftAttributeBody
+         * @description One attribute of a class somebody is still writing.
+         *
+         *     Every field is optional, including `kind`, and no rule spanning two of them
+         *     is checked. A draft is not a contract: an attribute that has been named but
+         *     not yet typed is an ordinary moment in building one, and refusing to store it
+         *     would lose exactly the work a draft exists to keep. Every rule
+         *     `AttributeBody` states is checked when the draft is published.
+         */
+        DraftAttributeBody: {
+            default?: components["schemas"]["AttributeValue"] | null;
+            /** Kind */
+            kind?: ("string" | "number" | "boolean" | "select") | null;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Options */
+            options?: string[] | null;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+        };
+        /**
+         * DraftLabelClassBody
+         * @description One class being written: a name that may be blank, shapes that may be none.
+         *
+         *     `geometries` has no minimum here and does on `LabelClassBody`, which is the
+         *     difference between the two types. Publishing the draft applies the minimum.
+         */
+        DraftLabelClassBody: {
+            /**
+             * Attributes
+             * @default []
+             */
+            attributes: components["schemas"]["DraftAttributeBody"][];
+            /** Color */
+            color?: string | null;
+            /**
+             * Geometries
+             * @default []
+             */
+            geometries: components["schemas"]["GeometryType"][];
+            /**
+             * Name
+             * @default
+             */
+            name: string;
         };
         /**
          * ErrorBody
@@ -3838,6 +3989,72 @@ export interface components {
             destructive_classes: string[];
             /** Is Destructive */
             is_destructive: boolean;
+        };
+        /**
+         * SchemaDraftBody
+         * @description The whole draft. There is no partial edit of one, as there is none of a version.
+         *
+         *     `revision` is the revision this write was decided against. Omit it to
+         *     *create*: a client that has not read the draft has not seen what it would
+         *     overwrite, so creating is the only thing it may ask for. Sending a revision
+         *     that is no longer stored answers 409 `STALE_WRITE`, and the remedy is to read
+         *     the draft again and resubmit.
+         */
+        SchemaDraftBody: {
+            /** Based On */
+            based_on?: number | null;
+            /**
+             * Classes
+             * @default []
+             */
+            classes: components["schemas"]["DraftLabelClassBody"][];
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Revision */
+            revision?: number | null;
+        };
+        /**
+         * SchemaDraftOut
+         * @description A schema version somebody is still writing.
+         *
+         *     One per project per `kind`, shared by everybody with access to the workspace —
+         *     there are no per-user drafts, because there are no users. `based_on` is the
+         *     version it was seeded from, so a draft whose `based_on` is behind the active
+         *     version was written against a contract that has since moved.
+         *
+         *     `revision` is what a write or a publish must name to be accepted.
+         */
+        SchemaDraftOut: {
+            /** Based On */
+            based_on: number | null;
+            /** Classes */
+            classes: components["schemas"]["DraftLabelClassBody"][];
+            kind: components["schemas"]["SchemaProvenance"];
+            /** Note */
+            note: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SchemaDraftPublish
+         * @description Which revision of the draft to publish.
+         */
+        SchemaDraftPublish: {
+            /** Revision */
+            revision: number;
         };
         /**
          * SchemaProvenance
@@ -8601,6 +8818,309 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_schema_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                /** @description Which kind of work the draft belongs to. */
+                kind: components["schemas"]["SchemaProvenance"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaDraftOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    save_schema_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                /** @description Which kind of work the draft belongs to. */
+                kind: components["schemas"]["SchemaProvenance"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchemaDraftBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaDraftOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    discard_schema_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                /** @description Which kind of work the draft belongs to. */
+                kind: components["schemas"]["SchemaProvenance"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    publish_schema_draft: {
+        parameters: {
+            query?: {
+                /** @description Required when the new version narrows the labeling contract. */
+                allow_destructive?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                /** @description Which kind of work the draft belongs to. */
+                kind: components["schemas"]["SchemaProvenance"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchemaDraftPublish"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaPublicationOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

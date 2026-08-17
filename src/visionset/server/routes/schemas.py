@@ -19,13 +19,18 @@ from uuid import UUID
 
 from fastapi import Path, Query, status
 
-from visionset.kernel.services import SchemaService
+from visionset.kernel.domain import SchemaProvenance
+from visionset.kernel.errors import SchemaDraftNotFound
+from visionset.kernel.services import SchemaDraftService, SchemaService
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
     DestructiveQuery,
     SchemaChangePreviewOut,
     SchemaDiffOut,
+    SchemaDraftBody,
+    SchemaDraftOut,
+    SchemaDraftPublish,
     SchemaPublicationOut,
     SchemaVersionCreate,
     SchemaVersionOut,
@@ -209,3 +214,116 @@ def get_active_schema(workspace: WorkspaceDep, project_id: UUID) -> SchemaVersio
     Same status, two situations.
     """
     return SchemaVersionOut.of(SchemaService(workspace).get_active(project_id))
+
+
+#: The draft's kind, in the path rather than a query, because it *identifies* one
+#: of the two drafts a project can hold rather than filtering a collection. An
+#: unknown word is a 422 about the request, which is what a path enum gives for
+#: free.
+KindPath = Annotated[SchemaProvenance, Path(description="Which kind of work the draft belongs to.")]
+
+
+@router.get("/drafts/{kind}", responses=documented(404))
+def get_schema_draft(workspace: WorkspaceDep, project_id: UUID, kind: KindPath) -> SchemaDraftOut:
+    """The schema version this project is still writing, of that kind.
+
+    A project holds at most one draft per kind and they are shared: there are no
+    per-user drafts, because the workspace has no users — a credential is not a
+    person. `curated` is the one a schema editor writes; `annotation` is the one
+    that accumulates while somebody is labeling and needs a class.
+
+    404 means nobody has started one, which is the ordinary state of most
+    projects. It is deliberately not the same refusal as a project with no
+    published version, and the two carry different codes.
+    """
+    draft = SchemaDraftService(workspace).get(project_id, kind)
+    if draft is None:
+        raise SchemaDraftNotFound(f"project {project_id} has no {kind.value} schema draft")
+    return SchemaDraftOut.of(draft)
+
+
+@router.put("/drafts/{kind}", responses=documented(404, 409))
+def save_schema_draft(
+    workspace: WorkspaceDep, project_id: UUID, kind: KindPath, body: SchemaDraftBody
+) -> SchemaDraftOut:
+    """Write the whole draft, creating it if there is none.
+
+    The body is the entire draft; there is no partial edit, for the reason there
+    is none of a version. Classes here are **not** validated as a contract would
+    be: a class with no name and no geometry is stored exactly as sent, which is
+    what lets somebody put the work down mid-sentence.
+
+    `revision` is the revision this write was decided against, and omitting it
+    asks to create. Either one refused answers 409 `STALE_WRITE`, which means
+    somebody else wrote the draft first and this write was judged against an
+    answer that had expired. Read it again and resubmit — nothing is merged, and
+    nothing is overwritten.
+
+    The response carries the new `revision`, which is what the next write and the
+    publish must name.
+    """
+    saved = SchemaDraftService(workspace).save(
+        project_id,
+        kind,
+        classes=[declared.to_domain() for declared in body.classes],
+        note=body.note,
+        based_on=body.based_on,
+        expected_revision=body.revision,
+    )
+    return SchemaDraftOut.of(saved)
+
+
+@router.delete("/drafts/{kind}", status_code=status.HTTP_204_NO_CONTENT, responses=documented(404))
+def discard_schema_draft(workspace: WorkspaceDep, project_id: UUID, kind: KindPath) -> None:
+    """Throw the draft away.
+
+    Unconditional and revisionless, unlike every other write here: discarding is
+    what somebody does having decided the work is not wanted, and making them
+    read it first would be a round trip whose only purpose is to delete what it
+    fetched. Discarding a draft that is not there is a 204 as well — the state
+    afterwards is the state that was asked for.
+    """
+    SchemaDraftService(workspace).discard(project_id, kind)
+
+
+@router.post(
+    "/drafts/{kind}/publish",
+    status_code=status.HTTP_201_CREATED,
+    responses=documented(404, 409, 422),
+)
+def publish_schema_draft(
+    workspace: WorkspaceDep,
+    project_id: UUID,
+    kind: KindPath,
+    body: SchemaDraftPublish,
+    allow_destructive: DestructiveQuery = False,
+) -> SchemaPublicationOut:
+    """Turn the draft into the next schema version, and clear it.
+
+    The classes are the draft's, so nothing is sent here but the revision — which
+    is what makes it impossible to publish something other than what the draft
+    holds. The draft's note becomes the version's commit message and its kind
+    becomes the version's `provenance`.
+
+    Every refusal `POST /versions` can give, this can give, for the same reasons
+    and with the same overrides: 409 `DESTRUCTIVE_SCHEMA_CHANGE` until
+    `allow_destructive=true`, and 409 `SCHEMA_CHANGE_WOULD_ORPHAN` with no
+    override at all. One more is its own: 422 `INVALID_SCHEMA` when a class in
+    the draft is not finished — a blank name, no geometry, a select with no
+    options — naming it by position, `classes.3`. A draft is allowed to hold
+    those; a version is not.
+
+    409 `STALE_WRITE` means the draft moved since `revision` was read, and no
+    version was created.
+
+    The draft is gone afterwards even when nothing was written: publishing the
+    contract already in force answers with the version already in force, and the
+    draft that proposed it has nothing left to say.
+    """
+    published = SchemaDraftService(workspace).publish(
+        project_id,
+        kind,
+        expected_revision=body.revision,
+        allow_destructive=allow_destructive,
+    )
+    return SchemaPublicationOut.of(published)
