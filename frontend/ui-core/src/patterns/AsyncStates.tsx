@@ -90,8 +90,13 @@ export function EmptyState({
 }
 
 export interface ErrorStateProps {
-  /** The API error body's `code`. The field a client is supposed to branch on. */
+  /**
+   * The API error body's `code`. The field a client is supposed to branch on,
+   * and the one a bug report should quote — so it is rendered on the meta line
+   * below rather than as the heading. A kernel identifier is not a title.
+   */
   readonly code?: string;
+  /** What went wrong, in a sentence. `refusalProse` is where callers get one. */
   readonly message: ReactNode;
   readonly incidentId?: string;
   readonly onRetry?: () => void;
@@ -107,20 +112,30 @@ export function ErrorState({
   retryLabel = "Try again",
   className,
 }: ErrorStateProps): JSX.Element {
+  // `refusalProse` writes the code into its own last-resort sentence, for the
+  // sites that show no code of their own. Here that sentence is the heading and
+  // the code would land twice, so the meta line yields to it.
+  const codeIsInTheSentence = typeof message === "string" && code !== undefined && message.includes(code);
+  const meta = [
+    ...(code === undefined || codeIsInTheSentence ? [] : [code]),
+    ...(incidentId === undefined ? [] : [`Incident ${incidentId}`]),
+  ];
+
   return (
     <Alert
       variant="destructive"
       title={
         <span className="flex items-center gap-2">
-          <AlertTriangle className="size-4" aria-hidden="true" />
-          {code ?? "Something went wrong"}
+          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+          {message}
         </span>
       }
       className={className}
     >
-      <p className="text-body">{message}</p>
-      {incidentId !== undefined && (
-        <p className="mt-1 font-mono text-meta">Incident {incidentId}</p>
+      {meta.length > 0 && (
+        <p className="font-mono text-meta" data-testid="error-code">
+          {meta.join(" · ")}
+        </p>
       )}
       {onRetry !== undefined && (
         <Button variant="secondary" size="sm" className="mt-3" onClick={onRetry}>

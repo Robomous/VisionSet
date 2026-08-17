@@ -119,7 +119,7 @@ export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
         <div>
           <h1 className="text-page font-semibold tracking-tight">Dataset</h1>
           <p className="text-meta text-muted-foreground">
-            The trunk: every asset a completed batch has promoted.
+            Every asset a completed batch has promoted.
           </p>
         </div>
         {/*
@@ -196,7 +196,7 @@ export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
           empty={{
             title: "No releases yet",
             description:
-              "A release freezes the trunk as it is now. Two publishes of an unchanged dataset are byte-identical.",
+              "A release freezes the dataset as it is now. Publishing twice with nothing changed in between produces byte-identical documents.",
           }}
         >
           {(page) => (
@@ -301,7 +301,7 @@ function TrunkAssets({
         empty={{
           title: "Nothing promoted yet",
           description:
-            "Completing a batch and promoting it puts its assets here. Until then the trunk is empty.",
+            "Completing a batch and promoting it puts its assets here. Until then the dataset is empty.",
         }}
       >
         {(assets) => (
@@ -415,8 +415,8 @@ function RemoveAssetDialog({
       <DialogContent data-testid="remove-asset-dialog">
         <DialogTitle>Remove {assetLabel(asset)} from the dataset?</DialogTitle>
         <DialogDescription data-testid="remove-asset-consequence">
-          It leaves the trunk, and its annotations leave with it — the trunk carries assets, so
-          nothing labelled on this one stays in the dataset. Nothing is deleted: the image, its
+          It leaves the dataset, and its annotations leave with it — membership is by asset, so
+          nothing labelled on this one stays behind. Nothing is deleted: the image, its
           annotations and its stored bytes all remain, and releases already published are
           snapshots and are untouched. Promoting its batch again puts it back.
         </DialogDescription>
@@ -653,7 +653,7 @@ function PublishDialog({
       <DialogContent data-testid="publish-dialog">
         <DialogTitle>Publish a release</DialogTitle>
         <DialogDescription>
-          Freezes the trunk as it is now. The manifest is a pure function of content, so
+          Freezes the dataset as it is now. The manifest is a pure function of content, so
           publishing an unchanged dataset twice produces byte-identical documents.
         </DialogDescription>
         <form className="flex flex-col gap-3" onSubmit={submit}>
