@@ -102,9 +102,24 @@ function isErrorBody(value: unknown): value is ErrorBody {
   return typeof candidate["code"] === "string" && typeof candidate["message"] === "string";
 }
 
-/** What `openapi-fetch` hands back, narrowed to what `unwrap` needs. */
-export interface FetchResult<T> {
-  readonly data?: T;
+/**
+ * What `openapi-fetch` hands back, narrowed to what `unwrap` needs.
+ *
+ * `data` is `unknown` rather than the response's static type, which is the honest
+ * signature for a function whose entire premise is that the static type is not
+ * evidence: what `unwrap` returns is what the *check* proved, and taking the
+ * contract's word for the body here would be asserting the thing being tested.
+ *
+ * It is also what keeps an open vocabulary usable. `openapi-fetch` wraps every
+ * response in a deep mapped type (`Readable`), and a mapped type does not survive
+ * the `(string & {})` tail an open vocabulary's members carry: the intersection
+ * satisfies `T extends object`, so the map walks `string`'s own members and the
+ * field arrives as an object type with `charAt` on it. Naming that type in an
+ * assignment is what fails; not naming it costs nothing, because the value is
+ * checked at runtime one line below.
+ */
+export interface FetchResult {
+  readonly data?: unknown;
   readonly error?: unknown;
   readonly response: { readonly status: number };
 }
@@ -134,12 +149,14 @@ export interface FetchResult<T> {
  * It is required rather than optional because an optional gate is one every new
  * call site may forget, and the ones that forgot would be the ones that broke.
  * But note what the compiler does and does not buy here: a *missing* check fails
- * to compile, while a *wrong* one does not — a type predicate is assignable
- * whenever its asserted type is, so `unwrap(projectResult, checkDatasetOut)`
- * compiles and silently re-narrows. Pairing each call with its own operation is
- * therefore enforced by `tests/scripts/checks_wiring.test.mjs`, not by `tsc`.
+ * to compile, while a *wrong* one does not. The check alone decides what comes
+ * back — `result` says nothing about the type, by the deliberate choice argued on
+ * `FetchResult` — so `unwrap(projectResult, checkDatasetOut)` compiles and returns
+ * a `DatasetOut` nobody asked for. Pairing each call with its own operation is
+ * therefore enforced by `tests/scripts/checks_wiring.test.mjs`, not by `tsc`, and
+ * that gate is what has actually caught mispaired calls.
  */
-export function unwrap<T>(result: FetchResult<T>, check: Check<T>): T {
+export function unwrap<T>(result: FetchResult, check: Check<T>): T {
   if (result.error !== undefined) {
     if (isErrorBody(result.error)) throw new ApiError(result.error, result.response.status);
     throw new ApiError(

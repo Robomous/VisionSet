@@ -27,6 +27,7 @@ import {
   mapOf,
   object,
   oneOf,
+  openOneOf,
   tagged,
   tuple,
 } from "../data/check";
@@ -84,7 +85,7 @@ export const checkBackgroundJobPage: Check<Schemas["BackgroundJobPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBackgroundJobOut)], "total": [true, isInteger] } as const);
 
 export const checkAssetAction: Check<Schemas["AssetAction"]> =
-  /*#__PURE__*/ oneOf(["annotate", "skip", "restore", "submit_for_review", "accept", "return_to_annotator"] as const);
+  /*#__PURE__*/ openOneOf(["annotate", "skip", "restore", "submit_for_review", "accept", "return_to_annotator"] as const);
 
 export const checkBatchAssetOut: Check<Schemas["BatchAssetOut"]> =
   /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkAssetAction)], "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "job_id": [true, either([isString, isNull] as const)], "modality": [true, lit("image")], "progress": [true, either([checkAssetProgress, isNull] as const)], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
@@ -93,7 +94,7 @@ export const checkBatchAssetPage: Check<Schemas["BatchAssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchAssetOut)], "total": [true, isInteger] } as const);
 
 export const checkBatchAction: Check<Schemas["BatchAction"]> =
-  /*#__PURE__*/ oneOf(["approve", "start", "complete", "repin", "promote", "create_correction", "edit_membership", "delete"] as const);
+  /*#__PURE__*/ openOneOf(["approve", "start", "complete", "repin", "promote", "create_correction", "edit_membership", "delete"] as const);
 
 export const checkBatchState: Check<Schemas["BatchState"]> =
   /*#__PURE__*/ oneOf(["draft", "approved", "in_annotation", "completed"] as const);
@@ -111,7 +112,7 @@ export const checkBatchPage: Check<Schemas["BatchPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchOut)], "total": [true, isInteger] } as const);
 
 export const checkConnectionAction: Check<Schemas["ConnectionAction"]> =
-  /*#__PURE__*/ oneOf(["download_weights", "check_integrity", "update", "delete"] as const);
+  /*#__PURE__*/ openOneOf(["download_weights", "check_integrity", "update", "delete"] as const);
 
 export const checkConnectionSetupState: Check<Schemas["ConnectionSetupState"]> =
   /*#__PURE__*/ oneOf(["not_set_up", "ready"] as const);
@@ -123,7 +124,7 @@ export const checkIntegrityCheckOut: Check<Schemas["IntegrityCheckOut"]> =
   /*#__PURE__*/ object({ "error": [true, either([isString, isNull] as const)], "files_read": [true, isInteger], "files_total": [true, either([isInteger, isNull] as const)], "job_id": [true, isString], "state": [true, checkBackgroundJobState] } as const);
 
 export const checkModelCapability: Check<Schemas["ModelCapability"]> =
-  /*#__PURE__*/ oneOf(["point_suggest", "text_detect"] as const);
+  /*#__PURE__*/ openOneOf(["point_suggest", "text_detect"] as const);
 
 export const checkPrecision: Check<Schemas["Precision"]> =
   /*#__PURE__*/ oneOf(["fp16", "fp32"] as const);
@@ -219,7 +220,7 @@ export const checkAnnotationJobState: Check<Schemas["AnnotationJobState"]> =
   /*#__PURE__*/ oneOf(["pending", "in_progress", "completed"] as const);
 
 export const checkJobAction: Check<Schemas["JobAction"]> =
-  /*#__PURE__*/ oneOf(["start", "complete"] as const);
+  /*#__PURE__*/ openOneOf(["start", "complete"] as const);
 
 export const checkJobOut: Check<Schemas["JobOut"]> =
   /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkJobAction)], "asset_count": [true, isInteger], "assignee": [true, either([isString, isNull] as const)], "batch_id": [true, isString], "id": [true, isString], "state": [true, checkAnnotationJobState] } as const);
@@ -300,7 +301,7 @@ export const checkAppliedParameters: Check<Schemas["AppliedParameters"]> =
   /*#__PURE__*/ object({ "detail": [true, checkDetail] } as const);
 
 export const checkSuggestParameter: Check<Schemas["SuggestParameter"]> =
-  /*#__PURE__*/ oneOf(["detail"] as const);
+  /*#__PURE__*/ openOneOf(["detail"] as const);
 
 export const checkBboxGeometry: Check<Schemas["BboxGeometry"]> =
   /*#__PURE__*/ object({ "height": [true, isNumber], "type": [true, lit("bbox")], "width": [true, isNumber], "x": [true, isNumber], "y": [true, isNumber] } as const);

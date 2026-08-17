@@ -763,12 +763,24 @@ const stats = unwrap(
 A body that does not match is an `ApiError` under `MALFORMED_RESPONSE`, carrying the path
 that disagreed (`/classes/2/annotations should be an integer`) - the same treatment an
 unrecognisable *error* body has always had. The argument is in
-`frontend/ui-core/src/data/check.ts`; three parts of it are worth stating here, because
+`frontend/ui-core/src/data/check.ts`; four parts of it are worth stating here, because
 each is a decision somebody will otherwise try to "fix":
 
 - **Unknown keys pass.** `additionalProperties: false` constrains what the API *accepts*,
   not what it may one day *send*. A client that refused an added field would turn every
   backward-compatible release into a broken page.
+- **An unknown member of an *open* vocabulary passes.** Six vocabularies carry
+  `x-visionset-open` in the spec — the four `allowed_actions` sets, `capabilities`, and
+  `SuggestionOut.parameters` — and the generated check for one accepts a member this client
+  never compiled against, exactly as it accepts an added field. Every other enum still
+  refuses, and refuses the whole response with it: a value the client must *switch* on has no
+  honest rendering to fall back to. The line between them is the field's shape. A vocabulary
+  may be open only where it is referenced solely as an array item, which is where a client
+  filters rather than switches, and only where no request can reach it, so what the server
+  *accepts* stays closed either way. `tests/server/test_openapi_contract.py` gates both halves,
+  in both directions, and the generated types tell a consumer which it is holding: an open
+  vocabulary's own type admits any string, while `KnownMembers` names the members this build
+  compiled against.
 - **`format` is not enforced.** A `uuid` is checked as a string and no further. A renderer
   is protected by the type; rejecting a legal ISO-8601 variant would be a new bug.
 - **A property with a `default` is treated as always present.** A default means the server

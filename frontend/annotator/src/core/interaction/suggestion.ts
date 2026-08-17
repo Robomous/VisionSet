@@ -237,8 +237,16 @@ export interface Suggestion {
   readonly contour: readonly Point[];
 }
 
-/** A setting the server says has some effect here. The wire's `parameters`. */
-export type SuggestParameter = "detail";
+/**
+ * A setting the server says has some effect here. The wire's `parameters`.
+ *
+ * Open, because the wire's is: the contract declares this vocabulary one a
+ * compatible release may add a member to, and a mirror that stayed closed would
+ * refuse an answer the server is entitled to send. Nothing here switches on the
+ * value — it is carried to whoever asks whether a given setting applies — so a
+ * member this build cannot name costs a control nobody can render, and no more.
+ */
+export type SuggestParameter = "detail" | (string & {});
 
 /** What an answer carries back, beside the shapes themselves. */
 export interface Answer {

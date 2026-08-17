@@ -285,3 +285,125 @@ def test_every_request_model_forbids_unknown_fields(name: str) -> None:
     assert request_schemas(app.openapi())[name].get("additionalProperties") is False, (
         f"{name} accepts unknown fields; every other request model forbids them"
     )
+
+
+OPEN_MARKER = "x-visionset-open"
+
+
+def _enum_names(spec: dict[str, Any]) -> set[str]:
+    return {name for name, schema in spec["components"]["schemas"].items() if "enum" in schema}
+
+
+def _reference_positions(spec: dict[str, Any], names: set[str]) -> dict[str, set[str]]:
+    """Where each named schema is referenced: as an array item, or as anything else."""
+    found: dict[str, set[str]] = {name: set() for name in names}
+
+    def walk(node: Any, *, inside_items: bool) -> None:
+        if isinstance(node, list):
+            for entry in node:
+                walk(entry, inside_items=inside_items)
+            return
+        if not isinstance(node, dict):
+            return
+        ref = node.get("$ref")
+        if isinstance(ref, str):
+            name = ref.rsplit("/", 1)[1]
+            if name in found:
+                found[name].add("array" if inside_items else "scalar")
+        for key, value in node.items():
+            if key == "$ref":
+                continue
+            walk(value, inside_items=key in {"items", "prefixItems"})
+
+    walk(spec["paths"], inside_items=False)
+    walk(spec["components"]["schemas"], inside_items=False)
+    return found
+
+
+def _request_reachable(spec: dict[str, Any]) -> set[str]:
+    """Every component schema a request body *or parameter* can reach, transitively.
+
+    Distinct from :func:`request_schemas`, which seeds only from bodies and keeps
+    objects. Both differences matter here: an enum is not an object, and the one
+    array-valued site of ``BackgroundJobState`` is a query parameter.
+    """
+    schemas = spec["components"]["schemas"]
+
+    seeds: set[str] = set()
+    for _, _, operation in operations(spec):
+        if body := operation.get("requestBody"):
+            _referenced(body, seeds)
+        for parameter in operation.get("parameters", []):
+            _referenced(parameter, seeds)
+
+    reachable: set[str] = set()
+    pending = list(seeds)
+    while pending:
+        name = pending.pop()
+        if name in reachable or name not in schemas:
+            continue
+        reachable.add(name)
+        nested: set[str] = set()
+        _referenced(schemas[name], nested)
+        pending.extend(nested)
+    return reachable
+
+
+def test_a_vocabulary_is_open_exactly_when_its_shape_allows_it() -> None:
+    """The two-way gate on ``x-visionset-open``.
+
+    An open vocabulary tolerates a member an older client never compiled against,
+    and the generated client's check passes one rather than refusing the whole
+    response. That is only safe where every consumer *filters* instead of
+    switching — a list — and it is only honest where the server never *accepts*
+    the value, because pydantic keeps refusing an unknown member inbound and a
+    request field documented open would be a lie.
+
+    So the rule is the conjunction, and both halves earn their keep:
+    ``BackgroundJobState`` and ``GeometryType`` are each referenced as an array
+    item — in a query parameter, and in two request bodies — and the request half
+    is the only thing keeping them closed.
+
+    Stated in both directions on purpose. A vocabulary that satisfies the shape
+    and lacks the marker is the mistake nobody would notice: it costs an older
+    client the whole response over one added member.
+    """
+    spec = app.openapi()
+    names = _enum_names(spec)
+    positions = _reference_positions(spec, names)
+    inbound = _request_reachable(spec)
+
+    wrong: list[str] = []
+    for name in sorted(names):
+        marked = spec["components"]["schemas"][name].get(OPEN_MARKER) is True
+        eligible = positions[name] == {"array"} and name not in inbound
+        if marked != eligible:
+            wrong.append(
+                f"{name}: marked={marked}, referenced as {sorted(positions[name])}, "
+                f"request-reachable={name in inbound}"
+            )
+    assert wrong == [], "\n".join(wrong)
+
+
+def test_the_open_set_is_the_six_the_client_was_generated_for() -> None:
+    """The roster, so growing the set is a decision somebody makes on purpose.
+
+    The gate above derives membership from shape and would stay green if the
+    contract grew a seventh. This one makes that arrive as a decision here, in the
+    same review as the ``openapi.json`` diff and the widened union it produces in
+    the generated client.
+    """
+    open_names = {
+        name
+        for name, schema in app.openapi()["components"]["schemas"].items()
+        if schema.get(OPEN_MARKER) is True
+    }
+
+    assert open_names == {
+        "AssetAction",
+        "BatchAction",
+        "ConnectionAction",
+        "JobAction",
+        "ModelCapability",
+        "SuggestParameter",
+    }

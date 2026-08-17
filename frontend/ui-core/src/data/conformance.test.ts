@@ -16,6 +16,16 @@
  * It also covers the two failure modes `tsc` provably cannot catch — a dropped
  * nullable, and a check stricter than the type — because both are *over*-validation,
  * and an over-strict check is assignable to the type it over-validates.
+ *
+ * ## One thing it deliberately no longer catches
+ *
+ * The oracle reads `x-visionset-open` for the same reason it reads everything else — it is
+ * in the contract — so for a vocabulary the contract marks open, both readers agree that an
+ * unrecognised member passes. That agreement is correct and it costs this file the ability
+ * to notice a vocabulary opened *by mistake*: both sides read the same marker. What replaces
+ * it is `tests/server/test_openapi_contract.py`, which derives eligibility from the
+ * vocabulary's shape and fails in both directions — at the layer where the marker is put on,
+ * which is where the mistake would be made.
  */
 
 import { readFileSync } from "node:fs";
@@ -42,6 +52,7 @@ interface JsonSchema {
   readonly const?: string;
   readonly additionalProperties?: JsonSchema | boolean;
   readonly default?: unknown;
+  readonly "x-visionset-open"?: boolean;
 }
 
 // From the package root, which is where vitest runs. `import.meta.url` is not a
@@ -63,7 +74,13 @@ function conforms(schema: JsonSchema, value: unknown): boolean {
   const node = deref(schema);
 
   if (node.const !== undefined) return value === node.const;
-  if (node.enum !== undefined) return typeof value === "string" && node.enum.includes(value);
+  if (node.enum !== undefined) {
+    // An open vocabulary accepts a member this build never compiled against — the rule
+    // argued in `./check.ts`. Read off the contract, not off the generator: an oracle that
+    // learned this from the code it is checking would agree with it by construction.
+    if (node["x-visionset-open"] === true) return typeof value === "string";
+    return typeof value === "string" && node.enum.includes(value);
+  }
 
   const branches = node.oneOf ?? node.anyOf;
   if (branches !== undefined) return branches.some((branch) => conforms(branch, value));

@@ -333,7 +333,7 @@ export function SuggestPanel({
         <p className="text-muted-foreground">
           Click nearer the middle of the object, or add another point. Alt-click marks
           something that is <em>not</em> part of it.
-          {session.parameters.length > 0 && " The settings below still apply — step one back."}
+          {hasAdjustments(session) && " The settings below still apply — step one back."}
         </p>
         <Discard onDiscard={onDiscard} />
         {/*
@@ -505,6 +505,21 @@ function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
 
 
 /**
+ * Whether this build has a control for anything the answer declared.
+ *
+ * `parameters` is an open vocabulary — a compatible release may add a member — so a
+ * setting can be declared that this version has no way to draw. Two places need the
+ * same answer and must not be able to disagree: the section that renders the
+ * controls, and the copy telling somebody the settings are still there. This asks
+ * whether *anything* is drawable; each row goes on asking whether its own setting
+ * was declared, which is what keeps a second control one entry here and one row
+ * below.
+ */
+function hasAdjustments(session: SuggestionState): boolean {
+  return session.parameters.includes("detail");
+}
+
+/**
  * Keep the press from moving focus off the canvas.
  *
  * Every keyboard rule in the editor is a `keydown` on the annotator's own root,
@@ -551,8 +566,15 @@ function returnFocusToCanvas(): void {
  * **What renders is what the server declared, and nothing is worked out here.**
  * `session.parameters` comes off the answer; a box class declares nothing at all
  * and so gets no section, because that is what the kernel's table says applies to
- * a box, not because this file knows anything about boxes. Adding a second
- * setting is a kernel change and a row below, and no condition in between.
+ * a box, not because this file knows anything about boxes.
+ *
+ * The one thing this file does decide is whether it *has* a control, which is not
+ * the same as deciding whether a setting applies. `parameters` is an open
+ * vocabulary — a compatible release may add a member — so a setting can be
+ * declared that this version has no way to draw, and offering `Adjust the shape`
+ * over an empty box would be the dead control the section exists to avoid. Adding
+ * a second setting is therefore a kernel change, a row below, and that setting's
+ * name in the one line deciding whether anything is offerable.
  */
 function Adjustments({
   session,
@@ -565,9 +587,10 @@ function Adjustments({
   readonly onOpen?: (open: boolean) => void;
   readonly onDetail?: (detail: Detail) => void;
 }): JSX.Element | null {
-  // A host that cannot honour the controls renders none, and a kind with nothing
-  // to adjust is told so by the wire rather than guessed at here.
-  if (session.parameters.length === 0 || onOpen === undefined) return null;
+  // Gated on a setting this build has a row for, not on the list being non-empty:
+  // a length test would offer `Adjust the shape` over an empty box the first time a
+  // server named a setting this version cannot draw. See `hasAdjustments`.
+  if (!hasAdjustments(session) || onOpen === undefined) return null;
 
   if (!open) {
     return (
