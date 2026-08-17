@@ -211,13 +211,18 @@ to be argued from scratch every time a bar appeared.
 To check the invariant:
 
 ```
-git grep -nE '\b(bg|text|border|ring|fill|stroke)-brand\b' -- frontend
+git grep -nE '(bg|text|border|ring|fill|stroke)-brand' -- frontend
 ```
+
+(No `\b` — `git grep -E` is POSIX ERE, which has no word boundary; a pattern carrying one
+matches nothing and exits as if the tree were clean.)
 
 Four lines match and **three of them are usages**: the two above, plus the styleguide
 swatch. The fourth is the `--color-brand` comment in `frontend/ui-core/src/styles.css`,
 which states this rule rather than applying it, and which says the same two sites this list
-does.
+does. The count is machine-enforced: `tests/scripts/design_tokens.test.mjs` asserts the
+three usage sites on every `pnpm test`, so a fourth site fails the suite rather than a
+reading.
 
 Three stays three however many bars there are, because the fill lives inside the primitive
 and a second caller adds no occurrence of its own — which is exactly what makes the
