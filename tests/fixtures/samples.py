@@ -227,6 +227,7 @@ COUNTS = {
 JOB = AnnotationJob(
     task_group_id=uuid4(),
     state=AnnotationJobState.IN_PROGRESS,
+    assignee="Dana Reyes",
     progress=dict.fromkeys(BATCH.asset_ids, AssetProgress.ANNOTATED),
 )
 

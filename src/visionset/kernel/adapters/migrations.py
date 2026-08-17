@@ -267,6 +267,16 @@ def _add_progress_touched(connection: Connection) -> None:
     _add_column(connection, "annotation_job_asset", "touched_at")
 
 
+def _add_job_assignee(connection: Connection) -> None:
+    """``annotation_job.assignee``: who is working the job — a name, not an account.
+
+    Nothing to backfill: no prior row ever recorded a person, so every existing
+    job stays NULL, which reads as *unassigned* and never lies. Migration 8's
+    posture on ``touched_at``, for the same reason.
+    """
+    _add_column(connection, "annotation_job", "assignee")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -276,6 +286,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=6, name="inference_connections", upgrade=_add_inference_connections),
     Migration(version=7, name="model_family", upgrade=_add_model_family),
     Migration(version=8, name="progress_touched", upgrade=_add_progress_touched),
+    Migration(version=9, name="job_assignee", upgrade=_add_job_assignee),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

@@ -39,7 +39,7 @@ job_app = typer.Typer(help="Drive annotation jobs.", no_args_is_help=True)
 JobArgument = Annotated[UUID, typer.Argument(help="The annotation job, by id.")]
 """Module-level for the ``get_type_hints`` reason ``WorkspaceOption`` is."""
 
-_COLUMNS: Final = ("ID", "STATE", "ASSETS")
+_COLUMNS: Final = ("ID", "STATE", "ASSETS", "ASSIGNEE")
 
 _ASSET_COLUMNS: Final = ("ID", "CONTENT_HASH", "WIDTH", "HEIGHT")
 
@@ -47,7 +47,7 @@ _PROGRESS_COLUMNS: Final = tuple(state.value.upper() for state in AssetProgress)
 """Read off the enum, so a sixth state cannot be silently missing from the table."""
 
 _UNKNOWN: Final = "-"
-"""What an asset with no recorded dimensions shows."""
+"""What an asset with no recorded dimensions — or a job with no assignee — shows."""
 
 
 @job_app.command("list")
@@ -66,7 +66,10 @@ def job_list(
     if json_out:
         document(wire.page([wire.job(j, batch_id=found.id, batch_state=found.state) for j in jobs]))
         return
-    table(_COLUMNS, [(str(j.id), j.state.value, str(len(j.progress))) for j in jobs])
+    table(
+        _COLUMNS,
+        [(str(j.id), j.state.value, str(len(j.progress)), j.assignee or _UNKNOWN) for j in jobs],
+    )
     if not jobs:
         note(f"Batch {batch} has no jobs; approve it first.")
 

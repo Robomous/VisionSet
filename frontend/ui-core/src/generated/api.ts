@@ -1235,6 +1235,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/jobs/{job_id}/assignee": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Assign Job
+         * @description Name who is working this job, or clear it with `null`.
+         *
+         *     Informational only — a name, not an account. Legal in any job or batch
+         *     state: naming who did a finished job is attribution, not a reopening.
+         */
+        put: operations["assign_job"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs/{job_id}/complete": {
         parameters: {
             query?: never;
@@ -3354,6 +3377,14 @@ export interface components {
          */
         JobAction: "start" | "complete";
         /**
+         * JobAssign
+         * @description The name to record for this job, or null to clear it.
+         */
+        JobAssign: {
+            /** Assignee */
+            assignee: string | null;
+        };
+        /**
          * JobOut
          * @description One annotator's unit of work over a segment of a batch.
          */
@@ -3362,6 +3393,8 @@ export interface components {
             allowed_actions: components["schemas"]["JobAction"][];
             /** Asset Count */
             asset_count: number;
+            /** Assignee */
+            assignee: string | null;
             /**
              * Batch Id
              * Format: uuid
@@ -7142,6 +7175,77 @@ export interface operations {
             };
             /** @description The resource's state refuses this request */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    assign_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobAssign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

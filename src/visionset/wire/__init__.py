@@ -431,6 +431,7 @@ def job(value: AnnotationJob, *, batch_id: UUID, batch_state: BatchState) -> dic
         "id": str(value.id),
         "batch_id": str(batch_id),
         "state": value.state.value,
+        "assignee": value.assignee,
         "asset_count": len(value.progress),
         "allowed_actions": [
             a.value

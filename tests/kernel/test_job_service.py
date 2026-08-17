@@ -19,6 +19,7 @@ from visionset.kernel import (
     AssetNotInJob,
     BatchNotFound,
     BatchNotInAnnotation,
+    InvalidName,
     InvalidTransition,
     JobFinished,
     JobNotComplete,
@@ -649,3 +650,81 @@ def test_a_job_id_alone_resolves_to_the_batch_it_is_a_segment_of(tmp_path: Path)
     for job in fixture.batches.jobs(fixture.batch.id):
         assert fixture.jobs.batch(job.id).id == fixture.batch.id
     fixture.close()
+
+
+# --- assignment ---------------------------------------------------------------
+
+
+def test_assign_names_who_works_the_job(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.open_batch()
+    assigned = fixture.jobs.assign(job.id, "Dana Reyes")
+    assert assigned.assignee == "Dana Reyes"
+    assert fixture.jobs.get(job.id).assignee == "Dana Reyes"
+
+
+def test_assign_none_clears_the_name(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.open_batch()
+    fixture.jobs.assign(job.id, "Dana Reyes")
+    cleared = fixture.jobs.assign(job.id, None)
+    assert cleared.assignee is None
+    assert fixture.jobs.get(job.id).assignee is None
+
+
+def test_assign_normalizes_the_name(tmp_path: Path) -> None:
+    """NFC + outer strip — the one name rule, not a second spelling of it."""
+    fixture = Fixture(tmp_path)
+    job = fixture.open_batch()
+    assert fixture.jobs.assign(job.id, "  Daná  ").assignee == "Daná"
+
+
+def test_assign_refuses_a_blank_name(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.open_batch()
+    with pytest.raises(InvalidName):
+        fixture.jobs.assign(job.id, "   ")
+    assert fixture.jobs.get(job.id).assignee is None
+
+
+def test_assign_works_on_a_completed_job(tmp_path: Path) -> None:
+    """Assignment is coordination metadata, not work — retroactive attribution
+    on a closed job is legitimate, so there is no state gate."""
+    fixture = Fixture(tmp_path)
+    job = fixture.job_in(AnnotationJobState.COMPLETED)
+    assert fixture.jobs.assign(job.id, "Dana Reyes").assignee == "Dana Reyes"
+
+
+def test_assign_an_unknown_job_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.open_batch()
+    with pytest.raises(JobNotFound):
+        fixture.jobs.assign(uuid4(), "Dana Reyes")
+
+
+def test_assign_does_not_disturb_progress(tmp_path: Path) -> None:
+    """`Repository.update` is a whole-row merge; the mapper must carry the field
+    without the write path touching the per-asset rows' stored progress."""
+    fixture = Fixture(tmp_path)
+    job = fixture.open_batch()
+    fixture.jobs.start(job.id)
+    fixture.jobs.mark(job.id, fixture.assets[0], ANNOTATED)
+    fixture.jobs.assign(job.id, "Dana Reyes")
+    after = fixture.jobs.get(job.id)
+    assert after.progress[fixture.assets[0]] is ANNOTATED
+    assert after.assignee == "Dana Reyes"
+
+
+def test_a_state_move_does_not_disturb_the_assignee(tmp_path: Path) -> None:
+    """The other direction of the whole-row-merge risk above: `start`/`mark`/
+    `complete` write the job row too, and none of them may carry the name away."""
+    fixture = Fixture(tmp_path)
+    job = fixture.open_batch()
+    fixture.jobs.assign(job.id, "Dana Reyes")
+    fixture.jobs.start(job.id)
+    assert fixture.jobs.get(job.id).assignee == "Dana Reyes"
+    for asset_id in fixture.assets:
+        fixture.jobs.mark(job.id, asset_id, ANNOTATED)
+    completed = fixture.jobs.complete(job.id)
+    assert completed.assignee == "Dana Reyes"
+    assert fixture.jobs.get(job.id).assignee == "Dana Reyes"

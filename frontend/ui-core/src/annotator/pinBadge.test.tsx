@@ -55,6 +55,7 @@ function answer(path: string, search: string): unknown {
       state: "in_progress",
       asset_count: 1,
       allowed_actions: jobActions("in_progress", { settled: false }),
+      assignee: null,
     };
   }
   if (path === `/batches/${BATCH}`) {

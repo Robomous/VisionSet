@@ -535,7 +535,12 @@ def _batch_write_children(session: Session, entity: Batch, *, inserting: bool) -
 
 
 def _job_to_row(entity: AnnotationJob) -> t.Base:
-    return t.AnnotationJobRow(id=entity.id, task_group_id=entity.task_group_id, state=entity.state)
+    return t.AnnotationJobRow(
+        id=entity.id,
+        task_group_id=entity.task_group_id,
+        state=entity.state,
+        assignee=entity.assignee,
+    )
 
 
 def _job_to_domain(session: Session, row: Any) -> AnnotationJob:
@@ -551,6 +556,7 @@ def _job_to_domain(session: Session, row: Any) -> AnnotationJob:
         id=row.id,
         task_group_id=row.task_group_id,
         state=row.state,
+        assignee=row.assignee,
         progress={asset_id: AssetProgress(progress) for asset_id, progress in rows},
     )
 

@@ -42,15 +42,18 @@ def _assets(root: Path, job: str) -> list[str]:
 def test_a_draft_batch_has_no_jobs(root: Path, tmp_path: Path) -> None:
     _, batch = ingested_batch(root, tmp_path)
     result = run(root, "job", "list", "--batch", batch)
-    assert result.stdout.splitlines() == ["ID  STATE  ASSETS"]
+    assert result.stdout.splitlines() == ["ID  STATE  ASSETS  ASSIGNEE"]
     assert "approve it first" in result.stderr
 
 
 def test_list_leads_with_the_id(root: Path, tmp_path: Path) -> None:
     _, batch = started_batch(root, tmp_path, jobs_of=3)
     rows = ok(root, "job", "list", "--batch", batch).splitlines()
-    assert rows[0].split() == ["ID", "STATE", "ASSETS"]
-    assert [line.split()[1:] for line in rows[1:]] == [["pending", "3"], ["pending", "3"]]
+    assert rows[0].split() == ["ID", "STATE", "ASSETS", "ASSIGNEE"]
+    assert [line.split()[1:] for line in rows[1:]] == [
+        ["pending", "3", "-"],
+        ["pending", "3", "-"],
+    ]
 
 
 def test_list_json_names_the_batch_each_job_belongs_to(root: Path, tmp_path: Path) -> None:

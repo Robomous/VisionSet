@@ -326,3 +326,15 @@ One route sets progress rather than five intent-named ones, because
 `ASSET_PROGRESS_TRANSITIONS` is the whole of what is legal and a second spelling of it would
 drift. An asset the job does not carry is a **404** here, where the id is a path segment; the
 same error is a **422** when it arrives inside an annotation body.
+
+## Who is working a job
+
+A job can carry an **assignee** — a plain name, set or cleared over
+`PUT /jobs/{job_id}/assignee` with `{"assignee": "Dana Reyes"}` or
+`{"assignee": null}`. It is coordination metadata, not access control:
+VisionSet has no identity model, so nothing checks that the person writing
+annotations is the person named, and the field is legal to set in any job or
+batch state — naming who did a completed job is attribution, not a reopening.
+The name is normalized like every other name (NFC, outer whitespace stripped,
+blank refused with `INVALID_NAME`); an unassigned job reads `"assignee": null`,
+never an absent key.
