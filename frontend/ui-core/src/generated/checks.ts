@@ -261,11 +261,8 @@ export const checkSchemaDiffOut: Check<Schemas["SchemaDiffOut"]> =
 export const checkSchemaChangePreviewOut: Check<Schemas["SchemaChangePreviewOut"]> =
   /*#__PURE__*/ object({ "blockers": [true, arrayOf(checkClassCountOut)], "diff": [true, checkSchemaDiffOut], "is_refused": [true, isBoolean] } as const);
 
-export const checkAttributeValue: Check<Schemas["AttributeValue"]> =
-  /*#__PURE__*/ either([isBoolean, isNumber, isString] as const);
-
 export const checkDraftAttributeBody: Check<Schemas["DraftAttributeBody"]> =
-  /*#__PURE__*/ object({ "default": [false, either([checkAttributeValue, isNull] as const)], "kind": [false, either([oneOf(["string", "number", "boolean", "select"] as const), isNull] as const)], "name": [true, isString], "options": [false, either([arrayOf(isString), isNull] as const)], "required": [true, isBoolean] } as const);
+  /*#__PURE__*/ object({ "default": [false, either([isBoolean, isNumber, isString, isNull] as const)], "kind": [false, either([oneOf(["string", "number", "boolean", "select"] as const), isNull] as const)], "name": [true, isString], "options": [false, either([arrayOf(isString), isNull] as const)], "required": [true, isBoolean] } as const);
 
 export const checkDraftLabelClassBody: Check<Schemas["DraftLabelClassBody"]> =
   /*#__PURE__*/ object({ "attributes": [true, arrayOf(checkDraftAttributeBody)], "color": [false, either([isString, isNull] as const)], "geometries": [true, arrayOf(checkGeometryType)], "name": [true, isString] } as const);

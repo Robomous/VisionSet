@@ -815,19 +815,6 @@
         "title": "AttributeBody",
         "type": "object"
       },
-      "AttributeValue": {
-        "anyOf": [
-          {
-            "type": "boolean"
-          },
-          {
-            "type": "number"
-          },
-          {
-            "type": "string"
-          }
-        ]
-      },
       "BackgroundJobOut": {
         "description": "One unit of background work, and how far it has got.",
         "properties": {
@@ -2204,12 +2191,19 @@
           "default": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/AttributeValue"
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Default"
           },
           "kind": {
             "anyOf": [

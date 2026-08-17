@@ -60,7 +60,6 @@ from visionset.kernel.domain import (
     AttentionItem,
     AttentionKind,
     Attribute,
-    AttributeValue,
     BackgroundJob,
     BackgroundJobState,
     Batch,
@@ -359,7 +358,7 @@ class DraftAttributeBody(BaseModel):
     kind: Literal["string", "number", "boolean", "select"] | None = None
     required: bool = False
     options: tuple[str, ...] | None = None
-    default: AttributeValue | None = None
+    default: bool | float | str | None = None
 
     def to_domain(self) -> DraftAttribute:
         return DraftAttribute(

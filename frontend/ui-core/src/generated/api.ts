@@ -2622,7 +2622,6 @@ export interface components {
              */
             required: boolean;
         };
-        AttributeValue: boolean | number | string;
         /**
          * BackgroundJobOut
          * @description One unit of background work, and how far it has got.
@@ -3242,7 +3241,8 @@ export interface components {
          *     `AttributeBody` states is checked when the draft is published.
          */
         DraftAttributeBody: {
-            default?: components["schemas"]["AttributeValue"] | null;
+            /** Default */
+            default?: boolean | number | string | null;
             /** Kind */
             kind?: ("string" | "number" | "boolean" | "select") | null;
             /**
