@@ -1,11 +1,13 @@
-# usage: from visionset.mcp._resolve import resolve_project, resolve_release
+# usage: from visionset.mcp._resolve import resolve_connection, resolve_project, resolve_release
 """Turning what an agent said into the thing it meant.
 
-The same two resources the CLI can name, for the same reason and with the same
-two opposite rules:
+The same resources the CLI can name, for the same reason and with the same
+opposite rules:
 
 - a **project**, whose name is unique per workspace **case-insensitively**;
-- a **release**, whose tag is unique per dataset and **case-sensitive**.
+- a **release**, whose tag is unique per dataset and **case-sensitive**;
+- an **inference connection**, whose name is unique per workspace
+  **case-insensitively**, the project rule.
 
 Neither comparison is spelled here. ``ProjectService.get_by_name`` and
 ``ReleaseService.get_by_tag`` are kernel reads precisely so the rule lives beside
@@ -38,9 +40,14 @@ from uuid import UUID
 
 from pydantic import Field
 
-from visionset.kernel.domain import Project, Release
+from visionset.kernel.domain import InferenceConnection, Project, Release
 from visionset.kernel.errors import VisionSetError
-from visionset.kernel.services import ProjectService, ReleaseService, WorkspaceService
+from visionset.kernel.services import (
+    InferenceConnectionService,
+    ProjectService,
+    ReleaseService,
+    WorkspaceService,
+)
 
 ProjectRef = Annotated[
     str,
@@ -52,6 +59,15 @@ Module-level so that ``inspect.signature(fn, eval_str=True)`` resolves it in the
 importing module's globals under ``from __future__ import annotations``; an alias
 built inside a function body would not resolve, and MCPServer would refuse the tool
 at registration.
+"""
+
+ConnectionRef = Annotated[
+    str,
+    Field(description="The inference connection, by name (case-insensitive) or by id."),
+]
+"""``connection``, for a tool acting on one configured connection.
+
+Module-level for ``ProjectRef``'s reason.
 """
 
 
@@ -95,6 +111,20 @@ def resolve_project(workspace: WorkspaceService, reference: str) -> Project:
     except ValueError:
         return projects.get_by_name(reference)
     return projects.get(project_id)
+
+
+def resolve_connection(workspace: WorkspaceService, reference: str) -> InferenceConnection:
+    """The connection that reference names, on ``resolve_project``'s terms.
+
+    ``InferenceConnectionService.get_by_name`` is the kernel read that owns the
+    case rule, exactly as ``ProjectService.get_by_name`` owns the project's.
+    """
+    connections = InferenceConnectionService(workspace)
+    try:
+        connection_id = UUID(reference)
+    except ValueError:
+        return connections.get_by_name(reference)
+    return connections.get(connection_id)
 
 
 def resolve_release(workspace: WorkspaceService, reference: str, tag: str) -> Release:

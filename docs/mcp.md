@@ -79,7 +79,7 @@ it, and what twelve real agent runs did with it - see
 
 ## The tools
 
-Thirty-eight tools are offered by default, in the order an agent meets them, plus the two
+Forty-four tools are offered by default, in the order an agent meets them, plus the three
 below that are offered only on request — see
 [above](#destructive-tools-are-not-offered-unless-you-ask).
 [mcp-tools.md](mcp-tools.md) is the complete listing, generated from the server itself; this
@@ -181,12 +181,32 @@ call until the end. #439 has since added a job gate, but it changes none of this
 | `check_export` | What a format would drop from a release, before writing anything. |
 | `export_release` | Write a release to a local directory. `allow_lossy` where needed. |
 
+### Inference connections
+
+| | |
+| --- | --- |
+| `list_inference_connections` | Every configured connection, with setup state and actions. |
+| `model_download_size` | What fetching a model would cost, before anything fetches it. |
+| `create_inference_connection` | Configure one. Downloads nothing, contacts nothing. |
+| `download_connection_weights` | Fetch a local connection's weights. Synchronous. |
+| `check_connection_integrity` | Re-read every byte against the hub's digests. Synchronous. |
+| `update_inference_connection` | Edit one. The type cannot change. |
+
+The tools that make a workspace auto-label-ready without a browser — the SDK-first half of the
+Inference section (#421). Connections are workspace infrastructure, so nothing here takes a
+project, and the group sits after the cycle rather than in it. There is no `get`: a workspace
+holds a handful of connections and the listing carries the whole document. There is no `test`
+either — nothing in this build can contact a configured endpoint, and a declared action with
+nothing behind it is an offer the product cannot keep; it arrives with the HTTP endpoint
+contract, on every surface at once.
+
 ### Offered only with `--allow-destructive`
 
 | | |
 | --- | --- |
 | `delete_batch` | **Destructive.** Removes a batch, its task groups, its jobs and the per-asset progress on them. The **annotations survive** - labels hang off assets, not off batches - and so do the assets themselves. A `completed` batch is refused whatever `confirm` says. |
 | `delete_project` | **Destructive.** Removes the project, its dataset, its batches, its jobs and its annotations. Requires `confirm: true` as well - the parameter is unchanged; what changed is that the tool is not in the listing unless somebody started the server for it. |
+| `delete_inference_connection` | **Destructive.** Removes a model connection's configuration and nothing else: annotations keep their model provenance (identity is copied at write time), and cached weights stay on disk. Requires `confirm: true`. |
 
 ## `get_asset_image`, and the coordinate frame
 
@@ -271,9 +291,12 @@ guard is that a batch which is no longer `in_annotation` refuses every write.
 
 ## Stated limits
 
-**Ingest and export are synchronous.** A stdio server has no background worker: something has to
-do the decode, and an agent driving a "resume" loop would block for exactly as long as doing the
-work in the first place. A long video makes `ingest` a long call.
+**Ingest, export, weight downloads and integrity checks are synchronous.** A stdio server has no
+background worker: something has to do the decode, and an agent driving a "resume" loop would
+block for exactly as long as doing the work in the first place. A long video makes `ingest` a
+long call, and a large model makes `download_connection_weights` one — minutes, with nothing to
+poll from here. A cut-off download changed nothing (the connection is only marked ready once
+every file is here) and the retry resumes the cache rather than starting over.
 
 There is therefore no ingest polling, and no `resume_ingest`. If a call is cut off part way, call
 `ingest` again - registration is idempotent on `(kind, path, extraction_fps)` and content
@@ -297,13 +320,14 @@ out of the object to pick the variant, and omitting it fails. Always send
 ## What is not here, and why
 
 Fifty candidate tools were recorded across the four REST tasks; thirty of them shipped and
-twenty did not. Eight have been added since, each because a surface grew a capability an agent
+twenty did not. Fifteen have been added since, each because a surface grew a capability an agent
 had no way to reach: `check_export`, the plan-before-apply half of an export on the
-`preview_schema_change` precedent; the four batch-composition tools above; and the two
-deletions, which are advertised only on request. That is thirty-eight offered by default and
-forty in all. The parity rule means *evaluated*, not *implemented* — tool-selection accuracy
-degrades with count, so a tool ships only when an agent has a reason to reach for it that no
-neighbour covers.
+`preview_schema_change` precedent; the four batch-composition tools above; the seven
+inference-connection tools, closing the Inference section's SDK-first parity (#421); and the
+three deletions, which are advertised only on request. That is forty-four offered by default
+and forty-seven in all. The parity rule means *evaluated*, not *implemented* — tool-selection
+accuracy degrades with count, so a tool ships only when an agent has a reason to reach for it
+that no neighbour covers.
 
 **Folded into a parent**, because the parent already reads it and a second tool is a second round
 trip: `get_project_dataset`, `get_dataset`, `list_schema_versions`, `get_source`,

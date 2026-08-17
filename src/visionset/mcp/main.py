@@ -52,6 +52,7 @@ from visionset.mcp import (
     batches,
     datasets,
     formats,
+    inference,
     jobs,
     projects,
     releases,
@@ -115,6 +116,18 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (formats.list_formats, READS),
     (releases.check_export, READS),
     (releases.export_release, WRITES),
+    # After the cycle, not in it: connections are workspace configuration —
+    # every project shares them — so they read as the appendix rather than as a
+    # rung. Within the group, the order is the setup journey: see what is
+    # configured, price a download, configure, fetch, verify, edit.
+    (inference.list_inference_connections, READS),
+    (inference.model_download_size, READS),
+    (inference.create_inference_connection, WRITES),
+    (inference.download_connection_weights, WRITES),
+    # WRITES, not READS: a check that finds damage purges the bad copies and
+    # stands the connection back to not_set_up.
+    (inference.check_connection_integrity, WRITES),
+    (inference.update_inference_connection, WRITES),
 )
 """Every tool this server always offers, with what it does to the workspace.
 
@@ -129,6 +142,7 @@ Nothing here is destructive. See :data:`DESTRUCTIVE_TOOLS`.
 DESTRUCTIVE_TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (batches.delete_batch, DESTROYS),
     (projects.delete_project, DESTROYS),
+    (inference.delete_inference_connection, DESTROYS),
 )
 """Tools that destroy something, registered **only on request**.
 
