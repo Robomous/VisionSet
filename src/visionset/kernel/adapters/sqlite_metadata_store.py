@@ -348,6 +348,7 @@ class SqlUnitOfWork:
         self.workspaces = SqlRepository(session, m.WORKSPACES)
         self.projects = SqlRepository(session, m.PROJECTS)
         self.schemas = SqlRepository(session, m.SCHEMAS)
+        self.schema_drafts = SqlRepository(session, m.SCHEMA_DRAFTS)
         self.sources = SqlRepository(session, m.SOURCES)
         self.ingest_jobs = SqlRepository(session, m.INGEST_JOBS)
         self.assets = SqlRepository(session, m.ASSETS)
