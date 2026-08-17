@@ -96,6 +96,48 @@ test("the scan finds a colour smuggled into a class, and nothing that merely loo
   assert.deepEqual(colouredClassesIn("i.css", `  --color-primary: #eb5a47;`), []);
 });
 
+/**
+ * `DESIGN.md` "Where the brand is": coral is used in exactly three places, and a
+ * fourth is a design decision raised in review, not a diff. The document's own
+ * check command couldn't hold the line alone — this is the same rule with a suite
+ * behind it. Same bargain as `colouredClassesIn`: a pure function over one file's
+ * text, so the gate is provable with fabricated input, and `COMMENT` keeps the
+ * styles.css line that *states* the rule from counting as a usage of it.
+ */
+const BRAND_UTILITY = /\b(?:bg|text|border|ring|fill|stroke)-brand\b/;
+
+/** Every line in `text` that paints with the brand colour. */
+export function brandUsagesIn(file, text) {
+  return text
+    .split("\n")
+    .map((line, index) => ({ line, at: index + 1 }))
+    .filter(({ line }) => !COMMENT.test(line) && BRAND_UTILITY.test(line))
+    .map(({ line, at }) => ({ file, at, text: line.trim() }));
+}
+
+test("the brand scan counts a usage, and not the comment that states the rule", () => {
+  // A utility usage on any of the six colour-bearing prefixes is counted.
+  assert.deepEqual(brandUsagesIn("a.tsx", `  <span className="text-brand">VisionSet</span>`), [
+    { file: "a.tsx", at: 1, text: `<span className="text-brand">VisionSet</span>` },
+  ]);
+  assert.deepEqual(brandUsagesIn("b.tsx", `  className="h-full bg-brand transition-transform"`), [
+    { file: "b.tsx", at: 1, text: `className="h-full bg-brand transition-transform"` },
+  ]);
+  // An opacity modifier is still a usage of the brand colour.
+  assert.deepEqual(
+    brandUsagesIn("c.tsx", `  className="bg-brand/10"`).map((u) => u.at),
+    [1],
+  );
+  // A comment line states the rule rather than applying it — styles.css:48's case.
+  assert.deepEqual(brandUsagesIn("d.css", `   * a third \`bg-brand\` is a design decision`), []);
+  assert.deepEqual(brandUsagesIn("e.tsx", `  // never add bg-brand here`), []);
+  // Another token on the same prefixes is not the brand.
+  assert.deepEqual(brandUsagesIn("f.tsx", `  className="bg-primary text-primary-foreground"`), []);
+  // The token *name* without a utility prefix is not a usage — tokens.test.ts
+  // asserts COLOR.brand's value and must not trip the gate.
+  assert.deepEqual(brandUsagesIn("g.ts", `  expect(COLOR.brand).toBe("#e85d44");`), []);
+});
+
 test("no frontend source puts a colour inside a class name", () => {
   const listed = spawnSync("git", ["ls-files", "-z", "frontend"], { cwd: REPO, encoding: "utf8" });
   assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
@@ -112,6 +154,37 @@ test("no frontend source puts a colour inside a class name", () => {
     [],
     "colour belongs to the token contract — add a token to " +
       `frontend/ui-core/src/styles.css and name the intent:\n${offenders.join("\n")}`,
+  );
+});
+
+/**
+ * The three sites `DESIGN.md` records, and the whole allowance. Paths, not
+ * counts, so the failure names what moved. Sorted so the assertion is stable
+ * against `git ls-files` ordering.
+ */
+const BRAND_SITES = [
+  "frontend/app/src/shell/AppShell.tsx",
+  "frontend/app/src/styleguide/Styleguide.tsx",
+  "frontend/ui-core/src/primitives/Feedback.tsx",
+];
+
+test("the brand colour is used in exactly the three recorded places", () => {
+  const listed = spawnSync("git", ["ls-files", "-z", "frontend"], { cwd: REPO, encoding: "utf8" });
+  assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
+  const tracked = listed.stdout
+    .split("\0")
+    .filter((name) => SOURCE.test(name) && !GENERATED.test(name));
+  assert.ok(tracked.length > 0, "the scan found no frontend sources, so it proves nothing");
+
+  const usages = tracked.flatMap((file) =>
+    brandUsagesIn(file, readFileSync(path.join(REPO, file), "utf8")),
+  );
+  assert.deepEqual(
+    usages.map((u) => u.file).sort(),
+    BRAND_SITES,
+    "DESIGN.md 'Where the brand is': a new brand-coloured site is a design decision — " +
+      "raise it in review and update DESIGN.md and BRAND_SITES together, do not just widen this list:\n" +
+      usages.map((u) => `${u.file}:${u.at}: ${u.text}`).join("\n"),
   );
 });
 
