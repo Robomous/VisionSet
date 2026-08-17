@@ -2694,6 +2694,28 @@
         "title": "JobAction",
         "type": "string"
       },
+      "JobAssign": {
+        "additionalProperties": false,
+        "description": "The name to record for this job, or null to clear it.",
+        "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          }
+        },
+        "required": [
+          "assignee"
+        ],
+        "title": "JobAssign",
+        "type": "object"
+      },
       "JobOut": {
         "description": "One annotator's unit of work over a segment of a batch.",
         "properties": {
@@ -2707,6 +2729,17 @@
           "asset_count": {
             "title": "Asset Count",
             "type": "integer"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
           },
           "batch_id": {
             "format": "uuid",
@@ -2726,6 +2759,7 @@
           "id",
           "batch_id",
           "state",
+          "assignee",
           "asset_count",
           "allowed_actions"
         ],
@@ -8271,6 +8305,105 @@
           }
         ],
         "summary": "Set Asset Progress",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/jobs/{job_id}/assignee": {
+      "put": {
+        "description": "Name who is working this job, or clear it with `null`.\n\nInformational only \u2014 a name, not an account. Legal in any job or batch\nstate: naming who did a finished job is attribution, not a reopening.",
+        "operationId": "assign_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobAssign"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assign Job",
         "tags": [
           "jobs"
         ]

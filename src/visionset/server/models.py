@@ -1000,6 +1000,7 @@ class JobOut(BaseModel):
     id: UUID
     batch_id: UUID
     state: AnnotationJobState
+    assignee: str | None
     asset_count: int
     allowed_actions: list[JobAction]
 
@@ -1013,11 +1014,20 @@ class JobOut(BaseModel):
             id=job.id,
             batch_id=batch.id,
             state=job.state,
+            assignee=job.assignee,
             asset_count=len(job.progress),
             allowed_actions=job_actions(
                 job.state, batch_state=batch.state, progress=job.progress.values()
             ),
         )
+
+
+class JobAssign(BaseModel):
+    """The name to record for this job, or null to clear it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assignee: str | None
 
 
 class JobPage(Page[JobOut]):

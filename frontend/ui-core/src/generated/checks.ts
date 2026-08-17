@@ -222,7 +222,7 @@ export const checkJobAction: Check<Schemas["JobAction"]> =
   /*#__PURE__*/ oneOf(["start", "complete"] as const);
 
 export const checkJobOut: Check<Schemas["JobOut"]> =
-  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkJobAction)], "asset_count": [true, isInteger], "batch_id": [true, isString], "id": [true, isString], "state": [true, checkAnnotationJobState] } as const);
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkJobAction)], "asset_count": [true, isInteger], "assignee": [true, either([isString, isNull] as const)], "batch_id": [true, isString], "id": [true, isString], "state": [true, checkAnnotationJobState] } as const);
 
 export const checkJobPage: Check<Schemas["JobPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkJobOut)], "total": [true, isInteger] } as const);
@@ -326,6 +326,7 @@ export const checkSuggestionOut: Check<Schemas["SuggestionOut"]> =
 export const checkAddAnnotations = checkAnnotationPage;
 export const checkAddBatchAssets = checkBatchMembershipOut;
 export const checkApproveBatch = checkBatchOut;
+export const checkAssignJob = checkJobOut;
 export const checkCancelBackgroundJob = checkBackgroundJobOut;
 export const checkCheckConnectionIntegrity = checkBackgroundJobOut;
 export const checkCheckExport = checkExportCompatibilityOut;

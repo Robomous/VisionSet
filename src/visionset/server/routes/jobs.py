@@ -29,6 +29,7 @@ from visionset.server.models import (
     AssetPage,
     AssetProgressOut,
     AssetProgressSet,
+    JobAssign,
     JobOut,
     ProgressCounts,
 )
@@ -92,6 +93,18 @@ def complete_job(workspace: WorkspaceDep, job_id: UUID) -> JobOut:
     """
     jobs = JobService(workspace)
     return JobOut.of(jobs.complete(job_id), batch=jobs.batch(job_id))
+
+
+@router.put("/{job_id}/assignee", responses=documented(404))
+def assign_job(workspace: WorkspaceDep, job_id: UUID, body: JobAssign) -> JobOut:
+    """Name who is working this job, or clear it with `null`.
+
+    Informational only — a name, not an account. Legal in any job or batch
+    state: naming who did a finished job is attribution, not a reopening.
+    """
+    service = JobService(workspace)
+    job = service.assign(job_id, body.assignee)
+    return JobOut.of(job, batch=service.batch(job_id))
 
 
 @router.get("/{job_id}/next", responses=documented(404))

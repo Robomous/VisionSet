@@ -277,6 +277,7 @@ def test_a_job_completes_once_every_asset_is_settled(
         "id": job_id,
         "batch_id": batch_id,
         "state": "completed",
+        "assignee": None,
         "asset_count": 3,
         # `JOB_TRANSITIONS[completed]` is empty, so a finished job declares nothing.
         "allowed_actions": [],
@@ -301,3 +302,43 @@ def test_a_lifecycle_move_on_an_unknown_job_is_404(client: TestClient, action: s
 
     assert response.status_code == 404
     assert response.json()["code"] == "JOB_NOT_FOUND"
+
+
+# --- assignment ---------------------------------------------------------------
+
+
+def test_assign_names_who_works_the_job(client: TestClient, working: tuple[str, str]) -> None:
+    _, job_id = working
+    answer = client.put(f"/jobs/{job_id}/assignee", json={"assignee": "Dana Reyes"})
+    assert answer.status_code == 200
+    assert answer.json()["assignee"] == "Dana Reyes"
+    assert client.get(f"/jobs/{job_id}").json()["assignee"] == "Dana Reyes"
+
+
+def test_assign_null_clears_the_name(client: TestClient, working: tuple[str, str]) -> None:
+    _, job_id = working
+    client.put(f"/jobs/{job_id}/assignee", json={"assignee": "Dana Reyes"})
+    answer = client.put(f"/jobs/{job_id}/assignee", json={"assignee": None})
+    assert answer.status_code == 200
+    assert answer.json()["assignee"] is None
+
+
+def test_an_unassigned_job_reads_null_not_absent(
+    client: TestClient, working: tuple[str, str]
+) -> None:
+    """The key is always there — required-nullable, so a client can rely on it."""
+    _, job_id = working
+    assert client.get(f"/jobs/{job_id}").json()["assignee"] is None
+
+
+def test_a_blank_assignee_is_422_invalid_name(client: TestClient, working: tuple[str, str]) -> None:
+    """The kernel's own InvalidName arrives through ERROR_RULES — no restatement."""
+    _, job_id = working
+    answer = client.put(f"/jobs/{job_id}/assignee", json={"assignee": "   "})
+    assert answer.status_code == 422
+    assert answer.json()["code"] == "INVALID_NAME"
+
+
+def test_assigning_an_unknown_job_is_404(client: TestClient, working: tuple[str, str]) -> None:
+    answer = client.put(f"/jobs/{uuid4()}/assignee", json={"assignee": "Dana Reyes"})
+    assert answer.status_code == 404
