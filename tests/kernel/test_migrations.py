@@ -180,6 +180,7 @@ def _at_generation_one(path: Path) -> None:
         connection.execute(text("ALTER TABLE annotation_schema DROP COLUMN provenance"))
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN model_family"))
         connection.execute(text("ALTER TABLE annotation_job_asset DROP COLUMN touched_at"))
+        connection.execute(text("ALTER TABLE annotation_job DROP COLUMN assignee"))
         connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 1"))
     store.close()
 
@@ -245,6 +246,7 @@ _DECLARED_TAILS = {
     "batch": ["parent_batch_id"],
     "annotation": ["job_id"],
     "annotation_job_asset": ["touched_at"],
+    "annotation_job": ["assignee"],
 }
 
 
