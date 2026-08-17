@@ -1,0 +1,5 @@
+# Shell scripts run inside Linux containers, several via a read-only bind mount
+# (see docker/compose.yaml). A CRLF checkout turns `set -eu` into `set -eu\r`,
+# which `sh` rejects as an illegal option — so these must always check out with
+# LF, regardless of a contributor's core.autocrlf setting.
+*.sh text eol=lf
