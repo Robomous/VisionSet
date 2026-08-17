@@ -2392,7 +2392,7 @@ export interface components {
          *     ``ASSET_PROGRESS_TRANSITIONS`` — see :data:`ASSET_MOVES`.
          * @enum {string}
          */
-        AssetAction: "annotate" | "skip" | "restore" | "submit_for_review" | "accept" | "return_to_annotator";
+        AssetAction: "annotate" | "skip" | "restore" | "submit_for_review" | "accept" | "return_to_annotator" | (string & {});
         /**
          * AssetOut
          * @description One ingested item.
@@ -2590,7 +2590,7 @@ export interface components {
          * @description What can be asked of a batch. Declaration order is display order.
          * @enum {string}
          */
-        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "edit_membership" | "delete";
+        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "edit_membership" | "delete" | (string & {});
         /**
          * BatchApprove
          * @description How to cut the batch into jobs. One job for the whole batch by default.
@@ -2906,7 +2906,7 @@ export interface components {
          * @description What can be asked of an inference connection. Order is display order.
          * @enum {string}
          */
-        ConnectionAction: "download_weights" | "check_integrity" | "update" | "delete";
+        ConnectionAction: "download_weights" | "check_integrity" | "update" | "delete" | (string & {});
         /**
          * ConnectionCreate
          * @description What a caller supplies to configure a connection.
@@ -3398,7 +3398,7 @@ export interface components {
          * @description What can be asked of an annotation job.
          * @enum {string}
          */
-        JobAction: "start" | "complete";
+        JobAction: "start" | "complete" | (string & {});
         /**
          * JobAssign
          * @description The name to record for this job, or null to clear it.
@@ -3463,7 +3463,7 @@ export interface components {
          * @description What a connection's model can be asked for: the kind of prompt it takes.
          * @enum {string}
          */
-        ModelCapability: "point_suggest" | "text_detect";
+        ModelCapability: "point_suggest" | "text_detect" | (string & {});
         /**
          * PolygonBody
          * @description A closed polygon of at least three points. The closing edge is implicit.
@@ -4008,7 +4008,7 @@ export interface components {
          * @description A setting that shapes a suggestion. Order is display order.
          * @enum {string}
          */
-        SuggestParameter: "detail";
+        SuggestParameter: "detail" | (string & {});
         /**
          * SuggestPoint
          * @description One click, in the asset's own pixel coordinates.
@@ -9832,4 +9832,17 @@ export interface operations {
             };
         };
     };
+}
+
+/** A member of an open vocabulary, or a value a compatible release added after this build. */
+export type OpenMember<A extends string> = A | (string & {});
+
+/** The members this build compiled against, per vocabulary the contract may grow. */
+export interface KnownMembers {
+  AssetAction: "annotate" | "skip" | "restore" | "submit_for_review" | "accept" | "return_to_annotator";
+  BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "edit_membership" | "delete";
+  ConnectionAction: "download_weights" | "check_integrity" | "update" | "delete";
+  JobAction: "start" | "complete";
+  ModelCapability: "point_suggest" | "text_detect";
+  SuggestParameter: "detail";
 }

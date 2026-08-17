@@ -499,6 +499,39 @@ describe("the adjustments, which are a section and never a popup", () => {
     expect(screen.queryByTestId("suggest-adjust-open")).toBeNull();
   });
 
+  it("offers nothing for a parameter this build has no control for", () => {
+    // `parameters` is an open vocabulary, so a newer server may name a setting this
+    // version cannot draw. A section gated on the list's *length* would then offer
+    // `Adjust the shape` and open on an empty box — the dead control this panel is
+    // built to avoid. What is offered is the intersection, not the declaration.
+    const session = asked();
+    const unknown = answered(session, session.serial, {
+      ...polygonAnswer(),
+      parameters: ["depth_bias"],
+    });
+    render(
+      mount({ session: unknown, adjusting: true, onAdjusting: vi.fn(), onDetail: vi.fn() }),
+    );
+
+    expect(screen.queryByTestId("suggest-adjust-open")).toBeNull();
+    expect(screen.queryByTestId("suggest-adjustments")).toBeNull();
+    expect(screen.queryByTestId("suggest-detail")).toBeNull();
+  });
+
+  it("still offers the settings it does know beside one it does not", () => {
+    // The other half: an unrecognised member is inert, not poisonous — the control
+    // for a setting this build *can* draw goes on being offered next to it.
+    const session = asked();
+    const mixed = answered(session, session.serial, {
+      ...polygonAnswer(),
+      parameters: ["depth_bias", "detail"],
+    });
+    render(mount({ session: mixed, adjusting: true, onAdjusting: vi.fn(), onDetail: vi.fn() }));
+
+    expect(screen.getByTestId("suggest-adjustments")).toBeTruthy();
+    expect(screen.getByTestId("suggest-detail")).toBeTruthy();
+  });
+
   it("names the step and what it costs in one label, beside the control", () => {
     render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
       onDetail: vi.fn() }));
@@ -569,5 +602,25 @@ describe("the adjustments, which are a section and never a popup", () => {
     expect(screen.getByTestId("suggest-none")).toBeTruthy();
     expect(screen.getByTestId("suggest-adjustments")).toBeTruthy();
     expect(screen.getByTestId("suggest-detail")).toBeTruthy();
+  });
+
+  it("does not point at settings it has no control for", () => {
+    // The empty-answer card offers to step back into the settings, and that
+    // sentence has to be true. `parameters` is open, so a server can declare one
+    // this build cannot draw — and then the section is absent and the line would
+    // be pointing at nothing.
+    const session = asked();
+    const empty = answered(session, session.serial, {
+      ...polygonAnswer(),
+      suggestions: [],
+      parameters: ["depth_bias"],
+    });
+    render(mount({ session: empty, adjusting: true, onAdjusting: vi.fn(), onDetail: vi.fn() }));
+
+    expect(screen.getByTestId("suggest-none")).toBeTruthy();
+    expect(screen.queryByTestId("suggest-adjustments")).toBeNull();
+    expect(screen.getByTestId("suggest-none").parentElement?.textContent).not.toContain(
+      "The settings below still apply",
+    );
   });
 });

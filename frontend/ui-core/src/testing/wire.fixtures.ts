@@ -16,14 +16,17 @@
  * `tsconfig.build.json`.
  */
 
-import type { components } from "../generated/api.js";
+import type { KnownMembers, components } from "../generated/api.js";
 
 type BatchState = components["schemas"]["BatchState"];
 type JobState = components["schemas"]["AnnotationJobState"];
 type Progress = components["schemas"]["AssetProgress"];
-type BatchAction = components["schemas"]["BatchAction"];
-type JobAction = components["schemas"]["JobAction"];
-type AssetAction = components["schemas"]["AssetAction"];
+// The known members, not the wire type: a double stands in for the server this build was
+// compiled against, and a roster free to hold any string is a roster `tsc` stops checking —
+// which is how a withdrawn member once survived every gate and failed only in the browser.
+type BatchAction = KnownMembers["BatchAction"];
+type JobAction = KnownMembers["JobAction"];
+type AssetAction = KnownMembers["AssetAction"];
 
 /** `kernel/domain/capabilities.py::batch_actions`, per state. */
 const BATCH_ACTIONS: Record<BatchState, readonly BatchAction[]> = {

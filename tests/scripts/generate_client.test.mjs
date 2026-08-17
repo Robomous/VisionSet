@@ -15,6 +15,7 @@ import {
   reachableSchemas,
   renderChecks,
   renderClient,
+  renderClientFromSpec,
   repoRoot,
   responsesOf,
 } from "../../scripts/generate_client.mjs";
@@ -150,4 +151,90 @@ test("the checks are generated from this spec, not from an empty one", () => {
   // produced, so the contract shapes nothing and the check accepts anything —
   // see `isJsonValue` for why a pass-through is honest exactly here.
   assert.match(source, /export const checkJsonValue: Check<Schemas\["JsonValue"\]> =\n  \/\*#__PURE__\*\/ isJsonValue;/);
+});
+
+// --- open vocabularies ------------------------------------------------
+
+test("an open vocabulary compiles to the tolerant combinator, a closed one does not", () => {
+  const open = { type: "string", enum: ["point_suggest", "text_detect"], "x-visionset-open": true };
+  const closed = { type: "string", enum: ["draft", "approved"] };
+  assert.equal(compile(open), 'openOneOf(["point_suggest", "text_detect"] as const)');
+  assert.equal(compile(closed), 'oneOf(["draft", "approved"] as const)');
+});
+
+test("an extension the generator does not know is still refused", () => {
+  // The keyword refusal is what stops a permissive check being emitted for something
+  // nobody taught this file about. Opening one key must not open the door.
+  assert.throws(
+    () => compile({ type: "string", enum: ["a"], "x-invented-elsewhere": true }),
+    /unsupported keyword\(s\) x-invented-elsewhere/,
+  );
+});
+
+/** A spec with one open enum, one closed enum, and a response that carries both. */
+function twoVocabularies() {
+  return {
+    openapi: "3.1.0",
+    info: { title: "t", version: "1" },
+    paths: {
+      "/c": {
+        get: {
+          operationId: "list_c",
+          responses: {
+            200: {
+              description: "ok",
+              content: {
+                "application/json": { schema: { $ref: "#/components/schemas/ConnectionOut" } },
+              },
+            },
+          },
+        },
+      },
+    },
+    components: {
+      schemas: {
+        ModelCapability: {
+          type: "string",
+          enum: ["point_suggest", "text_detect"],
+          "x-visionset-open": true,
+        },
+        BatchState: { type: "string", enum: ["draft", "approved"] },
+        ConnectionOut: {
+          type: "object",
+          properties: {
+            capabilities: { type: "array", items: { $ref: "#/components/schemas/ModelCapability" } },
+            state: { $ref: "#/components/schemas/BatchState" },
+          },
+          required: ["capabilities", "state"],
+        },
+      },
+    },
+  };
+}
+
+test("a marked enum widens in the types, and an unmarked one is untouched", async () => {
+  const rendered = await renderClientFromSpec(twoVocabularies());
+  assert.match(rendered, /ModelCapability: "point_suggest" \| "text_detect" \| \(string & \{\}\);/);
+  assert.match(rendered, /BatchState: "draft" \| "approved";/);
+  // The known members, for the consumers whose totality checks need a closed union.
+  assert.match(rendered, /export interface KnownMembers \{/);
+  assert.match(rendered, /ModelCapability: "point_suggest" \| "text_detect";/);
+  assert.match(rendered, /export type OpenMember<A extends string> = A \| \(string & \{\}\);/);
+  // And a closed vocabulary gets no entry — the block *is* the open set.
+  const block = rendered.slice(rendered.indexOf("export interface KnownMembers"));
+  assert.equal(block.includes("BatchState"), false);
+});
+
+test("a spec with no open vocabulary renders no extra block", async () => {
+  // What makes the generator's half of this change a no-op on the committed artifacts, so
+  // the drift gate stays meaningful while only that half exists.
+  const spec = {
+    openapi: "3.1.0",
+    info: { title: "t", version: "1" },
+    paths: {},
+    components: { schemas: { BatchState: { type: "string", enum: ["draft"] } } },
+  };
+  const rendered = await renderClientFromSpec(spec);
+  assert.equal(rendered.includes("KnownMembers"), false);
+  assert.equal(rendered.includes("OpenMember"), false);
 });

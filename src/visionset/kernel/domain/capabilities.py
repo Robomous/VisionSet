@@ -64,6 +64,7 @@ from visionset.kernel.domain.task import (
     AssetProgress,
     progress_after_annotating,
 )
+from visionset.kernel.domain.vocabulary import OpenVocabulary
 
 
 # A declaration is a promise: under the `ui-capabilities` contract a conforming
@@ -81,7 +82,7 @@ from visionset.kernel.domain.task import (
 # docstring verbatim into `openapi.json` as the schema's `description`, where an
 # internal rationale is noise and RST markup renders as literal backticks. The
 # docstring stays the one short sentence a client should read.
-class BatchAction(StrEnum):
+class BatchAction(OpenVocabulary):
     """What can be asked of a batch. Declaration order is display order."""
 
     APPROVE = "approve"
@@ -94,14 +95,14 @@ class BatchAction(StrEnum):
     DELETE = "delete"
 
 
-class JobAction(StrEnum):
+class JobAction(OpenVocabulary):
     """What can be asked of an annotation job."""
 
     START = "start"
     COMPLETE = "complete"
 
 
-class AssetAction(StrEnum):
+class AssetAction(OpenVocabulary):
     """What can be asked of one asset inside a batch.
 
     ``ANNOTATE`` is the odd one and the important one: it is not a progress move
@@ -142,7 +143,7 @@ class AssetAction(StrEnum):
 # display decision the ordering rule above implies: it is about the weights, so
 # it belongs beside the action that fetched them, and it moves the resource
 # (backwards, on failure) rather than editing or ending it.
-class ConnectionAction(StrEnum):
+class ConnectionAction(OpenVocabulary):
     """What can be asked of an inference connection. Order is display order."""
 
     DOWNLOAD_WEIGHTS = "download_weights"
