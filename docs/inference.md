@@ -222,6 +222,37 @@ The two states stay the only two throughout. A check that cannot reach the hub -
 repository that moved - changes nothing and removes nothing: there are no published digests to
 compare against, and that is an absence of evidence rather than a verdict in either direction.
 
+## Asking twice while one is running
+
+**A second request joins the run already in flight.** Ask for a download while this connection has
+one queued or running and the answer is that job - the same `202`, the same `Location`, the id of
+the transfer already going - rather than a second transfer of the same gigabytes. A check behaves
+the same way. So a double-click, a second tab and a retried request all end up watching one run,
+which is what they wanted in the first place.
+
+It removes the ordinary repetition rather than winning a race: two requests arriving at the same
+instant can still both find nothing running and both queue. Closing that would mean the queue
+claiming work at the moment it is asked for, which is a cost every kind of background job would
+pay for this one screen's benefit.
+
+**The browser withdraws the offer while either run is live.** All three controls over a
+connection's files grey out and say what is happening - *Downloading…*, *Checking…*, *Reading every
+file…* - because they act on one cache. The flag is read off the connection rather than remembered
+by the tab that pressed the button, so a second tab and a colleague's browser withdraw it too.
+
+**Nothing is refused, though.** What a connection declares in `allowed_actions` is a function of
+its setup state and its kind, and no run of either sort changes either one: a download requested
+while a check reads the same files is accepted and queued. That is deliberate. A refusal would have
+to be built on a job row being live, and **only the HTTP surface makes one** - the CLI and the MCP
+tools run the same two operations inline, because neither has a dispatcher to hand the work to. So
+the rule would bind one caller in three while claiming an exclusivity none of them could rely on.
+It would also strand a connection behind actions it refuses whenever a worker died holding a job -
+the failure `sweep_orphans` exists to clear up rather than one to design around.
+
+At a terminal, and through an MCP tool, each call blocks until it is done, so one shell or one
+agent serialises itself. Two of them, or either beside the server, do not coordinate: nothing here
+makes a download and a check over one cache impossible, only unlikely to be asked for by accident.
+
 ## Pointing a connection somewhere else
 
 Editing a local connection's `model_id` or `model_revision` puts it back to `not_set_up`. The
@@ -562,7 +593,10 @@ in place; the row becomes **Ready** when the job finishes, without a reload. A r
 ready carries two checks in its overflow menu instead - **Check for missing files**, which is the
 same request re-run, and **Check files are undamaged**, which reads every byte. The table above is
 what separates them. A machine without the extra still shows both controls, and pressing either
-answers with the install command - a control that vanished would take the remedy with it.
+answers with the install command - a control that vanished would take the remedy with it. While
+either run is under way all three are disabled and labelled with what is happening, for the reason
+above: they act on one cache, and the run is read off the row, so a tab that started nothing shows
+it too.
 
 A failed download leaves the row at **Not set up**, because weights arrive or they do not, and says
 what happened in the job's own words with what to do about it. There is no separate retry button:

@@ -425,3 +425,99 @@ def test_a_connection_with_nothing_running_reports_neither(
 
     assert made.id not in jobs.downloads
     assert made.id not in jobs.checks
+
+
+# --- the run a second request joins -------------------------------------------
+
+
+def test_a_queued_run_is_the_one_a_second_request_would_join(
+    workspace: WorkspaceService, connections: InferenceConnectionService
+) -> None:
+    """The positive path: asked for a kind already waiting, it hands that row back."""
+    made = a_local(connections)
+    queued = a_download(workspace, made)
+
+    found = connections.live_job(made.id, job_type=WEIGHT_DOWNLOAD_JOB_TYPE)
+
+    assert found is not None
+    assert found.id == queued.id
+
+
+def test_a_running_run_is_joined_too(
+    workspace: WorkspaceService, connections: InferenceConnectionService
+) -> None:
+    """Both live states, not only the one before a worker took it.
+
+    A `queued`-only answer would fork a second transfer for every request that
+    arrived after the dispatcher woke, which is nearly all of them.
+    """
+    made = a_local(connections)
+    started = a_download(workspace, made)
+    workspace.job_queue.claim("worker-1")
+
+    found = connections.live_job(made.id, job_type=WEIGHT_DOWNLOAD_JOB_TYPE)
+
+    assert found is not None
+    assert found.id == started.id
+    assert found.state is BackgroundJobState.RUNNING
+
+
+def test_a_settled_run_is_not_joined(
+    workspace: WorkspaceService, connections: InferenceConnectionService
+) -> None:
+    """The half that keeps the action usable at all.
+
+    A finished, failed or cancelled run is not something to wait for, so it must
+    not answer here — joining one would mean a connection whose first download
+    failed could never be asked for a second, because every request would be
+    handed the failure.
+    """
+    made = a_local(connections)
+    job = a_download(workspace, made)
+    workspace.job_queue.claim("worker-1")
+    workspace.job_queue.finish(
+        job.id, BackgroundJobOutcome(state=BackgroundJobState.FAILED, error="the disk filled")
+    )
+
+    assert connections.live_job(made.id, job_type=WEIGHT_DOWNLOAD_JOB_TYPE) is None
+
+
+def test_the_other_kind_of_run_is_not_joined(
+    workspace: WorkspaceService, connections: InferenceConnectionService
+) -> None:
+    """A live check is not a download, so a download request starts one.
+
+    The kernel half of the decision the routes carry: coalescing is per kind, and
+    nothing here refuses work because a *different* operation is under way.
+    """
+    made = a_local(connections)
+    a_check(workspace, made)
+
+    assert connections.live_job(made.id, job_type=WEIGHT_DOWNLOAD_JOB_TYPE) is None
+    assert connections.live_job(made.id, job_type=INTEGRITY_CHECK_JOB_TYPE) is not None
+
+
+def test_another_connections_run_is_not_joined(
+    workspace: WorkspaceService, connections: InferenceConnectionService
+) -> None:
+    """Matched on the connection the payload names, never on the type alone."""
+    mine, theirs = a_local(connections, "mine"), a_local(connections, "theirs")
+    a_download(workspace, theirs)
+
+    assert connections.live_job(mine.id, job_type=WEIGHT_DOWNLOAD_JOB_TYPE) is None
+
+
+def test_a_job_naming_no_connection_is_not_joined(
+    workspace: WorkspaceService, connections: InferenceConnectionService
+) -> None:
+    """A malformed row is skipped rather than raised over, as the listing skips it.
+
+    It also must not be *returned*: a request handed a job that is about nothing
+    would poll a run that can only fail, in place of the one it asked for.
+    """
+    made = a_local(connections)
+    workspace.job_queue.enqueue(
+        BackgroundJobSpec(type=WEIGHT_DOWNLOAD_JOB_TYPE, payload={}, idempotent=True)
+    )
+
+    assert connections.live_job(made.id, job_type=WEIGHT_DOWNLOAD_JOB_TYPE) is None

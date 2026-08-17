@@ -191,8 +191,16 @@ def download_connection_weights(
     Re-running is safe. The job verifies a cache it already filled rather than
     re-fetching it, and a run that fails leaves the connection exactly as it was
     — there is no half-set-up state to recover from.
+
+    **Asking twice joins the download already running rather than starting a
+    second one.** A request that arrives while this connection has a download
+    queued or running is answered with *that* run's id, so a double-click, a
+    second tab and a retried request all watch one transfer instead of paying
+    for the same gigabytes twice. Every answer is still 202 with a `Location`,
+    and a client polls what it is given either way.
     """
-    connection = InferenceConnectionService(workspace).require_downloadable(connection_id)
+    service = InferenceConnectionService(workspace)
+    connection = service.require_downloadable(connection_id)
     # Before the job exists, for the reason the export route gives: a refusal a
     # request can make is a refusal the request makes. Discovering a missing
     # install inside a worker would put an install command on a failed row
@@ -206,13 +214,17 @@ def download_connection_weights(
     # rather than inside ``fetch_weights``, which this refusal never reaches.
     if connection.model_id != STUB_MODEL_ID:
         require_local_inference()
-    job = workspace.job_queue.enqueue(
+    running = service.live_job(connection_id, job_type=download_job_type)
+    job = running or workspace.job_queue.enqueue(
         BackgroundJobSpec(
             type=download_job_type,
             payload=download_payload_for(connection_id),
             idempotent=True,
         )
     )
+    # Woken even when the answer is a run that already existed: what came back
+    # may be `queued` rather than `running`, and the dispatcher it is waiting for
+    # sleeps on its own interval.
     runner.wake()
     response.headers["Location"] = f"/background-jobs/{job.id}"
     return BackgroundJobOut.of(job)
@@ -260,18 +272,38 @@ def check_connection_integrity(
     real transfer. A check that could not reach the hub changes nothing and
     purges nothing: no digests to compare against is an absence of evidence, not
     a verdict.
+
+    **Asking twice joins the check already running rather than starting a second
+    one**, the download route's rule and its reason: a request arriving while
+    this connection has a check queued or running is answered with that run's id,
+    so nobody pays to read a multi-gigabyte snapshot twice to reach the verdict
+    already being reached.
+
+    **A download running against the same connection does not refuse this**, and
+    that is deliberate rather than an omission. What a connection declares stays
+    a function of its setup state and its kind, so no run of either kind changes
+    what it will accept — see `connection_actions`. The refusal such a rule would
+    need could only see *jobs*, and this is the only one of the three surfaces
+    that makes one: the CLI and the MCP tools run the same two operations inline,
+    with no row to see. So it would bind one caller in three while claiming an
+    exclusivity none could rely on, and a worker dying mid-job would strand the
+    connection behind it.
     """
-    InferenceConnectionService(workspace).require_checkable(connection_id)
+    service = InferenceConnectionService(workspace)
+    service.require_checkable(connection_id)
     # Before the job exists, for the download route's reason: a refusal a
     # request can make is a refusal the request makes.
     require_local_inference()
-    job = workspace.job_queue.enqueue(
+    running = service.live_job(connection_id, job_type=integrity_job_type)
+    job = running or workspace.job_queue.enqueue(
         BackgroundJobSpec(
             type=integrity_job_type,
             payload=integrity_payload_for(connection_id),
             idempotent=True,
         )
     )
+    # Woken even when the answer is a run that already existed — see the download
+    # route.
     runner.wake()
     response.headers["Location"] = f"/background-jobs/{job.id}"
     return BackgroundJobOut.of(job)

@@ -103,6 +103,7 @@ from visionset.kernel.domain.ingest import (
 )
 from visionset.kernel.domain.job import (
     BACKGROUND_JOB_TRANSITIONS,
+    LIVE_JOB_STATES,
     SETTLED_JOB_STATES,
     BackgroundJob,
     BackgroundJobOutcome,
@@ -269,6 +270,7 @@ __all__ = [
     "IMPLEMENTED_GEOMETRIES",
     "INGEST_TRANSITIONS",
     "JOB_TRANSITIONS",
+    "LIVE_JOB_STATES",
     "MANIFEST_VERSION",
     "MEDIA_TYPES",
     "OCTET_STREAM",

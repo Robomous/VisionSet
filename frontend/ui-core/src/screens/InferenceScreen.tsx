@@ -90,6 +90,15 @@
  * either job: they run in a worker process the server owns, so navigating away or
  * closing the tab neither cancels nor pauses one — only the poll stops.
  *
+ * **A live run of either kind disables every control over that connection's
+ * files, and the label names the run rather than going blank.** The three act on
+ * one cache: a second request of the same kind is answered by the server with the
+ * run already in flight, and one of the other kind would set a transfer and a
+ * full re-read against the same files. Because the flag is read off the wire, the
+ * withdrawal is visible in a tab that started nothing. What the row must not do
+ * is decide from this whether a control *exists* — that stays `allowed_actions`,
+ * which no run changes.
+ *
  * The two runs keep separate vocabularies because they count different things: a
  * transfer reports bytes it measured off the disk, and a check reports files it
  * has re-read. Neither borrows the other's name at any layer, which is why the
@@ -363,6 +372,22 @@ function ConnectionRow({
   const ready = connection.setup_state === "ready";
   const weights = useDownloadRun(connection);
   const integrity = useIntegrityRun(connection);
+  // **One busy state for every control over this connection's files, not one per
+  // kind.** All three below act on a single cache, so while either run is in
+  // flight the others have nothing to offer: a second request of the same kind
+  // is answered with the run already going, and one of the other kind would put
+  // a transfer and a full re-read over the same files at once. Disabling all of
+  // them is the offer withdrawn where somebody would otherwise press it.
+  //
+  // Whether a control *exists* is still `allowed_actions` and nothing else —
+  // this decides only whether it can be pressed, so no client-side rule is
+  // deciding what the connection permits.
+  const busy = weights.running || integrity.running;
+  // Never a bare disabled control: the label says what is happening, in the
+  // vocabulary this row's setup state gives it. At `ready` a download reads an
+  // index for files that are missing, which is "Checking…"; before setup it is
+  // the transfer itself. Read only while `busy`.
+  const busyLabel = weights.running ? (ready ? "Checking…" : "Downloading…") : "Reading every file…";
   return (
     <div className="flex flex-col gap-2 p-4" data-testid={`connection-${connection.name}`}>
       <div className="flex items-start justify-between gap-4">
@@ -402,11 +427,11 @@ function ConnectionRow({
                 variant="secondary"
                 size="sm"
                 data-testid="download-weights"
-                disabled={weights.running}
+                disabled={busy}
                 onClick={weights.start}
               >
                 <Download className="size-4" aria-hidden="true" />
-                {weights.running ? "Downloading…" : "Download weights"}
+                {busy ? busyLabel : "Download weights"}
               </Button>
             )}
             {(can.has("update") ||
@@ -437,21 +462,21 @@ function ConnectionRow({
                   {can.has("download_weights") && ready && (
                     <DropdownMenuItem
                       data-testid="action-verify-weights"
-                      disabled={weights.running}
+                      disabled={busy}
                       onSelect={weights.start}
                     >
                       <FileSearch className="size-4" aria-hidden="true" />
-                      {weights.running ? "Checking…" : "Check for missing files"}
+                      {busy ? busyLabel : "Check for missing files"}
                     </DropdownMenuItem>
                   )}
                   {can.has("check_integrity") && (
                     <DropdownMenuItem
                       data-testid="action-check-integrity"
-                      disabled={integrity.running}
+                      disabled={busy}
                       onSelect={integrity.start}
                     >
                       <ShieldCheck className="size-4" aria-hidden="true" />
-                      {integrity.running ? "Reading every file…" : "Check files are undamaged"}
+                      {busy ? busyLabel : "Check files are undamaged"}
                     </DropdownMenuItem>
                   )}
                   {can.has("update") && (
