@@ -29,6 +29,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from tests.fixtures.local_inference import require_local_inference
 from tests.fixtures.media import write_image
 
 from visionset.inference import providers as providers_module
@@ -815,3 +816,46 @@ def test_a_connection_that_is_not_ready_is_refused_before_any_driver_is_asked(
         providers_module.provider_for(a_local_connection(ready=False), workspace_root=tmp_path)
 
     assert spy.builds == 0
+
+
+# --- a family this build has never heard of -----------------------------------
+
+
+def test_a_driver_serving_a_family_no_library_here_registers_resolves_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one path no other subject here reaches, and the one that shipped broken.
+
+    A real ``config.json`` in a real cache declaring a family only this driver
+    serves, read back literally, resolved to that driver, built. Every element is
+    load-bearing: resolving the declaration through a library instead of reading
+    it closes the legible families to the set that library knows, and a driver's
+    connections are then refused with "the downloaded config does not say what
+    model type it is" while the config in front of the reader declares exactly
+    what they have.
+
+    It needs the optional runtime, and not because reading JSON is heavy:
+    resolution requires the runtime before it reads a config for any model id but
+    the built-in stand-in's, so on a base install there is no resolution to
+    observe. The consequence is worth naming — on a base install this case skips,
+    so the run that covers it is the one with the extra installed.
+    """
+    require_local_inference()
+    connection = a_local_connection(model_id="acme/segmenter", ready=True)
+    a_snapshot(
+        tmp_path / "models",
+        model_id=connection.model_id,
+        revision=connection.model_revision,
+        declaring={"model_type": ACME_FAMILY},
+    )
+    driver = AcmeSeg()
+    monkeypatch.setattr(
+        providers_module,
+        "registered",
+        lambda: Discovery(providers={driver.provider_id: driver}, skipped=()),
+    )
+
+    runner = providers_module.provider_for(connection, workspace_root=tmp_path)
+
+    assert isinstance(runner, PointSegmenter)
+    assert driver.built == [ACME_FAMILY], "resolved by the family the config declared"
