@@ -320,21 +320,27 @@ scrub_recorded_cutoff() {
 # then checks the result, since the second pass carried no cool-down of its own.
 if is_uv_add "$@" && lock="$(nearest_lock)"; then
   snapshot="$(mktemp -d "${TMPDIR:-/tmp}/cooldown.XXXXXX")"
-  # A run killed between the two passes must not leave the throwaway first
-  # pass's whole-set re-resolution on disk — that lockfile carries a recorded
-  # cutoff, which is exactly what makes every later `uv sync --locked` refuse
-  # it. The EXIT trap restores from the snapshot before it deletes it, so an
-  # interruption undoes the same way an explicit failure does. INT and TERM
-  # exit rather than fold into the same trap command: without an explicit exit
-  # the script would run on past the point it was interrupted, and could reach
-  # a later failure with the snapshot already gone, turning the second
-  # restore_state into a delete instead of a no-op.
-  trap 'restore_state "$snapshot"; rm -rf "$snapshot"' EXIT
+  # Nothing to restore from until the snapshot is complete: restore_state reads a
+  # missing backup as "this file did not exist before the run" and removes it, so
+  # arming the restoring trap over a half-copied snapshot would delete the very
+  # files it exists to protect. INT and TERM exit rather than fold into the EXIT
+  # trap: without an explicit exit the script would run on past the point it was
+  # interrupted, and could reach a later failure with the snapshot already gone,
+  # turning a second restore_state into a delete instead of a no-op.
+  trap 'rm -rf "$snapshot"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
 
   snapshot_state "$snapshot"
   cp "$lock" "$snapshot/baseline.lock"
+
+  # A run killed between the two passes must not leave the throwaway first
+  # pass's whole-set re-resolution on disk — that lockfile carries a recorded
+  # cutoff, which is exactly what makes every later `uv sync --locked` refuse
+  # it. Now that the snapshot is complete, the EXIT trap restores from it before
+  # it deletes it, so an interruption from here on undoes the same way an
+  # explicit failure does.
+  trap 'restore_state "$snapshot"; rm -rf "$snapshot"' EXIT
 
   # Captured with `|| status=$?` rather than `if ! cmd`, because inside the body
   # of an `if !` the `$?` on offer is the negation's, which is always zero.

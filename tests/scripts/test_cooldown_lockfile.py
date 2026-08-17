@@ -283,6 +283,22 @@ fi
 exit "$(cat "$STUB_STATE/exit$n" 2>/dev/null || echo 0)"
 """
 
+# Transparent by default — every call passes straight through to the real `cp`
+# (via $REAL_CP, resolved once by the fixture, since this stub sits ahead of
+# the real one on PATH and cannot spell its own name). A call numbered by an
+# interrupt_cp<N> marker kills itself before it can run at all, so whatever it
+# was asked to copy is provably still missing from the destination — a real
+# interruption landing inside a copy loop, not a simulation of one.
+STUB_CP = """#!/usr/bin/env bash
+n=$(cat "$STUB_STATE/cpcount" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "$STUB_STATE/cpcount"
+if [ -f "$STUB_STATE/interrupt_cp$n" ]; then
+  kill -INT $$
+fi
+exec "$REAL_CP" "$@"
+"""
+
 
 @pytest.fixture
 def stubbed(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
@@ -301,10 +317,13 @@ def stubbed(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
     bin_dir.mkdir()
     (bin_dir / "uv").write_text(STUB_UV)
     (bin_dir / "uv").chmod(0o755)
+    (bin_dir / "cp").write_text(STUB_CP)
+    (bin_dir / "cp").chmod(0o755)
 
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     env["STUB_STATE"] = str(state)
+    env["REAL_CP"] = shutil.which("cp", path=os.environ["PATH"]) or "/bin/cp"
     return project, state, env
 
 
@@ -534,5 +553,28 @@ def test_an_interrupted_first_pass_changes_nothing(stubbed) -> None:
     done = _wrapped(project, env, "uv", "add", "arrived")
     assert done.returncode == 130, done.stderr
     assert (state / "count").read_text().strip() == "1", "the second pass ran anyway"
+    assert (project / "uv.lock").read_text() == before_lock
+    assert (project / "pyproject.toml").read_text() == before_manifest
+
+
+def test_an_interruption_during_the_snapshot_changes_nothing(stubbed) -> None:
+    """Behavioural, not structural: the second `cp` inside snapshot_state — the
+    one backing up pyproject.toml — is killed before it can run at all, so the
+    snapshot is provably incomplete at the moment a trap next inspects it.
+    Nothing to restore from until the snapshot is complete: restore_state reads
+    a missing backup as "this file did not exist before the run" and removes
+    it, so a trap armed to restore over a half-copied snapshot would delete the
+    very files it exists to protect. This never reaches pass 1 at all — the
+    interruption lands while the snapshot is still being taken, before the
+    first `uv` call — which is what proves the restoring trap is not yet armed
+    at that point."""
+    project, state, env = stubbed
+    before_lock = (project / "uv.lock").read_text()
+    before_manifest = (project / "pyproject.toml").read_text()
+    (state / "interrupt_cp2").write_text("")
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 130, done.stderr
+    assert not (state / "count").exists(), "uv ran; the interruption came too late"
     assert (project / "uv.lock").read_text() == before_lock
     assert (project / "pyproject.toml").read_text() == before_manifest
