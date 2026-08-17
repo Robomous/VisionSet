@@ -94,6 +94,7 @@ from visionset.inference.masks import (
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
 from visionset.inference.providers import ProviderPool, provider_for, resident
 from visionset.inference.sam_provider import LocalSamProvider
+from visionset.inference.stub_provider import STUB_FAMILY, STUB_MODEL_ID, StubSegmenter
 from visionset.inference.suggestions import Suggestion, suggest
 from visionset.inference.transformers_provider import LocalTransformersProvider
 from visionset.inference.weights import (
@@ -152,6 +153,9 @@ __all__ = [
     "MINIMUM_TOLERANCE",
     "Piece",
     "Shaped",
+    "STUB_FAMILY",
+    "STUB_MODEL_ID",
+    "StubSegmenter",
     "Suggestion",
     "components",
     "contour",

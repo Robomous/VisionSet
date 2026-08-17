@@ -49,6 +49,7 @@ from visionset.inference.families import (
     family_of,
 )
 from visionset.inference.sam_provider import LocalSamProvider
+from visionset.inference.stub_provider import STUB_MODEL_ID, StubSegmenter
 from visionset.inference.transformers_provider import LocalTransformersProvider
 from visionset.inference.weights import cache_root
 from visionset.kernel.domain import ConnectionSetupState, ConnectionType, InferenceConnection
@@ -188,6 +189,15 @@ def _local(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
             f"connection {connection.name!r} has no weights on this machine yet; "
             "run its download_weights action first"
         )
+    if connection.model_id == STUB_MODEL_ID:
+        # Before ``require()``, and that ordering is the point rather than an
+        # optimisation: this build's own no-op segmenter needs no runtime, so a
+        # base install can run the whole suggest path and the browser suite does
+        # not install two gigabytes of wheels to click a button. The state check
+        # above still applies — a stub connection reaches ``ready`` through the
+        # same action every other one does, which is what makes the lifecycle
+        # this exercises the real lifecycle.
+        return StubSegmenter(connection_name=connection.name)
     require()
     # ``device`` is non-null on a local connection — the domain's cross-field
     # rule is what makes that true — so this narrows for the type checker rather

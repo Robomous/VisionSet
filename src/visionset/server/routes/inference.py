@@ -26,7 +26,7 @@ from uuid import UUID
 
 from fastapi import Response, status
 
-from visionset.inference import download_size, suggest, with_families
+from visionset.inference import STUB_MODEL_ID, download_size, suggest, with_families
 from visionset.inference import require as require_local_inference
 from visionset.jobs.integrity import JOB_TYPE as integrity_job_type
 from visionset.jobs.integrity import payload_for as integrity_payload_for
@@ -192,12 +192,20 @@ def download_connection_weights(
     re-fetching it, and a run that fails leaves the connection exactly as it was
     — there is no half-set-up state to recover from.
     """
-    InferenceConnectionService(workspace).require_downloadable(connection_id)
+    connection = InferenceConnectionService(workspace).require_downloadable(connection_id)
     # Before the job exists, for the reason the export route gives: a refusal a
     # request can make is a refusal the request makes. Discovering a missing
     # install inside a worker would put an install command on a failed row
     # somebody has to go and find.
-    require_local_inference()
+    #
+    # **Except for the one connection that has nothing to fetch and no model to
+    # run.** The built-in stand-in needs neither the runtime nor the network, so
+    # gating it here would refuse a set-up that would have succeeded — and would
+    # take the browser suite's only route to the suggest path with it. The gate
+    # is about what the *job* will need, so the exemption belongs beside it
+    # rather than inside ``fetch_weights``, which this refusal never reaches.
+    if connection.model_id != STUB_MODEL_ID:
+        require_local_inference()
     job = workspace.job_queue.enqueue(
         BackgroundJobSpec(
             type=download_job_type,

@@ -31,6 +31,7 @@ from visionset.inference.sam_provider import (
     best_of,
     points_and_labels,
 )
+from visionset.inference.stub_provider import STUB_FAMILY
 from visionset.kernel.domain import (
     PointPrompt,
     PredictionRequest,
@@ -380,7 +381,7 @@ def a_provider(family: str) -> LocalSamProvider:
     )
 
 
-def test_the_class_table_covers_every_segmenter_family() -> None:
+def test_the_class_table_covers_every_segmenter_family_that_loads_through_it() -> None:
     """The two registers agree, and nothing else makes them.
 
     The resolver sends a connection here on the strength of its family being in
@@ -388,8 +389,18 @@ def test_the_class_table_covers_every_segmenter_family() -> None:
     A family added to the first and forgotten in the second resolves to this
     adapter and dies on a ``KeyError`` inside a load — past every refusal, in a
     place whose message names a dictionary rather than a model.
+
+    **``STUB_FAMILY`` is subtracted rather than exempted by weakening the
+    comparison**, and the difference matters: every other family still has to
+    appear, so the guard keeps all of its force for the case it was written for.
+    The one that is subtracted loads through no ``transformers`` pair at all —
+    ``provider_for`` answers it with the built-in stand-in before this adapter is
+    reached, which
+    ``test_stub_provider.test_the_reserved_id_resolves_without_the_runtime``
+    asserts. Without that companion the subtraction would be a hole rather than
+    an exemption.
     """
-    assert set(sam_provider._CLASSES) == SEGMENTER_FAMILIES
+    assert set(sam_provider._CLASSES) == SEGMENTER_FAMILIES - {STUB_FAMILY}
 
 
 @pytest.mark.parametrize(
