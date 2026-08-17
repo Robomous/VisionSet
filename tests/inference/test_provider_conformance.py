@@ -623,3 +623,140 @@ def test_the_built_in_stand_in_prices_its_own_id_rather_than_refusing() -> None:
     priced = stub.price(STUB_MODEL_ID, "stub")
 
     assert (priced.total_bytes, priced.file_count) == (0, 0)
+
+
+# --- what a driver builds ------------------------------------------------------
+
+
+@pytest.mark.parametrize(("provider_id", "family", "capability"), SERVED, ids=SERVED_IDS)
+def test_what_a_driver_builds_satisfies_the_port_its_capability_implies(
+    provider_id: str, family: str, capability: ModelCapability, tmp_path: Path
+) -> None:
+    """The declaration and the object checked against each other, which is the
+    only place the two meet.
+
+    A driver declaring ``point_suggest`` and building a detector refuses every
+    click by saying the model answers text prompts — a confident sentence about
+    some other model, which is worse than a gap somebody notices.
+
+    Built rather than resolved, and ``build`` loads nothing: this runs on a base
+    install with no weights on the machine.
+    """
+    built = INSTALLED[provider_id].build(
+        a_local_connection(ready=True), family=family, workspace_root=tmp_path
+    )
+
+    assert isinstance(built, PORT_FOR[capability]), (
+        f"{provider_id} declares {family!r} as {capability.value} and built "
+        f"{type(built).__name__}"
+    )
+
+
+@pytest.mark.parametrize(("provider_id", "family", "capability"), SERVED, ids=SERVED_IDS)
+def test_a_runner_refuses_a_prompt_kind_it_does_not_take(
+    provider_id: str, family: str, capability: ModelCapability, tmp_path: Path
+) -> None:
+    """Named rather than approximated. A refusal that said only "unsupported"
+    would leave a client unable to offer the thing that *is* supported.
+
+    This reaches every installed driver on a base install, because both shipped
+    adapters check the prompt kind as their first statement, before they reach
+    for the runtime. Both are also generators, so the refusal arrives when the
+    iterator is advanced rather than when it is created — which is why every call
+    here is wrapped in ``list``.
+    """
+    runner = INSTALLED[provider_id].build(
+        a_local_connection(ready=True), family=family, workspace_root=tmp_path
+    )
+    ask = asking(runner)
+
+    for prompt in wrongly_asked(capability):
+        with pytest.raises(UnsupportedPrompt) as refusal:
+            list(ask(a_request(tmp_path, prompt=prompt)))
+        assert SAYS_IT_TAKES[capability] in str(refusal.value), (
+            f"{provider_id} refused {prompt.kind!r} without naming what it takes: {refusal.value}"
+        )
+
+
+# --- what a runner answers -----------------------------------------------------
+
+ANSWERS_OFFLINE = frozenset({"stub"})
+"""The installed drivers whose runner can answer without weights.
+
+``sam`` and ``grounding-dino`` need a multi-gigabyte checkpoint to produce an
+answer at all, so the two checks below cannot reach them here — their own suites
+drive them against a stubbed runtime. Named as a set and asserted against the
+installation, so the exemption cannot grow silently: a fourth driver arriving
+fails the assertion below rather than quietly going unchecked.
+"""
+
+OFFLINE = ("stub", "test-hosted-echo", "test-acme-seg")
+"""Every subject the two checks below run on, in a stable order."""
+
+
+def offline_runners(tmp_path: Path) -> Mapping[str, tuple[object, ModelCapability]]:
+    """A freshly built runner per offline subject, with the capability it serves.
+
+    Built per case rather than once: the fakes record what they were asked, and a
+    shared instance would make one case's assertions depend on another's order.
+    """
+    connection = a_local_connection(ready=True)
+    built: dict[str, tuple[object, ModelCapability]] = {}
+    for provider_id in sorted(ANSWERS_OFFLINE):
+        driver = INSTALLED[provider_id]
+        family, capability = sorted(driver.families.items())[0]
+        built[provider_id] = (
+            driver.build(connection, family=family, workspace_root=tmp_path),
+            capability,
+        )
+    for fake in (Echo(), AcmeSeg()):
+        family, capability = next(iter(fake.families.items()))
+        built[fake.provider_id] = (
+            fake.build(connection, family=family, workspace_root=tmp_path),
+            capability,
+        )
+    return built
+
+
+def test_only_the_drivers_that_need_weights_are_exempt_from_answering() -> None:
+    """The exemption, stated so it cannot spread. A driver installed here that
+    cannot answer offline is a decision to take, not a subject to drop.
+    """
+    assert set(INSTALLED) - ANSWERS_OFFLINE == {"sam", "grounding-dino"}
+
+
+def test_the_offline_half_covers_every_runner_that_can_answer_here(tmp_path: Path) -> None:
+    assert set(offline_runners(tmp_path)) == set(OFFLINE)
+
+
+@pytest.mark.parametrize("subject", OFFLINE)
+def test_every_answer_says_what_produced_it(subject: str, tmp_path: Path) -> None:
+    """A provenance with a footnote is not a provenance. The reference is on each
+    answer rather than on the response, because answers arrive one at a time.
+    """
+    runner, capability = offline_runners(tmp_path)[subject]
+
+    answers = list(asking(runner)(a_request(tmp_path, prompt=PROMPTS[capability], targets=2)))
+
+    assert answers, "a runner that answered nothing at all cannot be checked"
+    for answer in answers:
+        assert answer.model_ref.strip()
+
+
+@pytest.mark.parametrize("subject", OFFLINE)
+def test_exactly_one_answer_per_target_in_the_order_asked(subject: str, tmp_path: Path) -> None:
+    """Two targets, so a runner answering only the first is red here rather than
+    coincidentally right — and the identities are compared rather than the count,
+    so answering the first one twice fails too.
+
+    An answer carrying nothing found still counts: a click on empty sky and an
+    image nobody looked at are different facts, and only the second is a gap.
+    """
+    runner, capability = offline_runners(tmp_path)[subject]
+    request = a_request(tmp_path, prompt=PROMPTS[capability], targets=2)
+
+    answers = list(asking(runner)(request))
+
+    assert [answer.asset_id for answer in answers] == [
+        target.asset_id for target in request.targets
+    ]
