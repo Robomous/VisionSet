@@ -47,6 +47,10 @@ GET    /projects/{project_id}/schema/versions
 GET    /projects/{project_id}/schema/versions/{version}
 GET    /projects/{project_id}/schema/compare             ?from=&to=
 POST   /projects/{project_id}/schema/preview             would this publish?
+GET    /projects/{project_id}/schema/drafts/{kind}        curated or annotation
+PUT    /projects/{project_id}/schema/drafts/{kind}        409 STALE_WRITE
+DELETE /projects/{project_id}/schema/drafts/{kind}
+POST   /projects/{project_id}/schema/drafts/{kind}/publish
 POST   /projects/{project_id}/sources/images              multipart
 POST   /projects/{project_id}/sources/video               multipart
 GET    /projects/{project_id}/sources

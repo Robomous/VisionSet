@@ -14,6 +14,10 @@ visionset project create NAME [--description TEXT]
 visionset project list
 visionset schema apply FILE --project P [--allow-destructive]
 visionset schema list --project P
+visionset schema draft show --project P [--kind curated|annotation]
+visionset schema draft set FILE --project P [--kind K] [--note TEXT] [--revision N]
+visionset schema draft clear --project P [--kind K]
+visionset schema draft publish --project P [--kind K] [--revision N] [--allow-destructive]
 
 visionset ingest PATH --project P [--fps N] [--batch-name NAME]
 visionset batch list --project P
@@ -172,7 +176,7 @@ The contract:
 **The shapes deliberately agree, key for key, with the REST API's**, so a script moves between
 `curl | jq` and `visionset --json | jq` without relearning field names. That agreement is not a
 convention anybody remembers — `tests/cli/test_json_contract.py` asserts, for each of the
-thirty-one shapes it pairs, that the CLI's projection has exactly the wire model's fields *and*
+thirty-six shapes it pairs, that the CLI's projection has exactly the wire model's fields *and*
 that the wire model validates it, which catches a timestamp in the wrong format that a key
 comparison would miss.
 
@@ -309,6 +313,30 @@ and is **the same document** `POST /projects/{id}/schema/versions` takes. `list 
 Versions are 1..N and none of them changes, so `apply` always *adds* one. A change that removes or
 narrows something is refused until `--allow-destructive`; one that would orphan existing annotations
 has no override at all. See [schemas.md](schemas.md#at-a-terminal).
+
+`draft show|set|clear|publish --project P [--kind curated|annotation]` reach the schema version a
+project is still writing - shared, and revision-stamped rather than owned, because the workspace has
+no identities to own one. `--kind` defaults to `curated`; `annotation` is the draft the annotator's
+add-a-class dialog accumulates into. `show` prints the draft, or says there is none; `set FILE
+[--note TEXT] [--revision N]` writes it whole from the same JSON shape `apply` reads, except that a
+class here may be incomplete - a blank name or no geometry survives, and publishing is where that is
+refused; `clear` throws it away, and clearing one that is not there is not an error.
+
+**`set` and `publish` treat a missing `--revision` differently, and the difference is deliberate, not
+an oversight to work around.** `set` **creates** when `--revision` is omitted, and is *refused*
+against a draft that already exists - a caller that never read a revision cannot be trusted to
+overwrite text it has not seen, and the draft has no owner to ask instead. `publish` **auto-resolves**
+a missing `--revision` to the draft's current one - reading it first, the way `show` would - because
+publishing *consumes* the draft into an immutable version rather than replacing its content, and
+destroys nobody's in-progress edit. Writing a script that assumes the two behave alike produces one
+that runs cleanly against `publish` and then fails the very first time `set` meets a draft somebody
+else already started.
+
+`SchemaDraftService.publish` calls `create_version` exactly as `apply` does, so every refusal `apply`
+can give, `draft publish` can give too, with the same `--allow-destructive` and the same orphan
+refusal with no override. One refusal is its own: a class in the draft that never finished - a blank
+name, no geometry, a select with no options - is refused there, named by its position. See
+[schemas.md](schemas.md#drafts).
 
 ### `visionset ingest`
 

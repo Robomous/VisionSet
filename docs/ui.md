@@ -791,31 +791,58 @@ Three things decide the shape:
   does not, and content addressing collapses identical items into one asset. The
   count that is honest is the batch's own, one click away.
 
-### The schema editor, and the two 409s
+### The schema editor, and the three 409s
 
 The editor is where `docs/api.md`'s "branch on the code, never on the status" earns
-its keep, because both refusals are **409** and only one may be retried:
+its keep, because all three refusals it can meet are **409**, and each has its own
+remedy - branching on the status would tell none of them apart:
 
 | code | what it means | what the editor offers |
 | --- | --- | --- |
 | `DESTRUCTIVE_SCHEMA_CHANGE` | the new version narrows the contract | **Save anyway**, which retries with `?allow_destructive=true` |
 | `SCHEMA_CHANGE_WOULD_ORPHAN` | annotations already exist under an affected class | **Close**, and nothing else |
+| `STALE_WRITE` | the draft moved since it was last read - a second writer's save, or a publish, landed first | **Reload the draft**, which discards the local copy and re-seeds from the server |
 
-A client branching on the status would offer the override for both and loop forever
-on the second - the failure `SchemaChangeWouldOrphan`'s kernel docstring warns
-about, and the reason it is deliberately *not* a subclass of
-`DestructiveSchemaChange`. The missing button is the feature.
+A client branching on the status would offer the override for both of the first two and
+loop forever on the second - the failure `SchemaChangeWouldOrphan`'s kernel docstring
+warns about, and the reason it is deliberately *not* a subclass of
+`DestructiveSchemaChange`. The third has a remedy of its own, and it is neither of the
+other two's: "Save anyway" would silently overwrite whatever the other writer put there,
+which is the lost update `STALE_WRITE` exists to prevent, and "Close" would leave the
+editor showing a draft the server no longer recognises. Reloading is the only remedy that
+does not either lose work or leave the screen lying.
 
-There is still no preview of the change *you are drafting*: `SchemaService.preview`
-is unrouted, so the only way to learn that the edit in front of you is destructive is
-to attempt it and read the refusal. That is why the refusal surface is the editor's
-real subject.
+`SchemaService.preview` **is** routed, at `POST .../schema/preview`, and the editor calls
+it before Save answers both gates the publish itself would - `is_destructive` and
+`is_refused` - without writing anything. The preview is advisory rather than
+authoritative, though: nothing is locked between it and a publish, so somebody can label
+a class in the gap and turn a preview that looked safe into a refusal. The publish's own
+409 is what actually decides, and making that refusal legible - not pre-empting it - is
+still the editor's real job.
 
 `compare` **is** routed since #231, and it answers the neighbouring question - what
 two *published* versions did to each other. The version navigator uses it, and never
 computes a diff here: `domain/schema_diff.py` is the one spelling of that rule, and a
 TypeScript copy would drift until the screen called a change safe that the API then
 refused.
+
+**The draft autosaves, on the server, on a debounce.** There is no "save draft" button to
+remember to press: every edit reschedules a 400ms timer, and when it fires the whole draft
+- classes, note and the version it was based on - is written through `PUT
+.../schema/drafts/curated`, naming the revision it was last read at. The response's
+`revision` is folded back into the locally-held draft so the next keystroke's write names
+it in turn; nothing about that write ever invalidates the query that seeds the editor,
+because doing so would refetch on every keystroke and hand the derivation a fresh object to
+re-seed from mid-sentence - overwriting what is being typed, with no unmount to blame it on.
+Switching to another project while a write is still pending does not lose it either: the
+timer lives above the tabs, on `ProjectScreen`, and a route change flushes the pending write
+to the project it belongs to rather than simply cancelling it.
+
+**Save flushes the pending autosave first.** Publishing goes through the draft - sending
+only `{revision, allow_destructive}`, never the classes themselves, so there is
+structurally no way to publish something other than what is on screen - which means the
+revision it names has to be current. Awaiting the flush before publishing is what stops a
+fast typist from publishing the version that predates their last keystroke.
 
 ### The version navigator
 
@@ -833,7 +860,11 @@ the tab they are already in. `DESIGN.md`'s navigation rules state the test.
 
 The description is written once, in a field beside Save, and there is nowhere to edit
 one afterwards - no route, because no service method, because a version is immutable.
-Blank omits the key rather than sending `""`.
+It now travels as the draft's `note` - a required string the autosave always sends, blank
+or not, rather than a field the client omits when there is nothing typed. The point it
+protected is not lost, only moved: a blank note still becomes a `null` description, because
+`SchemaDraftService.publish` sends `draft.note or None` to `create_version` - the empty
+string never reaches the version as itself.
 
 ### Adding a class from the annotation page
 
