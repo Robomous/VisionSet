@@ -441,13 +441,22 @@ export type SchemaDraftKind = "curated" | "annotation";
  * flags never see it. They stay set anyway, for the same reason
  * `useActiveSchema` sets them: a real failure asking again is asking a question
  * whose answer has not changed.
+ *
+ * `enabled` mirrors `useActiveSchema`'s own parameter, and for the same reason:
+ * a surface that only sometimes needs this read must be able to say so, rather
+ * than paying for it on every mount. Defaults to `true` because the Schema
+ * tab's own draft is wanted the moment that tab is open — it is the annotator's
+ * `annotation` read, gated on the add-a-class dialog being open, that needs the
+ * `false` case.
  */
 export function useSchemaDraft(
   projectId: string,
   kind: SchemaDraftKind,
+  enabled = true,
 ): UseQueryResult<ServerSchemaDraft | null, Error> {
   const client = useApiClient();
   return useQuery({
+    enabled,
     queryKey: queryKeys.schemaDraft(projectId, kind),
     queryFn: async () => {
       const result = await client.GET("/projects/{project_id}/schema/drafts/{kind}", {

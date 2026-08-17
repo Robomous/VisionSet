@@ -870,10 +870,17 @@ shared row along with the local form. Because the draft has no author, opening t
 dialog onto one that already holds classes does not fold them into a fresh sitting
 silently: it says what is pending and offers a discard, since those classes may be
 somebody else's and confirming without asking would publish classes this person
-never typed. Publishing itself still goes straight through `create_version`, exactly
-as before the draft existed; the draft is the resumable holding pen around that call,
-not a second way to make it, and a successful publish discards it as its one piece
-of cleanup.
+never typed.
+
+Confirming publishes *through the draft*: one more write, composed on the
+project's active classes plus this sitting's - folding in whatever is typed but
+not yet banked - and then a publish naming only the revision that write
+returned. The server publishes exactly what the draft holds and nothing a
+client could send instead, which is what makes it structurally impossible to
+publish a version other than the one on screen. The read itself is gated on the
+dialog being open, the same discipline `activeSchema` above already keeps: an
+annotator page that asked for it on every mount would be a request nothing on
+that page needed yet.
 
 Three other decisions the editor inherits rather than invents:
 

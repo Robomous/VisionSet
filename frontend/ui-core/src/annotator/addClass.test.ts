@@ -18,8 +18,8 @@ import { createElement, useState, type ReactNode } from "react";
 import { ApiProvider } from "../data/ApiProvider";
 import { AddClassDialog, composeVersion, defaultNote, runAddClass } from "./AddClassDialog";
 import {
-  useCreateSchemaVersion,
   useDiscardSchemaDraft,
+  usePublishSchemaDraft,
   useSaveSchemaDraft,
   useSchemaDraft,
   type LabelClassBody,
@@ -262,13 +262,14 @@ describe("composing the version a sitting publishes", () => {
  * a small harness wiring the real hooks to the real dialog, so what is asserted
  * is the request that actually leaves, not a callback's arguments.
  *
- * Publishing itself still goes straight through `create_version`, exactly as
- * before `runAddClass`'s `publish` step ever knew a draft existed — the two 409s
- * this dialog renders are read off that call, and routing it through the
- * draft's own publish would make them read off a different one. So the harness
- * mirrors `AnnotationPage`'s own wiring: the draft is the resumable holding pen
- * around the publish, not the thing that performs it, and a successful publish
- * discards it as its one piece of cleanup.
+ * Publishing goes through the draft: a save immediately before, addressed at
+ * the composed contract (folding in whatever this sitting typed but never
+ * banked), then a publish naming only the revision that save returned — so
+ * what is published can never diverge from what the draft holds. The harness
+ * mirrors `AnnotationPage`'s own wiring rather than `runAddClass`'s shape
+ * directly, because the claim under test is the request that leaves, and
+ * `runAddClass` itself takes a `publish(classes, note)` callback and never
+ * learns how that callback reaches the wire.
  */
 describe("the session, backed by the project's annotation draft", () => {
   const PROJECT = "66666666-6666-4666-8666-666666666666";
@@ -333,8 +334,8 @@ describe("the session, backed by the project's annotation draft", () => {
   /**
    * The dialog wired the way `AnnotationPage` wires it: `useSchemaDraft` seeds
    * and announces, `useSaveSchemaDraft` write-throughs a bank, and confirming
-   * still publishes through `useCreateSchemaVersion` directly — with the draft
-   * discarded once that succeeds, since nothing is left pending to resume.
+   * flushes the composed contract to the draft before publishing it through
+   * `usePublishSchemaDraft` — the same two-call shape `addClass` uses.
    */
   function harness(): ReactNode {
     function Harness(): ReactNode {
@@ -342,7 +343,7 @@ describe("the session, backed by the project's annotation draft", () => {
       const draft = useSchemaDraft(PROJECT, "annotation");
       const saveDraft = useSaveSchemaDraft(PROJECT, "annotation");
       const discardDraft = useDiscardSchemaDraft(PROJECT, "annotation");
-      const createVersion = useCreateSchemaVersion(PROJECT);
+      const publishDraft = usePublishSchemaDraft(PROJECT, "annotation");
 
       return createElement(AddClassDialog, {
         open,
@@ -362,15 +363,14 @@ describe("the session, backed by the project's annotation draft", () => {
             revision: draft.data?.revision ?? null,
           }),
         onDiscardDraft: () => discardDraft.mutate(),
-        onSubmit: (added: readonly LabelClassBody[], note: string) => {
-          createVersion.mutate(
-            {
-              classes: composeVersion(ACTIVE.classes, added),
-              description: note,
-              provenance: "annotation",
-            },
-            { onSuccess: () => discardDraft.mutate() },
-          );
+        onSubmit: async (added: readonly LabelClassBody[], note: string) => {
+          const written = await saveDraft.mutateAsync({
+            classes: composeVersion(ACTIVE.classes, added),
+            note,
+            basedOn: ACTIVE.version,
+            revision: draft.data?.revision ?? null,
+          });
+          await publishDraft.mutateAsync({ revision: written.revision });
         },
       });
     }
@@ -455,14 +455,26 @@ describe("the session, backed by the project's annotation draft", () => {
         updated_at: "2026-08-16T00:00:00Z",
       },
     });
-    on("POST", /\/schema\/versions$/, {
-      status: 201,
+    // The flush immediately before Confirm's publish.
+    on("PUT", /\/schema\/drafts\/annotation$/, {
+      status: 200,
+      body: {
+        project_id: PROJECT,
+        kind: "annotation",
+        classes: [SIGN, NEW],
+        note: 'Added class "crossing" from the annotation view',
+        based_on: 3,
+        revision: 1,
+        updated_at: "2026-08-16T00:00:00Z",
+      },
+    });
+    on("POST", /\/schema\/drafts\/annotation\/publish$/, {
+      status: 200,
       body: {
         published: { ...ACTIVE, version: 4, classes: [SIGN, NEW] },
         advanced_batches: [],
       },
     });
-    on("DELETE", /\/schema\/drafts\/annotation$/, { status: 204 });
 
     render(harness());
     await screen.findByTestId("add-class-dialog");
@@ -471,7 +483,7 @@ describe("the session, backed by the project's annotation draft", () => {
     await userEvent.click(screen.getByTestId("add-class-submit"));
 
     await waitFor(() => {
-      expect(findSent("POST", /\/schema\/versions$/)).toBeDefined();
+      expect(findSent("POST", /\/schema\/drafts\/annotation\/publish$/)).toBeDefined();
     });
     expect(sent.some((request) => /\/schema\/drafts\/curated/.test(new URL(request.url).pathname))).toBe(
       false,
