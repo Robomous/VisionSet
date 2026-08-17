@@ -46,16 +46,58 @@ let activeSchema: { project_id: string; version: number; classes: unknown[] };
 /** How many times it was asked, so "the refetch fired" is observed rather than assumed. */
 let schemaReads = 0;
 
+/** One project's stored curated draft, in the shape `SchemaDraftOut` requires. */
+interface StoredDraft {
+  readonly project_id: string;
+  readonly kind: "curated";
+  readonly classes: unknown[];
+  readonly note: string;
+  readonly based_on: number | null;
+  readonly revision: number;
+  readonly updated_at: string;
+}
+
+/**
+ * Every project's curated draft, keyed by project id — a project with none
+ * simply has no entry, which is the ordinary state most of these tests start
+ * from. Read and written by the default GET/PUT handlers below so a test only
+ * has to name what it specifically cares about; keyed rather than a single
+ * mutable value because "does not carry one project's draft into another" opens
+ * two projects in one test and a shared slot would leak between them.
+ */
+let curatedDrafts: Map<string, StoredDraft>;
+/** How many times the default handler wrote a draft, for the debounce tests. */
+let draftPuts = 0;
+
 type Answer = { status: number; body?: unknown; delay?: number };
 let handlers: ((request: Request) => Answer | undefined)[] = [];
+/**
+ * Every request sent, in order, and the body of every non-`GET` one — captured
+ * before any handler runs, since a `Request` body is a one-shot stream and a
+ * test asking for it afterwards gets nothing.
+ */
+let sent: Request[];
+let bodies: Map<Request, string>;
+
+/** `/projects/{id}/schema/drafts/{kind}`'s `id`, or `null` off that path. */
+function draftProjectId(path: string): string | null {
+  const match = /^\/projects\/([^/]+)\/schema\/drafts\/[^/]+$/.exec(path);
+  return match ? match[1] : null;
+}
 
 beforeEach(() => {
   handlers = [];
   schemaReads = 0;
+  draftPuts = 0;
   activeSchema = { project_id: PROJECT, version: 3, classes: CLASSES };
+  curatedDrafts = new Map();
+  sent = [];
+  bodies = new Map();
   writeToken("a-token");
-  vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
+    sent.push(request);
+    if (request.method !== "GET") bodies.set(request, await request.clone().text());
     const path = new URL(request.url).pathname;
     for (const handler of handlers) {
       const answer = handler(request);
@@ -72,6 +114,16 @@ beforeEach(() => {
       if (/\/schema\/versions$/.test(path)) {
         return respond({ status: 200, body: { items: [], total: 0 } });
       }
+      const draftProject = draftProjectId(path);
+      if (draftProject !== null) {
+        const stored = curatedDrafts.get(draftProject);
+        return stored === undefined
+          ? respond({
+              status: 404,
+              body: { code: "SCHEMA_DRAFT_NOT_FOUND", message: "no draft yet" },
+            })
+          : respond({ status: 200, body: stored });
+      }
       if (/\/projects\/[^/]+$/.test(path)) {
         return respond({
           status: 200,
@@ -82,6 +134,42 @@ beforeEach(() => {
       if (/\/batches$/.test(path)) return respond({ status: 200, body: { items: [], total: 0 } });
       if (/\/releases$/.test(path)) return respond({ status: 200, body: { items: [], total: 0 } });
       if (/\/dataset$/.test(path)) return respond({ status: 200, body: DATASET });
+    }
+    if (request.method === "PUT") {
+      const draftProject = draftProjectId(path);
+      if (draftProject !== null) {
+        const written = JSON.parse(bodies.get(request) ?? "{}") as {
+          classes: unknown[];
+          note: string;
+          based_on: number | null;
+          revision?: number;
+        };
+        const stored = curatedDrafts.get(draftProject);
+        // The same rule `SchemaDraftService.save` states: a write naming no
+        // revision only ever creates, and one naming the wrong one is refused
+        // rather than merged.
+        if (stored !== undefined && written.revision !== stored.revision) {
+          return respond({
+            status: 409,
+            body: {
+              code: "STALE_WRITE",
+              message: "someone else changed this while you were working on it",
+            },
+          });
+        }
+        draftPuts += 1;
+        const saved: StoredDraft = {
+          project_id: draftProject,
+          kind: "curated",
+          classes: written.classes,
+          note: written.note,
+          based_on: written.based_on,
+          revision: (stored?.revision ?? 0) + 1,
+          updated_at: "2024-01-01T00:00:00Z",
+        };
+        curatedDrafts.set(draftProject, saved);
+        return respond({ status: 200, body: saved });
+      }
     }
     return respond({
       status: 500,
@@ -259,7 +347,7 @@ describe("the schema draft survives a version published underneath", () => {
   });
 
   it("re-bases on the version it just published, and empties the message", async () => {
-    on("POST", /schema\/versions$/, {
+    on("POST", /schema\/drafts\/curated\/publish$/, {
       status: 201,
       // A publication since #381 — the version, and the batches it moved. None
       // here: this project has no batch in the stub.
@@ -278,8 +366,9 @@ describe("the schema draft survives a version published underneath", () => {
 
     // The publish is the one version move that is *this* editor's own, so it
     // re-seeds rather than warning about itself.
-    await waitFor(() =>
-      expect(screen.getByTestId("schema-status").textContent).toContain("Version 4 active"),
+    await waitFor(
+      () => expect(screen.getByTestId("schema-status").textContent).toContain("Version 4 active"),
+      { timeout: 2000 },
     );
     expect(screen.queryByTestId("schema-moved")).toBeNull();
     expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
@@ -341,7 +430,7 @@ describe("saving twice with nothing edited in between", () => {
           ? { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "no schema yet" } }
           : { status: 200, body: published, delay: 5 };
       }
-      if (request.method === "POST" && /\/schema\/versions$/.test(path)) {
+      if (request.method === "POST" && /\/schema\/drafts\/curated\/publish$/.test(path)) {
         posts += 1;
         published = {
           project_id: PROJECT,
@@ -368,8 +457,9 @@ describe("saving twice with nothing edited in between", () => {
     await userEvent.type(screen.getByTestId("class-name-0"), "pedestrian");
 
     await userEvent.click(screen.getByTestId("save-schema"));
-    await waitFor(() =>
-      expect(screen.getByTestId("schema-status").textContent).toContain("Version 1 active"),
+    await waitFor(
+      () => expect(screen.getByTestId("schema-status").textContent).toContain("Version 1 active"),
+      { timeout: 2000 },
     );
 
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -403,7 +493,7 @@ describe("saving twice with nothing edited in between", () => {
           ? { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "no schema yet" } }
           : { status: 200, body: published, delay: 5 };
       }
-      if (request.method === "POST" && /\/schema\/versions$/.test(path)) {
+      if (request.method === "POST" && /\/schema\/drafts\/curated\/publish$/.test(path)) {
         posts += 1;
         published = {
           project_id: PROJECT,
@@ -432,8 +522,9 @@ describe("saving twice with nothing edited in between", () => {
     await userEvent.type(screen.getByTestId("attr-name-0-0"), "occluded");
 
     await userEvent.click(screen.getByTestId("save-schema"));
-    await waitFor(() =>
-      expect(screen.getByTestId("schema-status").textContent).toContain("Version 1 active"),
+    await waitFor(
+      () => expect(screen.getByTestId("schema-status").textContent).toContain("Version 1 active"),
+      { timeout: 2000 },
     );
 
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -475,6 +566,177 @@ describe("saving twice with nothing edited in between", () => {
     await userEvent.click(screen.getByTestId("class-geometry-0-bbox"));
 
     expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
+  });
+});
+
+/**
+ * The draft's fourth home: the server, shared, and durable across a reload.
+ *
+ * Everything above proves the browser side of survival — the tab and a version
+ * moving underneath. These prove the other half: the draft itself now lives
+ * where a reload cannot lose it, a second writer is refused rather than
+ * merged, and a publish always carries what was actually typed, including the
+ * keystroke still inside the debounce window when Save was pressed.
+ */
+describe("the draft lives on the server", () => {
+  it("seeds from the server draft when there is no local one", async () => {
+    curatedDrafts.set(PROJECT, {
+      project_id: PROJECT,
+      kind: "curated",
+      classes: [{ name: "lane", geometries: ["polygon"], color: null, attributes: [] }],
+      note: "",
+      based_on: 3,
+      revision: 3,
+      updated_at: "2024-01-01T00:00:00Z",
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    const editor = await screen.findByTestId("schema-editor");
+
+    // Nobody typed anything in this render — the class came off the server.
+    expect(editor.textContent).toContain("lane");
+    expect(editor.textContent).not.toContain("vehicle");
+  });
+
+  it("keeps a dirty local draft when the server draft differs", async () => {
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    // Let the first autosave land, so this draft holds a real revision — the
+    // one the next write is about to name a stale one.
+    await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 2000 });
+
+    // Somebody else writes the shared draft directly — a second tab, a
+    // teammate — advancing its revision past what this session last saw.
+    const stored = curatedDrafts.get(PROJECT);
+    if (stored !== undefined) {
+      curatedDrafts.set(PROJECT, {
+        ...stored,
+        revision: stored.revision + 1,
+        classes: [{ name: "cyclist", geometries: ["bbox"], color: null, attributes: [] }],
+      });
+    }
+
+    // The next keystroke's autosave now names a revision the server no
+    // longer holds.
+    await userEvent.type(screen.getByTestId(`class-name-${CLASSES.length}`), "!");
+    await screen.findByTestId("schema-stale-draft", {}, { timeout: 2000 });
+
+    // Kept, not merged and not discarded — the same rule a version arriving
+    // underneath already follows.
+    expect(screen.getByTestId("schema-editor").textContent).toContain("pedestrian");
+    expect(screen.getByTestId("schema-editor").textContent).not.toContain("cyclist");
+  });
+
+  it("autosaves after the debounce and not on every keystroke", async () => {
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId(`class-name-${CLASSES.length}`), "cat");
+
+    await waitFor(() => expect(draftPuts).toBe(1), { timeout: 2000 });
+    // Held a moment longer: three keystrokes each reset the timer, and a
+    // debounce that fired per keystroke rather than once would have written
+    // again by now.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(draftPuts).toBe(1);
+  });
+
+  it("announces STALE_WRITE and offers to reload rather than merging", async () => {
+    handlers.push((request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "PUT" && draftProjectId(path) === PROJECT) {
+        return {
+          status: 409,
+          body: {
+            code: "STALE_WRITE",
+            message: "someone else changed this while you were working on it",
+          },
+        };
+      }
+      return undefined;
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+
+    await screen.findByTestId("schema-stale-draft", {}, { timeout: 2000 });
+    expect(screen.getByTestId("schema-reload-draft")).toBeDefined();
+    // Nothing is discarded before Reload is pressed.
+    expect(screen.getByTestId("schema-editor").textContent).toContain("pedestrian");
+  });
+
+  it("flushes the pending autosave before publishing", async () => {
+    on("POST", /schema\/drafts\/curated\/publish$/, {
+      status: 201,
+      body: {
+        published: { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] },
+        advanced_batches: [],
+      },
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    activeSchema = { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] };
+    // Still inside the 400ms debounce window — nothing has been sent yet.
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    await waitFor(
+      () => expect(screen.getByTestId("schema-status").textContent).toContain("Version 4 active"),
+      { timeout: 2000 },
+    );
+
+    const isDraftPut = (request: Request) =>
+      request.method === "PUT" && draftProjectId(new URL(request.url).pathname) === PROJECT;
+    const isPublish = (request: Request) =>
+      request.method === "POST" &&
+      /\/schema\/drafts\/curated\/publish$/.test(new URL(request.url).pathname);
+    const puts = sent.filter(isDraftPut);
+    const publish = sent.find(isPublish);
+    // Exactly one — the flush cancelled the pending debounce rather than
+    // racing it, so there is no second write left to fire later.
+    expect(puts).toHaveLength(1);
+    expect(publish).toBeDefined();
+    // The PUT was sent — and, since `save` awaits it, resolved — before the
+    // publish was ever sent.
+    expect(sent.indexOf(puts[0])).toBeLessThan(sent.indexOf(publish!));
+
+    const publishBody = JSON.parse(bodies.get(publish!) ?? "{}") as { revision: number };
+    // Carries the exact revision the flush's own response named, not a
+    // locally-remembered guess.
+    expect(publishBody.revision).toBe(curatedDrafts.get(PROJECT)?.revision);
+  });
+
+  it("publishes with no classes in the body", async () => {
+    on("POST", /schema\/drafts\/curated\/publish$/, {
+      status: 201,
+      body: {
+        published: { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] },
+        advanced_batches: [],
+      },
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    activeSchema = { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] };
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    await waitFor(
+      () => expect(screen.getByTestId("schema-status").textContent).toContain("Version 4 active"),
+      { timeout: 2000 },
+    );
+
+    const publish = sent.find(
+      (request) =>
+        request.method === "POST" &&
+        /\/schema\/drafts\/curated\/publish$/.test(new URL(request.url).pathname),
+    );
+    expect(publish).toBeDefined();
+    const body = JSON.parse(bodies.get(publish!) ?? "{}") as Record<string, unknown>;
+    expect(Object.keys(body)).toEqual(["revision"]);
   });
 });
 

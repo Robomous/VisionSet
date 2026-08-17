@@ -59,13 +59,16 @@
  * one is not — so a TypeScript copy would drift, and the drift would read as a
  * screen calling a change safe that the API then refuses.
  *
- * ## There is still no preview of a change *you are drafting*
+ * ## A preview exists, and it is advisory rather than authoritative
  *
- * `compare` answers what two *published* versions did to each other.
- * `SchemaService.preview` — what an unpublished draft would do — remains unrouted,
- * so the only way to learn that the edit in front of you is destructive is to
- * attempt it and read the 409. The editor's job is to make that 409 legible
- * rather than to pre-empt it.
+ * `compare` answers what two *published* versions did to each other. `POST
+ * .../schema/preview` answers the harder question — what publishing *this*
+ * draft would do — and is routed: `SchemaService.preview` is not the missing
+ * method a comment here used to claim. Routing it does not remove the need for
+ * the refusal surface below, though: a preview is advisory because nothing is
+ * locked between it and a publish, so the two can disagree by the time Save is
+ * actually pressed. The publish's own 409 stays the authoritative answer, and
+ * making that refusal legible — not pre-empting it — is the editor's actual job.
  *
  * **Two 409s, and only one is retryable.** This is the exact case `docs/api.md`
  * exists for:
@@ -95,6 +98,7 @@ import { useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
 import { asApiError } from "../data/errors";
+import { refusalProse } from "../data/refusals";
 import { Alert, Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../primitives/Card";
@@ -117,9 +121,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../primitives/Select";
-import type { LabelClassBody, SchemaDiff, SchemaVersion } from "./queries";
+import type {
+  DraftLabelClassBody,
+  LabelClassBody,
+  SchemaDiff,
+  ServerSchemaDraft,
+  SchemaVersion,
+} from "./queries";
 import {
-  useCreateSchemaVersion,
+  usePublishSchemaDraft,
   useProjectStats,
   useSchemaComparison,
   useSchemaVersions,
@@ -128,6 +138,8 @@ import {
 /** The two 409s. Only the first has an override, and that is the whole rule. */
 const DESTRUCTIVE = "DESTRUCTIVE_SCHEMA_CHANGE";
 const WOULD_ORPHAN = "SCHEMA_CHANGE_WOULD_ORPHAN";
+/** The third, and the only one whose remedy is to throw your own copy away. */
+const STALE_DRAFT = "STALE_WRITE";
 
 /**
  * A draft of the next version, and the version it was drafted from.
@@ -158,15 +170,48 @@ export interface SchemaDraft {
   readonly basedOn: number | null;
   /** The version message. Typed work too, so it is held here and not below. */
   readonly note: string;
+  /**
+   * The revision this draft was last saved at, or `null` if it never has been.
+   *
+   * The server's copy is the durable one and this is the responsive one, and the
+   * revision is the only thing that has to travel between them: every write names
+   * it, and a write naming one the server no longer holds is refused rather than
+   * merged.
+   */
+  readonly revision: number | null;
 }
 
 export interface SchemaEditorProps {
   readonly projectId: string;
   /** The active version, or `null` for a project that has never had one. */
   readonly active: SchemaVersion | null;
-  /** The held draft, or `null` to seed one from `active`. */
+  /** The held draft, or `null` to seed one from `serverDraft`, else `active`. */
   readonly draft: SchemaDraft | null;
   readonly onDraftChange: (draft: SchemaDraft | null) => void;
+  /**
+   * The server's copy of this project's curated draft, or `null` for a project
+   * with none (yet, or ever). Held by `ProjectScreen` for the same reason
+   * `draft` is: this component renders inside a `TabsContent` and the query has
+   * to outlive it.
+   */
+  readonly serverDraft: ServerSchemaDraft | null;
+  /**
+   * The last autosave's failure, or `null`. `STALE_WRITE` gets its own
+   * announcement below; anything else falls into the ordinary refusal surface.
+   */
+  readonly draftSaveError: unknown;
+  /**
+   * Cancel the pending debounce and write the held draft now, resolving to the
+   * revision the server accepted — or `null` when there was nothing held to
+   * write, or the write failed. Every publish awaits this first, so it never
+   * races the keystroke that triggered it.
+   */
+  readonly onFlushDraft: () => Promise<number | null>;
+  /**
+   * The `STALE_WRITE` remedy: refetch the server's copy and discard the local
+   * one. Nothing is discarded before this is called.
+   */
+  readonly onReloadDraft: () => void;
 }
 
 /**
@@ -212,16 +257,42 @@ function canonical(classes: readonly LabelClassBody[]): string {
   );
 }
 
+/**
+ * A server draft's classes, in the shape this editor writes.
+ *
+ * `DraftLabelClassBody` allows an attribute with no `kind` yet — an ordinary
+ * moment while building one, since a draft is not a contract — but every field
+ * here always sets one. An absent `kind` therefore means some other writer left
+ * this attribute mid-typed; defaulting it to `"string"` keeps the editor open on
+ * it rather than refusing to render somebody else's unfinished work.
+ */
+function fromDraft(classes: readonly DraftLabelClassBody[]): LabelClassBody[] {
+  return classes.map((declared) => ({
+    ...declared,
+    attributes: declared.attributes.map((attribute) => ({
+      ...attribute,
+      kind: attribute.kind ?? "string",
+    })),
+  }));
+}
+
 export function SchemaEditor({
   projectId,
   active,
   draft,
   onDraftChange,
+  serverDraft,
+  draftSaveError,
+  onFlushDraft,
+  onReloadDraft,
 }: SchemaEditorProps): JSX.Element {
   const [confirming, setConfirming] = useState(false);
   const [selected, setSelected] = useState(0);
   const [filter, setFilter] = useState("");
   const [removing, setRemoving] = useState<number | null>(null);
+  // True only across the `await onFlushDraft()` inside `save`, so a second
+  // click cannot start a second flush racing the first one's publish.
+  const [flushing, setFlushing] = useState(false);
   // Which version the tab is showing. `null` is the active one — the editor —
   // and a number is a past version, read-only.
   //
@@ -231,7 +302,7 @@ export function SchemaEditor({
   // is a new navigation pattern, which is what `DESIGN.md` asks of a tab's
   // internals.
   const [viewing, setViewing] = useState<number | null>(null);
-  const publish = useCreateSchemaVersion(projectId);
+  const publish = usePublishSchemaDraft(projectId, "curated");
   const history = useSchemaVersions(projectId);
   // Per-class annotation counts, for the list's secondary line and for the blast
   // radius a delete has to state. Shared query key with the Overview, so opening
@@ -241,27 +312,43 @@ export function SchemaEditor({
   // Seeding is **derived, not an effect**. An effect that re-seeds has to be told
   // when not to, and one that is not told lets a version published underneath
   // replace whatever had been typed. Deriving states the rule once, in the place the
-  // value is read: a held draft is shown while it is still about this project
-  // and either still describes the active version or has something in it worth
-  // keeping. Anything else is seeded fresh from `active`.
+  // value is read, in priority order: a held draft is what somebody is typing
+  // right now, and it is shown while it still describes this project and either
+  // still describes the active version or has something in it worth keeping.
+  // Failing that, the server's own draft — a stored copy of what somebody typed
+  // a moment ago, possibly in another tab — outranks `active` because it is
+  // closer to what is actually being worked on. Only a project with neither
+  // seeds fresh from the published contract.
   const version = active?.version ?? null;
   const held = draft !== null && draft.projectId === projectId ? draft : null;
   const showing: SchemaDraft =
     held !== null && (held.basedOn === version || !same(held.classes, held.seed))
       ? held
-      : {
-          projectId,
-          classes: active?.classes ?? [],
-          seed: active?.classes ?? [],
-          basedOn: version,
-          // A published version's message belongs to that version, so a re-seed
-          // empties the box rather than carrying the last one into the next save.
-          note: "",
-        };
+      : serverDraft !== null
+        ? {
+            projectId,
+            classes: fromDraft(serverDraft.classes),
+            seed: fromDraft(serverDraft.classes),
+            basedOn: serverDraft.based_on,
+            note: serverDraft.note,
+            revision: serverDraft.revision,
+          }
+        : {
+            projectId,
+            classes: active?.classes ?? [],
+            seed: active?.classes ?? [],
+            basedOn: version,
+            // A published version's message belongs to that version, so a re-seed
+            // empties the box rather than carrying the last one into the next save.
+            note: "",
+            revision: null,
+          };
 
   const classes = showing.classes;
   const note = showing.note;
   const failure = publish.isError ? asApiError(publish.error) : null;
+  const draftFailure = draftSaveError == null ? null : asApiError(draftSaveError);
+  const staleDraft = draftFailure?.code === STALE_DRAFT;
   /**
    * Whether saving would change anything — measured against **the version in
    * force**, not against the snapshot the draft was seeded from.
@@ -323,7 +410,7 @@ export function SchemaEditor({
   const countOf = (name: string): number =>
     counts.find((entry) => entry.label_class === name)?.annotations ?? 0;
 
-  function save(allowDestructive = false): void {
+  async function save(allowDestructive = false): Promise<void> {
     if (!dirty) {
       // `DESIGN.md`: a button either answers or explains, never sits grey with
       // nothing to say. Nothing is sent — an identical version would be a new
@@ -342,16 +429,24 @@ export function SchemaEditor({
       toast("Every class needs a name");
       return;
     }
+    // Publishing is now publishing the *draft*, and the draft on the server has
+    // to be the one actually being shown here first. A held draft may still have
+    // a debounced write pending, so it is flushed and its revision is what gets
+    // published; a draft seeded straight from the server already names its own
+    // revision and there is nothing local left to flush.
+    setFlushing(true);
+    const revision = held !== null ? await onFlushDraft() : showing.revision;
+    setFlushing(false);
+    if (revision === null) {
+      // The flush failed — `STALE_WRITE` or otherwise — and is already recorded
+      // on `draftSaveError` for the announcement below to render. Publishing
+      // against no revision would only be a second, less legible failure.
+      return;
+    }
     publish.mutate(
       {
-        classes,
+        revision,
         ...(allowDestructive ? { allowDestructive: true } : {}),
-        ...(note.trim() === "" ? {} : { description: note }),
-        // This screen is where somebody sits down and decides what the project
-        // labels, so every version it publishes is a milestone — including one
-        // that happens to add a single class. What makes a version incidental is
-        // the *surface*, not the size of the change.
-        provenance: "curated",
       },
       {
         onSuccess: (publication) => {
@@ -376,13 +471,16 @@ export function SchemaEditor({
           // Re-based on what was published rather than reset to `null`, so the
           // just-added class does not blink out and back while the refetch flies,
           // and so this move — the one version change that is this editor's own —
-          // is never mistaken for somebody else's (`moved`).
+          // is never mistaken for somebody else's (`moved`). The revision is
+          // `null`: the publish spent the server's draft, so the next edit starts
+          // a new one.
           onDraftChange({
             projectId,
             classes: created.classes,
             seed: created.classes,
             basedOn: created.version,
             note: "",
+            revision: null,
           });
         },
       },
@@ -464,12 +562,13 @@ export function SchemaEditor({
             variant="primary"
             data-testid="save-schema"
             // Never disabled for "nothing to save" — `save` answers that with a
-            // toast. Still disabled while a request is in flight, which is a
-            // state the label itself explains.
-            disabled={publish.isPending}
-            onClick={() => save()}
+            // toast. Still disabled while the flush or the publish is in flight,
+            // which is a state the label itself explains — and which is what
+            // keeps a second click from racing the first one's own flush.
+            disabled={publish.isPending || flushing}
+            onClick={() => void save()}
           >
-            {publish.isPending ? "Saving…" : "Save version"}
+            {publish.isPending || flushing ? "Saving…" : "Save version"}
           </Button>
         </div>
         )}
@@ -495,6 +594,37 @@ export function SchemaEditor({
             Discard mine and load v{moved}
           </Button>
         </p>
+      )}
+
+      {/* `STALE_WRITE` on the draft is the second instance of the announce-never-
+          merge pattern above: somebody else's write landed between this draft's
+          last read and its last save, so the local copy no longer names a
+          revision the server recognises. The remedy is the same shape for the
+          same reason — reloading discards what is here, so nothing is thrown
+          away before the button is pressed. */}
+      {past === undefined && staleDraft && (
+        <p className="text-meta text-muted-foreground" data-testid="schema-stale-draft">
+          {refusalProse(draftSaveError)}{" "}
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 align-baseline text-meta"
+            data-testid="schema-reload-draft"
+            onClick={onReloadDraft}
+          >
+            Reload the draft
+          </Button>
+        </p>
+      )}
+
+      {/* Any other autosave failure — a dropped connection, most likely — is not
+          worth its own sentence: it is not the shared-draft conflict `STALE_WRITE`
+          is, and typing is unaffected either way. Still rendered rather than
+          swallowed, in the same register as a publish failure below. */}
+      {draftFailure !== null && !staleDraft && (
+        <Alert variant="destructive" title={draftFailure.code} data-testid="schema-draft-error">
+          {draftFailure.message}
+        </Alert>
       )}
 
       <VersionNavigator
@@ -613,7 +743,7 @@ export function SchemaEditor({
         }}
         onConfirm={() => {
           setConfirming(true);
-          save(true);
+          void save(true);
         }}
       />
       <OrphanDialog
