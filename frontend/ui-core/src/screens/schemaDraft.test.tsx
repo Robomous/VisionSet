@@ -598,6 +598,44 @@ describe("the draft lives on the server", () => {
     expect(editor.textContent).not.toContain("vehicle");
   });
 
+  /**
+   * The gap the `moved` banner had over a server-seeded draft with nothing
+   * held locally: `held` is already `null` there, so `onDraftChange(null)`
+   * changed nothing and the button announcing v3 as fresh news reloaded
+   * nothing. `SchemaEditor` now names the destination directly
+   * (`freshFromActive`) rather than relying on `null` falling through the
+   * tiers, which is what this proves.
+   */
+  it("reloads to the active version from a server-seeded draft with nothing held locally", async () => {
+    // Stale against the active version from the moment it is read — reachable
+    // once anything else publishes without rebasing this draft, the
+    // annotator's own dialog included.
+    curatedDrafts.set(PROJECT, {
+      project_id: PROJECT,
+      kind: "curated",
+      classes: [{ name: "cyclist", geometries: ["bbox"], color: null, attributes: [] }],
+      note: "",
+      based_on: 2,
+      revision: 5,
+      updated_at: "2024-01-01T00:00:00Z",
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    const editor = await screen.findByTestId("schema-editor");
+
+    // Seeded from the stale server draft — nothing was ever typed here, so
+    // `held` is null, which is exactly the no-op's precondition.
+    expect(editor.textContent).toContain("cyclist");
+    await screen.findByTestId("schema-moved");
+
+    await userEvent.click(screen.getByTestId("schema-reload"));
+
+    expect(screen.queryByTestId("schema-moved")).toBeNull();
+    expect(screen.getByTestId("schema-editor").textContent).toContain("vehicle");
+    expect(screen.getByTestId("schema-editor").textContent).not.toContain("cyclist");
+    expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
+  });
+
   it("keeps a dirty local draft when the server draft differs", async () => {
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");

@@ -320,6 +320,24 @@ export function SchemaEditor({
   // closer to what is actually being worked on. Only a project with neither
   // seeds fresh from the published contract.
   const version = active?.version ?? null;
+  /**
+   * A fresh draft naming nothing but the active contract — the target every
+   * "load v{moved}" reload actually promises, regardless of which tier of
+   * `showing` it is reloading away from. A published version's message
+   * belongs to that version, so `note` empties rather than carrying the last
+   * one into the next save, and `revision` is `null` because this describes
+   * no draft the server holds.
+   */
+  function freshFromActive(): SchemaDraft {
+    return {
+      projectId,
+      classes: active?.classes ?? [],
+      seed: active?.classes ?? [],
+      basedOn: version,
+      note: "",
+      revision: null,
+    };
+  }
   const held = draft !== null && draft.projectId === projectId ? draft : null;
   const showing: SchemaDraft =
     held !== null && (held.basedOn === version || !same(held.classes, held.seed))
@@ -333,16 +351,7 @@ export function SchemaEditor({
             note: serverDraft.note,
             revision: serverDraft.revision,
           }
-        : {
-            projectId,
-            classes: active?.classes ?? [],
-            seed: active?.classes ?? [],
-            basedOn: version,
-            // A published version's message belongs to that version, so a re-seed
-            // empties the box rather than carrying the last one into the next save.
-            note: "",
-            revision: null,
-          };
+        : freshFromActive();
 
   const classes = showing.classes;
   const note = showing.note;
@@ -579,7 +588,14 @@ export function SchemaEditor({
           question, so it is neither an `Alert` nor a dialog. The reload is the
           one thing a person might want and cannot otherwise reach — reverting to
           the new active version means discarding what they typed, which is
-          exactly the choice a re-seeding effect makes for them. */}
+          exactly the choice a re-seeding effect makes for them.
+
+          `onDraftChange(freshFromActive())` rather than `onDraftChange(null)`:
+          `showing` can be `held` *or* the server draft, and passing `null`
+          only ever clears the first of those — over a draft seeded from the
+          server, with nothing local held, it is a no-op that leaves this very
+          banner on screen. Naming the destination directly reaches it from
+          either tier. */}
       {past === undefined && moved !== null && (
         <p className="text-meta text-muted-foreground" data-testid="schema-moved">
           Version {moved} was published while you were editing. Your changes are still
@@ -589,7 +605,7 @@ export function SchemaEditor({
             size="sm"
             className="h-auto p-0 align-baseline text-meta"
             data-testid="schema-reload"
-            onClick={() => onDraftChange(null)}
+            onClick={() => onDraftChange(freshFromActive())}
           >
             Discard mine and load v{moved}
           </Button>
