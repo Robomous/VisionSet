@@ -74,6 +74,7 @@ function answer(path: string): unknown {
       state: "in_progress",
       asset_count: FRAMES.length,
       allowed_actions: jobActions("in_progress", { settled: false }),
+      assignee: null,
     };
   }
   if (path === `/batches/${BATCH}`) {

@@ -111,6 +111,7 @@ function answer(path: string): unknown {
         batchState: closedBatch ? "completed" : "in_annotation",
         settled: jobSettled,
       }),
+      assignee: null,
     };
   }
   if (path === `/batches/${BATCH}`) {

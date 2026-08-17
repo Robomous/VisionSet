@@ -258,3 +258,10 @@ class AnnotationJob(BaseModel):
     task_group_id: UUID
     state: AnnotationJobState = AnnotationJobState.PENDING
     progress: dict[UUID, AssetProgress] = Field(default_factory=dict)
+    assignee: str | None = None
+    """Who is working (or worked) this job — a name, not an account.
+
+    Purely informational: VisionSet has no identity model, so nothing checks
+    that the person writing annotations is the person named here. Stored
+    normalized (``normalize_name``); ``None`` means unassigned.
+    """

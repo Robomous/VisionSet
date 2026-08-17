@@ -34,6 +34,7 @@ import { asApiError, unwrap } from "../data/errors";
 import type { Refusal } from "../data/refusals";
 import {
   checkApproveBatch,
+  checkAssignJob,
   checkCreateProject,
   checkCompleteBatch,
   checkCompleteJob,
@@ -713,6 +714,25 @@ export function useApproveBatch(batchId: string) {
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+/** Name who is working a job, or clear it with null. Informational only. */
+export function useAssignJob(batchId: string, jobId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (assignee: string | null) =>
+      unwrap(
+        await client.PUT("/jobs/{job_id}/assignee", {
+          params: { path: { job_id: jobId } },
+          body: { assignee },
+        }),
+        checkAssignJob,
+      ),
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: batchKeys.jobs(batchId) });
     },
   });
 }

@@ -667,6 +667,17 @@ virtualizes **rows** (a row is what the browser lays out; virtualizing tiles ins
 CSS grid means reimplementing the grid). The column count is measured with a
 `ResizeObserver` rather than guessed from a second breakpoint list.
 
+#### The jobs strip
+
+One row per job - ordinal, frame count, state, and who is working it - rendered
+only once jobs exist, the same `showsProgress` gate the progress bar above it uses,
+so a draft needs no empty state of its own. The assignee is a plain editable name,
+not an account: `JobService.assign` gates on nothing, so the control is always
+live, and clearing it is the same operation with `null`. A failed read shows its
+error instead of the strip silently vanishing - an empty list and a failed one look
+identical to the naive `undefined`-or-zero-items check, and only one of them means
+there is nothing to assign.
+
 ### Batches, and a machine that only goes forwards
 
 `draft → approved → in_annotation → completed`, with **no route back to `draft`** -

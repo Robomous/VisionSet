@@ -48,6 +48,7 @@ from visionset.kernel.domain import (
     AssetProgress,
     Batch,
     BatchState,
+    normalize_name,
     require_move,
 )
 from visionset.kernel.errors import (
@@ -215,6 +216,24 @@ class JobService:
             return uow.annotation_jobs.update(
                 job.model_copy(update={"state": AnnotationJobState.COMPLETED})
             )
+
+    def assign(self, job_id: UUID, assignee: str | None) -> AnnotationJob:
+        """Name who is working this job, or clear it with ``None``.
+
+        No state gate, deliberately: assignment is coordination metadata rather
+        than work, so it is legal on a pending, open, or completed job and in
+        any batch state — naming who did a finished job is attribution, not a
+        reopening. Nothing enforces that only the assignee writes; there is no
+        identity model to enforce against.
+
+        Raises:
+            JobNotFound: no such job in this workspace.
+            InvalidName: the name is blank.
+        """
+        name = None if assignee is None else normalize_name(assignee, what="assignee name")
+        with self._workspace.unit_of_work() as uow:
+            job = self.require_job(uow, job_id)
+            return uow.annotation_jobs.update(job.model_copy(update={"assignee": name}))
 
     # --- per-asset progress: the one door -----------------------------------
 

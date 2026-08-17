@@ -224,6 +224,7 @@ async function serveApi(
       batchState: lifecycle.batch,
       settled: lifecycle.jobSettled ?? true,
     }),
+    assignee: null,
   });
   await page.route("**/api/**", async (route) => {
     const request = route.request();

@@ -380,6 +380,8 @@ class AnnotationJobRow(Base):
         SaUuid, ForeignKey("task_group.id", ondelete="CASCADE"), index=True, nullable=False
     )
     state: Mapped[str] = mapped_column(String, nullable=False)
+    # Added by migration 9 (job_assignee) — must stay the last column declared.
+    assignee: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class AnnotationJobAssetRow(Base):
