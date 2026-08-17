@@ -37,3 +37,39 @@ def test_get_missing_blob_raises(tmp_path: Path) -> None:
     store = FilesystemBlobStore(tmp_path / "blobs")
     with pytest.raises(FileNotFoundError):
         store.get("0" * 64)
+
+
+class _TornStream(io.RawIOBase):
+    """A stream that yields one chunk and then fails, like a torn upload."""
+
+    def __init__(self) -> None:
+        self._reads = 0
+
+    def read(self, size: int = -1) -> bytes:
+        self._reads += 1
+        if self._reads > 1:
+            raise OSError("torn stream")
+        return b"first chunk"
+
+
+def test_a_failed_read_leaves_no_temp_file_in_the_blob_root(tmp_path: Path) -> None:
+    root = tmp_path / "blobs"
+    store = FilesystemBlobStore(root)
+    with pytest.raises(OSError, match="torn stream"):
+        store.put(_TornStream())
+    assert list(root.iterdir()) == []
+
+
+def test_a_failed_rename_leaves_no_temp_file_in_the_blob_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "blobs"
+    store = FilesystemBlobStore(root)
+
+    def refuse(self: Path, target: object) -> Path:
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(Path, "replace", refuse)
+    with pytest.raises(OSError, match="no space"):
+        store.put(io.BytesIO(b"doomed"))
+    assert not [p for p in root.rglob("*") if p.is_file()]
