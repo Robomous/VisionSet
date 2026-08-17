@@ -323,7 +323,9 @@ something installable to hand somebody.
 wheel, installs it into an empty environment, and drives video → 50 boxes → release → YOLO export
 → a trainer loading the result. It runs on every push and pull request.
 
-It is **already a required status**, and so is every other check a pull request runs. What enforces
+It is **already a required status**, and so is every other check a pull request runs. The one
+exception is the job that does not run on a pull request at all — `annotator bench (chromium,
+manual)`, for the reason two paragraphs down. What enforces
 that is a **ruleset** named `main`, not the older per-branch protection settings — legacy branch
 protection is not enabled on this repository at all, and asking for it answers `404 Branch not
 protected`. Read what is required today:
