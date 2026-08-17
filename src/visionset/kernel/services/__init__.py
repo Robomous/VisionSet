@@ -15,6 +15,7 @@ from visionset.kernel.services.ingest_service import IngestService
 from visionset.kernel.services.job_service import JobService
 from visionset.kernel.services.project_service import ProjectService
 from visionset.kernel.services.release_service import EXPORT_REPORT_FILENAME, ReleaseService
+from visionset.kernel.services.schema_draft_service import SchemaDraftService
 from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.source_service import SourceService
 from visionset.kernel.services.summary_service import SummaryService
@@ -40,6 +41,7 @@ __all__ = [
     "JobService",
     "ProjectService",
     "ReleaseService",
+    "SchemaDraftService",
     "SchemaService",
     "SourceService",
     "SummaryService",
