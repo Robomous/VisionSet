@@ -169,8 +169,7 @@ def schema_draft_set(
         int | None,
         typer.Option(
             "--revision",
-            help="The revision this write was decided against. Omit to write over "
-            "whatever is stored now, or to create when nothing is.",
+            help="The revision this write was decided against. Omit to create a new draft.",
         ),
     ] = None,
     json_out: JsonOption = False,
@@ -182,26 +181,20 @@ def schema_draft_set(
     is none of a version. Classes are stored exactly as given, so a class with no
     name or no geometry survives; publishing is where that is refused.
 
-    Naming `--revision` explicitly makes the write conditional: it is refused
-    when the draft has moved past it, because somebody else wrote in between and
-    merging two sittings would be guessing. Omitting it reads the current
-    revision first and writes over exactly that — the ordinary script, where
-    nobody else is touching this draft.
+    Omitting `--revision` asks to create, and is refused against a draft that
+    already exists: a writer who has not read a revision cannot be trusted to
+    overwrite what it has not seen, and the draft is shared with no owner to ask.
+    Read `show` first and pass its revision back to write over it.
     """
     classes = _read_draft_classes(file)
     with opened_workspace(workspace) as service:
         resolved = resolve_project(service, project)
-        drafts = SchemaDraftService(service)
-        at = revision
-        if at is None:
-            current = drafts.get(resolved.id, kind)
-            at = None if current is None else current.revision
-        saved = drafts.save(
+        saved = SchemaDraftService(service).save(
             resolved.id,
             kind,
             classes=classes,
             note=note_text,
-            expected_revision=at,
+            expected_revision=revision,
         )
     if json_out:
         document(wire.schema_draft(saved))
@@ -265,6 +258,12 @@ def schema_draft_publish(
         # Read to learn the revision when the caller did not name one. Publishing
         # "whatever is there now" is the ordinary script, and making every script
         # carry a revision would be ceremony over a draft nobody else is touching.
+        #
+        # `schema_draft_set` deliberately does not do this: publishing *consumes*
+        # the draft into an immutable version and destroys nobody's text, while
+        # `set` *replaces* the draft's content — the one write that can lose
+        # somebody else's in-progress edit — so it stays conditional and refuses
+        # a bare call against a draft that already exists.
         at = revision
         if at is None:
             current = drafts.get(resolved.id, kind)

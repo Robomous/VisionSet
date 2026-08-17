@@ -47,9 +47,22 @@ def test_set_then_show_round_trips_a_half_typed_class(root: Path, tmp_path: Path
 def test_set_twice_advances_the_revision(root: Path, tmp_path: Path) -> None:
     document = _document(tmp_path, [{"name": "car"}])
     ok(root, "schema", "draft", "set", str(document), "-p", "road-signs")
-    ok(root, "schema", "draft", "set", str(document), "-p", "road-signs")
+    ok(root, "schema", "draft", "set", str(document), "-p", "road-signs", "--revision", "1")
     body = payload(root, "schema", "draft", "show", "-p", "road-signs")
     assert body["revision"] == 2
+
+
+def test_a_bare_set_against_an_existing_draft_is_refused_and_names_the_revision(
+    root: Path, tmp_path: Path
+) -> None:
+    # A writer that never read a revision has, by definition, not seen what it
+    # is about to overwrite — the draft is shared with nobody attributed to it,
+    # so a quiet overwrite here is exactly the client the refusal exists to stop.
+    document = _document(tmp_path, [{"name": "car"}])
+    ok(root, "schema", "draft", "set", str(document), "-p", "road-signs")
+    result = run(root, "schema", "draft", "set", str(document), "-p", "road-signs")
+    assert result.exit_code != 0
+    assert "revision 1" in result.stderr
 
 
 def test_publish_creates_the_version_and_clears_the_draft(root: Path, tmp_path: Path) -> None:
