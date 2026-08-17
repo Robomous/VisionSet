@@ -28,13 +28,16 @@ from pathlib import Path
 from typing import Final
 
 from visionset.inference._extra import imported
+from visionset.inference.stub_provider import STUB_FAMILY
 from visionset.kernel.domain import InferenceConnection, ModelCapability
 
-SEGMENTER_FAMILIES: Final[frozenset[str]] = frozenset({"sam2", "sam2_video", "sam3_video"})
+SEGMENTER_FAMILIES: Final[frozenset[str]] = frozenset(
+    {"sam2", "sam2_video", "sam3_video", STUB_FAMILY}
+)
 """``model_type`` values this build serves with the point-prompted adapter.
 
-**Every entry is a string some published checkpoint actually declares, read out of
-its config — never a name reasoned about from a class.** The published SAM 2
+**Every entry but one is a string some published checkpoint actually declares, read
+out of its config — never a name reasoned about from a class.** The published SAM 2
 checkpoints, including the one the connection form suggests, declare
 ``sam2_video``, and ``transformers`` loads such a checkpoint into the image model
 deliberately, saying so as it does: *"loading a ``sam2_video`` checkpoint into
@@ -69,6 +72,16 @@ Whole models only. The locked ``transformers`` registers a dozen further
 checkpoints anything can prompt. A connection naming one of them is refused by
 ``provider_for``, not handed to an adapter that would look for a mask decoder and
 find none.
+
+**``STUB_FAMILY`` is the one entry no checkpoint declares, and it is here rather
+than beside itself so that one derivation stays one derivation.** It is this
+build's own no-op segmenter — ``visionset.inference.stub_provider`` argues why a
+shipped stand-in exists at all — and it is *recorded* on a connection rather than
+read from a config, because there is no config. Listing it here is what makes
+``capabilities_of`` answer ``point_suggest`` for it, and that answer is what makes
+the editor offer the suggest tool; a separate mapping for the one family that
+needs the same answer is how the two readings this module exists to keep together
+would come apart.
 """
 
 DETECTOR_FAMILIES: Final[frozenset[str]] = frozenset({"grounding-dino", "mm-grounding-dino"})

@@ -61,6 +61,7 @@ from uuid import UUID
 from visionset.inference._extra import imported
 from visionset.inference.cache import BoundedCache
 from visionset.inference.families import family_of
+from visionset.inference.stub_provider import STUB_FAMILY, STUB_MODEL_ID
 from visionset.kernel.domain import (
     ConnectionSetupState,
     ConnectionType,
@@ -155,6 +156,18 @@ def fetch_weights(
     say = on_progress or (lambda _: None)
     tell = on_bytes or (lambda _done, _total: None)
     cache = cache_root(workspace.root)
+
+    if connection.model_id == STUB_MODEL_ID:
+        # This build's own no-op segmenter, which has no weights to fetch and no
+        # config to read. It still takes this path rather than a shortcut around
+        # it, so the connection reaches ``ready`` through the action every other
+        # one uses and a caller watching progress sees the same two phases —
+        # what the browser suite exercises is then the real lifecycle rather than
+        # a second one written for it. See ``stub_provider`` for why it exists.
+        say("nothing to fetch: this connection runs a built-in stand-in")
+        tell(0, 0)
+        say("recording the connection as ready")
+        return connections.record_weights_ready(connection.id, model_family=STUB_FAMILY)
 
     total = _size_if_it_can_be_read(connection)
     # Immediately, so a row shows "0 of 1.4 GB" from the first poll rather than
@@ -535,6 +548,16 @@ def measure(model_id: str, model_revision: str) -> DownloadSize:
         LocalInferenceUnavailable: ``huggingface_hub`` is not installed, the
             revision could not be read, or the listing did not size every file.
     """
+    if model_id == STUB_MODEL_ID:
+        # The one revision whose honest size is nought. ``DownloadSize`` admits
+        # zero while its own docstring warns that a zero would invite somebody to
+        # confirm a download nothing is known about — this is the case that is
+        # not: there is genuinely nothing to fetch, and saying so is what lets
+        # the setup form ask its question without reaching a hub at all. It is
+        # answered before ``imported`` so a base install can read it too.
+        return DownloadSize(
+            model_id=model_id, model_revision=model_revision, total_bytes=0, file_count=0
+        )
     hub = imported("huggingface_hub")
     _logger.debug("reading the size of %s at %s", model_id, model_revision)
     try:
