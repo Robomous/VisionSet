@@ -58,6 +58,19 @@ function images(): string[] {
 const TAG = "v1";
 
 /**
+ * The reserved model id that resolves to this build's own no-op segmenter.
+ *
+ * Spelled here rather than imported from the Python that defines it, because
+ * that string is a contract between the two halves and a suite importing it
+ * from one of them could never notice the two disagreeing. `test_stub_provider`
+ * holds the other end.
+ */
+const STUB_MODEL_ID = "visionset/stub-segmenter";
+
+/** What the connection is called on screen, so a refusal can be read. */
+const STAND_IN = "built-in stand-in";
+
+/**
  * A project name nothing else in the workspace will collide with — **including
  * this same spec on another repetition**.
  *
@@ -442,6 +455,108 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("back").click();
     await expect(page.getByTestId("gallery")).toBeVisible();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/batches\/[0-9a-f-]+$/);
+  });
+
+  await test.step("set up a connection to the built-in stand-in", async () => {
+    /*
+     * **Auto-labeling had no coverage against a real server at all**, which is
+     * how a defect that made every suggestion a 500 passed a full green run.
+     * The obstacle was always the weights: the models that answer a point
+     * prompt are gigabytes and one of them is gated, so no scenario could fetch
+     * one on a runner.
+     *
+     * `visionset/stub-segmenter` is the shipped no-op that closes it — the
+     * `dummy` exporter's decision, which this same walk already exports
+     * through. Every hop below is the product's own: the form, the download
+     * action, the connection's lifecycle. Only the thing at the far end
+     * predicts nothing.
+     */
+    await page.getByTestId("rail-inference").click();
+    await expect(page.getByTestId("inference-screen")).toBeVisible();
+
+    await page.getByTestId("new-connection").click();
+    await page.getByTestId("choose-local").click();
+    await page.getByTestId("connection-name").fill(STAND_IN);
+
+    // Through **Custom model**, which is the point of it not being in the
+    // curated list: nobody choosing a model is offered a segmenter that cannot
+    // segment, and anybody who needs it can still name it.
+    await page.getByTestId("connection-model").click();
+    await page.getByRole("option", { name: /Custom model/ }).click();
+    await page.getByTestId("connection-custom-model").fill(STUB_MODEL_ID);
+    await page.getByTestId("connection-revision").fill("stub");
+    await page.getByTestId("connection-submit").click();
+
+    // Born not set up, like every local connection, and made ready by the same
+    // action — the lifecycle here is the real one, not a shortcut written for a
+    // suite. What is different is only that there is nothing to fetch.
+    await expect(page.getByTestId("connection-status")).toContainText(/not set up/i);
+    await page.getByTestId("download-weights").click();
+    await expect(page.getByTestId("connection-status")).toContainText(/ready/i, {
+      timeout: 15_000,
+    });
+  });
+
+  await test.step("a click in the editor comes back as a shape, from a real server", async () => {
+    /*
+     * The gap this walk existed around. Everything here is real: a real
+     * `POST /inference/suggest`, the real route, the real mask pipeline turning
+     * a grid of pixels into a polygon, and the real editor putting it in the
+     * document. The annotator's own suite stubs this request outright, which is
+     * correct for what that suite tests and is exactly why it could not notice.
+     *
+     * The suggestion is **taken back before the step ends**, so the counts every
+     * later step asserts — the trunk's, the release's — are the counts the
+     * hand-drawn work produced. What is being claimed here is that a click
+     * reaches a model and comes back as a shape, not that a stand-in's square
+     * belongs in somebody's dataset.
+     */
+    await openProject(page, PROJECT, "batches");
+    await page.getByTestId("open-batch-cycle-batch").click();
+    const firstTile = page.getByTestId(/^tile-/).first();
+    const firstAsset = (await firstTile.getAttribute("data-testid"))!.replace("tile-", "");
+    await firstTile.getByTestId(`open-${firstAsset}`).click();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    await expect(page.getByTestId("object-total")).toHaveText("0 objects");
+
+    // A class first: the suggestion is a shape and a shape needs one, which is
+    // the whole reason the model is never asked to name anything.
+    await activate(page, "vehicle");
+    await page.getByTestId("tool-suggest").click();
+
+    // One connection, so the panel names it in a sentence rather than offering a
+    // picker — `suggest-connection-select` appears from two upwards.
+    await expect(page.getByTestId("suggest-connection")).toContainText(STAND_IN);
+    await expect(page.getByTestId("suggest-idle")).toBeVisible();
+
+    const canvas = (await page.getByTestId("annotator-canvas").boundingBox())!;
+    await page.getByTestId("annotator-root").focus();
+    await page.mouse.click(canvas.x + canvas.width * 0.5, canvas.y + canvas.height * 0.5);
+
+    // The shape came back and rendered. Generous, because this is the one
+    // request in the walk that crosses a model boundary — a cold provider is
+    // built on the first ask.
+    await expect(page.getByTestId("suggest-shown")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("suggestion-shape")).toBeVisible();
+
+    // Accepting is what puts it in the document, and the count is what says so.
+    await page.getByTestId("suggest-accept").click();
+    await expect(page.getByTestId("object-total")).toHaveText("1 object");
+
+    // And taken back, so nothing downstream inherits it. Undo rather than a
+    // delete: it is one gesture, and it also asserts that an accepted
+    // suggestion is an ordinary edit rather than something the history cannot
+    // reach.
+    await page.getByTestId("annotator-root").focus();
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(page.getByTestId("object-total")).toHaveText("0 objects");
+    await expect(page.getByTestId("save-state")).not.toContainText("Saving");
+
+    // Back to the gallery, because the step after this one starts there. A step
+    // that leaves the walk somewhere its successor does not expect fails in the
+    // successor, which is a long way from the line that caused it.
+    await page.getByTestId("back").click();
+    await expect(page.getByTestId("gallery")).toBeVisible();
   });
 
   await test.step("annotate all three assets", async () => {
