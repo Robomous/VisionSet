@@ -68,13 +68,17 @@ class GeometryType(StrEnum):
 #   with ``CURATED`` rather than with ``ANNOTATION`` — showing a version that
 #   deserved collapsing is a smaller error than hiding one that did not.
 class SchemaProvenance(StrEnum):
-    """Which kind of work published a schema version.
+    """Which kind of work a schema version came from.
 
     `curated` is a version authored deliberately — somebody sat down and decided
     what the project labels. `annotation` is one that fell out of adding a class
     part-way through labeling an asset. It gates nothing and is part of no
     contract comparison; a version history uses it to tell the milestones apart
     from the incidental runs between them.
+
+    The same two words also say which kind of work a *draft* belongs to, and a
+    draft publishes under its own kind — so a project holds at most one draft of
+    each, and the two never publish each other's classes.
     """
 
     CURATED = "curated"

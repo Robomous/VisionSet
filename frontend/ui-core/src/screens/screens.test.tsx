@@ -47,10 +47,37 @@ const sent: Request[] = [];
  */
 const bodies = new Map<Request, string>();
 
+/**
+ * A minimal stand-in for `SchemaDraftService`, keyed by project id — the schema
+ * editor now writes the shared draft before every publish, so `save-schema`
+ * needs a `PUT .../schema/drafts/{kind}` that actually answers rather than the
+ * loud 500 an unmatched route gets everywhere else in this file. No test here
+ * exercises `STALE_WRITE` — that belongs to `schemaDraft.test.tsx`, which owns
+ * the fuller simulation — so this one only ever creates and re-saves.
+ */
+let curatedDrafts: Map<
+  string,
+  { project_id: string; kind: string; classes: unknown[]; note: string; based_on: number | null; revision: number; updated_at: string }
+>;
+
+/** `/projects/{id}/schema/drafts/{kind}`'s `id`, or `null` off that path. */
+function draftProjectId(path: string): string | null {
+  const match = /^\/projects\/([^/]+)\/schema\/drafts\/[^/]+$/.exec(path);
+  return match ? match[1] : null;
+}
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 beforeEach(() => {
   handlers = [];
   sent.length = 0;
   bodies.clear();
+  curatedDrafts = new Map();
   writeToken("a-token");
   vi.stubGlobal("fetch", async (request: Request) => {
     sent.push(request);
@@ -65,6 +92,34 @@ beforeEach(() => {
           }),
         );
       }
+    }
+    const path = new URL(request.url).pathname;
+    const draftProject = draftProjectId(path);
+    if (draftProject !== null && request.method === "GET") {
+      const stored = curatedDrafts.get(draftProject);
+      return Promise.resolve(
+        stored === undefined
+          ? jsonResponse(404, { code: "SCHEMA_DRAFT_NOT_FOUND", message: "no draft yet" })
+          : jsonResponse(200, stored),
+      );
+    }
+    if (draftProject !== null && request.method === "PUT") {
+      const written = JSON.parse(bodies.get(request) ?? "{}") as {
+        classes: unknown[];
+        note: string;
+        based_on: number | null;
+      };
+      const saved = {
+        project_id: draftProject,
+        kind: "curated",
+        classes: written.classes,
+        note: written.note,
+        based_on: written.based_on,
+        revision: (curatedDrafts.get(draftProject)?.revision ?? 0) + 1,
+        updated_at: "2024-01-01T00:00:00Z",
+      };
+      curatedDrafts.set(draftProject, saved);
+      return Promise.resolve(jsonResponse(200, saved));
     }
     return Promise.resolve(
       new Response(JSON.stringify({ code: "NO_STUB", message: `${request.method} ${request.url}` }), {
@@ -254,9 +309,9 @@ describe("the schema editor", () => {
 
   it("edits a draft and publishes it as the next version", async () => {
     projectWithSchema();
-    on("POST", /schema\/versions$/, {
+    on("POST", /schema\/drafts\/curated\/publish$/, {
       status: 201,
-      body: { project_id: PROJECT, version: 4, classes: CLASSES },
+      body: { published: { project_id: PROJECT, version: 4, classes: CLASSES }, advanced_batches: [] },
     });
 
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
@@ -297,7 +352,13 @@ describe("the schema editor", () => {
       attempts += 1;
       const allowed = new URL(request.url).searchParams.get("allow_destructive") === "true";
       return allowed
-        ? { status: 201, body: { project_id: PROJECT, version: 4, classes: [] } }
+        ? {
+            status: 201,
+            body: {
+              published: { project_id: PROJECT, version: 4, classes: [] },
+              advanced_batches: [],
+            },
+          }
         : {
             status: 409,
             body: {
@@ -324,7 +385,7 @@ describe("the schema editor", () => {
 
   it("offers no override for an orphaning change, because there is none", async () => {
     projectWithSchema();
-    on("POST", /schema\/versions$/, {
+    on("POST", /schema\/drafts\/curated\/publish$/, {
       status: 409,
       body: {
         code: "SCHEMA_CHANGE_WOULD_ORPHAN",
@@ -486,9 +547,9 @@ describe("the schema editor", () => {
     // version that pinned today's hash output would make every derived class look
     // authored, and would change meaning if the palette rule ever moved.
     projectWithSchema();
-    on("POST", /schema\/versions$/, {
+    on("POST", /schema\/drafts\/curated\/publish$/, {
       status: 201,
-      body: { project_id: PROJECT, version: 4, classes: CLASSES },
+      body: { published: { project_id: PROJECT, version: 4, classes: CLASSES }, advanced_batches: [] },
     });
 
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
@@ -497,13 +558,16 @@ describe("the schema editor", () => {
     // nothing — the button answers instead of being grey, and that
     // refusal is itself the first half of the guarantee.
     await userEvent.click(screen.getByTestId("save-schema"));
-    expect(sent.some((r) => r.method === "POST")).toBe(false);
+    expect(sent.some((r) => r.method === "PUT")).toBe(false);
     await userEvent.click(screen.getByTestId("add-class"));
     await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
     await userEvent.click(screen.getByTestId("save-schema"));
 
-    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
-    const request = sent.find((r) => r.method === "POST")!;
+    // The classes now travel in the draft's own write, not in the publish —
+    // Save flushes it before publishing, so this is the request that carries
+    // what the version will actually record.
+    await waitFor(() => expect(sent.some((r) => r.method === "PUT")).toBe(true));
+    const request = sent.find((r) => r.method === "PUT")!;
     const body = JSON.parse(bodies.get(request) ?? "{}") as {
       classes: { name: string; color: string | null }[];
     };
@@ -516,9 +580,9 @@ describe("the schema editor", () => {
 
   it("Derive clears a declared colour back to the derived one, in the swatch too", async () => {
     projectWithSchema();
-    on("POST", /schema\/versions$/, {
+    on("POST", /schema\/drafts\/curated\/publish$/, {
       status: 201,
-      body: { project_id: PROJECT, version: 4, classes: CLASSES },
+      body: { published: { project_id: PROJECT, version: 4, classes: CLASSES }, advanced_batches: [] },
     });
 
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
@@ -532,8 +596,10 @@ describe("the schema editor", () => {
     // The button still means something: the stored value went back to null, which
     // is what "Derive" is for.
     await userEvent.click(screen.getByTestId("save-schema"));
-    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
-    const request = sent.find((r) => r.method === "POST")!;
+    // The draft's own write carries the classes now; the publish that follows
+    // carries only a revision.
+    await waitFor(() => expect(sent.some((r) => r.method === "PUT")).toBe(true));
+    const request = sent.find((r) => r.method === "PUT")!;
     const body = JSON.parse(bodies.get(request) ?? "{}") as {
       classes: { name: string; color: string | null }[];
     };
@@ -734,7 +800,10 @@ describe("the schema version history", () => {
   it("publishes the description written beside Save", async () => {
     withHistory();
     withDiff(NOTHING);
-    on("POST", /schema\/versions$/, { status: 201, body: { ...VERSIONS[2], version: 4 } });
+    on("POST", /schema\/drafts\/curated\/publish$/, {
+      status: 201,
+      body: { published: { ...VERSIONS[2], version: 4 }, advanced_batches: [] },
+    });
     await open();
 
     await userEvent.click(screen.getByTestId("add-class"));
@@ -742,26 +811,40 @@ describe("the schema version history", () => {
     await userEvent.type(screen.getByTestId("version-note"), "added pedestrians");
     await userEvent.click(screen.getByTestId("save-schema"));
 
-    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
-    const request = sent.find((r) => r.method === "POST");
-    expect(JSON.parse(bodies.get(request!) ?? "{}").description).toBe("added pedestrians");
+    // The description is typed into the draft's own `note`, which Save flushes
+    // before it publishes — the kernel reads the version's description off the
+    // stored draft, so this is the request that carries what was typed.
+    await waitFor(() => expect(sent.some((r) => r.method === "PUT")).toBe(true));
+    const request = sent.find((r) => r.method === "PUT");
+    expect(JSON.parse(bodies.get(request!) ?? "{}").note).toBe("added pedestrians");
   });
 
-  it("omits the key entirely when nobody wrote one", async () => {
-    // Blank is legal and the API stores null either way; sending `""` would make
-    // an empty box look like a decision in the request log.
+  /**
+   * The old client-side omission this test's name described no longer exists
+   * to prove: `SchemaDraftBody.note` (`generated/api.ts`) is a required
+   * `string`, so there is no key left to leave out, and "blank is legal"
+   * became the kernel's decision (`draft.note or None`, read off the stored
+   * draft at publish time) rather than a choice this screen makes about the
+   * request. What is still this screen's to get right is that it does not
+   * invent a *second* version of that decision — an empty box is sent exactly
+   * as typed, not coerced to `null` or held back.
+   */
+  it("sends an empty note rather than inventing an omission for it", async () => {
     withHistory();
     withDiff(NOTHING);
-    on("POST", /schema\/versions$/, { status: 201, body: { ...VERSIONS[2], version: 4 } });
+    on("POST", /schema\/drafts\/curated\/publish$/, {
+      status: 201,
+      body: { published: { ...VERSIONS[2], version: 4 }, advanced_batches: [] },
+    });
     await open();
 
     await userEvent.click(screen.getByTestId("add-class"));
     await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
     await userEvent.click(screen.getByTestId("save-schema"));
 
-    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
-    const request = sent.find((r) => r.method === "POST");
-    expect("description" in JSON.parse(bodies.get(request!) ?? "{}")).toBe(false);
+    await waitFor(() => expect(sent.some((r) => r.method === "PUT")).toBe(true));
+    const request = sent.find((r) => r.method === "PUT");
+    expect(JSON.parse(bodies.get(request!) ?? "{}").note).toBe("");
   });
 
   it("declares every version it publishes as curated", async () => {
@@ -769,18 +852,31 @@ describe("the schema version history", () => {
     // so what makes a version a milestone is the *surface* rather than the size of
     // the change — a one-class save from here is still curated. The sibling claim,
     // that the annotator's dialog says `annotation`, lives in `addClass.test.ts`.
+    //
+    // `curated` used to be a field on the publish body; it is now the draft's own
+    // `kind`, named in the path rather than the payload — so the path this
+    // editor publishes through *is* the claim.
     withHistory();
     withDiff(NOTHING);
-    on("POST", /schema\/versions$/, { status: 201, body: { ...VERSIONS[2], version: 4 } });
+    on("POST", /schema\/drafts\/curated\/publish$/, {
+      status: 201,
+      body: { published: { ...VERSIONS[2], version: 4 }, advanced_batches: [] },
+    });
     await open();
 
     await userEvent.click(screen.getByTestId("add-class"));
     await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
     await userEvent.click(screen.getByTestId("save-schema"));
 
-    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
-    const request = sent.find((r) => r.method === "POST");
-    expect(JSON.parse(bodies.get(request!) ?? "{}").provenance).toBe("curated");
+    await waitFor(() =>
+      expect(
+        sent.some(
+          (r) =>
+            r.method === "POST" &&
+            /\/schema\/drafts\/curated\/publish$/.test(new URL(r.url).pathname),
+        ),
+      ).toBe(true),
+    );
   });
 
   it("shows a published description as soon as the refetch lands", async () => {
@@ -793,7 +889,7 @@ describe("the schema version history", () => {
       description: "added pedestrians",
       created_at: "2026-08-02T09:00:00Z",
     };
-    on("POST", /schema\/versions$/, {
+    on("POST", /schema\/drafts\/curated\/publish$/, {
       status: 201,
       body: { published, advanced_batches: [] },
     });
@@ -806,7 +902,7 @@ describe("the schema version history", () => {
     handlers.length = 0;
     withHistory([...VERSIONS, published], published);
     withDiff(NOTHING);
-    on("POST", /schema\/versions$/, {
+    on("POST", /schema\/drafts\/curated\/publish$/, {
       status: 201,
       body: { published, advanced_batches: [] },
     });

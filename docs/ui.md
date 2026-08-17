@@ -353,18 +353,20 @@ frames** and its per-tile link reads **View** when nothing in the batch declares
 
 #### Adding a class where the pin cannot move
 
-The add-class chain is save → publish → re-pin, and it used to run the third step
+The add-class chain used to be save → publish → re-pin, running the third step
 unconditionally. `REPINNABLE_STATES` excludes `completed`, so on a settled batch the
 version published and the pin then refused: a new version in the project, a batch
 still judged against the old one, and an error about a step nobody asked for.
 
-Three requests are not a transaction and cannot be, so the remedy is to **ask
-first**. The page reads the batch's `repin` declaration before anything is
-published; when it is absent the dialog says the batch will keep its current
-version - and that the version is still published, and that a correction batch
-approved from now on will pin to it - and the button reads **Publish without
-re-pinning**. Two acts, two words, and the user reads which one they are about to
-perform instead of learning it from a refusal.
+Publishing an additive version now moves every open batch's pin inside the kernel's
+own transaction, so a completed batch simply is not one of them - there is no
+second request left to refuse. What remains is **saying so before the press**: the
+page reads the batch's `repin` declaration before anything is published; when it is
+absent the dialog says the batch will keep its current version - and that the
+version is still published, and that a correction batch approved from now on will
+pin to it - and the button reads **Publish without re-pinning**. Two acts, two
+words, and the user reads which one they are about to perform instead of learning
+it from a refusal.
 
 #### Reversing a skip is an action, never a side effect of drawing
 
@@ -789,31 +791,58 @@ Three things decide the shape:
   does not, and content addressing collapses identical items into one asset. The
   count that is honest is the batch's own, one click away.
 
-### The schema editor, and the two 409s
+### The schema editor, and the three 409s
 
 The editor is where `docs/api.md`'s "branch on the code, never on the status" earns
-its keep, because both refusals are **409** and only one may be retried:
+its keep, because all three refusals it can meet are **409**, and each has its own
+remedy - branching on the status would tell none of them apart:
 
 | code | what it means | what the editor offers |
 | --- | --- | --- |
 | `DESTRUCTIVE_SCHEMA_CHANGE` | the new version narrows the contract | **Save anyway**, which retries with `?allow_destructive=true` |
 | `SCHEMA_CHANGE_WOULD_ORPHAN` | annotations already exist under an affected class | **Close**, and nothing else |
+| `STALE_WRITE` | the draft moved since it was last read - a second writer's save, or a publish, landed first | **Reload the draft**, which discards the local copy and re-seeds from the server |
 
-A client branching on the status would offer the override for both and loop forever
-on the second - the failure `SchemaChangeWouldOrphan`'s kernel docstring warns
-about, and the reason it is deliberately *not* a subclass of
-`DestructiveSchemaChange`. The missing button is the feature.
+A client branching on the status would offer the override for both of the first two and
+loop forever on the second - the failure `SchemaChangeWouldOrphan`'s kernel docstring
+warns about, and the reason it is deliberately *not* a subclass of
+`DestructiveSchemaChange`. The third has a remedy of its own, and it is neither of the
+other two's: "Save anyway" would silently overwrite whatever the other writer put there,
+which is the lost update `STALE_WRITE` exists to prevent, and "Close" would leave the
+editor showing a draft the server no longer recognises. Reloading is the only remedy that
+does not either lose work or leave the screen lying.
 
-There is still no preview of the change *you are drafting*: `SchemaService.preview`
-is unrouted, so the only way to learn that the edit in front of you is destructive is
-to attempt it and read the refusal. That is why the refusal surface is the editor's
-real subject.
+`SchemaService.preview` **is** routed, at `POST .../schema/preview` - it answers both gates
+the publish itself would, `is_destructive` and `is_refused`, without writing anything. The
+editor does not call it: nothing is locked between a preview and a publish, so somebody
+could label a class in the gap and turn a preview that looked safe into a refusal, and a
+call the editor never makes cannot disagree with the publish that follows it. The publish's
+own 409 is what actually decides, and making that refusal legible - not pre-empting it - is
+the editor's whole job here, exactly as `SchemaEditor`'s own docstring states it.
 
 `compare` **is** routed since #231, and it answers the neighbouring question - what
 two *published* versions did to each other. The version navigator uses it, and never
 computes a diff here: `domain/schema_diff.py` is the one spelling of that rule, and a
 TypeScript copy would drift until the screen called a change safe that the API then
 refused.
+
+**The draft autosaves, on the server, on a debounce.** There is no "save draft" button to
+remember to press: every edit reschedules a 400ms timer, and when it fires the whole draft
+- classes, note and the version it was based on - is written through `PUT
+.../schema/drafts/curated`, naming the revision it was last read at. The response's
+`revision` is folded back into the locally-held draft so the next keystroke's write names
+it in turn; nothing about that write ever invalidates the query that seeds the editor,
+because doing so would refetch on every keystroke and hand the derivation a fresh object to
+re-seed from mid-sentence - overwriting what is being typed, with no unmount to blame it on.
+Switching to another project while a write is still pending does not lose it either: the
+timer lives above the tabs, on `ProjectScreen`, and a route change flushes the pending write
+to the project it belongs to rather than simply cancelling it.
+
+**Save flushes the pending autosave first.** Publishing goes through the draft - sending
+only `{revision, allow_destructive}`, never the classes themselves, so there is
+structurally no way to publish something other than what is on screen - which means the
+revision it names has to be current. Awaiting the flush before publishing is what stops a
+fast typist from publishing the version that predates their last keystroke.
 
 ### The version navigator
 
@@ -831,7 +860,11 @@ the tab they are already in. `DESIGN.md`'s navigation rules state the test.
 
 The description is written once, in a field beside Save, and there is nowhere to edit
 one afterwards - no route, because no service method, because a version is immutable.
-Blank omits the key rather than sending `""`.
+It now travels as the draft's `note` - a required string the autosave always sends, blank
+or not, rather than a field the client omits when there is nothing typed. The point it
+protected is not lost, only moved: a blank note still becomes a `null` description, because
+`SchemaDraftService.publish` sends `draft.note or None` to `create_version` - the empty
+string never reaches the version as itself.
 
 ### Adding a class from the annotation page
 
@@ -839,28 +872,46 @@ A class that does not exist used to cost a round trip through the Schema tab **a
 new batch**, because the old one pins the old version. The `+` in the tool palette
 opens a dialog carrying the same fields (`patterns/ClassFields.tsx`, shared with the
 Schema tab so the two cannot drift on geometries, derived colours or how an
-attribute's options are typed), and the flow is three calls in one order:
+attribute's options are typed), and the flow is two calls in one order:
 
 1. **save** the pending annotations,
 2. **publish** the next version - the *active* version's classes plus the new one,
    never the batch's pin, because versions are linear and composing on a stale pin
-   would silently delete everything published since,
-3. **re-pin** the batch (#229) onto it.
+   would silently delete everything published since.
+
+Re-pinning the batch used to be a third step here; publishing an additive version
+now moves every open batch's pin in the same kernel transaction, so there is no
+second request left to order, refuse or skip.
 
 **Step 1 is first because the schema refetch rebuilds the annotator store.** The
 store is a `useMemo` keyed on the schema, so publishing before saving discards the
 user's last few boxes with a success toast on screen - no error, nothing to see.
 `addClass.test.ts` asserts the sequence and fails if any pair flips.
 
-Three requests are not a transaction. What each failure leaves behind is stated
-rather than hidden, and the one worth naming is the last: **if the re-pin refuses,
-the version exists and the pin has not moved.** That refusal has no flag on purpose
- - it means somebody else narrowed the schema past this batch's pin - so the dialog
-names the Schema tab rather than offering a retry that cannot work.
-
 On success the new class becomes the active one. That state lives on the page rather
 than in the store, so it survives the rebuild, and its digit hotkey arrives free
 because the palette order *is* the hotkey order (#46).
+
+**`Create and add another` accumulates on the server, not only in this component.**
+The classes a sitting has written are the project's `annotation` schema draft - a
+row of its own, held apart from the Schema tab's `curated` draft so a half-finished
+editor composition can never leak into what this dialog publishes. Every bank
+writes through, so a closed tab loses nothing, and Cancel's confirm discards the
+shared row along with the local form. Because the draft has no author, opening the
+dialog onto one that already holds classes does not fold them into a fresh sitting
+silently: it says what is pending and offers a discard, since those classes may be
+somebody else's and confirming without asking would publish classes this person
+never typed.
+
+Confirming publishes *through the draft*: one more write, composed on the
+project's active classes plus this sitting's - folding in whatever is typed but
+not yet banked - and then a publish naming only the revision that write
+returned. The server publishes exactly what the draft holds and nothing a
+client could send instead, which is what makes it structurally impossible to
+publish a version other than the one on screen. The read itself is gated on the
+dialog being open, the same discipline `activeSchema` above already keeps: an
+annotator page that asked for it on every mount would be a request nothing on
+that page needed yet.
 
 Three other decisions the editor inherits rather than invents:
 

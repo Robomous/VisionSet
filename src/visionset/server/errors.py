@@ -99,6 +99,7 @@ from visionset.kernel import (
     ReleaseNotFound,
     ReleaseTagTaken,
     SchemaChangeWouldOrphan,
+    SchemaDraftNotFound,
     SchemaNotFound,
     SchemaVersionConflict,
     SourceNotFound,
@@ -192,6 +193,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # --- 404: the caller named something that is not there ----------------
     ProjectNotFound: ErrorRule(404, "PROJECT_NOT_FOUND"),
     SchemaNotFound: ErrorRule(404, "SCHEMA_NOT_FOUND"),
+    SchemaDraftNotFound: ErrorRule(404, "SCHEMA_DRAFT_NOT_FOUND"),
     BatchNotFound: ErrorRule(404, "BATCH_NOT_FOUND"),
     JobNotFound: ErrorRule(404, "JOB_NOT_FOUND"),
     IngestJobNotFound: ErrorRule(404, "INGEST_JOB_NOT_FOUND"),

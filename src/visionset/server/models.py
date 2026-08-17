@@ -81,6 +81,8 @@ from visionset.kernel.domain import (
     DatasetStats,
     Detail,
     DownloadSize,
+    DraftAttribute,
+    DraftLabelClass,
     ExportCompatibility,
     Geometry,
     GeometryType,
@@ -110,6 +112,7 @@ from visionset.kernel.domain import (
     SchemaChange,
     SchemaChangePreview,
     SchemaDiff,
+    SchemaDraft,
     SchemaProvenance,
     SchemaPublication,
     SingleJob,
@@ -336,6 +339,134 @@ class LabelClassBody(BaseModel):
             geometries=label_class.geometries,
             color=label_class.color,
             attributes=tuple(AttributeBody.of(a) for a in label_class.attributes),
+        )
+
+
+class DraftAttributeBody(BaseModel):
+    """One attribute of a class somebody is still writing.
+
+    Every field is optional, including `kind`, and no rule spanning two of them
+    is checked. A draft is not a contract: an attribute that has been named but
+    not yet typed is an ordinary moment in building one, and refusing to store it
+    would lose exactly the work a draft exists to keep. Every rule
+    `AttributeBody` states is checked when the draft is published.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = ""
+    kind: Literal["string", "number", "boolean", "select"] | None = None
+    required: bool = False
+    options: tuple[str, ...] | None = None
+    default: bool | float | str | None = None
+
+    def to_domain(self) -> DraftAttribute:
+        return DraftAttribute(
+            name=self.name,
+            kind=self.kind,
+            required=self.required,
+            options=self.options,
+            default=self.default,
+        )
+
+    @classmethod
+    def of(cls, attribute: DraftAttribute) -> Self:
+        return cls(
+            name=attribute.name,
+            kind=attribute.kind,
+            required=attribute.required,
+            options=attribute.options,
+            default=attribute.default,
+        )
+
+
+class DraftLabelClassBody(BaseModel):
+    """One class being written: a name that may be blank, shapes that may be none.
+
+    `geometries` has no minimum here and does on `LabelClassBody`, which is the
+    difference between the two types. Publishing the draft applies the minimum.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = ""
+    geometries: tuple[GeometryType, ...] = ()
+    color: str | None = None
+    attributes: tuple[DraftAttributeBody, ...] = ()
+
+    def to_domain(self) -> DraftLabelClass:
+        return DraftLabelClass(
+            name=self.name,
+            geometries=self.geometries,
+            color=self.color,
+            attributes=tuple(attribute.to_domain() for attribute in self.attributes),
+        )
+
+    @classmethod
+    def of(cls, declared: DraftLabelClass) -> Self:
+        return cls(
+            name=declared.name,
+            geometries=declared.geometries,
+            color=declared.color,
+            attributes=tuple(DraftAttributeBody.of(a) for a in declared.attributes),
+        )
+
+
+class SchemaDraftBody(BaseModel):
+    """The whole draft. There is no partial edit of one, as there is none of a version.
+
+    `revision` is the revision this write was decided against. Omit it to
+    *create*: a client that has not read the draft has not seen what it would
+    overwrite, so creating is the only thing it may ask for. Sending a revision
+    that is no longer stored answers 409 `STALE_WRITE`, and the remedy is to read
+    the draft again and resubmit.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    classes: tuple[DraftLabelClassBody, ...] = ()
+    note: str = ""
+    based_on: int | None = None
+    revision: int | None = None
+
+
+class SchemaDraftPublish(BaseModel):
+    """Which revision of the draft to publish."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    revision: int
+
+
+class SchemaDraftOut(BaseModel):
+    """A schema version somebody is still writing.
+
+    One per project per `kind`, shared by everybody with access to the workspace —
+    there are no per-user drafts, because there are no users. `based_on` is the
+    version it was seeded from, so a draft whose `based_on` is behind the active
+    version was written against a contract that has since moved.
+
+    `revision` is what a write or a publish must name to be accepted.
+    """
+
+    project_id: UUID
+    kind: SchemaProvenance
+    classes: tuple[DraftLabelClassBody, ...]
+    note: str
+    based_on: int | None
+    revision: int
+    updated_at: datetime
+
+    @classmethod
+    def of(cls, draft: SchemaDraft) -> Self:
+        return cls(
+            project_id=draft.project_id,
+            kind=draft.kind,
+            classes=tuple(DraftLabelClassBody.of(c) for c in draft.classes),
+            note=draft.note,
+            based_on=draft.based_on,
+            revision=draft.revision,
+            updated_at=draft.updated_at,
         )
 
 

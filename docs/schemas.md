@@ -454,6 +454,9 @@ its transaction, so it cannot be caught and recovered from inside one. Any other
 travels on unchanged - it is not this service's to reinterpret. See
 [persistence.md](persistence.md).
 
+That is the concurrency story for a **version** - two writers racing to publish. A **draft**
+races differently, because nothing about it is append-only: see
+[Drafts](#drafts) below, and its own `STALE_WRITE`.
 
 ## In the browser
 
@@ -467,9 +470,57 @@ refusals are **both 409** with only one override between them, so it branches on
 `POST /projects/{id}/schema/preview` now routes `SchemaService.preview`, so a client can ask
 both questions about a *draft* before it publishes; `compare` remains the question about two
 *published* versions, which is what the version navigator asks. See
-[ui.md](ui.md#the-schema-editor-and-the-two-409s) and
+[ui.md](ui.md#the-schema-editor-and-the-three-409s) and
 [api.md](api.md#asking-before-you-are-refused).
 
+## Drafts
+
+`SchemaEditor.tsx`'s `draft` above and `AddClassDialog`'s `session` are both **local** state -
+they die on a reload, on navigating away, and on the machine they were typed on.
+`SchemaDraftService` is the server-side entity that survives all three, and it is deliberately
+not a method added to `SchemaService`: that service states as doctrine that it has no `update`
+and no `delete`, and a draft needs both.
+
+**One draft per project per `kind`, and nothing more specific.** `kind` is a `SchemaProvenance`
+- `curated` for the Schema tab, `annotation` for the annotator's add-a-class dialog - and a
+project holds at most one draft of each, a singleton the store enforces with a unique index on
+`(project_id, kind)`. There is no name, no history and no notion of who wrote one.
+
+**Shared, with no author, because the workspace has no identities.** `Token` is a named
+credential rather than a person, and nothing else here claims to be one. A draft therefore
+belongs to the project and to everybody holding a credential to it - not to whoever typed
+last - which is also why two people editing the same kind of draft is the ordinary case this
+design has to answer for, not an edge case.
+
+**Storage is permissive; publishing is where it is validated.** `DraftLabelClass` mirrors
+`LabelClass` with every field optional and no cross-field rule checked - a class with no name
+yet, a select with no options yet, an attribute nobody has typed a kind for. Validation is not
+weakened by that; it moves to the one moment it can actually run. `publish` converts each draft
+class into the real thing and calls `create_version` exactly as any other caller would, so every
+refusal a version can give - `InvalidSchema`, `UnsupportedGeometry`, `DestructiveSchemaChange`,
+`SchemaChangeWouldOrphan` - a draft can still give, on the version it is about to become. A class
+that will not convert is refused as `InvalidSchema`, named by its position (`classes.3`), the
+same locator a malformed class gets through every other door.
+
+**`revision` counts writes, and a write decided against a stale one is refused, not merged.**
+Every write to an existing draft names the revision it read; omitting the revision asks to
+*create*, which is refused if a draft already exists - a writer that never read the draft has,
+by definition, not seen what it is about to overwrite. A write naming a revision the draft has
+since moved past raises `StaleWrite`: somebody else's write landed first, and applying this one
+on top would silently discard it. `publish` runs the identical check against its own
+`expected_revision`, so a draft cannot be published out from under the person about to save it
+either. There is deliberately no flag that writes or publishes anyway - re-reading and deciding
+again is the only way past it, the same rule [Concurrency](#concurrency) above states for a
+version's own race.
+
+**Publishing spends the draft.** A successful `publish` discards the row whether or not a new
+version was actually written - a draft that proposed the contract already in force has nothing
+left to say once that question is answered. `get` afterwards finds none, and the next `save`
+starts a fresh draft at revision 1, seeded from whatever is now active. Publishing is not one
+transaction with the discard that follows it: `create_version` opens its own, so a crash between
+the two can leave a spent draft whose `based_on` is behind the version it just helped create.
+That is not a new failure mode - every surface here already announces a draft moving underneath
+a reader, and this is the same state reached by a different door.
 
 ## The rescue flow, when a class already exists
 

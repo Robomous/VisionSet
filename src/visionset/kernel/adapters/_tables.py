@@ -131,6 +131,35 @@ class AnnotationSchemaRow(Base):
     provenance: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
+class SchemaDraftRow(Base):
+    """The schema version a project is still writing, one row per kind.
+
+    The unique index is the singleton: two rows of one kind for one project is
+    not a state any operation produces, and the store refuses it rather than
+    leaving a service to be careful. ``ON DELETE CASCADE`` for
+    ``AnnotationSchemaRow``'s reason — a draft is meaningless without the project
+    it drafts for.
+    """
+
+    __tablename__ = "schema_draft"
+    __table_args__ = (UniqueConstraint("project_id", "kind", name="uq_schema_draft_project_kind"),)
+
+    id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        SaUuid, ForeignKey("project.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    #: A ``SchemaProvenance``, stored as its text value — ``AnnotationSchemaRow``'s
+    #: rule, and for its reason: the domain enum is what validates, and a CHECK
+    #: here would be a second spelling a new member has to be remembered into.
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    classes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    note: Mapped[str] = mapped_column(String, nullable=False)
+    based_on: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: ISO-8601 with offset, never SQLite ``DATETIME``. See the module docstring.
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
 class SourceRow(Base):
     """Registered origins: where a project's bytes came from.
 
