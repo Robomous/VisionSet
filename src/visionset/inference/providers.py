@@ -5,22 +5,20 @@ Two questions that belong together because the answer to the second depends on
 the first being cheap to ask.
 
 **Resolution is by the model's own declared family, not by the connection's
-kind**, and the families themselves live in ``families.py`` — one module over,
-because the same fact also decides what a connection may be *asked* for and the
-two readings must not drift. ``ConnectionType`` says *where* a model runs — here or elsewhere — and
-that is the only thing it says. It cannot say whether the weights behind a local
-connection are a detector or a segmenter, and those answer different questions:
-one takes words and one takes places. So the family is read from the model's own
-config, which is a small JSON file already sitting in the cache beside the
-weights the connection downloaded. A connection pointed at a detector and asked
-with points is then refused with the port's own vocabulary rather than dying
-somewhere inside a forward pass on a shape mismatch.
+kind**, and which driver serves a family is what ``registry`` discovers.
+``ConnectionType`` says *where* a model runs and that is the only thing it says:
+it cannot tell whether the weights behind a local connection are a detector or a
+segmenter, and those answer different questions — one takes words and one takes
+places. So the family is read from the model's own config, a small JSON file
+already sitting in the cache beside the weights. A connection pointed at a
+detector and asked with points is then refused with the port's own vocabulary
+rather than dying inside a forward pass on a shape mismatch.
 
-**And a family this build does not serve is refused rather than guessed at.**
-``SUPPORTED_FAMILIES`` is the whole of what resolves; there is no fallback. A
-resolver with one guesses on every model it has not been told about, and the
-guess is invisible until the wrong adapter refuses the request in its own
-vocabulary — a sentence that describes a model the user does not have.
+**And a family no installed driver serves is refused rather than guessed at.**
+What the installed drivers declare is the whole of what resolves; there is no
+fallback. A resolver with one guesses on every model it has not been told about,
+and the guess is invisible until the wrong adapter refuses the request in its own
+vocabulary — a sentence describing a model the user does not have.
 
 **Loaded models are kept, because the alternative defeats the embedding cache.**
 The design budget for a click is =<300 ms. A provider built fresh per request
@@ -37,27 +35,22 @@ special handling: nothing will ask for that key again, and the bound evicts it.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 from visionset.inference._extra import require
 from visionset.inference.cache import DEFAULT_PROVIDER_CAPACITY, BoundedCache, KeyedLocks
-from visionset.inference.families import (
-    DETECTOR_FAMILIES,
-    SEGMENTER_FAMILIES,
-    SUPPORTED_FAMILIES,
-    family_of,
-)
-from visionset.inference.sam_provider import LocalSamProvider
-from visionset.inference.stub_provider import STUB_MODEL_ID, StubSegmenter
-from visionset.inference.transformers_provider import LocalTransformersProvider
+from visionset.inference.families import family_of
+from visionset.inference.registry import families_served, registered, serving
+from visionset.inference.stub_provider import STUB_FAMILY, STUB_MODEL_ID
 from visionset.inference.weights import cache_root
 from visionset.kernel.domain import ConnectionSetupState, ConnectionType, InferenceConnection
 from visionset.kernel.errors import (
     InferenceConnectionNotRunnable,
     InferenceConnectionNotSetUp,
 )
-from visionset.kernel.ports import Runner
+from visionset.kernel.ports import Provider, Runner
 
 _Key = tuple[str, str]
 
@@ -188,42 +181,26 @@ def _local(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
             f"connection {connection.name!r} has no weights on this machine yet; "
             "run its download_weights action first"
         )
+    drivers = registered().providers
     if connection.model_id == STUB_MODEL_ID:
         # Before ``require()``, and that ordering is the point rather than an
         # optimisation: this build's own no-op segmenter needs no runtime, so a
         # base install can run the whole suggest path and the browser suite does
-        # not install two gigabytes of wheels to click a button. The state check
-        # above still applies — a stub connection reaches ``ready`` through the
-        # same action every other one does, which is what makes the lifecycle
-        # this exercises the real lifecycle.
-        return StubSegmenter(connection_name=connection.name)
-    require()
-    # ``device`` is non-null on a local connection — the domain's cross-field
-    # rule is what makes that true — so this narrows for the type checker rather
-    # than handling a possibility.
-    assert connection.device is not None
-    cache_dir = cache_root(workspace_root)
-    common: dict[str, Any] = {
-        "device": connection.device,
-        "precision": connection.precision,
-        "cache_dir": cache_dir,
-        "connection_name": connection.name,
-    }
-    family = family_of(connection, cache_dir=cache_dir)
-    if family in SEGMENTER_FAMILIES:
-        # The family travels into the segmenter because more than one architecture
-        # answers a point now, and they do not load through the same
-        # ``transformers`` classes. It is not on ``common``: the detector resolves
-        # its own classes through one ``Auto`` model and has nothing to vary.
-        return LocalSamProvider(
-            connection.model_id, connection.model_revision, family=family, **common
-        )
-    if family in DETECTOR_FAMILIES:
-        return LocalTransformersProvider(connection.model_id, connection.model_revision, **common)
-    raise InferenceConnectionNotRunnable(_no_adapter_for(connection, family))
+        # not install two gigabytes of wheels to click a button. Its family is
+        # known without reading anything, since there is no config to read.
+        family = STUB_FAMILY
+    else:
+        require()
+        family = family_of(connection, cache_dir=cache_root(workspace_root))
+    driver = serving(drivers, family)
+    if driver is None:
+        raise InferenceConnectionNotRunnable(_no_adapter_for(connection, family, drivers))
+    return driver.build(connection, family=family, workspace_root=workspace_root)
 
 
-def _no_adapter_for(connection: InferenceConnection, family: str) -> str:
+def _no_adapter_for(
+    connection: InferenceConnection, family: str, drivers: Mapping[str, Provider]
+) -> str:
     """Why nothing here can answer for that model, and what this build does run.
 
     Two openings and one remedy. A config that named a type this build has never
@@ -231,8 +208,11 @@ def _no_adapter_for(connection: InferenceConnection, family: str) -> str:
     happened — the first is a model choice, the second is usually damaged files —
     and a reader who is told which can tell whether to change the connection or
     to fetch it again.
+
+    The list is what the installed drivers declare rather than a constant, so a
+    plugin's families appear in it without this sentence being edited.
     """
-    supported = ", ".join(sorted(SUPPORTED_FAMILIES))
+    supported = ", ".join(sorted(families_served(drivers)))
     if not family:
         return (
             f"connection {connection.name!r} names {connection.model_id!r}, whose downloaded "

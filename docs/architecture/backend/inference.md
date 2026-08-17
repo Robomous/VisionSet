@@ -52,10 +52,10 @@ model the user does not have.
 
 `families.py` holds the family sets **and** the map from a family to what a
 connection may be asked for, because they are the same fact read twice: which
-adapter can run this model, and which prompts a caller may send it. The map is
-*derived* from the sets rather than listed beside them, so an adapter and its
-declaration are one edit - a family added to `SEGMENTER_FAMILIES` and forgotten in
-a hand-written map would run fine and declare nothing, and every client that
+adapter can run this model, and which prompts a caller may send it. The two are
+one declaration rather than a set and a map beside it, so an adapter and its
+capability are one edit - a family a driver served without declaring what it takes
+would run fine and declare nothing, and every client that
 filters on the declaration would stop offering it.
 
 The vocabulary itself is the kernel's (`ModelCapability`) and the mapping is not:
@@ -187,7 +187,8 @@ assumption impossible to write by accident.
 | `grounding-dino` | `text_detect` | `IDEA-Research/grounding-dino-{tiny,base}` | Apache-2.0 |
 | `mm-grounding-dino` | `text_detect` | none | - |
 
-`mm-grounding-dino` is in `DETECTOR_FAMILIES` and therefore already resolves; what
+`mm-grounding-dino` is declared by the shipped text-prompt driver and therefore
+already resolves; what
 it lacks is a curated entry. Resolvable versus curated is the first distinction to
 check about any candidate below.
 
@@ -197,7 +198,7 @@ Both of these declare `model_type: mm-grounding-dino` and the
 `MMGroundingDinoForObjectDetection` architecture, so they land in the shipped
 family set with no resolver change at all. Both need their post-processing
 signature confirmed against the locked `transformers` before curation, which is
-the thing `DETECTOR_FAMILIES` is narrow about.
+the thing that driver's declaration is narrow about.
 
 | Candidate | Publisher | License | Cost |
 | --- | --- | --- | --- |
@@ -263,7 +264,7 @@ are on record if one is ever designed for them.
 ### Video
 
 `sam2_video` is already resident: the published SAM 2.1 checkpoints declare it and
-`SEGMENTER_FAMILIES` names it. Beyond that, tracker families such as ByteTrack
+the shipped point-prompt driver serves it. Beyond that, tracker families such as ByteTrack
 (MIT) pair with any detector rather than replacing one, so they are a pipeline
 question and not a family entry.
 
@@ -310,7 +311,7 @@ Sam3VideoConfig            model_type = sam3_video          <- what resolves
 +-- tracker_config         model_type = sam3_tracker_video  <- the promptable half
 ```
 
-Only `sam3_video` belongs in `SEGMENTER_FAMILIES`. `sam3` is the concept detector,
+Only `sam3_video` belongs in the point-prompt driver's declaration. `sam3` is the concept detector,
 and admitting it would route a text model to the point adapter. A register built
 by reasoning from the `transformers` class names produces `sam3` and
 `sam3_tracker`, neither of which any published checkpoint declares, and the

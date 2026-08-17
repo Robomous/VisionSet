@@ -57,14 +57,7 @@ from visionset.inference.cache import (
     DEFAULT_PROVIDER_CAPACITY,
     BoundedCache,
 )
-from visionset.inference.families import (
-    CAPABILITY_BY_FAMILY,
-    DETECTOR_FAMILIES,
-    SEGMENTER_FAMILIES,
-    SUPPORTED_FAMILIES,
-    capabilities_of,
-    family_of,
-)
+from visionset.inference.families import capabilities_of, family_of
 from visionset.inference.integrity import (
     READ_CHUNK,
     Digest,
@@ -91,14 +84,34 @@ from visionset.inference.masks import (
 )
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
 from visionset.inference.providers import ProviderPool, provider_for, resident
-from visionset.inference.sam_provider import LocalSamProvider
-from visionset.inference.stub_provider import STUB_FAMILY, STUB_MODEL_ID, StubSegmenter
+from visionset.inference.registry import (
+    GROUP,
+    Discovery,
+    Skipped,
+    capabilities,
+    families_served,
+    installed,
+    registered,
+    reset,
+    serving,
+)
+from visionset.inference.sam_provider import LocalSamProvider, SamProvider
+from visionset.inference.stub_provider import (
+    STUB_FAMILY,
+    STUB_MODEL_ID,
+    StubProvider,
+    StubSegmenter,
+)
 from visionset.inference.suggestions import Suggestion, suggest
-from visionset.inference.transformers_provider import LocalTransformersProvider
+from visionset.inference.transformers_provider import (
+    GroundingDinoProvider,
+    LocalTransformersProvider,
+)
 from visionset.inference.weights import (
     DEFAULT_SIZE_CAPACITY,
     MODELS_DIRNAME,
     DownloadSizes,
+    HuggingFaceWeights,
     cache_root,
     download,
     download_size,
@@ -111,21 +124,30 @@ from visionset.inference.weights import (
 enable_mps_fallback()
 
 __all__ = [
+    "GROUP",
+    "Discovery",
+    "Skipped",
+    "GroundingDinoProvider",
+    "HuggingFaceWeights",
+    "SamProvider",
+    "StubProvider",
+    "capabilities",
+    "families_served",
+    "installed",
+    "registered",
+    "reset",
+    "serving",
     "EPSILON",
     "MPS_FALLBACK_VARIABLE",
     "enable_mps_fallback",
     "DEFAULT_EMBEDDING_CAPACITY",
     "DEFAULT_IOU_THRESHOLD",
     "DEFAULT_PROVIDER_CAPACITY",
-    "CAPABILITY_BY_FAMILY",
     "DEFAULT_SIZE_CAPACITY",
-    "DETECTOR_FAMILIES",
     "EXTRA",
     "INSTALL_COMMAND",
     "MODELS_DIRNAME",
     "MODULES",
-    "SEGMENTER_FAMILIES",
-    "SUPPORTED_FAMILIES",
     "BoundedCache",
     "DownloadSizes",
     "LocalSamProvider",

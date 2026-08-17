@@ -662,3 +662,30 @@ def download_size(model_id: str, model_revision: str) -> DownloadSize:
     somebody wants the number before typing ``download``.
     """
     return known_sizes().get(model_id, model_revision)
+
+
+class HuggingFaceWeights:
+    """The one weights source this build ships: a hub repository at a pinned revision.
+
+    Satisfies ``WeightsSource`` structurally, and the three in-tree drivers hold
+    one rather than each reimplementing a download. It is a shipped
+    implementation, not a toolkit — a driver whose weights come from somewhere
+    else writes its own and reuses none of this.
+
+    Stateless, so a driver may build one in its constructor and keep it.
+    """
+
+    def price(self, model_id: str, model_revision: str) -> DownloadSize:
+        return download_size(model_id, model_revision)
+
+    def family_of(self, connection: InferenceConnection, *, cache_dir: Path) -> str:
+        return family_of(connection, cache_dir=cache_dir)
+
+    def fetch(
+        self,
+        connection: InferenceConnection,
+        *,
+        into: Path,
+        on_bytes: Callable[[int], None] | None = None,
+    ) -> Path:
+        return download(connection, into=into, on_bytes=on_bytes)

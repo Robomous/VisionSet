@@ -2,9 +2,9 @@
 
 Two claims live here, and the second is the one that had never been made before:
 that the family is *read* rather than guessed, and that what a client is told a
-connection can do is derived from the same sets the adapters are chosen from. A
-capability written out by hand beside those sets would be a second encoding, and
-the day it fell behind, a model that runs would declare nothing and no client
+connection can do is derived from the same declaration the driver is chosen by. A
+capability written out by hand beside that declaration would be a second encoding,
+and the day it fell behind, a model that runs would declare nothing and no client
 would offer it.
 """
 
@@ -17,16 +17,24 @@ from typing import Any
 import pytest
 
 from visionset.inference import families as families_module
-from visionset.inference.families import (
-    CAPABILITY_BY_FAMILY,
-    DETECTOR_FAMILIES,
-    SEGMENTER_FAMILIES,
-    SUPPORTED_FAMILIES,
-    capabilities_of,
-    family_of,
-)
+from visionset.inference.families import capabilities_of, family_of
+from visionset.inference.registry import capabilities, families_served, registered
+from visionset.inference.sam_provider import SAM_FAMILIES
+from visionset.inference.stub_provider import STUB_FAMILIES
+from visionset.inference.transformers_provider import DINO_FAMILIES
 from visionset.kernel.domain import ConnectionType, ModelCapability
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
+
+INSTALLED = registered().providers
+SEGMENTER_FAMILIES = frozenset(SAM_FAMILIES) | frozenset(STUB_FAMILIES)
+DETECTOR_FAMILIES = frozenset(DINO_FAMILIES)
+SUPPORTED_FAMILIES = families_served(INSTALLED)
+"""The three declarations, read back from what is installed.
+
+Named so the assertions below read as they always did, while what they are *about*
+has moved: no longer constants this module owns, but the union of what the
+discovered drivers declare.
+"""
 
 
 @pytest.fixture()
@@ -66,7 +74,7 @@ def test_every_published_checkpoint_this_build_curates_is_named() -> None:
     ``sam3_video``. Missing one sends that model to the detector adapter, which
     then refuses a click with a sentence about text prompts.
     """
-    assert {"sam2", "sam2_video", "sam3_video"} <= SEGMENTER_FAMILIES
+    assert {"sam2", "sam2_video", "sam3_video"} <= frozenset(SAM_FAMILIES)
 
 
 @pytest.mark.parametrize(
@@ -94,7 +102,7 @@ def test_the_names_around_the_published_one_are_not_mistaken_for_it(
     adapter — the confident wrong answer this module's opening warns about, rather
     than a gap somebody notices.
     """
-    assert family not in SEGMENTER_FAMILIES, what_it_is
+    assert family not in SAM_FAMILIES, what_it_is
 
 
 def test_the_nested_halves_of_a_config_are_not_offered_as_models() -> None:
@@ -117,8 +125,12 @@ def test_the_nested_halves_of_a_config_are_not_offered_as_models() -> None:
 
 
 def test_the_two_families_are_disjoint_and_are_the_whole_of_what_is_supported() -> None:
-    """What the refusal lists is derived, so a family cannot be added to one set
-    and forgotten in the message."""
+    """What the refusal lists is what the installed drivers declare, so a family
+    cannot be added to a driver and forgotten in the message.
+
+    Disjointness is now a property of the *installation* rather than of two
+    constants: two drivers claiming one family is refused at resolution, and here
+    it would show as the point and text sets overlapping."""
     assert not SEGMENTER_FAMILIES & DETECTOR_FAMILIES
     assert SUPPORTED_FAMILIES == SEGMENTER_FAMILIES | DETECTOR_FAMILIES
 
@@ -205,7 +217,7 @@ def test_the_mapping_covers_exactly_what_this_build_can_run() -> None:
     capability for a family with no adapter is the opposite lie. Deriving the map
     from the two sets makes both impossible; this is what says so out loud.
     """
-    assert set(CAPABILITY_BY_FAMILY) == SUPPORTED_FAMILIES
+    assert set(capabilities(INSTALLED)) == SUPPORTED_FAMILIES
 
 
 @pytest.mark.parametrize(

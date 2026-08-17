@@ -25,7 +25,7 @@ Both have tests that fail if they are removed.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Final
@@ -35,9 +35,14 @@ from PIL import Image
 from visionset.inference import _device, _fp16
 from visionset.inference._extra import imported
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
+from visionset.inference.weights import HuggingFaceWeights, cache_root
 from visionset.kernel.domain import (
     AssetPrediction,
     BboxGeometry,
+    CuratedModel,
+    DownloadSize,
+    InferenceConnection,
+    ModelCapability,
     PredictedRegion,
     PredictionRequest,
     PredictionTarget,
@@ -291,3 +296,71 @@ def _labels_in(raw: dict[str, Any]) -> list[str]:
     """
     found = raw.get("text_labels", raw.get("labels", []))
     return [str(label) for label in found]
+
+
+DINO_FAMILIES: Final[Mapping[str, ModelCapability]] = {
+    "grounding-dino": ModelCapability.TEXT_DETECT,
+    "mm-grounding-dino": ModelCapability.TEXT_DETECT,
+}
+"""``model_type`` values this driver serves, and what each can be asked.
+
+Narrower than "everything the zero-shot detector auto-class accepts", and measured
+rather than assumed. This adapter post-processes with a signature taking
+``input_ids`` and a ``text_threshold``; the other zero-shot detectors the locked
+runtime registers take a different one, so listing them would claim a support that
+fails inside a post-processor instead of in a refusal a reader can act on.
+"""
+
+CURATED: Final[tuple[CuratedModel, ...]] = (
+    CuratedModel(
+        model_id="IDEA-Research/grounding-dino-tiny",
+        model_revision="a2bb814dd30d776dcf7e30523b00659f4f141c71",
+        family="grounding-dino",
+        hint="tiny — fastest, comfortable on a CPU",
+    ),
+    CuratedModel(
+        model_id="IDEA-Research/grounding-dino-base",
+        model_revision="12bdfa3120f3e7ec7b434d90674b3396eccf88eb",
+        family="grounding-dino",
+        hint="base — more accurate, wants a GPU",
+    ),
+)
+
+
+class GroundingDinoProvider:
+    """The driver for text-prompted detectors that run on this machine."""
+
+    provider_id: Final = "grounding-dino"
+    families: Final = DINO_FAMILIES
+    curated: Final = CURATED
+
+    def __init__(self) -> None:
+        self._weights = HuggingFaceWeights()
+
+    def build(
+        self, connection: InferenceConnection, *, family: str, workspace_root: Path
+    ) -> LocalTransformersProvider:
+        assert connection.device is not None
+        return LocalTransformersProvider(
+            connection.model_id,
+            connection.model_revision,
+            device=connection.device,
+            precision=connection.precision,
+            cache_dir=cache_root(workspace_root),
+            connection_name=connection.name,
+        )
+
+    def price(self, model_id: str, model_revision: str) -> DownloadSize:
+        return self._weights.price(model_id, model_revision)
+
+    def family_of(self, connection: InferenceConnection, *, cache_dir: Path) -> str:
+        return self._weights.family_of(connection, cache_dir=cache_dir)
+
+    def fetch(
+        self,
+        connection: InferenceConnection,
+        *,
+        into: Path,
+        on_bytes: Callable[[int], None] | None = None,
+    ) -> Path:
+        return self._weights.fetch(connection, into=into, on_bytes=on_bytes)

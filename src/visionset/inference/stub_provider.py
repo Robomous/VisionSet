@@ -38,14 +38,19 @@ a pipeline that ignored the prompt entirely.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Mapping
 from io import BytesIO
+from pathlib import Path
 from typing import Final
 
 from PIL import Image
 
 from visionset.kernel.domain import (
     AssetSegmentation,
+    CuratedModel,
+    DownloadSize,
+    InferenceConnection,
+    ModelCapability,
     PointPrompt,
     PredictionRequest,
     SegmentedMask,
@@ -148,3 +153,54 @@ def _square(size: tuple[int, int], *, at: tuple[float, float]) -> list[list[bool
     # freshly allocated booleans is what the port asks for, and there is no
     # reason for every dark row to be a different object.
     return [lit if top <= row < bottom else dark for row in range(height)]
+
+
+STUB_FAMILIES: Final[Mapping[str, ModelCapability]] = {STUB_FAMILY: ModelCapability.POINT_SUGGEST}
+"""The one family no checkpoint declares.
+
+It is recorded on a connection rather than read from a config, because there is no
+config. Declaring it here is what makes a stub connection answer ``point_suggest``,
+and that answer is what makes the editor offer the suggest tool.
+"""
+
+
+class StubProvider:
+    """The driver for this build's own no-op segmenter.
+
+    It satisfies ``WeightsSource`` while fetching nothing, which is the whole
+    point: a stub connection reaches ``ready`` through the same action every other
+    connection does, so the lifecycle a suite exercises is the real lifecycle.
+    """
+
+    provider_id: Final = "stub"
+    families: Final = STUB_FAMILIES
+    curated: Final[tuple[CuratedModel, ...]] = ()
+
+    def build(
+        self, connection: InferenceConnection, *, family: str, workspace_root: Path
+    ) -> StubSegmenter:
+        return StubSegmenter(connection_name=connection.name)
+
+    def price(self, model_id: str, model_revision: str) -> DownloadSize:
+        """Nothing to fetch, so nothing to pay — stated rather than refused.
+
+        A refusal here would make the form unable to show a size for a connection
+        it is perfectly able to create.
+        """
+        return DownloadSize(
+            model_id=model_id, model_revision=model_revision, total_bytes=0, file_count=0
+        )
+
+    def family_of(self, connection: InferenceConnection, *, cache_dir: Path) -> str:
+        """Known without reading anything: there are no files to read."""
+        return STUB_FAMILY
+
+    def fetch(
+        self,
+        connection: InferenceConnection,
+        *,
+        into: Path,
+        on_bytes: Callable[[int], None] | None = None,
+    ) -> Path:
+        """Fetches nothing and reports nothing, so the state flip is the whole run."""
+        return into

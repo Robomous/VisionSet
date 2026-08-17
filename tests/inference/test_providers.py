@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 
 from visionset.inference import providers as providers_module
-from visionset.inference.families import SUPPORTED_FAMILIES
 from visionset.inference.providers import ProviderPool, provider_for, resident
+from visionset.inference.registry import families_served, registered
 from visionset.inference.sam_provider import LocalSamProvider
 from visionset.inference.transformers_provider import LocalTransformersProvider
 from visionset.kernel.domain import ConnectionType, InferenceConnection
@@ -154,7 +154,7 @@ def test_an_unknown_model_type_is_refused_rather_than_handed_to_a_family(
 
     message = str(raised.value)
     assert "totally-unknown-net" in message
-    assert all(family in message for family in SUPPORTED_FAMILIES)
+    assert all(family in message for family in families_served(registered().providers))
 
 
 def test_a_config_that_declares_no_type_is_refused_too(
@@ -172,7 +172,7 @@ def test_a_config_that_declares_no_type_is_refused_too(
 
     message = str(raised.value)
     assert "some/segmenter" in message
-    assert all(family in message for family in SUPPORTED_FAMILIES)
+    assert all(family in message for family in families_served(registered().providers))
 
 
 def test_an_unsupported_model_leaves_nothing_behind_for_the_next_request(

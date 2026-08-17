@@ -74,8 +74,16 @@ class Provider(Protocol):
     #: one of :data:`families`.
     curated: tuple[CuratedModel, ...]
 
-    def build(self, connection: InferenceConnection, *, workspace_root: Path) -> Runner:
+    def build(
+        self, connection: InferenceConnection, *, family: str, workspace_root: Path
+    ) -> Runner:
         """The thing that will answer for this connection.
+
+        ``family`` is which of :data:`families` this connection resolved to. A
+        driver serving several is told which rather than working it out: the
+        family is declared by the snapshot on disk, a connection does not always
+        carry it, and more than one architecture can answer the same prompt kind
+        while loading through different classes.
 
         **Loads nothing** — weights load lazily inside what this returns, so a
         caller may build one to find out whether a connection *could* run.
