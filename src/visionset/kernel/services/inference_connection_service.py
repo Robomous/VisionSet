@@ -141,12 +141,15 @@ class InferenceConnectionService:
         enqueue, which is a cost every job type would pay for one screen's
         benefit.
 
-        **It sees jobs and nothing else, which is the honest limit.** The CLI
-        runs both operations inline and writes no row (see
-        ``visionset.cli.inference``), so a terminal's download is invisible here
-        and always will be. That is why this coalesces rather than refuses: a
-        refusal built on this answer would claim an exclusivity only one of the
-        two surfaces could honour.
+        **It sees jobs and nothing else, which is the honest limit.** Of the
+        three surfaces that fetch and check weights, only the HTTP one queues:
+        the CLI and the MCP tools both run the operation inline and write no row
+        at all (``visionset.cli.inference``, ``visionset.mcp.inference``), each
+        because it has no dispatcher to hand the work to. A download started from
+        either is invisible here and always will be. That is why this coalesces
+        rather than refuses: a refusal built on this answer would bind one
+        surface out of three while claiming an exclusivity none of them could
+        rely on.
 
         ``job_type`` is passed rather than derived from an action, because the
         caller is the surface that already knows which handler it is about to

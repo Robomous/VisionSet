@@ -1132,14 +1132,15 @@ def test_a_live_check_does_not_change_what_the_connection_declares(
     accepted rather than refused.
 
     Making the declaration job-aware was considered and refused. A refusal could
-    only be built on a job row being live, and **the same two operations run
-    inline from the terminal with no row at all** (`visionset.cli.inference`), so
-    the rule would bind the browser and not the shell while claiming an
-    exclusivity neither could rely on. It would also strand a connection behind
-    actions it refuses whenever a worker died holding a job — the failure
-    `sweep_orphans` clears up rather than one to design around. And the shipped
-    default is one worker, so what a second request actually costs is a duplicate
-    run *after* the first, which is waste rather than a race.
+    only be built on a job row being live, and **this is the only one of three
+    surfaces that makes one**: the CLI and the MCP tools run the same two
+    operations inline (`visionset.cli.inference`, `visionset.mcp.inference`), so
+    the rule would bind one caller in three while claiming an exclusivity none of
+    them could rely on. It would also strand a connection behind actions it
+    refuses whenever a worker died holding a job — the failure `sweep_orphans`
+    clears up rather than one to design around. And the shipped default is one
+    worker, so what a second request actually costs is a duplicate run *after*
+    the first, which is waste rather than a race.
 
     What answers the waste instead is coalescing, one kind at a time: see
     `test_asking_for_a_download_twice_joins_the_transfer_already_running`. This

@@ -283,9 +283,10 @@ def check_connection_integrity(
     that is deliberate rather than an omission. What a connection declares stays
     a function of its setup state and its kind, so no run of either kind changes
     what it will accept — see `connection_actions`. The refusal such a rule would
-    need could only see *jobs*, while the same two operations run inline from the
-    terminal with no row to see, so it would claim an exclusivity only one of the
-    two surfaces could honour, and a worker dying mid-job would strand the
+    need could only see *jobs*, and this is the only one of the three surfaces
+    that makes one: the CLI and the MCP tools run the same two operations inline,
+    with no row to see. So it would bind one caller in three while claiming an
+    exclusivity none could rely on, and a worker dying mid-job would strand the
     connection behind it.
     """
     service = InferenceConnectionService(workspace)

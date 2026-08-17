@@ -243,14 +243,15 @@ by the tab that pressed the button, so a second tab and a colleague's browser wi
 **Nothing is refused, though.** What a connection declares in `allowed_actions` is a function of
 its setup state and its kind, and no run of either sort changes either one: a download requested
 while a check reads the same files is accepted and queued. That is deliberate. A refusal would have
-to be built on a job row being live, and the same two operations run **inline from a terminal with
-no row at all**, so the rule could only bind one of the two ways in. It would also strand a
-connection behind actions it refuses whenever a worker died holding a job - which is the failure
-`sweep_orphans` exists to clear up rather than one to design around.
+to be built on a job row being live, and **only the HTTP surface makes one** - the CLI and the MCP
+tools run the same two operations inline, because neither has a dispatcher to hand the work to. So
+the rule would bind one caller in three while claiming an exclusivity none of them could rely on.
+It would also strand a connection behind actions it refuses whenever a worker died holding a job -
+the failure `sweep_orphans` exists to clear up rather than one to design around.
 
-At a terminal each command blocks until it is done, so one shell serialises itself. Two shells, or
-a shell beside the server, do not coordinate: nothing here makes a download and a check over one
-cache impossible, only unlikely to be asked for by accident.
+At a terminal, and through an MCP tool, each call blocks until it is done, so one shell or one
+agent serialises itself. Two of them, or either beside the server, do not coordinate: nothing here
+makes a download and a check over one cache impossible, only unlikely to be asked for by accident.
 
 ## Pointing a connection somewhere else
 
