@@ -33,11 +33,15 @@
  * arrives* and the layer that decides *what it looks like* are still not the same
  * layer, and only one of them is this one.
  *
- * And a connection declaring *no* capability gets one too. Capability is read off
- * weights, so a connection whose weights have not arrived cannot say what it
- * answers, and an endpoint's model is never loaded from here at all. Both are the
- * same rule from opposite ends: a row belonging to no section would be a
- * connection nobody could download, edit or delete.
+ * And a connection declaring *no* capability gets one too. A row belonging to no
+ * section would be a connection nobody could download, edit or delete.
+ *
+ * That section is one heading over connections that are silent for **different
+ * reasons**, which is why its prose is derived rather than fixed: the weights have
+ * not been downloaded, or they are here and nothing came of them, or it is an
+ * endpoint whose model this workspace never loads. See {@link reasonFor}. A single
+ * sentence naming the commonest cause asserted it about all of them, and told
+ * somebody whose download had finished that it had not.
  */
 
 import type { KnownMembers } from "../generated/api.js";
@@ -106,12 +110,62 @@ const CAPABILITY_COPY: Record<KnownMembers["ModelCapability"], CapabilityCopy> =
 /** The section a connection that declares nothing lands in. */
 export const UNDECLARED = "undeclared";
 
-const UNDECLARED_COPY: CapabilityCopy = {
-  title: "No ability declared yet",
-  purpose:
-    "What a model answers is read from its own weights, so a connection cannot say until they are here. An endpoint keeps its answer to itself for the same reason: this workspace never loads the model behind one.",
-  empty: { kind: "describe", line: "Every connection says what it answers." },
+/**
+ * Why a connection has nothing to declare — read off the row, never guessed.
+ *
+ * Three things land a connection here and they do not share a remedy, so one
+ * sentence covering all three is untrue of most of them. `setup_state` is the
+ * field that separates the first two: it is cleared as the *last* step of a
+ * successful download, so `ready` means the weights are on disk and blaming the
+ * download for the silence is a sentence about somebody else's connection.
+ *
+ * The third and fourth causes are one clause on purpose. A model whose weights
+ * are here and still declares nothing either did not say what it is, or names a
+ * family no installed driver serves — and the wire cannot tell those apart,
+ * because both answer with an empty `capabilities`. Naming both remedies is the
+ * honest reading of what the client actually knows; picking one would be the
+ * guess this dashboard removes everywhere else.
+ */
+type UndeclaredReason = "awaiting-weights" | "nothing-came-of-them" | "endpoint";
+
+function reasonFor(connection: Connection): UndeclaredReason {
+  if (connection.connection_type === "http") return "endpoint";
+  return connection.setup_state === "ready" ? "nothing-came-of-them" : "awaiting-weights";
+}
+
+/** One sentence per reason, in the order they are worth reading. */
+const UNDECLARED_BECAUSE: Readonly<Record<UndeclaredReason, string>> = {
+  "awaiting-weights":
+    "What a model answers is read from its own weights, so a connection cannot say until they have been downloaded.",
+  "nothing-came-of-them":
+    "A connection whose weights are already here and still declares nothing either did not say which model it is, or names a family no installed driver serves.",
+  endpoint:
+    "An endpoint keeps its answer to itself: this workspace never loads the model behind one.",
 };
+
+const UNDECLARED_ORDER: readonly UndeclaredReason[] = [
+  "awaiting-weights",
+  "nothing-came-of-them",
+  "endpoint",
+];
+
+/**
+ * What the undeclared section says about the rows it actually holds.
+ *
+ * Derived rather than constant, which is the whole of the fix: the section is one
+ * heading over connections silent for different reasons, and a fixed sentence
+ * asserted the commonest one about all of them.
+ */
+function undeclaredCopy(connections: readonly Connection[]): CapabilityCopy {
+  const held = new Set(connections.map(reasonFor));
+  return {
+    title: "No ability declared yet",
+    purpose: UNDECLARED_ORDER.filter((reason) => held.has(reason))
+      .map((reason) => UNDECLARED_BECAUSE[reason])
+      .join(" "),
+    empty: { kind: "describe", line: "Every connection says what it answers." },
+  };
+}
 
 /** A value that arrived on the wire and this build has no copy for. */
 function unknownCopy(capability: string): CapabilityCopy {
@@ -180,7 +234,12 @@ export function sectionsOf(connections: readonly Connection[]): readonly Connect
     sections.push({ key: capability, ...unknownCopy(capability), known: false, connections: rows });
   }
   if (undeclared.length > 0) {
-    sections.push({ key: UNDECLARED, ...UNDECLARED_COPY, known: true, connections: undeclared });
+    sections.push({
+      key: UNDECLARED,
+      ...undeclaredCopy(undeclared),
+      known: true,
+      connections: undeclared,
+    });
   }
   return sections;
 }
