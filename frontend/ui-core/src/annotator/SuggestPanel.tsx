@@ -97,10 +97,12 @@ export interface SuggestPanelProps {
   /**
    * The server's own words for a refusal, when one happened.
    *
-   * Quoted rather than restated: `LOCAL_INFERENCE_UNAVAILABLE` and
-   * `INFERENCE_CONNECTION_NOT_RUNNABLE` are both `expose_message=True` precisely
-   * so the install command reaches a person, and a sentence written here would
-   * throw that away. `refusalProse` is what turns the rest into prose.
+   * Quoted rather than restated: `LOCAL_INFERENCE_UNAVAILABLE`,
+   * `INFERENCE_CONNECTION_NOT_RUNNABLE` and `INFERENCE_OUT_OF_MEMORY` are all
+   * `expose_message=True`, each because the message carries the remedy - an
+   * install command for the first two, freeing the device or picking a smaller
+   * model for the third - and a sentence written here would throw that away.
+   * `refusalProse` is what turns the rest into prose.
    */
   readonly refusal: string | null;
   /**

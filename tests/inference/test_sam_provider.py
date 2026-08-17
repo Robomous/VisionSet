@@ -518,6 +518,17 @@ class _StarvedClass:
         raise RuntimeError(OUT_OF_MEMORY)
 
 
+class _HeavyClass:
+    """A ``transformers`` auto-class whose weights load, but do not fit the device."""
+
+    @staticmethod
+    def from_pretrained(*_: Any, **__: Any) -> _HeavyClass:
+        return _HeavyClass()
+
+    def to(self, _: str) -> Any:
+        raise RuntimeError(OUT_OF_MEMORY)
+
+
 def test_a_decode_that_runs_out_of_memory_is_refused_with_a_remedy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -562,6 +573,34 @@ def test_a_load_that_runs_out_of_memory_is_refused_with_a_remedy(
     """
     torch = StubTorch()
     transformers = SimpleNamespace(AutoProcessor=_StarvedClass, Sam2Model=_StarvedClass)
+    monkeypatch.setattr(
+        sam_provider, "imported", lambda name: torch if name == "torch" else transformers
+    )
+    provider = LocalSamProvider(
+        "some/segmenter",
+        "abc123",
+        family="sam2",
+        device="cpu",
+        precision=None,
+        cache_dir=Path("/nowhere"),
+        connection_name="local",
+    )
+    with pytest.raises(InferenceOutOfMemory) as raised:
+        list(provider.segment(asked(one_click())))
+    assert "some/segmenter@abc123" in str(raised.value)
+
+
+def test_moving_a_loaded_model_onto_a_full_device_is_refused_with_a_remedy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`.to(device)` is the load's largest allocation, and the wrap covers it too.
+
+    Both classes load cleanly here, unlike the case above — so this is the test
+    that actually reaches `model.to(device)`, the call `_load`'s docstring names
+    as the largest single allocation a connection ever makes.
+    """
+    torch = StubTorch()
+    transformers = SimpleNamespace(AutoProcessor=_HeavyClass, Sam2Model=_HeavyClass)
     monkeypatch.setattr(
         sam_provider, "imported", lambda name: torch if name == "torch" else transformers
     )

@@ -675,6 +675,7 @@ workspace, compared without regard to case, so `local` and `Local` cannot name t
 | `INFERENCE_OUT_OF_MEMORY` | 500 | The device ran out of memory loading or running the model; the message names the device and what to do about it |
 
 The last three are 5xx because they are conditions of the *machine* rather than of the request:
-no state you can change and no retry makes any of them succeed, so none is a 409. All three expose
-their message, because the message is the remedy - which is the same licence a missing `ffmpeg`
-gets.
+none of them is a fact about what you sent, so none is a 409. The first two never succeed until
+somebody installs something; the third can succeed on a retry, but only after you free the device
+or choose a smaller model - which is why its message names both. All three expose their message,
+because the message is the remedy - which is the same licence a missing `ffmpeg` gets.
