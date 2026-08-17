@@ -387,6 +387,7 @@ export {
   GALLERY_PAGE_SIZE,
   batchKeys,
   useApproveBatch,
+  useAssignJob,
   useBatch,
   useBatchAssets,
   useBatchJobs,

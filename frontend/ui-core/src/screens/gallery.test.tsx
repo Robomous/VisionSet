@@ -863,6 +863,7 @@ describe("finishing a batch", () => {
       state,
       asset_count: 48,
       allowed_actions: jobActions(state as JobState),
+      assignee: null,
     };
   }
 
@@ -1619,5 +1620,59 @@ describe("the gallery header's way into the annotator", () => {
     // and the wire declares it.
     await open("annotated", "unannotated");
     expect(screen.queryByTestId("promote-drive-01")).toBeNull();
+  });
+});
+
+describe("the jobs strip", () => {
+  function jobRow(assignee: string | null) {
+    return {
+      id: JOB,
+      batch_id: BATCH,
+      state: "in_progress" as JobState,
+      asset_count: 3,
+      allowed_actions: jobActions("in_progress"),
+      assignee,
+    };
+  }
+
+  function renderGallery(): void {
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch({ state: "in_annotation" }) });
+    on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+  }
+
+  it("shows each job with its assignee, and Unassigned when there is none", async () => {
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === `/batches/${BATCH}/jobs`)
+        return { status: 200, body: { items: [jobRow("Dana Reyes")], total: 1 } };
+      return undefined;
+    });
+    renderGallery();
+    expect(await screen.findByText("Dana Reyes")).toBeTruthy();
+  });
+
+  it("assigning sends the PUT and refetches the list", async () => {
+    let assigned = false;
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === `/batches/${BATCH}/jobs`)
+        return {
+          status: 200,
+          body: { items: [jobRow(assigned ? "Dana Reyes" : null)], total: 1 },
+        };
+      if (request.method === "PUT" && url.pathname === `/jobs/${JOB}/assignee`) {
+        assigned = true;
+        return { status: 200, body: jobRow("Dana Reyes") };
+      }
+      return undefined;
+    });
+    renderGallery();
+    await userEvent.click(await screen.findByRole("button", { name: /assign/i }));
+    await userEvent.keyboard("Dana Reyes{Enter}");
+    const put = sent.find((request) => request.method === "PUT");
+    expect(put).toBeTruthy();
+    expect(JSON.parse(bodies.get(put!) ?? "")).toEqual({ assignee: "Dana Reyes" });
+    expect(await screen.findByText("Dana Reyes")).toBeTruthy();
   });
 });

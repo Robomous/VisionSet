@@ -58,6 +58,7 @@ beforeEach(() => {
             state: "in_progress",
             asset_count: 1,
             allowed_actions: jobActions("in_progress", { settled: false }),
+            assignee: null,
           }
         : path === `/batches/${BATCH}`
           ? {

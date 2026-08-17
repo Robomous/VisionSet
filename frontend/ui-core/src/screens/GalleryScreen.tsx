@@ -55,6 +55,7 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
+import { FieldError, Input } from "../primitives/Input";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { Breadcrumb } from "../patterns/Breadcrumb";
 import { parentLabel } from "../patterns/parentLabel";
@@ -91,8 +92,10 @@ import {
 } from "./batchState";
 import {
   GALLERY_PAGE_SIZE,
+  useAssignJob,
   useBatch,
   useBatchAssets,
+  useBatchJobs,
   useBatches,
   useBulkSetProgress,
   useProject,
@@ -100,6 +103,7 @@ import {
   useSource,
   type Batch,
   type BatchAsset,
+  type Job,
 } from "./queries";
 
 /**
@@ -463,6 +467,8 @@ export function GalleryScreen({
             })}
       />
 
+      {showsProgress && <JobsStrip batchId={batchId} />}
+
       <Toolbar
         segment={segment}
         counts={counts}
@@ -825,6 +831,92 @@ function BatchHeader({
         <BatchProgressBar counts={batch.progress} detailed={false} />
       )}
     </header>
+  );
+}
+
+// --- jobs strip ----------------------------------------------------------------
+
+/**
+ * The batch's jobs, one row each: who is working what. Rendered only once jobs
+ * exist (`showsProgress`), which is also why it never needs an empty state for
+ * a draft. Assignment is a name, not an account — see `JobService.assign` —
+ * so the control is always live; there is nothing to gate it on.
+ */
+function JobsStrip({ batchId }: { readonly batchId: string }): JSX.Element | null {
+  const jobs = useBatchJobs(batchId);
+  if (jobs.data === undefined || jobs.data.items.length === 0) return null;
+  return (
+    <section
+      aria-label="Jobs"
+      data-testid="jobs-strip"
+      className="flex flex-col gap-2 rounded-md border border-border p-3"
+    >
+      {jobs.data.items.map((job, index) => (
+        <JobRow key={job.id} batchId={batchId} job={job} ordinal={index + 1} />
+      ))}
+    </section>
+  );
+}
+
+function JobRow({
+  batchId,
+  job,
+  ordinal,
+}: {
+  readonly batchId: string;
+  readonly job: Job;
+  readonly ordinal: number;
+}): JSX.Element {
+  const assign = useAssignJob(batchId, job.id);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  function submit(): void {
+    const name = draft.trim();
+    if (name.length > 0) assign.mutate(name, { onSuccess: () => setEditing(false) });
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-3" data-testid={`job-row-${ordinal}`}>
+      <span className="text-meta text-muted-foreground">
+        Job {ordinal} · {job.asset_count} frames · {job.state.replace("_", " ")}
+      </span>
+      {editing ? (
+        <Input
+          autoFocus
+          value={draft}
+          aria-label={`Assignee for job ${ordinal}`}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submit();
+            if (event.key === "Escape") setEditing(false);
+          }}
+          onBlur={() => setEditing(false)}
+          className="h-8 w-40"
+        />
+      ) : (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setDraft(job.assignee ?? "");
+            setEditing(true);
+          }}
+        >
+          {job.assignee ?? "Assign"}
+        </Button>
+      )}
+      {job.assignee !== null && !editing && (
+        <button
+          type="button"
+          aria-label={`Clear assignee for job ${ordinal}`}
+          onClick={() => assign.mutate(null)}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <X className="size-4" aria-hidden="true" />
+        </button>
+      )}
+      {assign.isError && <FieldError>{assign.error.message}</FieldError>}
+    </div>
   );
 }
 
@@ -1194,9 +1286,11 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
  * amount the confirmation would have to un-teach: this removes membership, and the
  * frame stays in its project, keeps its annotations and stays in every other batch
  * that carries it. A label whose own dialog has to say "this does not really delete
- * anything" is a label that already misled somebody. There is no `Assign`: jobs are
- * cut once at approval by an exact partition, and there is no annotator identity to
- * assign to.
+ * anything" is a label that already misled somebody. `Assign` lives on the **job
+ * rows**, not on frames: jobs are cut once at approval by an exact partition, so
+ * handing frames around means naming who works a job — a plain name
+ * (`JobService.assign`), because there is no annotator identity to enforce anything
+ * against.
  *
  * ## Each button counts the frames its move is legal for, and sends only those
  *
