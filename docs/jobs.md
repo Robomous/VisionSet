@@ -120,7 +120,7 @@ deliberately unlike `BatchService.approve`, where a second call would re-partiti
 
 `mark` is one method rather than five intent-named ones because the table is the whole of what
 is legal, and a second spelling of it would only drift. Friendlier wrappers belong on the
-surfaces - a CLI `visionset job skip` maps onto this.
+surfaces - a CLI `visionset job skip` would map onto this.
 
 ## Two writers on one job, and what a success means (#302)
 

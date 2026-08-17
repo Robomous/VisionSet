@@ -110,8 +110,8 @@ src/visionset/          Single Python distribution (one wheel, one import namesp
   server/               FastAPI — exposes the SDK via REST; openapi.json is a committed contract
   cli/                  Typer CLI (`visionset` console script)
   mcp/                  MCP server (stdio) — 38 agent tools over the same SDK
-  formats/              Exporter plugins: yolo, coco, voc and the five lane formats
-                        (entry-point group `visionset.formats`)
+  formats/              Exporter plugins: yolo, coco, voc, classification and the five lane
+                        formats (entry-point group `visionset.formats`)
   jobs/                 Handlers for work that outlives a request: ingest, export, weights
   inference/            Where a model connection becomes a running model (optional runtime)
   _static/              Compiled UI bundle lands here at build time (ships in the wheel)
