@@ -145,12 +145,28 @@ audit_lock() {
   return "$verdict"
 }
 
-# Only the exact `uv add …` form is narrowed. A global flag before the
-# subcommand, a different subcommand, a different program: all take the broad
-# path, which is the safe direction to be wrong in — it applies the cool-down to
-# more than it has to rather than to less.
+# Only the exact `uv add …` form is narrowed, and only when this call is the
+# only thing that decides where uv works. nearest_lock and state_files both walk
+# from $PWD, so anything that can point uv at a project elsewhere — --directory,
+# --project, --script on the command line, or UV_WORKING_DIR/UV_PROJECT in the
+# environment — takes the broad path instead, which is the safe direction to be
+# wrong in: it applies the cool-down to more than it has to rather than to less.
 is_uv_add() {
-  [[ "${1:-}" == "uv" && "${2:-}" == "add" ]]
+  if [[ "${1:-}" != "uv" || "${2:-}" != "add" ]]; then
+    return 1
+  fi
+  if [[ -n "${UV_WORKING_DIR:-}" || -n "${UV_PROJECT:-}" ]]; then
+    return 1
+  fi
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --directory | --directory=* | --project | --project=* | --script | --script=*)
+        return 1
+        ;;
+    esac
+  done
+  return 0
 }
 
 # uv finds the lockfile by walking up from the working directory, so this walks
@@ -304,7 +320,18 @@ scrub_recorded_cutoff() {
 # then checks the result, since the second pass carried no cool-down of its own.
 if is_uv_add "$@" && lock="$(nearest_lock)"; then
   snapshot="$(mktemp -d "${TMPDIR:-/tmp}/cooldown.XXXXXX")"
-  trap 'rm -rf "$snapshot"' EXIT
+  # A run killed between the two passes must not leave the throwaway first
+  # pass's whole-set re-resolution on disk — that lockfile carries a recorded
+  # cutoff, which is exactly what makes every later `uv sync --locked` refuse
+  # it. The EXIT trap restores from the snapshot before it deletes it, so an
+  # interruption undoes the same way an explicit failure does. INT and TERM
+  # exit rather than fold into the same trap command: without an explicit exit
+  # the script would run on past the point it was interrupted, and could reach
+  # a later failure with the snapshot already gone, turning the second
+  # restore_state into a delete instead of a no-op.
+  trap 'restore_state "$snapshot"; rm -rf "$snapshot"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
 
   snapshot_state "$snapshot"
   cp "$lock" "$snapshot/baseline.lock"
@@ -356,6 +383,9 @@ if is_uv_add "$@" && lock="$(nearest_lock)"; then
   fi
 
   scrub_recorded_cutoff "$lock"
+  # The add landed; nothing left to undo. Disarm the restore so the EXIT trap
+  # only cleans up the snapshot instead of overwriting what just succeeded.
+  trap 'rm -rf "$snapshot"' EXIT
   exit 0
 fi
 

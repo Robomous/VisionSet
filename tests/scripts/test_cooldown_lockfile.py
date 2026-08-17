@@ -275,6 +275,11 @@ if [ -f "$STUB_STATE/pass$n.lock" ]; then
   cp "$STUB_STATE/pass$n.lock" "$PWD/uv.lock"
 fi
 printf 'touched-by-pass-%s\\n' "$n" >> "$PWD/pyproject.toml"
+# $PPID, not $$: the wrapper is this stub's parent, and it is the wrapper's
+# EXIT/INT trap under test — signalling the stub itself would prove nothing.
+if [ -f "$STUB_STATE/interrupt$n" ]; then
+  kill -INT "$PPID"
+fi
 exit "$(cat "$STUB_STATE/exit$n" 2>/dev/null || echo 0)"
 """
 
@@ -461,3 +466,73 @@ def test_only_uv_add_is_narrowed(stubbed) -> None:
         assert done.returncode == 0, done.stderr
         assert (state / "count").read_text().strip() == "1", f"{command} was narrowed"
         assert re.search(r"pass 1 exclude_newer: \d{4}", _calls(state)), command
+
+
+def test_the_second_pass_runs_with_no_sync_unset(stubbed) -> None:
+    """UV_NO_SYNC=1 belongs to the throwaway first pass only. Exported globally
+    it would stop the real second pass installing anything, silently."""
+    project, state, env = stubbed
+    _both_passes_land(state, _baseline_plus(ARRIVED))
+
+    _wrapped(project, env, "uv", "add", "arrived")
+    assert "pass 2 no_sync: unset" in _calls(state), _calls(state)
+
+
+def test_a_relocating_flag_takes_the_broad_path(stubbed) -> None:
+    """--directory, --project and --script can point uv at a project this
+    process's $PWD does not see, so nearest_lock and state_files would be
+    watching the wrong files. Falling through to the broad path is the safe
+    direction to be wrong in — the cool-down still applies, just to the whole
+    resolution rather than a narrowed one."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(BASELINE_LOCK)
+
+    for command in (
+        ["uv", "add", "--directory", ".", "pkg"],
+        ["uv", "add", "--project", ".", "pkg"],
+        ["uv", "add", "--script", "s.py", "pkg"],
+        ["uv", "add", "--directory=.", "pkg"],
+    ):
+        (state / "count").unlink(missing_ok=True)
+        (state / "calls.txt").unlink(missing_ok=True)
+        done = _wrapped(project, env, *command)
+        assert done.returncode == 0, done.stderr
+        assert (state / "count").read_text().strip() == "1", f"{command} was narrowed"
+        assert re.search(r"pass 1 exclude_newer: \d{4}", _calls(state)), command
+
+
+def test_a_relocating_environment_variable_takes_the_broad_path(stubbed) -> None:
+    """UV_WORKING_DIR and UV_PROJECT relocate uv with nothing on the command
+    line at all, so the guard has to check the environment as well as argv."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(BASELINE_LOCK)
+
+    for var in ("UV_WORKING_DIR", "UV_PROJECT"):
+        (state / "count").unlink(missing_ok=True)
+        (state / "calls.txt").unlink(missing_ok=True)
+        relocated = dict(env)
+        relocated[var] = str(project)
+        done = _wrapped(project, relocated, "uv", "add", "pkg")
+        assert done.returncode == 0, done.stderr
+        assert (state / "count").read_text().strip() == "1", f"{var} was narrowed"
+        assert re.search(r"pass 1 exclude_newer: \d{4}", _calls(state)), var
+
+
+def test_an_interrupted_first_pass_changes_nothing(stubbed) -> None:
+    """A run killed between the two passes — Ctrl-C, a cancelled CI job — must
+    not leave the throwaway first pass's whole-set re-resolution on disk: that
+    lockfile carries a recorded cutoff, which is exactly what makes every later
+    `uv sync --locked` refuse it. The stub sends its parent SIGINT right after
+    writing pass 1's output, simulating the process dying at the worst possible
+    moment — after uv has written, before the wrapper has undone it."""
+    project, state, env = stubbed
+    before_lock = (project / "uv.lock").read_text()
+    before_manifest = (project / "pyproject.toml").read_text()
+    (state / "pass1.lock").write_text(_baseline_plus(ARRIVED))
+    (state / "interrupt1").write_text("")
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 130, done.stderr
+    assert (state / "count").read_text().strip() == "1", "the second pass ran anyway"
+    assert (project / "uv.lock").read_text() == before_lock
+    assert (project / "pyproject.toml").read_text() == before_manifest
