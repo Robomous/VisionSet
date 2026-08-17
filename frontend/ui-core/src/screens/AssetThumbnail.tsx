@@ -63,29 +63,38 @@ export function AssetThumbnail({
 
   useEffect(() => {
     if (thumbnailHash === null || thumbnailHash === undefined) return;
-    // Cancelled rather than raced: a fast scroll unmounts tiles mid-flight, and a
-    // late response setting state on a gone component is the classic leak warning.
-    let live = true;
+    // Aborted rather than raced: a fast scroll unmounts tiles mid-flight, and
+    // `live = false` only discarded the result — the transfer itself ran to
+    // completion for every tile scrolled past (#572). The controller cancels
+    // it, and doubles as the "has this render been superseded?" flag.
+    const controller = new AbortController();
     let objectUrl: string | null = null;
 
     void (async () => {
-      const result = await client.GET("/projects/{project_id}/assets/{asset_id}/thumbnail", {
-        params: { path: { project_id: projectId, asset_id: assetId } },
-        // The route answers `image/jpeg`; without this `openapi-fetch` tries to
-        // parse it as JSON and every tile fails on a syntax error.
-        parseAs: "blob",
-      });
-      if (!live) return;
-      if (result.error !== undefined || result.data === undefined) {
-        setFailed(true);
-        return;
+      try {
+        const result = await client.GET("/projects/{project_id}/assets/{asset_id}/thumbnail", {
+          params: { path: { project_id: projectId, asset_id: assetId } },
+          // The route answers `image/jpeg`; without this `openapi-fetch` tries to
+          // parse it as JSON and every tile fails on a syntax error.
+          parseAs: "blob",
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        if (result.error !== undefined || result.data === undefined) {
+          setFailed(true);
+          return;
+        }
+        objectUrl = URL.createObjectURL(result.data as unknown as Blob);
+        setUrl(objectUrl);
+      } catch {
+        // The abort lands here by design; anything else is a dead network,
+        // which is the one case that earns the crossed-out icon.
+        if (!controller.signal.aborted) setFailed(true);
       }
-      objectUrl = URL.createObjectURL(result.data as unknown as Blob);
-      setUrl(objectUrl);
     })();
 
     return () => {
-      live = false;
+      controller.abort();
       if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
     };
   }, [client, projectId, assetId, thumbnailHash]);

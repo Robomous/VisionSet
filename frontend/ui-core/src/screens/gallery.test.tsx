@@ -803,6 +803,30 @@ describe("an asset's preview", () => {
       expect(image.getAttribute("src") ?? "").not.toContain("/thumbnail");
     }
   });
+
+  it("aborts the transfer when a tile unmounts mid-flight (#572)", async () => {
+    // A fast scroll unmounts tiles before their bytes land; `live = false`
+    // discarded the result but let the download run to completion.
+    on("GET", /\/thumbnail$/, { status: 200, body: null });
+    const view = render(thumb("cafebabe"));
+    await waitFor(() => expect(sent).toHaveLength(1));
+
+    view.unmount();
+    expect(sent[0].signal.aborted).toBe(true);
+  });
+
+  it("shows the broken-preview state when the fetch itself throws", async () => {
+    // The crossed-out icon, not the never-cached placeholder: a network that
+    // died *is* a failure, where a NULL hash is a state. Before the try/catch
+    // this was an unhandled rejection and a pulsing skeleton for ever.
+    handlers.push(() => {
+      throw new TypeError("network down");
+    });
+    render(thumb("cafebabe"));
+
+    const tile = await screen.findByTestId("thumbnail-placeholder");
+    expect(tile.getAttribute("title")).toBe("The preview could not be loaded.");
+  });
 });
 
 /**
