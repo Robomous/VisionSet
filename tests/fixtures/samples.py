@@ -37,6 +37,8 @@ from visionset.kernel.domain import (
     ConnectionType,
     Dataset,
     DatasetStats,
+    DraftAttribute,
+    DraftLabelClass,
     ExportCompatibility,
     ExportResult,
     GeometryType,
@@ -55,6 +57,8 @@ from visionset.kernel.domain import (
     SchemaChange,
     SchemaChangePreview,
     SchemaDiff,
+    SchemaDraft,
+    SchemaProvenance,
     SchemaPublication,
     Source,
     SourceKind,
@@ -99,6 +103,34 @@ SCHEMA_VERSION = AnnotationSchema(
     # writes it as text and the round-trip gate is what catches a drifting format.
     description="added the faded condition",
     created_at=_WHEN,
+)
+
+#: ``based_on`` and the attribute's ``options``/``default`` are non-null on purpose, for the
+#: same reason ``SCHEMA_VERSION``'s fields are both populated: a sample carrying ``None`` in
+#: any of those slots would leave that half of the projection unchecked.
+SCHEMA_DRAFT = SchemaDraft(
+    project_id=PROJECT.id,
+    kind=SchemaProvenance.CURATED,
+    classes=(
+        DraftLabelClass(
+            name="sign",
+            geometries=(GeometryType.BBOX,),
+            color="#ff0000",
+            attributes=(
+                DraftAttribute(
+                    name="condition",
+                    kind="select",
+                    required=True,
+                    options=("clean", "faded"),
+                    default="clean",
+                ),
+            ),
+        ),
+    ),
+    note="still deciding on classes",
+    based_on=2,
+    revision=4,
+    updated_at=_WHEN,
 )
 
 DATASET = Dataset(
