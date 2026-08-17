@@ -439,6 +439,39 @@ test("the page loads the job's assets, its pinned schema and its progress", asyn
 });
 
 /**
+ * #572: opening a frame pays for its bytes once.
+ *
+ * Under StrictMode the mount effect runs twice in development, and before the
+ * abort landed both passes ran their full-size download to completion — the
+ * duplicate pair the issue was filed about. With the first pass's transfer
+ * aborted in the effect cleanup, exactly one request *finishes* whatever the
+ * mode — which is also all a production build (single mount) ever issues.
+ *
+ * Counted as settled-vs-issued rather than with a timeout: both requests are
+ * issued at mount, so once every issued content request has settled, a
+ * duplicate that completed has already been counted.
+ */
+test("opening a frame completes exactly one download of its bytes", async ({ page }) => {
+  const settled = new Map<Request, "finished" | "failed">();
+  page.on("requestfinished", (request) => {
+    if (request.url().endsWith("/content")) settled.set(request, "finished");
+  });
+  page.on("requestfailed", (request) => {
+    if (request.url().endsWith("/content")) settled.set(request, "failed");
+  });
+
+  const sent: Request[] = [];
+  await openJob(page, sent);
+  await expect(page.getByTestId("annotator-canvas")).toBeVisible();
+
+  const issued = (): number => sent.filter((r) => r.url().endsWith("/content")).length;
+  await expect.poll(() => issued() > 0 && settled.size === issued()).toBe(true);
+
+  const finished = [...settled.values()].filter((state) => state === "finished");
+  expect(finished).toHaveLength(1);
+});
+
+/**
  * The flow verb's whole claim: it **saves first, then advances**.
  *
  * This is the assertion jsdom structurally cannot make. Making a document dirty

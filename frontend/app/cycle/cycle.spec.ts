@@ -139,7 +139,14 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     const reason = request.failure()?.errorText ?? "unknown";
     const kind = request.resourceType();
     if ((kind === "fetch" || kind === "xhr") && reason === "net::ERR_ABORTED") {
-      abortedApiCalls.push(`${request.method()} ${new URL(request.url()).pathname}`);
+      const path = new URL(request.url()).pathname;
+      // A GET of image bytes torn down mid-flight is the app *cancelling*, not
+      // abandoning: `AssetImage` and `AssetThumbnail` abort their transfer when
+      // the consumer unmounts (#572), so a walk that navigates while frames and
+      // tiles are still loading produces these by design, in numbers that
+      // depend on timing. Every other aborted call stays pinned below.
+      if (request.method() === "GET" && /\/(thumbnail|content)$/.test(path)) return;
+      abortedApiCalls.push(`${request.method()} ${path}`);
       return;
     }
     badRequests.push(`failed ${reason} ${request.url()}`);
@@ -1226,6 +1233,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * Asserted as an exact list, in walk order: a *third* aborted call, or one on
      * another route, is the shape of a request the app really did abandon, and
      * that is worth failing on.
+     *
+     * Deliberate cancellations are the one exclusion, made at the collection
+     * site: image-byte GETs (`/content`, `/thumbnail`) are aborted on unmount
+     * on purpose (#572), and how many of them a walk produces is a matter of
+     * navigation timing, not correctness.
      */
     expect(abortedApiCalls).toEqual([
       expect.stringMatching(/^DELETE .*\/batches\/[0-9a-f-]+$/),
