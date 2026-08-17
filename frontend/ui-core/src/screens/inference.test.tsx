@@ -492,6 +492,20 @@ it("draws no bar when the published size could not be read", async () => {
   expect(screen.queryByTestId("download-bar")).toBeNull();
 });
 
+it("a download of nothing is settling, not a size that could not be read", async () => {
+  // The built-in stand-in has no weights, so its total is a **measured** zero.
+  // `total > 0` used to answer both "is it known" and "can it be divided by",
+  // which put a sentence about a failed lookup in front of a lookup that
+  // succeeded. Nought of nought is every byte, so the honest phase is the one a
+  // finished transfer is in.
+  listing([connection({ download: downloadOf("running", 0, 0) })]);
+  render(mount(<InferenceScreen />));
+
+  const shown = await screen.findByTestId("download-progress-prose");
+  expect(shown.textContent).toContain("Checking what arrived");
+  expect(shown.textContent).not.toContain("could not be read");
+});
+
 it("never re-reads a list nothing is moving in", async () => {
   // The other half of the conditional poll, and the half a browser cannot be
   // asked about: asserting that nothing happens over an interval means waiting on
