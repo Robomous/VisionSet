@@ -62,7 +62,8 @@ def test_a_bare_set_against_an_existing_draft_is_refused_and_names_the_revision(
     ok(root, "schema", "draft", "set", str(document), "-p", "road-signs")
     result = run(root, "schema", "draft", "set", str(document), "-p", "road-signs")
     assert result.exit_code != 0
-    assert "revision 1" in result.stderr
+    assert "already has a curated schema draft at revision 1" in result.stderr
+    assert "None" not in result.stderr
 
 
 def test_publish_creates_the_version_and_clears_the_draft(root: Path, tmp_path: Path) -> None:

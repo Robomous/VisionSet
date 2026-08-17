@@ -154,11 +154,17 @@ def test_a_save_naming_an_expired_revision_is_refused(tmp_path: Path) -> None:
 
 
 def test_creating_over_an_existing_draft_is_refused(tmp_path: Path) -> None:
-    """A writer that never read must not be able to clobber one that did."""
+    """A writer that never read must not be able to clobber one that did.
+
+    The message says a draft already exists and names its revision — not that
+    the write is stale against ``None``, which is what "expired" would say to a
+    caller who never named a revision in the first place.
+    """
     workspace, drafts, project = _drafts(tmp_path)
     drafts.save(project.id, CURATED, classes=[DraftLabelClass(name="car")])
-    with pytest.raises(StaleWrite):
+    with pytest.raises(StaleWrite, match="already has a curated schema draft at revision 1") as exc:
         drafts.save(project.id, CURATED, classes=[DraftLabelClass(name="lane")])
+    assert "None" not in str(exc.value)
     workspace.close()
 
 

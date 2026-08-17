@@ -111,6 +111,11 @@ class SchemaDraftService:
                         updated_at=now,
                     )
                 )
+            if expected_revision is None:
+                raise StaleWrite(
+                    f"project {project_id} already has a {kind.value} schema draft at revision "
+                    f"{stored.revision}; read it and pass that revision to write over it"
+                )
             if expected_revision != stored.revision:
                 raise StaleWrite(
                     f"the {kind.value} schema draft of project {project_id} is at revision "
