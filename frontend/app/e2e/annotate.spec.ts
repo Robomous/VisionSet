@@ -1525,12 +1525,16 @@ test("selecting on the canvas scrolls the object's row into view", async ({ page
   await openJob(page, sent);
 
   // Draw a column of boxes — enough that the first row scrolls out once the
-  // last is drawn and selected.
+  // last is drawn and selected. At the panel's current row pitch (~38px) and
+  // the fixed 545px-tall scroller, 14 rows (528px) no longer overflow it —
+  // discovered by the polled precondition below, which timed out at 14 with
+  // no scroll ever having happened (#550). 20 rows (~760px) clears the panel
+  // with margin room to spare for future row-height drift.
   const canvas = page.getByTestId("annotator-canvas");
   const frame = (await canvas.boundingBox())!;
   await page.getByTestId("annotator-root").focus();
   await page.keyboard.press("1");
-  const drawn = 14;
+  const drawn = 20;
   for (let index = 0; index < drawn; index += 1) {
     const left = frame.x + frame.width * (0.05 + 0.9 * (index / drawn));
     const top = frame.y + frame.height * 0.1;
@@ -1541,6 +1545,20 @@ test("selecting on the canvas scrolls the object's row into view", async ({ page
   }
   await expect(page.getByTestId("object-total")).toHaveText(`${drawn} objects`);
 
+  // Precondition, polled for the same after-paint reason as the bounds below:
+  // drawing kept selecting the newest row, so row 0 must have left through the
+  // scroller's top before the click can bring it back. Without this, a scroll
+  // that never happens at all would pass the "comes back" claim vacuously.
+  const row = page.getByTestId("object-row-0");
+  const scroller = page.getByTestId("objects-scroller");
+  await expect
+    .poll(async () => {
+      const pane = (await scroller.boundingBox())!;
+      const where = (await row.boundingBox())!;
+      return pane.y - (where.y + where.height);
+    })
+    .toBeGreaterThanOrEqual(0);
+
   // Select the *first* box on the canvas while the list sits scrolled to the
   // bottom (drawing kept appending). Its row must come back into the scroller.
   await page.keyboard.press("v");
@@ -1548,12 +1566,27 @@ test("selecting on the canvas scrolls the object's row into view", async ({ page
   const target = (await first.boundingBox())!;
   await page.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
 
-  const row = page.getByTestId("object-row-0");
   await expect(row).toHaveAttribute("data-selected", "true");
-  const scroller = (await page.getByTestId("objects-scroller").boundingBox())!;
-  const where = (await row.boundingBox())!;
-  expect(where.y).toBeGreaterThanOrEqual(scroller.y - 1);
-  expect(where.y + where.height).toBeLessThanOrEqual(scroller.y + scroller.height + 1);
+  // The scroll lands in a passive effect after paint (each ObjectRow watches its
+  // own `selected`), so `data-selected` flips a frame before the row has moved.
+  // Read once, the geometry races that frame — and under a loaded ten-worker run
+  // the race loses (#550). Both bounds are therefore polled: the claim is "the
+  // row ends up inside the scroller", not "it is inside by the time the
+  // attribute flips". Same ±1px tolerance as before, per bound.
+  await expect
+    .poll(async () => {
+      const pane = (await scroller.boundingBox())!;
+      const where = (await row.boundingBox())!;
+      return where.y - pane.y;
+    })
+    .toBeGreaterThanOrEqual(-1);
+  await expect
+    .poll(async () => {
+      const pane = (await scroller.boundingBox())!;
+      const where = (await row.boundingBox())!;
+      return pane.y + pane.height - (where.y + where.height);
+    })
+    .toBeGreaterThanOrEqual(-1);
 });
 
 /**
