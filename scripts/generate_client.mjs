@@ -13,12 +13,22 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import openapiTS, { astToString } from "openapi-typescript";
+import ts from "typescript";
 
 /** Repo-relative path of the generated client. */
 export const OUTPUT_PATH = "frontend/ui-core/src/generated/api.ts";
 
 /** Repo-relative path of the spec it is generated from. */
 export const SPEC_PATH = "openapi.json";
+
+/**
+ * The vendor key a vocabulary marks itself open with.
+ *
+ * The declaration is the server's, because only the side that emits values can promise that a
+ * compatible release may add one. This file reads it twice: once to widen the emitted type, once
+ * to choose the tolerant check.
+ */
+export const OPEN_MARKER = "x-visionset-open";
 
 /** The do-not-edit header. Deterministic on purpose: no version, no timestamp. */
 export const BANNER = `/**
@@ -38,6 +48,89 @@ export function repoRoot() {
 }
 
 /**
+ * Every component schema the spec marks open, name first, members in declaration order.
+ *
+ * @param {object} spec the OpenAPI document
+ * @returns {[string, string[]][]} sorted by name, so the emitted block is deterministic
+ */
+export function openVocabularies(spec) {
+  const found = [];
+  for (const [name, schema] of Object.entries(spec.components?.schemas ?? {})) {
+    if (schema[OPEN_MARKER] === true) found.push([name, schema.enum]);
+  }
+  return found.sort(([a], [b]) => a.localeCompare(b));
+}
+
+/**
+ * `"a" | "b" | (string & {})` as a type node.
+ *
+ * `(string & {})` rather than `string`, which would collapse the union and take the literal
+ * members out of autocomplete — they are still the ones worth offering, they are just no longer
+ * the only ones possible.
+ */
+function openUnion(members) {
+  return ts.factory.createUnionTypeNode([
+    ...members.map((member) =>
+      ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral(member)),
+    ),
+    ts.factory.createIntersectionTypeNode([
+      ts.factory.createKeywordTypeNode(ts.SyntaxKind.StringKeyword),
+      ts.factory.createTypeLiteralNode([]),
+    ]),
+  ]);
+}
+
+/**
+ * The members this build compiled against, for every open vocabulary.
+ *
+ * The wire type of an open vocabulary admits any string, which is honest and costs the consumers
+ * their exhaustiveness: `Record<ModelCapability, Copy>` needs a closed union to be a totality
+ * check, and `satisfies Record<string, BatchAction>` needs one to catch a stale spelling. This
+ * block is that union, named separately so both readings exist.
+ *
+ * Empty when nothing is marked, so a contract with no open vocabulary renders exactly what it
+ * rendered before.
+ */
+export function knownMembersBlock(spec) {
+  const open = openVocabularies(spec);
+  if (open.length === 0) return "";
+  const fields = open.map(
+    ([name, members]) => `  ${name}: ${members.map((m) => JSON.stringify(m)).join(" | ")};`,
+  );
+  return `
+/** A member of an open vocabulary, or a value a compatible release added after this build. */
+export type OpenMember<A extends string> = A | (string & {});
+
+/** The members this build compiled against, per vocabulary the contract may grow. */
+export interface KnownMembers {
+${fields.join("\n")}
+}
+`;
+}
+
+/**
+ * Render the client from a spec object.
+ *
+ * Split out from {@link renderClient} so it can be exercised on a small document: the widening an
+ * open vocabulary gets is otherwise only observable through the whole committed contract.
+ *
+ * @param {object} spec the OpenAPI document
+ * @returns {Promise<string>} the full contents of the generated module
+ */
+export async function renderClientFromSpec(spec) {
+  // emptyObjectsUnknown: the three binary operations declare `"schema": {}`, which would otherwise
+  // become `Record<string, never>` — a shape no response ever has.
+  const ast = await openapiTS(spec, {
+    emptyObjectsUnknown: true,
+    transform(schemaObject) {
+      if (schemaObject[OPEN_MARKER] !== true) return undefined;
+      return openUnion(schemaObject.enum);
+    },
+  });
+  return BANNER + astToString(ast) + knownMembersBlock(spec);
+}
+
+/**
  * Render the client from the committed spec.
  *
  * Pure: the same spec always produces the same text, which is what makes the drift gate meaningful.
@@ -46,11 +139,7 @@ export function repoRoot() {
  * @returns {Promise<string>} the full contents of the generated module
  */
 export async function renderClient(root = repoRoot()) {
-  const spec = JSON.parse(readFileSync(path.join(root, SPEC_PATH), "utf8"));
-  // emptyObjectsUnknown: the three binary operations declare `"schema": {}`, which would otherwise
-  // become `Record<string, never>` — a shape no response ever has.
-  const ast = await openapiTS(spec, { emptyObjectsUnknown: true });
-  return BANNER + astToString(ast);
+  return renderClientFromSpec(JSON.parse(readFileSync(path.join(root, SPEC_PATH), "utf8")));
 }
 
 /** Repo-relative path of the generated response checks. */
@@ -127,6 +216,8 @@ const STRUCTURAL_KEYWORDS = new Set([
   "minItems",
   "maxItems",
   "discriminator",
+  // Not an ignored keyword: it decides which combinator an enum compiles to.
+  OPEN_MARKER,
 ]);
 
 const SCALARS = {
@@ -289,7 +380,12 @@ export function compile(schema, pointer = "#") {
     if (!schema.enum.every((member) => typeof member === "string")) {
       throw new Error(`unsupported non-string enum at ${pointer}`);
     }
-    return `oneOf([${schema.enum.map((member) => JSON.stringify(member)).join(", ")}] as const)`;
+    const members = schema.enum.map((member) => JSON.stringify(member)).join(", ");
+    // A vocabulary the contract declares open tolerates a member this build never saw; a closed
+    // one refuses it and the whole document with it. `../data/check.ts` argues both, and the
+    // difference is a promise the server made, not a guess made here.
+    const combinator = schema[OPEN_MARKER] === true ? "openOneOf" : "oneOf";
+    return `${combinator}([${members}] as const)`;
   }
 
   if (schema.oneOf !== undefined || schema.anyOf !== undefined) {
@@ -419,6 +515,9 @@ export function renderChecks(root = repoRoot()) {
     "mapOf",
     "object",
     "oneOf",
+    // `\boneOf\b` does not match inside `openOneOf` — the char before it is a word char — so the
+    // two are filtered independently and a file using only one imports only one.
+    "openOneOf",
     "tagged",
     "tuple",
   ].filter((helper) => new RegExp(`\\b${helper}\\b`).test(body));
