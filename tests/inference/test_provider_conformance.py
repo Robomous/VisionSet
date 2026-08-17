@@ -34,6 +34,7 @@ from tests.fixtures.media import write_image
 from visionset.inference import providers as providers_module
 from visionset.inference.registry import (
     GROUP,
+    Discovery,
     capabilities,
     families_served,
     installed,
@@ -55,7 +56,11 @@ from visionset.kernel.domain import (
     SegmentedMask,
     TextPrompt,
 )
-from visionset.kernel.errors import InferenceConnectionNotRunnable, UnsupportedPrompt
+from visionset.kernel.errors import (
+    InferenceConnectionNotRunnable,
+    InferenceConnectionNotSetUp,
+    UnsupportedPrompt,
+)
 from visionset.kernel.ports import ModelProvider, PointSegmenter, Provider, WeightsSource
 
 REGISTRATIONS: tuple[EntryPoint, ...] = tuple(entry_points(group=GROUP))
@@ -760,3 +765,53 @@ def test_exactly_one_answer_per_target_in_the_order_asked(subject: str, tmp_path
     assert [answer.asset_id for answer in answers] == [
         target.asset_id for target in request.targets
     ]
+
+
+# --- what resolution does before a driver is asked ----------------------------
+
+
+class Spy:
+    """A driver that records being asked to build, and would build if it were."""
+
+    provider_id = "test-spy"
+    families: Mapping[str, ModelCapability] = {ACME_FAMILY: ModelCapability.POINT_SUGGEST}
+    curated: tuple[CuratedModel, ...] = ()
+
+    def __init__(self) -> None:
+        self.builds = 0
+
+    def build(
+        self, connection: InferenceConnection, *, family: str, workspace_root: Path
+    ) -> AcmeSegmenter:
+        self.builds += 1
+        return AcmeSegmenter(model_ref="spy")
+
+
+def test_a_connection_that_is_not_ready_is_refused_before_any_driver_is_asked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Where the readiness refusal lives, which is not on the driver.
+
+    ``build`` is documented to load nothing and to be cheap enough to call in
+    order to find out whether a connection could run, and all three shipped
+    drivers return a runner for a connection whose weights are absent. The
+    refusal belongs to resolution, and it is ordered first deliberately: "your
+    weights are not here" is about something the caller can fix from where they
+    are standing, while a missing runtime is about the installation and is the
+    same answer for every connection in the workspace.
+
+    So what a driver is held to is that it is never consulted, and the spy is how
+    that is observable: the sentence alone would still pass if resolution asked a
+    driver first and refused afterwards.
+    """
+    spy = Spy()
+    monkeypatch.setattr(
+        providers_module,
+        "registered",
+        lambda: Discovery(providers={spy.provider_id: spy}, skipped=()),
+    )
+
+    with pytest.raises(InferenceConnectionNotSetUp, match="download_weights"):
+        providers_module.provider_for(a_local_connection(ready=False), workspace_root=tmp_path)
+
+    assert spy.builds == 0
