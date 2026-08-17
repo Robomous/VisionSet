@@ -166,6 +166,7 @@ import {
   type BatchAction,
   type JobAction,
 } from "../data/capabilities";
+import type { OpenMember } from "../generated/api.js";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
@@ -686,11 +687,11 @@ interface WorkspaceProps {
   readonly jobId: string;
   readonly jobState: string;
   /** What the wire says this job can be asked to do. Never re-derived here. */
-  readonly jobActions: readonly JobAction[];
+  readonly jobActions: readonly OpenMember<JobAction>[];
   /** The batch's own state — `approved` means nobody has opened it for annotation yet. */
   readonly batchState: string;
   /** What the wire says the batch can be asked to do — `repin` is the one this page needs. */
-  readonly batchActions: readonly BatchAction[];
+  readonly batchActions: readonly OpenMember<BatchAction>[];
   readonly projectId: string;
   readonly assetIndex: number;
   readonly assetCount: number;
@@ -717,7 +718,7 @@ interface WorkspaceProps {
      * to get wrong: the batch must be `in_annotation` *and* the frame's progress
      * must be one the labels can still move with.
      */
-    readonly allowed_actions: readonly AssetAction[];
+    readonly allowed_actions: readonly OpenMember<AssetAction>[];
   };
   readonly schema: unknown;
   /** The version the batch pinned at approval — what every write here is judged against. */

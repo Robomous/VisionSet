@@ -31,7 +31,9 @@ import {
   withheldBecause,
   type AssetAction,
   type BatchAction,
+  type Capable,
 } from "./capabilities";
+import type { KnownMembers } from "../generated/api.js";
 import { groupRefusals, refusalProse, type Refusal } from "./refusals";
 import { ApiError } from "./errors";
 
@@ -216,5 +218,47 @@ describe("saying N refusals once", () => {
 
   it("says nothing when nothing was refused", () => {
     expect(groupRefusals([])).toEqual([]);
+  });
+});
+
+describe("asking about an action of an open vocabulary", () => {
+  /*
+   * The four assertions below are checked by `tsc`, not by vitest: `pnpm lint` runs
+   * `tsc -p tsconfig.json --noEmit` over `src`, and an `@ts-expect-error` on a line that
+   * compiles is itself an error. That is the failure mode being pinned. An action
+   * vocabulary's wire type admits any string, so a `declares` whose parameter was inferred
+   * straight off that type would accept a misspelling and a foreign vocabulary in silence —
+   * and silence is the whole problem: nothing here would go red.
+   */
+  it("refuses a name the vocabulary does not have, while tolerating one the wire grew", () => {
+    // Annotated rather than built and cast: `batch` has to reach `declares` as a
+    // `Capable<…>` for `A` to infer to the known union, which is what makes the refusals
+    // below refusals.
+    const batch: Capable<KnownMembers["BatchAction"]> = { allowed_actions: ["approve"] };
+
+    expect(declares(batch, BATCH_ACTION.approve)).toBe(true);
+
+    // An asset action rather than a job one: `complete` and `start` belong to both the
+    // batch and the job vocabulary, so asking a batch about either is a fair question.
+    // @ts-expect-error an asset action is not something to ask a batch about
+    expect(declares(batch, ASSET_ACTION.skip)).toBe(false);
+
+    // @ts-expect-error a misspelling is not a member of the vocabulary
+    expect(declares(batch, "aprove")).toBe(false);
+
+    // @ts-expect-error the known-member union stays closed, which is what totality needs
+    const invented: KnownMembers["BatchAction"] = "archive";
+    void invented;
+  });
+
+  it("still reads a resource whose declarations grew a member", () => {
+    // The tolerance half. An action a newer server declared is inert here, not a type
+    // error and not a reason to refuse the row it arrived on.
+    const grown: Capable<KnownMembers["BatchAction"]> = {
+      allowed_actions: ["approve", "archive"],
+    };
+
+    expect(declares(grown, BATCH_ACTION.approve)).toBe(true);
+    expect(declaring([grown], BATCH_ACTION.promote)).toEqual([]);
   });
 });
