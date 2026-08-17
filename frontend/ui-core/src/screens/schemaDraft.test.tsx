@@ -395,10 +395,11 @@ describe("the schema draft survives a version published underneath", () => {
 
 /**
  * "Load v{moved}" reloads *over* a draft the server still holds — the walk
- * `SchemaEditor`'s own `freshFromActive` comment names. Asserted
- * asynchronously, past the 400ms debounce — the two reload tests above pass
+ * `SchemaEditor`'s own `freshFromActive` comment names — and the two tests
+ * below assert the two things that walk has to get right. Both assert
+ * asynchronously, past the 400ms debounce: the two reload tests above pass
  * against the unfixed code precisely because they assert synchronously,
- * inside that window, before the write this breaks ever fires.
+ * inside that window, before the write either blocker breaks ever fires.
  */
 describe("reloading over a draft the server still holds", () => {
   it("lets the next autosave succeed, rather than repeating STALE_WRITE", async () => {
@@ -422,6 +423,48 @@ describe("reloading over a draft the server still holds", () => {
     // only re-seeds the very draft "Load v{moved}" just discarded.
     await waitFor(() => expect(draftPuts).toBeGreaterThan(before), { timeout: 2000 });
     expect(screen.queryByTestId("schema-stale-draft")).toBeNull();
+  });
+
+  it("does not re-create the draft once a publish spends it", async () => {
+    // A real publish discards the draft it read — `SchemaDraftService.publish`
+    // does this unconditionally when nothing raced it — so the stub has to
+    // clear it too, or the rebase that follows would land on a draft still
+    // there and be refused as `STALE_WRITE` rather than actually re-creating
+    // one, which would pass this test for the wrong reason.
+    handlers.push((request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "POST" && /\/schema\/drafts\/curated\/publish$/.test(path)) {
+        curatedDrafts.delete(PROJECT);
+        return {
+          status: 201,
+          body: {
+            published: { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] },
+            advanced_batches: [],
+          },
+        };
+      }
+      return undefined;
+    });
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 2000 });
+
+    activeSchema = { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] };
+    await userEvent.click(screen.getByTestId("save-schema"));
+    await waitFor(
+      () => expect(screen.getByTestId("schema-status").textContent).toContain("Version 4 active"),
+      { timeout: 2000 },
+    );
+
+    // The publish's own rebase writes `classes: created.classes` — a fresh
+    // array holding exactly the contract just published — into the same
+    // state the debounce watches. Long enough to catch the debounce firing
+    // on it anyway: the defect PUTs a draft holding the version just made,
+    // 400ms after nobody edited anything.
+    const afterPublish = draftPuts;
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(draftPuts).toBe(afterPublish);
   });
 });
 

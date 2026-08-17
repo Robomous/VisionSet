@@ -115,7 +115,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
 import { BatchesScreen } from "./BatchesScreen";
 import { DatasetScreen } from "./DatasetScreen";
 import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
-import { SchemaEditor, type SchemaDraft } from "./SchemaEditor";
+import { same, SchemaEditor, type SchemaDraft } from "./SchemaEditor";
 import { groupByProvenance } from "./schemaHistory";
 import {
   useActiveSchema,
@@ -358,6 +358,19 @@ export function ProjectScreen({
     // have given, without needing the draft's identity listed below.
     const current = latestSchemaDraft.current;
     if (current === null || current.projectId !== projectId) return;
+    // A re-seed that changed nothing is not an edit, and scheduling one would
+    // write a draft nobody asked for. `revision === null` is what narrows this
+    // to the one shape that actually matters: `SchemaEditor`'s post-publish
+    // rebase, which sets `classes` back to `seed` with `revision: null`
+    // because the publish spent whatever the server held — writing here would
+    // create a phantom draft holding exactly the contract just published.
+    // Reloading over a draft the server *still* holds ("Load v{moved}") sets
+    // this same `classes === seed` shape but carries that draft's own
+    // revision, and still has to schedule: skipping it would leave the stale
+    // draft the reload was meant to replace sitting on the server forever.
+    if (current.revision === null && current.note === "" && same(current.classes, current.seed)) {
+      return;
+    }
     // Captured here, at schedule time — not read from `writeSchemaDraftRef`
     // below, which by the time this fires has already been reassigned to a
     // closure over whatever project the *next* render landed on. The
