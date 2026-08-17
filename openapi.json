@@ -3576,7 +3576,7 @@
         "type": "object"
       },
       "SchemaProvenance": {
-        "description": "Which kind of work published a schema version.\n\n`curated` is a version authored deliberately \u2014 somebody sat down and decided\nwhat the project labels. `annotation` is one that fell out of adding a class\npart-way through labeling an asset. It gates nothing and is part of no\ncontract comparison; a version history uses it to tell the milestones apart\nfrom the incidental runs between them.",
+        "description": "Which kind of work a schema version came from.\n\n`curated` is a version authored deliberately \u2014 somebody sat down and decided\nwhat the project labels. `annotation` is one that fell out of adding a class\npart-way through labeling an asset. It gates nothing and is part of no\ncontract comparison; a version history uses it to tell the milestones apart\nfrom the incidental runs between them.\n\nThe same two words also say which kind of work a *draft* belongs to, and a\ndraft publishes under its own kind \u2014 so a project holds at most one draft of\neach, and the two never publish each other's classes.",
         "enum": [
           "curated",
           "annotation"

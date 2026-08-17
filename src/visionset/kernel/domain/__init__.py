@@ -177,6 +177,7 @@ from visionset.kernel.domain.schema_diff import (
     diff_classes,
     orphanable_shapes,
 )
+from visionset.kernel.domain.schema_draft import DraftAttribute, DraftLabelClass, SchemaDraft
 from visionset.kernel.domain.segmentation import (
     AssetSegmentation,
     Mask,
@@ -325,6 +326,8 @@ __all__ = [
     "DatasetStats",
     "DomainEvent",
     "DownloadSize",
+    "DraftAttribute",
+    "DraftLabelClass",
     "ConnectionJob",
     "ConnectionJobs",
     "WeightDownload",
@@ -371,6 +374,7 @@ __all__ = [
     "SchemaChange",
     "SchemaChangePreview",
     "SchemaDiff",
+    "SchemaDraft",
     "SchemaProvenance",
     "SingleJob",
     "Source",
