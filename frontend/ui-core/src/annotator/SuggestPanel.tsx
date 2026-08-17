@@ -505,6 +505,21 @@ function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
 
 
 /**
+ * Whether this build has a control for anything the answer declared.
+ *
+ * `parameters` is an open vocabulary — a compatible release may add a member — so a
+ * setting can be declared that this version has no way to draw. Two places need the
+ * same answer and must not be able to disagree: the section that renders the
+ * controls, and the copy telling somebody the settings are still there. This asks
+ * whether *anything* is drawable; each row goes on asking whether its own setting
+ * was declared, which is what keeps a second control one entry here and one row
+ * below.
+ */
+function hasAdjustments(session: SuggestionState): boolean {
+  return session.parameters.includes("detail");
+}
+
+/**
  * Keep the press from moving focus off the canvas.
  *
  * Every keyboard rule in the editor is a `keydown` on the annotator's own root,
@@ -519,19 +534,6 @@ function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
  * The slider uses {@link returnFocusToCanvas} instead: it takes focus for the
  * duration of the drag, like any form control, and hands it back on release.
  */
-/**
- * Whether this build has a control for anything the answer declared.
- *
- * `parameters` is an open vocabulary — a compatible release may add a member — so a
- * setting can be declared that this version has no way to draw. Two places need the
- * same answer, and they must not be able to disagree: the section that renders the
- * controls, and the copy that tells somebody the settings are still there. One
- * `includes` per control, and nothing else in the file asks the question.
- */
-function hasAdjustments(session: SuggestionState): boolean {
-  return session.parameters.includes("detail");
-}
-
 function keepFocusOnCanvas(event: { preventDefault: () => void }): void {
   event.preventDefault();
 }
