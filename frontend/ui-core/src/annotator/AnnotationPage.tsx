@@ -224,6 +224,17 @@ import { readPref, writePref } from "../data/prefs";
 function preferredConnectionKey(projectId: string): string {
   return `suggest.connection.${projectId}`;
 }
+
+/**
+ * Where "a trackpad has been seen on this browser" is remembered.
+ *
+ * Deliberately not per project, which the connection above is: it describes the
+ * hardware on this desk, and that is the same hardware whichever project is
+ * open. One key, one fact, and anything other than the stored spelling reads as
+ * "not seen" — a preference is not a contract, and the cost of misreading it is
+ * one gesture, not an error.
+ */
+const PRECISE_DEVICE_PREF = "annotator.precise-device";
 import { PROGRESS_LABEL, outstandingWork, progressDotClass, progressTone } from "../screens/batchState";
 import type { LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries";
 import {
@@ -963,6 +974,37 @@ function Workspace({
   function chooseConnection(connectionId: string): void {
     setPreferredConnection(connectionId);
     writePref(preferredConnectionKey(projectId), connectionId);
+  }
+
+  /**
+   * What a bare wheel does, remembered per browser and not per project.
+   *
+   * `prefs.ts`'s sense exactly, and more so than the connection above: this is a
+   * fact about the *mouse on this desk*, so it must not follow somebody to
+   * another machine, and it has nothing to do with which project is open.
+   *
+   * It exists because the annotator's device test cannot answer for a
+   * high-resolution wheel — a Logitech MX Master and the rest of that class
+   * report a fraction of a detent per event, which is the shape a trackpad
+   * reports, and the kernel specification declines to bound the fraction. The
+   * default is `auto`, which is that test unchanged.
+   */
+  const [preciseDeviceSeen, setPreciseDeviceSeen] = useState(
+    () => readPref(PRECISE_DEVICE_PREF) === "seen",
+  );
+
+  /**
+   * The canvas saw a trackpad prove itself, so the sighting is written down.
+   *
+   * State as well as storage: the canvas is handed it back on the next render,
+   * which is what makes the fact survive a remount within the session as well as
+   * a reload. Idempotent, because the canvas reports once per mount and a
+   * remount would report again.
+   */
+  function noteTrackpadSeen(): void {
+    if (preciseDeviceSeen) return;
+    setPreciseDeviceSeen(true);
+    writePref(PRECISE_DEVICE_PREF, "seen");
   }
 
   /**
@@ -2484,6 +2526,8 @@ function Workspace({
                 // `diverting`, which drops a parked session, and not the
                 // whole of `suggesting`.
                 panTool={handTool}
+                preciseDeviceSeen={preciseDeviceSeen}
+                onPreciseDevice={noteTrackpadSeen}
                 suggestion={diverting}
                 onSuggestPoint={suggestAt}
                 // The halo and the busy cursor. Keyed to `diverting` for the same
