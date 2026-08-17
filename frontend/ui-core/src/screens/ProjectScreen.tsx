@@ -829,7 +829,7 @@ function SchemaSection({
     return (
       <ErrorState
         code={failure.code}
-        message={failure.message}
+        message={refusalProse(schema.error)}
         onRetry={() => void schema.refetch()}
       />
     );

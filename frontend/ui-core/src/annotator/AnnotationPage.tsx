@@ -614,7 +614,7 @@ function JobScreen({
   if (failure !== null) {
     const error = asApiError(failure);
     return (
-      <ErrorState code={error.code} message={error.message} onRetry={() => void job.refetch()} />
+      <ErrorState code={error.code} message={refusalProse(failure)} onRetry={() => void job.refetch()} />
     );
   }
   // Each `.data` checked on its own rather than through `isPending`: four queries
