@@ -32,7 +32,7 @@ from typing import Any, Final
 
 from PIL import Image
 
-from visionset.inference import _device, _fp16
+from visionset.inference import _device, _fp16, _memory
 from visionset.inference._extra import imported
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
 from visionset.inference.weights import HuggingFaceWeights, cache_root
@@ -212,31 +212,38 @@ class LocalTransformersProvider:
         torch: Any,
         minimum_confidence: float,
     ) -> AssetPrediction:
-        """Everything that happens to one image, from bytes to domain regions."""
-        image = self._decoded(target)
-        inputs = processor(images=image, text=text, return_tensors="pt").to(device)
-        with _fp16.forward_guard(torch, device_type=device.split(":")[0], half=half):
-            outputs = model(**inputs)
-        # ``target_sizes`` is (height, width) and PIL's ``size`` is (width,
-        # height). Reversed here rather than remembered at the call site.
-        raw = processor.post_process_grounded_object_detection(
-            outputs,
-            inputs.input_ids,
-            threshold=minimum_confidence,
-            text_threshold=self._text_threshold,
-            target_sizes=[image.size[::-1]],
-        )[0]
-        return AssetPrediction(
-            asset_id=target.asset_id,
-            model_ref=self.model_ref,
-            regions=regions_from(
-                [[float(value) for value in box] for box in raw["boxes"].tolist()],
-                [float(score) for score in raw["scores"].tolist()],
-                _labels_in(raw),
-                minimum_confidence=minimum_confidence,
-                iou_threshold=self._nms_iou_threshold,
-            ),
-        )
+        """Everything that happens to one image, from bytes to domain regions.
+
+        The whole body runs inside the allocation guard rather than only the
+        forward: the processor's tensors and the post-processor's boxes are
+        allocations too, and an image that dies on any of them died for the same
+        reason and has the same remedy.
+        """
+        with _memory.translated(torch, device=device, model_ref=self.model_ref):
+            image = self._decoded(target)
+            inputs = processor(images=image, text=text, return_tensors="pt").to(device)
+            with _fp16.forward_guard(torch, device_type=device.split(":")[0], half=half):
+                outputs = model(**inputs)
+            # ``target_sizes`` is (height, width) and PIL's ``size`` is (width,
+            # height). Reversed here rather than remembered at the call site.
+            raw = processor.post_process_grounded_object_detection(
+                outputs,
+                inputs.input_ids,
+                threshold=minimum_confidence,
+                text_threshold=self._text_threshold,
+                target_sizes=[image.size[::-1]],
+            )[0]
+            return AssetPrediction(
+                asset_id=target.asset_id,
+                model_ref=self.model_ref,
+                regions=regions_from(
+                    [[float(value) for value in box] for box in raw["boxes"].tolist()],
+                    [float(score) for score in raw["scores"].tolist()],
+                    _labels_in(raw),
+                    minimum_confidence=minimum_confidence,
+                    iou_threshold=self._nms_iou_threshold,
+                ),
+            )
 
     def _decoded(self, target: PredictionTarget) -> Any:
         """The bytes as an RGB image.
@@ -277,13 +284,14 @@ class LocalTransformersProvider:
             # Weights only; nothing here executes code that arrived with them.
             "local_files_only": True,
         }
-        processor = transformers.AutoProcessor.from_pretrained(self._model_id, **common)
-        model = transformers.AutoModelForZeroShotObjectDetection.from_pretrained(
-            self._model_id,
-            dtype=torch.float16 if half else torch.float32,
-            **common,
-        )
-        return processor, model.to(device).eval(), device, half
+        with _memory.translated(torch, device=device, model_ref=self.model_ref):
+            processor = transformers.AutoProcessor.from_pretrained(self._model_id, **common)
+            model = transformers.AutoModelForZeroShotObjectDetection.from_pretrained(
+                self._model_id,
+                dtype=torch.float16 if half else torch.float32,
+                **common,
+            )
+            return processor, model.to(device).eval(), device, half
 
 
 def _labels_in(raw: dict[str, Any]) -> list[str]:

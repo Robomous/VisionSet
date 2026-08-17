@@ -1118,3 +1118,27 @@ class LocalInferenceUnavailable(VisionSetError):
     disabled control design principle 9 forbids, and would leave the install
     command with nowhere to be shown.
     """
+
+
+class InferenceOutOfMemory(VisionSetError):
+    """The device ran out of memory part-way through running a model.
+
+    ``LocalInferenceUnavailable``'s neighbour and not its synonym. Both answer
+    "what is wrong with this machine?" rather than "what is wrong with this
+    connection?", and both are exposed 500s for the same reason: the message
+    *is* the remedy. What separates them is which remedy. That one carries a
+    ``pip install`` for a runtime that is absent; this one is raised on a machine
+    where the runtime is present, installed and working, so a caller told to
+    install the extra it already has has been told nothing.
+
+    Not transient, so not a 503, on ``MediaToolUnavailable``'s licence: freeing a
+    device is something a person does rather than something a wait does, and the
+    same request against the same model on the same device fails again.
+
+    The message names the device the run actually resolved to and drops the
+    remedies that device does not have — there is nowhere to move a connection
+    already on the CPU. Which device that was lives at the raise site, in
+    ``visionset.inference``, for the reason ``LocalInferenceUnavailable``'s
+    command does: the kernel does not know what ran where, only that something
+    outside it could not fit.
+    """

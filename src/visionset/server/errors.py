@@ -75,6 +75,7 @@ from visionset.kernel import (
     InferenceConnectionNotFound,
     InferenceConnectionNotRunnable,
     InferenceConnectionNotSetUp,
+    InferenceOutOfMemory,
     IngestJobNotFound,
     InvalidAnnotation,
     InvalidAttributeValue,
@@ -400,6 +401,12 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # the extra — and exposed because the command *is* the remedy and nobody can
     # reconstruct it from "unavailable".
     LocalInferenceUnavailable: ErrorRule(500, "LOCAL_INFERENCE_UNAVAILABLE", expose_message=True),
+    # The neighbour of LOCAL_INFERENCE_UNAVAILABLE, exposed for the same reason:
+    # the message is the remedy, and this one names the device that filled up
+    # along with the ways off it. Not a 503 despite sounding transient —
+    # WorkspaceBusy holds the only licence for that in this table, and retrying
+    # the same model on the same device fails the same way.
+    InferenceOutOfMemory: ErrorRule(500, "INFERENCE_OUT_OF_MEMORY", expose_message=True),
     # A deployment condition too, and the distance from
     # INFERENCE_CONNECTION_NOT_SET_UP is the whole reason it is not a 409: there
     # is no state to change and no flag to pass. The remedy is a version of this

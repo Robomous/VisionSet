@@ -33,6 +33,7 @@ from visionset.kernel.domain import (
     DownloadSize,
     SegmentedMask,
 )
+from visionset.kernel.errors import InferenceOutOfMemory
 from visionset.server.routes import inference as inference_routes
 
 ASSET_WIDTH = 32
@@ -753,3 +754,88 @@ def test_a_detail_step_the_vocabulary_does_not_have_is_refused(
     answer = ask(client, project=project, asset=asset, connection=connection, detail="sharpest")
 
     assert answer.status_code == 422
+
+
+# --- when the machine cannot carry it ----------------------------------------
+
+
+def starving(monkeypatch: pytest.MonkeyPatch, failure: Exception) -> None:
+    """Install a segmenter that dies of ``failure`` when it is asked.
+
+    Built against ``PointSegmenter.segment`` rather than from memory, and the
+    positive path of the same double is what every other test in this file
+    exercises — so a fake that raises on entry cannot make an absence assertion
+    here pass vacuously.
+    """
+
+    class Starved:
+        model_ref = "facebook/sam3@3c879f3"
+
+        def segment(self, request: Any) -> Any:
+            raise failure
+
+    class Pool:
+        def get(self, connection: Any, *, workspace_root: Path) -> Any:
+            return Starved()
+
+    monkeypatch.setattr(suggestions_module, "resident", Pool)
+
+
+def test_a_device_that_ran_out_of_memory_is_answered_with_what_to_do(
+    client: TestClient,
+    runner: InlineDispatcher,
+    project: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole point of the refusal: a sentence somebody can act on.
+
+    A person who meets this can pick a smaller model, move the connection to the
+    CPU, or free the device — and none of those is reachable from an opaque 500
+    naming an incident id.
+    """
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+    starving(
+        monkeypatch,
+        InferenceOutOfMemory(
+            "running facebook/sam3@3c879f3 on cuda ran out of memory. Choose a smaller "
+            "model, set this connection's device to 'cpu', or free cuda and try again."
+        ),
+    )
+
+    answer = ask(client, project=project, asset=asset, connection=connection)
+    body = answer.json()
+
+    assert answer.status_code == 500
+    assert body["code"] == "INFERENCE_OUT_OF_MEMORY"
+    assert "smaller model" in body["message"]
+    assert "cuda" in body["message"]
+    # `expose_message` chooses which message is published; it never suppresses
+    # `detail`, so a 5xx stays tracked in the log under the same id. What the
+    # refusal must not do is make somebody read that id instead of the remedy.
+    assert "incident" not in body["message"].casefold()
+    assert "Traceback" not in body["message"]
+    assert body["detail"]["incident_id"], "a 5xx stays traceable in the log"
+
+
+def test_a_failure_that_is_not_an_allocation_failure_is_not_dressed_up_as_one(
+    client: TestClient,
+    runner: InlineDispatcher,
+    project: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The other half of the contract, and the reason the rule is narrow.
+
+    A defect reaches the boundary as itself and is answered as an internal error
+    with an incident id — which ``tests/server/test_errors.py`` proves is what
+    the boundary does with one. What is proved here is that nothing on the way
+    quietly renamed it "out of memory".
+    """
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+    starving(monkeypatch, RuntimeError("expected scalar type Half but found Float"))
+
+    with pytest.raises(RuntimeError, match="scalar type"):
+        ask(client, project=project, asset=asset, connection=connection)

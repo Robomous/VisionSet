@@ -130,6 +130,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "ConstraintViolated": (500, "CONSTRAINT_VIOLATED"),
     "MediaToolUnavailable": (500, "MEDIA_TOOL_UNAVAILABLE"),
     "LocalInferenceUnavailable": (500, "LOCAL_INFERENCE_UNAVAILABLE"),
+    "InferenceOutOfMemory": (500, "INFERENCE_OUT_OF_MEMORY"),
     "InferenceConnectionNotRunnable": (500, "INFERENCE_CONNECTION_NOT_RUNNABLE"),
 }
 
@@ -215,6 +216,10 @@ def test_message_exposure_is_opt_in_and_only_for_5xx() -> None:
         # licence and the only one this list takes.
         "LocalInferenceUnavailable",
         "InferenceConnectionNotRunnable",
+        # The third condition of the machine rather than of the request. Its
+        # message names the device that filled up and the ways off it, which is
+        # a remedy nobody can reconstruct from a generic 500.
+        "InferenceOutOfMemory",
     }
     assert all(rule.status >= 500 for rule in ERROR_RULES.values() if rule.expose_message)
 

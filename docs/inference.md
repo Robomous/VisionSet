@@ -291,6 +291,22 @@ fallback rather than a preference - a workspace configured on a workstation shou
 laptop - but it is slower by a large factor, which is why it is said out loud rather than silently
 done.
 
+**A device that is there and full is a different answer.** Falling back covers a device this
+machine does not have; it cannot cover one that exists and does not have the memory for the model
+you chose, which is what a large checkpoint on a small GPU runs into. That surfaces as
+`INFERENCE_OUT_OF_MEMORY` at the moment of the run - the load is lazy, so the first prediction is
+where you meet it - and the message names the device that filled up and the ways off it: a smaller
+model from the curated list, the same connection moved to `cpu`, or whatever else is holding the
+device released. On the CPU the middle remedy is left out, because there is nowhere further to go.
+
+**A run on a GPU can also exhaust the machine's own memory rather than the card's**, because the
+images are decoded and the tensors built on the host before anything moves to the device, and the
+result is copied back the same way. The message says which of the two ran out, and the remedies
+differ: a host shortage is answered by a smaller model or by freeing memory on the machine, and
+moving that connection to `cpu` is named as the thing *not* to do, because it puts the weights in
+the memory that just ran out. Exhausting the machine's memory outside the model - decoding a very
+large image, say - is not this error at all, and arrives as an internal one.
+
 **Half precision applies on CUDA only**, and the kernel says so rather than absorbing it: a `cpu`
 or `mps` connection asking for `fp16` is refused at creation. On a CPU it was never the
 conservative choice it looks like - `float16` arithmetic outside CUDA's autocast is slower than the
@@ -664,7 +680,10 @@ workspace, compared without regard to case, so `local` and `Local` cannot name t
 | `PROMPT_POINT_OUT_OF_BOUNDS` | 422 | A suggest point falls outside the asset; the message names the coordinate and the size |
 | `LOCAL_INFERENCE_UNAVAILABLE` | 500 | The `local-inference` extra is not installed; the message carries the command |
 | `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | This build has no adapter for that kind of connection |
+| `INFERENCE_OUT_OF_MEMORY` | 500 | The device ran out of memory loading or running the model; the message names the device and what to do about it |
 
-The last two are 5xx because they are conditions of the *installation* rather than of the request:
-no state you can change and no retry makes either succeed, so neither is a 409. Both expose their
-message, because the message is the remedy - which is the same licence a missing `ffmpeg` gets.
+The last three are 5xx because they are conditions of the *machine* rather than of the request:
+none of them is a fact about what you sent, so none is a 409. The first two never succeed until
+somebody installs something; the third can succeed on a retry, but only after you free the device
+or choose a smaller model - which is why its message names both. All three expose their message,
+because the message is the remedy - which is the same licence a missing `ffmpeg` gets.
