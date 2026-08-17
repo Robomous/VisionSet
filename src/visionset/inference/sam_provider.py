@@ -243,7 +243,9 @@ class LocalSamProvider:
     ) -> AssetSegmentation:
         """One image, one prompt, one mask at most."""
         processor, model, device, half = self._ready()
-        embedding, size = self._embedding(target, processor=processor, model=model, device=device)
+        embedding, size = self._embedding(
+            target, processor=processor, model=model, device=device, torch=torch, half=half
+        )
         height, width = size
         inputs = processor(
             original_sizes=[[height, width]],
@@ -301,9 +303,24 @@ class LocalSamProvider:
         return (SegmentedMask(mask=mask.tolist(), score=confidence),)
 
     def _embedding(
-        self, target: PredictionTarget, *, processor: Any, model: Any, device: str
+        self,
+        target: PredictionTarget,
+        *,
+        processor: Any,
+        model: Any,
+        device: str,
+        torch: Any,
+        half: bool,
     ) -> tuple[Any, tuple[int, int]]:
         """This asset's image embedding, computed once and kept.
+
+        The encode is a forward pass like any other, so it runs inside the same
+        ``forward_guard`` the decode uses — nothing here trains, and the graph
+        autograd would otherwise build sits in device memory at the exact moment
+        the request's largest allocation is live. And what goes into the cache is
+        detached regardless of how it was produced: an embedding that kept its
+        ``grad_fn`` would pin the encoder's activations for as long as the entry
+        survives, which is not the size the cache's bound was reasoned about.
 
         Keyed on ``asset_id`` alone, which is sound because assets are
         content-addressed: the bytes behind an id cannot change, so a hit can
@@ -333,9 +350,9 @@ class LocalSamProvider:
             size = (image.height, image.width)
             inputs = processor(images=image, return_tensors="pt").to(device)
             self._encodes += 1
-            return self._embeddings.put(
-                target.asset_id, (model.get_image_embeddings(inputs["pixel_values"]), size)
-            )
+            with _fp16.forward_guard(torch, device_type=device.split(":")[0], half=half):
+                embedding = model.get_image_embeddings(inputs["pixel_values"])
+            return self._embeddings.put(target.asset_id, (embedding.detach(), size))
 
     def _ready(self) -> tuple[Any, Any, str, bool]:
         if self._loaded is None:
