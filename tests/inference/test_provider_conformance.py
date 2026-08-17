@@ -685,18 +685,28 @@ def test_a_runner_refuses_a_prompt_kind_it_does_not_take(
 
 # --- what a runner answers -----------------------------------------------------
 
-ANSWERS_OFFLINE = frozenset({"stub"})
-"""The installed drivers whose runner can answer without weights.
+NEEDS_WEIGHTS = frozenset({"sam", "grounding-dino"})
+"""The installed drivers whose runner cannot answer without a checkpoint.
 
-``sam`` and ``grounding-dino`` need a multi-gigabyte checkpoint to produce an
-answer at all, so the two checks below cannot reach them here — their own suites
-drive them against a stubbed runtime. Named as a set and asserted against the
-installation, so the exemption cannot grow silently: a fourth driver arriving
-fails the assertion below rather than quietly going unchecked.
+Both need a multi-gigabyte snapshot to produce an answer at all, so the two
+checks below cannot reach them here; their own suites drive them against a
+stubbed runtime.
+
+**An exemption list, not a subject list, and the direction matters.** Naming who
+is *excused* means every other installed driver is exercised — including one this
+repository has never seen. Naming who is *included* would have quietly dropped
+anything not on it, and asserting the difference against this repository's own
+three drivers would fail the suite for a conformant driver somebody else wrote,
+which is the one installation this suite exists to certify.
 """
 
-OFFLINE = ("stub", "test-hosted-echo", "test-acme-seg")
-"""Every subject the two checks below run on, in a stable order."""
+EXERCISED = tuple(sorted(set(INSTALLED) - NEEDS_WEIGHTS))
+"""Every installed driver that is not excused — derived, so nothing escapes by
+being forgotten."""
+
+OFFLINE = (*EXERCISED, Echo.provider_id, AcmeSeg.provider_id)
+"""Every subject the two checks below run on: what is installed and not excused,
+plus the two drivers this suite brings with it."""
 
 
 def offline_runners(tmp_path: Path) -> Mapping[str, tuple[object, ModelCapability]]:
@@ -707,7 +717,7 @@ def offline_runners(tmp_path: Path) -> Mapping[str, tuple[object, ModelCapabilit
     """
     connection = a_local_connection(ready=True)
     built: dict[str, tuple[object, ModelCapability]] = {}
-    for provider_id in sorted(ANSWERS_OFFLINE):
+    for provider_id in EXERCISED:
         driver = INSTALLED[provider_id]
         family, capability = sorted(driver.families.items())[0]
         built[provider_id] = (
@@ -723,14 +733,24 @@ def offline_runners(tmp_path: Path) -> Mapping[str, tuple[object, ModelCapabilit
     return built
 
 
-def test_only_the_drivers_that_need_weights_are_exempt_from_answering() -> None:
-    """The exemption, stated so it cannot spread. A driver installed here that
-    cannot answer offline is a decision to take, not a subject to drop.
+def test_nothing_is_excused_that_is_not_installed() -> None:
+    """The exemption cannot outlive what it excuses.
+
+    A driver renamed or removed leaves its name here excusing nothing, and the
+    next driver to take that name inherits the excuse without anybody deciding
+    it should.
     """
-    assert set(INSTALLED) - ANSWERS_OFFLINE == {"sam", "grounding-dino"}
+    assert set(INSTALLED) >= NEEDS_WEIGHTS
 
 
-def test_the_offline_half_covers_every_runner_that_can_answer_here(tmp_path: Path) -> None:
+def test_every_installed_driver_is_exercised_or_excused(tmp_path: Path) -> None:
+    """The partition, so a driver cannot fall between the two.
+
+    Asserted through the runners actually built rather than through the name
+    lists alone, which is what catches the builder and the parametrisation
+    drifting apart.
+    """
+    assert set(EXERCISED) | NEEDS_WEIGHTS == set(INSTALLED)
     assert set(offline_runners(tmp_path)) == set(OFFLINE)
 
 
