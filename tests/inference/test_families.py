@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.fixtures.local_inference import require_local_inference
 
 from visionset.inference import families as families_module
 from visionset.inference.families import capabilities_of, family_of
@@ -145,6 +146,12 @@ def a_snapshot(cache_dir: Path, declaring: object) -> None:
     A real snapshot in the hub's real layout, written rather than doubled: the
     thing worth proving is what this reads off a disk, and a fake reader agrees
     with whatever the test already believes.
+
+    Every test that calls this needs the runtime, and calls
+    ``require_local_inference`` first — not because reading a JSON file is heavy,
+    but because :func:`family_of` refuses before it looks when the extra is
+    absent, so on a base install there is no reading behaviour to assert. That
+    refusal has its own test below, which runs everywhere.
     """
     snapshot = cache_dir / "models--some--segmenter" / "snapshots" / "deadbeef"
     snapshot.mkdir(parents=True, exist_ok=True)
@@ -163,6 +170,7 @@ def test_an_unreadable_config_answers_empty_rather_than_raising(
     say nothing" is the resolver's, one level up. Nothing is written to the cache
     here, so there is no config to read at all.
     """
+    require_local_inference()
     assert family_of(a_local(connections), cache_dir=tmp_path) == ""
 
 
@@ -174,6 +182,7 @@ def test_a_config_that_is_not_json_answers_empty_too(
     The file is present, so the lookup succeeds and the parse is what fails —
     the path a truncated download leaves behind.
     """
+    require_local_inference()
     snapshot = tmp_path / "models--some--segmenter" / "snapshots" / "deadbeef"
     snapshot.mkdir(parents=True)
     (snapshot / "config.json").write_text("{not json", encoding="utf-8")
@@ -191,6 +200,7 @@ def test_the_family_comes_from_the_config_and_never_from_the_model_id(
     detector. Any resolver that read the name would answer the opposite of the
     truth, confidently, and pick the adapter that cannot run it.
     """
+    require_local_inference()
     a_snapshot(tmp_path, {"model_type": "grounding-dino"})
     assert family_of(a_local(connections), cache_dir=tmp_path) == "grounding-dino"
 
@@ -207,6 +217,7 @@ def test_a_family_no_library_here_registers_is_still_read(
     downloaded config does not say what model type it is" while the config in
     front of the reader declares exactly what they have.
     """
+    require_local_inference()
     a_snapshot(tmp_path, {"model_type": "acme_seg"})
     assert family_of(a_local(connections), cache_dir=tmp_path) == "acme_seg"
 
