@@ -353,18 +353,20 @@ frames** and its per-tile link reads **View** when nothing in the batch declares
 
 #### Adding a class where the pin cannot move
 
-The add-class chain is save → publish → re-pin, and it used to run the third step
+The add-class chain used to be save → publish → re-pin, running the third step
 unconditionally. `REPINNABLE_STATES` excludes `completed`, so on a settled batch the
 version published and the pin then refused: a new version in the project, a batch
 still judged against the old one, and an error about a step nobody asked for.
 
-Three requests are not a transaction and cannot be, so the remedy is to **ask
-first**. The page reads the batch's `repin` declaration before anything is
-published; when it is absent the dialog says the batch will keep its current
-version - and that the version is still published, and that a correction batch
-approved from now on will pin to it - and the button reads **Publish without
-re-pinning**. Two acts, two words, and the user reads which one they are about to
-perform instead of learning it from a refusal.
+Publishing an additive version now moves every open batch's pin inside the kernel's
+own transaction, so a completed batch simply is not one of them - there is no
+second request left to refuse. What remains is **saying so before the press**: the
+page reads the batch's `repin` declaration before anything is published; when it is
+absent the dialog says the batch will keep its current version - and that the
+version is still published, and that a correction batch approved from now on will
+pin to it - and the button reads **Publish without re-pinning**. Two acts, two
+words, and the user reads which one they are about to perform instead of learning
+it from a refusal.
 
 #### Reversing a skip is an action, never a side effect of drawing
 
@@ -839,28 +841,39 @@ A class that does not exist used to cost a round trip through the Schema tab **a
 new batch**, because the old one pins the old version. The `+` in the tool palette
 opens a dialog carrying the same fields (`patterns/ClassFields.tsx`, shared with the
 Schema tab so the two cannot drift on geometries, derived colours or how an
-attribute's options are typed), and the flow is three calls in one order:
+attribute's options are typed), and the flow is two calls in one order:
 
 1. **save** the pending annotations,
 2. **publish** the next version - the *active* version's classes plus the new one,
    never the batch's pin, because versions are linear and composing on a stale pin
-   would silently delete everything published since,
-3. **re-pin** the batch (#229) onto it.
+   would silently delete everything published since.
+
+Re-pinning the batch used to be a third step here; publishing an additive version
+now moves every open batch's pin in the same kernel transaction, so there is no
+second request left to order, refuse or skip.
 
 **Step 1 is first because the schema refetch rebuilds the annotator store.** The
 store is a `useMemo` keyed on the schema, so publishing before saving discards the
 user's last few boxes with a success toast on screen - no error, nothing to see.
 `addClass.test.ts` asserts the sequence and fails if any pair flips.
 
-Three requests are not a transaction. What each failure leaves behind is stated
-rather than hidden, and the one worth naming is the last: **if the re-pin refuses,
-the version exists and the pin has not moved.** That refusal has no flag on purpose
- - it means somebody else narrowed the schema past this batch's pin - so the dialog
-names the Schema tab rather than offering a retry that cannot work.
-
 On success the new class becomes the active one. That state lives on the page rather
 than in the store, so it survives the rebuild, and its digit hotkey arrives free
 because the palette order *is* the hotkey order (#46).
+
+**`Create and add another` accumulates on the server, not only in this component.**
+The classes a sitting has written are the project's `annotation` schema draft - a
+row of its own, held apart from the Schema tab's `curated` draft so a half-finished
+editor composition can never leak into what this dialog publishes. Every bank
+writes through, so a closed tab loses nothing, and Cancel's confirm discards the
+shared row along with the local form. Because the draft has no author, opening the
+dialog onto one that already holds classes does not fold them into a fresh sitting
+silently: it says what is pending and offers a discard, since those classes may be
+somebody else's and confirming without asking would publish classes this person
+never typed. Publishing itself still goes straight through `create_version`, exactly
+as before the draft existed; the draft is the resumable holding pen around that call,
+not a second way to make it, and a successful publish discards it as its one piece
+of cleanup.
 
 Three other decisions the editor inherits rather than invents:
 

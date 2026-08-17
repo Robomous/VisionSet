@@ -62,15 +62,20 @@
  * history (two sessions in a morning are still two versions) but it stops one
  * sitting from being nine of them.
  *
- * The accumulated classes are held **here** and nowhere else, which is what makes
- * "cancel discards them" true by construction: there is no draft on the server to
- * clean up, and the only state that can be lost is state nothing else can see.
- * Cancelling with classes pending therefore *asks*, because that is the one press
- * in this dialog that destroys work somebody typed.
+ * The accumulated classes also live on the server now, in the project's
+ * `annotation` draft — a row of its own, kept apart from the Schema tab's
+ * `curated` draft so a half-finished editor composition can never leak into what
+ * this dialog publishes. Every bank writes through, so a closed tab loses
+ * nothing. A dialog opened onto a draft that already holds classes does not fold
+ * them into a fresh sitting silently: the draft is shared and has no author, so
+ * those classes may be somebody else's, and the dialog says so rather than
+ * publishing them on this person's say-so. Cancelling with classes pending still
+ * *asks*, because closing now discards the shared draft too — not only this
+ * browser's memory of it.
  */
 
 import { Plus, X } from "lucide-react";
-import { useEffect, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 
 import { asApiError } from "../data/errors";
 import { classColor } from "../palette";
@@ -86,11 +91,35 @@ import {
 import { Input, Label } from "../primitives/Input";
 import { formatGeometries } from "../data/geometryCategory";
 import { ClassFields } from "../patterns/ClassFields";
-import type { LabelClassBody, SchemaVersion } from "../screens/queries";
+import type {
+  DraftLabelClassBody,
+  LabelClassBody,
+  SchemaVersion,
+  ServerSchemaDraft,
+} from "../screens/queries";
 
 /** A fresh class, in the shape the wire takes. */
 function blank(): LabelClassBody {
   return { name: "", geometries: ["bbox"], color: null, attributes: [] };
+}
+
+/**
+ * A server draft's classes, in the shape this dialog holds them.
+ *
+ * `DraftLabelClassBody` allows an attribute with no `kind` yet — an ordinary
+ * moment mid-typing, since a draft is not a contract — but this dialog's own
+ * fields never leave one unset. An absent `kind` means some other writer left
+ * this attribute unfinished; defaulting it keeps a resumed session open rather
+ * than refusing to render somebody else's work.
+ */
+function fromDraft(classes: readonly DraftLabelClassBody[]): LabelClassBody[] {
+  return classes.map((declared) => ({
+    ...declared,
+    attributes: declared.attributes.map((attribute) => ({
+      ...attribute,
+      kind: attribute.kind ?? "string",
+    })),
+  }));
 }
 
 /**
@@ -252,6 +281,29 @@ export interface AddClassDialogProps {
   readonly initialName?: string;
   /** Every class of the session, and the one description they publish under. */
   readonly onSubmit: (added: readonly LabelClassBody[], note: string) => void;
+  /**
+   * The project's `annotation` schema draft, or `null`/absent for one with
+   * nothing pending. Seeds the session once, the moment this dialog opens onto
+   * it — see the module docstring for why that seeding is announced rather than
+   * silent.
+   */
+  readonly serverDraft?: ServerSchemaDraft | null;
+  /**
+   * Whether that read is still in flight. The seeding effect waits for it
+   * rather than seeding an empty session and then never looking again.
+   */
+  readonly draftPending?: boolean;
+  /**
+   * Write the banked session through to the shared draft. Fired after every
+   * bank and every removal, so a closed tab loses nothing but the form still in
+   * progress. Absent for a caller with nowhere to send it.
+   */
+  readonly onBank?: (classes: readonly LabelClassBody[]) => void;
+  /**
+   * Throw the stored draft away — the server half of Cancel's discard, fired
+   * alongside the local `reset()`.
+   */
+  readonly onDiscardDraft?: () => void;
 }
 
 export function AddClassDialog({
@@ -264,10 +316,21 @@ export function AddClassDialog({
   error,
   initialName,
   onSubmit,
+  serverDraft,
+  draftPending,
+  onBank,
+  onDiscardDraft,
 }: AddClassDialogProps): JSX.Element {
   const [declared, setDeclared] = useState<LabelClassBody>(blank);
   /** Written, not yet published. One press turns the whole list into one version. */
   const [session, setSession] = useState<readonly LabelClassBody[]>([]);
+  /**
+   * The names this session was seeded with, rather than typed here — what the
+   * resumed-draft banner names. Set once, at the same moment `session` is, and
+   * left alone after that: adding more classes this sitting must not make the
+   * banner read as if the earlier ones had never existed.
+   */
+  const [resumedNames, setResumedNames] = useState<readonly string[]>([]);
   const [note, setNote] = useState("");
   const [touched, setTouched] = useState(false);
   /** Cancel was pressed with classes pending, and is asking before it discards them. */
@@ -329,6 +392,7 @@ export function AddClassDialog({
   function reset(): void {
     setDeclared(blank());
     setSession([]);
+    setResumedNames([]);
     setNote("");
     setTouched(false);
     setDiscarding(false);
@@ -344,19 +408,48 @@ export function AddClassDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  /**
+   * Seed the session from a resumed draft — once per opening, and only once the
+   * read has settled.
+   *
+   * A ref rather than a dependency on `serverDraft` itself: this must fire
+   * exactly once per opening, and a bank write's own `setQueryData` gives that
+   * value a fresh identity on every press. Depending on it directly would refire
+   * this effect after every bank, overwriting whatever had since been typed —
+   * the same trap a debounced write falls into when it addresses the render it
+   * fires from rather than the opening it was scheduled for.
+   */
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      seededRef.current = false;
+      return;
+    }
+    if (seededRef.current || draftPending === true) return;
+    seededRef.current = true;
+    const banked = serverDraft == null ? [] : fromDraft(serverDraft.classes);
+    setSession(banked);
+    setResumedNames(banked.map((entry) => entry.name));
+    // `serverDraft` deliberately out of the deps, for the reason above the ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, draftPending]);
+
   /** Bank the form and clear it, so the next class starts from nothing. */
   function addAnother(): void {
     if (!readyForm) return;
-    setSession((banked) => [...banked, { ...declared, name }]);
+    const banked = [...session, { ...declared, name }];
+    setSession(banked);
+    onBank?.(banked);
     setDeclared(blank());
   }
 
   /**
    * Closing, and the one press in here that can destroy typing.
    *
-   * Everything the session holds lives in this component — there is no draft on
-   * the server — so cancelling loses exactly what somebody wrote and nothing
-   * else. That is why it asks, and why nothing else in this dialog does.
+   * The session is now also the shared `annotation` draft on the server, so
+   * cancelling with classes pending would delete something anyone else with a
+   * credential to this project might be relying on — not only this browser's
+   * memory of it. That is why it asks, and why nothing else in this dialog does.
    */
   function requestClose(): void {
     if (session.length > 0) {
@@ -425,6 +518,35 @@ export function AddClassDialog({
 
         <div className="flex flex-col gap-4">
           {/*
+            The one genuinely new state in this dialog: a draft this opening
+            inherited rather than started. Named and offered a discard rather
+            than folded silently into the session below — the draft has no
+            author, so these classes may not be this person's, and confirming
+            without seeing this would publish classes they never typed.
+          */}
+          {resumedNames.length > 0 && (
+            <Alert title="Classes are already pending here" data-testid="resumed-draft">
+              {namesInProse(resumedNames)} {resumedNames.length === 1 ? "was" : "were"} banked in an
+              earlier sitting and never published — this draft is shared, so that may not have been
+              you. Keep working to fold {resumedNames.length === 1 ? "it" : "them"} into this
+              version, or clear the slate.
+              <div className="mt-2">
+                <Button
+                  variant="secondary"
+                  data-testid="discard-resumed"
+                  onClick={() => {
+                    setSession([]);
+                    setResumedNames([]);
+                    onDiscardDraft?.();
+                  }}
+                >
+                  Discard the pending {resumedNames.length === 1 ? "class" : "classes"}
+                </Button>
+              </div>
+            </Alert>
+          )}
+
+          {/*
             What is banked and not yet published. Absent until there is something
             to show, because a permanent empty list would be a promise of a
             feature on a dialog most people use once.
@@ -457,9 +579,11 @@ export function AddClassDialog({
                     data-testid={`session-remove-${entry.name}`}
                     disabled={pending}
                     className="rounded-full p-0.5 text-muted-foreground hover:bg-card hover:text-foreground disabled:cursor-not-allowed"
-                    onClick={() =>
-                      setSession((banked) => banked.filter((held) => held.name !== entry.name))
-                    }
+                    onClick={() => {
+                      const banked = session.filter((held) => held.name !== entry.name);
+                      setSession(banked);
+                      onBank?.(banked);
+                    }}
                   >
                     <X className="size-3" aria-hidden="true" />
                   </button>
@@ -582,8 +706,8 @@ export function AddClassDialog({
           {discarding && (
             <Alert variant="destructive" title="Discard the classes you added?" data-testid="discard-session">
               {session.length} class{session.length === 1 ? "" : "es"} {session.length === 1 ? "is" : "are"}{" "}
-              written and not published. Closing now loses {session.length === 1 ? "it" : "them"} — nothing
-              has been sent yet.
+              written and not published. Closing now discards {session.length === 1 ? "it" : "them"} from
+              the shared draft — anyone else with this project open loses them too.
             </Alert>
           )}
         </div>
@@ -598,6 +722,7 @@ export function AddClassDialog({
                 variant="destructive"
                 data-testid="discard-confirm"
                 onClick={() => {
+                  onDiscardDraft?.();
                   reset();
                   onOpenChange(false);
                 }}

@@ -238,13 +238,16 @@ function preferredConnectionKey(projectId: string): string {
  */
 const PRECISE_DEVICE_PREF = "annotator.precise-device";
 import { PROGRESS_LABEL, outstandingWork, progressDotClass, progressTone } from "../screens/batchState";
-import type { LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries";
+import type { DraftLabelClassBody, LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries";
 import {
   batchKeys,
   useActiveSchema,
   useBatchTransition,
   useCreateSchemaVersion,
+  useDiscardSchemaDraft,
+  useSaveSchemaDraft,
   useSchemaComparison,
+  useSchemaDraft,
 } from "../screens/queries";
 import { toast } from "../primitives/Feedback";
 
@@ -325,6 +328,20 @@ function readAnswer(answer: SuggestionOut): Answer {
     suggestions,
     parameters: answer.parameters,
   };
+}
+
+/**
+ * A class the dialog is holding, in the looser shape the draft accepts.
+ *
+ * `DraftLabelClassBody` has no minimum on `geometries` and `LabelClassBody`
+ * does — the difference that lets a draft hold a class still being typed — so
+ * every value this dialog writes already satisfies it. A named conversion
+ * anyway, rather than passing the array straight through, because the two
+ * types are meant to read as different things: one is a class, the other is a
+ * class being written.
+ */
+function toDraft(classes: readonly LabelClassBody[]): DraftLabelClassBody[] {
+  return classes.map((declared) => ({ ...declared }));
 }
 
 /**
@@ -1277,6 +1294,22 @@ function Workspace({
   // observers of one query key is one request and two spellings of "when may we
   // ask" that could drift.
   const activeSchema = useActiveSchema(projectId, addingClass || pinOpen);
+  /**
+   * The dialog's own accumulation, now a row on the server rather than only
+   * this component's state — `annotation`, never `curated`, so a half-finished
+   * editor composition on the Schema tab can never be swept into what this
+   * dialog publishes. Read unconditionally rather than gated like `activeSchema`
+   * above: `useSchemaDraft` takes no such flag, and the read is one small row
+   * rather than a whole schema.
+   *
+   * The draft is never what publishes — `createVersion` below still is, exactly
+   * as before, and the two `409`s this dialog renders are read off *that* call.
+   * These three are the resumable holding pen around it: `save` write-through on
+   * every bank, `discard` on Cancel's confirm and again once a publish lands.
+   */
+  const schemaDraft = useSchemaDraft(projectId, "annotation");
+  const saveDraft = useSaveSchemaDraft(projectId, "annotation");
+  const discardDraft = useDiscardSchemaDraft(projectId, "annotation");
   const createVersion = useCreateSchemaVersion(projectId);
   const setProgress = useSetAssetProgress(jobId);
   const startBatch = useBatchTransition(batchId, "start");
@@ -1410,7 +1443,8 @@ function Workspace({
 
   const addClass = useCallback(
     async (added: readonly LabelClassBody[], note: string): Promise<void> => {
-      if (activeSchema.data === undefined || added.length === 0) return;
+      const active = activeSchema.data;
+      if (active === undefined || added.length === 0) return;
       createVersion.reset();
       try {
         await runAddClass({
@@ -1421,13 +1455,28 @@ function Workspace({
             // the version is a side effect of that, not a decision about the
             // contract. It is what lets a version history collapse a run of these
             // and still show every version authored in the schema editor.
+            //
+            // Direct, and deliberately not routed through the draft's own
+            // publish: the two 409s this dialog already renders —
+            // `DESTRUCTIVE_SCHEMA_CHANGE` and a stale schema version — are read
+            // off *this* call's error, and `create_version` is what raises them.
+            // The draft's role stays where the rest of this file puts it — a
+            // shared, resumable holding pen — and is cleared below once this
+            // succeeds, rather than being the thing that publishes.
             createVersion.mutateAsync({ classes, description, provenance: "annotation" }),
           // Asked before anything is published, which is the whole of F23: the
           // chain used to publish and *then* discover the pin would not move.
-          activeClasses: activeSchema.data.classes,
+          activeClasses: active.classes,
           added,
           note,
         });
+        // Published: the shared draft has nothing left to hold, and leaving it
+        // would show the next opening a "pending" banner about classes that
+        // already made it into the schema. Unconditional and fire-and-forget —
+        // `discard` answers `false` for a project with no draft rather than
+        // erroring, and a failure here leaves a harmless, empty-looking draft
+        // rather than losing anything.
+        discardDraft.mutate();
         /**
          * The **last** class written becomes the drawing class.
          *
@@ -1455,7 +1504,7 @@ function Workspace({
         // Rethrowing would reach no handler and surface as an unhandled rejection.
       }
     },
-    [activateClass, activeSchema.data, commit, createVersion],
+    [activateClass, activeSchema.data, commit, createVersion, discardDraft],
   );
 
   /**
@@ -2797,12 +2846,30 @@ function Workspace({
         pending={save.isPending || createVersion.isPending}
         // Whichever step refused, in the order they run — so the message is about
         // the call that actually stopped, not about the last mutation touched.
-        error={save.error ?? createVersion.error ?? null}
+        // A bank's own `STALE_WRITE` surfaces too: the draft is shared, and a
+        // refused write is exactly the "somebody else is here" this dialog must
+        // not swallow.
+        error={save.error ?? createVersion.error ?? saveDraft.error ?? null}
         // `addClass` already catches everything and holds the refusal on the
         // mutations the dialog reads, so there is nothing left to reject — but
         // `void` on a promise is the pattern F7 is about, and a `catch` that can
         // never fire is cheaper than a reader having to prove that.
         initialName={newClassName}
+        serverDraft={schemaDraft.data ?? null}
+        draftPending={schemaDraft.isPending}
+        // A save per bank, addressed at whatever revision is currently known.
+        // `classes` is the session added-only, not composed onto `active` — the
+        // compose only happens at publish, inside `runAddClass`, against
+        // whichever version is active *then*.
+        onBank={(classes) =>
+          saveDraft.mutate({
+            classes: toDraft(classes),
+            note: "",
+            basedOn: activeSchema.data?.version ?? null,
+            revision: schemaDraft.data?.revision ?? null,
+          })
+        }
+        onDiscardDraft={() => discardDraft.mutate()}
         onSubmit={(added, note) => {
           void addClass(added, note).catch(() => {});
         }}

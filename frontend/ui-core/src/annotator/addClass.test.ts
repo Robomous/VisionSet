@@ -9,10 +9,22 @@
  * sequence directly and fails if it flips.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement, useState, type ReactNode } from "react";
 
-import { composeVersion, defaultNote, runAddClass } from "./AddClassDialog";
-import type { LabelClassBody } from "../screens/queries";
+import { ApiProvider } from "../data/ApiProvider";
+import { AddClassDialog, composeVersion, defaultNote, runAddClass } from "./AddClassDialog";
+import {
+  useCreateSchemaVersion,
+  useDiscardSchemaDraft,
+  useSaveSchemaDraft,
+  useSchemaDraft,
+  type LabelClassBody,
+  type SchemaVersion,
+} from "../screens/queries";
 
 const SIGN: LabelClassBody = { name: "sign", geometries: ["bbox"], color: null, attributes: [] };
 const LANE: LabelClassBody = { name: "lane", geometries: ["polygon"], color: null, attributes: [] };
@@ -238,5 +250,260 @@ describe("composing the version a sitting publishes", () => {
 
   it("does both at once, for a sitting that widens one class and adds another", () => {
     expect(composeVersion([SIGN, LANE], [WIDENED, NEW])).toEqual([WIDENED, LANE, NEW]);
+  });
+});
+
+/**
+ * The session, backed by the project's `annotation` schema draft.
+ *
+ * `addClassDialog.test.tsx` renders the dialog against plain props and never
+ * sees a request; `schemaDraftServer.test.tsx` proves the four hooks against a
+ * stubbed server but never renders this dialog. This is the seam between them —
+ * a small harness wiring the real hooks to the real dialog, so what is asserted
+ * is the request that actually leaves, not a callback's arguments.
+ *
+ * Publishing itself still goes straight through `create_version`, exactly as
+ * before `runAddClass`'s `publish` step ever knew a draft existed — the two 409s
+ * this dialog renders are read off that call, and routing it through the
+ * draft's own publish would make them read off a different one. So the harness
+ * mirrors `AnnotationPage`'s own wiring: the draft is the resumable holding pen
+ * around the publish, not the thing that performs it, and a successful publish
+ * discards it as its one piece of cleanup.
+ */
+describe("the session, backed by the project's annotation draft", () => {
+  const PROJECT = "66666666-6666-4666-8666-666666666666";
+  const ACTIVE = {
+    project_id: PROJECT,
+    version: 3,
+    classes: [SIGN],
+    description: null,
+    created_at: null,
+  } as unknown as SchemaVersion;
+
+  type Answer = { readonly status: number; readonly body?: unknown };
+  let handlers: ((request: Request) => Answer | undefined)[] = [];
+  const sent: Request[] = [];
+
+  beforeEach(() => {
+    handlers = [];
+    sent.length = 0;
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(String(input), init);
+      sent.push(request);
+      for (const handler of handlers) {
+        const answer = handler(request);
+        if (answer !== undefined) {
+          return Promise.resolve(
+            new Response(answer.status === 204 ? null : JSON.stringify(answer.body ?? null), {
+              status: answer.status,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ code: "NO_STUB", message: request.url }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    });
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  function on(method: string, pattern: RegExp, answer: Answer): void {
+    handlers.push((request) =>
+      request.method === method && pattern.test(new URL(request.url).pathname) ? answer : undefined,
+    );
+  }
+
+  function findSent(method: string, pattern: RegExp): Request | undefined {
+    return sent.find((request) => request.method === method && pattern.test(new URL(request.url).pathname));
+  }
+
+  /** A blank annotation draft — the ordinary case, before anything is banked. */
+  function noDraft(): void {
+    on("GET", /\/schema\/drafts\/annotation$/, {
+      status: 404,
+      body: { code: "SCHEMA_DRAFT_NOT_FOUND", message: "no draft yet" },
+    });
+  }
+
+  /**
+   * The dialog wired the way `AnnotationPage` wires it: `useSchemaDraft` seeds
+   * and announces, `useSaveSchemaDraft` write-throughs a bank, and confirming
+   * still publishes through `useCreateSchemaVersion` directly — with the draft
+   * discarded once that succeeds, since nothing is left pending to resume.
+   */
+  function harness(): ReactNode {
+    function Harness(): ReactNode {
+      const [open, setOpen] = useState(true);
+      const draft = useSchemaDraft(PROJECT, "annotation");
+      const saveDraft = useSaveSchemaDraft(PROJECT, "annotation");
+      const discardDraft = useDiscardSchemaDraft(PROJECT, "annotation");
+      const createVersion = useCreateSchemaVersion(PROJECT);
+
+      return createElement(AddClassDialog, {
+        open,
+        onOpenChange: setOpen,
+        active: ACTIVE,
+        pinnedVersion: ACTIVE.version,
+        canRepin: true,
+        pending: false,
+        error: null,
+        serverDraft: draft.data ?? null,
+        draftPending: draft.isPending,
+        onBank: (classes: readonly LabelClassBody[]) =>
+          saveDraft.mutate({
+            classes: classes.map((entry) => ({ ...entry })),
+            note: "",
+            basedOn: ACTIVE.version,
+            revision: draft.data?.revision ?? null,
+          }),
+        onDiscardDraft: () => discardDraft.mutate(),
+        onSubmit: (added: readonly LabelClassBody[], note: string) => {
+          createVersion.mutate(
+            {
+              classes: composeVersion(ACTIVE.classes, added),
+              description: note,
+              provenance: "annotation",
+            },
+            { onSuccess: () => discardDraft.mutate() },
+          );
+        },
+      });
+    }
+
+    return createElement(ApiProvider, {
+      baseUrl: "http://visionset.test",
+      queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+      children: createElement(Harness),
+    });
+  }
+
+  it("banks an added class to the annotation draft, not only to component state", async () => {
+    noDraft();
+    on("PUT", /\/schema\/drafts\/annotation$/, {
+      status: 200,
+      body: {
+        project_id: PROJECT,
+        kind: "annotation",
+        classes: [],
+        note: "",
+        based_on: 3,
+        revision: 1,
+        updated_at: "2026-08-16T00:00:00Z",
+      },
+    });
+
+    render(harness());
+    await screen.findByTestId("add-class-dialog");
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "crossing");
+    await userEvent.click(screen.getByTestId("add-another"));
+
+    await waitFor(() => {
+      expect(findSent("PUT", /\/schema\/drafts\/annotation$/)).toBeDefined();
+    });
+    // Not merely a request — the one class this press banked, on the wire.
+    const put = findSent("PUT", /\/schema\/drafts\/annotation$/)!;
+    const body = JSON.parse(await put.clone().text()) as { classes: { name: string }[] };
+    expect(body.classes.map((entry) => entry.name)).toEqual(["crossing"]);
+  });
+
+  it("says so when a previous session left classes pending", async () => {
+    on("GET", /\/schema\/drafts\/annotation$/, {
+      status: 200,
+      body: {
+        project_id: PROJECT,
+        kind: "annotation",
+        classes: [
+          { name: "cone", geometries: ["bbox"], color: null, attributes: [] },
+          { name: "barrier", geometries: ["bbox"], color: null, attributes: [] },
+        ],
+        note: "",
+        based_on: 3,
+        revision: 4,
+        updated_at: "2026-08-16T00:00:00Z",
+      },
+    });
+
+    render(harness());
+
+    // Silently resuming would publish classes nobody at this keyboard typed —
+    // this is the one place that cannot happen quietly.
+    const banner = await screen.findByTestId("resumed-draft");
+    expect(banner.textContent).toContain("cone");
+    expect(banner.textContent).toContain("barrier");
+  });
+
+  it("publishes the annotation draft and leaves the curated one alone", async () => {
+    noDraft();
+    // A trap: nothing in this flow has any business reading the editor's own
+    // draft, and this is what would catch it if a future change blurred the
+    // two kinds back together.
+    on("GET", /\/schema\/drafts\/curated$/, {
+      status: 200,
+      body: {
+        project_id: PROJECT,
+        kind: "curated",
+        classes: [{ name: "lane", geometries: ["polygon"], color: null, attributes: [] }],
+        note: "midway through a redesign",
+        based_on: 3,
+        revision: 7,
+        updated_at: "2026-08-16T00:00:00Z",
+      },
+    });
+    on("POST", /\/schema\/versions$/, {
+      status: 201,
+      body: {
+        published: { ...ACTIVE, version: 4, classes: [SIGN, NEW] },
+        advanced_batches: [],
+      },
+    });
+    on("DELETE", /\/schema\/drafts\/annotation$/, { status: 204 });
+
+    render(harness());
+    await screen.findByTestId("add-class-dialog");
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "crossing");
+    await userEvent.click(screen.getByTestId("add-class-submit"));
+
+    await waitFor(() => {
+      expect(findSent("POST", /\/schema\/versions$/)).toBeDefined();
+    });
+    expect(sent.some((request) => /\/schema\/drafts\/curated/.test(new URL(request.url).pathname))).toBe(
+      false,
+    );
+  });
+
+  it("discards the stored draft when cancel is confirmed", async () => {
+    noDraft();
+    on("PUT", /\/schema\/drafts\/annotation$/, {
+      status: 200,
+      body: {
+        project_id: PROJECT,
+        kind: "annotation",
+        classes: [{ name: "cone", geometries: ["bbox"], color: null, attributes: [] }],
+        note: "",
+        based_on: 3,
+        revision: 1,
+        updated_at: "2026-08-16T00:00:00Z",
+      },
+    });
+    on("DELETE", /\/schema\/drafts\/annotation$/, { status: 204 });
+
+    render(harness());
+    await screen.findByTestId("add-class-dialog");
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.click(screen.getByTestId("add-class-cancel"));
+    await userEvent.click(screen.getByTestId("discard-confirm"));
+
+    await waitFor(() => {
+      expect(findSent("DELETE", /\/schema\/drafts\/annotation$/)).toBeDefined();
+    });
   });
 });
