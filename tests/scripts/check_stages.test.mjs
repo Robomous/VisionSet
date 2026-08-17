@@ -31,7 +31,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, copyFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -47,23 +47,34 @@ const SOURCE = readFileSync(SCRIPT, "utf8");
 const GROUPS = ["python", "frontend", "generated", "browser", "docs"];
 
 /**
- * The script, run against a directory that is only the script.
+ * The script, run against a directory that is only the script and its own pin.
  *
  * `root` is derived from `BASH_SOURCE`, so a copy two directories deep in a temp
  * dir *is* a workspace with nothing in it — no `node_modules`, no `pyproject.toml`,
  * nothing to check. Which is the state worth measuring, and the one a fresh worktree
  * is in before `pnpm install`.
+ *
+ * `.nvmrc` comes along because the script now reads it: the Node major is verified
+ * before any group that needs Node runs, so without the file every such run stops at
+ * that check instead of reaching the behaviour these tests are about. It is part of
+ * the script's own contract rather than part of the tree being checked, which is why
+ * it is copied while `pyproject.toml` and `node_modules` deliberately are not.
  */
 function runCopied(...args) {
   const root = mkdtempSync(path.join(os.tmpdir(), "visionset-check-"));
   try {
     mkdirSync(path.join(root, "scripts"));
     copyFileSync(SCRIPT, path.join(root, "scripts", "check.sh"));
+    copyFileSync(path.join(REPO, ".nvmrc"), path.join(root, ".nvmrc"));
     return spawnSync("bash", [path.join(root, "scripts", "check.sh"), ...args], {
       encoding: "utf8",
       // Neither `uv` nor `pnpm` is reachable here, so every step fails identically
-      // whatever the machine has installed.
-      env: { ...process.env, PATH: "/usr/bin:/bin" },
+      // whatever the machine has installed. `node` is, and has to be: the script
+      // verifies the Node major before any group that needs one, so an unreachable
+      // `node` would stop every run below at that check rather than at the
+      // behaviour it is measuring. The one running these tests is the obvious
+      // candidate and is the version CI pinned, so this narrows nothing.
+      env: { ...process.env, PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin` },
     });
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -151,6 +162,73 @@ test("the default run is every group, and --fast is that minus the browser", () 
   // either is a shortened run nobody asked for.
   assert.match(SOURCE, /groups=\(python frontend generated\)/);
   assert.match(SOURCE, /\[\[ \$fast -eq 1 \]\] \|\| groups\+=\(browser\)/);
+});
+
+/**
+ * The same copied tree, but with a `node` on PATH that reports whatever version it
+ * is told to. A shim rather than a real installation: what the script reads is
+ * `node --version`, so that is the whole of what has to be true, and asserting the
+ * refusal must not depend on which Node majors happen to be on the machine.
+ */
+function runWithNodeVersion(version, ...args) {
+  const root = mkdtempSync(path.join(os.tmpdir(), "visionset-check-node-"));
+  try {
+    mkdirSync(path.join(root, "scripts"));
+    mkdirSync(path.join(root, "bin"));
+    copyFileSync(SCRIPT, path.join(root, "scripts", "check.sh"));
+    copyFileSync(path.join(REPO, ".nvmrc"), path.join(root, ".nvmrc"));
+    const shim = path.join(root, "bin", "node");
+    writeFileSync(shim, `#!/bin/sh\necho '${version}'\n`);
+    chmodSync(shim, 0o755);
+    return spawnSync("bash", [path.join(root, "scripts", "check.sh"), ...args], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${path.join(root, "bin")}:/usr/bin:/bin` },
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test("a wrong Node major stops the run before any group, naming both versions", () => {
+  // The failure this prevents does not look like a version problem: under Node 26
+  // eight `ui-core` tests fail on a built-in `globalThis.localStorage` that is inert
+  // without `--localstorage-file`, several minutes into the gate, reading as a
+  // broken change. So the refusal happens first and says which two versions are in
+  // play — a message naming only one of them leaves the reader to go and find the
+  // other.
+  const result = runWithNodeVersion("v26.7.0", "generated");
+
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /node is v26\.7\.0 but this repository is pinned to Node 24 by \.nvmrc/);
+  // Before `require_node_modules`, which is three groups deep and would otherwise
+  // be the first thing this run hit.
+  assert.doesNotMatch(result.stderr, /node_modules is missing/);
+  assert.equal(
+    verdictLine(result),
+    "check.sh: INCOMPLETE  ran=none  skipped=python,frontend,generated,browser,docs",
+  );
+});
+
+test("the pinned major is let through, so the check is a gate and not a wall", () => {
+  // The negative control, and it is the half that would go missing: a refusal that
+  // fires for every version is indistinguishable from one that works, because both
+  // produce a red gate on the machine that has the wrong Node.
+  const result = runWithNodeVersion("v24.13.0", "generated");
+
+  assert.doesNotMatch(result.stderr, /pinned to Node/);
+  assert.match(result.stderr, /node_modules is missing/);
+});
+
+test("the group that needs no Node is not held to the pin", () => {
+  // `python` reaches neither pnpm nor vitest, so refusing it would be refusing work
+  // that would have succeeded — and a gate that over-refuses gets worked around.
+  const result = runWithNodeVersion("v26.7.0", "python");
+
+  assert.doesNotMatch(result.stderr, /pinned to Node/);
+  assert.equal(
+    verdictLine(result),
+    "check.sh: FAILED  ran=python  skipped=frontend,generated,browser,docs",
+  );
 });
 
 test("the verdict is printed from a trap, so no exit path can skip it", () => {

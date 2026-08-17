@@ -73,3 +73,11 @@ CLAUDE.md
 
 # graphify: knowledge-graph artifacts stay local (regenerate with `graphify update .`)
 graphify-out/
+
+# What a browser session leaves in the working tree. The MCP Playwright server
+# writes its traces and screenshots to `.playwright-mcp/`, and a screenshot taken to
+# look at something is named for what it showed rather than for where it belongs —
+# so both arrive as untracked noise in every `git status` taken afterwards, which is
+# how a real untracked file gets missed.
+.playwright-mcp/
+*-demo.png
