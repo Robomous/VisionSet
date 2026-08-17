@@ -59,6 +59,12 @@ SHIPPED = {
     "check_export",
     "export_release",
     "list_formats",
+    "list_inference_connections",
+    "model_download_size",
+    "create_inference_connection",
+    "download_connection_weights",
+    "check_connection_integrity",
+    "update_inference_connection",
 }
 """Every tool this server offers by default.
 
@@ -67,7 +73,7 @@ deliberate edit in two places. The ship-vs-fold decision is the whole point of
 a set computed from the table would agree with itself no matter what
 landed."""
 
-DESTRUCTIVE = {"delete_batch", "delete_project"}
+DESTRUCTIVE = {"delete_batch", "delete_project", "delete_inference_connection"}
 """Offered only when the server was started with ``--allow-destructive``.
 
 Absent from the listing by default rather than present and gated, because
@@ -139,7 +145,7 @@ def test_nothing_in_the_default_listing_destroys_anything() -> None:
     assert [tool.__name__ for tool, hints in TOOLS if hints is DESTROYS] == []
 
 
-def test_the_destructive_set_is_exactly_these_two_and_both_are_marked() -> None:
+def test_the_destructive_set_is_exactly_these_and_every_one_is_marked() -> None:
     assert {tool.__name__ for tool, hints in DESTRUCTIVE_TOOLS} == DESTRUCTIVE
     assert all(hints is DESTROYS for _, hints in DESTRUCTIVE_TOOLS)
 

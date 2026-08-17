@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-38 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+44 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -53,6 +53,12 @@ error envelope, and the three gate words.
 | `list_formats` | — | List the export formats installed in this VisionSet, and whether each is lossy. |
 | `check_export` | `project`, `tag`, `format` | Say what a format would drop from a release, without writing anything. |
 | `export_release` | `project`, `tag`, `format`, `dest`, `allow_lossy`? | Write a release to a local directory in one of the installed formats. |
+| `list_inference_connections` | — | List this workspace's model connections, oldest first. |
+| `model_download_size` | `model_id`, `model_revision` | How big fetching that model's weights would be. Nothing is downloaded. |
+| `create_inference_connection` | `name`, `connection_type`, `model_id`, `model_revision`, `device`?, `precision`?, `endpoint_url`? | Configure a connection. Nothing is downloaded and nothing is contacted. |
+| `download_connection_weights` | `connection` | Fetch a local connection's weights. This is the only tool that downloads a model. |
+| `check_connection_integrity` | `connection` | Re-read a local connection's weights and prove they are undamaged. |
+| `update_inference_connection` | `connection`, `name`?, `model_id`?, `model_revision`?, `device`?, `precision`?, `endpoint_url`? | Edit a connection. Parameters you omit are left alone; the type cannot change. |
 
 ## Offered only with `--allow-destructive`
 
@@ -62,3 +68,4 @@ Absent from the listing unless the server was started for them (#108). A `confir
 | --- | --- | --- |
 | `delete_batch` | `batch_id`, `confirm`? | Delete a batch and how its work was organised. Destructive; requires `confirm=true`. |
 | `delete_project` | `project`, `confirm`? | Delete a project and everything under it. Destructive; requires `confirm=true`. |
+| `delete_inference_connection` | `connection`, `confirm`? | Remove a connection. Annotations keep the model provenance they recorded. |
