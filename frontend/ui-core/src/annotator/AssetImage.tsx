@@ -15,6 +15,11 @@
  *
  * Unlike a thumbnail there is no NULL case: an asset always has content. A failure
  * here is a real failure, and it says so rather than degrading to a placeholder.
+ *
+ * Revisiting a frame does not pay for the bytes again: the route answers
+ * `Cache-Control: public, max-age=31536000, immutable` with the content hash as
+ * its `ETag`, so the browser's own HTTP cache serves the re-request — an
+ * app-level blob cache would only pin the same bytes in JS memory a second time.
  */
 
 import { ImageOff } from "lucide-react";
@@ -34,29 +39,41 @@ export function AssetImage({ projectId, assetId, children }: AssetImageProps): J
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    let live = true;
+    // One controller answers both questions the old `live` boolean did and one
+    // it could not: "has this render been superseded?" and "cancel the
+    // transfer" — `live = false` only discarded the *result*, so walking a job
+    // with the arrow keys left every skipped frame's full-size download
+    // running to completion (#572).
+    const controller = new AbortController();
     let objectUrl: string | null = null;
     setSrc(null);
     setFailed(false);
 
     void (async () => {
-      const result = await client.GET("/projects/{project_id}/assets/{asset_id}/content", {
-        params: { path: { project_id: projectId, asset_id: assetId } },
-        // The route answers image bytes; without this `openapi-fetch` parses JSON
-        // and every asset fails on a syntax error.
-        parseAs: "blob",
-      });
-      if (!live) return;
-      if (result.error !== undefined || result.data === undefined) {
-        setFailed(true);
-        return;
+      try {
+        const result = await client.GET("/projects/{project_id}/assets/{asset_id}/content", {
+          params: { path: { project_id: projectId, asset_id: assetId } },
+          // The route answers image bytes; without this `openapi-fetch` parses JSON
+          // and every asset fails on a syntax error.
+          parseAs: "blob",
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        if (result.error !== undefined || result.data === undefined) {
+          setFailed(true);
+          return;
+        }
+        objectUrl = URL.createObjectURL(result.data as unknown as Blob);
+        setSrc(objectUrl);
+      } catch {
+        // The abort lands here by design. Anything else is a network that
+        // died, which the error state answers better than an eternal skeleton.
+        if (!controller.signal.aborted) setFailed(true);
       }
-      objectUrl = URL.createObjectURL(result.data as unknown as Blob);
-      setSrc(objectUrl);
     })();
 
     return () => {
-      live = false;
+      controller.abort();
       // Every `createObjectURL` pins its blob until this runs, and an annotator
       // walking a fifty-asset job would otherwise hold fifty full-size images.
       if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
