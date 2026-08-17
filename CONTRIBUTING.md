@@ -305,7 +305,7 @@ VISIONSET_REQUIRE_WHEEL=1 uv run pytest tests/packaging
 `pnpm bundle:static` contains **no app at all**. It installs, `visionset server` starts, and
 `/app/` answers a 404 naming a script the user does not have. There is no error and no
 traceback anywhere in that sequence, which is why the script checks after each step and
-why `tests/dist/` checks the artifact rather than the source tree.
+why `tests/packaging/` checks the artifact rather than the source tree.
 
 The script also greps the built `index.html` for `/app/assets/`. A bundle built with the
 dev base references `/assets/…`, which the SPA fallback answers with `index.html` at
@@ -320,20 +320,32 @@ something installable to hand somebody.
 wheel, installs it into an empty environment, and drives video → 50 boxes → release → YOLO export
 → a trainer loading the result. It runs on every push and pull request.
 
-**Marking it a required status is a repository-admin action and is not in this repository**, since
-branch protection lives in GitHub's settings rather than in the tree. Whoever owns the repository
-turns it on once:
+It is **already a required status**, and so is every other check a pull request runs. What enforces
+that is a **ruleset** named `main`, not the older per-branch protection settings — legacy branch
+protection is not enabled on this repository at all, and asking for it answers `404 Branch not
+protected`. Read what is required today:
 
 ```bash
-gh api -X PUT repos/<owner>/<repo>/branches/main/protection \
-  -f 'required_status_checks[strict]=true' \
-  -f 'required_status_checks[contexts][]=30-minute flow (wheel, end to end)' \
-  -f 'enforce_admins=false' -f 'required_pull_request_reviews=null' -f 'restrictions=null'
+id=$(gh api repos/:owner/:repo/rulesets --jq '.[] | select(.name=="main") | .id')
+gh api "repos/:owner/:repo/rulesets/$id" \
+  --jq '[.rules[] | select(.type=="required_status_checks")
+         | .parameters.required_status_checks[].context]'
 ```
 
-The protection endpoint replaces the whole payload rather than patching it, so that call clears
-any review requirement along with everything else it does not name. Review settings are configured
-separately, and the [merge rule](#merging) holds regardless of what branch protection enforces.
+**Changing the list is a repository-admin action and is deliberately not scripted here.** The
+update endpoint replaces the whole `rules` array rather than patching it, so any change has to send
+every rule the ruleset already has alongside the new one — there is no safe additive one-liner, and
+a wrong call silently drops the checks it does not name. Make the change through **Settings → Rules
+→ Rulesets → main**, or send a complete payload built from the read above.
+
+Two consequences are worth knowing before touching it. The contexts are the **rendered** job names
+(`e2e (cli)`, `annotator e2e (chromium)`), so renaming a job in `.github/workflows/ci.yml` without
+updating the ruleset leaves every pull request blocked on a check that will never report — green
+CI, and a merge that simply never becomes available. And a job that does not report on every pull
+request must never be required at all, which is why `annotator bench (chromium, manual)` is absent:
+being `workflow_dispatch`-only, requiring it would block every merge permanently.
+
+The [merge rule](#merging) holds regardless of what the ruleset enforces.
 
 ### Tags and publishing
 

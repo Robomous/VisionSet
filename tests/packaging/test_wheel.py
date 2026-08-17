@@ -52,7 +52,7 @@ WHEEL_MISSING_HINT = (
 
 OPT_IN_HINT = (
     f"the wheel tests are opt-in: build one and run "
-    f"`{WHEEL_REQUIRED_ENV}=1 uv run pytest tests/dist`, or set {WHEEL_ENV} to a "
+    f"`{WHEEL_REQUIRED_ENV}=1 uv run pytest tests/packaging`, or set {WHEEL_ENV} to a "
     f"wheel. They install into a fresh venv and start a server, which is a minute "
     f"nobody running the unit suite asked for."
 )

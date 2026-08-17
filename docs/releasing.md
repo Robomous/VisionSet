@@ -68,8 +68,8 @@ If the frontend packages are ever published for real, `pnpm version:sync` alread
 
 ## Cutting a release
 
-Everything up to the tag is in this repository. Everything after it needs credentials, and this
-page does not have them.
+Everything up to the tag is done from a working copy. Publishing is done by a workflow, over
+trusted publishing, so no step below asks anybody for a credential.
 
 ### 1. Bump the version
 
@@ -114,22 +114,51 @@ Tag names are `v`-prefixed npm-semver (`v0.0.1-beta.2`); the distribution versio
 
 ### 4. Publish
 
-**This is the step that needs credentials, and nothing in the repository holds any.**
-
-The wheel and sdist to publish are the ones CI already built - every build uploads `dist/*` as an
-artifact - or a local `bash scripts/build_dist.sh`.
+**The publish path is [`.github/workflows/publish-pypi.yml`](../.github/workflows/publish-pypi.yml),
+and it needs no credentials from anybody.** It is `workflow_dispatch` only, so a human starts it
+deliberately; run `30801065205` used it to publish `0.0.1b2` on 2026-08-03.
 
 ```bash
-uv publish dist/*                # or: python -m twine upload dist/*
-gh release create v0.0.1-beta.2 dist/* --title "…" --notes-file CHANGELOG-excerpt.md
+gh workflow run publish-pypi.yml --ref v0.0.1-beta.2
+gh run watch "$(gh run list --workflow=publish-pypi.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 ```
 
-**Prefer PyPI Trusted Publishing** over a long-lived API token: it authenticates a specific
-GitHub Actions workflow in a specific repository through OIDC, so there is no secret to leak,
-rotate, or accidentally commit. It is configured on the PyPI project page and needs no value
-stored here. A release workflow is worth adding the first time this is done by hand and found
-tedious - not before, because a publish workflow nobody has ever run is a thing that fails on the
-day it matters.
+**`--ref` is the whole of what the operator has to get right.** The workflow builds the artifact
+itself with `bash scripts/build_dist.sh` rather than downloading one CI produced earlier, so what
+reaches PyPI is whatever the ref it was dispatched against contains. Dispatched against the tag,
+that is the commit step 3 tagged; dispatched against a branch, it is whatever that branch holds at
+the moment somebody pressed the button. Nothing downstream can tell the two apart afterwards.
+
+**No token exists anywhere, and that is the design.** The `pypi` environment plus `id-token: write`
+is what PyPI's trusted publisher exchanges for a short-lived upload credential over OIDC — it
+authenticates this specific workflow in this specific repository, so there is no secret to leak,
+rotate, or accidentally commit. The configuration lives on the PyPI project page and names the
+workflow **by filename**; renaming the file breaks the exchange with an opaque error rather than a
+missing-file one.
+
+Before dispatching, confirm `VERSION` on the tagged commit is the version you mean to publish and
+that PyPI does not already hold it — **a published version is never edited in place**, and a
+correction is another release. Afterwards, step 5 is the acceptance criterion; the run going green
+is not.
+
+The GitHub Release is separate from the PyPI upload, and it is still made by hand:
+
+```bash
+gh release create v0.0.1-beta.2 --title "…" --notes-file notes.md
+```
+
+Write `notes.md` from this version's section of [`CHANGELOG.md`](../CHANGELOG.md). Attaching `dist/*` is optional and mostly
+misleading — those would be a *second* build of the same commit rather than the bytes PyPI holds,
+and `pip install` is the install path the product is designed around.
+
+**The hand publish is the fallback, for the case where Actions itself is unavailable.** It needs a
+PyPI API token, which nothing in this repository holds and which is exactly the long-lived
+credential trusted publishing exists to avoid:
+
+```bash
+bash scripts/build_dist.sh
+uv publish dist/*                # or: python -m twine upload dist/*
+```
 
 ### 5. Verify it from outside
 
