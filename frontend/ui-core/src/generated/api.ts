@@ -969,6 +969,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/inference/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Providers
+         * @description Every inference driver installed on this server, and what each offers.
+         *
+         *     `families` maps a model type — the `model_type` a checkpoint's own config
+         *     declares — onto what a model of that type can be asked for. It is the same
+         *     vocabulary `capabilities` uses on a connection, and it answers a different
+         *     question: this says what *could* run here, that says what one configured
+         *     connection's weights turned out to be.
+         *
+         *     `curated` is the checkpoints a driver offers by name, in the order it
+         *     declared them. Curation guides and never restricts: any model id remains
+         *     typeable at any revision, and an empty list is an ordinary answer from a
+         *     driver that runs whatever it is pointed at.
+         *
+         *     A curated entry carries **no size**. What a download costs is
+         *     `GET /inference/download-size`, read live for the exact pair, because a
+         *     number frozen into a catalog would be a second answer to a question already
+         *     answered accurately.
+         *
+         *     Empty when nothing is installed, which is an answer rather than a failure.
+         */
+        get: operations["list_providers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/inference/suggest": {
         parameters: {
             query?: never;
@@ -3130,6 +3168,26 @@ export interface components {
             precision?: components["schemas"]["Precision"] | null;
         };
         /**
+         * CuratedModelOut
+         * @description A checkpoint a driver offers by name, and what it can be asked for.
+         */
+        CuratedModelOut: {
+            /** Access Note */
+            access_note?: string | null;
+            /** Access Url */
+            access_url?: string | null;
+            /** Capability */
+            capability: string;
+            /** Family */
+            family: string;
+            /** Hint */
+            hint: string;
+            /** Model Id */
+            model_id: string;
+            /** Model Revision */
+            model_revision: string;
+        };
+        /**
          * DatasetChangeOut
          * @description One entry in the trunk's append-only log.
          */
@@ -3829,6 +3887,30 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+        };
+        /**
+         * ProviderOut
+         * @description An installed inference driver: what it serves, and what it offers by name.
+         */
+        ProviderOut: {
+            /** Curated */
+            curated: components["schemas"]["CuratedModelOut"][];
+            /** Families */
+            families: {
+                [key: string]: string;
+            };
+            /** Provider Id */
+            provider_id: string;
+        };
+        /**
+         * ProviderPage
+         * @description A page of installed inference drivers.
+         */
+        ProviderPage: {
+            /** Items */
+            items: components["schemas"]["ProviderOut"][];
+            /** Total */
+            total: number;
         };
         /**
          * ReleaseCreate
@@ -6741,6 +6823,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DownloadSizeOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_providers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderPage"];
                 };
             };
             /** @description Missing or invalid bearer token */

@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import secrets
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Annotated, Final
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -30,9 +30,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.requests import Request
 
 from visionset.formats.registry import exporters
+from visionset.inference.registry import registered
 from visionset.jobs import JobRunner
 from visionset.kernel.errors import VisionSetError
-from visionset.kernel.ports import AuthProvider, Exporter
+from visionset.kernel.ports import AuthProvider, Exporter, Provider
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR as WORKSPACE_ENV_VAR,
 )
@@ -271,6 +272,24 @@ def get_exporters() -> dict[str, Exporter]:
     return exporters()
 
 
+def get_providers() -> Mapping[str, Provider]:
+    """Every inference driver installed alongside this server, by provider id.
+
+    The kept scan rather than a fresh one, which is the registry's own decision
+    and its stated cost: a driver installed while this process runs is not seen
+    until it restarts. Reading it here would not change that — a second scan
+    would still not see a driver whose entry point was written after the
+    interpreter started reading metadata.
+
+    A dependency rather than a call inside the route, for the reason
+    :func:`get_exporters` is one: nothing in this repository can install a third
+    party's driver, so a test that could not substitute one could only ever
+    assert this listing against the three drivers that ship here — which is the
+    one thing the route is not about.
+    """
+    return registered().providers
+
+
 def get_auth_provider(
     workspace: Annotated[WorkspaceService, Depends(get_workspace)],
 ) -> AuthProvider:
@@ -348,6 +367,9 @@ RunnerDep = Annotated[DispatcherHandle, Depends(get_job_runner)]
 
 ExportersDep = Annotated[dict[str, Exporter], Depends(get_exporters)]
 """The installed export formats, for a route that lists or runs one."""
+
+ProvidersDep = Annotated[Mapping[str, Provider], Depends(get_providers)]
+"""The installed inference drivers, for a route that lists them."""
 
 TokenDep = Annotated[str, Depends(require_token)]
 """The presented token, for the rare route that needs the credential itself.

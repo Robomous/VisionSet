@@ -1994,6 +1994,62 @@
         "title": "ConnectionUpdate",
         "type": "object"
       },
+      "CuratedModelOut": {
+        "description": "A checkpoint a driver offers by name, and what it can be asked for.",
+        "properties": {
+          "access_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Note"
+          },
+          "access_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Url"
+          },
+          "capability": {
+            "title": "Capability",
+            "type": "string"
+          },
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "hint": {
+            "title": "Hint",
+            "type": "string"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "model_revision": {
+            "title": "Model Revision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id",
+          "model_revision",
+          "family",
+          "capability",
+          "hint"
+        ],
+        "title": "CuratedModelOut",
+        "type": "object"
+      },
       "DatasetChangeOut": {
         "description": "One entry in the trunk's append-only log.",
         "properties": {
@@ -3322,6 +3378,58 @@
           "annotated_fraction"
         ],
         "title": "ProjectSummaryOut",
+        "type": "object"
+      },
+      "ProviderOut": {
+        "description": "An installed inference driver: what it serves, and what it offers by name.",
+        "properties": {
+          "curated": {
+            "items": {
+              "$ref": "#/components/schemas/CuratedModelOut"
+            },
+            "title": "Curated",
+            "type": "array"
+          },
+          "families": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Families",
+            "type": "object"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_id",
+          "families",
+          "curated"
+        ],
+        "title": "ProviderOut",
+        "type": "object"
+      },
+      "ProviderPage": {
+        "description": "A page of installed inference drivers.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ProviderPage",
         "type": "object"
       },
       "ReleaseCreate": {
@@ -7609,6 +7717,73 @@
           }
         ],
         "summary": "Inference Download Size",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/inference/providers": {
+      "get": {
+        "description": "Every inference driver installed on this server, and what each offers.\n\n`families` maps a model type \u2014 the `model_type` a checkpoint's own config\ndeclares \u2014 onto what a model of that type can be asked for. It is the same\nvocabulary `capabilities` uses on a connection, and it answers a different\nquestion: this says what *could* run here, that says what one configured\nconnection's weights turned out to be.\n\n`curated` is the checkpoints a driver offers by name, in the order it\ndeclared them. Curation guides and never restricts: any model id remains\ntypeable at any revision, and an empty list is an ordinary answer from a\ndriver that runs whatever it is pointed at.\n\nA curated entry carries **no size**. What a download costs is\n`GET /inference/download-size`, read live for the exact pair, because a\nnumber frozen into a catalog would be a second answer to a question already\nanswered accurately.\n\nEmpty when nothing is installed, which is an answer rather than a failure.",
+        "operationId": "list_providers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Providers",
         "tags": [
           "inference"
         ]
