@@ -38,6 +38,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 from visionset.kernel.domain.job import BackgroundJob, BackgroundJobState
+from visionset.kernel.domain.vocabulary import OpenVocabulary
 
 
 class ConnectionType(StrEnum):
@@ -93,7 +94,7 @@ class ConnectionSetupState(StrEnum):
 # docstring verbatim into `openapi.json`, where RST markup ships as literal
 # backticks and internal rationale ships as API documentation. The docstring is
 # the sentence a client should read, on `ConnectionAction`'s terms.
-class ModelCapability(StrEnum):
+class ModelCapability(OpenVocabulary):
     """What a connection's model can be asked for: the kind of prompt it takes."""
 
     #: Give me the thing under these points.

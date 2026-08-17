@@ -44,6 +44,7 @@ from enum import StrEnum
 from typing import Final
 
 from visionset.kernel.domain.schema import GeometryType
+from visionset.kernel.domain.vocabulary import OpenVocabulary
 
 
 # Three steps rather than a number, on ``Precision``'s test: the set is small,
@@ -69,7 +70,7 @@ class Detail(StrEnum):
 
 
 # One member per parameter, and the table below owes every one of them a row.
-class SuggestParameter(StrEnum):
+class SuggestParameter(OpenVocabulary):
     """A setting that shapes a suggestion. Order is display order."""
 
     DETAIL = "detail"

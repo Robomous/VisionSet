@@ -40,14 +40,14 @@
  * it never decides that a mutation cannot fail.
  */
 
-import type { components } from "../generated/api.js";
+import type { KnownMembers, OpenMember } from "../generated/api.js";
 
 /** What can be asked of a batch. The order is the kernel's declaration order. */
-export type BatchAction = components["schemas"]["BatchAction"];
+export type BatchAction = KnownMembers["BatchAction"];
 /** What can be asked of an annotation job. */
-export type JobAction = components["schemas"]["JobAction"];
+export type JobAction = KnownMembers["JobAction"];
 /** What can be asked of one asset inside a batch. */
-export type AssetAction = components["schemas"]["AssetAction"];
+export type AssetAction = KnownMembers["AssetAction"];
 
 /**
  * The action names, once.
@@ -87,9 +87,18 @@ export const ASSET_ACTION = {
   returnToAnnotator: "return_to_annotator",
 } as const satisfies Record<string, AssetAction>;
 
-/** Anything the wire declares actions for. */
+/**
+ * Anything the wire declares actions for.
+ *
+ * `OpenMember<A>` rather than `A`: an action vocabulary is declared open, so the list
+ * may carry a member a newer server added and this build cannot name. Spelling the
+ * widening here rather than taking the generated field type is what keeps `A` inferring
+ * to the *known* union — TypeScript subtracts the matching `(string & {})` constituent —
+ * so `declares` goes on refusing a misspelling and a foreign vocabulary while the wire
+ * goes on being tolerated. `./capabilities.test.ts` holds both halves, at compile time.
+ */
 export interface Capable<A extends string> {
-  readonly allowed_actions: readonly A[];
+  readonly allowed_actions: readonly OpenMember<A>[];
 }
 
 /*

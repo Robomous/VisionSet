@@ -28,6 +28,7 @@ import {
   mapOf,
   object,
   oneOf,
+  openOneOf,
   tagged,
   tuple,
 } from "./check";
@@ -99,6 +100,14 @@ describe("enums and literals", () => {
     const state = oneOf(["draft", "in_annotation"] as const);
     expect(firstMismatch(state, "archived")).toBe('the body should be "draft" or "in_annotation"');
     expect(firstMismatch(state, "draft")).toBeNull();
+  });
+
+  it("passes a member of an open vocabulary this build has never seen", () => {
+    const capability = openOneOf(["point_suggest", "text_detect"] as const);
+    expect(firstMismatch(capability, "depth_estimate")).toBeNull();
+    expect(firstMismatch(capability, "point_suggest")).toBeNull();
+    // Still a string, though: the vocabulary grew, it did not change kind.
+    expect(firstMismatch(capability, 7)).toBe("the body should be a string");
   });
 
   it("holds a discriminator tag to its exact value", () => {

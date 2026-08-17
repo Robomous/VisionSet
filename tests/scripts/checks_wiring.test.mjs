@@ -3,15 +3,18 @@
 // Every `unwrap` is paired with the check for the operation it actually calls.
 //
 // This gate exists because the compiler cannot provide it, and that is worth stating
-// precisely rather than assuming. `unwrap<T>(result: FetchResult<T>, check: Check<T>)`
-// makes a *missing* check a compile error — but not a *wrong* one: a type predicate is
-// assignable whenever its asserted type is, so
+// precisely rather than assuming. `unwrap<T>(result: FetchResult, check: Check<T>)` makes
+// a *missing* check a compile error — but not a *wrong* one, and it cannot: the check is
+// the only thing that says what comes back, because `result.data` is deliberately
+// `unknown` (argued on `FetchResult`, whose whole premise is that the response's static
+// type is not evidence). So
 //
 //     unwrap(projectResult, checkDatasetOut)
 //
-// compiles cleanly and silently re-narrows the result to `ProjectOut`. Measured against
-// this repo's own TypeScript before the mechanism was designed. So the required
-// parameter buys "a check was passed" and this file buys "the right one".
+// compiles cleanly and hands back a `DatasetOut` nobody asked for. It was already true of
+// this repo's TypeScript when the mechanism was designed, for the narrower reason that a
+// type predicate is assignable whenever its asserted type is. So the required parameter
+// buys "a check was passed" and this file buys "the right one".
 //
 // The set of files it buys it for is derived, never listed: a hardcoded caller list is
 // an allowlist that goes stale silently the moment a new query module is added, and the

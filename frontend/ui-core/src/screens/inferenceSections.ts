@@ -16,20 +16,22 @@
  *
  * ## The copy is one record, so a new capability is one entry
  *
- * {@link CAPABILITY_COPY} is keyed by the generated `ModelCapability` union, so a
- * member added to the kernel's vocabulary fails this build until its entry exists
- * — the zero-orphaned-capabilities invariant, enforced where a section is
- * decided. Sections render in this record's own declaration order.
+ * {@link CAPABILITY_COPY} is keyed by the vocabulary's *known* members — the wire
+ * type admits a value a newer server added, `KnownMembers` does not — so a member
+ * added to the kernel's vocabulary fails this build until its entry exists: the
+ * zero-orphaned-capabilities invariant, enforced where a section is decided.
+ * Sections render in this record's own declaration order.
  *
  * ## Two things still get a section without an entry
  *
  * A capability value this build never compiled against — a newer server, or a
  * driver it does not ship — gets a generic section built from the value itself,
- * because nothing the wire declares may be invisible. Today the generated
- * response check is an exact `oneOf` over the two members, so such a value is
- * refused before any of this runs; the rule is written here anyway, because the
- * layer that decides *whether a value arrives* and the layer that decides *what
- * a value looks like* are not the same layer, and only one of them is this one.
+ * because nothing the wire declares may be invisible. The capability vocabulary is
+ * declared open in the contract, so the generated response check passes such a
+ * value rather than refusing the whole listing over it: this is a path a running
+ * app takes, not only a safety net. The layer that decides *whether a value
+ * arrives* and the layer that decides *what it looks like* are still not the same
+ * layer, and only one of them is this one.
  *
  * And a connection declaring *no* capability gets one too. Capability is read off
  * weights, so a connection whose weights have not arrived cannot say what it
@@ -38,6 +40,7 @@
  * connection nobody could download, edit or delete.
  */
 
+import type { KnownMembers } from "../generated/api.js";
 import type { Connection } from "../data/inferenceQueries";
 
 /** How a section reads when it holds nothing. */
@@ -76,7 +79,7 @@ export interface CapabilityCopy {
  * A `Record` over the generated union rather than an array, so the totality is
  * the compiler's to check. Declaration order is render order.
  */
-const CAPABILITY_COPY: Record<Connection["capabilities"][number], CapabilityCopy> = {
+const CAPABILITY_COPY: Record<KnownMembers["ModelCapability"], CapabilityCopy> = {
   point_suggest: {
     title: "Suggest a region from clicks",
     purpose:

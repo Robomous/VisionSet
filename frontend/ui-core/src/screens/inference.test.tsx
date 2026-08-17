@@ -337,6 +337,18 @@ it("describes an ability nothing consumes yet, and offers no way into it", async
   expect(within(detect).queryAllByRole("button")).toEqual([]);
 });
 
+it("shows a connection whose ability this build has no name for", async () => {
+  // The response check used to refuse the whole listing over one unrecognised member, so
+  // the generic section was unreachable through the network and only a unit test reached
+  // it. This is that path end to end: a stubbed listing, the real client, the real check.
+  listing([connection({ setup_state: "ready", capabilities: ["depth_estimate"] })]);
+  render(mount(<InferenceScreen />));
+
+  const generic = await screen.findByTestId("section-depth_estimate");
+  expect(generic.dataset.known).toBe("false");
+  expect(within(generic).getByTestId("connection-sam2-local")).not.toBeNull();
+});
+
 it("answers what to do next exactly once, however many sections are on screen", async () => {
   // The count, from both sides (`DESIGN.md`): a section CTA shipped as `primary`
   // would put a filled button on the page for every ability nothing serves yet.

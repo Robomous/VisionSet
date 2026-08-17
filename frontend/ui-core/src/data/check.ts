@@ -25,7 +25,7 @@
  * an over-strict extra field — are both *over*-validation, and they are what
  * `./conformance.test.ts` exists for.
  *
- * ## Three rules, each of which is a decision
+ * ## Four rules, each of which is a decision
  *
  * **Unknown keys are allowed.** `additionalProperties: false` in the spec constrains
  * what pydantic *accepts*, not what the server may one day *send*. A client that
@@ -33,6 +33,13 @@
  * compatible API change into a broken page. Forward compatibility wins, and two tests
  * pin it so it cannot be tightened by accident — `./check.test.ts` on the combinators
  * and `./conformance.test.ts` across every generated check.
+ *
+ * **An unknown member of an open vocabulary is allowed.** The same rule, for a value: a
+ * vocabulary the contract marks `x-visionset-open` is one a compatible release may add
+ * to, and every field carrying one is a list a client filters. A closed enum still
+ * refuses, and refuses the whole document with it. Which is which is decided neither
+ * here nor in the generator — it is the server's declaration, gated on the vocabulary
+ * being referenced only as an array item and never reachable from a request.
  *
  * **`format` is not validated.** `uuid` and `date-time` are checked as `string` and
  * nothing more. A renderer is protected by the *type*; rejecting a legal ISO-8601
@@ -190,6 +197,30 @@ export function oneOf<V extends string>(allowed: readonly V[]): Check<V> {
   return (value, at, report): value is V => {
     if (typeof value === "string" && permitted.has(value)) return true;
     report(at, allowed.map((option) => `"${option}"`).join(" or "));
+    return false;
+  };
+}
+
+/**
+ * A vocabulary the contract declares open — an unknown member passes.
+ *
+ * The same rule as the unknown-key rule above, applied to a value instead of a field, and
+ * for the same reason: every field carrying an open vocabulary is a list a client filters,
+ * never an answer it switches on, so a member this build does not recognise is inert. A
+ * closed `oneOf` still refuses, and refuses the whole document with it — a scalar the
+ * client must switch on has no honest rendering to degrade to, and `MALFORMED_RESPONSE` is
+ * a better answer than a batch drawn in a state nobody named.
+ *
+ * The asserted type is wide too, so nothing here promises more than it checks: the
+ * generated type for a marked vocabulary carries the same `(string & {})` tail.
+ */
+export function openOneOf<V extends string>(known: readonly V[]): Check<V | (string & {})> {
+  // The members are named for the type they infer and for whoever reads `checks.ts`; there
+  // is nothing to compare a value against, which is the whole point.
+  void known;
+  return (value, at, report): value is V | (string & {}) => {
+    if (typeof value === "string") return true;
+    report(at, "a string");
     return false;
   };
 }

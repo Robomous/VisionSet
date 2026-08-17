@@ -8,8 +8,9 @@
  * connection that declares nothing falls out of the list.
  *
  * **The totality of the copy is the compiler's job, not this file's.**
- * `CAPABILITY_COPY` is a `Record` over the generated union, so adding a member to
- * the kernel's vocabulary fails `tsc` until its entry exists. What the first test
+ * `CAPABILITY_COPY` is a `Record` over the vocabulary's *known* members — the wire
+ * type admits a value a newer server added, the known-member union does not — so
+ * adding a member to the kernel's vocabulary fails `tsc` until its entry exists. What the first test
  * below adds is the *order*, which no type can state — and it fails on a new
  * member too, which is the point: somebody has to look at where the section goes.
  */
