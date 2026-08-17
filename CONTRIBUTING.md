@@ -144,6 +144,22 @@ variable of its own rather than more meaning loaded onto `CI`, which the browser
 for `reuseExistingServer` and which used to decide the worker count as a side effect.
 Actions sets nothing, so CI keeps the count its runners were measured at.
 
+**`ui-core`'s vitest suite caps its own workers, and the cap is close to free.**
+`frontend/ui-core/vitest.config.ts` runs a quarter of the machine's logical cores rather
+than vitest's default of nearly one per core, because each worker carries a whole jsdom:
+the default measured 847% CPU on eight physical cores, and the tests that then missed
+vitest's 5000ms deadline were whichever ones held a core when the machine ran out rather
+than any that are slow (#555). Capped, the suite passed three runs in a row at load
+averages of 85 to 170, where the default failed four tests at 140. It costs almost no wall
+time — 41s and 42s at four workers against 37s and 44s at fifteen, alternating on an idle
+machine — because the suite is bounded by its slowest *file* rather than by how much CPU
+it can occupy: `screens/inference.test.tsx` alone is 23s of a 41s run. The suite's
+`testTimeout` is 15s for the reason three tests in that same file already set their own —
+`CONNECTION_POLL_MS` is 2000ms and proving a poll *stopped* costs one or two intervals of
+real sleep. There is no environment variable, unlike the e2e suite above: the count is
+derived, so there is no number for anybody to choose. CI is unaffected — a two-core runner
+derives below the floor of two.
+
 One caveat no exit code will tell you: several gates read `git ls-files`, which is the
 **index** rather than the working tree. A new file you have not `git add`ed is invisible to
 them, so it passes locally and fails in CI. Stage first, then run.
