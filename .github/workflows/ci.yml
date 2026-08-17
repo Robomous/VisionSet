@@ -487,6 +487,21 @@ jobs:
   # shadowing that job's comment describes: none of these five distributions ships
   # a top-level `tests` package, so this repository's namespace one is intact and
   # `tests.fixtures` imports normally here.
+  #
+  # Its rendered name is a **required status context** in the `main` ruleset (#640).
+  # That is a contract with a setting in another system: renaming this job, giving it
+  # an `if:` or a `paths:` filter, or otherwise letting it stop reporting on some pull
+  # requests wedges every merge on a check that will never arrive — green CI, and a
+  # merge button that simply never becomes available. Change the ruleset in the same
+  # pull request or do not change the name. CONTRIBUTING.md's release-gate section has
+  # the procedure.
+  #
+  # It is required because it is the only job that installs the `local-inference`
+  # extra: every other job runs against a base install where the runtime is absent by
+  # design, so `tests/inference/` and the code paths that touch real tensors execute
+  # here and nowhere else. #622 (a `.detach()` on a list of feature maps, every point
+  # suggestion answering 500) and #611 (a mask crossing the port as bytes per row) both
+  # sit on that path and were green everywhere else.
   inference-smoke:
     name: inference smoke (transformers, torch on cpu)
     runs-on: ubuntu-latest
