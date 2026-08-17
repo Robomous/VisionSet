@@ -122,12 +122,16 @@ one.
 
 Most additions are cheap, and knowing which kind of cheap comes first. A family
 this build already resolves costs a curated catalog entry and nothing else. A new
-family in the same capability costs a `model_type` string in one of the sets in
-`families.py` plus a check that its post-processing signature matches what the
-existing adapter does. Only a genuinely new capability costs a family *and* an
-adapter - and because the capability map is derived from the sets rather than
-listed beside them, a family added to a set acquires its declared capability in
-the same edit.
+family in the same capability costs one entry in the serving driver's `families`
+mapping plus a check that its post-processing signature matches what that driver
+already does. Only a genuinely new capability costs a family *and* a driver - and
+because `families` maps a `model_type` straight onto the capability it takes, a
+family acquires its declared capability in the edit that adds it.
+
+The family a connection resolves on is read literally out of the snapshot's
+`config.json`, not resolved through `transformers`, which can only name a type it
+registers itself. That is what lets a driver installed from outside this
+distribution serve a family nothing here has heard of.
 
 What follows is the standing list of what could be added next, so that each
 addition starts here instead of from scratch. Every `model_type` quoted is what a
