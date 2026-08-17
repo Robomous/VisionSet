@@ -881,7 +881,15 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("class-row-cyclist")).toBeVisible();
     page.off("request", record);
 
-    expect(posted.filter((path) => path.endsWith("/schema/versions"))).toHaveLength(1);
+    // One publish, and it goes **through the draft**: the dialog banks its classes
+    // into the `annotation` draft with a PUT and then publishes that revision, so
+    // what reaches the schema is what the draft holds rather than whatever the
+    // component happened to be carrying. A direct `/schema/versions` POST from
+    // here would mean the dialog had gone back to publishing its own local state.
+    expect(
+      posted.filter((path) => path.endsWith("/schema/drafts/annotation/publish")),
+    ).toHaveLength(1);
+    expect(posted.filter((path) => path.endsWith("/schema/versions"))).toHaveLength(0);
     expect(posted.filter((path) => path.endsWith("/repin"))).toHaveLength(0);
     // The pin followed anyway, which is the whole of what the third call used to
     // do — and the class the dialog armed is drawable on this frame.
