@@ -83,6 +83,22 @@ SETTLED_JOB_STATES: Final[frozenset[BackgroundJobState]] = frozenset(
 )
 
 
+#: The two states in which a job is still somebody's to finish: it has been asked
+#: for and no outcome has been written.
+#:
+#: Written out rather than derived as the complement of :data:`SETTLED_JOB_STATES`,
+#: for the reason that set is written out: a state added later must be classified
+#: deliberately, and a complement classifies it by omission — into *live*, which is
+#: the answer that makes a caller wait for something that will never finish.
+#:
+#: What reads it is a caller asking *is one of these already under way* before it
+#: asks for another. That question is not the same as "not settled" only by
+#: accident of there being five states today.
+LIVE_JOB_STATES: Final[frozenset[BackgroundJobState]] = frozenset(
+    {BackgroundJobState.QUEUED, BackgroundJobState.RUNNING}
+)
+
+
 BACKGROUND_JOB_TRANSITIONS: Final[Mapping[BackgroundJobState, frozenset[BackgroundJobState]]] = {
     BackgroundJobState.QUEUED: frozenset(
         {BackgroundJobState.RUNNING, BackgroundJobState.CANCELLED}

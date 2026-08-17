@@ -39,6 +39,15 @@ minutes rather than seconds. Neither has a CLI equivalent that queues —
 `visionset inference download` runs the same body inline, because a terminal has
 no worker to hand it to.
 
+They are also the only two launchers that **join a run instead of starting a
+second one**: asked for a kind this connection already has queued or running,
+the route answers with that job. It is the route's own read of the queue rather
+than anything `enqueue` does, so every other launcher above queues a fresh job
+each time it is asked — and because nothing brackets the read and the enqueue,
+even those two coalesce the ordinary repetition rather than guaranteeing
+uniqueness. `docs/inference.md` says what that buys and what it deliberately
+does not refuse.
+
 Verify, publish, promote and thumbnail backfill are still synchronous. They are
 future job types, not an oversight - each answers inside its request today and
 nobody has been made to wait.
