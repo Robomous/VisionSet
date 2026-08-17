@@ -1530,8 +1530,8 @@ test("selecting on the canvas scrolls the object's row into view", async ({ page
   // inside the stub's 640×480 asset frame (`asset()` above — not the demo
   // page's 1280×720 `ASSET` in `_frame.ts`, a different fixture entirely) and
   // at least 20px from every edge and every neighbour.
-  const drawn = 20;
-  const seeded = Array.from({ length: drawn }, (_, index) => ({
+  const seededCount = 20;
+  const seeded = Array.from({ length: seededCount }, (_, index) => ({
     id: `seeded-${String(index + 1).padStart(2, "0")}`,
     asset_id: "asset-1",
     label_class: "vehicle",
@@ -1554,7 +1554,7 @@ test("selecting on the canvas scrolls the object's row into view", async ({ page
   // The render settle: with the objects seeded rather than drawn, this is no
   // longer a wait for the last gesture to land — it is the checkpoint that
   // the page finished mounting all 20 rows before anything is clicked.
-  await expect(page.getByTestId("object-total")).toHaveText(`${drawn} objects`);
+  await expect(page.getByTestId("object-total")).toHaveText(`${seededCount} objects`);
 
   // The page opens in the select tool already (the suite's own "the palette
   // is on the page as it opens, with select" scenario), so no arming press is
