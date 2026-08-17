@@ -548,7 +548,7 @@ Seven errors opt out and expose their real message, each because that message *i
 | `MEDIA_TOOL_UNAVAILABLE` | Carries the install hint. Without it the error says nothing an operator did not suspect. |
 | `LOCAL_INFERENCE_UNAVAILABLE` | Carries the `pip install` for the optional runtime, on the same licence `ffmpeg` gets. |
 | `INFERENCE_CONNECTION_NOT_RUNNABLE` | Says this build has no adapter for that kind of connection, which is a fact about the installation rather than about the request. |
-| `INFERENCE_OUT_OF_MEMORY` | Names the device that ran out and the ways off it - a smaller model, the CPU, or freeing the device. Which of those exist depends on the device, so no generic sentence can carry it. |
+| `INFERENCE_OUT_OF_MEMORY` | Names which memory ran out - the device's or the machine's - and the ways off it, which are not the same ways: a full device can be answered by moving the connection to the CPU, and a full machine is only made worse by it. No generic sentence can carry that. |
 
 A **mapped** 5xx keeps its own code (`WORKSPACE_CORRUPT`, `CONSTRAINT_VIOLATED`). An exception no
 rule covers - a bug - gets `INTERNAL_ERROR`. That difference is how the two are told apart in a

@@ -22,6 +22,15 @@ upstream's text and the one spelling here not reproduced on the machine this was
 written on. Those two are matched on their message, which is unlovely and is the
 only thing that reaches them.
 
+**Which memory ran out is a second question, and the wrong answer to it is
+expensive.** A run on a GPU allocates on the host either side of the forward —
+the processor builds its tensors before they move to the device, and the mask is
+copied back afterwards — so a host shortage reaches this rule with a device run
+in progress. Told apart from a device shortage it earns its own sentence; not
+told apart, it inherits the one that offers to move the connection to the CPU,
+which puts the weights in the memory that just ran out. The message is what
+separates them: the CPU allocator names itself, and nothing else does.
+
 **Catching wider would be worse than catching nothing.** ``_device`` already
 records that ``RuntimeError`` is what an unusable backend raises, and a dtype
 mismatch, a bad checkpoint and a shape error are all that same class — so a rule
@@ -43,13 +52,37 @@ from typing import Any, Final
 from visionset.kernel.domain import CPU
 from visionset.kernel.errors import InferenceOutOfMemory
 
-ALLOCATION_MARKERS: Final[tuple[str, ...]] = ("out of memory", "can't allocate memory")
-"""The two ways a device with no class of its own says it is full.
+HOST: Final = "host"
+DEVICE: Final = "device"
+"""Which memory ran out. The two answers, and the only two.
 
-Compared against a case-folded message. ``out of memory`` is Metal's, and is also
-what CUDA says in the text it writes beside its dedicated class — which is what
-covers a runtime old enough not to have that class. ``can't allocate memory`` is
-the CPU allocator's, quoted from a real failure rather than from the source.
+Plain strings rather than an enum, on ``_device``'s precedent for the vocabulary
+beside them: nothing outside this module reads either, and a value that never
+crosses a boundary does not need a type to cross it with.
+"""
+
+HOST_MARKER: Final = "can't allocate memory"
+"""The CPU allocator's own words, and the one message that says *which* memory ran out.
+
+Quoted from a real failure rather than from the source: ``[enforce fail at
+alloc_cpu.cpp:127] … DefaultCPUAllocator: can't allocate memory: you tried to
+allocate N bytes``. No device allocator writes this, which is what makes it a
+classification rather than a guess — and it stays true of a host allocation made
+part-way through a run that is otherwise on a GPU, which is the case the third
+sentence exists for.
+"""
+
+DEVICE_MARKERS: Final[tuple[str, ...]] = ("out of memory",)
+"""How a device with no class of its own says it is full.
+
+Metal's spelling, and also what CUDA writes in the text beside its dedicated
+class — which is what covers a runtime old enough not to have that class.
+"""
+
+ALLOCATION_MARKERS: Final[tuple[str, ...]] = (*DEVICE_MARKERS, HOST_MARKER)
+"""Every marker, in one tuple, for a reader asking what this rule matches at all.
+
+Derived rather than retyped, so the two halves above cannot drift from the whole.
 """
 
 
@@ -64,37 +97,57 @@ def translated(torch: Any, *, device: str, model_ref: str) -> Iterator[None]:
     try:
         yield
     except RuntimeError as exc:
-        if not exhausted(torch, exc):
+        kind = exhaustion(torch, exc)
+        if kind is None:
             raise
-        raise InferenceOutOfMemory(remedy(device=device, model_ref=model_ref)) from exc
+        raise InferenceOutOfMemory(remedy(device=device, model_ref=model_ref, kind=kind)) from exc
 
 
-def exhausted(torch: Any, exc: RuntimeError) -> bool:
-    """Whether that error is a device having run out of memory.
+def exhaustion(torch: Any, exc: RuntimeError) -> str | None:
+    """Which memory that error says ran out, or ``None`` if it says none did.
+
+    The host is asked first, because its marker names an allocator and the other
+    two tests name only a symptom: an error carrying the CPU allocator's own
+    words came from host memory whatever else is true of the run.
 
     The dedicated class is read off the module rather than imported, because the
     floor is ``torch>=2.4`` and only ``torch.cuda``'s spelling is that old. A
     runtime without the top-level name is answered by the markers alone, which
     reach the same failure through the text its allocator writes.
     """
+    text = str(exc).casefold()
+    if HOST_MARKER in text:
+        return HOST
     dedicated = getattr(torch, "OutOfMemoryError", None)
     if isinstance(dedicated, type) and isinstance(exc, dedicated):
-        return True
-    text = str(exc).casefold()
-    return any(marker in text for marker in ALLOCATION_MARKERS)
+        return DEVICE
+    if any(marker in text for marker in DEVICE_MARKERS):
+        return DEVICE
+    return None
 
 
-def remedy(*, device: str, model_ref: str) -> str:
-    """What happened and what to do about it, on the device it happened on.
+def remedy(*, device: str, model_ref: str, kind: str) -> str:
+    """What happened and what to do about it, in terms that fit what ran out.
 
-    The middle clause is dropped on the CPU: "use another device", said to
-    somebody already on the last one there is, is the advice that costs an
-    afternoon.
+    Three sentences, because there are three situations and each has a remedy the
+    other two must not be given.
+
+    **A run already on the CPU keeps its own sentence whatever ``kind`` says.**
+    "Use another device", said to somebody on the last device there is, is the
+    advice that costs an afternoon, and that stays true however the failure was
+    classified — so the check on the device comes first and is absolute rather
+    than being one branch among three.
     """
     if device.split(":")[0] == CPU:
         return (
             f"running {model_ref} on the CPU ran out of memory. Choose a smaller model, "
             "or free memory on this machine and try again."
+        )
+    if kind == HOST:
+        return (
+            f"running {model_ref} on {device} ran out of system memory rather than "
+            f"{device}'s own. Choose a smaller model, or free memory on this machine and "
+            f"try again; moving the connection to {CPU!r} would only use more of it."
         )
     return (
         f"running {model_ref} on {device} ran out of memory. Choose a smaller model, set "

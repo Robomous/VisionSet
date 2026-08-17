@@ -299,6 +299,14 @@ where you meet it - and the message names the device that filled up and the ways
 model from the curated list, the same connection moved to `cpu`, or whatever else is holding the
 device released. On the CPU the middle remedy is left out, because there is nowhere further to go.
 
+**A run on a GPU can also exhaust the machine's own memory rather than the card's**, because the
+images are decoded and the tensors built on the host before anything moves to the device, and the
+result is copied back the same way. The message says which of the two ran out, and the remedies
+differ: a host shortage is answered by a smaller model or by freeing memory on the machine, and
+moving that connection to `cpu` is named as the thing *not* to do, because it puts the weights in
+the memory that just ran out. Exhausting the machine's memory outside the model - decoding a very
+large image, say - is not this error at all, and arrives as an internal one.
+
 **Half precision applies on CUDA only**, and the kernel says so rather than absorbing it: a `cpu`
 or `mps` connection asking for `fp16` is refused at creation. On a CPU it was never the
 conservative choice it looks like - `float16` arithmetic outside CUDA's autocast is slower than the
