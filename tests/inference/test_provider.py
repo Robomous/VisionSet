@@ -19,12 +19,15 @@ against its own fixture. The forward's one measured hazard has its own file:
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 from uuid import uuid4
 
 import pytest
 from tests.fixtures.local_inference import require_local_inference, without_the_extra
+from tests.inference.stubs import PNG, Inputs, StubTorch
 
-from visionset.inference import LocalTransformersProvider, provider_for
+from visionset.inference import LocalTransformersProvider, provider_for, transformers_provider
 from visionset.inference import providers as providers_module
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD
 from visionset.inference.transformers_provider import prompt_text, regions_from
@@ -38,6 +41,7 @@ from visionset.kernel.domain import (
     TextPrompt,
 )
 from visionset.kernel.errors import (
+    InferenceOutOfMemory,
     LocalInferenceUnavailable,
     UnsupportedPrompt,
 )
@@ -266,3 +270,97 @@ def test_mismatched_result_lengths_are_a_failure_rather_than_a_silent_truncation
     post-processor changed shape and a short answer would read as a quiet model."""
     with pytest.raises(ValueError):
         convert([[0.0, 0.0, 5.0, 5.0]], [0.9, 0.8], ["dog", "cat"])
+
+
+# --- what a full device is answered with --------------------------------------
+
+OUT_OF_MEMORY = "CUDA out of memory. Tried to allocate 2.44 GiB. GPU 0 has 8.00 GiB in total"
+"""What an allocator writes when the device cannot fit the next tensor."""
+
+
+class _StarvedClass:
+    """A ``transformers`` auto-class that cannot fit the weights it was asked for."""
+
+    @staticmethod
+    def from_pretrained(*_: Any, **__: Any) -> Any:
+        raise RuntimeError(OUT_OF_MEMORY)
+
+
+class _StarvedModel:
+    """A detector whose forward cannot fit its activations."""
+
+    def __call__(self, **_: Any) -> Any:
+        raise RuntimeError(OUT_OF_MEMORY)
+
+
+class _BrokenModel:
+    """A detector whose forward dies of an ordinary defect."""
+
+    def __call__(self, **_: Any) -> Any:
+        raise RuntimeError("expected scalar type Half but found Float")
+
+
+class _Processor:
+    """Enough of a processor for the adapter to reach its forward and no more."""
+
+    def __call__(self, **_: Any) -> Inputs:
+        return Inputs(input_ids="ids", pixel_values="pixels")
+
+
+def detector(cache_dir: Path) -> LocalTransformersProvider:
+    return LocalTransformersProvider(
+        "some/model", "abc123", device="cpu", precision=None, cache_dir=cache_dir
+    )
+
+
+def a_request() -> PredictionRequest:
+    return PredictionRequest(
+        targets=(PredictionTarget(asset_id=uuid4(), content=PNG, media_type="image/png"),),
+        prompt=TextPrompt(phrases=("cat",)),
+    )
+
+
+def test_a_load_that_runs_out_of_memory_is_refused_with_a_remedy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The detector's half of the rule its sibling adapter also carries.
+
+    Both are wired rather than one, because a driver that refuses well and a
+    driver beside it that answers an incident id is the inconsistency this whole
+    change exists to remove.
+    """
+    transformers = SimpleNamespace(
+        AutoProcessor=_StarvedClass, AutoModelForZeroShotObjectDetection=_StarvedClass
+    )
+    monkeypatch.setattr(
+        transformers_provider,
+        "imported",
+        lambda name: StubTorch() if name == "torch" else transformers,
+    )
+    with pytest.raises(InferenceOutOfMemory) as raised:
+        list(detector(tmp_path).predict(a_request()))
+    said = str(raised.value)
+    assert "some/model@abc123" in said
+    assert "smaller model" in said
+
+
+def test_a_forward_that_runs_out_of_memory_is_refused_with_a_remedy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    built = detector(tmp_path)
+    monkeypatch.setattr(built, "_ready", lambda: (_Processor(), _StarvedModel(), "cpu", False))
+    monkeypatch.setattr(transformers_provider, "imported", lambda _: StubTorch())
+    with pytest.raises(InferenceOutOfMemory) as raised:
+        list(built.predict(a_request()))
+    assert "some/model@abc123" in str(raised.value)
+
+
+def test_a_forward_that_fails_for_another_reason_is_still_a_defect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Anything that is not an allocation failure keeps its traceback and its incident id."""
+    built = detector(tmp_path)
+    monkeypatch.setattr(built, "_ready", lambda: (_Processor(), _BrokenModel(), "cpu", False))
+    monkeypatch.setattr(transformers_provider, "imported", lambda _: StubTorch())
+    with pytest.raises(RuntimeError, match="scalar type"):
+        list(built.predict(a_request()))

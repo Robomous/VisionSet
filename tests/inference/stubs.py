@@ -17,6 +17,17 @@ from typing import Any
 
 Mask = list[list[bool]]
 
+PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
+    b"\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00"
+    b"\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+"""A real one-pixel image, because both adapters genuinely decode what they are handed.
+
+Here rather than in one adapter's test module because both need it, and a second
+copy of a byte literal is a copy nobody notices going stale.
+"""
+
 
 class Values:
     """A tensor-shaped thing holding one list of numbers."""
