@@ -716,19 +716,40 @@ describe("the draft lives on the server", () => {
    * stuck, and the setTimeout scheduled for it dies with the JS context that
    * held it — `pagehide` is the one signal that fires for that unload and for
    * nothing an in-app navigation reaches.
+   *
+   * Captured off `window.addEventListener` and called directly, rather than
+   * dispatched as a synthetic `Event` — a hand-built DOM event is a fake
+   * standing in for the real one (`tests/scripts/annotator_boundary.test.mjs`
+   * bans exactly that construction, everywhere in `frontend/`). Calling the
+   * registered function is stronger evidence anyway: it proves both that
+   * `ProjectScreen` listens for `"pagehide"` under that exact name and that
+   * calling what it registered actually flushes, which a dispatch could only
+   * ever assume the second half of.
    */
   it("flushes a pending write when the page is about to unload, without waiting out the debounce", async () => {
+    let onPageHide: (() => void) | null = null;
+    const addEventListener = vi
+      .spyOn(window, "addEventListener")
+      .mockImplementation((event: string, handler: unknown) => {
+        if (event === "pagehide") onPageHide = handler as () => void;
+      });
+
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
+    // Registered on mount, before anything is typed — restored immediately so
+    // the interactions below exercise the real `addEventListener`, not the mock.
+    addEventListener.mockRestore();
+    expect(onPageHide).not.toBeNull();
+
     await draftAClass("pedestrian");
     // Still inside the 400ms debounce window — nothing has been sent yet.
     expect(sent.some((request) => request.method === "PUT")).toBe(false);
 
-    window.dispatchEvent(new Event("pagehide"));
+    onPageHide!();
 
     // Well under the 400ms debounce: a `waitFor` with no ceiling here would
     // pass just as well once the untouched timer eventually fired on its own,
-    // and prove nothing about `pagehide` at all.
+    // and prove nothing about the listener at all.
     await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 100 });
     const puts = sent.filter(
       (request) => request.method === "PUT" && draftProjectId(new URL(request.url).pathname) === PROJECT,
