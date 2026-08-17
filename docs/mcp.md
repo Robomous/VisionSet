@@ -79,7 +79,7 @@ it, and what twelve real agent runs did with it - see
 
 ## The tools
 
-Forty-four tools are offered by default, in the order an agent meets them, plus the three
+Forty-eight tools are offered by default, in the order an agent meets them, plus the three
 below that are offered only on request — see
 [above](#destructive-tools-are-not-offered-unless-you-ask).
 [mcp-tools.md](mcp-tools.md) is the complete listing, generated from the server itself; this
@@ -96,6 +96,10 @@ page groups them by what they are for.
 | `compare_schema_versions` | What one version did to another. Writes nothing. |
 | `preview_schema_change` | What a proposed change would do. Writes nothing. |
 | `create_schema_version` | Apply one. `allow_destructive` for a narrowing change. |
+| `get_schema_draft` | The version a project is still writing, shared and revision-stamped. |
+| `set_schema_draft` | Write the whole draft, creating it when none exists. `revision` refuses a stale write. |
+| `publish_schema_draft` | Turn the draft into the next version, and clear it. `allow_destructive` for a narrowing change. |
+| `clear_schema_draft` | Throw the draft away without publishing it. Destroys shared work; nothing recovers it. |
 
 ### Sources and ingest
 
@@ -277,7 +281,7 @@ Never merged into one, because they guard different things:
 | | guards | on |
 | --- | --- | --- |
 | `confirm` | destroying data | `delete_project`, `delete_batch` |
-| `allow_destructive` | narrowing a contract | `create_schema_version` |
+| `allow_destructive` | narrowing a contract | `create_schema_version`, `publish_schema_draft` |
 | `allow_lossy` | emitting an incomplete copy of something that stays intact | `export_release` |
 
 `confirm` is the one of the three that an agent will clear by itself - see
@@ -308,7 +312,7 @@ The API's upload staging exists because HTTP has bytes where the kernel has path
 beside the workspace and has the filesystem.
 
 **One workspace per server.** No tool takes a workspace parameter — threading one through
-forty tools would put a path an agent has no way to know into every call. The workspace is
+forty-four tools would put a path an agent has no way to know into every call. The workspace is
 opened and closed per tool call rather than held, so the file is never kept from `visionset server`
 or a second agent between calls.
 
