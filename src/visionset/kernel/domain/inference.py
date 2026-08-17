@@ -296,64 +296,45 @@ class DownloadSize(BaseModel):
 
 
 COMMIT_PATTERN: Final = re.compile(r"^[0-9a-f]{40}$")
-"""What a curated revision must look like: a whole commit, in lower-case hex.
+"""What a curated revision must be: a whole commit, in lower-case hex.
 
-Narrow on purpose. A branch, a tag and an abbreviated hash are each either a thing
-the publisher can move or a thing two revisions can share, and any of them would
-make :class:`CuratedModel`'s promise untrue without changing a character of the
-entry that made it.
+A branch, a tag and an abbreviated hash are each either movable or ambiguous, and
+any of them makes :class:`CuratedModel`'s promise untrue without changing a
+character of the entry that made it.
 """
 
 
 class CuratedModel(BaseModel):
     """One checkpoint a provider offers by name, for a form to put on screen.
 
-    **Curation guides, it never restricts.** Any model id remains typeable at any
-    revision; what an entry buys is that an obvious choice is one click away and
-    is known to work against the provider that declared it. So this carries what
-    somebody choosing needs, and nothing a caller could work out for itself.
-
-    **Declared by the provider that runs it**, which is what makes the offered
-    list a property of the *installation* rather than of this repository. A
-    provider somebody else wrote contributes its entries through the same field,
-    and nothing in the frontend changes for them to appear.
+    Curation guides and never restricts: any model id remains typeable at any
+    revision. Declared by the provider that runs it, so the offered list is a
+    property of the installation rather than of this repository.
 
     **The revision is a commit and never a branch** — :data:`COMMIT_PATTERN` is
-    the whole of it. "Which model produced this label" is unanswerable when the
-    answer is a name that means something else next month, and pinning is also
-    what lets the rest of an entry stay true: an immutable snapshot has one
-    config, one family and one size.
+    the whole of it. Pinning is what lets the rest of an entry stay true: an
+    immutable snapshot has one config, one family and one size.
 
-    **No size, deliberately.** What a download costs is :class:`DownloadSize`,
-    read live and ahead of the confirmation. A number carried here would be a
-    second encoding of that one, and the kind that nobody notices going stale
-    because it is only ever read while somebody is still deciding.
+    **No size.** What a download costs is :class:`DownloadSize`, read live and
+    ahead of the confirmation. A copy here is only ever read while somebody is
+    still deciding, so nothing would notice it going stale.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     model_id: str
     model_revision: str
-    #: The ``model_type`` this checkpoint's own config declares. Opaque here for
-    #: :attr:`InferenceConnection.model_family`'s reason: what a family *means*
-    #: belongs to whichever build has an adapter for it.
-    #:
-    #: It must be one the declaring provider serves, which is what files an entry
-    #: under the question its model answers without the provider naming a
-    #: capability twice — the families it declares already say which capability
-    #: each one takes. Nothing here can check that, because an entry cannot see
-    #: the provider holding it; the conformance suite is where it is checked.
+    #: The ``model_type`` this checkpoint's config declares, opaque here for
+    #: :attr:`InferenceConnection.model_family`'s reason. It must be one the
+    #: declaring provider serves; an entry cannot see the provider holding it, so
+    #: the conformance suite is where that is checked.
     family: str
-    #: One line on what this entry is, in its own terms — the sentence a form
-    #: renders beside it. Neither the size nor the access requirement, both of
-    #: which are already on screen next to it and would spend this line saying
-    #: nothing new.
+    #: One line on what this entry is — neither the size nor the access
+    #: requirement, both already on screen beside it.
     hint: str
-    #: What has to be cleared before this entry can be fetched at all, and where
-    #: that is done. Absent on an entry anybody can fetch, which is most of them,
-    #: and **present as a pair or not at all**: a requirement with nowhere to act
-    #: on it, and a link with nothing said about it, are each half of something a
-    #: form has to state *before* it offers the download.
+    #: What must be cleared before this can be fetched, and where. Present as a
+    #: pair or not at all: either half alone is a requirement a form cannot finish
+    #: stating before it offers the download.
     access_note: str | None = None
     access_url: str | None = None
 
@@ -368,13 +349,8 @@ class CuratedModel(BaseModel):
     @field_validator("model_revision")
     @classmethod
     def _is_a_commit(cls, value: str) -> str:
-        """Blankness is covered here rather than above, with a usable message.
-
-        An empty revision and a branch name are the same mistake — naming
-        something that is not a snapshot — so they get one sentence rather than a
-        generic one that leaves the reader to discover the real rule on the
-        second attempt.
-        """
+        """Blankness is covered here rather than above: an empty revision and a
+        branch name are the same mistake, so they get one sentence."""
         if not COMMIT_PATTERN.match(value):
             raise ValueError(
                 f"model_revision must be a whole 40-character commit hash, not {value!r}; "
