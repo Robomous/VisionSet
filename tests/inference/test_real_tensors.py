@@ -1,12 +1,21 @@
 """The point-prompt adapter, driven by real tensors rather than stand-ins.
 
-**Why this module exists, stated plainly: the suite it sits beside could not see
-the bug that broke auto-labeling.** ``get_image_embeddings`` answers a *list* of
-multi-scale feature maps, and an adapter that reached for a tensor's own method
-on that list raised ``AttributeError`` for every click, on every model. Every
-test in ``test_sam_provider`` stayed green through it, because the stand-in they
-drive answers whatever the adapter happens to ask for — which is the property
-that makes a stub cheap and the property that makes it blind.
+**Why this module exists: a stand-in answers whatever it is asked for, which is
+what makes it cheap and what makes it blind.** The suite beside this one drives
+a stub processor, so anything the adapter gets wrong *about the library* is
+invisible there — and the demonstration is not hypothetical. Transposing the
+``original_sizes`` the adapter hands to ``post_process_masks`` leaves the whole
+of ``test_sam_provider`` green, because the stub records that argument and
+ignores it. A real processor answers a mask at the transposed aspect, every
+suggestion comes back the wrong shape, and every number in it is in range: the
+kind of defect that reaches a person rather than a suite. That mutation is red
+here.
+
+The same blindness is what let a ``detach`` on the encode's output ship — the
+encode answers a *list* of feature maps, and reaching for a tensor's method on
+it raised ``AttributeError`` for every click. That one is now caught next door
+too, since fixing it meant teaching the stub the real return type; what could
+not be fixed by teaching the stub anything is the class above.
 
 So the tests here hold the two claims a stub structurally cannot make:
 
@@ -174,6 +183,11 @@ def test_a_real_mask_tensor_crosses_the_port_at_the_assets_own_size(
     stub described. The size assertion is the load-bearing half: the mask
     crosses at the asset's pixels, which is what makes the coordinates in the
     shape above it mean anything.
+
+    **The asset is deliberately not square**, which is what gives this teeth.
+    Transposing the ``original_sizes`` the adapter passes is green across the
+    whole stub-driven suite and red on this line — and a square picture would
+    have made it green here too.
     """
     require_local_inference()
     provider, _ = _provider(monkeypatch)
