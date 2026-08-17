@@ -12,9 +12,11 @@ import {
   MAX_ZOOM,
   MIN_ZOOM,
   PIXELATED_ABOVE_ZOOM,
+  ZOOM_STEP,
   atZoomCeiling,
   atZoomFloor,
   clampZoom,
+  detentZoomFactor,
   fitToViewport,
   imageRenderingAt,
   imageToScreen,
@@ -414,6 +416,60 @@ describe("a bare wheel assumes a mouse and makes the trackpad prove itself", () 
    */
   it("still zooms a notch from a second device after a trackpad was seen", () => {
     expect(bareWheelZooms(NOTCH, true)).toBe(true);
+  });
+});
+
+describe("a detent is one press of the + button, on every device", () => {
+  /**
+   * The identity the whole unit exists for. `wheelDeltaY` is 120 per detent by
+   * the convention every wheel driver is built to, so counting detents holds
+   * this everywhere, where `120 / ln(1.25)` held it only on a device whose
+   * detent happened to be 120 *pixels* wide.
+   */
+  it("makes one detent exactly one step, whatever the pixels said", () => {
+    // The literal, not the constant. Asserting against `ZOOM_STEP` would move
+    // with it — the expectation sliding exactly as far as the answer does, which
+    // is a test that cannot see a change to the number it exists to pin.
+    expect(detentZoomFactor(120)).toBeCloseTo(1.25, 10);
+    expect(ZOOM_STEP).toBe(1.25);
+  });
+
+  it("is the exact inverse the other way, so a detent back undoes a detent out", () => {
+    // `?? NaN` rather than `!`: a null would fail the assertion instead of
+    // being quietly coerced to a number that happens to pass.
+    const out = detentZoomFactor(120) ?? Number.NaN;
+    const back = detentZoomFactor(-120) ?? Number.NaN;
+    expect(out * back).toBeCloseTo(1, 10);
+  });
+
+  /**
+   * A high-resolution wheel: eight sub-events of 15 are one detent of 120, and
+   * they have to compose to the same 1.25 a single event of 120 gives. This is
+   * the case the pixel path could not serve — its answer depended on how many
+   * pixels the operating system decided those eight fractions were worth.
+   */
+  it("composes across a high-resolution wheel's fractions to the same step", () => {
+    const composed = Array.from({ length: 8 }, () => detentZoomFactor(15) ?? Number.NaN).reduce(
+      (a, b) => a * b,
+      1,
+    );
+    expect(composed).toBeCloseTo(1.25, 10);
+  });
+
+  it("is independent of how fast the wheel was turned, which deltaY is not", () => {
+    // Four events of 30 and one of 120 are the same detent, so the same zoom.
+    const slow = Array.from({ length: 4 }, () => detentZoomFactor(30) ?? Number.NaN).reduce(
+      (a, b) => a * b,
+      1,
+    );
+    expect(slow).toBeCloseTo(detentZoomFactor(120) ?? Number.NaN, 10);
+  });
+
+  it("declines where the browser reports no wheel delta, leaving the pixel path", () => {
+    // Firefox in line mode. Answering a detent count here would invent one from
+    // a field that is not there.
+    expect(detentZoomFactor(0)).toBeNull();
+    expect(detentZoomFactor(Number.NaN)).toBeNull();
   });
 });
 

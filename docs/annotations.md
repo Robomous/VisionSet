@@ -528,9 +528,20 @@ What `ctrlKey` can no longer do is tell a pinch from a mouse wheel, since it is 
 `wheelZoomFactor` tells them apart by **magnitude** instead: a notch is a large quantised value -
 120 pixels, three lines, one page - and a pinch is a stream of small continuous ones, so a
 threshold at 40 sits in a gap rather than in a distribution. Being wrong about it costs a gesture
-that zooms too briskly, never a wrong answer. The softness on the wheel side is derived rather
-than picked: `120 / ln(1.25)` is about 538, which makes one notch worth exactly one press of the
-`+` button.
+that zooms too briskly, never a wrong answer. The softness on the wheel side was derived rather
+than picked - `120 / ln(1.25)` is about 538 - but it holds that identity only where a detent is
+also 120 *pixels* wide, which is true of a low-resolution wheel on some systems and of nothing
+else. **A bare wheel is counted in detents instead**, because `wheelDeltaY` carries the one
+device-independent unit there is: 120 is one detent, by the convention every wheel driver is built
+to, and a high-resolution wheel reports a fraction of 120 for a fraction of a detent.
+`detentZoomFactor` raises `ZOOM_STEP` to that fraction, so one detent is one press of the `+`
+button on every device - a high-resolution wheel reporting 53 pixels per detent, and macOS
+accelerating `deltaY` so the same detent is worth a different number of pixels depending on how
+fast it was turned. The acceleration lands on `deltaY` and never on the tick count, which is what
+makes the count immune to it. `ZOOM_STEP` is the annotator's and the host imports it for its `+`
+and `-`, so the identity is one constant rather than a claim in a comment. The pixel path remains
+for a pinch, which has no detents to count, and for a browser reporting no `wheelDelta` for them
+to be in.
 
 **The split is asked only where the question is real.** It exists because a held `ctrl`/`cmd`
 makes a pinch and a wheel arrive identically, and size is then all that is left. A *bare* event is
