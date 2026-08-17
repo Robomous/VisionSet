@@ -2654,6 +2654,12 @@ test("a refusal on the bar is a sentence now, not a kernel identifier", async ({
 test("a frame goes out for review, comes back, and is accepted the second time", async ({
   page,
 }) => {
+  // The longest walk in the file — four round trips over the review machine.
+  // Every step waits on state, but their sum under a loaded ten-worker run can
+  // cross the config's fixed 20s test budget, which reported as a flake a retry
+  // absorbed (#550). Playwright's own marker for exactly this: triple the
+  // budget, change nothing about what is asserted or waited on.
+  test.slow();
   const sent: Request[] = [];
   await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "annotated" }));
 
