@@ -339,6 +339,7 @@ def test_a_blank_assignee_is_422_invalid_name(client: TestClient, working: tuple
     assert answer.json()["code"] == "INVALID_NAME"
 
 
-def test_assigning_an_unknown_job_is_404(client: TestClient, working: tuple[str, str]) -> None:
+def test_assigning_an_unknown_job_is_404(client: TestClient) -> None:
     answer = client.put(f"/jobs/{uuid4()}/assignee", json={"assignee": "Dana Reyes"})
     assert answer.status_code == 404
+    assert answer.json()["code"] == "JOB_NOT_FOUND"

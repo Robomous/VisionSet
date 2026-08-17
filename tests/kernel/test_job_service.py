@@ -713,3 +713,18 @@ def test_assign_does_not_disturb_progress(tmp_path: Path) -> None:
     after = fixture.jobs.get(job.id)
     assert after.progress[fixture.assets[0]] is ANNOTATED
     assert after.assignee == "Dana Reyes"
+
+
+def test_a_state_move_does_not_disturb_the_assignee(tmp_path: Path) -> None:
+    """The other direction of the whole-row-merge risk above: `start`/`mark`/
+    `complete` write the job row too, and none of them may carry the name away."""
+    fixture = Fixture(tmp_path)
+    job = fixture.open_batch()
+    fixture.jobs.assign(job.id, "Dana Reyes")
+    fixture.jobs.start(job.id)
+    assert fixture.jobs.get(job.id).assignee == "Dana Reyes"
+    for asset_id in fixture.assets:
+        fixture.jobs.mark(job.id, asset_id, ANNOTATED)
+    completed = fixture.jobs.complete(job.id)
+    assert completed.assignee == "Dana Reyes"
+    assert fixture.jobs.get(job.id).assignee == "Dana Reyes"
