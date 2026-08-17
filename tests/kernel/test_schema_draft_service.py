@@ -218,6 +218,26 @@ def test_publishing_a_draft_creates_a_version_and_clears_the_draft(tmp_path: Pat
     workspace.close()
 
 
+def test_publishing_a_blank_note_leaves_the_version_undescribed(tmp_path: Path) -> None:
+    """An empty box is not a decision: `note=""` publishes `description=None`, not `""`.
+
+    The property this guards used to be a wire-level omission — a client that sent
+    no `description` key at all. `SchemaDraftBody.note` is a required field, so that
+    omission is no longer possible on the client; the same guarantee now lives here,
+    in `publish`'s own `draft.note or None`.
+    """
+    workspace, drafts, project = _drafts(tmp_path)
+    saved = drafts.save(
+        project.id,
+        CURATED,
+        classes=[DraftLabelClass(name="car", geometries=(GeometryType.BBOX,))],
+        note="",
+    )
+    published = drafts.publish(project.id, CURATED, expected_revision=saved.revision)
+    assert published.published.description is None
+    workspace.close()
+
+
 def test_the_kind_becomes_the_versions_provenance(tmp_path: Path) -> None:
     workspace, drafts, project = _drafts(tmp_path)
     saved = drafts.save(

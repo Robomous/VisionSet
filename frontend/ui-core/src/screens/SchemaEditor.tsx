@@ -595,11 +595,27 @@ export function SchemaEditor({
           only ever clears the first of those — over a draft seeded from the
           server, with nothing local held, it is a no-op that leaves this very
           banner on screen. Naming the destination directly reaches it from
-          either tier. */}
+          either tier.
+
+          Branched on that same `held`, because the two tiers are not the same
+          claim. "Your changes are still here" is true of `held` — somebody in
+          this session typed it. It is not true of a server-seeded draft
+          nobody here has touched, which may be a colleague's unfinished work
+          rather than "yours" at all, so that branch names the draft rather
+          than the person. */}
       {past === undefined && moved !== null && (
         <p className="text-meta text-muted-foreground" data-testid="schema-moved">
-          Version {moved} was published while you were editing. Your changes are still
-          here, and saving publishes v{moved + 1}.{" "}
+          {held !== null ? (
+            <>
+              Version {moved} was published while you were editing. Your changes are
+              still here, and saving publishes v{moved + 1}.{" "}
+            </>
+          ) : (
+            <>
+              This draft is behind version {moved}, published since it was last saved.
+              Saving would publish v{moved + 1} on top of it.{" "}
+            </>
+          )}
           <Button
             variant="link"
             size="sm"
@@ -607,7 +623,7 @@ export function SchemaEditor({
             data-testid="schema-reload"
             onClick={() => onDraftChange(freshFromActive())}
           >
-            Discard mine and load v{moved}
+            {held !== null ? <>Discard mine and load v{moved}</> : <>Load v{moved}</>}
           </Button>
         </p>
       )}
