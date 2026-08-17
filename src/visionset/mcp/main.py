@@ -82,6 +82,15 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (schemas.compare_schema_versions, READS),
     (schemas.preview_schema_change, READS),
     (schemas.create_schema_version, WRITES),
+    (schemas.get_schema_draft, READS),
+    (schemas.set_schema_draft, WRITES),
+    (schemas.publish_schema_draft, WRITES),
+    # WRITES, not DESTROYS, and the line is the one `DESTRUCTIVE_TOOLS` already
+    # draws: that tier is for destroying a batch or a project, is registered only
+    # on request, and carries `confirm`. A draft is unpublished by definition and
+    # discarding one is the counterpart of a browser Cancel. The tool's own
+    # description is where the caller is told it destroys shared work.
+    (schemas.clear_schema_draft, WRITES),
     (sources.ingest, WRITES),
     (sources.list_sources, READS),
     (sources.backfill_thumbnails, WRITES),
