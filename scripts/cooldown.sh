@@ -145,6 +145,56 @@ audit_lock() {
   return "$verdict"
 }
 
+# Only the exact `uv add …` form is narrowed. A global flag before the
+# subcommand, a different subcommand, a different program: all take the broad
+# path, which is the safe direction to be wrong in — it applies the cool-down to
+# more than it has to rather than to less.
+is_uv_add() {
+  [[ "${1:-}" == "uv" && "${2:-}" == "add" ]]
+}
+
+# uv finds the lockfile by walking up from the working directory, so this walks
+# the same path. Nothing found means nothing to protect.
+nearest_lock() {
+  local dir="$PWD"
+  while :; do
+    if [[ -f "$dir/uv.lock" ]]; then echo "$dir/uv.lock"; return 0; fi
+    if [[ "$dir" == "/" ]]; then return 1; fi
+    dir="$(dirname "$dir")"
+  done
+}
+
+# Everything a resolution can rewrite: the lockfile at the workspace root and the
+# manifests between here and it.
+state_files() {
+  local dir="$PWD"
+  while :; do
+    if [[ -f "$dir/uv.lock" ]]; then echo "$dir/uv.lock"; fi
+    if [[ -f "$dir/pyproject.toml" ]]; then echo "$dir/pyproject.toml"; fi
+    if [[ "$dir" == "/" ]]; then break; fi
+    dir="$(dirname "$dir")"
+  done
+}
+
+# Snapshots are keyed by the whole path with the separators flattened, so two
+# files with the same basename in different directories cannot collide.
+snapshot_state() {
+  local dir="$1" file
+  while read -r file; do
+    cp "$file" "$dir/$(echo "$file" | tr / _)"
+  done < <(state_files)
+}
+
+# A file with no snapshot did not exist before this run and is removed rather
+# than restored — otherwise a first-ever lock would survive a refusal.
+restore_state() {
+  local dir="$1" file saved
+  while read -r file; do
+    saved="$dir/$(echo "$file" | tr / _)"
+    if [[ -f "$saved" ]]; then cp "$saved" "$file"; else rm -f "$file"; fi
+  done < <(state_files)
+}
+
 case "${1:-}" in
   --days)
     echo "$COOLDOWN_DAYS"
@@ -228,6 +278,86 @@ scrub_recorded_cutoff() {
   mv "$tmp" "$lock"
   echo "cooldown: removed the recorded cutoff from ${lock}" >&2
 }
+
+# ---------------------------------------------------------------------------
+# An add is an add.
+# ---------------------------------------------------------------------------
+#
+# A cutoff is not a filter uv applies to a resolution it already has; it is part
+# of what a lockfile has to agree with, so introducing one makes uv throw the lock
+# away and resolve the whole graph again. For `uv lock` that is the point — a
+# refresh refreshes. For `uv add` it is not: adding one package rewrites every pin
+# in the file, carries a dozen unrelated upgrades into a diff nobody can review
+# for them, and rolls back any version the lockfile holds that is younger than the
+# cutoff, undoing a bump somebody merged this week.
+#
+# Neither `--upgrade-package` nor `--exclude-newer-package` narrows it. The first
+# makes an exception to pinned versions, and once the lock is ignored there are no
+# pinned versions left for it to except; the second invalidates the lock the same
+# way and leaves every *other* package resolving with no cool-down at all.
+#
+# So the add runs twice. The first pass resolves under the cutoff and is thrown
+# away — all it is for is learning which versions the cool-down vets for packages
+# the lockfile does not yet have. The second restores the lockfile and runs with
+# no cutoff, because uv is exactly incremental without one, pinning those versions
+# so the add lands the vetted release rather than the newest one. The audit above
+# then checks the result, since the second pass carried no cool-down of its own.
+if is_uv_add "$@" && lock="$(nearest_lock)"; then
+  snapshot="$(mktemp -d "${TMPDIR:-/tmp}/cooldown.XXXXXX")"
+  trap 'rm -rf "$snapshot"' EXIT
+
+  snapshot_state "$snapshot"
+  cp "$lock" "$snapshot/baseline.lock"
+
+  # Captured with `|| status=$?` rather than `if ! cmd`, because inside the body
+  # of an `if !` the `$?` on offer is the negation's, which is always zero.
+  status=0
+  UV_EXCLUDE_NEWER="$cutoff" UV_NO_SYNC=1 "$@" >&2 || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    restore_state "$snapshot"
+    echo "cooldown: the add does not resolve under the cutoff; nothing was changed" >&2
+    exit "$status"
+  fi
+
+  # Packages the add brings in that the lockfile did not have. One it already
+  # carries needs no pin: the second pass keeps it by leaving it alone.
+  lock_versions "$snapshot/baseline.lock" | cut -d= -f1 | LC_ALL=C sort >"$snapshot/before"
+  pins=()
+  while read -r pair; do
+    if ! grep -qxF "${pair%%=*}" "$snapshot/before"; then
+      pins+=(-P "${pair%%=*}==${pair#*=}")
+      echo "cooldown: ${pair%%=*} ${pair#*=} is the newest release the cool-down allows" >&2
+    fi
+  done < <(lock_versions "$lock")
+
+  restore_state "$snapshot"
+  unset UV_EXCLUDE_NEWER
+
+  status=0
+  "$@" "${pins[@]+"${pins[@]}"}" || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    restore_state "$snapshot"
+    echo "cooldown: the add failed; nothing was changed" >&2
+    exit "$status"
+  fi
+
+  violations=""
+  audit_status=0
+  violations="$(audit_lock "$snapshot/baseline.lock" "$lock" "$cutoff")" || audit_status=$?
+  if [[ "$audit_status" -ne 0 ]]; then
+    restore_state "$snapshot"
+    {
+      echo "cooldown: refusing this add — it needs versions published after ${cutoff}:"
+      echo "$violations" | sed 's/^/  /'
+      echo "cooldown: uv.lock and pyproject.toml are unchanged. The environment may"
+      echo "cooldown: hold that set already; \`uv sync\` puts it back in step."
+    } >&2
+    exit "$audit_status"
+  fi
+
+  scrub_recorded_cutoff "$lock"
+  exit 0
+fi
 
 # Not `exec`, because the scrub happens after the command returns — its exit
 # status is carried out by hand instead.

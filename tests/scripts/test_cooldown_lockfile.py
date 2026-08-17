@@ -249,3 +249,215 @@ def test_the_help_prints_the_whole_header_and_stops_at_the_code(tmp_path: Path) 
     assert "cooldown.sh --audit" in done.stdout
     assert "Overriding it" in done.stdout, "the help stops before the end of the header"
     assert "set -euo pipefail" not in done.stdout, "the help ran into the code"
+
+
+# --------------------------------------------------------------------------
+# The narrowed `uv add`
+# --------------------------------------------------------------------------
+#
+# Driven against a stub `uv` rather than the real one. What is under test is the
+# sequencing — what each pass is handed and what is on disk between them — and a
+# real add would need an index, a network, and a package whose release history
+# happened to straddle today's cutoff. The audit these cases end at is covered
+# against fixtures above, and real uv is covered on the broad path below.
+
+STUB_UV = """#!/usr/bin/env bash
+# Records the call, then installs the lockfile this pass is supposed to produce.
+n=$(cat "$STUB_STATE/count" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "$STUB_STATE/count"
+{
+  echo "pass $n argv: $*"
+  echo "pass $n exclude_newer: ${UV_EXCLUDE_NEWER-unset}"
+  echo "pass $n no_sync: ${UV_NO_SYNC-unset}"
+} >> "$STUB_STATE/calls.txt"
+if [ -f "$STUB_STATE/pass$n.lock" ]; then
+  cp "$STUB_STATE/pass$n.lock" "$PWD/uv.lock"
+fi
+printf 'touched-by-pass-%s\\n' "$n" >> "$PWD/pyproject.toml"
+exit "$(cat "$STUB_STATE/exit$n" 2>/dev/null || echo 0)"
+"""
+
+
+@pytest.fixture
+def stubbed(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
+    """A project, a stub `uv` ahead of the real one on PATH, and the env for both."""
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        '[project]\nname = "cooldown-gate"\nversion = "0.1.0"\n'
+        'requires-python = ">=3.12"\ndependencies = []\n'
+    )
+    (project / "uv.lock").write_text(BASELINE_LOCK)
+
+    state = tmp_path / "state"
+    state.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "uv").write_text(STUB_UV)
+    (bin_dir / "uv").chmod(0o755)
+
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    env["STUB_STATE"] = str(state)
+    return project, state, env
+
+
+def _wrapped(project: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", str(COOLDOWN), *args],
+        cwd=project,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _calls(state: Path) -> str:
+    return (state / "calls.txt").read_text()
+
+
+def _baseline_plus(*extra: str) -> str:
+    """The baseline lockfile with more packages in it."""
+    return _lock(SETTLED, YOUNG, ROOTED, *extra)
+
+
+ARRIVED = _entry("arrived", "1.0.0", "1999-06-01T00:00:00.000Z")
+
+
+def _both_passes_land(state: Path, lock: str) -> None:
+    (state / "pass1.lock").write_text(lock)
+    (state / "pass2.lock").write_text(lock)
+
+
+def test_a_wrapped_add_resolves_twice(stubbed) -> None:
+    project, state, env = stubbed
+    _both_passes_land(state, _baseline_plus(ARRIVED))
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 0, done.stderr
+    assert (state / "count").read_text().strip() == "2"
+
+
+def test_the_first_pass_carries_the_cutoff_and_syncs_nothing(stubbed) -> None:
+    """It is thrown away, so installing anything from it would be waste at best."""
+    project, state, env = stubbed
+    _both_passes_land(state, _baseline_plus(ARRIVED))
+
+    _wrapped(project, env, "uv", "add", "arrived")
+    calls = _calls(state)
+    assert re.search(r"pass 1 exclude_newer: \d{4}-\d{2}-\d{2}T", calls), calls
+    assert "pass 1 no_sync: 1" in calls, calls
+
+
+def test_the_second_pass_runs_with_no_cutoff_at_all(stubbed) -> None:
+    """The whole point: without a cutoff uv keeps every pin the lockfile holds."""
+    project, state, env = stubbed
+    _both_passes_land(state, _baseline_plus(ARRIVED))
+
+    _wrapped(project, env, "uv", "add", "arrived")
+    assert "pass 2 exclude_newer: unset" in _calls(state), _calls(state)
+
+
+def test_the_second_pass_pins_the_versions_the_first_one_vetted(stubbed) -> None:
+    project, state, env = stubbed
+    _both_passes_land(state, _baseline_plus(ARRIVED))
+
+    _wrapped(project, env, "uv", "add", "arrived")
+    assert "pass 2 argv: add arrived -P arrived==1.0.0" in _calls(state), _calls(state)
+
+
+def test_a_package_the_lockfile_already_held_is_not_pinned(stubbed) -> None:
+    """Pinning it would be the bug: the second pass keeps it by doing nothing."""
+    project, state, env = stubbed
+    _both_passes_land(state, BASELINE_LOCK)
+
+    _wrapped(project, env, "uv", "add", "settled")
+    assert "pass 2 argv: add settled\n" in _calls(state), _calls(state)
+
+
+def test_the_first_pass_is_undone_before_the_second_one_runs(stubbed) -> None:
+    """The stub appends a line to pyproject.toml on every call. Two calls, one
+    line left, is the restore doing its job."""
+    project, state, env = stubbed
+    _both_passes_land(state, _baseline_plus(ARRIVED))
+
+    _wrapped(project, env, "uv", "add", "arrived")
+    manifest = (project / "pyproject.toml").read_text()
+    assert manifest.count("touched-by-pass-") == 1, manifest
+    assert "touched-by-pass-2" in manifest, manifest
+
+
+def test_an_add_that_needs_a_version_the_cutoff_refuses_changes_nothing(stubbed) -> None:
+    """The second pass had no cool-down of its own, so its result is checked
+    rather than trusted."""
+    project, state, env = stubbed
+    before_lock = (project / "uv.lock").read_text()
+    before_manifest = (project / "pyproject.toml").read_text()
+    (state / "pass1.lock").write_text(_baseline_plus(ARRIVED))
+    # The resolver could not honour the pin and took a release published yesterday.
+    (state / "pass2.lock").write_text(
+        _baseline_plus(_entry("arrived", "9.0.0", "2099-06-01T00:00:00.000Z"))
+    )
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 3, done.stderr
+    assert "arrived==9.0.0" in done.stderr
+    assert (project / "uv.lock").read_text() == before_lock
+    assert (project / "pyproject.toml").read_text() == before_manifest
+
+
+def test_a_first_pass_that_cannot_resolve_changes_nothing(stubbed) -> None:
+    project, state, env = stubbed
+    before_lock = (project / "uv.lock").read_text()
+    before_manifest = (project / "pyproject.toml").read_text()
+    (state / "exit1").write_text("1")
+
+    done = _wrapped(project, env, "uv", "add", "impossible")
+    assert done.returncode == 1, done.stderr
+    assert (state / "count").read_text().strip() == "1", "the second pass ran anyway"
+    assert (project / "uv.lock").read_text() == before_lock
+    assert (project / "pyproject.toml").read_text() == before_manifest
+
+
+def test_a_second_pass_that_fails_changes_nothing(stubbed) -> None:
+    """The pins narrow the resolution, so they can also make it impossible. When
+    they do, the failure is uv's and the lockfile is nobody's business but its own."""
+    project, state, env = stubbed
+    before_lock = (project / "uv.lock").read_text()
+    before_manifest = (project / "pyproject.toml").read_text()
+    (state / "pass1.lock").write_text(_baseline_plus(ARRIVED))
+    (state / "exit2").write_text("2")
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 2, done.stderr
+    assert (state / "count").read_text().strip() == "2"
+    assert (project / "uv.lock").read_text() == before_lock
+    assert (project / "pyproject.toml").read_text() == before_manifest
+
+
+def test_a_project_with_no_lockfile_resolves_once(stubbed) -> None:
+    """There are no pins to protect, so a second pass would buy nothing."""
+    project, state, env = stubbed
+    (project / "uv.lock").unlink()
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 0, done.stderr
+    assert (state / "count").read_text().strip() == "1"
+    assert re.search(r"pass 1 exclude_newer: \d{4}", _calls(state)), _calls(state)
+
+
+def test_only_uv_add_is_narrowed(stubbed) -> None:
+    """Everything else keeps the whole-set behaviour, which is the safe direction
+    to be wrong in: it applies the cool-down to more rather than to less."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(BASELINE_LOCK)
+
+    for command in (["uv", "lock"], ["uv", "sync"], ["uv", "--directory", ".", "add", "x"]):
+        (state / "count").unlink(missing_ok=True)
+        (state / "calls.txt").unlink(missing_ok=True)
+        done = _wrapped(project, env, *command)
+        assert done.returncode == 0, done.stderr
+        assert (state / "count").read_text().strip() == "1", f"{command} was narrowed"
+        assert re.search(r"pass 1 exclude_newer: \d{4}", _calls(state)), command
