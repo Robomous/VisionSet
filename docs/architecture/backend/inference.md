@@ -33,15 +33,18 @@ flowchart LR
     Fam -->|unknown| Refuse
 ```
 
-**There is no entry-point group**, and that is the decision rather than an
-omission. `Importer` and `Exporter` name `visionset.formats` because a format is a
-plugin a third party ships. A provider is not that shape: adapters are
-instantiated from **user-created connections** and never from a bundled default,
-which makes `InferenceConnection` the registry - a row naming a kind, a model and
-where it runs. A provider discovered by entry point would have nothing to be
-instantiated *from*, and a workspace could acquire the ability to predict through
-an unrelated `pip install`, which is precisely what "VisionSet never downloads a
-model on its own" exists to prevent.
+**Drivers are discovered through the `visionset.providers` entry-point group**,
+as importers and exporters are through `visionset.formats`. What the group yields
+is a `Provider` descriptor - it declares the families it serves and builds a
+runner when asked - rather than something holding weights, which is what makes it
+registrable at all: an adapter carrying a model, a device and a precision has
+nothing to be instantiated *from* before a connection exists.
+
+The connection stays the registry of what may be run - a row naming a kind, a
+model and where it runs - and discovery only supplies the driver table resolution
+consults. Installing a driver fetches nothing and loads nothing, so a workspace
+cannot acquire the ability to predict through an unrelated `pip install`, which is
+what "VisionSet never downloads a model on its own" exists to prevent.
 
 The connection's kind says *where*; the model's own config says *which family*.
 A family this build does not serve is refused rather than guessed at - a fallback
@@ -50,9 +53,9 @@ model the user does not have.
 
 ## One fact, two readings, one module
 
-`families.py` holds the family sets **and** the map from a family to what a
-connection may be asked for, because they are the same fact read twice: which
-adapter can run this model, and which prompts a caller may send it. The two are
+Each driver declares the families it serves **and** what each one may be asked
+for, in one mapping, because they are the same fact read twice: which driver can
+run this model, and which prompts a caller may send it. The two are
 one declaration rather than a set and a map beside it, so an adapter and its
 capability are one edit - a family a driver served without declaring what it takes
 would run fine and declare nothing, and every client that
