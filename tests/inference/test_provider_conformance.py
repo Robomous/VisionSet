@@ -25,15 +25,17 @@ import json
 from collections.abc import Callable, Iterator, Mapping
 from importlib.metadata import EntryPoint, entry_points
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from tests.fixtures.media import write_image
 
-from visionset.inference.registry import GROUP, registered
+from visionset.inference.registry import GROUP, families_served, installed, registered
 from visionset.kernel.domain import (
     ConnectionSetupState,
     ConnectionType,
+    CuratedModel,
     InferenceConnection,
     ModelCapability,
     PointPrompt,
@@ -316,3 +318,67 @@ def test_a_moving_pointer_is_not_a_commit(revision: str) -> None:
     what shows the predicate would notice one.
     """
     assert not is_a_commit(revision)
+
+
+# --- what discovery cannot report --------------------------------------------
+
+
+class Named:
+    """A driver with nothing but a name and a declaration.
+
+    Enough to satisfy the port, and no more: what the cases below are about is
+    discovery, not building.
+    """
+
+    curated: tuple[CuratedModel, ...] = ()
+
+    def __init__(self, provider_id: str, families: Mapping[str, ModelCapability]) -> None:
+        self.provider_id = provider_id
+        self.families = families
+
+    def build(
+        self, connection: InferenceConnection, *, family: str, workspace_root: Path
+    ) -> object:
+        raise NotImplementedError
+
+
+class Recorded:
+    """An entry point built by hand, so a case needs no installed distribution.
+
+    ``installed(entries=…)`` takes exactly this, and that parameter is what makes
+    the case below testable at all: a duplicate id is already resolved by the
+    time ``registered()`` can be looked at. Installing a real distribution to
+    reach it would change what every other test in this suite discovers.
+    """
+
+    def __init__(self, name: str, plugin: object, requires: list[str] | None = None) -> None:
+        self.name = name
+        self._plugin = plugin
+        self.dist = SimpleNamespace(name=f"{name}-dist", requires=requires)
+
+    def load(self) -> Callable[[], object]:
+        return lambda: self._plugin
+
+
+def test_two_drivers_claiming_one_id_is_not_something_a_scan_can_report() -> None:
+    """Recorded rather than asserted away, because this is a gap and not a rule.
+
+    The scan collects into a mapping keyed by ``provider_id``, so a second driver
+    claiming a name replaces the first: the result holds one provider, no
+    registration is reported skipped, and the replaced driver's families are gone
+    with it. Nothing downstream can tell that apart from an installation that
+    only ever had one — a family stops resolving and the reason is in neither the
+    connection nor the error.
+
+    The rule itself is asserted one section up, against the registrations, where
+    a collision is still visible.
+    """
+    first = Named("acme", {"one": ModelCapability.POINT_SUGGEST})
+    second = Named("acme", {"two": ModelCapability.POINT_SUGGEST})
+
+    found = installed([Recorded("first", first), Recorded("second", second)])
+
+    assert set(found.providers) == {"acme"}
+    assert found.skipped == (), "no registration is reported as skipped"
+    assert found.providers["acme"] is second, "the second silently replaces the first"
+    assert "one" not in families_served(found.providers)
