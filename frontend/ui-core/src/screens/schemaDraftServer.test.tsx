@@ -104,7 +104,7 @@ function batchFixture(): Batch {
   };
 }
 
-/** The whole answer of `useSchemaDraft`, printed as one testid. */
+/** The whole answer of `useSchemaDraft`, printed as two testids: the value, and `isError`. */
 function DraftView({
   projectId,
   kind,
@@ -113,9 +113,19 @@ function DraftView({
   readonly kind: SchemaDraftKind;
 }): JSX.Element {
   const query = useSchemaDraft(projectId, kind);
-  if (query.isPending) return <p data-testid="draft-value">pending</p>;
-  if (query.isError) return <p data-testid="draft-value">error:{query.error.message}</p>;
-  return <p data-testid="draft-value">{query.data === null ? "null" : String(query.data.revision)}</p>;
+  const value = query.isPending
+    ? "pending"
+    : query.isError
+      ? `error:${query.error.message}`
+      : query.data === null
+        ? "null"
+        : String(query.data.revision);
+  return (
+    <div>
+      <p data-testid="draft-value">{value}</p>
+      <p data-testid="draft-is-error">{String(query.isError)}</p>
+    </div>
+  );
 }
 
 /** Reads the draft and offers one button that saves it, carrying whatever revision is cached. */
@@ -178,7 +188,12 @@ describe("useSchemaDraft", () => {
     expect(screen.getByTestId("draft-value").textContent).not.toContain("error");
   });
 
-  it("does not retry the 404", async () => {
+  it("resolves the 404 to null without erroring, in exactly one request", async () => {
+    // The property this hook actually implements: the 404 is intercepted and
+    // turned into a successful `null` before `unwrap` ever sees it, so it never
+    // rejects and never retries — there is nothing here for `retry: false` to
+    // prevent. This is what would go red if that interception were removed and
+    // the 404 fell through to `unwrap`, which is the regression that matters.
     let draftReads = 0;
     handlers.push((request) => {
       const path = new URL(request.url).pathname;
@@ -192,7 +207,9 @@ describe("useSchemaDraft", () => {
     render(mount(<DraftView projectId={PROJECT} kind="curated" />));
 
     await waitFor(() => expect(screen.getByTestId("draft-value").textContent).toBe("null"));
-    // A stray retry would need a moment to fire; give it one before asserting it did not.
+    expect(screen.getByTestId("draft-is-error").textContent).toBe("false");
+    // Given a moment for a stray retry or refetch to have shown up, if one were
+    // going to.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(draftReads).toBe(1);
   });

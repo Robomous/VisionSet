@@ -434,9 +434,12 @@ export type SchemaDraftKind = "curated" | "annotation";
  * time: a hook whose ordinary answer is `isError` would make every consumer
  * branch on a failure that is not one.
  *
- * `retry: false` and `retryOnMount: false` for `useActiveSchema`'s reason — a
- * project with no draft answers 404 on every attempt, and asking again is asking
- * the same question.
+ * `retry: false` and `retryOnMount: false` govern a genuine failure — a 500, a
+ * dropped connection — rather than the 404: the 404 is intercepted above and
+ * resolved to `null` before `unwrap` ever runs, so it never rejects and these
+ * flags never see it. They stay set anyway, for the same reason
+ * `useActiveSchema` sets them: a real failure asking again is asking a question
+ * whose answer has not changed.
  */
 export function useSchemaDraft(
   projectId: string,
