@@ -852,6 +852,21 @@ export interface paths {
          *     real transfer. A check that could not reach the hub changes nothing and
          *     purges nothing: no digests to compare against is an absence of evidence, not
          *     a verdict.
+         *
+         *     **Asking twice joins the check already running rather than starting a second
+         *     one**, the download route's rule and its reason: a request arriving while
+         *     this connection has a check queued or running is answered with that run's id,
+         *     so nobody pays to read a multi-gigabyte snapshot twice to reach the verdict
+         *     already being reached.
+         *
+         *     **A download running against the same connection does not refuse this**, and
+         *     that is deliberate rather than an omission. What a connection declares stays
+         *     a function of its setup state and its kind, so no run of either kind changes
+         *     what it will accept — see `connection_actions`. The refusal such a rule would
+         *     need could only see *jobs*, while the same two operations run inline from the
+         *     terminal with no row to see, so it would claim an exclusivity only one of the
+         *     two surfaces could honour, and a worker dying mid-job would strand the
+         *     connection behind it.
          */
         post: operations["check_connection_integrity"];
         delete?: never;
@@ -898,6 +913,13 @@ export interface paths {
          *     Re-running is safe. The job verifies a cache it already filled rather than
          *     re-fetching it, and a run that fails leaves the connection exactly as it was
          *     — there is no half-set-up state to recover from.
+         *
+         *     **Asking twice joins the download already running rather than starting a
+         *     second one.** A request that arrives while this connection has a download
+         *     queued or running is answered with *that* run's id, so a double-click, a
+         *     second tab and a retried request all watch one transfer instead of paying
+         *     for the same gigabytes twice. Every answer is still 202 with a `Location`,
+         *     and a client polls what it is given either way.
          */
         post: operations["download_connection_weights"];
         delete?: never;

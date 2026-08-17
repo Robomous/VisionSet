@@ -1124,39 +1124,189 @@ def test_a_queued_check_is_visible_with_nobody_polling_the_job(
 def test_a_live_check_does_not_change_what_the_connection_declares(
     tmp_path: Path, runtime_present: None, fetched: list[str]
 ) -> None:
-    """**Today's answer, pinned rather than changed.**
+    """**The decision, not a deferral: the declaration stays job-blind.**
 
     `CONNECTION_GATES` is a function of setup state and connection type, and a job
     moves neither — so a connection with a check in flight still declares
-    `check_integrity` *and* `download_weights`. Nothing in the kernel refuses a
-    second concurrent check or a download overlapping one.
+    `check_integrity` *and* `download_weights`, and a request for either is
+    accepted rather than refused.
 
-    That is defensible: the check job is registered idempotent, a second run reads
-    the same files and reaches the same verdict, and `require_checkable` passes at
-    `ready` precisely so a re-queued orphan and a person asking twice take one
-    path. Making the declaration job-aware would give `connection_actions` a third
-    dimension and change what `CONNECTION_GATES` is — a design decision, not a
-    consequence of putting a check on the wire. This test exists so that whoever
-    takes that decision has to come here and say so.
+    Making the declaration job-aware was considered and refused. A refusal could
+    only be built on a job row being live, and **the same two operations run
+    inline from the terminal with no row at all** (`visionset.cli.inference`), so
+    the rule would bind the browser and not the shell while claiming an
+    exclusivity neither could rely on. It would also strand a connection behind
+    actions it refuses whenever a worker died holding a job — the failure
+    `sweep_orphans` clears up rather than one to design around. And the shipped
+    default is one worker, so what a second request actually costs is a duplicate
+    run *after* the first, which is waste rather than a race.
+
+    What answers the waste instead is coalescing, one kind at a time: see
+    `test_asking_for_a_download_twice_joins_the_transfer_already_running`. This
+    test holds the other half — that nothing is refused, and that the two kinds
+    stay independent.
     """
     dispatcher = ManualDispatcher()
     with api_client(tmp_path / "ws", dispatcher=dispatcher) as client:
         made = created(client, LOCAL)
         client.post(f"/inference/connections/{made['id']}/download")
         assert dispatcher.run() == 1
-        client.post(f"/inference/connections/{made['id']}/check-integrity")
+        check = client.post(f"/inference/connections/{made['id']}/check-integrity").json()
 
         row = client.get(f"/inference/connections/{made['id']}").json()
 
         assert row["integrity_check"]["state"] == "queued"
         assert "check_integrity" in row["allowed_actions"]
         assert "download_weights" in row["allowed_actions"]
-        # And a second request for either is accepted, which is what the
-        # declaration above promises.
-        assert (
-            client.post(f"/inference/connections/{made['id']}/check-integrity").status_code == 202
-        )
-        assert client.post(f"/inference/connections/{made['id']}/download").status_code == 202
+        # A download asked for while that check is live is accepted, and it is a
+        # run of its own rather than the check handed back under another name.
+        started = client.post(f"/inference/connections/{made['id']}/download")
+        assert started.status_code == 202
+        assert started.json()["id"] != check["id"]
+
+
+# --- asking twice while one is running ----------------------------------------
+
+
+def test_asking_for_a_download_twice_joins_the_transfer_already_running(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """One transfer, one id, and nothing queued behind it.
+
+    The second `202` carries the *first* job's id, which is what makes a
+    double-click, a second tab and a retried request all watch one run. The
+    dispatcher count is the load-bearing half: a response that merely echoed an id
+    while a second row sat in the queue would pass an assertion about the body and
+    still pay for the gigabytes twice.
+    """
+    dispatcher = ManualDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=dispatcher) as client:
+        made = created(client, LOCAL)
+        first = client.post(f"/inference/connections/{made['id']}/download")
+        second = client.post(f"/inference/connections/{made['id']}/download")
+
+        assert second.status_code == 202
+        assert second.json()["id"] == first.json()["id"]
+        assert second.headers["Location"] == f"/background-jobs/{first.json()['id']}"
+        # One run to do, not two.
+        assert dispatcher.run() == 1
+    assert fetched == ["some/model@abc123"]
+
+
+def test_asking_for_a_check_twice_joins_the_read_already_running(
+    tmp_path: Path, runtime_present: None, fetched: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The download's rule over the other operation, and it is the costlier one.
+
+    A check reads every byte of a multi-gigabyte snapshot to reach a verdict, so a
+    second one queued behind the first pays that whole cost to answer a question
+    already being answered.
+    """
+    read: list[UUID] = []
+
+    def _checked(_: Any, connection_id: UUID, **__: Any) -> IntegrityReport:
+        read.append(connection_id)
+        return IntegrityReport(files_checked=2, bytes_read=99)
+
+    monkeypatch.setattr(job_module, "check_integrity", _checked)
+    dispatcher = ManualDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=dispatcher) as client:
+        made = created(client, LOCAL)
+        client.post(f"/inference/connections/{made['id']}/download")
+        assert dispatcher.run() == 1
+
+        first = client.post(f"/inference/connections/{made['id']}/check-integrity")
+        second = client.post(f"/inference/connections/{made['id']}/check-integrity")
+
+        assert second.status_code == 202
+        assert second.json()["id"] == first.json()["id"]
+        assert dispatcher.run() == 1
+    assert len(read) == 1
+
+
+def test_a_settled_download_is_not_joined_by_the_next_request(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """Asking again after one finished starts a real second run.
+
+    The half that keeps the action usable: `download_weights` stays legal at
+    `ready` precisely so it can be asked again — to re-check a snapshot, or to
+    retry after a failure — and a route that handed back the settled run would
+    answer every one of those with a job that had already stopped.
+    """
+    dispatcher = ManualDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=dispatcher) as client:
+        made = created(client, LOCAL)
+        first = client.post(f"/inference/connections/{made['id']}/download")
+        assert dispatcher.run() == 1
+
+        again = client.post(f"/inference/connections/{made['id']}/download")
+
+        assert again.json()["id"] != first.json()["id"]
+        assert dispatcher.run() == 1
+    assert fetched == ["some/model@abc123"] * 2
+
+
+def test_a_run_against_another_connection_is_not_joined(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """Matched on the connection the payload names, never on the type alone.
+
+    Two connections downloading at once is ordinary — they may not even name the
+    same model — and a route matching on job type would hand the second one the
+    first one's transfer and report it as its own.
+    """
+    dispatcher = ManualDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=dispatcher) as client:
+        mine = created(client, LOCAL)
+        theirs = created(client, dict(LOCAL, name="other-gd"))
+        first = client.post(f"/inference/connections/{mine['id']}/download")
+        second = client.post(f"/inference/connections/{theirs['id']}/download")
+
+        assert second.json()["id"] != first.json()["id"]
+        assert dispatcher.run() == 2
+
+
+def test_joining_a_run_still_wakes_the_dispatcher(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """A queued run somebody joined still needs claiming.
+
+    Nothing has started merely because a row exists, so a route that woke the
+    dispatcher only when it enqueued would leave a joined `queued` job waiting on
+    the poll interval — visible as a download that sits still for as long as the
+    dispatcher happened to be sleeping.
+    """
+    dispatcher = ManualDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=dispatcher) as client:
+        made = created(client, LOCAL)
+        client.post(f"/inference/connections/{made['id']}/download")
+        woken = dispatcher.wakes
+
+        client.post(f"/inference/connections/{made['id']}/download")
+
+        assert dispatcher.wakes == woken + 1
+
+
+def test_a_refusal_is_still_a_refusal_while_a_run_is_live(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """Joining happens after the gate, never instead of it.
+
+    An `http` connection has no weights to fetch in any state, and a download
+    running against a *different* connection must not turn that 409 into a 202
+    pointing at somebody else's transfer.
+    """
+    dispatcher = ManualDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=dispatcher) as client:
+        local = created(client, LOCAL)
+        remote = created(client, HTTP)
+        client.post(f"/inference/connections/{local['id']}/download")
+
+        refused = client.post(f"/inference/connections/{remote['id']}/download")
+
+        assert refused.status_code == 409
+        assert refused.json()["code"] == "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"
 
 
 def test_a_check_that_failed_while_nobody_watched_still_says_why(
