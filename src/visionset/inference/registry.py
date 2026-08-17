@@ -14,7 +14,7 @@ process that has to be restarted after an install.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from importlib.metadata import entry_points
 from typing import Final, Protocol
@@ -55,7 +55,9 @@ class Registration(Protocol):
     @property
     def dist(self) -> Publisher | None: ...
 
-    def load(self) -> object: ...
+    #: Resolves to the factory discovery calls with no arguments, on
+    #: ``Exporter``'s terms: the entry point names a class, not an instance.
+    def load(self) -> Callable[[], object]: ...
 
 
 @dataclass(frozen=True)
