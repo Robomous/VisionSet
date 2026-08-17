@@ -133,7 +133,7 @@ Objects/Labels panel on the right.
 | Move / resize | drag the shape, or drag a grip |
 | Delete | select it and press <kbd>Delete</kbd> |
 | Undo / redo | <kbd>Ctrl/⌘ Z</kbd> / <kbd>Ctrl/⌘ ⇧ Z</kbd> |
-| Zoom | scroll, or trackpad pinch; <kbd>Ctrl/⌘ 0</kbd> fits |
+| Zoom | mouse wheel, or trackpad pinch; <kbd>Ctrl/⌘ 0</kbd> fits. A trackpad two-finger scroll pans instead |
 | Next asset | the navigator at the top of the page |
 
 Every edit saves as you go - there is no save button and nothing to lose. The full shortcut table
