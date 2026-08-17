@@ -20,7 +20,7 @@ mapping layer is the thing to extend.
 
 Every persisted entity has a UUID primary key and **at most one parent** - a Project
 belongs to a Workspace, an Annotation to an Asset. That regularity is why a single
-generic repository serves all seventeen entity types:
+generic repository serves all eighteen entity types:
 
 ```python
 with store.unit_of_work() as uow:
@@ -47,8 +47,8 @@ never raises `ProjectNameTaken`.
 
 But a rule with no backstop is a wish, so the store carries the constraint too:
 `uq_project_workspace_name` on `project (workspace_id, name COLLATE NOCASE)`, alongside
-`uq_schema_project_version`, `uq_member_dataset_asset`, `uq_release_dataset_tag`,
-`uq_asset_project_content_hash`, `uq_source_project_kind_path_fps`,
+`uq_schema_project_version`, `uq_schema_draft_project_kind`, `uq_member_dataset_asset`,
+`uq_release_dataset_tag`, `uq_asset_project_content_hash`, `uq_source_project_kind_path_fps`,
 `uq_annotation_asset_classification`, `uq_token_workspace_name` and
 `uq_inference_connection_name`. The invariant then survives
 a service bug, a forgotten code path, and a second process.
@@ -84,7 +84,7 @@ the operation and not the individual write.
 | Kind | Storage | Why |
 | --- | --- | --- |
 | Relations that get mutated element by element | Child table - `batch_asset`, `annotation_job_asset` | Membership and per-asset progress are edited one row at a time and queried from the asset side. `batch_asset.position` preserves order. |
-| Immutable nested values | JSON column - `annotation_schema.classes`, `annotation.geometry`, `annotation.attributes`, `release.split` | A schema version must rehydrate byte-identical, and nothing queries a single `LabelClass` in SQL. Child tables would only add ordering columns. |
+| Immutable nested values | JSON column - `annotation_schema.classes`, `schema_draft.classes`, `annotation.geometry`, `annotation.attributes`, `release.split` | A schema version must rehydrate byte-identical, and nothing queries a single `LabelClass` in SQL. Child tables would only add ordering columns. |
 | An immutable value too large for a row | The **blob store**, with the row keeping its hash - `release.manifest_hash`, `asset.thumbnail_hash` | A release manifest lists every asset and every label; megabytes of it in a column would have to be read just to list a dataset's releases. Content-addressed, so it is verifiable and two identical releases share one document. See [releases.md](releases.md). A thumbnail is the same storage decision for a different reason: it is a *cache*, so the row keeps a pointer that may be NULL and losing the bytes costs only the time to render them again. |
 | Timestamps | TEXT holding ISO-8601 **with offset** | SQLite's `DATETIME` storage drops the timezone. Domain timestamps are timezone-aware UTC and a naive value is rejected at construction. |
 
@@ -160,11 +160,12 @@ MIGRATIONS: list[Migration] = [
     Migration(version=6, name="inference_connections", upgrade=_add_inference_connections),
     Migration(version=7, name="model_family", upgrade=_add_model_family),
     Migration(version=8, name="progress_touched", upgrade=_add_progress_touched),
+    Migration(version=9, name="schema_drafts", upgrade=_add_schema_drafts),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 8
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 9
 ```
 
-**Generation 1 is the baseline, and the seven entries after it are ordinary migrations.** A long
+**Generation 1 is the baseline, and the eight entries after it are ordinary migrations.** A long
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus
@@ -177,9 +178,9 @@ force again for every entry appended after the baseline.
 `tests/kernel/test_migrations.py` that builds an old-looking file. The failure is the silent
 kind: a column left in place makes its own migration find the column already there and return
 early, so `test_a_fresh_database_and_a_migrated_one_have_the_same_schema` compares a file
-against itself and passes while proving nothing. The table-creating migrations - 4 and 6 - are
-the standing exception: dropping a whole table in the helper would exercise SQLite rather than
-this module.
+against itself and passes while proving nothing. The table-creating migrations - 4, 6 and 9 -
+are the standing exception: dropping a whole table in the helper would exercise SQLite rather
+than this module.
 
 **A migration cannot always backfill what it adds, and saying which is which is part of adding
 one.** Migration 3 could attribute an annotation because the file already recorded enough to
