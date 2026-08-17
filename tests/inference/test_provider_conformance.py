@@ -31,19 +31,32 @@ from uuid import uuid4
 import pytest
 from tests.fixtures.media import write_image
 
-from visionset.inference.registry import GROUP, families_served, installed, registered
+from visionset.inference import providers as providers_module
+from visionset.inference.registry import (
+    GROUP,
+    capabilities,
+    families_served,
+    installed,
+    registered,
+)
+from visionset.inference.stub_provider import STUB_MODEL_ID
 from visionset.kernel.domain import (
+    AssetPrediction,
+    AssetSegmentation,
     ConnectionSetupState,
     ConnectionType,
     CuratedModel,
+    DownloadSize,
     InferenceConnection,
     ModelCapability,
     PointPrompt,
     PredictionRequest,
     PredictionTarget,
+    SegmentedMask,
     TextPrompt,
 )
-from visionset.kernel.ports import ModelProvider, PointSegmenter, Provider
+from visionset.kernel.errors import InferenceConnectionNotRunnable, UnsupportedPrompt
+from visionset.kernel.ports import ModelProvider, PointSegmenter, Provider, WeightsSource
 
 REGISTRATIONS: tuple[EntryPoint, ...] = tuple(entry_points(group=GROUP))
 """Every registration in the group, before discovery filters any of them.
@@ -382,3 +395,231 @@ def test_two_drivers_claiming_one_id_is_not_something_a_scan_can_report() -> Non
     assert found.skipped == (), "no registration is reported as skipped"
     assert found.providers["acme"] is second, "the second silently replaces the first"
     assert "one" not in families_served(found.providers)
+
+
+# --- the drivers this suite brings with it ------------------------------------
+
+ACME_FAMILY = "acme_seg"
+"""A family no library in this build registers.
+
+Chosen deliberately: ``transformers`` can only name a model type it registers
+itself, so a family outside that set is the one case a third-party local driver
+lives in and no shipped driver can stand in for.
+"""
+
+ACME_ENTRY = CuratedModel(
+    model_id="acme/segmenter",
+    model_revision="c" * COMMIT_LENGTH,
+    family=ACME_FAMILY,
+    hint="the family nothing here registers",
+)
+
+
+class EchoDetector:
+    """A detector that looks at each target and reports finding nothing."""
+
+    def __init__(self, *, model_ref: str) -> None:
+        self.model_ref = model_ref
+
+    def predict(self, request: PredictionRequest) -> Iterator[AssetPrediction]:
+        if not isinstance(request.prompt, TextPrompt):
+            raise UnsupportedPrompt(
+                f"{self.model_ref} answers text prompts; it was asked with "
+                f"{request.prompt.kind!r}, which it has no way to interpret"
+            )
+        for target in request.targets:
+            # An empty answer is an answer. "Found nothing" and "was not looked
+            # at" are different facts, and one of the checks below is the
+            # difference.
+            yield AssetPrediction(asset_id=target.asset_id, model_ref=self.model_ref)
+
+
+class Echo:
+    """A hosted driver: declares a family, declares no weights source.
+
+    The proof that the contract admits hosting, and a stronger one than a
+    half-finished real adapter — it is discovered, says what it serves, builds a
+    runner and refuses the wrong prompt, with no weights anywhere. All three
+    shipped drivers are hub-backed, so without this the branch "a driver that
+    declares no weights source" never executes.
+    """
+
+    provider_id = "test-hosted-echo"
+    families: Mapping[str, ModelCapability] = {"acme_hosted": ModelCapability.TEXT_DETECT}
+    curated: tuple[CuratedModel, ...] = ()
+
+    def __init__(self) -> None:
+        self.built: list[str] = []
+
+    def build(
+        self, connection: InferenceConnection, *, family: str, workspace_root: Path
+    ) -> EchoDetector:
+        self.built.append(family)
+        return EchoDetector(model_ref=f"{connection.model_id}@hosted")
+
+
+class AcmeSegmenter:
+    """A segmenter answering one small mask per target."""
+
+    def __init__(self, *, model_ref: str) -> None:
+        self.model_ref = model_ref
+
+    def segment(self, request: PredictionRequest) -> Iterator[AssetSegmentation]:
+        if not isinstance(request.prompt, PointPrompt):
+            raise UnsupportedPrompt(
+                f"{self.model_ref} answers point prompts; it was asked with "
+                f"{request.prompt.kind!r}, which it has no way to interpret"
+            )
+        for target in request.targets:
+            yield AssetSegmentation(
+                asset_id=target.asset_id,
+                model_ref=self.model_ref,
+                segments=(SegmentedMask(mask=[[True, True], [True, True]], score=0.5),),
+            )
+
+
+class AcmeSeg:
+    """A local third-party driver serving a family nothing here registers.
+
+    It satisfies both protocols and prices its own curated entry without reaching
+    a network, which makes it the only offline subject for "a driver that
+    declares a weights source prices what it offers" — the built-in stand-in
+    curates nothing, and the two real drivers price through the hub.
+    """
+
+    provider_id = "test-acme-seg"
+    families: Mapping[str, ModelCapability] = {ACME_FAMILY: ModelCapability.POINT_SUGGEST}
+    curated = (ACME_ENTRY,)
+
+    def __init__(self) -> None:
+        self.built: list[str] = []
+        self.fetched = 0
+
+    def build(
+        self, connection: InferenceConnection, *, family: str, workspace_root: Path
+    ) -> AcmeSegmenter:
+        self.built.append(family)
+        return AcmeSegmenter(model_ref=f"{connection.model_id}@{connection.model_revision}")
+
+    def price(self, model_id: str, model_revision: str) -> DownloadSize:
+        return DownloadSize(
+            model_id=model_id, model_revision=model_revision, total_bytes=1024, file_count=1
+        )
+
+    def family_of(self, connection: InferenceConnection, *, cache_dir: Path) -> str:
+        return ACME_FAMILY
+
+    def fetch(
+        self,
+        connection: InferenceConnection,
+        *,
+        into: Path,
+        on_bytes: Callable[[int], None] | None = None,
+    ) -> Path:
+        self.fetched += 1
+        into.mkdir(parents=True, exist_ok=True)
+        if on_bytes is not None:
+            on_bytes(1024)
+        return into
+
+
+# --- declaring a weights source ------------------------------------------------
+
+
+@pytest.mark.parametrize("provider_id", DRIVERS)
+def test_declaring_a_weights_source_is_all_or_nothing(provider_id: str) -> None:
+    """Two of the three methods satisfies neither the protocol nor a reader.
+
+    ``isinstance`` answers False for a partial implementation, so the download
+    path skips the driver entirely and the half that was written is called by
+    nothing — a driver that looks able to fetch its own weights and never is.
+    """
+    driver = INSTALLED[provider_id]
+    written = {name for name in ("price", "family_of", "fetch") if hasattr(driver, name)}
+    assert not written or isinstance(driver, WeightsSource), (
+        f"{provider_id} writes {sorted(written)} and does not satisfy WeightsSource"
+    )
+
+
+def test_a_hosted_driver_is_a_driver_and_is_not_a_weights_source() -> None:
+    """The discrimination the two-protocol split exists for, on a subject that
+    can actually fail it. If ``isinstance`` answered True for both, a hosted
+    driver would be asked to download weights it has no concept of.
+    """
+    hosted = Echo()
+    assert isinstance(hosted, Provider)
+    assert not isinstance(hosted, WeightsSource)
+
+
+def test_a_hosted_driver_is_discovered_and_declares_what_it_serves() -> None:
+    """Driven through discovery rather than only constructed, because the claim
+    is about the contract admitting a hosted driver and not about a class shape.
+
+    It goes in through the injectable scan, which is what that parameter is for:
+    installing a distribution to reach the same assertion would change what every
+    other test in this suite discovers.
+    """
+    hosted = Echo()
+
+    found = installed([Recorded("hosted", hosted)])
+
+    assert found.providers == {hosted.provider_id: hosted}
+    assert found.skipped == ()
+    assert capabilities(found.providers) == {"acme_hosted": ModelCapability.TEXT_DETECT}
+    assert families_served(found.providers) == frozenset({"acme_hosted"})
+
+
+def test_resolution_cannot_reach_a_hosted_driver_in_this_release() -> None:
+    """The end of the path, stated rather than left as a silence.
+
+    A hosted connection is refused before any driver is looked at, so a
+    discovered hosted driver has nothing that will route to it yet: the
+    connection would have to name the provider it belongs to, and
+    ``model_family`` is null on a hosted connection permanently because no
+    weights ever arrive to read a config from. That gap is tracked as its own
+    issue and is deliberately outside this suite; what conformance can say today
+    is that the refusal is honest about the reason.
+    """
+    hosted = Echo()
+    remote = InferenceConnection(
+        name="conformance-hosted",
+        connection_type=ConnectionType.HTTP,
+        model_id="acme/hosted",
+        model_revision="abc123",
+        endpoint_url="https://example.invalid/v1",
+    )
+
+    with pytest.raises(InferenceConnectionNotRunnable, match="http connection"):
+        providers_module.provider_for(remote, workspace_root=Path("/nonexistent"))
+
+    assert hosted.built == [], "nothing routed to it, so it was never asked to build"
+
+
+def test_a_driver_that_offers_a_checkpoint_can_price_it() -> None:
+    """Priced on the one driver here that can answer offline.
+
+    ``sam`` and ``grounding-dino`` price through the hub's file listing, which
+    this suite must not reach — that path is driven against a doubled hub in
+    ``tests/inference/test_download_size.py``. The built-in stand-in curates
+    nothing, so it has no entry to price. This driver has both.
+    """
+    driver = AcmeSeg()
+    assert isinstance(driver, WeightsSource)
+    entry = driver.curated[0]
+
+    priced = driver.price(entry.model_id, entry.model_revision)
+
+    assert isinstance(priced, DownloadSize)
+    assert (priced.model_id, priced.model_revision) == (entry.model_id, entry.model_revision)
+
+
+def test_the_built_in_stand_in_prices_its_own_id_rather_than_refusing() -> None:
+    """A refusal here would make the setup form unable to show a size for a
+    connection it is perfectly able to create.
+    """
+    stub = INSTALLED["stub"]
+    assert isinstance(stub, WeightsSource)
+
+    priced = stub.price(STUB_MODEL_ID, "stub")
+
+    assert (priced.total_bytes, priced.file_count) == (0, 0)
