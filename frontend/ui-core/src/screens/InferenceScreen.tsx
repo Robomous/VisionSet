@@ -42,10 +42,18 @@
  * ## What the form offers, and what it refuses to compute
  *
  * The model, the device and the precision are all chosen from lists rather than
- * typed, and every one of those lists lives in `inferenceCatalog.ts` — one
- * module, so extending the curated set is one entry and no other edit. Curation
- * guides without restricting: **Custom model…** reveals the same free model id
- * and revision fields the form had before.
+ * typed. The model list is the *installation's*: the server names every model an
+ * installed driver offers, and the form renders what was served — so a driver
+ * this repository never saw reaches the select by being installed. What a form
+ * makes of that list, and the two vocabularies below, live in
+ * `inferenceCatalog.ts`.
+ *
+ * A served list is a query, so the field has three states before it has a select:
+ * it says it is reading, it renders a refusal as prose, or it says the
+ * installation offers nothing by name. Curation guides without restricting:
+ * **Custom model…** reveals the same free model id and revision fields the form
+ * had before, and those fields are also what the last two states leave in place —
+ * a model id typed by hand needs no catalog at all.
  *
  * The device and precision lists are the kernel's vocabularies, offering-side.
  * The kernel is what refuses a pair outside them — including `cpu` with `fp16`,
@@ -124,7 +132,7 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState, type FormEvent, type JSX } from "react";
+import { useEffect, useRef, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
@@ -136,13 +144,16 @@ import {
   useDeleteConnection,
   useDownloadSize,
   useDownloadWeights,
+  useProviders,
   useUpdateConnection,
   type Connection,
   type ConnectionType,
+  type CuratedEntry,
   type IntegrityCheck,
   type WeightDownload,
 } from "../data/inferenceQueries";
-import { EmptyState } from "../patterns/AsyncStates";
+import { refusalProse } from "../data/refusals";
+import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { Progress } from "../primitives/Feedback";
@@ -170,12 +181,13 @@ import {
   SelectValue,
 } from "../primitives/Select";
 import {
-  CURATED_BY_ID,
-  CURATED_MODELS,
   CUSTOM_MODEL,
-  DEFAULT_MODEL,
   DEVICES,
-  curatedEntry,
+  accessFor,
+  defaultEntry,
+  entriesOf,
+  entryFor,
+  groupsOf,
   precisionOn,
   precisionsFor,
   type Precision,
@@ -726,12 +738,19 @@ function IntegrityProgress({ check }: { readonly check: IntegrityCheck }): JSX.E
 }
 
 /**
- * Two steps on the way in, one on the way back.
+ * The dialog itself, which owns no form state at all.
  *
- * Creating picks a kind and then fills in that kind's form, because the two
- * kinds share almost no fields and a single form holding both would be mostly
- * disabled whichever was chosen. Editing skips step one: the kind is not
- * editable, so offering it would be offering something the server refuses.
+ * **The form is a child, so Radix mounts it per opening.** `DialogContent`
+ * portals its subtree only while the dialog is open and unmounts it on close, so
+ * every opening gets a fresh {@link ConnectionForm} and there is nothing to
+ * reset.
+ *
+ * One long-lived component reset by an effect cannot hold that: the reset and
+ * the effect that seeds the model run in the same commit over the same render's
+ * state, so the second reads the *previous* session's kind and seeds a model
+ * into a form that was told to forget one — which is how a local session
+ * abandoned mid-load hands its model id to the next connection, an HTTP one
+ * included. No guard fixes that, because a guard reads the same stale state.
  */
 function ConnectionDialog({
   open,
@@ -742,64 +761,143 @@ function ConnectionDialog({
   readonly onClose: () => void;
   readonly editing?: Connection;
 }): JSX.Element {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent data-testid="connection-dialog">
+        <DialogTitle>{editing === undefined ? "Add connection" : `Edit ${editing.name}`}</DialogTitle>
+        <ConnectionForm onClose={onClose} {...(editing === undefined ? {} : { editing })} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Two steps on the way in, one on the way back.
+ *
+ * Creating picks a kind and then fills in that kind's form, because the two
+ * kinds share almost no fields and a single form holding both would be mostly
+ * disabled whichever was chosen. Editing skips step one: the kind is not
+ * editable, so offering it would be offering something the server refuses.
+ *
+ * Every field starts where the opening puts it, in a `useState` initialiser
+ * rather than in an effect — this component exists only while the dialog is
+ * open, so there is one opening to initialise for and nothing to reset.
+ */
+function ConnectionForm({
+  onClose,
+  editing,
+}: {
+  readonly onClose: () => void;
+  readonly editing?: Connection;
+}): JSX.Element {
   const create = useCreateConnection();
   const update = useUpdateConnection();
-  const [kind, setKind] = useState<ConnectionType | null>(null);
-  const [name, setName] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [revision, setRevision] = useState("");
-  // Which entry the model select is showing: a curated model id, or the sentinel
-  // that reveals the free fields. Kept beside `modelId` rather than derived from
-  // it, because a custom connection may name a curated model at another revision
-  // and the select must go on showing "Custom" while it does.
-  const [choice, setChoice] = useState<string>(CUSTOM_MODEL);
-  const [device, setDevice] = useState<string>("cpu");
-  const [precision, setPrecision] = useState<Precision>("fp32");
-  const [endpoint, setEndpoint] = useState("");
+  // Asked for by the form and not by the screen: the catalog is this form's read,
+  // and a screen that merely lists connections has no use for it. Nothing has to
+  // say so — this component only exists while the dialog is open.
+  const catalog = useProviders();
+  const entries = catalog.data === undefined ? [] : entriesOf(catalog.data.items);
+  const groups = groupsOf(entries);
+  const [kind, setKind] = useState<ConnectionType | null>(editing?.connection_type ?? null);
+  const [name, setName] = useState(editing?.name ?? "");
+  const [modelId, setModelId] = useState(editing?.model_id ?? "");
+  const [revision, setRevision] = useState(editing?.model_revision ?? "");
+  // Which entry the model select is showing: an offered model id, the sentinel
+  // that reveals the free fields, or `""` for undecided — the catalog is a query,
+  // so there is a real moment before the form knows what it may offer, and an
+  // edit cannot resolve its stored pair until the list arrives. Kept beside
+  // `modelId` rather than derived from it, because a custom connection may name
+  // an offered model at another revision and the select must go on showing
+  // "Custom" while it does.
+  const [choice, setChoice] = useState<string>("");
+  // A device outside what a form offers — `cuda:1`, or a row from a build before
+  // the vocabulary closed — is shown as it is rather than rewritten to the
+  // nearest offered member behind somebody's back.
+  const [device, setDevice] = useState<string>(editing?.device ?? "cpu");
+  const [precision, setPrecision] = useState<Precision>(editing?.precision ?? "fp32");
+  const [endpoint, setEndpoint] = useState(editing?.endpoint_url ?? "");
+  /**
+   * Whether the sentinel on screen was seeded here rather than chosen.
+   *
+   * The select cannot tell the two apart by value, and they mean opposite
+   * things: a sentinel this effect fell back to is a placeholder for a catalog
+   * that had nothing to offer, and one somebody picked is a decision. A ref
+   * rather than state because nothing renders differently for it.
+   */
+  const seededSentinel = useRef(false);
 
-  // Fill the form from whatever the dialog was opened for. An edit arrives with a
-  // row; a create arrives with nothing and, once a local kind is chosen, with the
-  // default curated model already in it.
+  /**
+   * Decide what the select shows, once the catalog can answer.
+   *
+   * Two things used to happen synchronously and cannot: a new local connection
+   * opened on a default read from a constant, and an edit resolved its stored
+   * pair against one. Both now wait for a served list.
+   *
+   * **It seeds only where nobody has decided anything.** That is `choice === ""`,
+   * and one more case: the sentinel this effect itself fell back to with no model
+   * id typed under it. Without that second case a successful *Try again* left the
+   * form on Custom with two empty fields while the select behind it filled up —
+   * and with it *unrestricted*, a catalog arriving after somebody typed a model
+   * id by hand would throw the id away.
+   *
+   * **Every dependency is a primitive but one.** A query hands back a fresh array
+   * on every rebuild, and an effect depending on that array re-runs on every
+   * render — which is how view state dies with nothing unmounting and no error to
+   * show for it. `editing` is the exception, and a deliberate one: it is the
+   * screen's `useState<Connection | null>`, captured when a row's Edit was
+   * pressed, so it changes only when the dialog is opened for a different row and
+   * the connection poll cannot churn its identity.
+   */
+  const fallback = defaultEntry(entries);
+  const fallbackId = fallback?.model_id;
+  const fallbackRevision = fallback?.model_revision;
+  const storedChoice =
+    editing === undefined
+      ? undefined
+      : entryFor(entries, editing.model_id, editing.model_revision)?.model_id;
+
   useEffect(() => {
-    if (!open) return;
+    if (catalog.isPending) return;
+    const undecided =
+      choice === "" || (choice === CUSTOM_MODEL && seededSentinel.current && modelId.trim() === "");
+    if (!undecided) return;
     if (editing !== undefined) {
-      setKind(editing.connection_type);
-      setName(editing.name);
-      setModelId(editing.model_id);
-      setRevision(editing.model_revision);
-      setChoice(
-        curatedEntry(editing.model_id, editing.model_revision)?.modelId ?? CUSTOM_MODEL,
-      );
-      // A device outside what a form offers — `cuda:1`, or a row from a build
-      // before the vocabulary closed — is shown as it is rather than rewritten
-      // to the nearest offered member behind somebody's back.
-      setDevice(editing.device ?? "cpu");
-      setPrecision(editing.precision ?? "fp32");
-      setEndpoint(editing.endpoint_url ?? "");
+      seededSentinel.current = storedChoice === undefined;
+      setChoice(storedChoice ?? CUSTOM_MODEL);
       return;
     }
-    setKind(null);
-    setName("");
-    setModelId("");
-    setRevision("");
-    setChoice(CUSTOM_MODEL);
-    setDevice("cpu");
-    setPrecision("fp32");
-    setEndpoint("");
-  }, [open, editing]);
+    if (kind !== "local") return;
+    // Nothing is offered, or nothing offered answers a point prompt: the form
+    // opens on its free fields rather than on a model nothing here can be asked.
+    if (fallbackId === undefined || fallbackRevision === undefined) {
+      seededSentinel.current = true;
+      setChoice(CUSTOM_MODEL);
+      return;
+    }
+    seededSentinel.current = false;
+    setChoice(fallbackId);
+    setModelId(fallbackId);
+    setRevision(fallbackRevision);
+  }, [
+    choice,
+    modelId,
+    kind,
+    editing,
+    catalog.isPending,
+    storedChoice,
+    fallbackId,
+    fallbackRevision,
+  ]);
 
-  function choose(next: ConnectionType): void {
-    setKind(next);
-    if (next === "local") pickModel(DEFAULT_MODEL.modelId);
-  }
-
-  /** Pick a curated entry — which sets both halves of the pair — or reveal the fields. */
+  /** Pick an offered entry — which sets both halves of the pair — or reveal the fields. */
   function pickModel(next: string): void {
+    // A decision, so the effect above leaves it alone from here on.
+    seededSentinel.current = false;
     setChoice(next);
-    const entry = next === CUSTOM_MODEL ? undefined : CURATED_BY_ID.get(next);
+    const entry = entries.find((one) => one.model_id === next);
     if (entry === undefined) return;
-    setModelId(entry.modelId);
-    setRevision(entry.revision);
+    setModelId(entry.model_id);
+    setRevision(entry.model_revision);
   }
 
   /**
@@ -817,6 +915,8 @@ function ConnectionDialog({
 
   const local = kind === "local";
   const custom = choice === CUSTOM_MODEL;
+  /** Whether the model field is a select — the one state of four that has a control. */
+  const offering = catalog.isSuccess && groups.length > 0;
   const pending = create.isPending || update.isPending;
   const complete =
     name.trim() !== "" &&
@@ -845,229 +945,278 @@ function ConnectionDialog({
   const failure = create.isError ? create.error : update.isError ? update.error : null;
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="connection-dialog">
-        <DialogTitle>{editing === undefined ? "Add connection" : `Edit ${editing.name}`}</DialogTitle>
-        {kind === null ? (
-          <>
-            <DialogDescription>
-              Where does this model run? Creating a connection downloads nothing.
-            </DialogDescription>
-            <div className="flex flex-col gap-2" data-testid="choose-type">
-              <Button variant="secondary" data-testid="choose-local" onClick={() => choose("local")}>
-                Local — weights this machine runs
-              </Button>
-              <Button variant="secondary" data-testid="choose-http" onClick={() => choose("http")}>
-                HTTP — an endpoint that answers this project&rsquo;s contract
-              </Button>
+    <>
+      {kind === null ? (
+        <>
+          <DialogDescription>
+            Where does this model run? Creating a connection downloads nothing.
+          </DialogDescription>
+          <div className="flex flex-col gap-2" data-testid="choose-type">
+            <Button
+              variant="secondary"
+              data-testid="choose-local"
+              onClick={() => setKind("local")}
+            >
+              Local — weights this machine runs
+            </Button>
+            <Button variant="secondary" data-testid="choose-http" onClick={() => setKind("http")}>
+              HTTP — an endpoint that answers this project&rsquo;s contract
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <DialogDescription>
+            {local
+              ? "Nothing is fetched until you ask for it, from the row this creates."
+              : "The endpoint answers this project's own inference contract."}
+          </DialogDescription>
+          <form className="flex flex-col gap-3" onSubmit={submit}>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="connection-name">Name</Label>
+              <Input
+                id="connection-name"
+                data-testid="connection-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                autoFocus
+              />
+              <FieldHint>Unique in this workspace, ignoring case.</FieldHint>
             </div>
-          </>
-        ) : (
-          <>
-            <DialogDescription>
-              {local
-                ? "Nothing is fetched until you ask for it, from the row this creates."
-                : "The endpoint answers this project's own inference contract."}
-            </DialogDescription>
-            <form className="flex flex-col gap-3" onSubmit={submit}>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="connection-name">Name</Label>
-                <Input
-                  id="connection-name"
-                  data-testid="connection-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  autoFocus
-                />
-                <FieldHint>Unique in this workspace, ignoring case.</FieldHint>
-              </div>
-              {/*
-                The curated list is the *local* form's, and only its. A curated
-                entry is a checkpoint this build has an adapter for and would
-                download; an HTTP connection names whatever the endpoint on the
-                other end runs, which this build never loads and cannot vouch
-                for. Offering the same list there would be recommending models
-                for somebody else's server.
-              */}
-              {local ? (
-                <>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="connection-model">Model</Label>
-                    <Select value={choice} onValueChange={pickModel}>
-                      <SelectTrigger id="connection-model" data-testid="connection-model">
-                        <SelectValue placeholder="Choose a model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CURATED_MODELS.map((group) => (
-                          <SelectGroup key={group.label}>
-                            <SelectLabel>{group.label}</SelectLabel>
-                            {/*
-                              Two lines: the id is what identifies the checkpoint
-                              and the rest is what it costs and what it is for
-                              On one line it is a sentence long enough to wrap
-                              inside the trigger, and a wrapped identifier is
-                              harder to read than a stacked one.
-                            */}
-                            {group.models.map((model) => (
-                              <SelectItem
-                                key={model.modelId}
-                                value={model.modelId}
-                                meta={`${bytes(model.totalBytes)} · ${model.hint}`}
-                              >
-                                {model.modelId}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        ))}
-                        <SelectGroup>
-                          <SelectItem
-                            value={CUSTOM_MODEL}
-                            meta="Any model id, at a revision you pin yourself"
-                          >
-                            Custom model…
-                          </SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                    <FieldHint>
-                      {custom
-                        ? "Any model this build has an adapter for. The list above is a starting point, not a limit."
-                        : "Pinned to the revision this list was checked against."}
+            {/*
+              The offered list is the *local* form's, and only its. An offer is
+              a checkpoint an installed driver can load on this machine and
+              would download; an HTTP connection names whatever the endpoint on
+              the other end runs, which this build never loads and cannot vouch
+              for. Offering the same list there would be recommending models
+              for somebody else's server.
+            */}
+            {local ? (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  {/*
+                    `htmlFor` only where the control it names exists: three of
+                    the four states below have no form control at all, and a
+                    label pointing at an id nothing carries is worse than a
+                    label pointing at nothing.
+                  */}
+                  <Label htmlFor={offering ? "connection-model" : undefined}>Model</Label>
+                  {catalog.isPending ? (
+                    // Principle 9: a disabled grey select is a question the
+                    // interface refuses to answer. This says what is happening
+                    // and leaves the space the list will occupy.
+                    <div data-testid="catalog-loading">
+                      {/*
+                        The skeleton is silent. `LoadingState`'s label is
+                        `sr-only`, and the sentence under it is text a screen
+                        reader already reads — labelled, the same sentence would
+                        be announced twice.
+                      */}
+                      <LoadingState rows={1} label="" />
+                      <FieldHint>Reading which models this build can run…</FieldHint>
+                    </div>
+                  ) : catalog.isError ? (
+                    <div data-testid="catalog-unavailable">
+                      <ErrorState
+                        className="mb-1"
+                        code={asApiError(catalog.error).code}
+                        message={refusalProse(catalog.error)}
+                        onRetry={() => void catalog.refetch()}
+                      />
+                    </div>
+                  ) : groups.length === 0 ? (
+                    <FieldHint data-testid="catalog-empty">
+                      No installed driver offers a model by name. Install a provider
+                      distribution to be offered one, or name a model below and pin its
+                      revision yourself.
                     </FieldHint>
-                  </div>
-                  {custom && (
+                  ) : (
                     <>
-                      <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="connection-custom-model">Model id</Label>
-                        <Input
-                          id="connection-custom-model"
-                          data-testid="connection-custom-model"
-                          value={modelId}
-                          onChange={(event) => setModelId(event.target.value)}
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="connection-revision">Revision</Label>
-                        <Input
-                          id="connection-revision"
-                          data-testid="connection-revision"
-                          value={revision}
-                          onChange={(event) => setRevision(event.target.value)}
-                        />
-                        <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
-                      </div>
+                      <Select value={choice} onValueChange={pickModel}>
+                        <SelectTrigger id="connection-model" data-testid="connection-model">
+                          <SelectValue placeholder="Choose a model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {groups.map((group) => (
+                            <SelectGroup key={group.key}>
+                              <SelectLabel>{group.label}</SelectLabel>
+                              {/*
+                                Two lines: the id is what identifies the
+                                checkpoint and the rest is what it is for. On
+                                one line it is a sentence long enough to wrap
+                                inside the trigger, and a wrapped identifier is
+                                harder to read than a stacked one.
+                              */}
+                              {group.entries.map((entry) => (
+                                <SelectItem
+                                  key={entry.model_id}
+                                  value={entry.model_id}
+                                  meta={entry.hint}
+                                >
+                                  {entry.model_id}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          ))}
+                          <SelectGroup>
+                            <SelectItem
+                              value={CUSTOM_MODEL}
+                              meta="Any model id, at a revision you pin yourself"
+                            >
+                              Custom model…
+                            </SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      <FieldHint>
+                        {custom
+                          ? "Any model this build has an adapter for. The list above is a starting point, not a limit."
+                          : "Pinned to the revision the driver that offers it declares."}
+                      </FieldHint>
                     </>
                   )}
-                  <div className="flex gap-3">
-                    <div className="flex flex-1 flex-col gap-1.5">
-                      <Label htmlFor="connection-device">Device</Label>
-                      <Select value={device} onValueChange={pickDevice}>
-                        <SelectTrigger id="connection-device" data-testid="connection-device">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {/*
-                            A row already holding something else — `cuda:1` for a
-                            second GPU — keeps its own value as an option, so
-                            opening the edit form does not silently reassign it.
-                          */}
-                          {(DEVICES.includes(device as (typeof DEVICES)[number])
-                            ? DEVICES
-                            : [...DEVICES, device]
-                          ).map((one) => (
-                            <SelectItem key={one} value={one}>
-                              {one}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                </div>
+                {/*
+                  Whenever there is nothing to offer — the catalog refused, or
+                  it answered and named nothing — the seeding effect lands
+                  `choice` on the sentinel, so this reads that one decision
+                  rather than working the same fact out a second time. A model
+                  id needs no catalog, and creating a connection downloads
+                  nothing, so a listing that failed is not a reason to prevent
+                  one being configured.
+                */}
+                {custom && (
+                  <>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="connection-custom-model">Model id</Label>
+                      <Input
+                        id="connection-custom-model"
+                        data-testid="connection-custom-model"
+                        value={modelId}
+                        onChange={(event) => setModelId(event.target.value)}
+                      />
                     </div>
-                    <div className="flex flex-1 flex-col gap-1.5">
-                      <Label htmlFor="connection-precision">Precision</Label>
-                      <Select
-                        value={precision}
-                        onValueChange={(next) => setPrecision(next as Precision)}
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="connection-revision">Revision</Label>
+                      <Input
+                        id="connection-revision"
+                        data-testid="connection-revision"
+                        value={revision}
+                        onChange={(event) => setRevision(event.target.value)}
+                      />
+                      <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
+                    </div>
+                  </>
+                )}
+                <div className="flex gap-3">
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Label htmlFor="connection-device">Device</Label>
+                    <Select value={device} onValueChange={pickDevice}>
+                      <SelectTrigger id="connection-device" data-testid="connection-device">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {/*
+                          A row already holding something else — `cuda:1` for a
+                          second GPU — keeps its own value as an option, so
+                          opening the edit form does not silently reassign it.
+                        */}
+                        {(DEVICES.includes(device as (typeof DEVICES)[number])
+                          ? DEVICES
+                          : [...DEVICES, device]
+                        ).map((one) => (
+                          <SelectItem key={one} value={one}>
+                            {one}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Label htmlFor="connection-precision">Precision</Label>
+                    <Select
+                      value={precision}
+                      onValueChange={(next) => setPrecision(next as Precision)}
+                    >
+                      <SelectTrigger
+                        id="connection-precision"
+                        data-testid="connection-precision"
                       >
-                        <SelectTrigger
-                          id="connection-precision"
-                          data-testid="connection-precision"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {precisionsFor(device).map((one) => (
-                            <SelectItem key={one} value={one}>
-                              {one}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FieldHint data-testid="precision-hint">
-                        {precisionsFor(device).length === 1
-                          ? "Half precision applies on CUDA only — on a CPU it has no effect."
-                          : "fp16 halves the memory and runs faster on CUDA."}
-                      </FieldHint>
-                    </div>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {precisionsFor(device).map((one) => (
+                          <SelectItem key={one} value={one}>
+                            {one}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FieldHint data-testid="precision-hint">
+                      {precisionsFor(device).length === 1
+                        ? "Half precision applies on CUDA only — on a CPU it has no effect."
+                        : "fp16 halves the memory and runs faster on CUDA."}
+                    </FieldHint>
                   </div>
-                  <AccessLine modelId={modelId.trim()} />
-                  <DownloadSizeLine modelId={modelId.trim()} revision={revision.trim()} />
-                </>
-              ) : (
-                <>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="connection-custom-model">Model</Label>
-                    <Input
-                      id="connection-custom-model"
-                      data-testid="connection-custom-model"
-                      value={modelId}
-                      onChange={(event) => setModelId(event.target.value)}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="connection-revision">Revision</Label>
-                    <Input
-                      id="connection-revision"
-                      data-testid="connection-revision"
-                      value={revision}
-                      onChange={(event) => setRevision(event.target.value)}
-                    />
-                    <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="connection-endpoint">Endpoint URL</Label>
-                    <Input
-                      id="connection-endpoint"
-                      data-testid="connection-endpoint"
-                      value={endpoint}
-                      onChange={(event) => setEndpoint(event.target.value)}
-                    />
-                  </div>
-                </>
-              )}
-              {failure !== null && (
-                <FieldError data-testid="connection-error">
-                  <Badge variant="destructive">{asApiError(failure).code}</Badge>{" "}
-                  {asApiError(failure).message}
-                </FieldError>
-              )}
-              <DialogFooter>
-                <Button variant="secondary" onClick={onClose}>
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  data-testid="connection-submit"
-                  disabled={!complete || pending}
-                >
-                  {pending ? "Saving…" : editing === undefined ? "Create" : "Save"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+                </div>
+                <AccessLine entries={entries} modelId={modelId.trim()} />
+                <DownloadSizeLine modelId={modelId.trim()} revision={revision.trim()} />
+              </>
+            ) : (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="connection-custom-model">Model</Label>
+                  <Input
+                    id="connection-custom-model"
+                    data-testid="connection-custom-model"
+                    value={modelId}
+                    onChange={(event) => setModelId(event.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="connection-revision">Revision</Label>
+                  <Input
+                    id="connection-revision"
+                    data-testid="connection-revision"
+                    value={revision}
+                    onChange={(event) => setRevision(event.target.value)}
+                  />
+                  <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="connection-endpoint">Endpoint URL</Label>
+                  <Input
+                    id="connection-endpoint"
+                    data-testid="connection-endpoint"
+                    value={endpoint}
+                    onChange={(event) => setEndpoint(event.target.value)}
+                  />
+                </div>
+              </>
+            )}
+            {failure !== null && (
+              <FieldError data-testid="connection-error">
+                <Badge variant="destructive">{asApiError(failure).code}</Badge>{" "}
+                {asApiError(failure).message}
+              </FieldError>
+            )}
+            <DialogFooter>
+              <Button variant="secondary" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                data-testid="connection-submit"
+                disabled={!complete || pending}
+              >
+                {pending ? "Saving…" : editing === undefined ? "Create" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </>
+      )}
+    </>
   );
 }
 
@@ -1081,19 +1230,25 @@ function ConnectionDialog({
  * step earlier, while the choice is still being made.
  *
  * **Looked up by model id alone, and deliberately not through
- * {@link curatedEntry}.** That helper answers "is this row showing exactly this
- * curated entry", which compares the revision too — the right question for the
+ * {@link entryFor}.** That helper answers "is this row showing exactly this
+ * offered entry", which compares the revision too — the right question for the
  * select, and the wrong one here. An access gate belongs to the *repository*:
  * pinning some other commit of the same model does not exempt anybody from its
  * terms, so a line that disappeared when the revision was edited would be hiding
  * a requirement that still applies.
  *
- * A model id nobody curated gets nothing here, and that is honest rather than a
- * gap — whether an arbitrary repository is gated is not something this build
- * knows before asking, and the refusal is what answers it.
+ * A model id no installed driver offers gets nothing here, and that is honest
+ * rather than a gap — whether an arbitrary repository is gated is not something
+ * this build knows before asking, and the refusal is what answers it.
  */
-function AccessLine({ modelId }: { readonly modelId: string }): JSX.Element {
-  const access = CURATED_BY_ID.get(modelId)?.access;
+function AccessLine({
+  entries,
+  modelId,
+}: {
+  readonly entries: readonly CuratedEntry[];
+  readonly modelId: string;
+}): JSX.Element {
+  const access = accessFor(entries, modelId);
   if (access === undefined) return <></>;
   return (
     <p className="text-meta text-muted-foreground" data-testid="model-access">
@@ -1175,10 +1330,10 @@ const SCALED = new Intl.NumberFormat(undefined, {
  * publisher quotes; binary units would put a different number on screen from the
  * one the model's own page shows.
  *
- * **One helper, and every size on this screen goes through it** — the curated
- * list's entries, the form's line before a confirm, and both halves of a transfer
- * in flight. `DESIGN.md`'s Numbers rule states the reason: `1.2 GB` and `1,2 GB`
- * on one screen is exactly how a call-site decision goes wrong.
+ * **One helper, and every size on this screen goes through it** — the form's line
+ * before a confirm, and both halves of a transfer in flight. `DESIGN.md`'s
+ * Numbers rule states the reason: `1.2 GB` and `1,2 GB` on one screen is exactly
+ * how a call-site decision goes wrong.
  *
  * Locale-aware for the same rule's sake, and a whole number of bytes stays whole:
  * `512 B` rather than `512.0 B`, because a unit small enough to count exactly is

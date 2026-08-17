@@ -405,9 +405,11 @@ export function useDownloadSize(
  * delays the sentence that says what to do. The field renders a retry control, so
  * a person who does want another attempt has one.
  *
- * `enabled` is how a caller says it is not asking yet. The catalog is the create
- * form's read, and a screen that merely lists connections must not fetch it —
- * which also keeps every other browser scenario's stubs honest.
+ * The catalog is the connection form's read, and a screen that merely lists
+ * connections must not fetch it — which also keeps every other browser
+ * scenario's stubs honest. The form arranges that by *existing* only while its
+ * dialog is open, rather than by holding this hook disabled; `enabled` is here
+ * for a caller that has to ask from somewhere longer-lived.
  */
 export function useProviders(enabled = true): UseQueryResult<ProviderPage, Error> {
   const client = useApiClient();
