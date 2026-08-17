@@ -67,6 +67,7 @@ from visionset.kernel.domain.geometry import (
 )
 from visionset.kernel.domain.inference import (
     CHECKABLE_STATES,
+    COMMIT_PATTERN,
     CONNECTION_JOB_KEY,
     CPU,
     CUDA,
@@ -82,6 +83,7 @@ from visionset.kernel.domain.inference import (
     ConnectionJobs,
     ConnectionSetupState,
     ConnectionType,
+    CuratedModel,
     DownloadSize,
     InferenceConnection,
     IntegrityCheck,
@@ -257,6 +259,7 @@ __all__ = [
     "CUDA",
     "MPS",
     "DEVICE_PATTERN",
+    "COMMIT_PATTERN",
     "OFFERED_DEVICES",
     "precisions_for",
     "connection_job_payload",
@@ -314,6 +317,7 @@ __all__ = [
     "ClassificationGeometry",
     "ConnectionSetupState",
     "ConnectionType",
+    "CuratedModel",
     "Dataset",
     "DatasetChange",
     "DatasetMember",
