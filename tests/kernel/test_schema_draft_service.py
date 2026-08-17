@@ -17,6 +17,7 @@ from visionset.kernel.domain import (
     Project,
     SchemaDraft,
     SchemaProvenance,
+    SchemaPublication,
 )
 from visionset.kernel.errors import InvalidSchema, ProjectNotFound, SchemaDraftNotFound, StaleWrite
 from visionset.kernel.services import SchemaDraftService, SchemaService, WorkspaceService
@@ -361,6 +362,46 @@ def test_an_attribute_with_no_kind_is_refused_at_publish_and_named(tmp_path: Pat
     with pytest.raises(InvalidSchema) as refused:
         drafts.publish(project.id, CURATED, expected_revision=saved.revision)
     assert "classes.1" in str(refused.value)
+    workspace.close()
+
+
+def test_a_write_landing_between_publish_and_its_discard_survives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gap ``publish``'s own docstring names — not one transaction, and it
+    cannot be — is exactly where a second writer's commit must not be destroyed.
+    A ``discard`` with no revision check would delete it as collateral of a
+    publish that never asked to touch it.
+    """
+    workspace, drafts, project = _drafts(tmp_path)
+    saved = drafts.save(
+        project.id, CURATED, classes=[DraftLabelClass(name="car", geometries=(GeometryType.BBOX,))]
+    )
+    original_create_version = SchemaService.create_version
+
+    def racing_create_version(
+        self: SchemaService, *args: object, **kwargs: object
+    ) -> SchemaPublication:
+        published = original_create_version(self, *args, **kwargs)  # type: ignore[arg-type]
+        # A second writer's save, committed in its own unit of work, in the
+        # window between `create_version` returning and `publish`'s discard.
+        drafts.save(
+            project.id,
+            CURATED,
+            classes=[
+                DraftLabelClass(name="car", geometries=(GeometryType.BBOX,)),
+                DraftLabelClass(name="lane"),
+            ],
+            expected_revision=saved.revision,
+        )
+        return published
+
+    monkeypatch.setattr(SchemaService, "create_version", racing_create_version)
+    drafts.publish(project.id, CURATED, expected_revision=saved.revision)
+
+    survivor = drafts.get(project.id, CURATED)
+    assert survivor is not None
+    assert [c.name for c in survivor.classes] == ["car", "lane"]
     workspace.close()
 
 

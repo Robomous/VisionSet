@@ -192,10 +192,16 @@ class SchemaDraftService:
         than a new failure mode, and the alternative is a service reaching inside
         another service's transaction.
 
-        The discard happens even when nothing was written. ``create_version``
-        answers a publish of the contract already in force with the version
-        already in force, and a draft that proposed exactly that has nothing left
-        to say.
+        The same gap is why the discard is **conditional on the revision this
+        call read**, not unconditional the way the standalone ``discard`` is. A
+        write can land in the window between ``create_version`` committing and
+        this method's own discard — two people sharing one draft is the ordinary
+        shape, not an edge case — and a discard with no revision check would
+        destroy that write as collateral of a publish that never asked to touch
+        it. When nothing landed in the gap, the discard runs exactly as before:
+        ``create_version`` answers a publish of the contract already in force
+        with the version already in force, and a draft that proposed exactly
+        that has nothing left to say.
 
         Raises:
             ProjectNotFound: no such project in this workspace.
@@ -223,8 +229,25 @@ class SchemaDraftService:
             provenance=kind,
             allow_destructive=allow_destructive,
         )
-        self.discard(project_id, kind)
+        self._discard_if_unmoved(project_id, kind, expected_revision)
         return published
+
+    def _discard_if_unmoved(
+        self, project_id: UUID, kind: SchemaProvenance, expected_revision: int
+    ) -> None:
+        """Discard the draft ``publish`` just read, unless a later write moved it.
+
+        A fresh unit of work, deliberately — ``create_version`` already
+        committed its own by the time this runs, so what is read here is
+        whatever the draft holds *now*, not what ``publish`` read before
+        calling it. Only a draft still sitting at the revision that was
+        actually published is spent; anything else is somebody else's write
+        that landed in the gap, and it survives.
+        """
+        with self._workspace.unit_of_work() as uow:
+            stored = self._stored(uow, project_id, kind)
+            if stored is not None and stored.revision == expected_revision:
+                uow.schema_drafts.delete(stored.id)
 
     # --- lookups shared by the operations above ----------------------------
 
