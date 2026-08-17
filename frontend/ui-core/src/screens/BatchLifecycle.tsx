@@ -229,7 +229,7 @@ export function ApproveDialog({
 
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="partition-kind">Partition</Label>
+            <Label htmlFor="partition-kind">Jobs</Label>
             <Select value={kind} onValueChange={(next) => setKind(next as typeof kind)}>
               <SelectTrigger id="partition-kind" data-testid="partition-kind">
                 <SelectValue />
