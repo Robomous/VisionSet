@@ -83,10 +83,11 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useState, type ComponentType, type FormEvent, type JSX } from "react";
+import { useEffect, useRef, useState, type ComponentType, type FormEvent, type JSX } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
 import { Async } from "../data/Async";
+import { useApiClient } from "../data/ApiProvider";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { Breadcrumb } from "../patterns/Breadcrumb";
@@ -114,7 +115,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
 import { BatchesScreen } from "./BatchesScreen";
 import { DatasetScreen } from "./DatasetScreen";
 import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
-import { SchemaEditor, type SchemaDraft } from "./SchemaEditor";
+import { same, SchemaEditor, type SchemaDraft } from "./SchemaEditor";
 import { groupByProvenance } from "./schemaHistory";
 import {
   useActiveSchema,
@@ -124,6 +125,9 @@ import {
   useProjectReadiness,
   useProjectStats,
   useRenameProject,
+  saveSchemaDraftRequest,
+  useSaveSchemaDraft,
+  useSchemaDraft,
   useSchemaVersions,
   type Batch,
   type Project,
@@ -268,8 +272,221 @@ export function ProjectScreen({
    *
    * The draft names the project it belongs to, because this component is
    * *re-rendered* rather than remounted when the route's `:projectId` changes.
+   *
+   * It is now also the **responsive half of a value whose durable half is on the
+   * server**: the debounced write below shares this same state, for the same
+   * unmount reason — a `setTimeout` scheduled inside the editor is cancelled the
+   * moment a tab switch unmounts it, and a save that never fires because
+   * somebody glanced at Overview is the tab-survival bug all over again, one
+   * layer down.
    */
   const [schemaDraft, setSchemaDraft] = useState<SchemaDraft | null>(null);
+  const client = useApiClient();
+  const saveSchemaDraft = useSaveSchemaDraft(projectId, "curated");
+  // The pending debounce timer and the write it is about to start — refs rather
+  // than state, because neither is ever rendered and a render on every tick
+  // would be pure waste.
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftWrite = useRef<Promise<number | null> | null>(null);
+  // Updated every render, read only from an *earlier* render's effect
+  // cleanup — see the debounce effect below for why a departing project's
+  // timer needs to tell itself apart from an ordinary reschedule.
+  const latestProjectId = useRef(projectId);
+  latestProjectId.current = projectId;
+  // Same shape, same reason, for the draft itself: the debounce effect below
+  // reads this once at schedule time rather than naming `schemaDraft` in its
+  // own dependency list, which would restart the timer on every
+  // `revision`-only update the write's own success produces.
+  const latestSchemaDraft = useRef(schemaDraft);
+  latestSchemaDraft.current = schemaDraft;
+  // The write itself, reached through a ref that is reassigned every render
+  // rather than named directly in the effect below. `writeSchemaDraft` closes
+  // over this render's `schemaDraft` and `saveSchemaDraft`, which is exactly
+  // what a timer firing later needs — the *latest* values, not the ones from
+  // whichever render scheduled it — and a ref is what lets the effect reach
+  // that without depending on the closure's own changing identity, which would
+  // restart the timer on every unrelated re-render.
+  const writeSchemaDraftRef = useRef<() => Promise<number | null>>(() => Promise.resolve(null));
+
+  /**
+   * Write the whole held draft now, and hand back the revision it landed at.
+   *
+   * `null` covers two different situations the caller tells apart itself:
+   * nothing was held to write (`schemaDraft` is `null` or belongs to another
+   * project — `SchemaEditor`'s own `showing.revision` is the answer there), and
+   * a write that was attempted but refused. `STALE_WRITE` is not retried and the
+   * local draft is not cleared — `saveSchemaDraft.error` already carries the
+   * failure for the editor to announce, which is what "hand the error down"
+   * means: this function's job ends at not losing the typed work, not at
+   * deciding what to say about the refusal.
+   */
+  async function writeSchemaDraft(): Promise<number | null> {
+    if (schemaDraft === null || schemaDraft.projectId !== projectId) return null;
+    const attempt = (async () => {
+      try {
+        const saved = await saveSchemaDraft.mutateAsync({
+          classes: schemaDraft.classes,
+          note: schemaDraft.note,
+          basedOn: schemaDraft.basedOn,
+          revision: schemaDraft.revision,
+        });
+        // Only `revision` moves — the rest of the draft is whatever has been
+        // typed since the write started, and this must not clobber it with the
+        // snapshot the write was decided against.
+        setSchemaDraft((current) =>
+          current === null ? current : { ...current, revision: saved.revision },
+        );
+        return saved.revision;
+      } catch {
+        // Caught here only so a debounce firing in the background never
+        // surfaces as an unhandled rejection — the mutation's own `error`
+        // already recorded the failure for `SchemaSection` to forward.
+        return null;
+      }
+    })();
+    draftWrite.current = attempt;
+    const revision = await attempt;
+    if (draftWrite.current === attempt) draftWrite.current = null;
+    return revision;
+  }
+  writeSchemaDraftRef.current = writeSchemaDraft;
+
+  useEffect(() => {
+    // Read from the ref, not the closed-over `schemaDraft` directly — see
+    // `latestSchemaDraft`'s own comment. At this point in a render the ref is
+    // already this render's value, so it is exactly what a direct read would
+    // have given, without needing the draft's identity listed below.
+    const current = latestSchemaDraft.current;
+    if (current === null || current.projectId !== projectId) return;
+    // A re-seed that changed nothing is not an edit, and scheduling one would
+    // write a draft nobody asked for. `revision === null` is what narrows this
+    // to the one shape that actually matters: `SchemaEditor`'s post-publish
+    // rebase, which sets `classes` back to `seed` with `revision: null`
+    // because the publish spent whatever the server held — writing here would
+    // create a phantom draft holding exactly the contract just published.
+    // Reloading over a draft the server *still* holds ("Load v{moved}") sets
+    // this same `classes === seed` shape but carries that draft's own
+    // revision, and still has to schedule: skipping it would leave the stale
+    // draft the reload was meant to replace sitting on the server forever.
+    if (current.revision === null && current.note === "" && same(current.classes, current.seed)) {
+      return;
+    }
+    // Captured here, at schedule time — not read from `writeSchemaDraftRef`
+    // below, which by the time this fires has already been reassigned to a
+    // closure over whatever project the *next* render landed on. The
+    // cleanup needs the project this specific timer was scheduled for.
+    const scheduledForProject = projectId;
+    const scheduledDraft = current;
+    // 400ms after the draft stops changing, not after every keystroke — typing
+    // three characters resets this timer three times and writes once.
+    const timer = setTimeout(() => {
+      draftTimer.current = null;
+      void writeSchemaDraftRef.current();
+    }, 400);
+    draftTimer.current = timer;
+    return () => {
+      clearTimeout(timer);
+      if (draftTimer.current === timer) draftTimer.current = null;
+      // Every dependency change below runs this same cleanup, including an
+      // ordinary keystroke — which reschedules the very same project's timer
+      // a moment later and must not also fire a write early. Only a project
+      // switch leaves `latestProjectId` disagreeing with what this timer was
+      // scheduled for, and that is the one case with no later timer of its
+      // own to rely on: `ProjectScreen` is *re-rendered* rather than
+      // remounted on a route change, so without this, a pending write is
+      // simply thrown away, cancelled by the cleanup and never replaced.
+      if (scheduledForProject !== latestProjectId.current) {
+        void saveSchemaDraftRequest(client, scheduledForProject, "curated", {
+          classes: scheduledDraft.classes,
+          note: scheduledDraft.note,
+          basedOn: scheduledDraft.basedOn,
+          revision: scheduledDraft.revision,
+        })
+          .then((saved) => {
+            // Only if that project's draft is still the one held — it may
+            // itself have been superseded (a fresh edit back on this same
+            // project after returning to it) while this request was in
+            // flight, and this must not clobber that with a stale revision.
+            setSchemaDraft((current) =>
+              current !== null && current.projectId === scheduledForProject
+                ? { ...current, revision: saved.revision }
+                : current,
+            );
+          })
+          .catch(() => {
+            // Best-effort: nothing on screen belongs to the departing
+            // project any more to announce a refusal on. Reopening it later
+            // reads as an ordinary stale draft and is announced the same
+            // way any other one is.
+          });
+      }
+    };
+    // `schemaDraft?.classes/.note/.basedOn` decide *when* to reschedule — a
+    // keystroke resets the timer, by changing one of these — without the
+    // body reading them directly, which is what keeps a `revision`-only
+    // update from also resetting it. The debounced write itself always goes
+    // through `writeSchemaDraftRef`, closing over the latest values at the
+    // moment it actually runs.
+  }, [schemaDraft?.classes, schemaDraft?.note, schemaDraft?.basedOn, projectId, client]);
+
+  /**
+   * The debounce's other blind side: a page that unloads mid-timer.
+   *
+   * A tab switch and a project switch both leave the SPA running, so the ref
+   * dance above is enough to outlive either — but a reload, a typed URL or a
+   * closed tab tears the whole JS context down, timer and all, and a reload a
+   * keystroke after the last edit is the ordinary way somebody checks that
+   * their work stuck, not a rare one. `pagehide` fires for exactly that unload
+   * and for nothing else — a tab change inside this SPA never reaches it —
+   * and unlike `beforeunload` it asks nothing of the user and holds no
+   * navigation open.
+   *
+   * `keepalive` is the point: an ordinary `fetch` started here is not
+   * guaranteed to finish once the page is already unloading, which is the
+   * same loss under a different name. Sent through `saveSchemaDraftRequest`
+   * directly rather than the mutation object, for the same reason the project
+   * -switch flush above does — nothing is left mounted to hand a response to.
+   */
+  useEffect(() => {
+    function flushOnUnload(): void {
+      if (draftTimer.current === null) return;
+      clearTimeout(draftTimer.current);
+      draftTimer.current = null;
+      const held = latestSchemaDraft.current;
+      if (held === null || held.projectId !== latestProjectId.current) return;
+      void saveSchemaDraftRequest(
+        client,
+        held.projectId,
+        "curated",
+        {
+          classes: held.classes,
+          note: held.note,
+          basedOn: held.basedOn,
+          revision: held.revision,
+        },
+        { keepalive: true },
+      ).catch(() => {
+        // Best-effort: the page is already gone by the time this settles, so
+        // there is nowhere left to announce a refusal.
+      });
+    }
+    window.addEventListener("pagehide", flushOnUnload);
+    return () => window.removeEventListener("pagehide", flushOnUnload);
+  }, [client]);
+
+  /**
+   * Cancel the pending debounce and write now — the flush the Save button
+   * awaits so a publish never races the keystroke that triggered it. A write
+   * already in flight is awaited rather than duplicated.
+   */
+  async function flushSchemaDraft(): Promise<number | null> {
+    if (draftTimer.current !== null) {
+      clearTimeout(draftTimer.current);
+      draftTimer.current = null;
+    }
+    if (draftWrite.current !== null) return draftWrite.current;
+    return writeSchemaDraftRef.current();
+  }
 
   // Batches are offered only when the host can open one. A table whose every row
   // is a dead link is a tile that reads as broken, and a host that cannot
@@ -382,6 +599,8 @@ export function ProjectScreen({
             projectId={projectId}
             draft={schemaDraft}
             onDraftChange={setSchemaDraft}
+            draftSaveError={saveSchemaDraft.error}
+            onFlushDraft={flushSchemaDraft}
           />
         </TabsContent>
 
@@ -814,13 +1033,23 @@ function SchemaSection({
   projectId,
   draft,
   onDraftChange,
+  draftSaveError,
+  onFlushDraft,
 }: {
   readonly projectId: string;
   /** Held by `ProjectScreen`, which outlives this tab. See its comment. */
   readonly draft: SchemaDraft | null;
   readonly onDraftChange: (draft: SchemaDraft | null) => void;
+  /** The autosave's last failure, forwarded from `ProjectScreen`. See its comment. */
+  readonly draftSaveError: unknown;
+  /** The autosave's flush, forwarded from `ProjectScreen`. See its comment. */
+  readonly onFlushDraft: () => Promise<number | null>;
 }): JSX.Element {
   const schema = useActiveSchema(projectId);
+  // Tab-scoped, unlike the debounced write: this is only what seeds the editor,
+  // and nothing is lost by letting it follow the tab the way every other
+  // schema query here does.
+  const serverDraft = useSchemaDraft(projectId, "curated");
   const failure = schema.isError ? asApiError(schema.error) : null;
   const schemaless = failure?.code === SCHEMA_NOT_FOUND;
 
@@ -841,6 +1070,15 @@ function SchemaSection({
         active={schemaless ? null : (schema.data ?? null)}
         draft={draft}
         onDraftChange={onDraftChange}
+        serverDraft={serverDraft.data ?? null}
+        draftSaveError={draftSaveError}
+        onFlushDraft={onFlushDraft}
+        onReloadDraft={() => {
+          // Refetched before the local copy is discarded, so the next render
+          // seeds from what the server actually holds now rather than
+          // flashing back to the published version while the request flies.
+          void serverDraft.refetch().then(() => onDraftChange(null));
+        }}
       />
       {/*
         The ledger, below the editor rather than beside it in the tab bar.

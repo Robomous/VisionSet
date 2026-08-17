@@ -35,8 +35,8 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from visionset import wire
-from visionset.kernel.domain import LabelClass, SchemaProvenance
-from visionset.kernel.services import SchemaService
+from visionset.kernel.domain import DraftLabelClass, LabelClass, SchemaProvenance
+from visionset.kernel.services import SchemaDraftService, SchemaService
 from visionset.mcp._resolve import ProjectRef, resolve_project
 from visionset.mcp._workspace import opened_workspace
 
@@ -53,6 +53,78 @@ ClassesParam = Annotated[
 
 Module-level for the ``inspect.signature`` reason :data:`ProjectRef` is.
 """
+
+KindParam = Annotated[
+    SchemaProvenance,
+    Field(
+        description=(
+            "Which draft to read or write. A project holds at most one draft per "
+            "kind. Leave it at 'curated' unless you are specifically working the "
+            "draft an annotation session opened."
+        )
+    ),
+]
+"""Which of a project's (at most two) drafts a call names."""
+
+DraftClassesParam = Annotated[
+    tuple[DraftLabelClass, ...],
+    Field(
+        description=(
+            "The whole draft, replacing whatever it held. A class may be "
+            "incomplete — no name yet, no geometry yet — a draft is where that is "
+            "allowed. Sending only the classes you are adding deletes everyone "
+            "else's: read the draft first and send the full list back."
+        )
+    ),
+]
+"""The proposed draft classes, permissive where :data:`ClassesParam` is strict."""
+
+NoteParam = Annotated[
+    str,
+    Field(
+        description=(
+            "The version message this draft will publish under. Replaces "
+            "whatever note the draft carried, the way `classes` does."
+        )
+    ),
+]
+"""The draft's version message, written and overwritten like its classes."""
+
+RevisionParam = Annotated[
+    int | None,
+    Field(
+        description=(
+            "The revision you last read. Omit only to create a draft that does "
+            "not exist yet — omitting it against an existing draft is refused, "
+            "and so is a revision that is no longer current. Read the draft again "
+            "and resend on top of what is there."
+        )
+    ),
+]
+"""The optimistic-concurrency token for :func:`set_schema_draft`."""
+
+PublishRevisionParam = Annotated[
+    int,
+    Field(
+        description=(
+            "The draft's current revision, from `get_schema_draft` or the last "
+            "`set_schema_draft`. Required — publishing is named, not assumed."
+        )
+    ),
+]
+"""The required revision :func:`publish_schema_draft` must be told."""
+
+AllowDestructiveParam = Annotated[
+    bool,
+    Field(
+        description=(
+            "Must be true to publish a change that removes or narrows something. "
+            "Has no effect on an additive change, and none at all on a change "
+            "that would orphan existing annotations — that one is refused outright."
+        )
+    ),
+]
+"""Whether a narrowing publish is allowed to proceed."""
 
 
 def get_schema(
@@ -217,5 +289,119 @@ def create_schema_version(
             description=description,
             provenance=provenance,
             allow_destructive=allow_destructive,
+        )
+    return wire.schema_publication(published)
+
+
+def get_schema_draft(
+    project: ProjectRef, kind: KindParam = SchemaProvenance.CURATED
+) -> dict[str, Any]:
+    """Read the schema version this project is still writing.
+
+    A project holds at most one draft per kind, and it is **shared**: everybody
+    with access to this workspace sees the same one. There are no per-user
+    drafts, because there are no users — so before writing a draft, read it, and
+    treat what you find as somebody else's work in progress rather than yours.
+
+    `draft` is null when nobody has started one, which is the ordinary state.
+
+    Use this to compose a schema over several calls instead of holding classes in
+    your own context: `set_schema_draft` writes what you have so far,
+    `publish_schema_draft` turns it into a version. A draft may hold classes that
+    are not finished — no name yet, no geometry yet — which `create_schema_version`
+    would refuse outright.
+
+    `revision` is what your next `set_schema_draft` or `publish_schema_draft` must
+    pass. If it comes back changed from what you last wrote, somebody else edited
+    the draft in between and your copy is stale.
+    """
+    with opened_workspace() as workspace:
+        resolved = resolve_project(workspace, project)
+        draft = SchemaDraftService(workspace).get(resolved.id, kind)
+    return {"draft": None if draft is None else wire.schema_draft(draft)}
+
+
+def set_schema_draft(
+    project: ProjectRef,
+    classes: DraftClassesParam,
+    kind: KindParam = SchemaProvenance.CURATED,
+    note: NoteParam = "",
+    revision: RevisionParam = None,
+) -> dict[str, Any]:
+    """Write the whole draft, creating it when there is none.
+
+    `classes` replaces the draft entirely — this is not an append. Read the draft
+    first, add to what you find, and send the result; sending only your own
+    classes deletes everybody else's.
+
+    Classes may be incomplete. A class with no name, or with no geometry, is
+    stored as given: that is what a draft is for. Every rule
+    `create_schema_version` enforces is enforced by `publish_schema_draft`
+    instead.
+
+    `revision` is the revision you read. **Omit it only to create a draft that
+    does not exist yet** — omitting it against an existing draft is refused,
+    because a writer who has not read cannot know what it would destroy. Passing
+    a revision that is no longer current is refused for the same reason. Both
+    remedies are the same: read the draft again, redo your change on top of what
+    is there, and resend.
+
+    `note` is the version message the draft will publish under. It replaces
+    whatever note the draft carried, like `classes` does.
+    """
+    with opened_workspace() as workspace:
+        resolved = resolve_project(workspace, project)
+        saved = SchemaDraftService(workspace).save(
+            resolved.id, kind, classes=classes, note=note, expected_revision=revision
+        )
+    return wire.schema_draft(saved)
+
+
+def clear_schema_draft(
+    project: ProjectRef, kind: KindParam = SchemaProvenance.CURATED
+) -> dict[str, Any]:
+    """Throw the draft away without publishing it.
+
+    Destroys work — possibly somebody else's, since the draft is shared — and
+    nothing recovers it. Clearing a draft that is not there is not an error;
+    `cleared` says which happened.
+    """
+    with opened_workspace() as workspace:
+        resolved = resolve_project(workspace, project)
+        removed = SchemaDraftService(workspace).discard(resolved.id, kind)
+    return {"cleared": removed}
+
+
+def publish_schema_draft(
+    project: ProjectRef,
+    revision: PublishRevisionParam,
+    kind: KindParam = SchemaProvenance.CURATED,
+    allow_destructive: AllowDestructiveParam = False,
+) -> dict[str, Any]:
+    """Turn the draft into the next schema version, and clear it.
+
+    The classes published are the draft's own — you cannot publish something
+    other than what `get_schema_draft` returns, which is the point of routing a
+    publish through a draft at all. The draft's note becomes the version's commit
+    message and its kind becomes the version's `provenance`.
+
+    `revision` must be the draft's current one. If it is not, somebody edited the
+    draft after you read it: nothing is published, and the remedy is to read it
+    again and decide whether you still want to publish what is now there.
+
+    A class that is not finished is refused with `classes.<n>` naming which. Fix
+    it with `set_schema_draft` and publish again.
+
+    Everything `create_schema_version` can refuse, this can refuse, with the same
+    meanings: a change that narrows the contract needs `allow_destructive=true`,
+    and a change that would orphan existing annotations is refused with **no**
+    override — retrying that one with the flag is a loop. Use
+    `preview_schema_change` on the draft's classes first if you are changing an
+    existing schema.
+    """
+    with opened_workspace() as workspace:
+        resolved = resolve_project(workspace, project)
+        published = SchemaDraftService(workspace).publish(
+            resolved.id, kind, expected_revision=revision, allow_destructive=allow_destructive
         )
     return wire.schema_publication(published)

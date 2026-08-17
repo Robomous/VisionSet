@@ -2184,6 +2184,112 @@
         "title": "DownloadSizeOut",
         "type": "object"
       },
+      "DraftAttributeBody": {
+        "additionalProperties": false,
+        "description": "One attribute of a class somebody is still writing.\n\nEvery field is optional, including `kind`, and no rule spanning two of them\nis checked. A draft is not a contract: an attribute that has been named but\nnot yet typed is an ordinary moment in building one, and refusing to store it\nwould lose exactly the work a draft exists to keep. Every rule\n`AttributeBody` states is checked when the draft is published.",
+        "properties": {
+          "default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "select"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "title": "DraftAttributeBody",
+        "type": "object"
+      },
+      "DraftLabelClassBody": {
+        "additionalProperties": false,
+        "description": "One class being written: a name that may be blank, shapes that may be none.\n\n`geometries` has no minimum here and does on `LabelClassBody`, which is the\ndifference between the two types. Publishing the draft applies the minimum.",
+        "properties": {
+          "attributes": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DraftAttributeBody"
+            },
+            "title": "Attributes",
+            "type": "array"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "geometries": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GeometryType"
+            },
+            "title": "Geometries",
+            "type": "array"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "title": "DraftLabelClassBody",
+        "type": "object"
+      },
       "ErrorBody": {
         "description": "The one error shape this API emits, at every status.",
         "properties": {
@@ -3575,8 +3681,121 @@
         "title": "SchemaDiffOut",
         "type": "object"
       },
+      "SchemaDraftBody": {
+        "additionalProperties": false,
+        "description": "The whole draft. There is no partial edit of one, as there is none of a version.\n\n`revision` is the revision this write was decided against. Omit it to\n*create*: a client that has not read the draft has not seen what it would\noverwrite, so creating is the only thing it may ask for. Sending a revision\nthat is no longer stored answers 409 `STALE_WRITE`, and the remedy is to read\nthe draft again and resubmit.",
+        "properties": {
+          "based_on": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On"
+          },
+          "classes": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DraftLabelClassBody"
+            },
+            "title": "Classes",
+            "type": "array"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          }
+        },
+        "title": "SchemaDraftBody",
+        "type": "object"
+      },
+      "SchemaDraftOut": {
+        "description": "A schema version somebody is still writing.\n\nOne per project per `kind`, shared by everybody with access to the workspace \u2014\nthere are no per-user drafts, because there are no users. `based_on` is the\nversion it was seeded from, so a draft whose `based_on` is behind the active\nversion was written against a contract that has since moved.\n\n`revision` is what a write or a publish must name to be accepted.",
+        "properties": {
+          "based_on": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On"
+          },
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/DraftLabelClassBody"
+            },
+            "title": "Classes",
+            "type": "array"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SchemaProvenance"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "kind",
+          "classes",
+          "note",
+          "based_on",
+          "revision",
+          "updated_at"
+        ],
+        "title": "SchemaDraftOut",
+        "type": "object"
+      },
+      "SchemaDraftPublish": {
+        "additionalProperties": false,
+        "description": "Which revision of the draft to publish.",
+        "properties": {
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "SchemaDraftPublish",
+        "type": "object"
+      },
       "SchemaProvenance": {
-        "description": "Which kind of work published a schema version.\n\n`curated` is a version authored deliberately \u2014 somebody sat down and decided\nwhat the project labels. `annotation` is one that fell out of adding a class\npart-way through labeling an asset. It gates nothing and is part of no\ncontract comparison; a version history uses it to tell the milestones apart\nfrom the incidental runs between them.",
+        "description": "Which kind of work a schema version came from.\n\n`curated` is a version authored deliberately \u2014 somebody sat down and decided\nwhat the project labels. `annotation` is one that fell out of adding a class\npart-way through labeling an asset. It gates nothing and is part of no\ncontract comparison; a version history uses it to tell the milestones apart\nfrom the incidental runs between them.\n\nThe same two words also say which kind of work a *draft* belongs to, and a\ndraft publishes under its own kind \u2014 so a project holds at most one draft of\neach, and the two never publish each other's classes.",
         "enum": [
           "curated",
           "annotation"
@@ -10245,6 +10464,443 @@
           }
         ],
         "summary": "Compare Schema Versions",
+        "tags": [
+          "schemas"
+        ]
+      }
+    },
+    "/projects/{project_id}/schema/drafts/{kind}": {
+      "delete": {
+        "description": "Throw the draft away.\n\nUnconditional and revisionless, unlike every other write here: discarding is\nwhat somebody does having decided the work is not wanted, and making them\nread it first would be a round trip whose only purpose is to delete what it\nfetched. Discarding a draft that is not there is a 204 as well \u2014 the state\nafterwards is the state that was asked for.",
+        "operationId": "discard_schema_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which kind of work the draft belongs to.",
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/SchemaProvenance",
+              "description": "Which kind of work the draft belongs to."
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Discard Schema Draft",
+        "tags": [
+          "schemas"
+        ]
+      },
+      "get": {
+        "description": "The schema version this project is still writing, of that kind.\n\nA project holds at most one draft per kind and they are shared: there are no\nper-user drafts, because the workspace has no users \u2014 a credential is not a\nperson. `curated` is the one a schema editor writes; `annotation` is the one\nthat accumulates while somebody is labeling and needs a class.\n\n404 means nobody has started one, which is the ordinary state of most\nprojects. It is deliberately not the same refusal as a project with no\npublished version, and the two carry different codes.",
+        "operationId": "get_schema_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which kind of work the draft belongs to.",
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/SchemaProvenance",
+              "description": "Which kind of work the draft belongs to."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaDraftOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Schema Draft",
+        "tags": [
+          "schemas"
+        ]
+      },
+      "put": {
+        "description": "Write the whole draft, creating it if there is none.\n\nThe body is the entire draft; there is no partial edit, for the reason there\nis none of a version. Classes here are **not** validated as a contract would\nbe: a class with no name and no geometry is stored exactly as sent, which is\nwhat lets somebody put the work down mid-sentence.\n\n`revision` is the revision this write was decided against, and omitting it\nasks to create. Either one refused answers 409 `STALE_WRITE`, which means\nsomebody else wrote the draft first and this write was judged against an\nanswer that had expired. Read it again and resubmit \u2014 nothing is merged, and\nnothing is overwritten.\n\nThe response carries the new `revision`, which is what the next write and the\npublish must name.",
+        "operationId": "save_schema_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which kind of work the draft belongs to.",
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/SchemaProvenance",
+              "description": "Which kind of work the draft belongs to."
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchemaDraftBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaDraftOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Schema Draft",
+        "tags": [
+          "schemas"
+        ]
+      }
+    },
+    "/projects/{project_id}/schema/drafts/{kind}/publish": {
+      "post": {
+        "description": "Turn the draft into the next schema version, and clear it.\n\nThe classes are the draft's, so nothing is sent here but the revision \u2014 which\nis what makes it impossible to publish something other than what the draft\nholds. The draft's note becomes the version's commit message and its kind\nbecomes the version's `provenance`.\n\nEvery refusal `POST /versions` can give, this can give, for the same reasons\nand with the same overrides: 409 `DESTRUCTIVE_SCHEMA_CHANGE` until\n`allow_destructive=true`, and 409 `SCHEMA_CHANGE_WOULD_ORPHAN` with no\noverride at all. One more is its own: 422 `INVALID_SCHEMA` when a class in\nthe draft is not finished \u2014 a blank name, no geometry, a select with no\noptions \u2014 naming it by position, `classes.3`. A draft is allowed to hold\nthose; a version is not.\n\n409 `STALE_WRITE` means the draft moved since `revision` was read, and no\nversion was created.\n\nThe draft is gone afterwards even when nothing was written: publishing the\ncontract already in force answers with the version already in force, and the\ndraft that proposed it has nothing left to say.",
+        "operationId": "publish_schema_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which kind of work the draft belongs to.",
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/SchemaProvenance",
+              "description": "Which kind of work the draft belongs to."
+            }
+          },
+          {
+            "description": "Required when the new version narrows the labeling contract.",
+            "in": "query",
+            "name": "allow_destructive",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Required when the new version narrows the labeling contract.",
+              "title": "Allow Destructive",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchemaDraftPublish"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaPublicationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Publish Schema Draft",
         "tags": [
           "schemas"
         ]

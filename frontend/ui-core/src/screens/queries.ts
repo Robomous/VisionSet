@@ -32,6 +32,7 @@ import { useApiClient } from "../data/ApiProvider";
 import { usePollingQuery } from "../data/polling";
 import { asApiError, unwrap } from "../data/errors";
 import type { Refusal } from "../data/refusals";
+import type { VisionSetClient } from "../client";
 import {
   checkApproveBatch,
   checkAssignJob,
@@ -43,6 +44,7 @@ import {
   checkDatasetStats,
   checkDeleteBatch,
   checkDeleteProject,
+  checkDiscardSchemaDraft,
   checkExportRelease,
   checkGetBackgroundJob,
   checkGetHome,
@@ -53,6 +55,7 @@ import {
   checkGetProject,
   checkGetProjectDataset,
   checkGetProjectStats,
+  checkGetSchemaDraft,
   checkGetSource,
   checkGetReleaseManifest,
   checkListBatchAssets,
@@ -68,12 +71,14 @@ import {
   checkCreateCorrectionBatch,
   checkPromoteBatch,
   checkPublishRelease,
+  checkPublishSchemaDraft,
   checkRegisterImageSource,
   checkRegisterVideoSource,
   checkRemoveDatasetAsset,
   checkRenameProject,
   checkResumeIngest,
   checkRemoveBatchAssets,
+  checkSaveSchemaDraft,
   checkSetAssetProgress,
   checkStartBatch,
   checkStartIngest,
@@ -113,6 +118,8 @@ export const queryKeys = {
   schemaVersions: (projectId: string) => ["projects", projectId, "schema", "versions"] as const,
   schemaCompare: (projectId: string, from: number, to: number) =>
     ["projects", projectId, "schema", "compare", from, to] as const,
+  schemaDraft: (projectId: string, kind: SchemaDraftKind) =>
+    ["projects", projectId, "schema", "draft", kind] as const,
 };
 
 /**
@@ -359,10 +366,11 @@ export function useSchemaComparison(
  * never caught together. The editor keeps them apart too: deleting a project asks
  * one question, narrowing a schema asks another.
  *
- * There is no preview. `SchemaService.preview` and `compare` exist in the kernel
- * and are deliberately unrouted, so the
- * only way to learn a change is destructive is to attempt it and read the 409.
- * That is why the refusal surface below is the feature rather than a fallback.
+ * `POST .../schema/preview` answers both questions about a draft before it
+ * publishes, and `GET .../schema/compare` answers what two published versions did
+ * to each other. Neither removes the need for the refusal surface below: a
+ * preview is advisory, nothing is locked, and the publish's own 409 is the
+ * authoritative answer.
  */
 export function useCreateSchemaVersion(projectId: string) {
   const client = useApiClient();
@@ -409,6 +417,181 @@ export function useCreateSchemaVersion(projectId: string) {
     // without this line. The response says which batches moved; the cache has to
     // agree with it.
     onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: queryKeys.project(projectId) });
+      void queries.invalidateQueries({ queryKey: ["batches"] });
+    },
+  });
+}
+
+export type ServerSchemaDraft = components["schemas"]["SchemaDraftOut"];
+export type DraftLabelClassBody = components["schemas"]["DraftLabelClassBody"];
+/** Which of the two drafts a project can hold — the editor's, or the annotator's. */
+export type SchemaDraftKind = "curated" | "annotation";
+
+/**
+ * The draft stored on the server, or `null` for a project with none.
+ *
+ * `null` rather than an error, because most projects have no draft most of the
+ * time: a hook whose ordinary answer is `isError` would make every consumer
+ * branch on a failure that is not one.
+ *
+ * `retry: false` and `retryOnMount: false` govern a genuine failure — a 500, a
+ * dropped connection — rather than the 404: the 404 is intercepted above and
+ * resolved to `null` before `unwrap` ever runs, so it never rejects and these
+ * flags never see it. They stay set anyway, for the same reason
+ * `useActiveSchema` sets them: a real failure asking again is asking a question
+ * whose answer has not changed.
+ *
+ * `enabled` mirrors `useActiveSchema`'s own parameter, and for the same reason:
+ * a surface that only sometimes needs this read must be able to say so, rather
+ * than paying for it on every mount. Defaults to `true` because the Schema
+ * tab's own draft is wanted the moment that tab is open — it is the annotator's
+ * `annotation` read, gated on the add-a-class dialog being open, that needs the
+ * `false` case.
+ */
+export function useSchemaDraft(
+  projectId: string,
+  kind: SchemaDraftKind,
+  enabled = true,
+): UseQueryResult<ServerSchemaDraft | null, Error> {
+  const client = useApiClient();
+  return useQuery({
+    enabled,
+    queryKey: queryKeys.schemaDraft(projectId, kind),
+    queryFn: async () => {
+      const result = await client.GET("/projects/{project_id}/schema/drafts/{kind}", {
+        params: { path: { project_id: projectId, kind } },
+      });
+      if (result.response.status === 404) return null;
+      return unwrap(result, checkGetSchemaDraft);
+    },
+    retry: false,
+    retryOnMount: false,
+  });
+}
+
+/** What `useSaveSchemaDraft`'s mutation, and only that mutation, sends. */
+export interface SaveSchemaDraftInput {
+  readonly classes: readonly DraftLabelClassBody[];
+  readonly note: string;
+  readonly basedOn: number | null;
+  readonly revision: number | null;
+}
+
+/**
+ * The wire call `useSaveSchemaDraft` wraps, with `projectId` an ordinary
+ * parameter rather than baked into a hook's closure.
+ *
+ * `useMutation` does not key its observer on its arguments: `useSaveSchemaDraft`
+ * reconfigures the *same* observer's `mutationFn` on every render that calls it
+ * with a different `projectId`, so a caller that needs to flush a draft for a
+ * project the component has already re-rendered *away from* cannot reach it
+ * through the hook — by the time such a caller runs, the hook targets wherever
+ * the render landed, not wherever the draft came from. `ProjectScreen`'s flush
+ * on a project switch is exactly that caller, and this is its door: a plain
+ * function closing over nothing but its own arguments.
+ *
+ * `keepalive` is the same door for a second caller: a page unloading mid-debounce
+ * — a reload pressed a keystroke after the last edit, which is the ordinary case
+ * rather than a rare one — tears down an ordinary in-flight `fetch` along with
+ * everything else, and the write is lost with no error to show for it. Passed
+ * through to `fetch` unset by default, so every other caller is unchanged.
+ */
+export async function saveSchemaDraftRequest(
+  client: VisionSetClient,
+  projectId: string,
+  kind: SchemaDraftKind,
+  input: SaveSchemaDraftInput,
+  options?: { readonly keepalive?: boolean },
+): Promise<ServerSchemaDraft> {
+  return unwrap(
+    await client.PUT("/projects/{project_id}/schema/drafts/{kind}", {
+      params: { path: { project_id: projectId, kind } },
+      body: {
+        classes: [...input.classes],
+        note: input.note,
+        based_on: input.basedOn,
+        ...(input.revision === null ? {} : { revision: input.revision }),
+      },
+      ...(options?.keepalive === undefined ? {} : { keepalive: options.keepalive }),
+    }),
+    checkSaveSchemaDraft,
+  );
+}
+
+/**
+ * Write the whole draft, and **do not invalidate the query this feeds**.
+ *
+ * The response is written straight into the cache instead. That is not an
+ * optimisation: invalidating would refetch on every debounced keystroke, the
+ * refetch would hand back a freshly parsed object, and the derivation that seeds
+ * the editor from it would re-fire — overwriting what is being typed, on a timer,
+ * with nothing unmounting to find it by. The `revision` the response carries is
+ * the only thing that changes and the only thing the next write needs.
+ *
+ * `revision` omitted asks the server to create. Every caller passes the revision
+ * it last saw, so a write decided against an expired read is refused with 409
+ * `STALE_WRITE` rather than landing on top of somebody else's sitting.
+ */
+export function useSaveSchemaDraft(projectId: string, kind: SchemaDraftKind) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: SaveSchemaDraftInput) =>
+      saveSchemaDraftRequest(client, projectId, kind, input),
+    onSuccess: (saved) => {
+      queries.setQueryData(queryKeys.schemaDraft(projectId, kind), saved);
+    },
+  });
+}
+
+/** Throw the draft away. Unconditional, so it names no revision. */
+export function useDiscardSchemaDraft(projectId: string, kind: SchemaDraftKind) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await client.DELETE("/projects/{project_id}/schema/drafts/{kind}", {
+          params: { path: { project_id: projectId, kind } },
+        }),
+        checkDiscardSchemaDraft,
+      ),
+    onSuccess: () => {
+      queries.setQueryData(queryKeys.schemaDraft(projectId, kind), null);
+    },
+  });
+}
+
+/**
+ * Publish the draft, sending its revision and nothing else.
+ *
+ * No classes travel: the server publishes what the draft holds, which is what
+ * makes it impossible to publish something other than what the editor is showing.
+ *
+ * `["batches"]` as well as the project, for `useCreateSchemaVersion`'s reason: an
+ * additive version moves the pin of every open batch in the same transaction, and
+ * the whole change would be invisible in the browser without it. The draft's own
+ * cache entry is cleared rather than invalidated — the server deleted it, and a
+ * refetch would be a request whose answer is already known.
+ */
+export function usePublishSchemaDraft(projectId: string, kind: SchemaDraftKind) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { revision: number; allowDestructive?: boolean }) =>
+      unwrap(
+        await client.POST("/projects/{project_id}/schema/drafts/{kind}/publish", {
+          params: {
+            path: { project_id: projectId, kind },
+            ...(input.allowDestructive === true ? { query: { allow_destructive: true } } : {}),
+          },
+          body: { revision: input.revision },
+        }),
+        checkPublishSchemaDraft,
+      ),
+    onSuccess: () => {
+      queries.setQueryData(queryKeys.schemaDraft(projectId, kind), null);
       void queries.invalidateQueries({ queryKey: queryKeys.project(projectId) });
       void queries.invalidateQueries({ queryKey: ["batches"] });
     },

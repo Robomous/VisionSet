@@ -261,14 +261,23 @@ export const checkSchemaDiffOut: Check<Schemas["SchemaDiffOut"]> =
 export const checkSchemaChangePreviewOut: Check<Schemas["SchemaChangePreviewOut"]> =
   /*#__PURE__*/ object({ "blockers": [true, arrayOf(checkClassCountOut)], "diff": [true, checkSchemaDiffOut], "is_refused": [true, isBoolean] } as const);
 
+export const checkDraftAttributeBody: Check<Schemas["DraftAttributeBody"]> =
+  /*#__PURE__*/ object({ "default": [false, either([isBoolean, isNumber, isString, isNull] as const)], "kind": [false, either([oneOf(["string", "number", "boolean", "select"] as const), isNull] as const)], "name": [true, isString], "options": [false, either([arrayOf(isString), isNull] as const)], "required": [true, isBoolean] } as const);
+
+export const checkDraftLabelClassBody: Check<Schemas["DraftLabelClassBody"]> =
+  /*#__PURE__*/ object({ "attributes": [true, arrayOf(checkDraftAttributeBody)], "color": [false, either([isString, isNull] as const)], "geometries": [true, arrayOf(checkGeometryType)], "name": [true, isString] } as const);
+
+export const checkSchemaProvenance: Check<Schemas["SchemaProvenance"]> =
+  /*#__PURE__*/ oneOf(["curated", "annotation"] as const);
+
+export const checkSchemaDraftOut: Check<Schemas["SchemaDraftOut"]> =
+  /*#__PURE__*/ object({ "based_on": [true, either([isInteger, isNull] as const)], "classes": [true, arrayOf(checkDraftLabelClassBody)], "kind": [true, checkSchemaProvenance], "note": [true, isString], "project_id": [true, isString], "revision": [true, isInteger], "updated_at": [true, isString] } as const);
+
 export const checkAttributeBody: Check<Schemas["AttributeBody"]> =
   /*#__PURE__*/ object({ "default": [false, either([isBoolean, isNumber, isString, isNull] as const)], "kind": [true, oneOf(["string", "number", "boolean", "select"] as const)], "name": [true, isString], "options": [false, either([arrayOf(isString), isNull] as const)], "required": [true, isBoolean] } as const);
 
 export const checkLabelClassBody: Check<Schemas["LabelClassBody"]> =
   /*#__PURE__*/ object({ "attributes": [true, arrayOf(checkAttributeBody)], "color": [false, either([isString, isNull] as const)], "geometries": [true, arrayOf(checkGeometryType)], "name": [true, isString] } as const);
-
-export const checkSchemaProvenance: Check<Schemas["SchemaProvenance"]> =
-  /*#__PURE__*/ oneOf(["curated", "annotation"] as const);
 
 export const checkSchemaVersionOut: Check<Schemas["SchemaVersionOut"]> =
   /*#__PURE__*/ object({ "classes": [true, arrayOf(checkLabelClassBody)], "created_at": [false, either([isString, isNull] as const)], "description": [false, either([isString, isNull] as const)], "project_id": [true, isString], "provenance": [false, either([checkSchemaProvenance, isNull] as const)], "version": [true, isInteger] } as const);
@@ -344,6 +353,7 @@ export const checkDeleteAnnotations = checkNoContent;
 export const checkDeleteBatch = checkNoContent;
 export const checkDeleteInferenceConnection = checkNoContent;
 export const checkDeleteProject = checkNoContent;
+export const checkDiscardSchemaDraft = checkNoContent;
 export const checkDownloadConnectionWeights = checkBackgroundJobOut;
 export const checkExportRelease = checkBackgroundJobOut;
 export const checkGetActiveSchema = checkSchemaVersionOut;
@@ -365,6 +375,7 @@ export const checkGetProjectStats = checkProjectStatsOut;
 export const checkGetRelease = checkReleaseOut;
 export const checkGetReleaseAssignment = checkSplitAssignmentOut;
 export const checkGetReleaseManifest = checkBlob;
+export const checkGetSchemaDraft = checkSchemaDraftOut;
 export const checkGetSchemaVersion = checkSchemaVersionOut;
 export const checkGetSource = checkSourceOut;
 export const checkHealth: Check<operations["health"]["responses"][200]["content"]["application/json"]> =
@@ -390,6 +401,7 @@ export const checkNextPendingAssets = checkAssetPage;
 export const checkPreviewSchemaChange = checkSchemaChangePreviewOut;
 export const checkPromoteBatch = checkAssetPage;
 export const checkPublishRelease = checkReleaseOut;
+export const checkPublishSchemaDraft = checkSchemaPublicationOut;
 export const checkRegisterImageSource = checkSourceOut;
 export const checkRegisterVideoSource = checkSourceOut;
 export const checkRemoveBatchAssets = checkBatchMembershipOut;
@@ -397,6 +409,7 @@ export const checkRemoveDatasetAsset = checkNoContent;
 export const checkRenameProject = checkProjectOut;
 export const checkRepinBatch = checkBatchOut;
 export const checkResumeIngest = checkIngestJobOut;
+export const checkSaveSchemaDraft = checkSchemaDraftOut;
 export const checkSetAssetProgress = checkAssetProgressOut;
 export const checkStartBatch = checkBatchOut;
 export const checkStartIngest = checkIngestJobOut;

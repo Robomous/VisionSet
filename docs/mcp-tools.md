@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-44 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+48 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -22,6 +22,10 @@ error envelope, and the three gate words.
 | `compare_schema_versions` | `project`, `from_version`, `to_version` | Say what one schema version did to another. Writes nothing. |
 | `preview_schema_change` | `project`, `classes` | Say what applying these classes would change, without applying anything. |
 | `create_schema_version` | `project`, `classes`, `description`?, `provenance`?, `allow_destructive`? | Create the next schema version from a complete list of classes. |
+| `get_schema_draft` | `project`, `kind`? | Read the schema version this project is still writing. |
+| `set_schema_draft` | `project`, `classes`, `kind`?, `note`?, `revision`? | Write the whole draft, creating it when there is none. |
+| `publish_schema_draft` | `project`, `revision`, `kind`?, `allow_destructive`? | Turn the draft into the next schema version, and clear it. |
+| `clear_schema_draft` | `project`, `kind`? | Throw the draft away without publishing it. |
 | `ingest` | `project`, `path`, `fps`?, `batch_name`? | Register a source and read it into one batch. Blocks until the run finishes. |
 | `list_sources` | `project` | List the origins registered in a project — the folders and clips it was built from. |
 | `backfill_thumbnails` | `project` | Render the previews that are missing for a project's assets. |

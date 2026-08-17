@@ -46,16 +46,58 @@ let activeSchema: { project_id: string; version: number; classes: unknown[] };
 /** How many times it was asked, so "the refetch fired" is observed rather than assumed. */
 let schemaReads = 0;
 
+/** One project's stored curated draft, in the shape `SchemaDraftOut` requires. */
+interface StoredDraft {
+  readonly project_id: string;
+  readonly kind: "curated";
+  readonly classes: unknown[];
+  readonly note: string;
+  readonly based_on: number | null;
+  readonly revision: number;
+  readonly updated_at: string;
+}
+
+/**
+ * Every project's curated draft, keyed by project id — a project with none
+ * simply has no entry, which is the ordinary state most of these tests start
+ * from. Read and written by the default GET/PUT handlers below so a test only
+ * has to name what it specifically cares about; keyed rather than a single
+ * mutable value because "does not carry one project's draft into another" opens
+ * two projects in one test and a shared slot would leak between them.
+ */
+let curatedDrafts: Map<string, StoredDraft>;
+/** How many times the default handler wrote a draft, for the debounce tests. */
+let draftPuts = 0;
+
 type Answer = { status: number; body?: unknown; delay?: number };
 let handlers: ((request: Request) => Answer | undefined)[] = [];
+/**
+ * Every request sent, in order, and the body of every non-`GET` one — captured
+ * before any handler runs, since a `Request` body is a one-shot stream and a
+ * test asking for it afterwards gets nothing.
+ */
+let sent: Request[];
+let bodies: Map<Request, string>;
+
+/** `/projects/{id}/schema/drafts/{kind}`'s `id`, or `null` off that path. */
+function draftProjectId(path: string): string | null {
+  const match = /^\/projects\/([^/]+)\/schema\/drafts\/[^/]+$/.exec(path);
+  return match ? match[1] : null;
+}
 
 beforeEach(() => {
   handlers = [];
   schemaReads = 0;
+  draftPuts = 0;
   activeSchema = { project_id: PROJECT, version: 3, classes: CLASSES };
+  curatedDrafts = new Map();
+  sent = [];
+  bodies = new Map();
   writeToken("a-token");
-  vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
+    sent.push(request);
+    if (request.method !== "GET") bodies.set(request, await request.clone().text());
     const path = new URL(request.url).pathname;
     for (const handler of handlers) {
       const answer = handler(request);
@@ -72,6 +114,16 @@ beforeEach(() => {
       if (/\/schema\/versions$/.test(path)) {
         return respond({ status: 200, body: { items: [], total: 0 } });
       }
+      const draftProject = draftProjectId(path);
+      if (draftProject !== null) {
+        const stored = curatedDrafts.get(draftProject);
+        return stored === undefined
+          ? respond({
+              status: 404,
+              body: { code: "SCHEMA_DRAFT_NOT_FOUND", message: "no draft yet" },
+            })
+          : respond({ status: 200, body: stored });
+      }
       if (/\/projects\/[^/]+$/.test(path)) {
         return respond({
           status: 200,
@@ -82,6 +134,42 @@ beforeEach(() => {
       if (/\/batches$/.test(path)) return respond({ status: 200, body: { items: [], total: 0 } });
       if (/\/releases$/.test(path)) return respond({ status: 200, body: { items: [], total: 0 } });
       if (/\/dataset$/.test(path)) return respond({ status: 200, body: DATASET });
+    }
+    if (request.method === "PUT") {
+      const draftProject = draftProjectId(path);
+      if (draftProject !== null) {
+        const written = JSON.parse(bodies.get(request) ?? "{}") as {
+          classes: unknown[];
+          note: string;
+          based_on: number | null;
+          revision?: number;
+        };
+        const stored = curatedDrafts.get(draftProject);
+        // The same rule `SchemaDraftService.save` states: a write naming no
+        // revision only ever creates, and one naming the wrong one is refused
+        // rather than merged.
+        if (stored !== undefined && written.revision !== stored.revision) {
+          return respond({
+            status: 409,
+            body: {
+              code: "STALE_WRITE",
+              message: "someone else changed this while you were working on it",
+            },
+          });
+        }
+        draftPuts += 1;
+        const saved: StoredDraft = {
+          project_id: draftProject,
+          kind: "curated",
+          classes: written.classes,
+          note: written.note,
+          based_on: written.based_on,
+          revision: (stored?.revision ?? 0) + 1,
+          updated_at: "2024-01-01T00:00:00Z",
+        };
+        curatedDrafts.set(draftProject, saved);
+        return respond({ status: 200, body: saved });
+      }
     }
     return respond({
       status: 500,
@@ -259,7 +347,7 @@ describe("the schema draft survives a version published underneath", () => {
   });
 
   it("re-bases on the version it just published, and empties the message", async () => {
-    on("POST", /schema\/versions$/, {
+    on("POST", /schema\/drafts\/curated\/publish$/, {
       status: 201,
       // A publication since #381 — the version, and the batches it moved. None
       // here: this project has no batch in the stub.
@@ -278,8 +366,9 @@ describe("the schema draft survives a version published underneath", () => {
 
     // The publish is the one version move that is *this* editor's own, so it
     // re-seeds rather than warning about itself.
-    await waitFor(() =>
-      expect(screen.getByTestId("schema-status").textContent).toContain("Version 4 active"),
+    await waitFor(
+      () => expect(screen.getByTestId("schema-status").textContent).toContain("Version 4 active"),
+      { timeout: 2000 },
     );
     expect(screen.queryByTestId("schema-moved")).toBeNull();
     expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
@@ -301,6 +390,81 @@ describe("the schema draft survives a version published underneath", () => {
 
     expect(screen.queryByTestId("schema-moved")).toBeNull();
     expect(screen.getByTestId("schema-editor").textContent).toContain("pedestrian");
+  });
+});
+
+/**
+ * "Load v{moved}" reloads *over* a draft the server still holds — the walk
+ * `SchemaEditor`'s own `freshFromActive` comment names — and the two tests
+ * below assert the two things that walk has to get right. Both assert
+ * asynchronously, past the 400ms debounce: the two reload tests above pass
+ * against the unfixed code precisely because they assert synchronously,
+ * inside that window, before the write either blocker breaks ever fires.
+ */
+describe("reloading over a draft the server still holds", () => {
+  it("lets the next autosave succeed, rather than repeating STALE_WRITE", async () => {
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    // The draft has to actually exist on the server for this walk — a
+    // revision the reload can carry, rather than the `null` of one nobody
+    // has saved yet.
+    await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 2000 });
+
+    // Somebody else publishes underneath while this draft is still held.
+    activeSchema = { project_id: PROJECT, version: 4, classes: [...CLASSES, TRAFFIC_LIGHT] };
+    await regainFocus();
+    await userEvent.click(await screen.findByTestId("schema-reload"));
+
+    const before = draftPuts;
+    // A `revision: null` reload names no revision against a draft the server
+    // still holds, which `SchemaDraftService.save` refuses as `STALE_WRITE` —
+    // and refuses again on every keystroke after, since the remedy it offers
+    // only re-seeds the very draft "Load v{moved}" just discarded.
+    await waitFor(() => expect(draftPuts).toBeGreaterThan(before), { timeout: 2000 });
+    expect(screen.queryByTestId("schema-stale-draft")).toBeNull();
+  });
+
+  it("does not re-create the draft once a publish spends it", async () => {
+    // A real publish discards the draft it read — `SchemaDraftService.publish`
+    // does this unconditionally when nothing raced it — so the stub has to
+    // clear it too, or the rebase that follows would land on a draft still
+    // there and be refused as `STALE_WRITE` rather than actually re-creating
+    // one, which would pass this test for the wrong reason.
+    handlers.push((request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "POST" && /\/schema\/drafts\/curated\/publish$/.test(path)) {
+        curatedDrafts.delete(PROJECT);
+        return {
+          status: 201,
+          body: {
+            published: { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] },
+            advanced_batches: [],
+          },
+        };
+      }
+      return undefined;
+    });
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 2000 });
+
+    activeSchema = { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] };
+    await userEvent.click(screen.getByTestId("save-schema"));
+    await waitFor(
+      () => expect(screen.getByTestId("schema-status").textContent).toContain("Version 4 active"),
+      { timeout: 2000 },
+    );
+
+    // The publish's own rebase writes `classes: created.classes` — a fresh
+    // array holding exactly the contract just published — into the same
+    // state the debounce watches. Long enough to catch the debounce firing
+    // on it anyway: the defect PUTs a draft holding the version just made,
+    // 400ms after nobody edited anything.
+    const afterPublish = draftPuts;
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(draftPuts).toBe(afterPublish);
   });
 });
 
@@ -341,7 +505,7 @@ describe("saving twice with nothing edited in between", () => {
           ? { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "no schema yet" } }
           : { status: 200, body: published, delay: 5 };
       }
-      if (request.method === "POST" && /\/schema\/versions$/.test(path)) {
+      if (request.method === "POST" && /\/schema\/drafts\/curated\/publish$/.test(path)) {
         posts += 1;
         published = {
           project_id: PROJECT,
@@ -368,8 +532,9 @@ describe("saving twice with nothing edited in between", () => {
     await userEvent.type(screen.getByTestId("class-name-0"), "pedestrian");
 
     await userEvent.click(screen.getByTestId("save-schema"));
-    await waitFor(() =>
-      expect(screen.getByTestId("schema-status").textContent).toContain("Version 1 active"),
+    await waitFor(
+      () => expect(screen.getByTestId("schema-status").textContent).toContain("Version 1 active"),
+      { timeout: 2000 },
     );
 
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -403,7 +568,7 @@ describe("saving twice with nothing edited in between", () => {
           ? { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "no schema yet" } }
           : { status: 200, body: published, delay: 5 };
       }
-      if (request.method === "POST" && /\/schema\/versions$/.test(path)) {
+      if (request.method === "POST" && /\/schema\/drafts\/curated\/publish$/.test(path)) {
         posts += 1;
         published = {
           project_id: PROJECT,
@@ -432,8 +597,9 @@ describe("saving twice with nothing edited in between", () => {
     await userEvent.type(screen.getByTestId("attr-name-0-0"), "occluded");
 
     await userEvent.click(screen.getByTestId("save-schema"));
-    await waitFor(() =>
-      expect(screen.getByTestId("schema-status").textContent).toContain("Version 1 active"),
+    await waitFor(
+      () => expect(screen.getByTestId("schema-status").textContent).toContain("Version 1 active"),
+      { timeout: 2000 },
     );
 
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -475,6 +641,337 @@ describe("saving twice with nothing edited in between", () => {
     await userEvent.click(screen.getByTestId("class-geometry-0-bbox"));
 
     expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
+  });
+});
+
+/**
+ * The draft's fourth home: the server, shared, and durable across a reload.
+ *
+ * Everything above proves the browser side of survival — the tab and a version
+ * moving underneath. These prove the other half: the draft itself now lives
+ * where a reload cannot lose it, a second writer is refused rather than
+ * merged, and a publish always carries what was actually typed, including the
+ * keystroke still inside the debounce window when Save was pressed.
+ */
+describe("the draft lives on the server", () => {
+  it("seeds from the server draft when there is no local one", async () => {
+    curatedDrafts.set(PROJECT, {
+      project_id: PROJECT,
+      kind: "curated",
+      classes: [{ name: "lane", geometries: ["polygon"], color: null, attributes: [] }],
+      note: "",
+      based_on: 3,
+      revision: 3,
+      updated_at: "2024-01-01T00:00:00Z",
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    const editor = await screen.findByTestId("schema-editor");
+
+    // Nobody typed anything in this render — the class came off the server.
+    expect(editor.textContent).toContain("lane");
+    expect(editor.textContent).not.toContain("vehicle");
+  });
+
+  /**
+   * The gap the `moved` banner had over a server-seeded draft with nothing
+   * held locally: `held` is already `null` there, so `onDraftChange(null)`
+   * changed nothing and the button announcing v3 as fresh news reloaded
+   * nothing. `SchemaEditor` now names the destination directly
+   * (`freshFromActive`) rather than relying on `null` falling through the
+   * tiers, which is what this proves.
+   */
+  it("reloads to the active version from a server-seeded draft with nothing held locally", async () => {
+    // Stale against the active version from the moment it is read — reachable
+    // once anything else publishes without rebasing this draft, the
+    // annotator's own dialog included.
+    curatedDrafts.set(PROJECT, {
+      project_id: PROJECT,
+      kind: "curated",
+      classes: [{ name: "cyclist", geometries: ["bbox"], color: null, attributes: [] }],
+      note: "",
+      based_on: 2,
+      revision: 5,
+      updated_at: "2024-01-01T00:00:00Z",
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    const editor = await screen.findByTestId("schema-editor");
+
+    // Seeded from the stale server draft — nothing was ever typed here, so
+    // `held` is null, which is exactly the no-op's precondition.
+    expect(editor.textContent).toContain("cyclist");
+    await screen.findByTestId("schema-moved");
+
+    await userEvent.click(screen.getByTestId("schema-reload"));
+
+    expect(screen.queryByTestId("schema-moved")).toBeNull();
+    expect(screen.getByTestId("schema-editor").textContent).toContain("vehicle");
+    expect(screen.getByTestId("schema-editor").textContent).not.toContain("cyclist");
+    expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
+  });
+
+  it("keeps a dirty local draft when the server draft differs", async () => {
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    // Let the first autosave land, so this draft holds a real revision — the
+    // one the next write is about to name a stale one.
+    await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 2000 });
+
+    // Somebody else writes the shared draft directly — a second tab, a
+    // teammate — advancing its revision past what this session last saw.
+    const stored = curatedDrafts.get(PROJECT);
+    if (stored !== undefined) {
+      curatedDrafts.set(PROJECT, {
+        ...stored,
+        revision: stored.revision + 1,
+        classes: [{ name: "cyclist", geometries: ["bbox"], color: null, attributes: [] }],
+      });
+    }
+
+    // The next keystroke's autosave now names a revision the server no
+    // longer holds.
+    await userEvent.type(screen.getByTestId(`class-name-${CLASSES.length}`), "!");
+    await screen.findByTestId("schema-stale-draft", {}, { timeout: 2000 });
+
+    // Kept, not merged and not discarded — the same rule a version arriving
+    // underneath already follows.
+    expect(screen.getByTestId("schema-editor").textContent).toContain("pedestrian");
+    expect(screen.getByTestId("schema-editor").textContent).not.toContain("cyclist");
+  });
+
+  it("autosaves after the debounce and not on every keystroke", async () => {
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId(`class-name-${CLASSES.length}`), "cat");
+
+    await waitFor(() => expect(draftPuts).toBe(1), { timeout: 2000 });
+    // Held a moment longer: three keystrokes each reset the timer, and a
+    // debounce that fired per keystroke rather than once would have written
+    // again by now.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(draftPuts).toBe(1);
+  });
+
+  /**
+   * `ProjectScreen` is *re-rendered* rather than remounted when the route's
+   * `:projectId` changes — its own docstring says so — so the debounce effect's
+   * dependencies (including `projectId`) change under a pending timer exactly
+   * the way a keystroke changes them, and the same cleanup fires either way.
+   * Cancelling outright rather than flushing on this specific departure would
+   * be the silent loss this whole feature exists to remove, reachable by
+   * ordinary fast navigation rather than an exotic race.
+   */
+  it("flushes a pending write for the departing project when the project changes", async () => {
+    const view = render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    // Still inside the 400ms debounce window — nothing has been sent yet.
+    expect(sent.some((request) => request.method === "PUT")).toBe(false);
+
+    view.rerender(mount(<ProjectScreen projectId={OTHER} tab="schema" />));
+
+    await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 2000 });
+    const put = sent.find(
+      (request) => request.method === "PUT" && draftProjectId(new URL(request.url).pathname) === PROJECT,
+    );
+    // The departing project's id, not the one just navigated to — a flush
+    // addressed to `OTHER` would silently lose the typing all the same, just
+    // by writing it to the wrong place instead of nowhere.
+    expect(put).toBeDefined();
+    expect(draftProjectId(new URL(put!.url).pathname)).toBe(PROJECT);
+  });
+
+  /**
+   * The other thing a pending timer does not survive: not a tab switch and not
+   * a project switch, but the page itself going away. A reload a keystroke
+   * after the last edit is the ordinary way somebody checks that their work
+   * stuck, and the setTimeout scheduled for it dies with the JS context that
+   * held it — `pagehide` is the one signal that fires for that unload and for
+   * nothing an in-app navigation reaches.
+   *
+   * Captured off `window.addEventListener` and called directly, rather than
+   * dispatched as a synthetic `Event` — a hand-built DOM event is a fake
+   * standing in for the real one (`tests/scripts/annotator_boundary.test.mjs`
+   * bans exactly that construction, everywhere in `frontend/`). Calling the
+   * registered function is stronger evidence anyway: it proves both that
+   * `ProjectScreen` listens for `"pagehide"` under that exact name and that
+   * calling what it registered actually flushes, which a dispatch could only
+   * ever assume the second half of.
+   */
+  it("flushes a pending write when the page is about to unload, without waiting out the debounce", async () => {
+    let onPageHide: (() => void) | null = null;
+    const addEventListener = vi
+      .spyOn(window, "addEventListener")
+      .mockImplementation((event: string, handler: unknown) => {
+        if (event === "pagehide") onPageHide = handler as () => void;
+      });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    // Registered on mount, before anything is typed — restored immediately so
+    // the interactions below exercise the real `addEventListener`, not the mock.
+    addEventListener.mockRestore();
+    expect(onPageHide).not.toBeNull();
+
+    await draftAClass("pedestrian");
+    // Still inside the 400ms debounce window — nothing has been sent yet.
+    expect(sent.some((request) => request.method === "PUT")).toBe(false);
+
+    onPageHide!();
+
+    // Well under the 400ms debounce: a `waitFor` with no ceiling here would
+    // pass just as well once the untouched timer eventually fired on its own,
+    // and prove nothing about the listener at all.
+    await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 100 });
+    const puts = sent.filter(
+      (request) => request.method === "PUT" && draftProjectId(new URL(request.url).pathname) === PROJECT,
+    );
+    // Exactly one — the handler cancels the timer before writing, so the
+    // debounce it preempted never fires a second one behind it.
+    expect(puts).toHaveLength(1);
+  });
+
+  it("announces STALE_WRITE and offers to reload rather than merging", async () => {
+    handlers.push((request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "PUT" && draftProjectId(path) === PROJECT) {
+        return {
+          status: 409,
+          body: {
+            code: "STALE_WRITE",
+            message: "someone else changed this while you were working on it",
+          },
+        };
+      }
+      return undefined;
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+
+    await screen.findByTestId("schema-stale-draft", {}, { timeout: 2000 });
+    expect(screen.getByTestId("schema-reload-draft")).toBeDefined();
+    // Nothing is discarded before Reload is pressed.
+    expect(screen.getByTestId("schema-editor").textContent).toContain("pedestrian");
+  });
+
+  /**
+   * `SchemaDraftService.publish` runs its own revision check independently of
+   * `save` — not a cousin of the save-side refusal, the exact same one — and it
+   * is the *only* place a second writer's conflict can appear over a draft
+   * seeded straight from the server: with nothing held locally, `save()` skips
+   * the flush and publishes with `showing.revision` directly, so the publish
+   * response is where the 409 lands. Stubbing only the PUT, as the test above
+   * does, cannot reach this path at all — which is exactly how it went unseen.
+   */
+  it("announces STALE_WRITE from the publish call too, not only the save", async () => {
+    curatedDrafts.set(PROJECT, {
+      project_id: PROJECT,
+      kind: "curated",
+      classes: [{ name: "cyclist", geometries: ["bbox"], color: null, attributes: [] }],
+      note: "",
+      based_on: 3,
+      revision: 9,
+      updated_at: "2024-01-01T00:00:00Z",
+    });
+    on("POST", /schema\/drafts\/curated\/publish$/, {
+      status: 409,
+      body: {
+        code: "STALE_WRITE",
+        message: "someone else changed this while you were working on it",
+      },
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    const editor = await screen.findByTestId("schema-editor");
+    // Seeded from the server, dirty against `active` — nothing typed here, so
+    // `held` stays null and `save()` publishes `showing.revision` directly.
+    expect(editor.textContent).toContain("cyclist");
+
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    await screen.findByTestId("schema-stale-draft", {}, { timeout: 2000 });
+    expect(screen.getByTestId("schema-reload-draft")).toBeDefined();
+    // The raw code never reaches the generic alert — the one this finding was
+    // about.
+    expect(screen.queryByTestId("schema-error")).toBeNull();
+    expect(screen.getByTestId("schema-editor").textContent).toContain("cyclist");
+  });
+
+  it("flushes the pending autosave before publishing", async () => {
+    on("POST", /schema\/drafts\/curated\/publish$/, {
+      status: 201,
+      body: {
+        published: { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] },
+        advanced_batches: [],
+      },
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    activeSchema = { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] };
+    // Still inside the 400ms debounce window — nothing has been sent yet.
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    await waitFor(
+      () => expect(screen.getByTestId("schema-status").textContent).toContain("Version 4 active"),
+      { timeout: 2000 },
+    );
+
+    const isDraftPut = (request: Request) =>
+      request.method === "PUT" && draftProjectId(new URL(request.url).pathname) === PROJECT;
+    const isPublish = (request: Request) =>
+      request.method === "POST" &&
+      /\/schema\/drafts\/curated\/publish$/.test(new URL(request.url).pathname);
+    const puts = sent.filter(isDraftPut);
+    const publish = sent.find(isPublish);
+    // Exactly one — the flush cancelled the pending debounce rather than
+    // racing it, so there is no second write left to fire later.
+    expect(puts).toHaveLength(1);
+    expect(publish).toBeDefined();
+    // The PUT was sent — and, since `save` awaits it, resolved — before the
+    // publish was ever sent.
+    expect(sent.indexOf(puts[0])).toBeLessThan(sent.indexOf(publish!));
+
+    const publishBody = JSON.parse(bodies.get(publish!) ?? "{}") as { revision: number };
+    // Carries the exact revision the flush's own response named, not a
+    // locally-remembered guess.
+    expect(publishBody.revision).toBe(curatedDrafts.get(PROJECT)?.revision);
+  });
+
+  it("publishes with no classes in the body", async () => {
+    on("POST", /schema\/drafts\/curated\/publish$/, {
+      status: 201,
+      body: {
+        published: { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] },
+        advanced_batches: [],
+      },
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await draftAClass("pedestrian");
+    activeSchema = { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] };
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    await waitFor(
+      () => expect(screen.getByTestId("schema-status").textContent).toContain("Version 4 active"),
+      { timeout: 2000 },
+    );
+
+    const publish = sent.find(
+      (request) =>
+        request.method === "POST" &&
+        /\/schema\/drafts\/curated\/publish$/.test(new URL(request.url).pathname),
+    );
+    expect(publish).toBeDefined();
+    const body = JSON.parse(bodies.get(publish!) ?? "{}") as Record<string, unknown>;
+    expect(Object.keys(body)).toEqual(["revision"]);
   });
 });
 

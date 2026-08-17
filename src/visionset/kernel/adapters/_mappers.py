@@ -7,10 +7,12 @@ directions of the conversion; the repository in
 fifteen times against fifteen tables.
 
 Most entities are flat — every field is a column — and share
-``_flat_mapping``. The eleven that are not say so explicitly:
+``_flat_mapping``. The twelve that are not say so explicitly:
 
-- ``AnnotationSchema``, ``Annotation`` and ``IngestJob`` hold immutable nested
-  values, encoded as JSON.
+- ``AnnotationSchema``, ``Annotation``, ``IngestJob`` and ``SchemaDraft`` hold
+  immutable nested values, encoded as JSON. ``AnnotationSchema`` and
+  ``SchemaDraft`` also carry a timestamp, so each loses ``_flat_mapping`` twice
+  over.
 - ``Batch`` and ``AnnotationJob`` own child tables, so their mappings carry a
   ``write_children`` hook and rebuild their collections on read.
 - ``Asset``, ``DatasetChange``, ``Release``, ``Source`` and ``Token`` encode a
@@ -62,6 +64,7 @@ from visionset.kernel.domain import (
     LabelClass,
     Project,
     Release,
+    SchemaDraft,
     Source,
     SourceKind,
     SplitRecipe,
@@ -167,6 +170,24 @@ def _schema_to_domain(_: Session, row: Any) -> AnnotationSchema:
         created_at=None if row.created_at is None else datetime.fromisoformat(row.created_at),
         provenance=row.provenance,
     )
+
+
+def _schema_draft_to_row(entity: SchemaDraft) -> t.Base:
+    """Hand-written for ``_schema_to_row``'s two reasons: JSON classes, and a timestamp."""
+    return t.SchemaDraftRow(
+        id=entity.id,
+        project_id=entity.project_id,
+        kind=entity.kind.value,
+        classes=[declared.model_dump(mode="json") for declared in entity.classes],
+        note=entity.note,
+        based_on=entity.based_on,
+        revision=entity.revision,
+        updated_at=entity.updated_at.isoformat(),
+    )
+
+
+def _schema_draft_to_domain(_: Session, stored: Any) -> SchemaDraft:
+    return SchemaDraft.model_validate(_columns(stored))
 
 
 def _ingest_job_to_row(entity: IngestJob) -> t.Base:
@@ -617,6 +638,12 @@ SCHEMAS: EntityMapping[AnnotationSchema] = EntityMapping(
     parent_column="project_id",
     to_row=_schema_to_row,
     to_domain=_schema_to_domain,
+)
+SCHEMA_DRAFTS: EntityMapping[SchemaDraft] = EntityMapping(
+    row=t.SchemaDraftRow,
+    parent_column="project_id",
+    to_row=_schema_draft_to_row,
+    to_domain=_schema_draft_to_domain,
 )
 ANNOTATIONS: EntityMapping[Annotation] = EntityMapping(
     row=t.AnnotationRow,

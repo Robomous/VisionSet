@@ -1,18 +1,24 @@
 /**
  * Which kind of work the annotator's add-class dialog says it is.
  *
- * The value is chosen at `AnnotationPage`'s call site, not inside `runAddClass`
- * — that function takes a `publish(classes, note)` callback and never learns the
- * provenance — so `addClass.test.ts` structurally cannot see this, and neither
- * can `addClassDialog.test.tsx`, which renders the dialog on its own. The claim
- * only exists where the page wires the two together, so this mounts the page and
- * reads the request that actually leaves.
+ * The value used to be chosen at `AnnotationPage`'s call site and sent as a
+ * `provenance` field on a direct `POST .../schema/versions`. It is now chosen
+ * the same way but expressed differently: this dialog's session lives in the
+ * project's `annotation` schema draft, and publishing goes through
+ * `POST .../schema/drafts/annotation/publish` — a request whose body carries
+ * only a revision, so the claim "this door says annotation" is now read off
+ * *which* draft's publish endpoint was hit, not off a field in its body.
+ * `runAddClass` still never learns the provenance — that function takes a
+ * `publish(classes, note)` callback exactly as before — so `addClass.test.ts`
+ * structurally cannot see this, and neither can `addClassDialog.test.tsx`, which
+ * renders the dialog on its own. The claim only exists where the page wires the
+ * two together, so this mounts the page and reads the requests that actually
+ * leave.
  *
  * The sibling claim — that the schema editor says `curated` — is asserted the
- * same way in `screens/screens.test.tsx`. Between them the two surfaces that
- * write a schema version each pin their own answer, which is the whole of what
- * makes a version history readable: what makes a version incidental is the
- * surface it came from, never the size of the change.
+ * same way in `screens/screens.test.tsx`, and moved the same way when that
+ * surface's draft went server-side: what makes a version history readable is
+ * that each surface pins its own answer, never the size of the change.
  */
 
 import { QueryClient } from "@tanstack/react-query";
@@ -45,6 +51,8 @@ const SCHEMA = {
 
 /** Every request this page makes, answered; the POST is captured, not answered blind. */
 const posted: { path: string; body: string }[] = [];
+/** Every `PUT .../schema/drafts/annotation`, in the order they were sent. */
+const draftWrites: { path: string; body: string }[] = [];
 
 /**
  * What the publish left behind, and what the re-pin then points at.
@@ -55,6 +63,20 @@ const posted: { path: string; body: string }[] = [];
  * test would be asserting against a chain that half-refused.
  */
 let publishedSchema: { version: number; classes: readonly { name: string }[] } | null = null;
+
+/**
+ * The project's `annotation` draft, walked the same way `publishedSchema` is:
+ * a bank writes it, the flush before Confirm overwrites it with the composed
+ * contract, and a successful publish deletes it — the same three moves
+ * `SchemaDraftService` makes, so a stub that answered every write with the
+ * same canned body would prove nothing about the order or the content.
+ */
+let draft: {
+  classes: readonly { name: string }[];
+  note: string;
+  based_on: number | null;
+  revision: number;
+} | null = null;
 
 function batch(): unknown {
   return {
@@ -125,7 +147,9 @@ function answer(path: string): unknown {
 
 beforeEach(() => {
   posted.length = 0;
+  draftWrites.length = 0;
   publishedSchema = null;
+  draft = null;
   writeToken("a-token");
   // A viewport at least the annotator's floor, or no store and no palette mount
   // at all — see `viewportFloor.test.tsx` for why that gate exists.
@@ -137,27 +161,65 @@ beforeEach(() => {
   }));
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
+
+    if (request.method === "GET" && path.endsWith("/schema/drafts/annotation")) {
+      if (draft === null) {
+        return new Response(
+          JSON.stringify({ code: "SCHEMA_DRAFT_NOT_FOUND", message: "no draft yet" }),
+          { status: 404, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({ project_id: PROJECT, kind: "annotation", updated_at: "2026-08-16T00:00:00Z", ...draft }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+
+    if (request.method === "PUT" && path.endsWith("/schema/drafts/annotation")) {
+      const body = await request.clone().text();
+      draftWrites.push({ path, body });
+      const sent = JSON.parse(body) as { classes: { name: string }[]; note: string; based_on: number | null };
+      draft = {
+        classes: sent.classes,
+        note: sent.note,
+        based_on: sent.based_on,
+        revision: (draft?.revision ?? 0) + 1,
+      };
+      return new Response(
+        JSON.stringify({ project_id: PROJECT, kind: "annotation", updated_at: "2026-08-16T00:00:00Z", ...draft }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+
+    if (request.method === "DELETE" && path.endsWith("/schema/drafts/annotation")) {
+      draft = null;
+      return new Response(null, { status: 204 });
+    }
+
     if (request.method === "POST") {
       const body = await request.clone().text();
       posted.push({ path, body });
-      if (path.endsWith("/schema/versions")) {
-        // The published version, echoed back the way the API would — carrying the
-        // classes it was actually sent, so a later read of the pin sees them.
-        publishedSchema = { version: 2, classes: JSON.parse(body).classes };
+      if (path.endsWith("/schema/drafts/annotation/publish")) {
+        // Whatever the draft holds at the moment it is published — not the
+        // request body, which carries only a revision. The kernel deletes the
+        // draft in the same call, which is why this both reads and clears it.
+        publishedSchema = { version: 2, classes: draft?.classes ?? [] };
+        const note = draft?.note ?? null;
+        draft = null;
         // A **publication** since #381: the version, plus the open batches the
         // kernel moved onto it in the same transaction. This job's batch is one
         // of them, which is why nothing here re-pins any more.
         return new Response(
           JSON.stringify({
-            published: { ...SCHEMA, ...publishedSchema, provenance: "annotation" },
+            published: { ...SCHEMA, ...publishedSchema, description: note, provenance: "annotation" },
             advanced_batches: [BATCH],
           }),
           { status: 201, headers: { "content-type": "application/json" } },
         );
       }
-      // Everything else — the re-pin, the batch and job starts — answers with the
+      // Everything else — the batch and job starts — answers with the
       // resource, because `unwrap` validates the shape and a schema returned to
-      // `/repin` would be a refusal `addClass` silently swallows.
+      // one of those would be a refusal `addClass` silently swallows.
       return new Response(JSON.stringify(batch()), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -190,7 +252,7 @@ function mount(node: ReactNode): JSX.Element {
   );
 }
 
-it("publishes a class added mid-job with provenance 'annotation'", async () => {
+it("publishes a class added mid-job through the project's `annotation` draft", async () => {
   render(mount(<AnnotationPage jobId={JOB} />));
 
   await userEvent.click(await screen.findByTestId("tool-add-class"));
@@ -198,11 +260,13 @@ it("publishes a class added mid-job with provenance 'annotation'", async () => {
   await userEvent.click(screen.getByTestId("add-class-submit"));
 
   await waitFor(() => {
-    const publish = posted.find((request) => request.path.endsWith("/schema/versions"));
+    // The claim used to be read off a `provenance` field on a direct
+    // `POST .../schema/versions`. The draft's publish body carries only a
+    // revision, so "this door says annotation" is now read off *which*
+    // draft's publish endpoint was hit — the `curated` kind is a different
+    // path, never this one.
+    const publish = posted.find((request) => request.path.endsWith("/schema/drafts/annotation/publish"));
     expect(publish).toBeDefined();
-    // Read off the request rather than off the mutation's input: what the server
-    // is told is the only thing a version history can later read back.
-    expect(JSON.parse(publish!.body).provenance).toBe("annotation");
   });
 });
 
@@ -212,7 +276,13 @@ it("publishes a class added mid-job with provenance 'annotation'", async () => {
  * `addClassDialog.test.tsx` proves the dialog hands the page a list, and
  * `addClass.test.ts` proves the chain publishes it once. Neither can see the
  * *request*, which is the only place the claim "one sitting is one version"
- * is actually settled — so this asserts on the body that leaves.
+ * is actually settled — so this asserts on the requests that leave.
+ *
+ * The composed contract and the description used to arrive on the publish
+ * request itself. They now arrive on the draft's own `PUT`, immediately before
+ * the publish — the flush that folds the whole session (each bank wrote only
+ * what it added, never composed) into the exact contract the draft holds when
+ * `POST .../publish` is asked to send only a revision.
  */
 it("publishes a whole session as one version, in the order they were written", async () => {
   render(mount(<AnnotationPage jobId={JOB} />));
@@ -224,21 +294,22 @@ it("publishes a whole session as one version, in the order they were written", a
   await userEvent.click(screen.getByTestId("add-class-submit"));
 
   await waitFor(() => {
-    const published = posted.filter((request) => request.path.endsWith("/schema/versions"));
+    const published = posted.filter((request) =>
+      request.path.endsWith("/schema/drafts/annotation/publish"),
+    );
     // One, not two: three of these would be three chances for the middle one to
     // refuse, and three rows for the ledger to collapse.
     expect(published).toHaveLength(1);
-    const body = JSON.parse(published[0]!.body);
-    // Composed on the **active** version's classes, then the session's, in order.
-    expect(body.classes.map((entry: { name: string }) => entry.name)).toEqual([
-      "sign",
-      "cone",
-      "barrier",
-    ]);
-    expect(body.description).toBe(
-      'Added classes "cone" and "barrier" from the annotation view',
-    );
   });
+
+  // The last write to the draft before the publish above — the flush — is the
+  // one place the whole composed contract is asserted.
+  const flush = draftWrites[draftWrites.length - 1];
+  expect(flush).toBeDefined();
+  const body = JSON.parse(flush!.body) as { classes: { name: string }[]; note: string };
+  // Composed on the **active** version's classes, then the session's, in order.
+  expect(body.classes.map((entry) => entry.name)).toEqual(["sign", "cone", "barrier"]);
+  expect(body.note).toBe('Added classes "cone" and "barrier" from the annotation view');
 });
 
 /**

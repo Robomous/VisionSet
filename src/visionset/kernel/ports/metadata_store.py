@@ -30,6 +30,7 @@ from visionset.kernel.domain import (
     IngestJob,
     Project,
     Release,
+    SchemaDraft,
     Source,
     TaskGroup,
     Token,
@@ -106,6 +107,9 @@ class UnitOfWork(Protocol):
 
     @property
     def schemas(self) -> Repository[AnnotationSchema]: ...
+
+    @property
+    def schema_drafts(self) -> Repository[SchemaDraft]: ...
 
     @property
     def sources(self) -> Repository[Source]: ...

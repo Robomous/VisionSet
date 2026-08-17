@@ -277,6 +277,20 @@ def _add_job_assignee(connection: Connection) -> None:
     _add_column(connection, "annotation_job", "assignee")
 
 
+def _add_schema_drafts(connection: Connection) -> None:
+    """``schema_draft``: the schema version a project is still writing.
+
+    Migration 4's kind — a table created whole — so the rule about a key column
+    never arriving by ``ALTER`` does not come up.
+
+    **Nothing to backfill, and nothing that could be.** Before this table a draft
+    existed only inside one browser tab's memory and was never written anywhere,
+    so an existing workspace starts with none. The empty table is the honest
+    starting state rather than a shortcut.
+    """
+    Base.metadata.create_all(connection, tables=[Base.metadata.tables["schema_draft"]])
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -287,6 +301,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=7, name="model_family", upgrade=_add_model_family),
     Migration(version=8, name="progress_touched", upgrade=_add_progress_touched),
     Migration(version=9, name="job_assignee", upgrade=_add_job_assignee),
+    Migration(version=10, name="schema_drafts", upgrade=_add_schema_drafts),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version
