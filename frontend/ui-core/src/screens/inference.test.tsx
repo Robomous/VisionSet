@@ -1137,6 +1137,88 @@ it("keeps a running check from reading as a running download", async () => {
   expect(screen.queryByTestId("download-progress")).toBeNull();
 });
 
+it("withdraws the download while a check is reading the same files", async () => {
+  // The three controls act on one cache, so a live run of either kind takes all
+  // of them out of reach. Not a bare disabled control: the label says which run
+  // is holding them, which is the check rather than anything this row started.
+  listing([
+    connection({
+      setup_state: "ready",
+      allowed_actions: READY_BOTH,
+      integrity_check: checkOf("running", 2, 9),
+    }),
+  ]);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+
+  const verify = await screen.findByTestId("action-verify-weights");
+  const check = await screen.findByTestId("action-check-integrity");
+  expect(verify.getAttribute("aria-disabled")).toBe("true");
+  expect(check.getAttribute("aria-disabled")).toBe("true");
+  expect(verify.textContent).toContain("Reading every file");
+  expect(check.textContent).toContain("Reading every file");
+});
+
+it("withdraws the check while a download is running", async () => {
+  // The same rule in the other direction. At `ready` a download is the
+  // completeness check, so the label somebody reads is "Checking…" — the
+  // vocabulary the row already uses for that reading of `download_weights`.
+  listing([
+    connection({
+      setup_state: "ready",
+      allowed_actions: READY_BOTH,
+      download: downloadOf("running", 1, 4),
+    }),
+  ]);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+
+  const check = await screen.findByTestId("action-check-integrity");
+  expect(check.getAttribute("aria-disabled")).toBe("true");
+  expect(check.textContent).toContain("Checking");
+});
+
+it("names the transfer on the download button a check has taken out of reach", async () => {
+  // The not-yet-set-up reading of the same rule, where the button is the row's
+  // own rather than a menu item — and where a live download would say
+  // "Downloading…" instead, because before setup it is the transfer itself.
+  listing([
+    connection({
+      setup_state: "not_set_up",
+      allowed_actions: ["download_weights", "update", "delete"],
+      integrity_check: checkOf("running", 2, 9),
+    }),
+  ]);
+  render(mount(<InferenceScreen />));
+
+  const button = (await screen.findByTestId("download-weights")) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  expect(button.textContent).toContain("Reading every file");
+});
+
+it("offers everything again once neither run is live", async () => {
+  // The positive path the three above are the absence of: a settled record must
+  // not go on withdrawing the controls, or a connection whose check finished
+  // could never be asked for anything.
+  listing([
+    connection({
+      setup_state: "ready",
+      allowed_actions: READY_BOTH,
+      download: downloadOf("succeeded", 4, 4),
+      integrity_check: checkOf("succeeded", 9, 9),
+    }),
+  ]);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+
+  const verify = await screen.findByTestId("action-verify-weights");
+  const check = await screen.findByTestId("action-check-integrity");
+  expect(verify.getAttribute("aria-disabled")).not.toBe("true");
+  expect(check.getAttribute("aria-disabled")).not.toBe("true");
+  expect(verify.textContent).toContain("Check for missing files");
+  expect(check.textContent).toContain("Check files are undamaged");
+});
+
 it("shows a check nobody on this page started", async () => {
   // The shipped bug's shape, one action over: the job id lived in a component, so
   // only the mount that pressed the menu item could see a run reading gigabytes.

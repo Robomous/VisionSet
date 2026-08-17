@@ -34,7 +34,9 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from visionset.kernel.domain import (
+    CONNECTION_JOB_KEY,
     INTEGRITY_CHECK_JOB_TYPE,
+    LIVE_JOB_STATES,
     WEIGHT_DOWNLOAD_JOB_TYPE,
     WEIGHT_HOLDING_TYPES,
     BackgroundJob,
@@ -119,6 +121,49 @@ class InferenceConnectionService:
             downloads=_newest_by_connection(jobs, WeightDownload),
             checks=_newest_by_connection(jobs, IntegrityCheck),
         )
+
+    def live_job(self, connection_id: UUID, *, job_type: str) -> BackgroundJob | None:
+        """That kind of work already under way against this connection, if any.
+
+        **What a surface asks so that a second request joins a run instead of
+        forking one.** Both operations over a connection's weights are long — a
+        transfer of gigabytes, or a re-read of all of them — and both are
+        idempotent, so a second request for a kind already in flight has nothing
+        to add: it either duplicates the bytes or, where more than one worker
+        runs, overlaps the first over a single cache. Handing back the live run
+        answers the caller with the thing it actually wanted to watch.
+
+        **Best-effort, and the caller must not read it as a lock.** Nothing
+        brackets this read and the enqueue that follows it, so two requests
+        arriving together can both see nothing live and both queue. That is the
+        ordinary case removed — a double-click, a second tab, a command entered
+        twice — not a race won. A guarantee would need the queue to claim at
+        enqueue, which is a cost every job type would pay for one screen's
+        benefit.
+
+        **It sees jobs and nothing else, which is the honest limit.** Of the
+        three surfaces that fetch and check weights, only the HTTP one queues:
+        the CLI and the MCP tools both run the operation inline and write no row
+        at all (``visionset.cli.inference``, ``visionset.mcp.inference``), each
+        because it has no dispatcher to hand the work to. A download started from
+        either is invisible here and always will be. That is why this coalesces
+        rather than refuses: a refusal built on this answer would bind one
+        surface out of three while claiming an exclusivity none of them could
+        rely on.
+
+        ``job_type`` is passed rather than derived from an action, because the
+        caller is the surface that already knows which handler it is about to
+        enqueue — and a mapping from action to job type would be a second
+        encoding of what ``visionset.jobs`` registers.
+
+        Newest first, as :meth:`JobQueue.list` answers, so a connection with two
+        live rows — which the paragraph above admits is possible — hands back the
+        one somebody most recently asked for.
+        """
+        for job in self._workspace.job_queue.list(states=LIVE_JOB_STATES, types={job_type}):
+            if job.payload.get(CONNECTION_JOB_KEY) == str(connection_id):
+                return job
+        return None
 
     def get_by_name(self, name: str) -> InferenceConnection:
         """The connection somebody would name, resolved case-insensitively.
