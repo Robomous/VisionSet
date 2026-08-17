@@ -324,14 +324,15 @@ out of the object to pick the variant, and omitting it fails. Always send
 ## What is not here, and why
 
 Fifty candidate tools were recorded across the four REST tasks; thirty of them shipped and
-twenty did not. Fifteen have been added since, each because a surface grew a capability an agent
-had no way to reach: `check_export`, the plan-before-apply half of an export on the
+twenty did not. Nineteen have been added since, each because a surface grew a capability an
+agent had no way to reach: `check_export`, the plan-before-apply half of an export on the
 `preview_schema_change` precedent; the four batch-composition tools above; the seven
-inference-connection tools, closing the Inference section's SDK-first parity (#421); and the
-three deletions, which are advertised only on request. That is forty-four offered by default
-and forty-seven in all. The parity rule means *evaluated*, not *implemented* — tool-selection
-accuracy degrades with count, so a tool ships only when an agent has a reason to reach for it
-that no neighbour covers.
+inference-connection tools, closing the Inference section's SDK-first parity; the four
+schema-draft tools above, because composing a schema across several calls needs somewhere to
+hold a class before it is finished; and the three deletions, which are advertised only on
+request. That is forty-eight offered by default and fifty-one in all. The parity rule means
+*evaluated*, not *implemented* — tool-selection accuracy degrades with count, so a tool ships
+only when an agent has a reason to reach for it that no neighbour covers.
 
 **Folded into a parent**, because the parent already reads it and a second tool is a second round
 trip: `get_project_dataset`, `get_dataset`, `list_schema_versions`, `get_source`,
