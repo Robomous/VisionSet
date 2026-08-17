@@ -202,12 +202,12 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
     }
     if (path === `/batches/${BATCH}/jobs`) {
       return route.fulfill({
-        json: { items: [{ id: JOB, batch_id: BATCH, state: job, asset_count: 48, allowed_actions: jobActions(job) }], total: 1 },
+        json: { items: [{ id: JOB, batch_id: BATCH, state: job, asset_count: 48, allowed_actions: jobActions(job), assignee: null }], total: 1 },
       });
     }
     if (request.method() === "POST" && path === `/jobs/${JOB}/start`) {
       job = "in_progress";
-      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: job, asset_count: 48, allowed_actions: jobActions(job) } });
+      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: job, asset_count: 48, allowed_actions: jobActions(job), assignee: null } });
     }
     if (request.method() === "POST" && path === `/jobs/${JOB}/complete`) {
       // The kernel's own gate, kept rather than stubbed away: a job may only be
@@ -220,7 +220,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
         });
       }
       job = "completed";
-      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: job, asset_count: 48, allowed_actions: jobActions(job) } });
+      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: job, asset_count: 48, allowed_actions: jobActions(job), assignee: null } });
     }
     if (request.method() === "POST" && path === `/batches/${BATCH}/complete`) {
       // And the outer gate. This is the 409 the founder saw, reproduced exactly:

@@ -83,6 +83,7 @@ async function serveApi(page: Page): Promise<void> {
           state: "in_progress",
           asset_count: 1,
           allowed_actions: jobActions("in_progress"),
+          assignee: null,
         },
       });
     }
