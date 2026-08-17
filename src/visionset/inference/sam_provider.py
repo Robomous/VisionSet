@@ -317,10 +317,22 @@ class LocalSamProvider:
         The encode is a forward pass like any other, so it runs inside the same
         ``forward_guard`` the decode uses — nothing here trains, and the graph
         autograd would otherwise build sits in device memory at the exact moment
-        the request's largest allocation is live. And what goes into the cache is
-        detached regardless of how it was produced: an embedding that kept its
-        ``grad_fn`` would pin the encoder's activations for as long as the entry
-        survives, which is not the size the cache's bound was reasoned about.
+        the request's largest allocation is live. **That guard is also the whole
+        of why no cache entry pins the encoder's activations**, because it enters
+        ``no_grad`` on both of its branches, so nothing the encode returns has a
+        ``grad_fn`` to keep.
+
+        **What comes back is a list of feature maps, not a tensor**, and it is
+        cached exactly as handed over. Detaching it here rather than relying on
+        the guard is the obvious-looking move, and it does not work: a
+        ``.detach()`` on this line answered ``AttributeError: 'list' object has
+        no attribute 'detach'`` for every click, on every supported model,
+        because the multi-scale maps arrive together in a list. Measured against
+        the locked ``transformers`` rather than reasoned about from the name —
+        ``Sam2Model`` and ``Sam3TrackerModel`` both declare
+        ``get_image_embeddings(...) -> list[torch.Tensor]``, and both decorate it
+        ``@torch.no_grad()``, which is a second reason after the guard that there
+        is nothing here to detach.
 
         Keyed on ``asset_id`` alone, which is sound because assets are
         content-addressed: the bytes behind an id cannot change, so a hit can
@@ -352,7 +364,7 @@ class LocalSamProvider:
             self._encodes += 1
             with _fp16.forward_guard(torch, device_type=device.split(":")[0], half=half):
                 embedding = model.get_image_embeddings(inputs["pixel_values"])
-            return self._embeddings.put(target.asset_id, (embedding.detach(), size))
+            return self._embeddings.put(target.asset_id, (embedding, size))
 
     def _ready(self) -> tuple[Any, Any, str, bool]:
         if self._loaded is None:

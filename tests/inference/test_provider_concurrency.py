@@ -73,7 +73,7 @@ class GatedModel(StubModel):
         self._barrier = barrier
         self.lone_arrivals = 0
 
-    def get_image_embeddings(self, pixel_values: Any) -> str:
+    def get_image_embeddings(self, pixel_values: Any) -> list[str]:
         try:
             self._barrier.wait(timeout=LONE_ARRIVAL_SECONDS)
         except threading.BrokenBarrierError:
