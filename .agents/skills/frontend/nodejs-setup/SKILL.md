@@ -77,4 +77,4 @@ Never hand-edit a `version` field. The repo-root `VERSION` file is the source of
 `tsconfig.build.json`, which *excludes test files*, while `lint` runs the full
 `tsconfig.json` over everything. So `pnpm -r build` can pass while a type error sits in a test
 or a test helper — which is where fixtures live, and fixtures are what a new required wire field
-breaks. Run `lint` before calling TypeScript green. — 2026-08 run, T8
+breaks. Run `lint` before calling TypeScript green.

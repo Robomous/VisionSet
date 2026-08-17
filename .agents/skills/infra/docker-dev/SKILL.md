@@ -265,8 +265,8 @@ docker run --rm -v "$PWD:/workspace" -w /workspace visionset-api \
   checkout rather than a stale mount: **a compiler error naming a package that is plainly in
   `package.json`**, killing the `app` container at exit 2 and leaving nginx with no upstream and
   `localhost:8080` serving 502. It happened with `error TS2688: Cannot find type definition file
-  for 'node'` (2026-08-03, `@types/node`) and again with `error TS2307: Cannot find module
-  'lucide-react'` (2026-08-10, a `1.28.0 → 1.29.0` bump). Both times the cause was the same: the
+  for 'node'` (`@types/node`) and again with `error TS2307: Cannot find module
+  'lucide-react'` (after a minor version bump of it). Both times the cause was the same: the
   per-package `node_modules` volumes still held symlinks into a virtual-store path — literally
   `../../../node_modules/.pnpm/lucide-react@1.28.0_react@19.2.8/…` — that the rebuilt image no
   longer had. `down -v` was the remedy; mounting `src/` instead of the package roots removed the
@@ -299,7 +299,7 @@ docker run --rm -v "$PWD:/workspace" -w /workspace visionset-api \
   host `.venv` neither clobbers it nor is clobbered by it — and the host `.venv` is not mounted at
   all any more.
 - `api` reaches the *code* through `PYTHONPATH=/workspace/src` and its *metadata* through an
-  editable install whose `.dist-info` lives in `/opt/venv` (#437). Both are needed and they are
+  editable install whose `.dist-info` lives in `/opt/venv`. Both are needed and they are
   different things: the first is what `--reload` makes meaningful, the second is what makes
   `GET /formats` list exporters and `/health` report the real version rather than the `0.0.0`
   sentinel. `curl localhost:8080/api/health` is the one-second check that the second half is

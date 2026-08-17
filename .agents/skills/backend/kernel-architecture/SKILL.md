@@ -86,12 +86,13 @@ shapes, and every service write path uses one of them:
 
 - **Push the check into the write method itself** — the `add_schema_version_unless_annotated`
   shape: the insert is the first write and therefore the statement that opens the transaction,
-  so a prior read would sit in autocommit and reopen the race window. cf. #586, #589.
+  so a prior read would sit in autocommit and reopen the race window.
 - **Guard optimistically on the contended datum** — the `set_asset_progress` shape: pass
-  `expected=` and raise `StaleWrite` when somebody moved it first. cf. #302.
+  `expected=` and raise `StaleWrite` when somebody moved it first.
 
-The 2026-08-16 audit at `f31653d` verified every service write path conforms to one of these
-two shapes. Closed line of inquiry — do not re-derive it.
+Every existing service write path conforms to one of these two shapes; hold a new write to
+the same standard rather than re-deriving the pattern, and never add a third shape without
+arguing it here first.
 
 ## Adding a format plugin
 

@@ -29,9 +29,9 @@ changes is how it arrives.
 
 The first time a number appears in a block, it earns a clause saying what it is:
 
-- Write: *"the trunk-supersession question (#315)"*, *"the port and local adapter that shipped as
-  slice 2 (#434)"*, *"the parked credential-storage question (#421)"*.
-- Not: *"`cf. #315`"*, *"see #434"*, *"(cf. #388, #391, #402)"*.
+- Write: *"the trunk-supersession question (#123)"*, *"the port and local adapter that shipped as
+  its second slice (#124)"*, *"the parked credential-storage question (#125)"*.
+- Not: *"`cf. #123`"*, *"see #124"*, *"(cf. #12, #34, #56)"*.
 
 A later mention inside the same block can be bare, because the reader already knows what it is.
 Keep to one reference per clause; where a draft stacks several, give each its own sentence, or
@@ -44,11 +44,11 @@ number in such a trail belongs somewhere in the prose above it, doing work in a 
 
 GitHub acts on `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` and
 `resolved` wherever it finds one beside an issue number — inside a sentence, inside a quotation,
-and inside a sentence that denies it. "Nothing here closes #281" closed #281.
+and inside a sentence that denies it. "Nothing here closes #123" closes #123.
 
 The only place one belongs is a PR body that genuinely ends the issue, written deliberately as
-`Closes #NNN`. Everywhere else, reword around it: *"#281 is untouched"*, *"this continues the
-provider work from #443"*.
+`Closes #NNN`. Everywhere else, reword around it: *"#123 is untouched"*, *"this continues the
+provider work from #124"*.
 
 ## What is quoted, never rewritten
 

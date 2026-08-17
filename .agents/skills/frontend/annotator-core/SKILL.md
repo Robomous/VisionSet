@@ -66,7 +66,7 @@ in-core factory a value — `draftAnnotation` mints `null`, because the engine t
 not a workflow, and must not claim provenance the service overwrites.
 
 A field the *service* stamps stays off `AnnotationCreate`/`AnnotationUpdate`: a field a client
-could set and never observe is a lie in the schema. — 2026-08 run, T8
+could set and never observe is a lie in the schema.
 
 ## The rules the machine enforces
 
