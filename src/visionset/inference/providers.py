@@ -57,19 +57,18 @@ from visionset.kernel.errors import (
     InferenceConnectionNotRunnable,
     InferenceConnectionNotSetUp,
 )
-from visionset.kernel.ports import ModelProvider, PointSegmenter
+from visionset.kernel.ports import Runner
 
 _Key = tuple[str, str]
 
-type Runner = ModelProvider | PointSegmenter
-"""Either kind of thing a connection can resolve to.
+__all__ = ["ProviderPool", "Runner", "provider_for", "resident"]
+"""``Runner`` is re-exported rather than redefined.
 
-A union rather than one widened port, because the two answer different
-questions: a detector is asked what it sees and answers in boxes, a segmenter is
-asked what is under a point and answers in pixels. Resolution is the same for
-both — a connection names a model, and its family decides which adapter is built
-— so it is only the return type that has to admit both, and the caller narrows
-with ``isinstance`` on the protocol it needs.
+It moved to ``kernel/ports/provider.py``, beside the ``Provider`` whose ``build``
+returns one, because both of its members are kernel ports and a union of them is
+kernel vocabulary. It stays reachable from here because this is where callers
+already import it from, and two spellings of one union is how the two would come
+to disagree about what a connection can resolve to.
 """
 
 
