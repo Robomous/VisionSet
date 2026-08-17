@@ -484,6 +484,23 @@ That last one is still the law and is still enforced on every call. It is simply
 person finds out: a client with `capabilities` in hand can decline to ask, which is why the
 editor now says so once on the panel instead of collecting one refusal per click.
 
+## The built-in stand-in, and what it is for
+
+One model id is served without downloading anything: `visionset/stub-segmenter`, at any revision.
+It answers a point prompt with a square centred on the click. It is not a model, it predicts
+nothing, and no dataset should contain its output.
+
+It exists so the path between a click and a shape can be exercised without weights. Set one up as
+a custom-model local connection and the suggest tool works end to end - the form, the download
+action, the connection's lifecycle, the request, the mask pipeline and the editor - which is what
+you want when you are asking *is my setup working, or is it the model?*. It also needs neither the
+`local-inference` extra nor a network, so it answers on a base install where nothing else can.
+
+It is deliberately absent from the model list. Nobody choosing a model should be offered a
+segmenter that cannot segment; typing the id is the whole of how you reach it.
+
+This is the same decision as the `dummy` export format, and taken for the same reason.
+
 ## What a connection is not
 
 It is **not a credential store**, yet. An HTTP connection carries no secret today, and the field

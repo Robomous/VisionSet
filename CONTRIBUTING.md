@@ -94,6 +94,9 @@ Take a subset with `bash scripts/check.sh python`, `frontend`, `generated` or `b
 all while calling itself canonical — and during the 2026-08 remediation run the
 real-server cycle suite was three separate times the *only* one to catch a regression
 (#306, #308, #309), one of which shipped on a green run of this script and went red in CI.
+It has since been four: the auto-labeling walk added for #609 found, on its first run, a
+runtime gate in the download route that no unit test could reach, because the gate is in
+the route rather than in anything a service test drives.
 `bash scripts/check.sh --fast` skips them for the inner loop; it says so in a banner rather
 than quietly, because "All checks passed" has always meant "all the checks this invocation
 ran".
