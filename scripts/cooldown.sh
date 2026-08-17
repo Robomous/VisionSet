@@ -44,6 +44,9 @@
 #   bash scripts/cooldown.sh --days                # 3
 #   bash scripts/cooldown.sh --cutoff              # 2026-08-04T09:00:00Z
 #
+#   bash scripts/cooldown.sh --audit old.lock new.lock   # what a resolve moved
+#                                                        # past the cutoff; 3 if any
+#
 # The two query forms exist so the gate in tests/scripts/cooldown.test.mjs and
 # the docs can read the number from here rather than restating it.
 #
@@ -84,6 +87,64 @@ cooldown_cutoff() {
     || date -u -v"-${days}d" +%Y-%m-%dT%H:%M:%SZ
 }
 
+# ---------------------------------------------------------------------------
+# The audit: what a resolution moved, and whether the cool-down vetted it.
+# ---------------------------------------------------------------------------
+#
+# uv records `upload-time` on every sdist and wheel it locks, so the lockfile
+# already carries the one fact the cool-down cares about and no index has to be
+# asked. Comparing a candidate lock against the baseline it was resolved from
+# names exactly the packages that resolution moved; any of them carrying an
+# artifact published after the cutoff is a version the cool-down did not vet.
+#
+# Only the packages that moved are judged. One the resolution left alone may well
+# postdate today's cutoff — it entered under an older one, and re-litigating it
+# on every later command is the install-time behaviour this file refuses.
+#
+# LC_ALL=C throughout: `comm` compares bytes, and locale-collated input makes it
+# print "file 1 is not in sorted order" and then produce a wrong answer.
+
+# `name=version` for every locked package, one per line. Both keys are matched at
+# column zero, where a lockfile only ever has one package's own fields — a nested
+# table's keys are indented, so this cannot pick up a dependency's name.
+lock_versions() {
+  awk '/^name = /{n=$3} /^version = /{print n"="$3}' "$1" | tr -d '"'
+}
+
+# Every artifact timestamp for one package, truncated to whole seconds. uv writes
+# fractions on some entries and not others, and ".500Z" sorts *below* a bare "Z"
+# in a byte comparison — truncating both sides is what keeps a stamp half a second
+# past the cutoff from reading as older than it.
+lock_upload_times() {
+  awk -v want="\"$2\"" '
+    /^\[\[package\]\]/ { inpkg = 0 }
+    /^name = /         { inpkg = ($3 == want) }
+    inpkg && match($0, /upload-time = "[^"]+"/) {
+      print substr(substr($0, RSTART + 15, RLENGTH - 16), 1, 19)
+    }
+  ' "$1"
+}
+
+# Prints every `name==version` the candidate moved that the cutoff would refuse.
+# Returns 0 when the candidate is clean, 3 when it is not — uv uses 1 and 2, so a
+# cool-down refusal stays distinguishable from a resolution that simply failed.
+audit_lock() {
+  local baseline="$1" candidate="$2" cutoff="${3:0:19}" verdict=0 pair name stamp
+  while read -r pair; do
+    if [[ -z "$pair" ]]; then continue; fi
+    name="${pair%%=*}"
+    while read -r stamp; do
+      if [[ "$stamp" > "$cutoff" ]]; then
+        echo "$name==${pair#*=}"
+        verdict=3
+        break
+      fi
+    done < <(lock_upload_times "$candidate" "$name")
+  done < <(LC_ALL=C comm -13 <(lock_versions "$baseline" | LC_ALL=C sort) \
+                             <(lock_versions "$candidate" | LC_ALL=C sort))
+  return "$verdict"
+}
+
 case "${1:-}" in
   --days)
     echo "$COOLDOWN_DAYS"
@@ -93,6 +154,15 @@ case "${1:-}" in
     cooldown_cutoff "$COOLDOWN_DAYS"
     exit 0
     ;;
+  --audit)
+    if [[ $# -ne 3 ]]; then
+      echo "usage: cooldown.sh --audit <baseline-lock> <candidate-lock>" >&2
+      exit 2
+    fi
+    audit_status=0
+    audit_lock "$2" "$3" "$(cooldown_cutoff "$COOLDOWN_DAYS")" || audit_status=$?
+    exit "$audit_status"
+    ;;
   "" | --help | -h)
     # To stdout and exit 0 for `--help`, to stderr and exit 2 for no arguments
     # at all, which is a mistake rather than a question.
@@ -100,7 +170,9 @@ case "${1:-}" in
       echo "usage: cooldown.sh <command> [args...] | --days | --cutoff" >&2
       exit 2
     fi
-    sed -n '2,60p' "${BASH_SOURCE[0]}"
+    # Delimited by where the code starts rather than by a line number, so growing
+    # the header above cannot silently truncate the help below.
+    sed -n '2,/^set -euo pipefail$/p' "${BASH_SOURCE[0]}" | sed '$d'
     exit 0
     ;;
 esac

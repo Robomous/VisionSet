@@ -136,3 +136,116 @@ def test_the_scrub_leaves_a_lockfile_this_run_did_not_write(project: Path) -> No
     done = _run("bash", str(COOLDOWN), "true", cwd=project)
     assert done.returncode == 0, done.stderr
     assert (project / "uv.lock").read_text() == before
+
+
+# --------------------------------------------------------------------------
+# The audit
+# --------------------------------------------------------------------------
+#
+# uv records `upload-time` on every artifact it locks, so a lockfile already
+# carries the only fact the cool-down cares about and the audit reaches no index.
+# The fixtures below use 1999 for "long settled" and 2099 for "published after
+# any cutoff a test could run under", which is what keeps these cases from
+# depending on the day they run.
+
+def _entry(name: str, version: str, upload_time: str | None) -> str:
+    """One `[[package]]` table. No `upload-time` means a path dependency."""
+    body = (
+        f'[[package]]\nname = "{name}"\nversion = "{version}"\n'
+        'source = { registry = "https://pypi.org/simple" }\n'
+    )
+    if upload_time is not None:
+        body += (
+            f'sdist = {{ url = "https://e/{name}-{version}.tar.gz", '
+            f'hash = "sha256:cc", size = 1, upload-time = "{upload_time}" }}\n'
+        )
+    return body
+
+
+def _lock(*entries: str) -> str:
+    """A whole lockfile. Takes entries, never another lockfile — passing one in
+    would silently produce a file with two headers."""
+    return 'version = 1\nrequires-python = ">=3.12"\n\n' + "\n".join(entries)
+
+
+SETTLED = _entry("settled", "1.0.0", "1999-01-01T00:00:00.000Z")
+YOUNG = _entry("young", "1.0.0", "2099-01-01T00:00:00.000Z")
+ROOTED = '[[package]]\nname = "rooted"\nversion = "0.1.0"\nsource = { editable = "." }\n'
+BASELINE_LOCK = _lock(SETTLED, YOUNG, ROOTED)
+
+
+def _audit(tmp_path: Path, baseline: str, candidate: str) -> subprocess.CompletedProcess[str]:
+    (tmp_path / "baseline.lock").write_text(baseline)
+    (tmp_path / "candidate.lock").write_text(candidate)
+    return _run(
+        "bash",
+        str(COOLDOWN),
+        "--audit",
+        str(tmp_path / "baseline.lock"),
+        str(tmp_path / "candidate.lock"),
+        cwd=tmp_path,
+    )
+
+
+def test_a_candidate_that_moved_nothing_passes(tmp_path: Path) -> None:
+    done = _audit(tmp_path, BASELINE_LOCK, BASELINE_LOCK)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout == ""
+
+
+def test_a_package_that_did_not_move_is_never_judged(tmp_path: Path) -> None:
+    """`young` postdates every cutoff and is left alone, so it is not the audit's
+    business: it entered under an older cutoff, and re-litigating a version the
+    lockfile already holds is the install-time behaviour the cool-down refuses."""
+    candidate = _lock(
+        SETTLED, YOUNG, ROOTED, _entry("arrived", "1.0.0", "1999-06-01T00:00:00.000Z")
+    )
+    done = _audit(tmp_path, BASELINE_LOCK, candidate)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout == ""
+
+
+def test_a_package_the_resolution_added_too_recently_is_reported(tmp_path: Path) -> None:
+    candidate = _lock(
+        SETTLED, YOUNG, ROOTED, _entry("arrived", "2.0.0", "2099-06-01T00:00:00.000Z")
+    )
+    done = _audit(tmp_path, BASELINE_LOCK, candidate)
+    assert done.returncode == 3, done.stdout
+    assert done.stdout.strip() == "arrived==2.0.0"
+
+
+def test_a_package_the_resolution_upgraded_too_recently_is_reported(tmp_path: Path) -> None:
+    candidate = _lock(
+        _entry("settled", "2.0.0", "2099-01-01T00:00:00.000Z"), YOUNG, ROOTED
+    )
+    done = _audit(tmp_path, BASELINE_LOCK, candidate)
+    assert done.returncode == 3, done.stdout
+    assert done.stdout.strip() == "settled==2.0.0"
+
+
+def test_a_package_with_no_upload_time_passes(tmp_path: Path) -> None:
+    """A path dependency or the workspace root itself: no publication, nothing to
+    be patient about. This is the whole special-case list, not an example of it."""
+    moved_root = '[[package]]\nname = "rooted"\nversion = "0.2.0"\nsource = { editable = "." }\n'
+    candidate = _lock(SETTLED, YOUNG, moved_root)
+    done = _audit(tmp_path, BASELINE_LOCK, candidate)
+    assert done.returncode == 0, done.stdout
+    assert done.stdout == ""
+
+
+def test_the_audit_wants_exactly_two_lockfiles(tmp_path: Path) -> None:
+    done = _run("bash", str(COOLDOWN), "--audit", cwd=tmp_path)
+    assert done.returncode == 2
+    assert "--audit" in done.stderr
+
+
+def test_the_help_prints_the_whole_header_and_stops_at_the_code(tmp_path: Path) -> None:
+    """The help is the file's own comment block, delimited by where the code
+    starts rather than by a line number that goes stale the next time the header
+    grows."""
+    done = _run("bash", str(COOLDOWN), "--help", cwd=tmp_path)
+    assert done.returncode == 0, done.stderr
+    assert "cooldown.sh uv add httpx" in done.stdout
+    assert "cooldown.sh --audit" in done.stdout
+    assert "Overriding it" in done.stdout, "the help stops before the end of the header"
+    assert "set -euo pipefail" not in done.stdout, "the help ran into the code"
