@@ -46,7 +46,8 @@
  * `inference.test.tsx` holds.
  */
 
-import type { Precision } from "../data/inferenceQueries";
+import type { KnownMembers } from "../generated/api";
+import { SUGGEST_CAPABILITY, type CuratedEntry, type InstalledProvider, type Precision } from "../data/inferenceQueries";
 
 export type { Precision };
 
@@ -256,4 +257,129 @@ export function precisionsFor(device: string): readonly Precision[] {
 export function precisionOn(device: string, current: Precision): Precision {
   const offered = precisionsFor(device);
   return offered.includes(current) ? current : offered[0]!;
+}
+
+/**
+ * The heading each ability gets in the model select.
+ *
+ * A `Record` over the vocabulary's *known* members, so a member added to the
+ * kernel fails this build until its heading exists — the same enforcement
+ * `inferenceSections.ts` puts on the dashboard, for the same invariant. This is
+ * the copy a plugin does not ship: a driver declares which ability it serves and
+ * never how that ability is named on screen.
+ */
+const CAPABILITY_GROUP: Record<KnownMembers["ModelCapability"], string> = {
+  point_suggest: "Interactive segmentation (point prompts)",
+  text_detect: "Text-prompt detection",
+};
+
+/** One heading in the select, and the offers under it. */
+export interface CatalogGroup {
+  /** The capability value the group holds. */
+  readonly key: string;
+  readonly label: string;
+  readonly entries: readonly CuratedEntry[];
+}
+
+/**
+ * The model this form opens on when the installation offers it.
+ *
+ * A product decision and not a flag on the contract: a `default` member would let
+ * whoever ships a driver decide what a person meets first. It is the balanced rung
+ * of the point-prompt ladder — the pinned successor of the single model this form
+ * suggested before there was a list — so the default does not move under anybody.
+ */
+export const PREFERRED_MODEL_ID = "facebook/sam2.1-hiera-base-plus";
+
+/** Every offer the installation makes, in the order it made them. */
+export function entriesOf(providers: readonly InstalledProvider[]): readonly CuratedEntry[] {
+  return providers.flatMap((provider) => provider.curated);
+}
+
+/**
+ * The offers under their headings, in the order the dashboard reads abilities.
+ *
+ * A group with nothing in it is **not** rendered, which is where this parts
+ * company with `sectionsOf`: an empty section of the dashboard is an invitation
+ * to configure something, and an empty group in a select is a heading over
+ * nothing.
+ *
+ * An ability this build has no heading for is shown under its own value rather
+ * than dropped. The capability vocabulary is open, so a newer server or an
+ * installed driver may name one — and hiding it would hide a model the
+ * installation can actually run.
+ */
+export function groupsOf(entries: readonly CuratedEntry[]): readonly CatalogGroup[] {
+  const held = new Map<string, CuratedEntry[]>();
+  for (const entry of entries) {
+    const bucket = held.get(entry.capability);
+    if (bucket === undefined) held.set(entry.capability, [entry]);
+    else bucket.push(entry);
+  }
+
+  const groups: CatalogGroup[] = [];
+  for (const [capability, label] of Object.entries(CAPABILITY_GROUP)) {
+    const under = held.get(capability);
+    if (under !== undefined) groups.push({ key: capability, label, entries: under });
+  }
+  // Then whatever was offered that this build cannot name, in the order the
+  // catalog first mentions it — a `Map` keeps insertion order, so the ordering is
+  // the installation's rather than an alphabetisation nobody asked for.
+  for (const [capability, under] of held) {
+    if (capability in CAPABILITY_GROUP) continue;
+    groups.push({ key: capability, label: capability, entries: under });
+  }
+  return groups;
+}
+
+/**
+ * What a new local connection opens on, or `undefined` if nothing fits.
+ *
+ * {@link PREFERRED_MODEL_ID} when the installation offers it, and otherwise the
+ * first offer that answers a point prompt — because the one surface that
+ * consumes a suggestion is the editor's suggest tool, and opening on a model
+ * nothing in the app can ask would be a default that leads nowhere.
+ */
+export function defaultEntry(entries: readonly CuratedEntry[]): CuratedEntry | undefined {
+  const preferred = entries.find((entry) => entry.model_id === PREFERRED_MODEL_ID);
+  if (preferred !== undefined) return preferred;
+  return entries.find((entry) => entry.capability === SUGGEST_CAPABILITY);
+}
+
+/**
+ * The offer a stored connection is showing, or `undefined` if it is a custom one.
+ *
+ * Both halves are compared. A row naming an offered model at a *different*
+ * revision is a custom connection wearing a familiar name, and showing it as the
+ * offered entry would misreport which weights it runs.
+ */
+export function entryFor(
+  entries: readonly CuratedEntry[],
+  modelId: string,
+  revision: string,
+): CuratedEntry | undefined {
+  return entries.find(
+    (entry) => entry.model_id === modelId && entry.model_revision === revision,
+  );
+}
+
+/**
+ * What must be cleared before this model can be fetched, and where.
+ *
+ * **By model id alone, and deliberately not through {@link entryFor}.** An access
+ * gate belongs to the repository: pinning some other commit of the same model
+ * exempts nobody from its terms, so a line that disappeared when the revision was
+ * edited would be hiding a requirement that still applies.
+ *
+ * Both halves or neither. Either alone is a requirement a form cannot finish
+ * stating before it offers the download, so it states none of it and lets the
+ * refusal answer.
+ */
+export function accessFor(
+  entries: readonly CuratedEntry[],
+  modelId: string,
+): { readonly note: string; readonly href: string } | undefined {
+  const entry = entries.find((one) => one.model_id === modelId);
+  if (entry?.access_note == null || entry.access_url == null) return undefined;
+  return { note: entry.access_note, href: entry.access_url };
 }
