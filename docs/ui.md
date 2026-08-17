@@ -812,13 +812,13 @@ which is the lost update `STALE_WRITE` exists to prevent, and "Close" would leav
 editor showing a draft the server no longer recognises. Reloading is the only remedy that
 does not either lose work or leave the screen lying.
 
-`SchemaService.preview` **is** routed, at `POST .../schema/preview`, and the editor calls
-it before Save answers both gates the publish itself would - `is_destructive` and
-`is_refused` - without writing anything. The preview is advisory rather than
-authoritative, though: nothing is locked between it and a publish, so somebody can label
-a class in the gap and turn a preview that looked safe into a refusal. The publish's own
-409 is what actually decides, and making that refusal legible - not pre-empting it - is
-still the editor's real job.
+`SchemaService.preview` **is** routed, at `POST .../schema/preview` - it answers both gates
+the publish itself would, `is_destructive` and `is_refused`, without writing anything. The
+editor does not call it: nothing is locked between a preview and a publish, so somebody
+could label a class in the gap and turn a preview that looked safe into a refusal, and a
+call the editor never makes cannot disagree with the publish that follows it. The publish's
+own 409 is what actually decides, and making that refusal legible - not pre-empting it - is
+the editor's whole job here, exactly as `SchemaEditor`'s own docstring states it.
 
 `compare` **is** routed since #231, and it answers the neighbouring question - what
 two *published* versions did to each other. The version navigator uses it, and never
