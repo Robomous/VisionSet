@@ -63,7 +63,8 @@ filters on the declaration would stop offering it.
 
 The vocabulary itself is the kernel's (`ModelCapability`) and the mapping is not:
 what a tool can ask for is a domain word, while which `model_type` values this
-build serves is a fact about an optional runtime that the kernel has no view of.
+installation serves is a fact about the drivers it has installed, which the kernel
+has no view of.
 
 ## The family is recorded, not only resolved
 
@@ -176,14 +177,22 @@ surface. A candidate published only as a raw `.pt` or `.onnx` checkpoint needs i
 own loader and its own adapter, which is a different order of cost from a set
 entry however small the model is.
 
-Curated entries live in
-[`inferenceCatalog.ts`](../../../frontend/ui-core/src/screens/inferenceCatalog.ts),
-which records a model id, a pinned revision and a download size per entry. The
-module's prose asserts the license for the list and names its one exception by
-hand; an entry that carries a requirement of its own carries it as data, in
-`access`, because that is the half the interface has to render. Pinning the
-license per entry the way the revision is pinned is what would make a family-level
-assumption impossible to write by accident.
+**Curated entries are declared by the driver that runs them**, as a tuple of
+`CuratedModel` on its `curated` member, and the server hands the whole installed
+set to a form through `GET /inference/providers`. They are not a constant in this
+repository's frontend, and could not be: the list a form shows has to include the
+entries of a driver somebody installed from elsewhere.
+
+An entry records a model id, a pinned revision, the family it declares, one line
+of hint, and - as a pair or not at all - the access requirement and the page it is
+requested on. It records **no size**: what a download costs is read live for the
+exact pair while somebody is still deciding, and a number frozen into a list would
+be a second answer to a question already answered accurately.
+
+The license is asserted per entry, in the prose of the module the entries live in,
+because a family-level verdict is wrong for any family whose checkpoints disagree.
+The requirement itself travels as data, in `access_note` and `access_url`, because
+that is the half an interface has to render.
 
 ### What ships today
 
@@ -327,6 +336,9 @@ it. The rule this restates: a family entry is a string read out of a config, and
 the test that holds it names the configs it was read from.
 
 ## Related
+
+[`providers.md`](providers.md) is what a driver declares, how it registers, the
+version pin it must carry, and the conformance suite it has to pass.
 
 [`docs/inference.md`](../../inference.md) is the surface: the connections, why
 nothing is downloaded on your behalf, the two kinds, why the revision is pinned,

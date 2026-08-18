@@ -336,10 +336,18 @@ about to send? So a connection also declares what it can be asked for.
 { "setup_state": "ready", "capabilities": ["point_suggest"], … }
 ```
 
-| Capability | Means | Families |
-| --- | --- | --- |
-| `point_suggest` | Give me the thing under these points | the SAM 2 and SAM 3 families |
-| `text_detect` | Find everything these words name | the grounding-dino family |
+| Capability | Means |
+| --- | --- |
+| `point_suggest` | Give me the thing under these points |
+| `text_detect` | Find everything these words name |
+
+**The vocabulary is closed and the set of models answering to it is not.** These two are the
+whole of what a connection can declare, and each exists because a surface renders it. Which
+*model families* answer to them belongs to this installation rather than to this release: a
+driver declares the families it serves and what each may be asked for, and drivers are found
+through an entry-point group, so one somebody `pip`-installed serves families this repository
+has never heard of. What this distribution ships serves the SAM 2 and SAM 3 families for
+`point_suggest` and the Grounding DINO families for `text_detect`.
 
 **Read from the model, never from its name.** The value comes from the `model_type` the
 downloaded config declares - the same fact that decides which adapter runs it, so a model that
@@ -348,8 +356,8 @@ for every model this build has never heard of, and the wrongness would only surf
 deep in a request.
 
 **Empty means nothing is known yet**, which happens four ways: the weights were never fetched, so
-nothing has read a config; the config declared no model type; it declared one this build has no
-adapter for; or it is an `http` connection, whose model runs elsewhere and which declares nothing
+nothing has read a config; the config declared no model type; it declared one no installed driver
+serves; or it is an `http` connection, whose model runs elsewhere and which declares nothing
 until the remote contract says how an endpoint states what it can do. Empty is not a refusal -
 the server still judges every request on its own. It says only that no tool can rely on this
 connection.
@@ -693,7 +701,7 @@ workspace, compared without regard to case, so `local` and `Local` cannot name t
 | `UNSUPPORTED_PROMPT` | 422 | The model does not answer that way of asking |
 | `PROMPT_POINT_OUT_OF_BOUNDS` | 422 | A suggest point falls outside the asset; the message names the coordinate and the size |
 | `LOCAL_INFERENCE_UNAVAILABLE` | 500 | The `local-inference` extra is not installed; the message carries the command |
-| `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | This build has no adapter for that kind of connection |
+| `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | Nothing installed here runs that connection - an `http` one, which no adapter speaks to yet, or a model family no installed driver serves. The message names the families that are served |
 | `INFERENCE_OUT_OF_MEMORY` | 500 | The device ran out of memory loading or running the model; the message names the device and what to do about it |
 
 The last three are 5xx because they are conditions of the *machine* rather than of the request:
