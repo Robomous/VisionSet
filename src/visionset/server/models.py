@@ -933,8 +933,9 @@ class PreLabelRunOut(BaseModel):
     set before the first forward pass, so both its progress and its total are
     counted in the unit its own work is over.
 
-    **The outcome, once the job has one.** `stopped_early`, `assets_labeled` and
-    `regions_discarded` are the handler's own account of what a settled run did.
+    **The outcome, once the job has one.** `stopped_early`, `assets_labeled`,
+    `regions_discarded` and `regions_out_of_bounds` are the handler's own
+    account of what a settled run did.
     They are `null` while the job is still `queued` or `running`, and `null`
     where it ended `failed` before producing one — but a `cancelled` run still
     carries them: stopping partway is a coherent outcome for a handler whose
@@ -962,6 +963,10 @@ class PreLabelRunOut(BaseModel):
     #: for, discarded rather than written. `null` until the job settles with a
     #: result.
     regions_discarded: int | None
+    #: Regions whose mapped geometry had no overlap with a measured asset,
+    #: discarded rather than written. `null` until the job settles with a
+    #: result.
+    regions_out_of_bounds: int | None
 
     @classmethod
     def of(cls, run: PreLabelRun) -> Self:
@@ -974,6 +979,7 @@ class PreLabelRunOut(BaseModel):
             stopped_early=run.stopped_early,
             assets_labeled=run.assets_labeled,
             regions_discarded=run.regions_discarded,
+            regions_out_of_bounds=run.regions_out_of_bounds,
         )
 
 

@@ -440,8 +440,9 @@ def pre_label_run(value: PreLabelRun) -> dict[str, Any]:
 
     Assets, on ``weight_download``'s and ``integrity_check``'s terms: the
     handler's own unit, named where its job type is known. ``stopped_early``,
-    ``assets_labeled`` and ``regions_discarded`` are null until the job settles
-    with a result — a cancelled run still carries them, a failed one never does.
+    ``assets_labeled``, ``regions_discarded`` and ``regions_out_of_bounds`` are
+    null until the job settles with a result — a cancelled run still carries
+    them, a failed one never does.
     """
     return {
         "job_id": str(value.job_id),
@@ -452,6 +453,7 @@ def pre_label_run(value: PreLabelRun) -> dict[str, Any]:
         "stopped_early": value.stopped_early,
         "assets_labeled": value.assets_labeled,
         "regions_discarded": value.regions_discarded,
+        "regions_out_of_bounds": value.regions_out_of_bounds,
     }
 
 

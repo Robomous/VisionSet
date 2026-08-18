@@ -267,6 +267,7 @@ def test_pre_label_json_emits_the_complete_outcome(
         "stopped_early": False,
         "assets_skipped": 0,
         "regions_discarded": 0,
+        "regions_out_of_bounds": 0,
     }
 
 

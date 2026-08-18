@@ -330,8 +330,10 @@ text-prompted detector answers with text decoded from spans over that prompt rat
 choice from the list, so an answer naming one of the classes, matched case-insensitively, is
 written under the schema's own spelling, and an answer naming none of them - a span that
 crossed the boundary between two phrases, most often - is discarded rather than guessed onto
-either half; the outcome's `regions_discarded` says how many. A schema with no such class is
-refused up front; see [inference.md](inference.md#what-a-connection-can-be-asked-for).
+either half; the outcome's `regions_discarded` says how many. A mapped region whose geometry has
+no overlap with a measured asset is discarded separately, and `regions_out_of_bounds` says how
+many; unmeasured assets remain eligible. A schema with no such class is refused up front; see
+[inference.md](inference.md#what-a-connection-can-be-asked-for).
 
 **What lands enters at `pre_labeled`, never `annotated`.** Nobody judged it, so it arrives in its
 own editable state rather than claiming to be somebody's work - see
@@ -360,8 +362,9 @@ most recent `annotation.pre_label` job naming this batch - live or settled - and
 reload, a second tab or a run started at a terminal can only be shown by the batch itself saying
 so. Counted in assets, the unit this handler works in, and carrying the outcome
 `prelabel.py`'s `run` returns once the job has settled - `stopped_early`, `assets_labeled`,
-`regions_discarded` - so a client can tell a cancelled run from an untouched batch. Derived, never
-stored, and published on `BatchOut` as `pre_label_run`, `null` where none ever ran.
+`regions_discarded`, `regions_out_of_bounds` - so a client can tell a cancelled run from an
+untouched batch. Derived, never stored, and published on `BatchOut` as `pre_label_run`, `null`
+where none ever ran.
 
 ## What approval and completion announce
 

@@ -108,6 +108,44 @@ def test_one_call_can_carry_labels_for_several_assets(
     assert client.get(f"/jobs/{job_id}/progress").json()["annotated"] == 2
 
 
+def test_a_box_wholly_outside_a_measured_asset_is_a_422(
+    client: TestClient, working: tuple[str, str], assets: list[str]
+) -> None:
+    _, job_id = working
+
+    response = client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            a_box(
+                assets[0],
+                geometry={"type": "bbox", "x": 33.0, "y": 12.0, "width": 5.0, "height": 5.0},
+            )
+        ],
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "ANNOTATION_GEOMETRY_OUT_OF_BOUNDS"
+
+
+def test_a_box_partly_overlapping_a_measured_asset_is_stored(
+    client: TestClient, working: tuple[str, str], assets: list[str]
+) -> None:
+    _, job_id = working
+
+    response = client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            a_box(
+                assets[0],
+                geometry={"type": "bbox", "x": 31.0, "y": 12.0, "width": 5.0, "height": 5.0},
+            )
+        ],
+    )
+
+    assert response.status_code == 201
+    assert response.json()["total"] == 1
+
+
 def test_a_polygon_lands_under_the_class_that_declares_one(
     client: TestClient, working: tuple[str, str], assets: list[str]
 ) -> None:
