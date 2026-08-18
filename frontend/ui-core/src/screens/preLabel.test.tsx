@@ -394,3 +394,100 @@ it("invalidates the batch a second time only once the polled job settles, and on
     vi.useRealTimers();
   }
 });
+
+/**
+ * The four-mode redesign: a Start that cannot be a no-op, a Done that says
+ * what happened and points forward, and a segment filter it can actually set.
+ */
+
+it("disables the start press when nothing untouched remains", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] }, { counts: { unannotated: 0, total: 48 } });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  const submit = (await screen.findByTestId("prelabel-submit")) as HTMLButtonElement;
+  expect(submit.disabled).toBe(true);
+});
+
+it("says there is nothing left to run, rather than a count of zero", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] }, { counts: { unannotated: 0, total: 48 } });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect(await screen.findByText(/nothing left for a run to touch/i)).not.toBeNull();
+  expect(screen.queryByText(/0 of 48/)).toBeNull();
+});
+
+it("offers Review these frames once a run succeeds, and sets the segment filter", async () => {
+  on("GET", /\/background-jobs\//, {
+    status: 200,
+    body: backgroundJobOf({
+      state: "succeeded",
+      processed: 48,
+      total: 48,
+      result: {
+        assets_labeled: 48,
+        annotations_written: 120,
+        regions_discarded: 0,
+        assets_skipped: 0,
+        stopped_early: false,
+      },
+    }),
+  });
+  renderGallery({ allowed_actions: ["pre_label"] });
+
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await userEvent.click(await screen.findByRole("button", { name: /start/i }));
+
+  const review = await screen.findByRole("button", { name: /review these frames/i });
+  // The run just finished: re-running it is not the primary action any more.
+  expect(screen.queryByRole("button", { name: /^start$/i })).toBeNull();
+  await userEvent.click(review);
+
+  expect(screen.getByTestId("segment-review").getAttribute("aria-pressed")).toBe("true");
+});
+
+it("says how many regions a run discarded, in words, when it discarded any", async () => {
+  on("GET", /\/background-jobs\//, {
+    status: 200,
+    body: backgroundJobOf({
+      state: "succeeded",
+      result: {
+        assets_labeled: 40,
+        annotations_written: 90,
+        regions_discarded: 3,
+        assets_skipped: 0,
+        stopped_early: false,
+      },
+    }),
+  });
+  renderGallery({ allowed_actions: ["pre_label"] });
+
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await userEvent.click(await screen.findByRole("button", { name: /start/i }));
+
+  const discarded = await screen.findByTestId("prelabel-discarded");
+  expect(discarded.textContent).toMatch(/3 regions/);
+});
+
+it("says nothing about discarded regions when a run discarded none", async () => {
+  on("GET", /\/background-jobs\//, {
+    status: 200,
+    body: backgroundJobOf({
+      state: "succeeded",
+      result: {
+        assets_labeled: 40,
+        annotations_written: 90,
+        regions_discarded: 0,
+        assets_skipped: 0,
+        stopped_early: false,
+      },
+    }),
+  });
+  renderGallery({ allowed_actions: ["pre_label"] });
+
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await userEvent.click(await screen.findByRole("button", { name: /start/i }));
+
+  await screen.findByRole("button", { name: /review these frames/i });
+  expect(screen.queryByTestId("prelabel-discarded")).toBeNull();
+  expect(screen.queryByText(/^0$/)).toBeNull();
+});

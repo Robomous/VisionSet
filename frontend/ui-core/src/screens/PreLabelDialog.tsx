@@ -28,6 +28,15 @@
  * contract. Without a rendering of it, `succeeded`/`failed`/`cancelled` are only
  * a polling predicate — so this holds the job in state and shows it, on
  * `ExportDialog`'s precedent, rather than closing over an outcome nobody saw.
+ *
+ * ## Four modes, and the primary action changes with them
+ *
+ * Configure, running, done and failed each get their own body and their own
+ * primary press — never the same "Start" re-offered once a run has already
+ * settled. `Start` (and its done/failed twins, `Run again` and `Try again`) is
+ * disabled once nothing untouched remains: with `untouched === 0` a launch is a
+ * guaranteed no-op, and re-running what just finished is never the user's next
+ * real step.
  */
 
 import { useEffect, useState, type JSX } from "react";
@@ -54,7 +63,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../primitives/Select";
-import type { BadgeTone } from "./batchState";
+import type { BadgeTone, Segment } from "./batchState";
 import { batchKeys, useBackgroundJob, usePreLabelBatch, type Batch, type BackgroundJob } from "./queries";
 
 /** The capability a candidate connection has to declare. Read off the wire, never guessed. */
@@ -86,13 +95,75 @@ const JOB_STATE_VARIANT: Record<string, BadgeTone> = {
   cancelled: "neutral",
 };
 
+/** The four faces of this dialog, over the watched job and nothing else. */
+type Mode = "configure" | "running" | "done" | "failed";
+
+function modeOf(launched: BackgroundJob | null): Mode {
+  if (launched === null) return "configure";
+  if (isLive(launched.state)) return "running";
+  return launched.state === "succeeded" ? "done" : "failed";
+}
+
+/**
+ * A `BackgroundJob.result` promises nothing beyond its own type (`check.ts`'s
+ * `isJsonValue`), so every key this dialog reads is narrowed right where it is
+ * read rather than assumed.
+ */
+function readCount(result: BackgroundJob["result"], key: string): number {
+  const value = result[key];
+  return typeof value === "number" ? value : 0;
+}
+
+/** "Labels up to N of M untouched assets" only means something when N is not zero. */
+function untouchedSummary(untouched: number, total: number): string {
+  if (untouched === 0) {
+    return "Every asset here has already been pre-labeled or worked — there is nothing left for a run to touch.";
+  }
+  return `Labels up to ${untouched} of ${total} untouched asset${total === 1 ? "" : "s"}.`;
+}
+
+/** What a settled run actually did, in words — including the one count no other UI shows. */
+function DoneSummary({ result }: { readonly result: BackgroundJob["result"] }): JSX.Element {
+  const labeled = readCount(result, "assets_labeled");
+  const written = readCount(result, "annotations_written");
+  const discarded = readCount(result, "regions_discarded");
+  const skipped = readCount(result, "assets_skipped");
+  const stoppedEarly = result.stopped_early === true;
+
+  return (
+    <div className="flex flex-col gap-1" data-testid="prelabel-summary">
+      <p className="text-body text-foreground">
+        Labeled {labeled} asset{labeled === 1 ? "" : "s"}, writing {written} region
+        {written === 1 ? "" : "s"} awaiting review.
+      </p>
+      {discarded > 0 && (
+        <p className="text-meta text-muted-foreground" data-testid="prelabel-discarded">
+          Discarded {discarded} region{discarded === 1 ? "" : "s"} for naming a class the
+          prompt did not ask for.
+        </p>
+      )}
+      {skipped > 0 && (
+        <p className="text-meta text-muted-foreground">
+          Skipped {skipped} asset{skipped === 1 ? "" : "s"} that work had already started on
+          while the run was under way.
+        </p>
+      )}
+      {stoppedEarly && (
+        <p className="text-meta text-muted-foreground">The run stopped before reaching every asset.</p>
+      )}
+    </div>
+  );
+}
+
 export interface PreLabelButtonProps {
   readonly batch: Batch;
   readonly className?: string;
+  /** Where "Review these frames" sends the gallery once a run has succeeded. */
+  readonly onSegment: (segment: Segment) => void;
 }
 
 /** The header's trigger, gated on the batch's own declaration and nothing else. */
-export function PreLabelButton({ batch, className }: PreLabelButtonProps): JSX.Element | null {
+export function PreLabelButton({ batch, className, onSegment }: PreLabelButtonProps): JSX.Element | null {
   const [open, setOpen] = useState(false);
   if (!declares(batch, BATCH_ACTION.preLabel)) return null;
 
@@ -108,7 +179,11 @@ export function PreLabelButton({ batch, className }: PreLabelButtonProps): JSX.E
         <Sparkles className="size-4" aria-hidden="true" />
         Pre-label
       </Button>
-      <PreLabelDialog batch={open ? batch : null} onClose={() => setOpen(false)} />
+      <PreLabelDialog
+        batch={open ? batch : null}
+        onClose={() => setOpen(false)}
+        onSegment={onSegment}
+      />
     </>
   );
 }
@@ -116,9 +191,11 @@ export function PreLabelButton({ batch, className }: PreLabelButtonProps): JSX.E
 function PreLabelDialog({
   batch,
   onClose,
+  onSegment,
 }: {
   readonly batch: Batch | null;
   readonly onClose: () => void;
+  readonly onSegment: (segment: Segment) => void;
 }): JSX.Element {
   const queries = useQueryClient();
   const connections = useConnections(batch !== null);
@@ -136,6 +213,7 @@ function PreLabelDialog({
   const preLabel = usePreLabelBatch(batch?.id ?? "");
   const job = useBackgroundJob(jobId);
   const launched = job.data ?? null;
+  const mode = modeOf(launched);
 
   const active = candidates.find((row) => row.id === connectionId) ?? candidates[0];
   const untouched = batch?.progress.unannotated ?? 0;
@@ -154,6 +232,9 @@ function PreLabelDialog({
     confidenceValue >= 0 &&
     confidenceValue <= 1;
   const running = preLabel.isPending || (launched !== null && isLive(launched.state));
+  // `Start`'s own twins — `Run again`, `Try again` — share this: a launch with
+  // no untouched asset left is a guaranteed no-op, whichever mode offers it.
+  const launchDisabled = running || active === undefined || !validConfidence || untouched === 0;
   // The primitive the effect is actually a function of, not the object that
   // carries it — a `useBatch` refetch elsewhere on the page can mint a new
   // `Batch` with the same id, and that identity churn must not matter here.
@@ -169,10 +250,20 @@ function PreLabelDialog({
 
   function submit(): void {
     if (batch === null || active === undefined) return;
+    // Reset the settle guard before every launch, `Run again`/`Try again`
+    // included — otherwise a retry after a failure would settle a second time
+    // with the guard already tripped, and its own success would never
+    // invalidate the batch.
+    setSettled(false);
     preLabel.mutate(
       { connectionId: active.id, minimumConfidence: confidenceValue },
       { onSuccess: (queued) => setJobId(queued.id) },
     );
+  }
+
+  function review(): void {
+    onSegment("review");
+    close();
   }
 
   function close(): void {
@@ -193,53 +284,62 @@ function PreLabelDialog({
         </DialogDescription>
 
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="prelabel-model">Model</Label>
-            {candidates.length === 0 ? (
-              // An explanation with no control beats a control that does nothing —
-              // `SuggestPanel`'s standing rule, applied here: there is nowhere to
-              // route "add one" from this dialog without a new nav entry.
-              <p className="text-meta text-muted-foreground" data-testid="prelabel-no-connections">
-                No connection answers text prompts yet — add one from Inference first.
+          {(mode === "configure" || mode === "running") && (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="prelabel-model">Model</Label>
+                {candidates.length === 0 ? (
+                  // An explanation with no control beats a control that does nothing —
+                  // `SuggestPanel`'s standing rule, applied here: there is nowhere to
+                  // route "add one" from this dialog without a new nav entry.
+                  <p className="text-meta text-muted-foreground" data-testid="prelabel-no-connections">
+                    No connection answers text prompts yet — add one from Inference first.
+                  </p>
+                ) : (
+                  <Select
+                    value={active?.id ?? ""}
+                    onValueChange={setConnectionId}
+                    disabled={mode === "running"}
+                  >
+                    <SelectTrigger id="prelabel-model" data-testid="prelabel-model">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {candidates.map((one) => (
+                        <SelectItem key={one.id} value={one.id} meta={one.model_id}>
+                          {one.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="prelabel-confidence">Minimum prompt affinity</Label>
+                <Input
+                  id="prelabel-confidence"
+                  data-testid="prelabel-confidence"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={confidence}
+                  disabled={mode === "running"}
+                  onChange={(event) => setConfidence(event.target.value)}
+                />
+                <FieldHint>
+                  How well a region matches the words it was asked for — a different scale from a
+                  point-prompt model&rsquo;s mask confidence, which is why the number needs a name
+                  of its own rather than a bare percentage.
+                </FieldHint>
+              </div>
+
+              <p className="text-meta text-muted-foreground" data-testid="prelabel-count">
+                {untouchedSummary(untouched, total)}
               </p>
-            ) : (
-              <Select value={active?.id ?? ""} onValueChange={setConnectionId}>
-                <SelectTrigger id="prelabel-model" data-testid="prelabel-model">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {candidates.map((one) => (
-                    <SelectItem key={one.id} value={one.id} meta={one.model_id}>
-                      {one.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="prelabel-confidence">Minimum prompt affinity</Label>
-            <Input
-              id="prelabel-confidence"
-              data-testid="prelabel-confidence"
-              type="number"
-              min="0"
-              max="1"
-              step="0.01"
-              value={confidence}
-              onChange={(event) => setConfidence(event.target.value)}
-            />
-            <FieldHint>
-              How well a region matches the words it was asked for — a different scale from a
-              point-prompt model&rsquo;s mask confidence, which is why the number needs a name of
-              its own rather than a bare percentage.
-            </FieldHint>
-          </div>
-
-          <p className="text-meta text-muted-foreground" data-testid="prelabel-count">
-            Labels up to {untouched} of {total} untouched asset{total === 1 ? "" : "s"}.
-          </p>
+            </>
+          )}
 
           {launched !== null && (
             <p className="flex items-center gap-2 text-meta text-muted-foreground">
@@ -257,10 +357,12 @@ function PreLabelDialog({
             </p>
           )}
 
+          {mode === "done" && launched !== null && <DoneSummary result={launched.result} />}
+
           {/* A job that stopped without labeling anything. Its `error` is the
               handler's own account, the only one there is for a failure that
               happened after the launch had already been answered. */}
-          {launched !== null && launched.state === "failed" && (
+          {mode === "failed" && launched !== null && launched.state === "failed" && (
             <FieldError data-testid="prelabel-job-error">
               {launched.error ?? "The run stopped without saying why."}
             </FieldError>
@@ -272,17 +374,65 @@ function PreLabelDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" onClick={close}>
-            {launched !== null && launched.state === "succeeded" ? "Close" : "Cancel"}
-          </Button>
-          <Button
-            variant="primary"
-            data-testid="prelabel-submit"
-            disabled={running || active === undefined || !validConfidence}
-            onClick={submit}
-          >
-            {running ? "Labeling…" : "Start"}
-          </Button>
+          {mode === "configure" && (
+            <>
+              <Button variant="secondary" onClick={close}>
+                Close
+              </Button>
+              <Button
+                variant="primary"
+                data-testid="prelabel-submit"
+                disabled={launchDisabled}
+                onClick={submit}
+              >
+                {running ? "Labeling…" : "Start"}
+              </Button>
+            </>
+          )}
+          {mode === "running" && (
+            // The run keeps going in the background — closing only stops
+            // watching it, so this is the one button and it is the primary one.
+            <Button variant="primary" onClick={close}>
+              Close
+            </Button>
+          )}
+          {mode === "done" && (
+            <>
+              <Button variant="secondary" onClick={close}>
+                Close
+              </Button>
+              {untouched > 0 && (
+                // Quiet, deliberately: the next real step is reviewing what this
+                // run already produced, not launching another one over it.
+                <Button
+                  variant="secondary"
+                  data-testid="prelabel-run-again"
+                  disabled={launchDisabled}
+                  onClick={submit}
+                >
+                  Run again
+                </Button>
+              )}
+              <Button variant="primary" data-testid="prelabel-review" onClick={review}>
+                Review these frames
+              </Button>
+            </>
+          )}
+          {mode === "failed" && (
+            <>
+              <Button variant="secondary" onClick={close}>
+                Close
+              </Button>
+              <Button
+                variant="primary"
+                data-testid="prelabel-retry"
+                disabled={launchDisabled}
+                onClick={submit}
+              >
+                Try again
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

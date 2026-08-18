@@ -451,6 +451,7 @@ export function GalleryScreen({
         {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
         {...(onDeleted === undefined ? {} : { onDeleted })}
         onApprove={() => setApproving(true)}
+        onSegment={setSegment}
         {...(onOpenAsset === undefined
           ? {}
           : {
@@ -627,6 +628,7 @@ function BatchHeader({
   onOpenDataset,
   onOpenBatch,
   onDeleted,
+  onSegment,
 }: {
   readonly batch: Batch | undefined;
   readonly projectId: string;
@@ -646,6 +648,8 @@ function BatchHeader({
   readonly onStartAnnotating?: () => void;
   /** Where to go when this screen's subject stops existing. */
   readonly onDeleted?: () => void;
+  /** Where a settled pre-label run's "Review these frames" sends the segment filter. */
+  readonly onSegment: (segment: Segment) => void;
 }): JSX.Element {
   const first = assets[0];
   const source = useSource(first?.source_id ?? undefined);
@@ -763,7 +767,7 @@ function BatchHeader({
             declares from the batch's state alone (`in_annotation`), so this
             control needs nothing beyond the batch itself.
           */}
-          {batch !== undefined && <PreLabelButton batch={batch} />}
+          {batch !== undefined && <PreLabelButton batch={batch} onSegment={onSegment} />}
           {/*
             The closing move, on the screen the work is done from. Living only on
             the batch table one tab away is how a person settles forty-eight frames
