@@ -37,6 +37,7 @@ const DATASET = "66666666-6666-4666-8666-666666666666";
 
 const NO_PROGRESS = {
   unannotated: 0,
+  pre_labeled: 0,
   annotated: 0,
   skipped: 0,
   review_pending: 0,

@@ -46,6 +46,7 @@ const JOB_ACTIONS: Record<JobState, readonly JobAction[]> = {
 /** `asset_actions`, given an open batch. */
 const ASSET_ACTIONS: Record<Progress, readonly AssetAction[]> = {
   unannotated: ["annotate", "skip"],
+  pre_labeled: ["annotate", "skip"],
   annotated: ["annotate", "skip", "submit_for_review"],
   skipped: ["restore"],
   review_pending: ["accept", "return_to_annotator"],

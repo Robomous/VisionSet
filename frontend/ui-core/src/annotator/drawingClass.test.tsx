@@ -90,7 +90,7 @@ function answer(path: string): unknown {
       promoted_asset_count: 0,
       parent_batch_id: null,
       pre_label_run: null,
-      progress: { unannotated: 2, annotated: 0, skipped: 0, review_pending: 0, accepted: 0, total: 2 },
+      progress: { unannotated: 2, pre_labeled: 0, annotated: 0, skipped: 0, review_pending: 0, accepted: 0, total: 2 },
     };
   }
   if (path.endsWith("/schema/versions/1") || path.endsWith("/schema")) return SCHEMA;

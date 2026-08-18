@@ -123,6 +123,7 @@ function batch(overrides: Partial<Batch> = {}): Batch {
     asset_count: 48,
     progress: {
       unannotated: 0,
+      pre_labeled: 0,
       annotated: 3,
       skipped: 45,
       review_pending: 0,

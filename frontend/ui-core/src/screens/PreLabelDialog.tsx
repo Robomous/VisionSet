@@ -13,12 +13,13 @@
  *
  * ## Where a label lands, and what the run touches
  *
- * `review_pending`, never `annotated`: nobody has judged what comes back, so a
- * person reviews a draft instead of inheriting somebody else's unreviewed guess
- * as their own work. Only assets nothing has touched are asked for — the route's
- * own rule, and it is stronger than `progress.unannotated` alone: a labeled,
- * skipped and restored asset reads `unannotated` again without losing its
- * boxes, and the route passes it over too. So `progress.unannotated`, the
+ * `pre_labeled`, never `annotated`: what comes back is a model's guess, so it is
+ * editable from the moment it arrives rather than inherited as somebody's own
+ * work — correcting a detector's boxes is the normal path, not a special one.
+ * Only assets nothing has touched are asked for — the route's own rule, and it
+ * is stronger than `progress.unannotated` alone: a labeled, skipped and
+ * restored asset reads `unannotated` again without losing its boxes, and the
+ * route passes it over too. So `progress.unannotated`, the
  * count shown here, is an upper bound on what a run will touch rather than an
  * exact one — which is why the string below says "up to".
  *
@@ -233,7 +234,7 @@ function DoneSummary({ result }: { readonly result: BackgroundJob["result"] }): 
     <div className="flex flex-col gap-1" data-testid="prelabel-summary">
       <p className="text-body text-foreground">
         Labeled {labeled} asset{labeled === 1 ? "" : "s"}, writing {written} region
-        {written === 1 ? "" : "s"} awaiting review.
+        {written === 1 ? "" : "s"} for you to correct.
       </p>
       {discarded > 0 && (
         <p className="text-meta text-muted-foreground" data-testid="prelabel-discarded">
@@ -255,26 +256,26 @@ function DoneSummary({ result }: { readonly result: BackgroundJob["result"] }): 
 }
 
 /**
- * `Start`, disabled, with `Review these frames` beside it where there is
- * something to review. The shared shape for every mode that has nothing left
+ * `Start`, disabled, with `Edit these frames` beside it where there is
+ * something to edit. The shared shape for every mode that has nothing left
  * to launch — `configure`, `stopped` and `failed` all reach it the same way;
- * `done` keeps its own footer because `Review` is offered there unconditionally.
+ * `done` keeps its own footer because `Edit` is offered there unconditionally.
  */
 function BlockedActions({
-  reviewPending,
-  onReview,
+  preLabeled,
+  onEdit,
 }: {
-  readonly reviewPending: number;
-  readonly onReview: () => void;
+  readonly preLabeled: number;
+  readonly onEdit: () => void;
 }): JSX.Element {
   return (
     <>
       <Button variant="secondary" data-testid="prelabel-submit" disabled>
         Start
       </Button>
-      {reviewPending > 0 && (
-        <Button variant="primary" data-testid="prelabel-review" onClick={onReview}>
-          Review these frames
+      {preLabeled > 0 && (
+        <Button variant="primary" data-testid="prelabel-edit" onClick={onEdit}>
+          Edit these frames
         </Button>
       )}
     </>
@@ -284,7 +285,7 @@ function BlockedActions({
 export interface PreLabelButtonProps {
   readonly batch: Batch;
   readonly className?: string;
-  /** Where "Review these frames" sends the gallery once a run has succeeded. */
+  /** Where "Edit these frames" sends the gallery once a run has succeeded. */
   readonly onSegment: (segment: Segment) => void;
 }
 
@@ -358,7 +359,7 @@ function PreLabelDialog({
   // progress can move, and the two only diverge for a draft — which cannot
   // declare `pre_label` at all.
   const total = batch?.progress.total ?? 0;
-  const reviewPending = batch?.progress.review_pending ?? 0;
+  const preLabeled = batch?.progress.pre_labeled ?? 0;
   // A launch would be a guaranteed no-op: only untouched assets are ever
   // eligible, whichever verb offers the press.
   const blocked = untouched === 0;
@@ -404,8 +405,8 @@ function PreLabelDialog({
     );
   }
 
-  function review(): void {
-    onSegment("review");
+  function goToPreLabeled(): void {
+    onSegment("pre_labeled");
     close();
   }
 
@@ -423,7 +424,8 @@ function PreLabelDialog({
           Asks the model for every class this batch&rsquo;s schema admits as a box on its
           own — never a polygon, polyline or tag, and never one that requires an attribute a
           prediction cannot supply — over every asset nothing has touched yet. What it finds
-          lands <strong>awaiting review</strong>, never as somebody&rsquo;s own annotation.
+          lands <strong>pre-labeled and editable</strong>, never as somebody&rsquo;s own
+          annotation.
         </DialogDescription>
 
         <div className="flex flex-col gap-3">
@@ -558,7 +560,7 @@ function PreLabelDialog({
 
               {mode === "configure" &&
                 (blocked ? (
-                  <BlockedActions reviewPending={reviewPending} onReview={review} />
+                  <BlockedActions preLabeled={preLabeled} onEdit={goToPreLabeled} />
                 ) : (
                   <Button
                     variant="primary"
@@ -577,7 +579,7 @@ function PreLabelDialog({
                       Start
                     </Button>
                   ) : (
-                    // Quiet, deliberately: the next real step is reviewing what
+                    // Quiet, deliberately: the next real step is correcting what
                     // this run already produced, not launching another one over it.
                     <Button
                       variant="secondary"
@@ -588,15 +590,15 @@ function PreLabelDialog({
                       Run again
                     </Button>
                   )}
-                  <Button variant="primary" data-testid="prelabel-review" onClick={review}>
-                    Review these frames
+                  <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
+                    Edit these frames
                   </Button>
                 </>
               )}
 
               {mode === "stopped" &&
                 (blocked ? (
-                  <BlockedActions reviewPending={reviewPending} onReview={review} />
+                  <BlockedActions preLabeled={preLabeled} onEdit={goToPreLabeled} />
                 ) : (
                   <div className="flex flex-col items-end gap-1">
                     <Button
@@ -616,7 +618,7 @@ function PreLabelDialog({
 
               {mode === "failed" &&
                 (blocked ? (
-                  <BlockedActions reviewPending={reviewPending} onReview={review} />
+                  <BlockedActions preLabeled={preLabeled} onEdit={goToPreLabeled} />
                 ) : (
                   <Button
                     variant="primary"

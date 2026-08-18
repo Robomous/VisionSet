@@ -91,6 +91,7 @@ function answer(path: string): unknown {
       pre_label_run: null,
       progress: {
         unannotated: 1,
+        pre_labeled: 0,
         annotated: 1,
         skipped: 1,
         review_pending: 1,

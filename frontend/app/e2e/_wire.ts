@@ -18,7 +18,7 @@
 
 type BatchState = "draft" | "approved" | "in_annotation" | "completed";
 type JobState = "pending" | "in_progress" | "completed";
-type Progress = "unannotated" | "annotated" | "skipped" | "review_pending" | "accepted";
+type Progress = "unannotated" | "pre_labeled" | "annotated" | "skipped" | "review_pending" | "accepted";
 
 // `delete` in every row but `completed`, which is `DELETABLE_STATES`.
 // Note these are `string[]` and not the generated `BatchAction` union —
@@ -43,6 +43,7 @@ const JOB_ACTIONS: Record<JobState, readonly string[]> = {
 
 const ASSET_ACTIONS: Record<Progress, readonly string[]> = {
   unannotated: ["annotate", "skip"],
+  pre_labeled: ["annotate", "skip"],
   annotated: ["annotate", "skip", "submit_for_review"],
   skipped: ["restore"],
   review_pending: ["accept", "return_to_annotator"],

@@ -421,7 +421,7 @@ export function GalleryScreen({
     (one) => one.id === batch.data?.parent_batch_id,
   )?.name;
   const counts = batch.data === undefined
-    ? { all: total, unannotated: total, review: 0, done: 0 }
+    ? { all: total, unannotated: total, pre_labeled: 0, review: 0, done: 0 }
     : segmentCounts(batch.data.progress);
 
   return (
@@ -653,7 +653,7 @@ function BatchHeader({
   readonly onStartAnnotating?: () => void;
   /** Where to go when this screen's subject stops existing. */
   readonly onDeleted?: () => void;
-  /** Where a settled pre-label run's "Review these frames" sends the segment filter. */
+  /** Where a settled pre-label run's "Edit these frames" sends the segment filter. */
   readonly onSegment: (segment: Segment) => void;
 }): JSX.Element {
   const first = assets[0];
@@ -981,7 +981,7 @@ function JobRow({
 // --- toolbar -----------------------------------------------------------------
 
 /**
- * The four segments and the density ladder.
+ * The five segments and the density ladder.
  *
  * The counts come off the **batch's** `ProgressCounts`, never off the loaded
  * pages: the pages are a window onto a collection that can hold fifty thousand,
@@ -1004,7 +1004,7 @@ function Toolbar({
   /**
    * False for a draft. Every frame in one is in the same state — there is nothing
    * to filter *between* — and the counts behind the segments are the documented
-   * zeros a batch with no jobs reports, so four segments reading `(0)` over a full
+   * zeros a batch with no jobs reports, so five segments reading `(0)` over a full
    * grid is the screen contradicting itself.
    *
    * The density slider stays either way: how big the thumbnails are is a question

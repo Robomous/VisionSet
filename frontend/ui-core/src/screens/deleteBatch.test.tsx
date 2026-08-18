@@ -98,6 +98,7 @@ function batch(state: Batch["state"], overrides: Partial<Batch> = {}): Batch {
     pre_label_run: null,
     progress: {
       unannotated: 48,
+      pre_labeled: 0,
       annotated: 0,
       skipped: 0,
       review_pending: 0,
@@ -189,6 +190,7 @@ describe("what the dialog says", () => {
           batch={batch("in_annotation", {
             progress: {
               unannotated: 20,
+              pre_labeled: 0,
               annotated: 25,
               skipped: 3,
               review_pending: 0,

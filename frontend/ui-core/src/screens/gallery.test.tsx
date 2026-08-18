@@ -101,6 +101,7 @@ function mount(node: ReactNode): JSX.Element {
 
 const NO_PROGRESS = {
   unannotated: 0,
+  pre_labeled: 0,
   annotated: 0,
   skipped: 0,
   review_pending: 0,
@@ -475,6 +476,7 @@ describe("the gallery", () => {
         progress: {
           total: 48,
           unannotated: 30,
+          pre_labeled: 2,
           annotated: 8,
           review_pending: 5,
           accepted: 1,
@@ -493,9 +495,11 @@ describe("the gallery", () => {
       expect(screen.getByTestId("segment-all").textContent).toContain("All (48)"),
     );
     expect(screen.getByTestId("segment-unannotated").textContent).toContain("(30)");
+    expect(screen.getByTestId("segment-pre_labeled").textContent).toContain("Model-labeled (2)");
     expect(screen.getByTestId("segment-review").textContent).toContain("In review (5)");
-    // 8 annotated + 1 accepted + 4 skipped. `review_pending` is deliberately not
-    // in here, which is the whole reason the mapping is written down.
+    // 8 annotated + 1 accepted + 4 skipped. `review_pending` and `pre_labeled`
+    // are deliberately not in here, which is the whole reason the mapping is
+    // written down.
     expect(screen.getByTestId("segment-done").textContent).toContain("Done (13)");
   });
 

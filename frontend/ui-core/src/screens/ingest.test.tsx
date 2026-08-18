@@ -35,9 +35,10 @@ vi.mock("./clipProbe", () => ({
 }));
 
 const API = "http://visionset.test";
-// `ProgressCounts` is six counters and the server always sends all six.
+// `ProgressCounts` is seven counters and the server always sends all seven.
 const NO_PROGRESS = {
   unannotated: 0,
+  pre_labeled: 0,
   annotated: 0,
   review_pending: 0,
   accepted: 0,

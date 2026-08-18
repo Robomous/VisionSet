@@ -5,7 +5,7 @@
  * reports every element as 0×0, so a claim about
  * *layout* asserted in this environment is a claim verified against itself. What
  * can honestly be pinned without a browser is the arithmetic and the mappings —
- * and the most important of those is that the four segments partition the five
+ * and the most important of those is that the five segments partition the six
  * domain states, because an asset that falls into no segment cannot be found at
  * all and no amount of rendering would reveal it.
  */
@@ -34,9 +34,10 @@ import {
 } from "./batchState";
 import type { AssetProgress } from "../annotator/jobQueries";
 
-/** The domain's five, written out so a sixth fails here first. */
+/** The domain's six, written out so a seventh fails here first. */
 const STATES: readonly AssetProgress[] = [
   "unannotated",
+  "pre_labeled",
   "annotated",
   "review_pending",
   "accepted",
@@ -83,12 +84,12 @@ describe("whether the batch has work in it yet", () => {
   });
 });
 
-describe("the four segments over five states", () => {
+describe("the five segments over six states", () => {
   it("puts every domain state in exactly one segment", () => {
     // The claim the whole toolbar rests on. `review_pending` and `accepted` are
-    // the two a four-way split drops when nobody writes the mapping down, and a
-    // dropped state is worse than a fifth segment: the assets still exist, and no
-    // filter can reach them.
+    // two a four-way split drops when nobody writes the mapping down, and a
+    // dropped state is worse than an extra segment: the assets still exist, and
+    // no filter can reach them.
     for (const state of STATES) {
       const landed = SEGMENTS.filter((one) => one !== "all").filter((one) =>
         inSegment(state, one),
@@ -101,6 +102,12 @@ describe("the four segments over five states", () => {
     expect(segmentOf("review_pending")).toBe("review");
     expect(segmentOf("accepted")).toBe("done");
     expect(segmentOf("annotated")).toBe("done");
+  });
+
+  it("keeps pre_labeled apart from both unannotated and review, the third distinction a four-way split would have lost", () => {
+    // Not `unannotated` — a model already wrote something there. Not `review` —
+    // nobody submitted it for a person to review at all.
+    expect(segmentOf("pre_labeled")).toBe("pre_labeled");
   });
 
   it("counts a skipped frame as done, because the question is whether work is left", () => {
@@ -124,21 +131,23 @@ describe("the four segments over five states", () => {
 
   it("makes the segment counts sum to the batch's own total", () => {
     const counts = segmentCounts({
-      total: 48,
+      total: 50,
       unannotated: 30,
+      pre_labeled: 2,
       annotated: 8,
       skipped: 4,
       review_pending: 5,
       accepted: 1,
     });
 
-    expect(counts.all).toBe(48);
+    expect(counts.all).toBe(50);
     expect(counts.unannotated).toBe(30);
+    expect(counts.pre_labeled).toBe(2);
     expect(counts.review).toBe(5);
     expect(counts.done).toBe(13);
     // The property, not the numbers: nothing is counted twice and nothing is
     // dropped, so a segment reading 0 means none rather than "not counted".
-    const parts: Segment[] = ["unannotated", "review", "done"];
+    const parts: Segment[] = ["unannotated", "pre_labeled", "review", "done"];
     expect(parts.reduce((sum, one) => sum + counts[one], 0)).toBe(counts.all);
   });
 
@@ -146,17 +155,18 @@ describe("the four segments over five states", () => {
     const counts = segmentCounts({
       total: 0,
       unannotated: 0,
+      pre_labeled: 0,
       annotated: 0,
       skipped: 0,
       review_pending: 0,
       accepted: 0,
     });
-    expect(counts).toEqual({ all: 0, unannotated: 0, review: 0, done: 0 });
+    expect(counts).toEqual({ all: 0, unannotated: 0, pre_labeled: 0, review: 0, done: 0 });
   });
 });
 
 describe("what a card says", () => {
-  it("draws all five states distinguishably", () => {
+  it("draws all six states distinguishably", () => {
     // Colour alone is not a status, so the dot carries a *shape* too — and the two
     // the toolbar folds together are drawn apart here, because this is the only
     // place in the product that can say an asset was reviewed rather than merely
@@ -175,6 +185,7 @@ describe("what a card says", () => {
     expect(mayHaveAnnotations("unannotated")).toBe(false);
     expect(mayHaveAnnotations("skipped")).toBe(false);
     expect(mayHaveAnnotations(null)).toBe(false);
+    expect(mayHaveAnnotations("pre_labeled")).toBe(true);
     expect(mayHaveAnnotations("annotated")).toBe(true);
     expect(mayHaveAnnotations("review_pending")).toBe(true);
     expect(mayHaveAnnotations("accepted")).toBe(true);
@@ -182,11 +193,12 @@ describe("what a card says", () => {
 });
 
 describe("the status colour vocabulary (#391)", () => {
-  it("gives every one of the five states a semantic token", () => {
+  it("gives every one of the six states a semantic token", () => {
     // The whole point of the sweep: three surfaces used to answer this question
     // three different ways, so the answer lives here once and they read it.
     expect(STATES.map((state) => progressTone(state))).toEqual([
       "neutral",
+      "accent",
       "success",
       "warning",
       "success",
@@ -207,6 +219,7 @@ describe("the status colour vocabulary (#391)", () => {
     // Two channels, and neither is redundant: the tone is the glance, the shape
     // survives a monochrome screen.
     expect(progressDotClass("unannotated")).toBe("border-border bg-transparent");
+    expect(progressDotClass("pre_labeled")).toBe("border-primary bg-transparent");
     expect(progressDotClass("annotated")).toBe("border-success bg-success");
     expect(progressDotClass("review_pending")).toBe("border-warning bg-transparent");
     expect(progressDotClass("accepted")).toBe("border-success bg-success");
@@ -218,6 +231,7 @@ describe("the status colour vocabulary (#391)", () => {
     // solid `warning` there. The token is the same; only the shape channel is
     // unavailable.
     expect(progressCellClass("unannotated")).toBe("bg-muted");
+    expect(progressCellClass("pre_labeled")).toBe("bg-primary");
     expect(progressCellClass("annotated")).toBe("bg-success");
     expect(progressCellClass("review_pending")).toBe("bg-warning");
     expect(progressCellClass("accepted")).toBe("bg-success");
@@ -253,21 +267,39 @@ describe("the status colour vocabulary (#391)", () => {
 
 describe("the header's numbers", () => {
   it("counts everything past unannotated as progress", () => {
-    const share = annotatedShare({ total: 48, unannotated: 45 });
+    const share = annotatedShare({ total: 48, unannotated: 45, pre_labeled: 0 });
     expect(share).toEqual({ done: 3, total: 48, percent: 6 });
   });
 
   it("does not go backwards when a frame is accepted", () => {
     // The property a bar must have. Counting only `annotated` would drop by one
     // every time somebody accepted a frame, which reads as work being undone.
-    const before = annotatedShare({ total: 10, unannotated: 7 });
-    const after = annotatedShare({ total: 10, unannotated: 7 });
+    const before = annotatedShare({ total: 10, unannotated: 7, pre_labeled: 0 });
+    const after = annotatedShare({ total: 10, unannotated: 7, pre_labeled: 0 });
     expect(after.done).toBeGreaterThanOrEqual(before.done);
-    expect(annotatedShare({ total: 10, unannotated: 6 }).done).toBeGreaterThan(before.done);
+    expect(
+      annotatedShare({ total: 10, unannotated: 6, pre_labeled: 0 }).done,
+    ).toBeGreaterThan(before.done);
   });
 
   it("reports zero for an empty batch rather than dividing by it", () => {
-    expect(annotatedShare({ total: 0, unannotated: 0 }).percent).toBe(0);
+    expect(annotatedShare({ total: 0, unannotated: 0, pre_labeled: 0 }).percent).toBe(0);
+  });
+
+  it("credits neither unannotated nor pre_labeled, the defect a user photographed", () => {
+    // The exact shape of the reported bug: an entire pre-labeled batch read
+    // "13 of 13 annotated (100%)" beside "13 frames still to annotate or
+    // skip" — one counter crediting the model's guesses as a person's work,
+    // the other correctly calling them outstanding. Both must now agree.
+    const share = annotatedShare({ total: 13, unannotated: 0, pre_labeled: 13 });
+    expect(share.percent).not.toBe(100);
+    expect(share.done).toBe(0);
+    expect(
+      outstandingWork({ unannotated: 0, pre_labeled: 13, review_pending: 0 }),
+    ).not.toBe(0);
+    expect(
+      outstandingWork({ unannotated: 0, pre_labeled: 13, review_pending: 0 }),
+    ).toBe(13);
   });
 });
 
@@ -320,6 +352,7 @@ describe("an asset's arrival (#283)", () => {
 describe("what blocks a batch from completing", () => {
   const counts = (over: Partial<Record<string, number>> = {}) => ({
     unannotated: 0,
+    pre_labeled: 0,
     annotated: 0,
     skipped: 0,
     review_pending: 0,
@@ -328,11 +361,12 @@ describe("what blocks a batch from completing", () => {
     ...over,
   });
 
-  it("counts the two unsettled states and nothing else", () => {
+  it("counts the three unsettled states and nothing else", () => {
     // `SETTLED_PROGRESS` is generous on purpose — review is optional, so an asset
     // may be done at `annotated` — which is why skipped and accepted do not block.
     expect(outstandingWork(counts({ unannotated: 4, review_pending: 3 }))).toBe(7);
     expect(outstandingWork(counts({ annotated: 3, skipped: 45, accepted: 9 }))).toBe(0);
+    expect(outstandingWork(counts({ pre_labeled: 5, review_pending: 3 }))).toBe(8);
   });
 
   it("is zero for the batch that could not be completed", () => {

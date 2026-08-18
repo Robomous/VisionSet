@@ -78,6 +78,7 @@ function mount(node: ReactNode): JSX.Element {
 
 const NO_PROGRESS = {
   unannotated: 0,
+  pre_labeled: 0,
   annotated: 0,
   skipped: 0,
   review_pending: 0,
@@ -432,7 +433,7 @@ it("says there is nothing left to run, rather than a count of zero", async () =>
   expect(screen.queryByText(/0 of 48/)).toBeNull();
 });
 
-it("offers Review these frames once a run succeeds, and sets the segment filter", async () => {
+it("offers Edit these frames once a run succeeds, and sets the segment filter", async () => {
   on("GET", /\/background-jobs\//, {
     status: 200,
     body: backgroundJobOf({
@@ -453,12 +454,12 @@ it("offers Review these frames once a run succeeds, and sets the segment filter"
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByRole("button", { name: /start/i }));
 
-  const review = await screen.findByRole("button", { name: /review these frames/i });
+  const edit = await screen.findByRole("button", { name: /edit these frames/i });
   // The run just finished: re-running it is not the primary action any more.
   expect(screen.queryByRole("button", { name: /^start$/i })).toBeNull();
-  await userEvent.click(review);
+  await userEvent.click(edit);
 
-  expect(screen.getByTestId("segment-review").getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByTestId("segment-pre_labeled").getAttribute("aria-pressed")).toBe("true");
 });
 
 it("says how many regions a run discarded, in words, when it discarded any", async () => {
@@ -503,7 +504,7 @@ it("says nothing about discarded regions when a run discarded none", async () =>
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByRole("button", { name: /start/i }));
 
-  await screen.findByRole("button", { name: /review these frames/i });
+  await screen.findByRole("button", { name: /edit these frames/i });
   expect(screen.queryByTestId("prelabel-discarded")).toBeNull();
   expect(screen.queryByText(/^0$/)).toBeNull();
 });
@@ -594,7 +595,7 @@ it("on reopen after a complete run, disables Start with its reason adjacent and 
   const reason = await screen.findByTestId("prelabel-blocked-reason");
   expect(reason.textContent).toMatch(/pre-labeled/i);
 
-  const review = await screen.findByRole("button", { name: /review these frames/i });
-  await userEvent.click(review);
-  expect(screen.getByTestId("segment-review").getAttribute("aria-pressed")).toBe("true");
+  const edit = await screen.findByRole("button", { name: /edit these frames/i });
+  await userEvent.click(edit);
+  expect(screen.getByTestId("segment-pre_labeled").getAttribute("aria-pressed")).toBe("true");
 });

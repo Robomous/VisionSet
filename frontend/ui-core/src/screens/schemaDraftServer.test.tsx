@@ -96,6 +96,7 @@ function batchFixture(): Batch {
     pre_label_run: null,
     progress: {
       unannotated: 48,
+      pre_labeled: 0,
       annotated: 0,
       skipped: 0,
       review_pending: 0,

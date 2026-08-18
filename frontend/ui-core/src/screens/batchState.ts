@@ -1,5 +1,5 @@
 /**
- * How a batch's states read, and how its five per-asset states group into four.
+ * How a batch's states read, and how its six per-asset states group into five.
  *
  * Pure, and separate from any component, for the reason `imbalance.ts` and
  * `columnsFor` are: these are the claims worth checking without a browser, and
@@ -21,7 +21,7 @@
  *
  * ## The tone is a token, and the word is not optional
  *
- * Left to each surface, the five per-asset states get **three** private
+ * Left to each surface, the six per-asset states get **three** private
  * vocabularies: a monochrome ramp off `primary` for the gallery card and the
  * timeline, and a semantic one in the annotator in which `skipped` is
  * **`destructive`**. That makes `accepted` green on one screen and near-black on
@@ -42,6 +42,14 @@
  * annotating is the healthy majority state, and painting the majority state
  * amber makes a list of ordinary work read as a list of problems. `approved`
  * stays `outline` rather than acquiring a colour for symmetry's sake.
+ *
+ * `pre_labeled` takes `accent` for the same reason `in_annotation` does: a
+ * model's guess sitting in an otherwise ordinary batch is the healthy case,
+ * not a problem, so it earns the colour that already means "this is where the
+ * normal work is" rather than `warning`, which is spoken for. Its shape is
+ * `ring` rather than `filled` — the labels exist but nobody has committed to
+ * them yet, the same open reading `review_pending`'s ring gives a submitted
+ * frame.
  */
 
 import type { AssetProgress } from "../annotator/jobQueries.js";
@@ -117,29 +125,48 @@ export function hasJobs(state: string | undefined): boolean {
   return state !== undefined && state !== "draft";
 }
 
-// --- the four segments -------------------------------------------------------
+// --- the five segments -------------------------------------------------------
 
 /**
- * The toolbar's grouping of the domain's five per-asset states.
+ * The toolbar's grouping of the domain's six per-asset states.
  *
  * **Every state maps to exactly one segment**, which is the property that makes
  * the counts trustworthy: they sum to the batch's own total, so a segment showing
  * `0` means none rather than "not counted". `review_pending` and `accepted` are
- * the two a four-way split silently drops if nobody writes the mapping down, and
- * dropping them is worse than a fifth segment would have been — an asset that
- * exists in no filter cannot be found at all.
+ * two a four-way split silently drops if nobody writes the mapping down, and
+ * dropping a state is worse than an extra segment would have been — an asset
+ * that exists in no filter cannot be found at all.
+ *
+ * `pre_labeled` earns its own segment rather than joining one of the other
+ * three, because it honestly is none of them: not `unannotated` — a model
+ * already wrote something there — not `review` — nobody submitted it, a person
+ * has not touched it at all — and not `done` — it is exactly the work this batch
+ * still needs a person to do. Folding it into `unannotated` would show
+ * "Unannotated" over frames that already carry boxes; folding it into `review`
+ * would claim a person is waiting on a reviewer when no person has been near it.
+ * Both readings are false in a way a filter should not be.
  *
  * The grouping is the *toolbar's*, not the domain's. A card and a timeline cell
  * still show the exact state, because "done" is the right thing to filter by and
  * the wrong thing to be told when you are looking at one frame.
  */
-export type Segment = "all" | "unannotated" | "review" | "done";
+export type Segment = "all" | "unannotated" | "pre_labeled" | "review" | "done";
 
-export const SEGMENTS: readonly Segment[] = ["all", "unannotated", "review", "done"];
+export const SEGMENTS: readonly Segment[] = [
+  "all",
+  "unannotated",
+  "pre_labeled",
+  "review",
+  "done",
+];
 
 export const SEGMENT_LABEL: Record<Segment, string> = {
   all: "All",
   unannotated: "Unannotated",
+  // "Model-labeled" rather than "Pre-labeled": the gallery's own Pre-label
+  // button already owns that word, and a segment tab reading the same text
+  // back would read as a second door to the same action rather than a filter.
+  pre_labeled: "Model-labeled",
   review: "In review",
   done: "Done",
 };
@@ -158,6 +185,8 @@ export const SEGMENT_LABEL: Record<Segment, string> = {
  */
 export function segmentOf(progress: AssetProgress | null | undefined): Exclude<Segment, "all"> {
   switch (progress) {
+    case "pre_labeled":
+      return "pre_labeled";
     case "review_pending":
       return "review";
     case "annotated":
@@ -189,6 +218,7 @@ export function inSegment(
 export function segmentCounts(counts: {
   readonly total: number;
   readonly unannotated: number;
+  readonly pre_labeled: number;
   readonly annotated: number;
   readonly skipped: number;
   readonly review_pending: number;
@@ -197,6 +227,7 @@ export function segmentCounts(counts: {
   return {
     all: counts.total,
     unannotated: counts.unannotated,
+    pre_labeled: counts.pre_labeled,
     review: counts.review_pending,
     done: counts.annotated + counts.accepted + counts.skipped,
   };
@@ -205,7 +236,7 @@ export function segmentCounts(counts: {
 // --- per-asset presentation --------------------------------------------------
 
 /**
- * The exact five states, as a shape, a tone and a word.
+ * The exact six states, as a shape, a tone and a word.
  *
  * `filled` vs `hollow` vs `muted` vs `ring` is the shape half and
  * `PROGRESS_TONE` is the colour half; the word is the third, and none of them is
@@ -215,11 +246,16 @@ export function segmentCounts(counts: {
  * only place in the product that can say an asset was reviewed rather than
  * merely labelled, and it says it in prose, which is the channel that survives
  * every kind of colour blindness and every monochrome screen.
+ *
+ * `pre_labeled` is `ring`, the same shape `review_pending` wears for the same
+ * reason: labels exist but nobody has committed to them, so the dot stays open
+ * rather than filling in.
  */
 export type DotStyle = "filled" | "hollow" | "muted" | "ring";
 
 export const PROGRESS_DOT: Record<string, DotStyle> = {
   unannotated: "hollow",
+  pre_labeled: "ring",
   annotated: "filled",
   review_pending: "ring",
   accepted: "filled",
@@ -228,6 +264,7 @@ export const PROGRESS_DOT: Record<string, DotStyle> = {
 
 export const PROGRESS_LABEL: Record<string, string> = {
   unannotated: "unannotated",
+  pre_labeled: "pre-labeled",
   annotated: "annotated",
   review_pending: "in review",
   accepted: "accepted",
@@ -252,9 +289,15 @@ export function progressDot(progress: AssetProgress | null | undefined): DotStyl
  * frame, the same kind of act as annotating it, and the error colour said the
  * opposite to everybody who chose it. `unannotated` is neutral because nothing
  * has happened yet — a fresh batch is not a batch in trouble.
+ *
+ * `pre_labeled` is `accent`, not `warning`: `warning` is spoken for by
+ * `review_pending` alone, and a model's guess in an otherwise ordinary batch is
+ * the healthy case rather than a problem — the same reasoning `in_annotation`
+ * gets on the batch-state map above.
  */
 export const PROGRESS_TONE: Record<string, StatusTone> = {
   unannotated: "neutral",
+  pre_labeled: "accent",
   annotated: "success",
   review_pending: "warning",
   accepted: "success",
@@ -335,27 +378,35 @@ export function progressCellClass(progress: AssetProgress | null | undefined): s
  * The count on a card is fetched per asset, because `BatchAssetOut` does not carry
  * one — so the cheapest correct thing is to not ask about the assets that
  * certainly have none. An `unannotated` asset has no annotations by definition;
- * a `skipped` one was passed over. The rest may.
+ * a `skipped` one was passed over. `pre_labeled` has annotations by
+ * definition too — a model wrote them — so it joins the rest.
  */
 export function mayHaveAnnotations(progress: AssetProgress | null | undefined): boolean {
-  return progress === "annotated" || progress === "review_pending" || progress === "accepted";
+  return (
+    progress === "pre_labeled" ||
+    progress === "annotated" ||
+    progress === "review_pending" ||
+    progress === "accepted"
+  );
 }
 
 /**
  * How many frames are still blocking the batch from completing.
  *
  * `SETTLED_PROGRESS` is `{annotated, skipped, accepted}` — generous, because review
- * is optional and an asset may be done at `annotated` — so the two that block are
- * `unannotated` (the labeling has not happened) and `review_pending` (the review
- * has not). Stated as a sum of the two named states rather than as
- * `total - settled`, so a sixth state fails the build here instead of quietly
- * counting as done.
+ * is optional and an asset may be done at `annotated` — so the three that block
+ * are `unannotated` (the labeling has not happened), `pre_labeled` (a model's
+ * guess sits there unjudged) and `review_pending` (the review has not
+ * happened). Stated as a sum of the three named states rather than as
+ * `total - settled`, so a seventh state fails the build here instead of
+ * quietly counting as done.
  */
 export function outstandingWork(counts: {
   readonly unannotated: number;
+  readonly pre_labeled: number;
   readonly review_pending: number;
 }): number {
-  return counts.unannotated + counts.review_pending;
+  return counts.unannotated + counts.pre_labeled + counts.review_pending;
 }
 
 // --- the header's numbers ----------------------------------------------------
@@ -363,16 +414,22 @@ export function outstandingWork(counts: {
 /**
  * How far the batch has got, as the header states it.
  *
- * "Annotated" here means *past `unannotated`* — every other state is somebody
- * having made a decision about the frame, including skipping it. A bar that
- * counted only `annotated` would go backwards when a frame is accepted, which is
- * the one thing a progress bar must never do.
+ * "Annotated" here means *a person has made a decision about the frame* —
+ * every state but `unannotated` and `pre_labeled` is one, including skipping
+ * it. `pre_labeled` reads as undone for the same reason `outstandingWork`
+ * counts it: a model's guess sitting untouched is not a person's work, and a
+ * bar crediting it would be the exact contradiction a batch of only
+ * pre-labeled frames once showed — "100% annotated" beside a full list of
+ * frames still to do. A bar that counted only `annotated` would also go
+ * backwards when a frame is accepted, which is the one thing a progress bar
+ * must never do.
  */
 export function annotatedShare(counts: {
   readonly total: number;
   readonly unannotated: number;
+  readonly pre_labeled: number;
 }): { readonly done: number; readonly total: number; readonly percent: number } {
-  const done = Math.max(0, counts.total - counts.unannotated);
+  const done = Math.max(0, counts.total - counts.unannotated - counts.pre_labeled);
   return {
     done,
     total: counts.total,
