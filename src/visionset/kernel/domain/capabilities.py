@@ -250,7 +250,11 @@ UNNAMED_EDGES: Final[frozenset[tuple[AssetProgress, AssetProgress]]] = frozenset
     (current, landed)
     for current in AssetProgress
     for has_annotations in (True, False)
-    if (landed := progress_after_annotating(current, has_annotations=has_annotations)) is not None
+    for judged in (True, False)
+    if (
+        landed := progress_after_annotating(current, has_annotations=has_annotations, judged=judged)
+    )
+    is not None
 )
 """Legal progress edges that deliberately have no action name.
 
@@ -260,6 +264,10 @@ last one goes — so this is *computed from* ``progress_after_annotating`` rathe
 than listed beside it. Nobody performs these: ``AnnotationService`` makes them in
 the same transaction as the write, and they are the consequence of ``annotate``,
 which is an action and is declared.
+
+The third is ``unannotated -> review_pending``, which an unjudged write makes in
+the same transaction as its labels. It is derived here for the same reason the
+other two are: this set can only grow if the domain's own derivation rule does.
 
 Offering either as its own control would be offering to change a marker while its
 labels stay put, which is the one thing the progress machine exists to prevent.

@@ -85,7 +85,9 @@ is the annotation job, the way ``JOB_TRANSITIONS`` is and
 
 
 ASSET_PROGRESS_TRANSITIONS: Final[Mapping[AssetProgress, frozenset[AssetProgress]]] = {
-    AssetProgress.UNANNOTATED: frozenset({AssetProgress.ANNOTATED, AssetProgress.SKIPPED}),
+    AssetProgress.UNANNOTATED: frozenset(
+        {AssetProgress.ANNOTATED, AssetProgress.SKIPPED, AssetProgress.REVIEW_PENDING}
+    ),
     AssetProgress.ANNOTATED: frozenset(
         {AssetProgress.UNANNOTATED, AssetProgress.SKIPPED, AssetProgress.REVIEW_PENDING}
     ),
@@ -97,6 +99,8 @@ ASSET_PROGRESS_TRANSITIONS: Final[Mapping[AssetProgress, frozenset[AssetProgress
 
 - ``unannotated -> annotated`` — it was labeled; ``-> skipped`` — it was decided
   against, which is recorded rather than erased from the batch.
+- ``unannotated -> review_pending`` — labels arrived that nobody has judged, so
+  they enter awaiting review rather than claiming to be somebody's work.
 - ``annotated -> unannotated`` — the last annotation on it was deleted;
   ``-> review_pending`` — it was submitted; ``-> skipped`` — it was decided
   against after all.
@@ -175,7 +179,7 @@ rather than behind the record's back.
 
 
 def progress_after_annotating(
-    current: AssetProgress, *, has_annotations: bool
+    current: AssetProgress, *, has_annotations: bool, judged: bool = True
 ) -> AssetProgress | None:
     """Where this asset's progress should land now, or ``None`` to leave it.
 
@@ -193,9 +197,15 @@ def progress_after_annotating(
     Pure, and separate from ``AnnotationService`` on purpose: "what does this
     mean for progress" is a domain question, and keeping it here is what lets
     a test sweep it against the transition table rather than against prose.
+
+    ``judged`` says whether a person exercised judgement on the labels that just
+    arrived. Unattended prediction is a silent write, so its labels enter at
+    ``review_pending`` rather than claiming to be work somebody did — and they get
+    there in one move, because a path through ``annotated`` has a window in which a
+    crash would leave unreviewed labels looking reviewed.
     """
     if current is AssetProgress.UNANNOTATED and has_annotations:
-        return AssetProgress.ANNOTATED
+        return AssetProgress.ANNOTATED if judged else AssetProgress.REVIEW_PENDING
     if current is AssetProgress.ANNOTATED and not has_annotations:
         return AssetProgress.UNANNOTATED
     return None
