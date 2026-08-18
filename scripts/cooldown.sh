@@ -150,6 +150,58 @@ audit_lock() {
   return "$verdict"
 }
 
+# ---------------------------------------------------------------------------
+# What a refusal knows, and what it is allowed to say.
+# ---------------------------------------------------------------------------
+#
+# The first pass resolved the whole graph under the cutoff, so it holds a vetted
+# version of every package it touched — including the ones the pin rule leaves
+# alone because they were already locked and nobody named them. Such a package can
+# still be forced upward by the resolution, and when the second pass takes its
+# newest release the audit refuses everything. Reporting the first pass's answer is
+# what keeps that refusal from being a dead end whose only exit turns the cool-down
+# off wholesale: both narrowed forms accept a caller's `-P name==version` and leave
+# it untouched, so the printed command is a route rather than a hint.
+#
+# A name the second pass was already handed a pin for gets no such advice. That
+# version was asked for and the resolution did not produce it, so repeating the ask
+# is not a next step — and a suggestion that provably cannot work would be worse
+# than saying nothing. Neither is there advice for a name the first pass never
+# resolved: there is no vetted version to name.
+#
+# Every pin belongs on one command. A command per package would be refused for the
+# next package in the list before it could do anything.
+suggest_vetted_versions() {
+  local violations="$1" snapshot="$2" name vetted line suggestions
+  shift 2
+  suggestions=()
+  while read -r line; do
+    if [[ -z "$line" ]]; then continue; fi
+    name="${line%%==*}"
+    if grep -qxF "$name" "$snapshot/pinned"; then
+      echo "cooldown: $name was pinned to the version the cool-down vets and the"
+      echo "cooldown: resolution did not honour it; there is no other pin to try."
+      continue
+    fi
+    vetted="$(awk -F= -v want="$name" '$1 == want { print $2; exit }' "$snapshot/vetted")"
+    if [[ -z "$vetted" ]]; then
+      echo "cooldown: the cool-down's own resolution holds no version of $name, so"
+      echo "cooldown: there is nothing vetted to pin it to."
+      continue
+    fi
+    echo "cooldown: the cool-down vets $name==$vetted."
+    suggestions+=(-P "$name==$vetted")
+  done <<<"$violations"
+  if [[ "${#suggestions[@]}" -gt 0 ]]; then
+    echo "cooldown: to take the vetted versions, re-run with:"
+    # %q throughout, so a requirement spelled `httpx>=1.0` survives being copied
+    # out of a terminal.
+    printf 'cooldown:   bash %q' "$0"
+    printf ' %q' "$@" "${suggestions[@]}"
+    printf '\n'
+  fi
+}
+
 # Whether the command names packages to upgrade at all. `-P`, `--upgrade-package`
 # and `--upgrade-package=name` are the same flag; a caller who pins their own
 # version with `name==version` has still named one.
@@ -163,11 +215,10 @@ has_upgrade_package() {
   return 1
 }
 
-# The packages named for upgrade that the caller did *not* pin themselves, one
-# per line. A `name==version` they wrote is a version they chose on purpose: the
-# resolution is still narrowed and the audit still judges the result, but nothing
-# here appends a pin over the top of theirs.
-upgrade_package_names() {
+# Every value a `-P` / `--upgrade-package` carried, one per line, in the order
+# they appeared. The three spellings are the same flag, and an empty value is
+# nothing.
+upgrade_package_values() {
   local arg value want=0
   for arg in "$@"; do
     value=""
@@ -182,11 +233,38 @@ upgrade_package_names() {
         *) continue ;;
       esac
     fi
+    if [[ -n "$value" ]]; then echo "$value"; fi
+  done
+}
+
+# The packages named for upgrade that the caller did *not* pin themselves, one
+# per line. A `name==version` they wrote is a version they chose on purpose: the
+# resolution is still narrowed and the audit still judges the result, but nothing
+# here appends a pin over the top of theirs.
+#
+# A `case` filter rather than a `grep` in a pipeline: `pipefail` is in force and a
+# grep that matches nothing exits 1, which would kill the script on the ordinary
+# path where the caller pinned nothing.
+upgrade_package_names() {
+  local value
+  while read -r value; do
     case "$value" in
-      "" | *==*) ;;
+      *==*) ;;
       *) echo "$value" ;;
     esac
-  done
+  done < <(upgrade_package_values "$@")
+}
+
+# The mirror image: the names the caller pinned themselves. A refusal naming one
+# of these has nothing to offer — that version was asked for and the resolution
+# did not produce it.
+pinned_package_names() {
+  local value
+  while read -r value; do
+    case "$value" in
+      *==*) echo "${value%%==*}" ;;
+    esac
+  done < <(upgrade_package_values "$@")
 }
 
 # Two forms are narrowed: `uv add …`, and a `uv lock` that names packages to
@@ -438,6 +516,13 @@ if is_narrowable "$@" && lock="$(nearest_lock)"; then
     lock_versions "$snapshot/baseline.lock" >"$snapshot/before-pairs"
     cut -d= -f1 "$snapshot/before-pairs" | LC_ALL=C sort >"$snapshot/before"
     upgrade_package_names "$@" | LC_ALL=C sort >"$snapshot/named"
+    # The first pass's whole answer, not just the part that becomes a pin: every
+    # version in it is one the cool-down vets, and the file outlives the restore
+    # below, which is what lets a refusal name the version that would have worked.
+    lock_versions "$lock" >"$snapshot/vetted"
+    # Every name the second pass is handed a pin for. The caller's are written
+    # first and the wrapper's appended below, so the file is the whole set.
+    pinned_package_names "$@" >"$snapshot/pinned"
     pins=()
     while read -r pair; do
       name="${pair%%=*}"
@@ -446,6 +531,7 @@ if is_narrowable "$@" && lock="$(nearest_lock)"; then
         continue
       fi
       pins+=(-P "$name==$version")
+      echo "$name" >>"$snapshot/pinned"
       if grep -qxF "$pair" "$snapshot/before-pairs"; then
         # Named for upgrade, and the cool-down allows nothing newer than what is
         # already locked. That is an answer rather than a failure, and pinning the
@@ -454,7 +540,7 @@ if is_narrowable "$@" && lock="$(nearest_lock)"; then
       else
         echo "cooldown: $name $version is the newest release the cool-down allows" >&2
       fi
-    done < <(lock_versions "$lock")
+    done <"$snapshot/vetted"
 
     restore_state "$snapshot"
     unset UV_EXCLUDE_NEWER
@@ -473,6 +559,7 @@ if is_narrowable "$@" && lock="$(nearest_lock)"; then
       {
         echo "cooldown: refusing this resolution — it needs versions published after ${cutoff}:"
         echo "$violations" | sed 's/^/  /'
+        suggest_vetted_versions "$violations" "$snapshot" "$@"
         echo "cooldown: uv.lock and pyproject.toml are unchanged. The environment may"
         echo "cooldown: hold that set already; \`uv sync\` puts it back in step."
       } >&2

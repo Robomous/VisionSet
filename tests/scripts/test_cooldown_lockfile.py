@@ -723,3 +723,60 @@ def test_a_narrowed_lock_upgrade_is_audited_like_an_add(stubbed) -> None:
     assert done.returncode == 3, done.stderr
     assert "settled==9.0.0" in done.stderr
     assert (project / "uv.lock").read_text() == before_lock
+
+
+# --------------------------------------------------------------------------
+# What a refusal says
+# --------------------------------------------------------------------------
+#
+# A package the resolution forces upward is neither new nor named, so the pin rule
+# leaves it alone, the second pass takes its newest release, and the audit refuses
+# the lot. The first pass resolved a version of it the cool-down vets, and these
+# cases are about that answer reaching the person reading the refusal instead of
+# dying with the snapshot.
+
+DRIFTING = _entry("drifting", "1.0.0", "1999-02-01T00:00:00.000Z")
+
+
+def test_a_transitively_upgraded_package_is_refused_with_its_vetted_version(stubbed) -> None:
+    """`settled` is in the lockfile and nobody named it, so it carries no pin. The
+    second pass moves it anyway; the first pass says 1.0.0 is what the cool-down
+    allows, and that is what the refusal has to report."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(_baseline_plus(ARRIVED))
+    (state / "pass2.lock").write_text(
+        _lock(_entry("settled", "9.0.0", "2099-06-01T00:00:00.000Z"), YOUNG, ROOTED, ARRIVED)
+    )
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 3, done.stderr
+    assert "settled==9.0.0" in done.stderr
+    assert "cooldown: the cool-down vets settled==1.0.0." in done.stderr
+    assert "cooldown: to take the vetted versions, re-run with:" in done.stderr
+    assert f"cooldown:   bash {COOLDOWN} uv add arrived -P settled==1.0.0" in done.stderr
+
+
+def test_every_refused_package_lands_on_one_re_run_command(stubbed) -> None:
+    """Two violations, one command. A command per package would be refused for the
+    next package in the list before it could do anything."""
+    project, state, env = stubbed
+    (project / "uv.lock").write_text(_lock(SETTLED, DRIFTING, YOUNG, ROOTED))
+    (state / "pass1.lock").write_text(_lock(SETTLED, DRIFTING, YOUNG, ROOTED, ARRIVED))
+    (state / "pass2.lock").write_text(
+        _lock(
+            _entry("settled", "9.0.0", "2099-06-01T00:00:00.000Z"),
+            _entry("drifting", "8.0.0", "2099-07-01T00:00:00.000Z"),
+            YOUNG,
+            ROOTED,
+            ARRIVED,
+        )
+    )
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 3, done.stderr
+    assert "cooldown: the cool-down vets drifting==1.0.0." in done.stderr
+    assert "cooldown: the cool-down vets settled==1.0.0." in done.stderr
+    assert (
+        f"cooldown:   bash {COOLDOWN} uv add arrived "
+        "-P drifting==1.0.0 -P settled==1.0.0" in done.stderr
+    ), done.stderr
