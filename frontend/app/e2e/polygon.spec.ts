@@ -370,3 +370,62 @@ function pointsOf(payload: readonly Record<string, unknown>[]): readonly (readon
   const geometry = payload[0]?.geometry as { points?: readonly (readonly [number, number])[] };
   return geometry?.points ?? [];
 }
+
+/**
+ * The gesture the insertion test above stops one step short of: dragging the
+ * vertex it just created, in the same sequence, with no deselect and no reselect
+ * in between. The distinction is the whole scenario — a click away and back
+ * collapses the text range that breaks this, so a version that reselects passes
+ * over the defect without touching it.
+ *
+ * The `dragstart` counter is the second half and a different claim: the canvas is
+ * not a surface a native drag may begin on, whatever is under the pointer. It is
+ * registered before the gesture and read after it, because a listener added
+ * afterwards would count nothing and pass.
+ *
+ * Both halves fail together without `userSelect: "none"` on the pane, and the
+ * engine is not involved in either: `polygonTool.test.ts` drives the same insert
+ * and drag through the state machine and has always passed.
+ */
+test("a vertex inserted by double-click drags without reselecting", async ({ page }) => {
+  const frame = await frameOf(page);
+
+  await page.evaluate(() => {
+    (window as unknown as { __drags: number }).__drags = 0;
+    document.addEventListener("dragstart", () => {
+      (window as unknown as { __drags: number }).__drags += 1;
+    });
+  });
+
+  // Leaves the triangle drawn, selected, and the tool back in select mode.
+  await drawTriangle(page, frame, 500, 400, 80);
+  await expect(vertices(page)).toHaveCount(3);
+
+  // The bottom edge runs (420,480)-(580,480), so its midpoint is 80 asset pixels
+  // from either vertex — the same target the insertion scenario above uses, and
+  // far outside the ring that would make `nearestInsertion` refuse.
+  const inserted = { x: 500, y: 480 };
+  const target = { x: 500, y: 440 };
+  const from = frame.at(inserted.x, inserted.y);
+
+  await page.mouse.dblclick(from.x, from.y);
+  await expect(vertices(page)).toHaveCount(4);
+
+  // The gesture under test: no click away, no reselect, straight into the drag.
+  await drag(page, from, frame.at(target.x, target.y));
+
+  // The vertex moved, asserted first: a negative assertion that runs before the
+  // positive one has been proved passes for the wrong reason. Read off the wire
+  // projection rather than off the DOM, so this is about the document and not a
+  // paint.
+  const shape = (await wire(page)).at(-1) as { geometry: { points: number[][] } };
+  expect(shape.geometry.points).toHaveLength(4);
+  const moved = shape.geometry.points.filter(
+    ([x, y]) =>
+      Math.abs(x - target.x) < COORDINATE_SLACK && Math.abs(y - target.y) < COORDINATE_SLACK,
+  );
+  expect(moved).toHaveLength(1);
+
+  const drags = await page.evaluate(() => (window as unknown as { __drags: number }).__drags);
+  expect(drags).toBe(0);
+});

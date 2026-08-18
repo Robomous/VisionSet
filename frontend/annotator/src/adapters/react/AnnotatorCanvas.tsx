@@ -1402,6 +1402,16 @@ export function AnnotatorCanvas({
           inset: 0,
           overflow: "hidden",
           touchAction: "none",
+          // A double-click is a gesture here — it inserts a vertex — and it is
+          // also the browser's select-a-word gesture. Without this, inserting
+          // leaves a live text range over the label chips, and the very next
+          // press drags *that selection* instead: Chromium raises `dragstart`
+          // on this div and swallows the pointer stream, so the vertex somebody
+          // just created will not move until a click elsewhere collapses the
+          // range. `draggable={false}` on the image does not reach this — a
+          // selection drag is not an image drag — and preventing the default on
+          // `dblclick` is too late, because the range is made on mousedown.
+          userSelect: "none",
           // Never a busy cursor while a suggest is out: the panel is the one
           // place a wait is reported, and a spinner riding the pointer over the
           // picture read as the machine having hung (#557).
