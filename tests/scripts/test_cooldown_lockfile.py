@@ -814,3 +814,20 @@ def test_a_violation_the_caller_pinned_gets_no_advice(stubbed) -> None:
     assert "settled==9.0.0" in done.stderr
     assert "settled was pinned to the version the cool-down vets" in done.stderr
     assert "to take the vetted versions" not in done.stderr, done.stderr
+
+
+def test_a_package_the_first_pass_never_saw_has_no_vetted_version_to_name(stubbed) -> None:
+    """The second pass pulled in `sidecar`, which the cool-down's own resolution
+    never reached. There is nothing vetted to pin it to, and the refusal says that
+    rather than naming a version nobody resolved."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(_baseline_plus(ARRIVED))
+    (state / "pass2.lock").write_text(
+        _baseline_plus(ARRIVED, _entry("sidecar", "3.0.0", "2099-06-01T00:00:00.000Z"))
+    )
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 3, done.stderr
+    assert "sidecar==3.0.0" in done.stderr
+    assert "holds no version of sidecar" in done.stderr
+    assert "to take the vetted versions" not in done.stderr, done.stderr
