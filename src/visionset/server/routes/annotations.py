@@ -88,9 +88,17 @@ def add_annotations(
     which one it was. `schema_version` is not yours to set: the pinned version is
     stamped onto whatever you send, and comes back on the response.
 
-    The batch must be `in_annotation`, or this is 409
-    `BATCH_NOT_IN_ANNOTATION`. An asset the job does not carry is 422
-    `ASSET_NOT_IN_JOB`.
+    An unknown job is 404 `JOB_NOT_FOUND`. The batch must be `in_annotation`, or
+    this is 409 `BATCH_NOT_IN_ANNOTATION`, and the job itself must still be open:
+    one that was completed is 409 `JOB_FINISHED`, and a completed job has no way
+    back, so the remedy is a new job over those assets rather than a retry. An
+    asset the job does not carry is 422 `ASSET_NOT_IN_JOB`.
+
+    An annotation the pinned version does not describe is 422
+    `INVALID_ANNOTATION`, which is the general answer; the specific ones carry
+    their own codes — `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`,
+    `MISSING_REQUIRED_ATTRIBUTE` and their kin — so a client that wants to say
+    what is wrong reads the code rather than the status.
 
     The asset must also still be open for labeling — `unannotated` or
     `annotated`. One that was skipped, submitted for review or accepted is 409
@@ -123,7 +131,11 @@ def update_annotations(
     without anything saying so.
 
     All-or-nothing, and `detail.index` names the culprit, exactly as on the POST.
-    An asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST.
+    An asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,
+    and so are the two gates around it: a batch that is not open for annotation
+    is 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409
+    `JOB_FINISHED`. An edit is a write, and every gate that stops a new label
+    stops a replacement too.
     """
     try:
         stored = AnnotationService(workspace).update(job_id, [a.to_domain() for a in body])
@@ -147,7 +159,10 @@ def delete_annotations(
     whole call with 404 `ANNOTATION_NOT_FOUND` and removes nothing — there is no
     partial delete, for the reason there is no partial write. Removing a label is
     still a write, so an asset that was skipped, submitted or accepted is 409
-    `ASSET_NOT_WRITABLE` here too.
+    `ASSET_NOT_WRITABLE` here too, a batch that is not open for annotation is 409
+    `BATCH_NOT_IN_ANNOTATION`, and a job that was completed is 409 `JOB_FINISHED`.
+    An unknown job is 404 `JOB_NOT_FOUND`, and an id naming an annotation that
+    sits outside this job is 422 `ASSET_NOT_IN_JOB`.
 
     No confirmation gate: taking a box off is the ordinary annotator edit loop,
     not the destruction of a lifecycle entity. The batch gate is the guard, so

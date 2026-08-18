@@ -399,10 +399,11 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
 
     An empty `regions` is a successful answer with nothing to propose. These
     refusals are about the request, and the caller can act on each: an unknown
-    project, asset or connection is 404; a connection whose weights are not here
+    project, asset or connection is 404 — `PROJECT_NOT_FOUND`, `ASSET_NOT_FOUND`
+    or `INFERENCE_CONNECTION_NOT_FOUND`; a connection whose weights are not here
     yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` and names what to do; a
-    connection whose model answers words rather than places is 422, as is a
-    prompt point off the asset.
+    connection whose model answers words rather than places is 422
+    `UNSUPPORTED_PROMPT`, as is a prompt point off the asset.
 
     Three failures are about this installation rather than about the request,
     and answer 500 carrying the message that says which: a connection of a kind

@@ -60,6 +60,9 @@ def _require(workspace: WorkspaceDep, job_id: UUID) -> BackgroundJob:
     dispatcher — treats a vanished row as "stop" and would otherwise have to write
     a ``try``. Turning that into the domain error is this layer's job, and doing it
     once here is what keeps the three routes below from each spelling it.
+
+    Raises:
+        BackgroundJobNotFound: no such job in this workspace.
     """
     job = workspace.job_queue.get(job_id)
     if job is None:
@@ -155,10 +158,14 @@ def get_background_job_artifact(workspace: WorkspaceDep, job_id: UUID) -> FileRe
     through a JSON column, and a route that trusts a stored path to stay inside
     the directory it was written for is one bad row away from serving `/etc`.
 
-    404 if the job never produced one, or if the file is gone — an export
-    directory is not garbage-collected, but a workspace is a directory somebody
-    can tidy. 409 while the job has not succeeded, because "not yet" and "never"
-    are different answers and only one of them is worth retrying.
+    A job this workspace does not hold is 404 `BACKGROUND_JOB_NOT_FOUND`. There
+    is a 404 for the artifact too — the job never produced one, or the file is
+    gone, since an export directory is not garbage-collected but a workspace is a
+    directory somebody can tidy — and a 409 while the job has not succeeded,
+    because "not yet" and "never" are different answers and only one of them is
+    worth retrying. Those last two carry the status's own name rather than a
+    domain code: nothing about them is a state of the job that a client could
+    branch on.
     """
     job = _require(workspace, job_id)
     if job.state is not BackgroundJobState.SUCCEEDED:
