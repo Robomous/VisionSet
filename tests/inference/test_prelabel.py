@@ -6,18 +6,20 @@ from collections.abc import Iterator
 from io import BytesIO
 from pathlib import Path
 from typing import Final
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
-from visionset.inference.prelabel import DEFAULT_MINIMUM_CONFIDENCE, pre_label
+from visionset.inference.prelabel import DEFAULT_MINIMUM_CONFIDENCE, detectable_classes, pre_label
 from visionset.kernel import SchemaHasNoDetectableClass, UnsupportedPrompt
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
+    AnnotationSchema,
     Asset,
     AssetPrediction,
     AssetProgress,
+    Attribute,
     BboxGeometry,
     ConnectionType,
     GeometryType,
@@ -37,19 +39,25 @@ from visionset.kernel.services import (
     WorkspaceService,
 )
 
-#: The one bbox class, which is what makes the phrase-derivation test expect
-#: ``("sign",)``. No required attribute — unlike its namesake in
-#: ``tests/kernel/test_annotation_service.py`` — because a model's answer never
-#: fills one in, and this file is about what a model can write, not what a person
-#: fills in afterward.
-SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
+#: The kernel suite's own ``SIGN`` shape: a bbox class carrying a required
+#: attribute. A bare model prediction has no attribute values to give it, so
+#: this is the class ``detectable_classes`` must exclude even though it admits
+#: bbox — that it is the real suite's own shape is the point.
+SIGN = LabelClass(
+    name="sign",
+    geometries=(GeometryType.BBOX,),
+    attributes=(Attribute(name="occluded", kind="boolean", required=True),),
+)
+#: A bbox class with no required attribute — what a bare prediction can
+#: actually satisfy, and the one name the phrase-derivation test expects back.
+POST = LabelClass(name="post", geometries=(GeometryType.BBOX,))
 #: A class no box could ever satisfy, so a schema built only from this refuses
 #: pre-labeling before anything runs.
 LANE = LabelClass(name="lane", geometries=(GeometryType.POLYGON,))
 
 DEFAULT_REGIONS: Final = (
     PredictedRegion(
-        label="sign", confidence=0.62, geometry=BboxGeometry(x=1.0, y=2.0, width=3.0, height=4.0)
+        label="post", confidence=0.62, geometry=BboxGeometry(x=1.0, y=2.0, width=3.0, height=4.0)
     ),
 )
 
@@ -109,11 +117,17 @@ class FakeProviderPool:
 
 
 def _box(asset_id: UUID, **overrides: object) -> Annotation:
+    """A valid ``sign``, drawn by hand: a bbox carrying its required attribute.
+
+    Human provenance, so filling the attribute in is exactly what a person
+    does and a model does not — the fact this whole fix round is about.
+    """
     fields: dict[str, object] = {
         "asset_id": asset_id,
         "label_class": "sign",
         "schema_version": 1,
         "geometry": BboxGeometry(x=1.0, y=2.0, width=30.0, height=40.0),
+        "attributes": {"occluded": False},
         "provenance": "human",
     }
     return Annotation(**{**fields, **overrides})
@@ -129,7 +143,7 @@ class Fixture:
         tmp_path: Path,
         name: str = "ws",
         *,
-        classes: tuple[LabelClass, ...] = (SIGN, LANE),
+        classes: tuple[LabelClass, ...] = (SIGN, POST, LANE),
         pool_kind: str = "detector",
         regions: tuple[PredictedRegion, ...] = DEFAULT_REGIONS,
     ) -> None:
@@ -190,6 +204,14 @@ def prelabel_fixture(tmp_path: Path) -> Iterator[Fixture]:
 @pytest.fixture
 def polygon_only_fixture(tmp_path: Path) -> Iterator[Fixture]:
     fixture = Fixture(tmp_path, "polygon-only", classes=(LANE,))
+    yield fixture
+    fixture.close()
+
+
+@pytest.fixture
+def required_attribute_fixture(tmp_path: Path) -> Iterator[Fixture]:
+    """A batch whose only bbox class is exactly the excluded shape."""
+    fixture = Fixture(tmp_path, "required-attribute", classes=(SIGN,))
     yield fixture
     fixture.close()
 
@@ -291,7 +313,7 @@ def test_the_phrases_are_the_schema_s_box_classes(prelabel_fixture: Fixture) -> 
         pool=prelabel_fixture.pool,
     )
 
-    assert prelabel_fixture.pool.last_prompt.phrases == ("sign",)
+    assert prelabel_fixture.pool.last_prompt.phrases == ("post",)
 
 
 def test_a_schema_with_no_box_class_is_refused_before_anything_loads(
@@ -306,6 +328,37 @@ def test_a_schema_with_no_box_class_is_refused_before_anything_loads(
         )
 
     assert polygon_only_fixture.pool.calls == 0
+
+
+def test_the_filter_excludes_a_class_a_prediction_cannot_satisfy() -> None:
+    """A required attribute excludes a class exactly as missing bbox does.
+
+    ``SIGN`` admits bbox and would pass a geometry-only filter; it is excluded
+    because a bare prediction has no attribute values to give its required
+    ``occluded``. ``POST`` admits bbox and declares nothing required, so it is
+    the one name that survives. ``LANE`` never admitted bbox at all.
+    """
+    schema = AnnotationSchema(project_id=uuid4(), version=1, classes=(SIGN, POST, LANE))
+    assert detectable_classes(schema) == ("post",)
+
+
+def test_a_bbox_class_with_a_required_attribute_is_refused_before_anything_loads(
+    required_attribute_fixture: Fixture,
+) -> None:
+    """The whole-run consequence of the filter above: a schema whose only bbox
+    class demands an attribute a model cannot supply is refused up front,
+    exactly like a schema with no bbox class at all — never accepted and then
+    failed inside a run.
+    """
+    with pytest.raises(SchemaHasNoDetectableClass):
+        pre_label(
+            required_attribute_fixture.workspace,
+            batch_id=required_attribute_fixture.batch.id,
+            connection_id=required_attribute_fixture.connection.id,
+            pool=required_attribute_fixture.pool,
+        )
+
+    assert required_attribute_fixture.pool.calls == 0
 
 
 def test_a_point_prompt_connection_is_refused(segmenter_fixture: Fixture) -> None:

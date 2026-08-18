@@ -86,11 +86,19 @@ def detectable_classes(schema: AnnotationSchema) -> tuple[str, ...]:
     Public because the route asks it to refuse before enqueueing anything, and a
     second implementation of "which classes can hold a detection" is how a
     request that was accepted comes to fail inside a worker.
+
+    A class is excluded for either of two reasons: it does not admit ``bbox``,
+    or it declares a required attribute. A model's answer carries no attribute
+    values, so a class demanding one is not a class a bare prediction could ever
+    satisfy — excluding it here is what keeps that fact from surfacing as a
+    write that fails deep inside a run instead of as a batch this function never
+    offered.
     """
     return tuple(
         label_class.name
         for label_class in schema.classes
         if GeometryType.BBOX in label_class.geometries
+        and not any(attribute.required for attribute in label_class.attributes)
     )
 
 
