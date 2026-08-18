@@ -349,6 +349,11 @@ landed. `visionset.inference.pre_label` is the one implementation an SDK caller,
 all run - see [background-jobs.md](background-jobs.md) for the `annotation.pre_label` job type
 this is queued as over HTTP, and [mcp.md](mcp.md) for the synchronous `pre_label_batch` tool.
 
+Over HTTP, the server queues `annotation.pre_label` because it has a dispatcher. At a terminal,
+the same operation runs inline because there is no worker to claim a queued job. Interruption
+leaves only whole assets entered: an asset's labels and progress state commit together, and a
+later run considers only assets still untouched.
+
 **The batch remembers its own run.** `BatchService.latest_pre_label_job` reads the queue for the
 most recent `annotation.pre_label` job naming this batch - live or settled - and projects it as
 `PreLabelRun`, on `ConnectionJob`'s reasoning: a run outlives the request that launched it, so a
@@ -408,6 +413,7 @@ otherwise loop, which is the shape `SchemaChangeWouldOrphan` already argues for.
 visionset batch list --project road-signs
 visionset batch approve "$BATCH" --jobs-of 100
 visionset batch start "$BATCH"
+visionset batch pre-label "$BATCH" CONNECTION [--minimum-confidence FLOAT]
 visionset batch complete "$BATCH"
 visionset batch promote "$BATCH"
 ```

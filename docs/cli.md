@@ -22,6 +22,7 @@ visionset schema draft publish --project P [--kind K] [--revision N] [--allow-de
 visionset ingest PATH --project P [--fps N] [--batch-name NAME]
 visionset batch list --project P
 visionset batch approve BATCH_ID [--jobs-of N]
+visionset batch pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT]
 visionset batch start|complete|promote BATCH_ID
 
 visionset job list --batch BATCH_ID
@@ -355,6 +356,11 @@ interrupted run. The batch id goes to stdout.
 `list --project P`, then the one-way walk `approve [--jobs-of N]` → `start` → `complete`, then
 `promote`. Each maps to the `BatchService` method of the same name, except `promote`, which is
 `DatasetService.promote` - it takes a *batch* id and derives the dataset, which is why it lives here.
+
+`pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT]` blocks and calls
+`visionset.inference.pre_label` inline because a terminal has no dispatcher. Progress and the
+summary are written to stderr; normal stdout contains `annotations_written`. With `--json`, the
+command prints the complete outcome instead.
 
 `--jobs-of N` is the `BySize` partition; with no flag the batch becomes one job. There is no
 `batch create` and no membership editing: a batch is born from an ingest. See
