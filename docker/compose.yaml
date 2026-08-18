@@ -135,6 +135,48 @@
 #   docker compose -f docker/compose.yaml up
 #
 # `docker/api-dev.sh` creates a fresh workspace and mints a token on next boot.
+#
+# **Who writes all of that, and every other file this stack leaves on the host.**
+# The three built services run as the person who ran `docker compose`, not as root.
+# They have to: each mounts part of the checkout read-write, and a root process in
+# a container writes root-owned files into it — the workspace above, a
+# `__pycache__` beside every module uvicorn imports, the documentation projection
+# the docs service generates. What follows is not a permissions error at the point
+# it appears. `pnpm -r build` dies on EACCES, `bash scripts/check.sh docs` fails
+# three stages and the middle one names documents nobody edited, and
+# `git worktree remove` gives up partway through, after it has already deleted most
+# of the tree and dropped the registration.
+#
+# It defaults to 1000:1000 — the first account on a Linux workstation, and so
+# almost everybody — which is why the command at the top of this file still needs
+# nothing set up. When 1000 is not yours, say so once and Compose reads it from
+# `docker/.env`, the directory this file lives in, whichever directory you run
+# from:
+#
+#   printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env
+#
+# Changing either value needs `--build`, exactly as switching inference modes does
+# and for the same reason: the identity is baked into each image as well as
+# selected at run time, and Compose reuses whatever image it already has. Getting
+# it wrong is loud — the app container dies on its first write into a `dist/` it
+# does not own — rather than a stack that quietly stops reloading.
+#
+# `workspace-data/` is tracked as an empty directory for this arrangement's sake.
+# Docker creates a missing bind-mount source itself, as root, before any container
+# starts and therefore before any entry script could get ahead of it — so a
+# checkout that already carries the directory is one the daemon never invents.
+# `docker/api-dev.sh` still checks, and refuses with the command that fixes it, for
+# the cases a tracked directory cannot cover: a VISIONSET_DATA pointing somewhere
+# new, and a directory left root-owned by a stack that ran before any of this.
+#
+# Two hosts where the default is wrong. Under **rootless Docker** the daemon
+# already maps container-root onto you, so files are correctly owned as they are;
+# pinning a uid there maps it through the subuid range onto a host identity nobody
+# can chown back, so set both variables to 0 and get that behaviour back through
+# the same knob. `docker info --format '{{.SecurityOptions}}'` naming `rootless` is
+# the check. On **macOS and Windows** the file-sharing layer translates ownership
+# on its own: the defaults are already right there and changing them only forces a
+# rebuild.
 
 # Named, rather than inherited from the directory. Compose derives a project name
 # from the compose file's parent directory, which here is `docker` — a name any

@@ -180,6 +180,7 @@ from this table does not exist inside these containers, and adding one is a line
 | --- | --- |
 | `api` | `../src` → `/workspace/src`, `../docker` → `/workspace/docker` (ro), `${VISIONSET_DATA:-../workspace-data}` → `/data` |
 | `app` | `../frontend/{annotator,ui-core,app}/src`, `../frontend/app/public`, `../docker` (ro) |
+| `docs` | `../docs` (ro), `../docs-site/src` → `/workspace/docs-site/src`, `../docs-site/public` (ro), `../docker` (ro) |
 | `nginx` | `./nginx.conf` → `/etc/nginx/nginx.conf` (ro) |
 
 Everything else the containers show under `/workspace` — `pyproject.toml`, `uv.lock`, `VERSION`,
@@ -286,15 +287,45 @@ docker run --rm -v "$PWD:/workspace" -w /workspace visionset-api \
 - **`frontend/{annotator,ui-core}/dist` is built inside the container**, not into the checkout —
   the two `tsc --watch` builds write nowhere on the host. A `dist/` in your checkout came from a
   host-side `pnpm -r build`, and the two no longer interfere.
-- **`frontend/*/dist` is written by root**, because the `app` container runs as root and `dist/`
-  is inside a bind mount. The stack has always done this; the watch builds only make it happen
-  more often. The symptom is a host-side `pnpm -r build` failing with a wall of
-  `error TS5033: … EACCES: permission denied`. Hand ownership back without needing `sudo`:
+- **The built services run as you, not as root**, and that is what keeps the checkout usable
+  after the stack has been up. Each of them mounts part of it read-write, and a root process in a
+  container leaves root-owned files behind — the workspace, a `__pycache__` beside every module
+  uvicorn imports, the documentation projection — none of which announces itself as a permissions
+  problem. What it looks like instead is a host `pnpm -r build` dying on
+  `error TS5033: … EACCES`, `check.sh docs` failing three stages while naming documents nobody
+  edited, and `git worktree remove` refusing halfway through, after it has already deleted most of
+  the tree and dropped the registration.
+
+  The identity is `VISIONSET_UID`/`VISIONSET_GID`, default 1000, and it is both baked into every
+  image and selected at run time — so **changing it needs `--build`**, the same rule switching
+  inference modes has. Not `${UID}`: no shell exports it, so Compose never sees it, and the
+  service would run as root while reading as configured.
 
   ```bash
-  docker run --rm -v "$PWD/frontend:/f" alpine:3 \
-    chown -R "$(id -u):$(id -g)" /f/annotator/dist /f/ui-core/dist
+  printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env   # only if 1000 is not yours
   ```
+
+  Two hosts want something else. Under **rootless Docker** set both to `0` — the daemon already
+  maps container-root onto you, and pinning a uid there lands on a host identity nobody can chown
+  back; `docker info --format '{{.SecurityOptions}}'` naming `rootless` is the check. On **macOS
+  and Windows** leave the defaults, because the file-sharing layer already translates ownership.
+
+  One-time cleanup on a machine that ran the stack before this was true, in every worktree — all
+  of it is derived and git-ignored, so deleting is cleaner than chowning, and a container is root
+  already so no `sudo` is needed:
+
+  ```bash
+  docker run --rm -v "$PWD:/w" alpine:3 sh -c '
+    rm -rf /w/.pnpm-store /w/docs-site/src/content
+    find /w/src -type d -name __pycache__ -prune -exec rm -rf {} +'
+  find . ! -user "$(id -u)" -not -path './.git/*'   # must print nothing
+  ```
+- **`workspace-data/` is tracked as an empty directory**, and that is load-bearing rather than
+  tidiness. Docker creates a missing bind-mount source itself, as root, before any container
+  starts — so a checkout that already carries the directory is one the daemon never invents. For
+  the cases that cannot cover, a `VISIONSET_DATA` pointing somewhere new or a directory left over
+  from an older stack, `docker/api-dev.sh` refuses at boot and prints the command that fixes it
+  rather than letting `visionset init` produce a traceback.
 - The api venv is baked into the image at `/opt/venv`, deliberately outside `/workspace`, so the
   host `.venv` neither clobbers it nor is clobbered by it — and the host `.venv` is not mounted at
   all any more.

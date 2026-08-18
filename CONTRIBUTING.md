@@ -10,19 +10,22 @@ bash scripts/setup_agents.sh   # optional: expose .agents/skills/ to coding agen
 ```
 
 Or skip all four and run the stack in containers — `docker compose -f docker/compose.yaml up`
-needs nothing installed on the host and no build of any kind.
+needs nothing installed on the host and no build of any kind. Those containers run as you, not as
+root, so nothing they write into the checkout ends up owned by somebody you have to `sudo` past.
 
 | | |
 | --- | --- |
 | The app | **http://localhost:8080** — nginx, the only port you need |
 | The docs | **http://localhost:4321** — `docs/` rendered; useful on its own (`up docs`) |
-| Storage | `workspace-data/` (git-ignored): `visionset.db` + `blobs/`. Move it with `VISIONSET_DATA=/path` |
+| Storage | `workspace-data/` (contents git-ignored, the directory itself tracked): `visionset.db` + `blobs/`. Move it with `VISIONSET_DATA=/path` |
+| Who writes it | you — the built services run as `VISIONSET_UID`/`VISIONSET_GID`, default 1000. Another uid? `printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env`, then `--build` |
 | Token | minted on first boot, printed in the `api` logs |
 | Behind the proxy | API on :8000 and vite on :5173 are published too, for curl and for reading a vite error without nginx in the way |
 | Live reload | every layer, with nothing restarted: `src/visionset/` through uvicorn `--reload`, `frontend/app/src/` through vite HMR, `frontend/{ui-core,annotator}/src/` through a `tsc --watch` per package that rewrites the `dist/` vite resolves them from, and `docs/` through Astro |
 | After a dependency change | `build` — in either language, and nothing else. No `node_modules` is mounted from the host or from a volume, so a rebuilt image is what the containers get |
 | After changing a `package.json`, a tsconfig, `vite.config.ts` or `index.html` | `build` — these are baked into the app image, beside the install they configure |
 | After changing a Dockerfile or an entry script | `build` for the first, `restart api` / `restart app` for the second — an entry script is read once, at container start |
+| After changing `VISIONSET_UID` or `VISIONSET_GID` | `build` — the identity is baked into the image as well as selected at run time |
 
 Every dependency is installed at **image build** (`docker/api.Dockerfile`,
 `docker/app.Dockerfile`), both honouring their lockfiles, so starting a container downloads

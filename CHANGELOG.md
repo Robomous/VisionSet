@@ -253,6 +253,30 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **The dev Docker stack no longer writes files its own user cannot own** (#672). Its three
+  built services bind-mount part of the checkout read-write and ran as root, so everything they
+  created there was root-owned: a `__pycache__` beside every module uvicorn imports, and the
+  documentation projection the docs service writes back through its source mount. The host could
+  then neither rebuild over those files nor delete them, and none of the failures pointed at the
+  cause — `pnpm -r build` died on `TS5033 EACCES`, `check.sh docs` failed three stages naming
+  documents nobody had edited, and `git worktree remove` gave up partway through, after having
+  already deleted most of the tree and dropped the registration.
+
+  Each image now builds a user from `VISIONSET_UID`/`VISIONSET_GID` and drops to it, and compose
+  selects the same pair at run time. Both halves are needed: running as another id against an
+  image whose `/workspace` belongs to root fails on the first write. The default is 1000, so the
+  documented `docker compose -f docker/compose.yaml up` is unchanged for almost everybody, and
+  `docker/.env` carries it where 1000 is not the right answer. Changing either value needs
+  `--build`. Under rootless Docker, where the daemon already maps container-root onto the
+  invoking user, set both to `0`.
+
+  Two things travel with it because the uid change would otherwise have broken them. Corepack
+  recorded the pnpm it activated under root's home, and the docs image has no `packageManager`
+  field to re-derive it from, so `COREPACK_HOME` moves that record somewhere any id can read.
+  And Docker creates a missing bind-mount source as root before any container starts, so
+  `workspace-data/` is now tracked as an empty directory and `docker/api-dev.sh` refuses an
+  unwritable one by naming the command that fixes it.
+
 - **A narrowing schema change is judged by the shape it removes, not by the class that held
   it** (#592). Since a label class began accepting a set of geometries (#584), taking one shape
   away from a class was refused whenever *any* annotation of that class existed — including when
