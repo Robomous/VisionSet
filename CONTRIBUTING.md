@@ -74,6 +74,24 @@ it wraps, leaving the resolved versions exactly as the cool-down chose them. Do 
 such a lockfile by re-running a bare `uv lock`: uv throws away a lock whose recorded cutoff has
 gone and resolves again, straight past the versions the cool-down excluded.
 
+**A wrapped `uv add` moves the package and nothing else.** A cutoff is part of what a lockfile
+has to agree with rather than a filter over a resolution uv already has, so introducing one makes
+uv discard the lock and resolve every pin again — which is what a `uv lock` refresh is for and the
+opposite of what an add is for. The wrapper therefore runs an add twice: once under the cutoff, to
+learn which release the cool-down allows for each package the lockfile does not yet hold, and then
+again with no cutoff at all, pinning those versions, because uv is exactly incremental when nothing
+invalidates the lock. The diff you get is the package you asked for. Do not reach for
+`--upgrade-package` to reproduce this by hand — it makes exceptions to pinned versions, and under a
+cutoff there are no pinned versions left for it to except. Pointing uv at another project —
+`--directory`, `--project`, `--script` — takes the whole-set path instead.
+
+**The second pass is audited, and the audit can refuse.** Having run without a cool-down, it is
+checked rather than trusted: `uv.lock` records an `upload-time` for every artifact, so the wrapper
+can see whether the add forced any package past the cutoff. If one did, `uv.lock` and
+`pyproject.toml` are put back untouched and the wrapper exits 3 naming the versions — your
+virtualenv may already hold them, and `uv sync` puts it back in step. To read the same audit over
+any two lockfiles, `bash scripts/cooldown.sh --audit old.lock new.lock`.
+
 **When it fires.** `pnpm add <pkg>` with no version asks for `latest`, so a too-new release is
 refused outright (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`) rather than silently downgraded. Wait, or
 name an older version. To take a young version deliberately, add it to `minimumReleaseAgeExclude`
