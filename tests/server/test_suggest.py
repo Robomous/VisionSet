@@ -254,8 +254,10 @@ def test_a_connection_without_weights_is_refused_with_what_to_do(
 
 
 def test_an_http_connection_says_this_build_cannot_run_it(client: TestClient, project: str) -> None:
+    """500 rather than 409: nothing about the connection's state would make it run."""
     connection = a_connection(client, kind="http")
     answer = ask(client, project=project, asset=str(uuid4()), connection=connection)
+    assert answer.status_code == 500
     assert answer.json()["code"] == "INFERENCE_CONNECTION_NOT_RUNNABLE"
 
 
