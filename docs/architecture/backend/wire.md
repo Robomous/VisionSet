@@ -54,10 +54,10 @@ like.
 
 Almost everything a projection reads is a domain model. The one exception is
 `capabilities_of` from `visionset.inference`, and it is here rather than spelled
-out because which model families this build serves is a fact this package has no
-way to know - a second copy of that map would be exactly the drift every other
-rule in this file prevents. The direction is the usual one: a sibling below the
-surfaces, importing nothing from here.
+out because which model families this installation serves is a fact this package
+has no way to know - a second copy of that map would be exactly the drift every
+other rule in this file prevents. The direction is the usual one: a sibling below
+the surfaces, importing nothing from here.
 
 ## Where it sits
 

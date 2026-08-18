@@ -255,9 +255,9 @@ GET /inference/connections/{id}  →  { "setup_state": "ready",
 
 An empty `capabilities` is not a refusal to act on: the server judges every request on its own
 either way. It says only that nothing can yet rely on this connection for a particular tool -
-because its weights never arrived, because its config declared a model type this build has no
-adapter for, or because it is an `http` connection, which declares nothing until the remote
-contract says how an endpoint states what it can do.
+because its weights never arrived, because its config declared a model type no installed driver
+serves, or because it is an `http` connection, which declares nothing until the remote contract
+says how an endpoint states what it can do.
 
 **A client renders these; it never computes them.** Re-deriving the rules from `state` and
 `progress` is what the browser used to do, and its copy drifted by dropping the batch-state
@@ -548,7 +548,7 @@ Seven errors opt out and expose their real message, each because that message *i
 | `WORKSPACE_SCHEMA_MISMATCH` | Names the table and column the workspace lacks. Opaque, this is a 500 with no cause on a route with no connection to it, and the answer is only in the server's log. |
 | `MEDIA_TOOL_UNAVAILABLE` | Carries the install hint. Without it the error says nothing an operator did not suspect. |
 | `LOCAL_INFERENCE_UNAVAILABLE` | Carries the `pip install` for the optional runtime, on the same licence `ffmpeg` gets. |
-| `INFERENCE_CONNECTION_NOT_RUNNABLE` | Says this build has no adapter for that kind of connection, which is a fact about the installation rather than about the request. |
+| `INFERENCE_CONNECTION_NOT_RUNNABLE` | Says which of the two things nothing here can run - an `http` connection, or the model family this connection's config declares - and for the second it lists the families the installed drivers do serve. A fact about the installation rather than about the request, and one that changes when a driver is installed. |
 | `INFERENCE_OUT_OF_MEMORY` | Names which memory ran out - the device's or the machine's - and the ways off it, which are not the same ways: a full device can be answered by moving the connection to the CPU, and a full machine is only made worse by it. No generic sentence can carry that. |
 
 A **mapped** 5xx keeps its own code (`WORKSPACE_CORRUPT`, `CONSTRAINT_VIOLATED`). An exception no
