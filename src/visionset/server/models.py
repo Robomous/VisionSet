@@ -1847,9 +1847,11 @@ class CuratedModelOut(BaseModel):
     hint: str
     #: What must be cleared before this can be fetched, and where. Both or
     #: neither — either half alone is a requirement a form cannot finish stating
-    #: before it offers the download.
-    access_note: str | None = None
-    access_url: str | None = None
+    #: before it offers the download. Required and nullable, like every other
+    #: field here: absent and null would be two spellings of one answer, and a
+    #: client would have to handle both.
+    access_note: str | None
+    access_url: str | None
 
     @classmethod
     def of(cls, entry: CuratedModel, capability: str) -> Self:

@@ -332,6 +332,12 @@ class CuratedModel(BaseModel):
     family: str
     #: One line on what this entry is — neither the size nor the access
     #: requirement, both already on screen beside it.
+    #:
+    #: **No word whose referent is somewhere else** — "newer", "different",
+    #: "other", "improved", "latest": a form groups these by the question a model
+    #: answers rather than ranking them, so there is nothing on screen for such a
+    #: word to point at. A reader meets one as a comparison whose first half is
+    #: missing.
     hint: str
     #: What must be cleared before this can be fetched, and where. Present as a
     #: pair or not at all: either half alone is a requirement a form cannot finish

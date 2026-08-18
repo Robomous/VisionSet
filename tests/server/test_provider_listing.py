@@ -91,14 +91,34 @@ def test_the_installed_drivers_are_listed_without_any_override(client: TestClien
 
 
 def test_a_driver_publishes_which_families_it_serves(client: TestClient) -> None:
+    """Three families, declared in an order that is neither the sorted one nor
+    its reverse.
+
+    A mapping has no order and a wire shape must, so the field promises a sorted
+    one. Three is the smallest number that can hold that promise: one family
+    cannot tell a sort from the declaration order, and two cannot tell it from a
+    reversal, because reversing a pair sorts it whenever the pair arrived
+    backwards.
+    """
     with_providers(
         client,
-        FakeProvider("acme", {"acme_seg": ModelCapability.POINT_SUGGEST}),
+        FakeProvider(
+            "acme",
+            {
+                "acme_seg": ModelCapability.POINT_SUGGEST,
+                "acme_det": ModelCapability.TEXT_DETECT,
+                "acme_track": ModelCapability.POINT_SUGGEST,
+            },
+        ),
     )
 
     rows = client.get("/inference/providers").json()["items"]
 
-    assert rows[0]["families"] == {"acme_seg": "point_suggest"}
+    assert list(rows[0]["families"].items()) == [
+        ("acme_det", "text_detect"),
+        ("acme_seg", "point_suggest"),
+        ("acme_track", "point_suggest"),
+    ]
 
 
 def test_a_curated_entry_carries_the_capability_its_family_resolves_to(

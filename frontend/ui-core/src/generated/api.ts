@@ -987,9 +987,13 @@ export interface paths {
          *     connection's weights turned out to be.
          *
          *     `curated` is the checkpoints a driver offers by name, in the order it
-         *     declared them. Curation guides and never restricts: any model id remains
-         *     typeable at any revision, and an empty list is an ordinary answer from a
-         *     driver that runs whatever it is pointed at.
+         *     declared them, and each entry's `capability` is a member of that same
+         *     vocabulary — the one its family resolves to, through the driver that
+         *     declared both. Filter on it rather than switching on it: the vocabulary is
+         *     open, so an entry may name an ability this client was never compiled
+         *     against. Curation guides and never restricts: any model id remains typeable
+         *     at any revision, and an empty list is an ordinary answer from a driver that
+         *     runs whatever it is pointed at.
          *
          *     A curated entry carries **no size**. What a download costs is
          *     `GET /inference/download-size`, read live for the exact pair, because a
@@ -3173,9 +3177,9 @@ export interface components {
          */
         CuratedModelOut: {
             /** Access Note */
-            access_note?: string | null;
+            access_note: string | null;
             /** Access Url */
-            access_url?: string | null;
+            access_url: string | null;
             /** Capability */
             capability: string;
             /** Family */

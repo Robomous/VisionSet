@@ -58,6 +58,8 @@ const PROVIDERS = {
           family: "grounding-dino",
           capability: "text_detect",
           hint: "tiny — fastest, comfortable on a CPU",
+          access_note: null,
+          access_url: null,
         },
         {
           model_id: "IDEA-Research/grounding-dino-base",
@@ -65,6 +67,8 @@ const PROVIDERS = {
           family: "grounding-dino",
           capability: "text_detect",
           hint: "base — more accurate, wants a GPU",
+          access_note: null,
+          access_url: null,
         },
       ],
     },
@@ -82,6 +86,8 @@ const PROVIDERS = {
           family: "sam2_video",
           capability: "point_suggest",
           hint: "tiny — fastest, comfortable on a CPU",
+          access_note: null,
+          access_url: null,
         },
         {
           model_id: "facebook/sam2.1-hiera-small",
@@ -89,6 +95,8 @@ const PROVIDERS = {
           family: "sam2_video",
           capability: "point_suggest",
           hint: "small — a little more accurate, still light",
+          access_note: null,
+          access_url: null,
         },
         {
           model_id: "facebook/sam2.1-hiera-base-plus",
@@ -96,6 +104,8 @@ const PROVIDERS = {
           family: "sam2_video",
           capability: "point_suggest",
           hint: "base-plus — the balanced default",
+          access_note: null,
+          access_url: null,
         },
         {
           model_id: "facebook/sam2.1-hiera-large",
@@ -103,6 +113,8 @@ const PROVIDERS = {
           family: "sam2_video",
           capability: "point_suggest",
           hint: "large — the most accurate, wants a GPU",
+          access_note: null,
+          access_url: null,
         },
         {
           model_id: "facebook/sam3",
@@ -568,6 +580,8 @@ test("a model the installation offers is chosen and becomes a connection", async
                 family: "acme_widget",
                 capability: "point_suggest",
                 hint: "a model no shipped driver curates",
+                access_note: null,
+                access_url: null,
               },
             ],
           },

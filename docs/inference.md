@@ -584,23 +584,37 @@ A workspace with none says so and offers one thing - **Add connection**. Creatin
 steps, because the two kinds share almost no fields: first where the model runs, then that kind's
 form.
 
-- **Local** opens on a curated model, a `cpu` device and `fp32` precision. The model field is a
-  grouped list - the SAM 2.1 ladder and SAM 3 under *Interactive segmentation*, Grounding DINO
-  under *Text-prompt detection* - showing each entry's download size and a line on what it is for, and
-  each one is pinned to a revision this build was checked against. **Custom model...** is the last
-  entry and reveals the free model id and revision fields: the list guides, it does not restrict,
-  and any model this build has an adapter for remains typeable. Device and precision are lists too,
-  and the precision list follows the device, because half precision applies on CUDA only - so
-  picking `mps` leaves `fp32` as the only precision offered. Underneath
-  is what fetching that revision would cost - the size described above, read while you are still
-  deciding. An entry whose weights have to be asked for says so on the line above that one, with a
-  link to the page where access is requested, so the requirement is read while the model is being
-  chosen rather than met as a refused download later.
-  If this machine has no `local-inference` extra the size cannot be read, and the form
-  says so, in the server's own words, with the install command. **It stays usable**: creating a
+- **Local** opens on an offered model, a `cpu` device and `fp32` precision. What the model field
+  lists belongs to *this installation* rather than to this release: every installed driver
+  declares the checkpoints it offers by name, the form asks the server for them, and a driver
+  somebody `pip`-installed is offered here without this repository knowing it exists. The headings
+  are the abilities - *Interactive segmentation*, *Text-prompt detection* - because a driver says
+  which question its model answers and never how that question is named on screen. Each entry
+  carries its id, one line on what it is for, and the commit the driver that offers it pinned; no
+  size, because what a download costs is read live for the exact pair, and a number frozen into a
+  list would be a second answer to a question already answered accurately. **Custom model...** is
+  the last entry and reveals the free model id and revision fields: the list guides, it does not
+  restrict, and any model this build has an adapter for remains typeable. Device and precision are
+  lists too, and the precision list follows the device, because half precision applies on CUDA
+  only - so picking `mps` leaves `fp32` as the only precision offered. Underneath is what fetching
+  the chosen pair would cost, read while you are still deciding. An entry whose weights have to be
+  asked for says so on the line above that one, with a link to the page where access is requested,
+  so the requirement is read while the model is being chosen rather than met as a refused download
+  later. If this machine has no `local-inference` extra the size cannot be read, and the form says
+  so, in the server's own words, with the install command. **It stays usable**: creating a
   connection downloads nothing, so not knowing the size is information rather than a barrier.
 - **HTTP** asks for the endpoint URL. There is no credential field; where a secret would live is
   still open (`cf. #421`), and a field added ahead of that answer would be answering it.
+
+Because that list is a request rather than a constant, the model field has four states and says
+which one it is in. While the answer is in flight it says it is reading, and puts nothing else in
+that space: a disabled grey select is a question the interface refuses to answer, and a free model
+id field would be asking somebody to answer one the server has not answered yet. A refusal is
+rendered as prose, in the server's own words, with another attempt beside it. An installation that
+offers nothing by name is invited to install a driver rather than shown an empty list. Those last
+two leave the free model id and revision fields on screen, because a model id typed by hand needs
+no list at all - a catalog that could not be read is no reason to stop a connection being
+configured.
 
 Each row shows its name, its kind, `model @ revision`, and its status as a word - **Ready** or
 **Not set up** - beside a colour, never as a colour alone. A local row that is not set up carries

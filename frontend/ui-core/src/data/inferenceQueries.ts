@@ -393,7 +393,7 @@ export function useDownloadSize(
 }
 
 /**
- * Which models this build can run, and which it offers by name.
+ * Which models the installation can run, and which it offers by name.
  *
  * `staleTime: Infinity` because the answer cannot change under a running server:
  * the registry keeps one scan for the life of the process, so a driver installed

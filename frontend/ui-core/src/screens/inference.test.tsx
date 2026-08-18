@@ -171,7 +171,7 @@ const SERVED: unknown = {
         {
           model_id: SAM_BASE_PLUS,
           model_revision: SAM_BASE_PLUS_COMMIT,
-          family: "sam2",
+          family: "sam2_video",
           capability: "point_suggest",
           hint: SAM_BASE_PLUS_HINT,
           access_note: null,
@@ -664,6 +664,11 @@ it("never re-reads a list nothing is moving in", async () => {
   const first = reads;
   await new Promise((done) => setTimeout(done, CONNECTION_POLL_MS * 2));
   expect(reads).toBe(first);
+  // Nor was the catalog ever asked for. It is the connection form's read, and
+  // the form is arranged to exist only while its dialog is open - a claim only a
+  // request log can hold, because the browser suite stubs that route for every
+  // scenario and would answer a stray request without complaining.
+  expect(sent.some((one) => one.url.includes("/inference/providers"))).toBe(false);
 });
 
 it("shows no progress for a connection that has never been downloaded", async () => {
@@ -851,6 +856,12 @@ it("says the catalog is being read rather than showing a dead control", async ()
 
   expect(await screen.findByTestId("catalog-loading")).not.toBeNull();
   expect(screen.queryByTestId("connection-model")).toBeNull();
+  // And no free model id field either, which is the state's other half rather
+  // than an accident of the seeding order. Nothing is known yet about what is
+  // offered, so a field for typing an id would be inviting somebody to answer a
+  // question the server is still answering - and it would move under whatever
+  // they had typed the moment the list landed.
+  expect(screen.queryByTestId("connection-custom-model")).toBeNull();
 });
 
 it("renders a refusal as prose when the catalog cannot be read, and leaves the form usable", async () => {

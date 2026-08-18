@@ -2045,7 +2045,9 @@
           "model_revision",
           "family",
           "capability",
-          "hint"
+          "hint",
+          "access_note",
+          "access_url"
         ],
         "title": "CuratedModelOut",
         "type": "object"
@@ -7724,7 +7726,7 @@
     },
     "/inference/providers": {
       "get": {
-        "description": "Every inference driver installed on this server, and what each offers.\n\n`families` maps a model type \u2014 the `model_type` a checkpoint's own config\ndeclares \u2014 onto what a model of that type can be asked for. It is the same\nvocabulary `capabilities` uses on a connection, and it answers a different\nquestion: this says what *could* run here, that says what one configured\nconnection's weights turned out to be.\n\n`curated` is the checkpoints a driver offers by name, in the order it\ndeclared them. Curation guides and never restricts: any model id remains\ntypeable at any revision, and an empty list is an ordinary answer from a\ndriver that runs whatever it is pointed at.\n\nA curated entry carries **no size**. What a download costs is\n`GET /inference/download-size`, read live for the exact pair, because a\nnumber frozen into a catalog would be a second answer to a question already\nanswered accurately.\n\nEmpty when nothing is installed, which is an answer rather than a failure.",
+        "description": "Every inference driver installed on this server, and what each offers.\n\n`families` maps a model type \u2014 the `model_type` a checkpoint's own config\ndeclares \u2014 onto what a model of that type can be asked for. It is the same\nvocabulary `capabilities` uses on a connection, and it answers a different\nquestion: this says what *could* run here, that says what one configured\nconnection's weights turned out to be.\n\n`curated` is the checkpoints a driver offers by name, in the order it\ndeclared them, and each entry's `capability` is a member of that same\nvocabulary \u2014 the one its family resolves to, through the driver that\ndeclared both. Filter on it rather than switching on it: the vocabulary is\nopen, so an entry may name an ability this client was never compiled\nagainst. Curation guides and never restricts: any model id remains typeable\nat any revision, and an empty list is an ordinary answer from a driver that\nruns whatever it is pointed at.\n\nA curated entry carries **no size**. What a download costs is\n`GET /inference/download-size`, read live for the exact pair, because a\nnumber frozen into a catalog would be a second answer to a question already\nanswered accurately.\n\nEmpty when nothing is installed, which is an answer rather than a failure.",
         "operationId": "list_providers",
         "responses": {
           "200": {

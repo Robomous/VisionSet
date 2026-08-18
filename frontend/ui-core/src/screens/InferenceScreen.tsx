@@ -1013,7 +1013,7 @@ function ConnectionForm({
                         be announced twice.
                       */}
                       <LoadingState rows={1} label="" />
-                      <FieldHint>Reading which models this build can run…</FieldHint>
+                      <FieldHint>Reading which models this installation can run…</FieldHint>
                     </div>
                   ) : catalog.isError ? (
                     <div data-testid="catalog-unavailable">
