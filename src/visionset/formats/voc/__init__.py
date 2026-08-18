@@ -250,9 +250,9 @@ def _as_box(
 ) -> BboxGeometry | None:
     """The box this annotation contributes, or ``None`` if it contributes none."""
     if annotation.label_class not in declared:
-        # Cannot happen — `SchemaChangeWouldOrphan` refuses to remove a class
-        # annotations depend on — but an `<object>` naming a class the release
-        # does not declare would be a silent lie in a file read as ground truth.
+        # Publication rejects new inconsistent manifests, but malformed, archival,
+        # or external manifests can still bypass that gate. An undeclared
+        # `<object>` would be a silent lie in a file read as ground truth.
         raise ExportSourceUnreadable(
             f"asset {asset.asset_id} carries class {annotation.label_class!r}, "
             f"which the release's schema does not declare"

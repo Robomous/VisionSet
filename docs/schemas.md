@@ -348,7 +348,13 @@ should not be caught by one `except`: `confirm` stands in front of destroying da
 `ProjectService.delete`), and this stands in front of narrowing a contract, whose usual
 remedy is "write a wider version", not "say yes harder".
 
-The second gate has no flag at all:
+An open batch keeps the version it pinned, so a destructive version can be published before that
+batch writes another annotation. Its later annotation is valid under that batch's pin, not under
+the newer active schema. If that content is promoted, release publication validates it against the
+active schema and refuses the release with affected class counts until the content is reconciled.
+
+The second gate has no flag at all when the proposed change would orphan annotations the schema
+publication path must preserve:
 
 ```python
 # annotations already exist under 'lane'

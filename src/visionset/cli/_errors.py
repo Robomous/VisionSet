@@ -35,6 +35,7 @@ from visionset.kernel import (
     DestructiveSchemaChange,
     LossyExportNotConsented,
     NotAWorkspace,
+    ReleaseContentWouldViolateSchema,
     SchemaChangeWouldOrphan,
     VisionSetError,
 )
@@ -92,6 +93,9 @@ _HINTS: Final[dict[type[BaseException], str]] = {
     SchemaChangeWouldOrphan: (
         "There is no flag for this one. Delete or relabel those annotations "
         "first, or keep the class and change something else."
+    ),
+    ReleaseContentWouldViolateSchema: (
+        "Reconcile the annotations or restore a compatible active schema."
     ),
 }
 """A remedy a *terminal* can act on, printed under the error's own sentence.

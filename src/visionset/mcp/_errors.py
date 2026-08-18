@@ -55,6 +55,7 @@ from visionset.kernel import (
     DestructiveSchemaChange,
     LossyExportNotConsented,
     NotAWorkspace,
+    ReleaseContentWouldViolateSchema,
     ThumbnailNotCached,
     VisionSetError,
 )
@@ -100,6 +101,10 @@ _HINTS: Final[dict[type[BaseException], str]] = {
         "Call `check_export` with the same release and format to see exactly "
         "which classes would be dropped and how many annotations that is, then "
         "re-run `export_release` with `allow_lossy=true` to accept the loss."
+    ),
+    ReleaseContentWouldViolateSchema: (
+        "Reconcile the annotations or publish a schema that describes them, then "
+        "publish the release again."
     ),
 }
 """A next step this surface can add under the kernel's sentence.

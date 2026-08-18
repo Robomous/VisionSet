@@ -269,6 +269,7 @@ def _walk(
     the picture into the label document, and the suffix is sniffed from the bytes
     rather than taken from the asset's uri — so only ``write_image`` knows it.
     """
+    _validate_manifest_classes(manifest)
     folds = folds_of(release, manifest)
     walked = []
     for asset in manifest.assets:
@@ -276,6 +277,19 @@ def _walk(
         name = write_image(asset, dest / IMAGES_DIRNAME / fold, content)
         walked.append((asset, fold, name))
     return walked
+
+
+def _validate_manifest_classes(manifest: Manifest) -> None:
+    """Refuse a manifest whose annotations name classes its frozen schema omits."""
+    declared = {label_class.name for label_class in manifest.classes}
+    for asset in manifest.assets:
+        for annotation in asset.annotations:
+            if annotation.label_class not in declared:
+                raise refuse(
+                    asset,
+                    f"carries class {annotation.label_class!r}, which the release's "
+                    "schema does not declare",
+                )
 
 
 def _write_json(into: Path, asset: ManifestAsset, suffix: str, document: object) -> None:

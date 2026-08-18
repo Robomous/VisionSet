@@ -18,8 +18,11 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
+import typer.rich_utils
 from click.testing import Result
 from tests.fixtures.media import write_images, write_unsupported_file
 from typer.testing import CliRunner
@@ -47,7 +50,7 @@ IMAGE_COUNT = 6
 NARROW = "40"
 """The width every invocation renders at, so no test depends on the terminal's."""
 
-RENDERING = {"COLUMNS": NARROW, "FORCE_COLOR": "1"}
+RENDERING = {"TERM": "xterm-256color", "NO_COLOR": None}
 """The environment every invocation renders in — narrow, and in colour.
 
 Three things outside a test's control decide what a rich ``Panel`` looks like,
@@ -70,9 +73,24 @@ render identically.
 """
 
 
+@contextmanager
+def _rich_rendering() -> Iterator[None]:
+    """Pin Typer's import-time Rich settings for one test invocation."""
+    old_force_terminal = typer.rich_utils.FORCE_TERMINAL
+    old_max_width = typer.rich_utils.MAX_WIDTH
+    typer.rich_utils.FORCE_TERMINAL = True
+    typer.rich_utils.MAX_WIDTH = int(NARROW)
+    try:
+        yield
+    finally:
+        typer.rich_utils.FORCE_TERMINAL = old_force_terminal
+        typer.rich_utils.MAX_WIDTH = old_max_width
+
+
 def run(root: Path, *argv: str) -> Result:
     """Invoke the real app against a workspace, without asserting anything."""
-    return runner.invoke(app, [*argv, "--workspace", str(root)], env=RENDERING)
+    with _rich_rendering():
+        return runner.invoke(app, [*argv, "--workspace", str(root)], env=RENDERING, color=True)
 
 
 def ok(root: Path, *argv: str) -> str:

@@ -99,6 +99,7 @@ from visionset.kernel import (
     ProjectNameTaken,
     ProjectNotFound,
     PromptPointOutOfBounds,
+    ReleaseContentWouldViolateSchema,
     ReleaseNotFound,
     ReleaseTagTaken,
     SchemaChangeWouldOrphan,
@@ -279,6 +280,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     JobNotComplete: ErrorRule(409, "JOB_NOT_COMPLETE"),
     EmptyBatch: ErrorRule(409, "EMPTY_BATCH"),
     EmptyRelease: ErrorRule(409, "EMPTY_RELEASE"),
+    ReleaseContentWouldViolateSchema: ErrorRule(409, "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA"),
     ConfirmationRequired: ErrorRule(409, "CONFIRMATION_REQUIRED"),
     DestructiveSchemaChange: ErrorRule(409, "DESTRUCTIVE_SCHEMA_CHANGE"),
     SchemaChangeWouldOrphan: ErrorRule(409, "SCHEMA_CHANGE_WOULD_ORPHAN"),
@@ -515,6 +517,14 @@ def _detail_for(exc: BaseException) -> dict[str, Any] | None:
         # The `isinstance` is not defensive padding: `blockers` is typed
         # `object | None` because `kernel/errors.py` may not import a domain
         # model, so this is where the type comes back.
+        return {
+            "blockers": [
+                ClassCountOut.of(count).model_dump(mode="json")
+                for count in exc.blockers
+                if isinstance(count, ClassCount)
+            ]
+        }
+    if isinstance(exc, ReleaseContentWouldViolateSchema) and isinstance(exc.blockers, tuple):
         return {
             "blockers": [
                 ClassCountOut.of(count).model_dump(mode="json")

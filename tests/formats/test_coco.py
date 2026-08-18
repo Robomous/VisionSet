@@ -290,6 +290,41 @@ def test_a_missing_blob_aborts_rather_than_writing_a_document_that_is_short(
     fixture.close()
 
 
+def test_an_undeclared_manifest_class_aborts_before_a_category_is_emitted(tmp_path: Path) -> None:
+    """Archived or externally supplied manifests bypass the publication consistency gate."""
+    fixture = Fixture(tmp_path)
+    fixture.label({0: [_box(x=8, y=12, width=16, height=24)]})
+    release_id = fixture.publish()
+    manifest = fixture.releases.manifest(release_id)
+    first = next(asset for asset in manifest.assets if asset.annotations)
+    malformed = manifest.model_copy(
+        update={
+            "assets": (
+                first.model_copy(
+                    update={
+                        "annotations": (
+                            first.annotations[0].model_copy(update={"label_class": "undeclared"}),
+                        )
+                    }
+                ),
+                *manifest.assets[1:],
+            )
+        }
+    )
+    dest = tmp_path / "out"
+
+    with pytest.raises(ExportSourceUnreadable, match="undeclared"):
+        CocoExporter().export(
+            fixture.releases.get(release_id),
+            malformed,
+            dest,
+            content=fixture.workspace.blob_store.get,
+        )
+    fixture.close()
+
+    assert not list((dest / ANNOTATIONS_DIRNAME).glob("instances_*.json"))
+
+
 # --- splits and the whole tree ------------------------------------------------
 
 

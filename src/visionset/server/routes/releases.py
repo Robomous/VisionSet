@@ -113,6 +113,12 @@ def publish_release(workspace: WorkspaceDep, dataset_id: UUID, body: ReleaseCrea
     published, because writing that value as `null` would lose it silently and
     writing it as `NaN` would produce a manifest no other tool can read. The
     remedy is to correct the annotation and publish again.
+
+    The active schema must also describe every annotation the release would
+    freeze. Otherwise publishing is 409
+    `RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA`, with per-class blockers in `detail`.
+    Reconcile those annotations or restore a compatible active schema, then
+    publish again.
     """
     release = ReleaseService(workspace).publish(
         dataset_id, body.tag, split=None if body.split is None else body.split.to_domain()
