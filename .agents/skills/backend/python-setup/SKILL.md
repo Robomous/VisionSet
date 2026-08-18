@@ -43,7 +43,10 @@ everything, so the wrapper runs the add twice — once under the cutoff to learn
 cool-down allows, then again with no cutoff, pinning it — and the diff is the package you asked
 for rather than every pin in the file. It audits the result and refuses with exit 3 if the add
 needed a version published inside the window, leaving `uv.lock` and `pyproject.toml` untouched.
-`uv lock` is not narrowed: a refresh moving the whole set is what a refresh is.
+`uv lock --upgrade-package <pkg>` is narrowed the same way and for the same reason, except that a
+package you name is already in the lockfile and is pinned because you named it. A bare `uv lock`
+and `uv lock --upgrade` are not narrowed: neither names anything, and a refresh moving the whole
+set is what a refresh is.
 
 Do **not** put it in front of `uv sync`. A cutoff on a plain sync makes uv discard the lockfile and
 re-resolve (`Ignoring existing lockfile due to addition of timestamp cutoff`), which is the opposite

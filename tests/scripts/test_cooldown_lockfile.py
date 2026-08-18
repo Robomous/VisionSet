@@ -276,6 +276,14 @@ echo "$n" > "$STUB_STATE/count"
 } >> "$STUB_STATE/calls.txt"
 if [ -f "$STUB_STATE/pass$n.lock" ]; then
   cp "$STUB_STATE/pass$n.lock" "$PWD/uv.lock"
+  # Real uv records the cutoff it resolved under into the lockfile it writes, and
+  # the wrapper reads exactly that to tell a lock it just wrote from one some
+  # ancestor directory happens to hold. A stub that skipped it would make a pass
+  # whose result is unchanged — the cool-down allowing nothing newer — look like
+  # a pass that wrote somewhere else.
+  if [ -n "${UV_EXCLUDE_NEWER-}" ]; then
+    printf '\\n[options]\\nexclude-newer = "%s"\\n' "$UV_EXCLUDE_NEWER" >> "$PWD/uv.lock"
+  fi
 fi
 printf 'touched-by-pass-%s\\n' "$n" >> "$PWD/pyproject.toml"
 # $PPID, not $$: the wrapper is this stub's parent, and it is the wrapper's
@@ -613,3 +621,105 @@ def test_an_interruption_during_the_snapshot_changes_nothing(stubbed) -> None:
     assert not (state / "count").exists(), "uv ran; the interruption came too late"
     assert (project / "uv.lock").read_text() == before_lock
     assert (project / "pyproject.toml").read_text() == before_manifest
+
+
+# --------------------------------------------------------------------------
+# The narrowed `uv lock --upgrade-package`
+# --------------------------------------------------------------------------
+#
+# A bare `uv lock` is a refresh, and a refresh moving the whole set is what a
+# refresh is for. A lock that *names* packages is a different request, and it met
+# the same fate an add did: the cutoff invalidated the lockfile and every pin in
+# it moved. The two-pass machinery already built for `uv add` covers it, with one
+# addition — a named package is already in the lockfile, so the "new since the
+# baseline" rule that decides an add's pins cannot see it.
+
+SETTLED_MOVED = _entry("settled", "2.0.0", "1999-09-01T00:00:00.000Z")
+
+
+def test_a_targeted_lock_upgrade_resolves_twice(stubbed) -> None:
+    project, state, env = stubbed
+    _both_passes_land(state, _lock(SETTLED_MOVED, YOUNG, ROOTED))
+
+    done = _wrapped(project, env, "uv", "lock", "-P", "settled")
+    assert done.returncode == 0, done.stderr
+    assert (state / "count").read_text().strip() == "2"
+
+
+def test_a_named_package_is_pinned_though_the_lockfile_already_holds_it(stubbed) -> None:
+    """The whole point of the addition. `settled` is in the baseline, so the rule
+    that serves an add — pin what is new — would leave it unpinned, and the second
+    pass would take its newest release with no cool-down applied."""
+    project, state, env = stubbed
+    _both_passes_land(state, _lock(SETTLED_MOVED, YOUNG, ROOTED))
+
+    _wrapped(project, env, "uv", "lock", "-P", "settled")
+    assert "pass 2 argv: lock -P settled -P settled==2.0.0" in _calls(state), _calls(state)
+
+
+def test_the_long_and_equals_spellings_of_upgrade_package_are_read(stubbed) -> None:
+    project, state, env = stubbed
+
+    for form in (["--upgrade-package", "settled"], ["--upgrade-package=settled"], ["-Psettled"]):
+        (state / "count").unlink(missing_ok=True)
+        (state / "calls.txt").unlink(missing_ok=True)
+        _both_passes_land(state, _lock(SETTLED_MOVED, YOUNG, ROOTED))
+        done = _wrapped(project, env, "uv", "lock", *form)
+        assert done.returncode == 0, done.stderr
+        assert (state / "count").read_text().strip() == "2", form
+        assert "-P settled==2.0.0" in _calls(state), (form, _calls(state))
+
+
+def test_a_bare_lock_and_a_whole_set_upgrade_are_not_narrowed(stubbed) -> None:
+    """Neither names a package, so neither is a targeted request. A refresh that
+    re-resolves everything is what both are for."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(BASELINE_LOCK)
+
+    for command in (["uv", "lock"], ["uv", "lock", "--upgrade"]):
+        (state / "count").unlink(missing_ok=True)
+        (state / "calls.txt").unlink(missing_ok=True)
+        done = _wrapped(project, env, *command)
+        assert done.returncode == 0, done.stderr
+        assert (state / "count").read_text().strip() == "1", f"{command} was narrowed"
+        assert re.search(r"pass 1 exclude_newer: \d{4}", _calls(state)), command
+
+
+def test_a_version_the_caller_pinned_is_not_overwritten(stubbed) -> None:
+    """`-P name==version` is the caller choosing a version deliberately. The
+    resolution is still narrowed and the audit still judges the result, but the
+    wrapper does not append a pin of its own over the top of theirs."""
+    project, state, env = stubbed
+    _both_passes_land(state, _lock(SETTLED_MOVED, YOUNG, ROOTED))
+
+    done = _wrapped(project, env, "uv", "lock", "-P", "settled==2.0.0")
+    assert done.returncode == 0, done.stderr
+    assert (state / "count").read_text().strip() == "2", "a caller-pinned upgrade went broad"
+    assert "pass 2 argv: lock -P settled==2.0.0\n" in _calls(state), _calls(state)
+
+
+def test_a_named_package_the_cutoff_cannot_move_says_so(stubbed) -> None:
+    """The cool-down allowing nothing newer is an answer, not a failure. Pinning
+    the version already locked is what makes the second pass leave it alone."""
+    project, state, env = stubbed
+    _both_passes_land(state, BASELINE_LOCK)
+
+    done = _wrapped(project, env, "uv", "lock", "-P", "settled")
+    assert done.returncode == 0, done.stderr
+    assert "settled is already at the newest release the cool-down allows" in done.stderr
+    assert "-P settled==1.0.0" in _calls(state), _calls(state)
+
+
+def test_a_narrowed_lock_upgrade_is_audited_like_an_add(stubbed) -> None:
+    """The second pass carries no cool-down of its own either way."""
+    project, state, env = stubbed
+    before_lock = (project / "uv.lock").read_text()
+    (state / "pass1.lock").write_text(_lock(SETTLED_MOVED, YOUNG, ROOTED))
+    (state / "pass2.lock").write_text(
+        _lock(_entry("settled", "9.0.0", "2099-06-01T00:00:00.000Z"), YOUNG, ROOTED)
+    )
+
+    done = _wrapped(project, env, "uv", "lock", "-P", "settled")
+    assert done.returncode == 3, done.stderr
+    assert "settled==9.0.0" in done.stderr
+    assert (project / "uv.lock").read_text() == before_lock
