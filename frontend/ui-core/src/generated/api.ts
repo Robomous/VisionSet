@@ -615,7 +615,15 @@ export interface paths {
          *     `V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`. A dataset
          *     with no assets is 409 `EMPTY_RELEASE`; zero *annotations* is fine, since
          *     unlabeled images are legitimate training data. A project with no schema is 404
-         *     `SCHEMA_NOT_FOUND`, because there is no version to pin.
+         *     `SCHEMA_NOT_FOUND`, because there is no version to pin, and an unknown dataset
+         *     is 404 `DATASET_NOT_FOUND`.
+         *
+         *     One refusal is about the labels rather than about the request: an annotation
+         *     carrying a coordinate canonical JSON cannot express — a NaN or an infinity —
+         *     is 409 `UNSERIALIZABLE_MANIFEST`, and the message names it. Nothing is
+         *     published, because writing that value as `null` would lose it silently and
+         *     writing it as `NaN` would produce a manifest no other tool can read. The
+         *     remedy is to correct the annotation and publish again.
          */
         post: operations["publish_release"];
         delete?: never;
@@ -2211,7 +2219,9 @@ export interface paths {
          *
          *     A release published without a recipe is 404 `NO_SPLIT_RECIPE`. That is not a
          *     defect in the release: no recipe means one undivided set, and answering
-         *     all-train would be indistinguishable from a real recipe that said so.
+         *     all-train would be indistinguishable from a real recipe that said so. An
+         *     unknown release is the other 404, `RELEASE_NOT_FOUND` — the code is what
+         *     tells "there is no such release" from "that release divides into one fold".
          */
         get: operations["get_release_assignment"];
         put?: never;
@@ -2249,8 +2259,9 @@ export interface paths {
          *     installed — and an unknown name is 404 `EXPORT_FORMAT_NOT_FOUND` on this
          *     request. A format that cannot carry everything the release holds is 409
          *     `LOSSY_EXPORT_NOT_CONSENTED` on this request too, and retrying is the
-         *     identical call plus `allow_lossy=true`. Neither refusal creates a job, so a
-         *     caller holding a job id holds one that will run.
+         *     identical call plus `allow_lossy=true`. An unknown release is 404
+         *     `RELEASE_NOT_FOUND`. None of the three creates a job, so a caller holding a
+         *     job id holds one that will run.
          *
          *     A POST because it does work and writes files, though it changes nothing a
          *     later read can see: the release is immutable, and re-exporting overwrites the

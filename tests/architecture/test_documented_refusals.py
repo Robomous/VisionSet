@@ -225,9 +225,6 @@ def _route(name: str) -> tuple[ModuleType, ast.FunctionDef]:
 #: an exemption left behind is a rule this file would no longer prove. Nothing may
 #: be added here.
 KNOWN_SHORT: Final[dict[str, frozenset[str]]] = {
-    "releases::export_release": frozenset({"RELEASE_NOT_FOUND"}),
-    "releases::get_release_assignment": frozenset({"RELEASE_NOT_FOUND"}),
-    "releases::publish_release": frozenset({"DATASET_NOT_FOUND", "UNSERIALIZABLE_MANIFEST"}),
     "schemas::create_schema_version": frozenset({"SCHEMA_VERSION_CONFLICT"}),
     "schemas::get_schema_draft": frozenset({"PROJECT_NOT_FOUND", "SCHEMA_DRAFT_NOT_FOUND"}),
     "schemas::publish_schema_draft": frozenset({"SCHEMA_VERSION_CONFLICT"}),
