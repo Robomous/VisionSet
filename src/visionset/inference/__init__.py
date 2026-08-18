@@ -83,6 +83,12 @@ from visionset.inference.masks import (
     tolerance_for,
 )
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
+from visionset.inference.prelabel import (
+    DEFAULT_MINIMUM_CONFIDENCE,
+    PreLabelOutcome,
+    detectable_classes,
+    pre_label,
+)
 from visionset.inference.providers import ProviderPool, provider_for, resident
 from visionset.inference.registry import (
     GROUP,
@@ -142,6 +148,7 @@ __all__ = [
     "enable_mps_fallback",
     "DEFAULT_EMBEDDING_CAPACITY",
     "DEFAULT_IOU_THRESHOLD",
+    "DEFAULT_MINIMUM_CONFIDENCE",
     "DEFAULT_PROVIDER_CAPACITY",
     "DEFAULT_SIZE_CAPACITY",
     "EXTRA",
@@ -152,10 +159,12 @@ __all__ = [
     "DownloadSizes",
     "LocalSamProvider",
     "LocalTransformersProvider",
+    "PreLabelOutcome",
     "ProviderPool",
     "cache_root",
     "capabilities_of",
     "check_integrity",
+    "detectable_classes",
     "digest_of",
     "download",
     "download_size",
@@ -184,6 +193,7 @@ __all__ = [
     "shapes_from",
     "simplified",
     "tolerance_for",
+    "pre_label",
     "provider_for",
     "require",
     "resident",
