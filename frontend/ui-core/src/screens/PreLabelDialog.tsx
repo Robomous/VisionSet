@@ -141,8 +141,15 @@ function PreLabelDialog({
   // declare `pre_label` at all.
   const total = batch?.progress.total ?? 0;
   const confidenceValue = Number(confidence);
+  // `confidence.trim() !== ""` first: `Number("")` is `0`, a value inside the
+  // valid range, so an emptied field would otherwise read as a valid `0` and
+  // leave Start enabled — posting a floor that writes every region the model
+  // returns rather than refusing to submit.
   const validConfidence =
-    Number.isFinite(confidenceValue) && confidenceValue >= 0 && confidenceValue <= 1;
+    confidence.trim() !== "" &&
+    Number.isFinite(confidenceValue) &&
+    confidenceValue >= 0 &&
+    confidenceValue <= 1;
   const running = preLabel.isPending || (launched !== null && isLive(launched.state));
   // The primitive the effect is actually a function of, not the object that
   // carries it — a `useBatch` refetch elsewhere on the page can mint a new

@@ -276,6 +276,21 @@ it("disables the start press for a prompt affinity outside 0 to 1", async () => 
   expect(submit.disabled).toBe(true);
 });
 
+it("disables the start press when the confidence field is cleared", async () => {
+  // `Number("")` is `0`, a value inside the valid range, so an emptied field
+  // must be refused on its own rather than falling through as a valid `0` —
+  // which would silently post a floor that writes every region the model
+  // returns.
+  renderGallery({ allowed_actions: ["pre_label"] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  const confidence = await screen.findByTestId("prelabel-confidence");
+  await userEvent.clear(confidence);
+
+  const submit = screen.getByRole("button", { name: /start/i }) as HTMLButtonElement;
+  expect(submit.disabled).toBe(true);
+});
+
 it("sends the chosen model and the typed confidence, not a default nobody set", async () => {
   renderGallery({ allowed_actions: ["pre_label"] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
