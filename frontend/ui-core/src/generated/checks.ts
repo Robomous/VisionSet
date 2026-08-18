@@ -237,6 +237,15 @@ export const checkProjectPage: Check<Schemas["ProjectPage"]> =
 export const checkProjectStatsOut: Check<Schemas["ProjectStatsOut"]> =
   /*#__PURE__*/ object({ "annotated_asset_count": [true, isInteger], "annotated_pct": [true, isNumber], "annotation_count": [true, isInteger], "asset_count": [true, isInteger], "class_count": [true, isInteger], "classes": [true, arrayOf(checkClassCountOut)], "last_ingest_at": [false, either([isString, isNull] as const)], "project_id": [true, isString] } as const);
 
+export const checkCuratedModelOut: Check<Schemas["CuratedModelOut"]> =
+  /*#__PURE__*/ object({ "access_note": [true, either([isString, isNull] as const)], "access_url": [true, either([isString, isNull] as const)], "capability": [true, isString], "family": [true, isString], "hint": [true, isString], "model_id": [true, isString], "model_revision": [true, isString] } as const);
+
+export const checkProviderOut: Check<Schemas["ProviderOut"]> =
+  /*#__PURE__*/ object({ "curated": [true, arrayOf(checkCuratedModelOut)], "families": [true, mapOf(isString)], "provider_id": [true, isString] } as const);
+
+export const checkProviderPage: Check<Schemas["ProviderPage"]> =
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkProviderOut)], "total": [true, isInteger] } as const);
+
 export const checkSplitRecipeBody: Check<Schemas["SplitRecipeBody"]> =
   /*#__PURE__*/ object({ "seed": [true, isInteger], "test": [true, isNumber], "train": [true, isNumber], "val": [true, isNumber] } as const);
 
@@ -394,6 +403,7 @@ export const checkListInferenceConnections = checkConnectionPage;
 export const checkListIngestJobs = checkIngestJobPage;
 export const checkListProjectAssets = checkAssetPage;
 export const checkListProjects = checkProjectPage;
+export const checkListProviders = checkProviderPage;
 export const checkListReleases = checkReleasePage;
 export const checkListSchemaVersions = checkSchemaVersionPage;
 export const checkListSources = checkSourcePage;

@@ -111,6 +111,7 @@ DELETE /inference/connections/{connection_id}             no confirmation gate
 POST   /inference/connections/{connection_id}/download    launch
 POST   /inference/connections/{connection_id}/check-integrity   launch
 GET    /inference/download-size                           ?model_id=&model_revision=
+GET    /inference/providers                               which models the installation can run
 POST   /inference/suggest                                 a shape under some points
 
 GET    /background-jobs                                   every launched job

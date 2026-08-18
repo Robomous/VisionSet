@@ -76,6 +76,7 @@ from visionset.kernel.domain import (
     ConnectionAction,
     ConnectionSetupState,
     ConnectionType,
+    CuratedModel,
     Dataset,
     DatasetChange,
     DatasetStats,
@@ -130,7 +131,7 @@ from visionset.kernel.domain import (
     connection_actions,
     job_actions,
 )
-from visionset.kernel.ports import Exporter
+from visionset.kernel.ports import Exporter, Provider
 
 # A gate is a query parameter and never a body field, so a client that gets a 409
 # resubmits the *identical* request with one extra parameter — which is what
@@ -1815,6 +1816,93 @@ class FormatOut(BaseModel):
 
 class FormatPage(Page[FormatOut]):
     """A page of export formats."""
+
+
+# --- inference providers ------------------------------------------------------
+
+
+# Discoverable rather than documented, for the reason ``FormatOut`` carries: what
+# is installed is a property of this deployment, and a distribution registering
+# into the ``visionset.providers`` entry-point group adds a row here and no line
+# to any contract.
+class CuratedModelOut(BaseModel):
+    """A checkpoint a driver offers by name, and what it can be asked for."""
+
+    model_id: str
+    #: A commit, never a branch. A moving pointer is not a provenance, and the
+    #: hint beside it would describe whatever the branch pointed at last week.
+    model_revision: str
+    #: The ``model_type`` this checkpoint's config declares.
+    family: str
+    #: What :attr:`family` can be asked for, resolved through the declaring
+    #: driver. A string rather than the enum: the vocabulary is published open
+    #: exactly where it appears as a list — ``ConnectionOut.capabilities`` — where
+    #: a member an older client never compiled against is safe to filter out.
+    #: This is a scalar field, where the same client would switch on it instead,
+    #: and an open marker on a switched-on field would be a promise the shape
+    #: does not support.
+    capability: str
+    #: One line on what this entry is. Neither the size nor the access
+    #: requirement: both are rendered beside it, and the size is read live.
+    hint: str
+    #: What must be cleared before this can be fetched, and where. Both or
+    #: neither — either half alone is a requirement a form cannot finish stating
+    #: before it offers the download. Required and nullable, like every other
+    #: field here: absent and null would be two spellings of one answer, and a
+    #: client would have to handle both.
+    access_note: str | None
+    access_url: str | None
+
+    @classmethod
+    def of(cls, entry: CuratedModel, capability: str) -> Self:
+        return cls(
+            model_id=entry.model_id,
+            model_revision=entry.model_revision,
+            family=entry.family,
+            capability=capability,
+            hint=entry.hint,
+            access_note=entry.access_note,
+            access_url=entry.access_url,
+        )
+
+
+class ProviderOut(BaseModel):
+    """An installed inference driver: what it serves, and what it offers by name."""
+
+    #: What the driver calls itself, distinct from its entry-point name.
+    provider_id: str
+    #: What each family can be asked for, as the string it is: this is a scalar
+    #: position, and the vocabulary itself is published where it appears as a
+    #: list, on ``ConnectionOut.capabilities``. Sorted, because a mapping has no
+    #: order and a wire shape must: two calls to one build have to agree.
+    families: dict[str, str]
+    #: The checkpoints offered by name, in the order the driver declared them.
+    #: Not sorted, and that is the point — a ladder's rungs run from the one that
+    #: fits a laptop to the one that wants a GPU, and alphabetising them would be
+    #: a second opinion about which to read first.
+    curated: list[CuratedModelOut]
+
+    @classmethod
+    def of(cls, provider: Provider) -> Self:
+        return cls(
+            provider_id=provider.provider_id,
+            families={
+                family: capability.value for family, capability in sorted(provider.families.items())
+            },
+            # An entry naming a family its own driver does not serve has no
+            # capability to publish, and one such entry must not cost a reader
+            # the whole listing. The conformance suite is what refuses it at the
+            # source; this is what keeps a third party's mistake local to itself.
+            curated=[
+                CuratedModelOut.of(entry, provider.families[entry.family].value)
+                for entry in provider.curated
+                if entry.family in provider.families
+            ],
+        )
+
+
+class ProviderPage(Page[ProviderOut]):
+    """A page of installed inference drivers."""
 
 
 # --- inference connections ----------------------------------------------------

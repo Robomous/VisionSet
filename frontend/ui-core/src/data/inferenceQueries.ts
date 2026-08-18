@@ -65,6 +65,7 @@ import {
   checkDownloadConnectionWeights,
   checkInferenceDownloadSize,
   checkListInferenceConnections,
+  checkListProviders,
   checkSuggestRegion,
   checkUpdateInferenceConnection,
 } from "../generated/checks";
@@ -72,6 +73,15 @@ import type { components } from "../generated/api";
 
 export type Connection = components["schemas"]["ConnectionOut"];
 export type ConnectionPage = components["schemas"]["ConnectionPage"];
+
+/**
+ * One installed driver, as the wire calls it, under a name that cannot be read
+ * as a React context. `ProviderOut` is the schema; this is what the app holds.
+ */
+export type InstalledProvider = components["schemas"]["ProviderOut"];
+export type ProviderPage = components["schemas"]["ProviderPage"];
+/** One checkpoint a driver offers by name. Carries no size — that is read live. */
+export type CuratedEntry = components["schemas"]["CuratedModelOut"];
 
 /**
  * The suggest route's answer, declared structurally rather than imported.
@@ -164,6 +174,13 @@ export const inferenceKeys = {
    * under another's name.
    */
   size: (modelId: string, revision: string) => ["inference", "size", modelId, revision] as const,
+  /**
+   * What this build can run, which is a property of the installation.
+   *
+   * Under the same root as the connections so one prefix clears everything
+   * inference-shaped, and unkeyed because there is one answer per server.
+   */
+  providers: () => ["inference", "providers"] as const,
 };
 
 /**
@@ -372,6 +389,37 @@ export function useDownloadSize(
         }),
         checkInferenceDownloadSize,
       ),
+  });
+}
+
+/**
+ * Which models the installation can run, and which it offers by name.
+ *
+ * `staleTime: Infinity` because the answer cannot change under a running server:
+ * the registry keeps one scan for the life of the process, so a driver installed
+ * while it runs is not seen until it restarts — and re-asking would produce the
+ * same list at the cost of a request per dialog.
+ *
+ * `retry: false` for `useDownloadSize`'s reason, one route along. The ways this
+ * fails are answered by *reading* the refusal, and retrying three times only
+ * delays the sentence that says what to do. The field renders a retry control, so
+ * a person who does want another attempt has one.
+ *
+ * The catalog is the connection form's read, and a screen that merely lists
+ * connections must not fetch it — which also keeps every other browser
+ * scenario's stubs honest. The form arranges that by *existing* only while its
+ * dialog is open, rather than by holding this hook disabled; `enabled` is here
+ * for a caller that has to ask from somewhere longer-lived.
+ */
+export function useProviders(enabled = true): UseQueryResult<ProviderPage, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: inferenceKeys.providers(),
+    enabled,
+    staleTime: Infinity,
+    retry: false,
+    queryFn: async () =>
+      unwrap(await client.GET("/inference/providers", {}), checkListProviders),
   });
 }
 
