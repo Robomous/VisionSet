@@ -71,9 +71,13 @@ images ingested on another machine produce a different manifest.
 
 The project's **active** version - the highest one - with its classes. Each copied annotation
 still carries the version its own batch pinned, and those can differ: two batches approved
-against two versions can both be promoted into one trunk. The mixture is safe rather than sloppy,
-because `SchemaChangeWouldOrphan` refuses to remove a class that annotations still depend on. Every
-label in a manifest is still described by the classes in that manifest.
+against two versions can both be promoted into one trunk. Publishing validates every copied
+annotation against the active schema before freezing the manifest. If any do not conform, it
+refuses with the affected class counts; reconcile that content before publishing.
+
+That publication gate makes newly created manifests internally schema-consistent. Exporters still
+defend against undeclared classes when reading archived or externally supplied malformed manifests,
+because those documents may not have come through this publication path.
 
 ## Verification
 

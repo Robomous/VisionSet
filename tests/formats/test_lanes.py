@@ -60,6 +60,8 @@ from visionset.formats.lanes._core import (
 from visionset.kernel.domain import (
     BboxGeometry,
     ClassificationGeometry,
+    GeometryType,
+    LabelClass,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
@@ -143,8 +145,24 @@ def _release() -> Release:
     )
 
 
+def _manifest(asset: ManifestAsset) -> Manifest:
+    classes: dict[str, set[GeometryType]] = {}
+    for annotation in asset.annotations:
+        classes.setdefault(annotation.label_class, set()).add(
+            GeometryType(annotation.geometry.type)
+        )
+    return Manifest(
+        schema_version=1,
+        classes=tuple(
+            LabelClass(name=name, geometries=tuple(geometries))
+            for name, geometries in classes.items()
+        ),
+        assets=(asset,),
+    )
+
+
 def _export(exporter: object, asset: ManifestAsset, dest: Path) -> Path:
-    manifest = Manifest(schema_version=1, assets=(asset,))
+    manifest = _manifest(asset)
     exporter.export(_release(), manifest, dest, content=_content)  # type: ignore[attr-defined]
     return dest
 
@@ -689,6 +707,28 @@ def test_every_lane_format_refuses_an_asset_with_no_recorded_size_or_ignores_it(
             _export(exporter(), asset, tmp_path)
     else:
         _export(exporter(), asset, tmp_path)
+
+
+@pytest.mark.parametrize("exporter", EXPORTERS, ids=lambda e: str(e.format_name))
+def test_every_lane_format_refuses_an_undeclared_manifest_class_before_writing(
+    tmp_path: Path, exporter: type
+) -> None:
+    """Removing the shared input gate would silently emit a malformed lane export."""
+    asset = _asset(_lane([(1.0, 1.0), (2.0, 40.0)], label_class="undeclared"))
+    manifest = Manifest(
+        schema_version=1,
+        classes=(LabelClass(name="centerline", geometries=(GeometryType.POLYLINE,)),),
+        assets=(asset,),
+    )
+    dest = tmp_path / "out"
+
+    with pytest.raises(
+        ExportSourceUnreadable,
+        match=rf"asset {asset.asset_id} carries class 'undeclared'",
+    ):
+        exporter().export(_release(), manifest, dest, content=_content)
+
+    assert not dest.exists()
 
 
 def test_the_manifest_asset_ids_never_reach_the_output(tmp_path: Path) -> None:

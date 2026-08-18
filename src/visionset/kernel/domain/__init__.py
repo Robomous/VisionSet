@@ -184,6 +184,7 @@ from visionset.kernel.domain.schema_diff import (
     orphanable_shapes,
 )
 from visionset.kernel.domain.schema_draft import DraftAttribute, DraftLabelClass, SchemaDraft
+from visionset.kernel.domain.schema_validation import validate_schema_annotation
 from visionset.kernel.domain.segmentation import (
     AssetSegmentation,
     Mask,
@@ -388,6 +389,7 @@ __all__ = [
     "SchemaDiff",
     "SchemaDraft",
     "SchemaProvenance",
+    "validate_schema_annotation",
     "SingleJob",
     "Source",
     "SourceKind",

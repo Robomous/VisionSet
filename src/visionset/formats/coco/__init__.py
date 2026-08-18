@@ -244,10 +244,9 @@ def _annotation(
 ) -> dict[str, Any] | None:
     """One COCO annotation row, or ``None`` if this label has no place in one."""
     category_id = category_of.get(annotation.label_class)
-    # A label whose class the manifest does not declare cannot happen —
-    # `SchemaChangeWouldOrphan` refuses to remove a class annotations depend on —
-    # but a row carrying a made-up category id would be a silent lie in a file a
-    # trainer reads as ground truth.
+    # Publication rejects new inconsistent manifests, but archived or externally
+    # supplied manifests can still be malformed. An invented category id would
+    # silently mislabel a file a trainer reads as ground truth.
     if category_id is None:
         raise ExportSourceUnreadable(
             f"asset {asset.asset_id} carries class {annotation.label_class!r}, "

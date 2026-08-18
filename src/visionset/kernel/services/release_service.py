@@ -51,8 +51,10 @@ from pydantic import ValidationError
 from visionset import __version__
 from visionset.kernel.domain import (
     Annotation,
+    AnnotationSchema,
     Asset,
     ClassCompatibility,
+    ClassCount,
     ClassExportStatus,
     Dataset,
     ExportCompatibility,
@@ -70,13 +72,16 @@ from visionset.kernel.domain import (
     canonical_bytes,
     normalize_name,
     sha256_hex,
+    validate_schema_annotation,
 )
 from visionset.kernel.errors import (
     ConstraintViolated,
     EmptyRelease,
     ExportSourceUnreadable,
+    InvalidAnnotation,
     LossyExportNotConsented,
     NoSplitRecipe,
+    ReleaseContentWouldViolateSchema,
     ReleaseNotFound,
     ReleaseTagTaken,
     WorkspaceCorrupt,
@@ -166,10 +171,19 @@ class ReleaseService:
                         f"into it before publishing a release of it"
                     )
 
+                manifest_assets = _manifest_assets(uow, assets)
+                blockers = _release_schema_blockers(active, manifest_assets)
+                if blockers:
+                    raise ReleaseContentWouldViolateSchema(
+                        "cannot publish this release: its active schema no longer describes "
+                        "annotations in the dataset",
+                        blockers=blockers,
+                    )
+
                 manifest = Manifest(
                     schema_version=active.version,
                     classes=active.classes,
-                    assets=_manifest_assets(uow, assets),
+                    assets=manifest_assets,
                 )
                 project_id = dataset.project_id
                 published = uow.releases.add(
@@ -614,6 +628,34 @@ def _manifest_assets(uow: UnitOfWork, assets: list[Asset]) -> tuple[ManifestAsse
     )
 
 
+def _release_schema_blockers(
+    schema: AnnotationSchema, assets: tuple[ManifestAsset, ...]
+) -> tuple[ClassCount, ...]:
+    """Count candidate annotations that the active release schema would reject."""
+    annotations: dict[str, int] = {}
+    affected_assets: dict[str, set[UUID]] = {}
+    for asset in assets:
+        for annotation in asset.annotations:
+            try:
+                validate_schema_annotation(
+                    label_class=annotation.label_class,
+                    geometry=annotation.geometry,
+                    attributes=annotation.attributes,
+                    schema=schema,
+                )
+            except InvalidAnnotation:
+                annotations[annotation.label_class] = annotations.get(annotation.label_class, 0) + 1
+                affected_assets.setdefault(annotation.label_class, set()).add(asset.asset_id)
+    return tuple(
+        ClassCount(
+            label_class=name,
+            annotations=annotations[name],
+            assets=len(affected_assets[name]),
+        )
+        for name in sorted(annotations)
+    )
+
+
 def _manifest_annotation(annotation: Annotation) -> ManifestAnnotation:
     """One live label, copied field by field into its frozen twin.
 
@@ -809,11 +851,9 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
     for asset in manifest.assets:
         for annotation in asset.annotations:
             geometry = GeometryType(annotation.geometry.type)
-            # A shape the manifest's own `classes` does not declare cannot happen
-            # — `SchemaChangeWouldOrphan` refuses to remove a class annotations
-            # depend on, and taking a geometry away from one is destructive for
-            # the same reason — but a report that dropped a label it could not
-            # place would be silently wrong, so it is placed by what it carries.
+            # Publication rejects new inconsistent manifests, but this report also
+            # reads archived or externally supplied manifests. Dropping an
+            # undeclared label here would make the report silently wrong.
             count, assets = per_shape.get((annotation.label_class, geometry), (0, set()))
             per_shape[(annotation.label_class, geometry)] = (
                 count + 1,

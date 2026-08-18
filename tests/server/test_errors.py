@@ -94,6 +94,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "JobNotComplete": (409, "JOB_NOT_COMPLETE"),
     "EmptyBatch": (409, "EMPTY_BATCH"),
     "EmptyRelease": (409, "EMPTY_RELEASE"),
+    "ReleaseContentWouldViolateSchema": (409, "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA"),
     "ConfirmationRequired": (409, "CONFIRMATION_REQUIRED"),
     "DestructiveSchemaChange": (409, "DESTRUCTIVE_SCHEMA_CHANGE"),
     "SchemaChangeWouldOrphan": (409, "SCHEMA_CHANGE_WOULD_ORPHAN"),

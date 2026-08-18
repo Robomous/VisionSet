@@ -113,6 +113,50 @@ def test_publishing_an_empty_dataset_is_refused(
     assert error(call("publish_release", project=named, tag="v1.0"))["message"]
 
 
+def test_publishing_refuses_content_the_active_schema_no_longer_describes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    car = {"name": "car", "geometries": ["bbox"]}
+    named, batch_id, job_id = open_batch(
+        monkeypatch, tmp_path, count=1, classes=[*SCHEMA_CLASSES, car]
+    )
+    payload(
+        call(
+            "create_schema_version",
+            project=named,
+            classes=SCHEMA_CLASSES,
+            allow_destructive=True,
+        )
+    )
+    asset_id = payload(call("next_pending_assets", job_id=job_id, count=1))["items"][0]["id"]
+    payload(
+        call(
+            "add_annotations",
+            job_id=job_id,
+            annotations=[
+                {
+                    "asset_id": asset_id,
+                    "label_class": "car",
+                    "geometry": BBOX,
+                    "provenance": "model",
+                    "model_ref": "probe@1",
+                }
+            ],
+        )
+    )
+    payload(call("complete_job", job_id=job_id))
+    payload(call("complete_batch", batch_id=batch_id))
+    payload(call("promote_batch", batch_id=batch_id))
+
+    refusal = error(call("publish_release", project=named, tag="v1.0"))
+
+    assert refusal["retry_with"] is None
+    assert (
+        "reconcile the annotations or publish a schema that describes them"
+        in refusal["hint"].lower()
+    )
+
+
 def test_a_release_tag_is_case_sensitive_unlike_a_project_name(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

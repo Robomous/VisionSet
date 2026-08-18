@@ -32,7 +32,14 @@ from tests.server._exports import (
     reset_exporters,
     with_exporters,
 )
-from tests.server._flow import dataset_of, promoted_dataset
+from tests.server._flow import (
+    SIGN,
+    asset_ids,
+    batch_from_ingest,
+    dataset_of,
+    project_with_schema,
+    promoted_dataset,
+)
 from tests.server._jobs import InlineDispatcher
 
 from visionset.kernel.domain import MANIFEST_VERSION
@@ -150,6 +157,47 @@ def test_publishing_an_empty_trunk_is_409(client: TestClient, tmp_path: Path) ->
 
     assert response.status_code == 409
     assert response.json()["code"] == "EMPTY_RELEASE"
+
+
+def test_release_publication_reports_active_schema_content_blockers(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    project_id = project_with_schema(
+        client, classes=[SIGN, {"name": "car", "geometries": ["bbox"]}]
+    )
+    batch_id = batch_from_ingest(client, runner, tmp_path, project_id, images=1)
+    client.post(f"/batches/{batch_id}/approve")
+    client.post(f"/batches/{batch_id}/start")
+    job_id = client.get(f"/batches/{batch_id}/jobs").json()["items"][0]["id"]
+    client.post(f"/jobs/{job_id}/start")
+    client.post(
+        f"/projects/{project_id}/schema/versions",
+        json={"classes": [SIGN]},
+        params={"allow_destructive": True},
+    )
+    client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            {
+                "asset_id": asset_ids(client, batch_id)[0],
+                "label_class": "car",
+                "geometry": {"type": "bbox", "x": 1, "y": 2, "width": 30, "height": 40},
+                "provenance": "human",
+            }
+        ],
+    )
+    client.post(f"/jobs/{job_id}/complete")
+    client.post(f"/batches/{batch_id}/complete")
+    client.post(f"/batches/{batch_id}/promote")
+    dataset_id = dataset_of(client, project_id)
+
+    response = client.post(f"/datasets/{dataset_id}/releases", json={"tag": "v1"})
+
+    assert response.status_code == 409
+    body = response.json()
+    assert body["code"] == "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA"
+    assert body["detail"] == {"blockers": [{"label_class": "car", "annotations": 1, "assets": 1}]}
+    assert client.get(f"/datasets/{dataset_id}/releases").json() == {"items": [], "total": 0}
 
 
 def test_publishing_from_an_unknown_dataset_is_404(client: TestClient) -> None:

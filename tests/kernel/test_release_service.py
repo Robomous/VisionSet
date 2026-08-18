@@ -28,6 +28,7 @@ from visionset.kernel import (
     InvalidName,
     LossyExportNotConsented,
     NoSplitRecipe,
+    ReleaseContentWouldViolateSchema,
     ReleaseNotFound,
     ReleaseTagTaken,
     SchemaNotFound,
@@ -38,11 +39,14 @@ from visionset.kernel.domain import (
     AnnotationJob,
     Asset,
     AssetProgress,
+    Attribute,
     BboxGeometry,
+    ClassCount,
     ExportCompatibility,
     GeometryType,
     LabelClass,
     Manifest,
+    ManifestAnnotation,
     PolygonGeometry,
     Release,
     SplitRecipe,
@@ -63,6 +67,7 @@ from visionset.kernel.services import (
 )
 
 SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
+CAR = LabelClass(name="car", geometries=(GeometryType.BBOX,))
 RECIPE = SplitRecipe(train=0.6, val=0.2, test=0.2, seed=42)
 
 
@@ -137,6 +142,26 @@ def _box(asset_id: UUID) -> Annotation:
     )
 
 
+def _promote_under_superseded_schema(
+    fixture: Fixture,
+    old_classes: list[LabelClass],
+    active_classes: list[LabelClass],
+    annotation: Annotation,
+) -> None:
+    """Promote one annotation written under v1 after v2 has become active."""
+    fixture.schemas.create_version(fixture.project.id, old_classes)
+    batch = fixture.batches.create(fixture.project.id, "v1 work", [annotation.asset_id])
+    fixture.batches.approve(batch.id)
+    (job,) = fixture.batches.jobs(batch.id)
+    fixture.batches.start(batch.id)
+    fixture.jobs.start(job.id)
+    fixture.schemas.create_version(fixture.project.id, active_classes, allow_destructive=True)
+    fixture.annotations.add(job.id, [annotation])
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(batch.id)
+    fixture.datasets.promote(batch.id)
+
+
 # --- what publishing freezes --------------------------------------------------
 
 
@@ -169,6 +194,91 @@ def test_publishing_twice_from_an_unchanged_dataset_yields_byte_identical_manife
     fixture.close()
 
 
+def test_release_publication_refuses_content_not_described_by_the_active_schema(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    asset_id = fixture.asset_ids[0]
+    _promote_under_superseded_schema(
+        fixture,
+        [SIGN, CAR],
+        [SIGN],
+        Annotation(
+            asset_id=asset_id,
+            label_class="car",
+            schema_version=1,
+            geometry=BboxGeometry(x=1.0, y=2.0, width=30.0, height=40.0),
+            provenance="human",
+        ),
+    )
+
+    with pytest.raises(ReleaseContentWouldViolateSchema) as caught:
+        fixture.releases.publish(fixture.dataset_id, "v1")
+
+    assert caught.value.blockers == (ClassCount(label_class="car", annotations=1, assets=1),)
+    assert fixture.releases.list(fixture.dataset_id) == []
+    fixture.close()
+
+
+def test_release_publication_refuses_a_geometry_removed_from_the_active_class(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    asset_id = fixture.asset_ids[0]
+    car_with_polygon = LabelClass(name="car", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
+    _promote_under_superseded_schema(
+        fixture,
+        [SIGN, car_with_polygon],
+        [SIGN, CAR],
+        Annotation(
+            asset_id=asset_id,
+            label_class="car",
+            schema_version=1,
+            geometry=PolygonGeometry(points=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]),
+            provenance="human",
+        ),
+    )
+
+    with pytest.raises(ReleaseContentWouldViolateSchema) as caught:
+        fixture.releases.publish(fixture.dataset_id, "v1")
+
+    assert caught.value.blockers == (ClassCount(label_class="car", annotations=1, assets=1),)
+    assert fixture.releases.list(fixture.dataset_id) == []
+    fixture.close()
+
+
+def test_release_publication_refuses_an_attribute_removed_from_the_active_class(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    asset_id = fixture.asset_ids[0]
+    car_with_attribute = LabelClass(
+        name="car",
+        geometries=(GeometryType.BBOX,),
+        attributes=(Attribute(name="occluded", kind="boolean"),),
+    )
+    _promote_under_superseded_schema(
+        fixture,
+        [SIGN, car_with_attribute],
+        [SIGN, CAR],
+        Annotation(
+            asset_id=asset_id,
+            label_class="car",
+            schema_version=1,
+            geometry=BboxGeometry(x=1.0, y=2.0, width=30.0, height=40.0),
+            attributes={"occluded": False},
+            provenance="human",
+        ),
+    )
+
+    with pytest.raises(ReleaseContentWouldViolateSchema) as caught:
+        fixture.releases.publish(fixture.dataset_id, "v1")
+
+    assert caught.value.blockers == (ClassCount(label_class="car", annotations=1, assets=1),)
+    assert fixture.releases.list(fixture.dataset_id) == []
+    fixture.close()
+
+
 def test_publishing_twice_from_an_unchanged_dataset_reuses_the_one_manifest_blob(
     tmp_path: Path,
 ) -> None:
@@ -180,6 +290,51 @@ def test_publishing_twice_from_an_unchanged_dataset_reuses_the_one_manifest_blob
 
     stored = {path.name for path in (fixture.root / "blobs").rglob("*") if path.is_file()}
     assert len(stored) == len(fixture.asset_ids) + 1  # the assets, and one manifest
+    fixture.close()
+
+
+def test_reading_a_legacy_manifest_with_an_undeclared_annotation_does_not_reapply_the_gate(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    manifest = fixture.releases.manifest(release.id)
+    asset = manifest.assets[0]
+    legacy_manifest = manifest.model_copy(
+        update={
+            "assets": (
+                asset.model_copy(
+                    update={
+                        "annotations": (
+                            ManifestAnnotation(
+                                id=uuid4(),
+                                label_class="car",
+                                schema_version=1,
+                                geometry=BboxGeometry(x=1.0, y=2.0, width=30.0, height=40.0),
+                                provenance="human",
+                            ),
+                        )
+                    }
+                ),
+            )
+        }
+    )
+    manifest_hash = fixture.workspace.blob_store.put(BytesIO(canonical_bytes(legacy_manifest)))
+    with fixture.workspace.unit_of_work() as uow:
+        legacy = uow.releases.add(
+            Release(
+                dataset_id=fixture.dataset_id,
+                tag="legacy",
+                manifest_hash=manifest_hash,
+                schema_version=legacy_manifest.schema_version,
+                asset_count=len(legacy_manifest.assets),
+                annotation_count=legacy_manifest.annotation_count,
+                visionset_version=__version__,
+            )
+        )
+
+    assert fixture.releases.manifest(legacy.id) == legacy_manifest
+    assert fixture.releases.verify(legacy.id).ok
     fixture.close()
 
 

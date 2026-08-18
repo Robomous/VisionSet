@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -15,10 +16,16 @@ from tests.cli._flow import (
     workspace,
 )
 
+from visionset.kernel.domain import Annotation, Asset, BboxGeometry, GeometryType, LabelClass
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR,
+    AnnotationService,
+    BatchService,
+    DatasetService,
+    JobService,
     ProjectService,
     ReleaseService,
+    SchemaService,
     WorkspaceService,
 )
 
@@ -42,6 +49,53 @@ def _manifest_blob(root: Path, name: str, tag: str) -> Path:
         digest = release.manifest_hash
     # The blob store's own sharding, ``<root>/<hash[:2]>/<hash[2:4]>/<hash>``.
     return root / "blobs" / digest[:2] / digest[2:4] / digest
+
+
+def _schema_incompatible_project(root: Path) -> str:
+    with WorkspaceService.open(root) as service:
+        projects = ProjectService(service)
+        schemas = SchemaService(service)
+        batches = BatchService(service)
+        jobs = JobService(service)
+        annotations = AnnotationService(service)
+        datasets = DatasetService(service)
+        project = projects.create("schema-incompatible")
+        sign = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
+        car = LabelClass(name="car", geometries=(GeometryType.BBOX,))
+        schemas.create_version(project.id, [sign, car])
+        content_hash = service.blob_store.put(BytesIO(b"schema-incompatible"))
+        with service.unit_of_work() as uow:
+            asset = uow.assets.add(
+                Asset(
+                    project_id=project.id,
+                    content_hash=content_hash,
+                    uri="/tmp/schema-incompatible.png",
+                    width=640,
+                    height=480,
+                )
+            )
+        batch = batches.create(project.id, "v1 work", [asset.id])
+        batches.approve(batch.id)
+        (job,) = batches.jobs(batch.id)
+        batches.start(batch.id)
+        jobs.start(job.id)
+        schemas.create_version(project.id, [sign], allow_destructive=True)
+        annotations.add(
+            job.id,
+            [
+                Annotation(
+                    asset_id=asset.id,
+                    label_class="car",
+                    schema_version=1,
+                    geometry=BboxGeometry(x=1, y=2, width=30, height=40),
+                    provenance="human",
+                )
+            ],
+        )
+        jobs.complete(job.id)
+        batches.complete(batch.id)
+        datasets.promote(batch.id)
+    return project.name
 
 
 # --- publish -----------------------------------------------------------------
@@ -68,6 +122,15 @@ def test_publishing_an_empty_trunk_exits_one(root: Path, tmp_path: Path) -> None
     result = run(root, "release", "publish", "--tag", "v1.0", "-p", name)
     assert result.exit_code == 1, result.output
     assert "Error:" in result.stderr
+
+
+def test_publishing_content_outside_the_active_schema_exits_one_with_a_remedy(root: Path) -> None:
+    name = _schema_incompatible_project(root)
+
+    result = run(root, "release", "publish", "--tag", "v1.0", "-p", name)
+
+    assert result.exit_code == 1, result.output
+    assert "Reconcile the annotations or restore a compatible active schema." in result.stderr
 
 
 def test_a_repeated_tag_exits_one(root: Path, tmp_path: Path) -> None:
