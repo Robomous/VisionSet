@@ -39,6 +39,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { saveNow } from "../e2e/_frame";
+import { emptyWorkspace } from "./_workspace";
 
 const CYCLE_DIR = process.env["VISIONSET_CYCLE_DIR"] ?? "";
 
@@ -84,36 +85,46 @@ const REPINNED = "built-in stand-in, repinned";
  * A project name nothing else in the workspace will collide with — **including
  * this same spec on another repetition**.
  *
- * A project name is unique per workspace, case-insensitively, and the workspace
- * outlives a repetition: `scripts/cycle_server.sh` rebuilds it once per *server
- * start*, and `--repeat-each` reuses that one server. So the fixed literal that
- * used to live here made the flag useless — repeat 2 died on
- * `POST /projects → 409`, a wall standing in front of everything the suite is
- * about, and the only way to run the cycle twice was two whole invocations at
- * about ninety seconds of rebuild each.
+ * A project name is unique per workspace, case-insensitively, and a fixed
+ * literal here used to make `--repeat-each` useless: the workspace outlived a
+ * repetition, so repeat 2 died on `POST /projects → 409` before reaching
+ * anything the suite is about. The connection name had the same problem one
+ * screen later and nobody had noticed it, which is the argument against curing
+ * a collision one name at a time.
  *
- * `repeatEachIndex` **and `retry`**, because a retry is the same repetition run
- * again into the same workspace. Scoping only the first turns one readable
- * failure into two unreadable ones: a genuine failure leaves its project behind,
- * the retry dies on `POST /projects → 409`, and the report names the 409 — which
- * is the exact wall the scoping exists to remove. The workspace really is fresh
- * per invocation (the script
- * `rm -rf`s it before `init`) and `workers: 1` means two repetitions never
- * overlap, so those two indices are the whole of the uniqueness needed.
+ * Neither needs curing now. Every attempt begins on an empty workspace — see
+ * the `beforeEach` below — so no name in this walk collides with a name from
+ * another attempt, and none of them has to move.
  *
- * The suffix is unconditional rather than omitted on the first, so every run's
- * names have one shape and a failure message reads the same way whether or not
- * somebody passed the flag.
- *
- * The project is the only name that has to move, and that is worth stating so
- * the next collision is looked for rather than assumed: a release tag is unique
- * per dataset, a batch name is not unique at all, and a source's idempotency key
- * `(project, kind, path, fps)` leads with the project. All three are already
- * scoped by a project that is new.
+ * The suffix stays anyway, and is unconditional, because it costs nothing and
+ * it makes a failure message name the attempt it came from. That is worth more
+ * now than it was: a retry can finally produce a second, *different* failure,
+ * and two reports that name the same project are two reports somebody has to
+ * tell apart by hand.
  */
 function projectFor(info: TestInfo): string {
   return `browser-cycle-${info.repeatEachIndex}-${info.retry}`;
 }
+
+/**
+ * Every attempt starts on an empty workspace — a retry included, and every
+ * repetition of `--repeat-each`.
+ *
+ * On the first attempt of a freshly built workspace this deletes nothing and
+ * costs two reads. It exists for the second: the workspace is rebuilt once per
+ * *server* start, not once per attempt, so without this a retry inherits the
+ * previous attempt's projects and dies on Home's first-run invitation — an
+ * assertion about the workspace, three steps in, unrelated to whatever actually
+ * failed.
+ *
+ * Unconditional rather than guarded on `retry`, because a repair that only runs
+ * on the rare attempt has the same property as the defect it repairs: nothing
+ * exercises it until the day it matters. Run every time, its two reads are
+ * proved by every run of this suite.
+ */
+test.beforeEach(async ({ request }) => {
+  await emptyWorkspace(request, token());
+});
 
 test("the whole cycle, from opening the app to a downloaded export", async ({ page }, info) => {
   test.slow();
@@ -532,11 +543,31 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // Born not set up, like every local connection, and made ready by the same
     // action — the lifecycle here is the real one, not a shortcut written for a
     // suite. What is different is only that there is nothing to fetch.
-    await expect(page.getByTestId("connection-status")).toContainText(/not set up/i);
-    await page.getByTestId("download-weights").click();
-    await expect(page.getByTestId("connection-status")).toContainText(/ready/i, {
+
+    // Read inside the row rather than off the screen. Both ids live inside a
+    // connection's own row, so an unscoped read is sound only while the
+    // workspace holds exactly one — and Playwright's strict mode then refuses
+    // the locator, naming the selector instead of the assumption.
+    const row = page.getByTestId(`connection-${STAND_IN}`);
+    await expect(row.getByTestId("connection-status")).toContainText(/not set up/i);
+    await row.getByTestId("download-weights").click();
+    await expect(row.getByTestId("connection-status")).toContainText(/ready/i, {
       timeout: 15_000,
     });
+
+    /*
+     * One connection, asserted rather than assumed.
+     *
+     * The suggest panel further down names this connection in a sentence and
+     * offers a picker from two upwards, so a second connection breaks that
+     * assertion as a *missing string* — pointing at the suggest panel while the
+     * cause is an extra row on this screen. Stated here, where the count is
+     * decided, a violation names the count.
+     *
+     * The type badge is what is counted because it is unconditional inside a
+     * row, while the download button appears only before setup.
+     */
+    await expect(page.getByTestId("connection-type")).toHaveCount(1);
   });
 
   await test.step("a click in the editor comes back as a shape, from a real server", async () => {
@@ -1380,7 +1411,10 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     await page.getByTestId("rail-inference").click();
     await expect(page.getByTestId("inference-screen")).toBeVisible();
-    await expect(page.getByTestId("connection-status")).toContainText(/ready/i);
+    // Two locators because the row's id is its name and the rename moves it.
+    const before = page.getByTestId(`connection-${STAND_IN}`);
+    const after = page.getByTestId(`connection-${REPINNED}`);
+    await expect(before.getByTestId("connection-status")).toContainText(/ready/i);
 
     // A rename, which sends the model reference the row already has. That it is
     // *accepted* is the half that would have caught a PATCH carrying the kind;
@@ -1395,8 +1429,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // was typed — so its absence is the first thing that says the server took
     // the body.
     await expect(page.getByTestId("connection-dialog")).toHaveCount(0);
-    await expect(page.getByTestId(`connection-${REPINNED}`)).toBeVisible();
-    await expect(page.getByTestId("connection-status")).toContainText(/ready/i);
+    await expect(after).toBeVisible();
+    await expect(after.getByTestId("connection-status")).toContainText(/ready/i);
 
     // And a reference that really does move. The revision is free text on a
     // connection — the commit-hash rule belongs to catalog entries, which is why
@@ -1408,11 +1442,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("connection-submit").click();
 
     await expect(page.getByTestId("connection-dialog")).toHaveCount(0);
-    await expect(page.getByTestId("connection-status")).toContainText(/not set up/i);
+    await expect(after.getByTestId("connection-status")).toContainText(/not set up/i);
 
     // The remedy is offered on the row it happened to, which is the other half
     // of what "undoes its setup" is allowed to mean.
-    await expect(page.getByTestId("download-weights")).toBeVisible();
+    await expect(after.getByTestId("download-weights")).toBeVisible();
   });
 
   await test.step("the whole walk produced a clean console", async () => {
