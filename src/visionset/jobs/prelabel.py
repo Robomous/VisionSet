@@ -84,6 +84,10 @@ def run(
     rather than a choice from the prompt's phrases, so a merged answer is
     dropped before it is ever written; ``regions_discarded`` in the result says
     how many.
+
+    **A mapped region with no overlap with a measured asset is also discarded.**
+    ``regions_out_of_bounds`` keeps that geometry refusal distinct from an
+    unmappable model label.
     """
     if reporter.is_cancelled():
         return {}
@@ -110,4 +114,5 @@ def run(
         "stopped_early": outcome.stopped_early,
         "assets_skipped": outcome.assets_skipped,
         "regions_discarded": outcome.regions_discarded,
+        "regions_out_of_bounds": outcome.regions_out_of_bounds,
     }

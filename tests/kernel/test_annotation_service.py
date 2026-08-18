@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 
 from visionset.kernel import (
+    AnnotationGeometryOutOfBounds,
     AnnotationNotFound,
     AnnotationNotFromModel,
     AssetNotInJob,
@@ -129,6 +130,8 @@ class Fixture:
         *,
         assets: int = 3,
         classes: Sequence[LabelClass] = (SIGN, LANE, KIOSK),
+        asset_width: int | None = None,
+        asset_height: int | None = None,
     ) -> None:
         self.workspace = WorkspaceService.init(tmp_path / name)
         self.batches = BatchService(self.workspace)
@@ -137,6 +140,8 @@ class Fixture:
         self.annotations = AnnotationService(self.workspace)
         self.project = ProjectService(self.workspace).create(f"{name}-project")
         self.schemas.create_version(self.project.id, list(classes))
+        self.asset_width = asset_width
+        self.asset_height = asset_height
         self.assets = [self._asset(f"{name}-{index}") for index in range(assets)]
         self.batch = self.batches.create(self.project.id, "first", self.assets)
 
@@ -148,6 +153,8 @@ class Fixture:
                     project_id=self.project.id,
                     content_hash=content_hash,
                     uri=f"/tmp/{seed}.png",
+                    width=self.asset_width,
+                    height=self.asset_height,
                 )
             ).id
 
@@ -322,6 +329,107 @@ def test_the_geometry_rule_is_per_class_not_the_versions_union(tmp_path: Path) -
                 )
             ],
         )
+    fixture.close()
+
+
+def test_add_refuses_a_box_wholly_outside_a_measured_asset(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path, asset_width=100, asset_height=80)
+    job = fixture.working()
+
+    with pytest.raises(AnnotationGeometryOutOfBounds) as raised:
+        fixture.annotations.add(
+            job.id,
+            [_box(fixture.assets[0], geometry=BboxGeometry(x=101, y=20, width=5, height=5))],
+        )
+
+    assert raised.value.index == 0
+    assert fixture.annotations.for_asset(job.id, fixture.assets[0]) == []
+    assert fixture.progress_of(job, fixture.assets[0]) is UNANNOTATED
+    fixture.close()
+
+
+def test_add_accepts_a_box_partially_overlapping_a_measured_asset(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path, asset_width=100, asset_height=80)
+    job = fixture.working()
+
+    stored = fixture.annotations.add(
+        job.id,
+        [_box(fixture.assets[0], geometry=BboxGeometry(x=99, y=20, width=5, height=5))],
+    )
+
+    assert len(stored) == 1
+    fixture.close()
+
+
+def test_add_accepts_a_box_outside_an_unmeasured_asset(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+
+    stored = fixture.annotations.add(
+        job.id,
+        [_box(fixture.assets[0], geometry=BboxGeometry(x=101, y=20, width=5, height=5))],
+    )
+
+    assert len(stored) == 1
+    fixture.close()
+
+
+def test_add_rolls_back_when_its_second_box_is_outside_a_measured_asset(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path, asset_width=100, asset_height=80)
+    job = fixture.working()
+
+    with pytest.raises(AnnotationGeometryOutOfBounds) as raised:
+        fixture.annotations.add(
+            job.id,
+            [
+                _box(fixture.assets[0]),
+                _box(fixture.assets[1], geometry=BboxGeometry(x=101, y=20, width=5, height=5)),
+            ],
+        )
+
+    assert raised.value.index == 1
+    for asset_id in fixture.assets[:2]:
+        assert fixture.annotations.for_asset(job.id, asset_id) == []
+        assert fixture.progress_of(job, asset_id) is UNANNOTATED
+    fixture.close()
+
+
+def test_update_refuses_replacement_geometry_outside_the_stored_asset(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path, asset_width=100, asset_height=80)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    with pytest.raises(AnnotationGeometryOutOfBounds) as raised:
+        fixture.annotations.update(
+            job.id,
+            [stored.model_copy(update={"geometry": BboxGeometry(x=101, y=20, width=5, height=5)})],
+        )
+
+    assert raised.value.index == 0
+    assert fixture.annotations.get(stored.id) == stored
+    fixture.close()
+
+
+def test_enter_unreviewed_refuses_a_model_box_outside_a_measured_asset(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path, asset_width=100, asset_height=80)
+    job = fixture.working()
+
+    with pytest.raises(AnnotationGeometryOutOfBounds) as raised:
+        fixture.annotations.enter_unreviewed(
+            job.id,
+            [
+                _box(
+                    fixture.assets[0],
+                    geometry=BboxGeometry(x=101, y=20, width=5, height=5),
+                    provenance="model",
+                    model_ref="model-v1",
+                )
+            ],
+        )
+
+    assert raised.value.index == 0
+    assert fixture.annotations.for_asset(job.id, fixture.assets[0]) == []
+    assert fixture.progress_of(job, fixture.assets[0]) is UNANNOTATED
     fixture.close()
 
 

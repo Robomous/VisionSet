@@ -177,6 +177,8 @@ class Fixture:
         classes: tuple[LabelClass, ...] = (SIGN, POST, LANE),
         pool_kind: str = "detector",
         regions: tuple[PredictedRegion, ...] = DEFAULT_REGIONS,
+        asset_count: int = 3,
+        asset_size: tuple[int, int] | None = None,
     ) -> None:
         self.workspace = WorkspaceService.init(tmp_path / name)
         self.batches = BatchService(self.workspace)
@@ -186,7 +188,14 @@ class Fixture:
         self.connections = InferenceConnectionService(self.workspace)
         self.project = ProjectService(self.workspace).create(f"{name}-project")
         self.schemas.create_version(self.project.id, list(classes))
-        self.assets = [self._asset(f"{name}-{index}") for index in range(3)]
+        self.assets = [
+            self._asset(
+                f"{name}-{index}",
+                width=None if asset_size is None else asset_size[0],
+                height=None if asset_size is None else asset_size[1],
+            )
+            for index in range(asset_count)
+        ]
         self.batch = self.batches.create(self.project.id, "first", self.assets)
         self.batches.approve(self.batch.id)
         self._job_id = self.batches.jobs(self.batch.id)[0].id
@@ -201,7 +210,7 @@ class Fixture:
         )
         self.pool = FakeProviderPool(kind=pool_kind, regions=regions)
 
-    def _asset(self, seed: str) -> UUID:
+    def _asset(self, seed: str, *, width: int | None = None, height: int | None = None) -> UUID:
         content_hash = self.workspace.blob_store.put(BytesIO(seed.encode()))
         with self.workspace.unit_of_work() as uow:
             return uow.assets.add(
@@ -209,6 +218,8 @@ class Fixture:
                     project_id=self.project.id,
                     content_hash=content_hash,
                     uri=f"/tmp/{seed}.png",
+                    width=width,
+                    height=height,
                 )
             ).id
 
@@ -283,6 +294,65 @@ def only_unmappable_fixture(tmp_path: Path) -> Iterator[Fixture]:
     """Every region the model answered with is unmappable — nothing to write."""
     fixture = Fixture(
         tmp_path, "only-unmappable", classes=VEHICLE_CLASSES, regions=(_region("truck bus"),)
+    )
+    yield fixture
+    fixture.close()
+
+
+@pytest.fixture
+def partly_off_frame_fixture(tmp_path: Path) -> Iterator[Fixture]:
+    fixture = Fixture(
+        tmp_path,
+        "partly-off-frame",
+        asset_count=1,
+        asset_size=(100, 80),
+        regions=(
+            *DEFAULT_REGIONS,
+            PredictedRegion(
+                label="post",
+                confidence=0.9,
+                geometry=BboxGeometry(x=101.0, y=10.0, width=5.0, height=5.0),
+            ),
+        ),
+    )
+    yield fixture
+    fixture.close()
+
+
+@pytest.fixture
+def only_off_frame_fixture(tmp_path: Path) -> Iterator[Fixture]:
+    fixture = Fixture(
+        tmp_path,
+        "only-off-frame",
+        asset_count=1,
+        asset_size=(100, 80),
+        regions=(
+            PredictedRegion(
+                label="post",
+                confidence=0.9,
+                geometry=BboxGeometry(x=101.0, y=10.0, width=5.0, height=5.0),
+            ),
+        ),
+    )
+    yield fixture
+    fixture.close()
+
+
+@pytest.fixture
+def early_stop_off_frame_fixture(tmp_path: Path) -> Iterator[Fixture]:
+    fixture = Fixture(
+        tmp_path,
+        "early-stop-off-frame",
+        asset_count=2,
+        asset_size=(100, 80),
+        regions=(
+            *DEFAULT_REGIONS,
+            PredictedRegion(
+                label="post",
+                confidence=0.9,
+                geometry=BboxGeometry(x=101.0, y=10.0, width=5.0, height=5.0),
+            ),
+        ),
     )
     yield fixture
     fixture.close()
@@ -651,3 +721,64 @@ def test_an_asset_whose_only_regions_are_unmappable_stays_unannotated(
     for asset_id in only_unmappable_fixture.assets:
         assert job.progress[asset_id] is AssetProgress.UNANNOTATED
         assert only_unmappable_fixture.annotations_on(asset_id) == []
+
+
+def test_a_region_wholly_outside_a_measured_asset_is_discarded(
+    partly_off_frame_fixture: Fixture,
+) -> None:
+    outcome = pre_label(
+        partly_off_frame_fixture.workspace,
+        batch_id=partly_off_frame_fixture.batch.id,
+        connection_id=partly_off_frame_fixture.connection.id,
+        pool=partly_off_frame_fixture.pool,
+    )
+
+    assert outcome.annotations_written == 1
+    assert outcome.regions_discarded == 0
+    assert outcome.regions_out_of_bounds == 1
+    assert [
+        annotation.geometry
+        for annotation in partly_off_frame_fixture.annotations_on(
+            partly_off_frame_fixture.assets[0]
+        )
+    ] == [BboxGeometry(x=1.0, y=2.0, width=3.0, height=4.0)]
+
+
+def test_an_asset_whose_only_regions_are_off_frame_stays_unannotated(
+    only_off_frame_fixture: Fixture,
+) -> None:
+    outcome = pre_label(
+        only_off_frame_fixture.workspace,
+        batch_id=only_off_frame_fixture.batch.id,
+        connection_id=only_off_frame_fixture.connection.id,
+        pool=only_off_frame_fixture.pool,
+    )
+
+    assert outcome.assets_labeled == 0
+    assert outcome.regions_discarded == 0
+    assert outcome.regions_out_of_bounds == 1
+    job = only_off_frame_fixture.job()
+    assert job.progress[only_off_frame_fixture.assets[0]] is AssetProgress.UNANNOTATED
+    assert only_off_frame_fixture.annotations_on(only_off_frame_fixture.assets[0]) == []
+
+
+def test_stopping_after_an_off_frame_region_keeps_its_count(
+    early_stop_off_frame_fixture: Fixture,
+) -> None:
+    seen = iter([False, True])
+
+    outcome = pre_label(
+        early_stop_off_frame_fixture.workspace,
+        batch_id=early_stop_off_frame_fixture.batch.id,
+        connection_id=early_stop_off_frame_fixture.connection.id,
+        should_stop=lambda: next(seen),
+        pool=early_stop_off_frame_fixture.pool,
+    )
+
+    assert outcome.stopped_early is True
+    assert outcome.annotations_written == 1
+    assert outcome.regions_discarded == 0
+    assert outcome.regions_out_of_bounds == 1
+    job = early_stop_off_frame_fixture.job()
+    assert job.progress[early_stop_off_frame_fixture.assets[0]] is AssetProgress.PRE_LABELED
+    assert job.progress[early_stop_off_frame_fixture.assets[1]] is AssetProgress.UNANNOTATED

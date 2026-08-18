@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from pydantic import BaseModel
@@ -59,7 +60,7 @@ from tests.fixtures.samples import (
 
 from visionset import wire
 from visionset.formats._dummy import DummyExporter
-from visionset.kernel.domain import AssetProgress
+from visionset.kernel.domain import AssetProgress, BackgroundJobState, PreLabelRun
 from visionset.server import models
 
 # One row per pair: a label, the projected payload, and the wire model it must
@@ -209,6 +210,26 @@ def test_an_empty_listing_is_still_an_object() -> None:
     # Never a bare array, and never a 404's moral equivalent: an empty collection
     # is a collection.
     assert wire.page([]) == {"items": [], "total": 0}
+
+
+def test_a_settled_pre_label_run_has_wire_parity_when_nested_in_a_batch() -> None:
+    run = PreLabelRun(
+        batch_id=BATCH.id,
+        job_id=uuid4(),
+        state=BackgroundJobState.SUCCEEDED,
+        assets_processed=2,
+        assets_total=2,
+        stopped_early=False,
+        assets_labeled=1,
+        regions_discarded=2,
+        regions_out_of_bounds=3,
+    )
+
+    projected = wire.batch(BATCH, COUNTS, promoted=frozenset(), pre_labeled=run)
+
+    assert set(projected["pre_label_run"] or {}) == set(models.PreLabelRunOut.model_fields)
+    models.BatchOut.model_validate(projected)
+    json.dumps(projected)
 
 
 # --- the timestamp format the parity gate depends on -------------------------

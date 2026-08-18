@@ -44,6 +44,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from visionset.kernel import (
+    AnnotationGeometryOutOfBounds,
     AnnotationNotFound,
     AnnotationNotFromModel,
     AssetNotFound,
@@ -334,6 +335,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     InvalidAnnotation: ErrorRule(422, "INVALID_ANNOTATION"),
     LabelClassNotInSchema: ErrorRule(422, "LABEL_CLASS_NOT_IN_SCHEMA"),
     DisallowedGeometry: ErrorRule(422, "DISALLOWED_GEOMETRY"),
+    AnnotationGeometryOutOfBounds: ErrorRule(422, "ANNOTATION_GEOMETRY_OUT_OF_BOUNDS"),
     # 422 like its five siblings, not 409, and the split is the one this table is
     # built on. A 409 says "the resource's state refuses this; change the state
     # and resubmit" — but the state to change is the annotation set, and removing

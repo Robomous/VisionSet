@@ -317,6 +317,10 @@ def pre_label_batch(
     about, so a span crossing the boundary between two phrases can answer with
     neither of them; `regions_discarded` in the result says how many.
 
+    **A mapped region with no overlap with a measured asset is discarded
+    separately.** `regions_out_of_bounds` in the result says how many; an
+    asset without dimensions remains eligible.
+
     **The batch's pinned schema is the prompt.** The model is asked for each
     class the schema declares that a box can be written as; an answer naming one
     of those classes, matched case-insensitively, is written under the schema's
@@ -343,6 +347,7 @@ def pre_label_batch(
         "model_ref": outcome.model_ref,
         "assets_skipped": outcome.assets_skipped,
         "regions_discarded": outcome.regions_discarded,
+        "regions_out_of_bounds": outcome.regions_out_of_bounds,
     }
 
 

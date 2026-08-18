@@ -7,6 +7,7 @@ and by the architecture tests in ``tests/architecture/``.
 """
 
 from visionset.kernel.errors import (
+    AnnotationGeometryOutOfBounds,
     AnnotationNotFound,
     AnnotationNotFromModel,
     AssetNotFound,
@@ -90,6 +91,7 @@ from visionset.kernel.errors import (
 )
 
 __all__ = [
+    "AnnotationGeometryOutOfBounds",
     "AnnotationNotFound",
     "AnnotationNotFromModel",
     "AssetNotFound",

@@ -46,6 +46,7 @@ from visionset.kernel.domain import (
     TextPrompt,
     media_type_of,
 )
+from visionset.kernel.domain.geometry import geometry_intersects_asset
 from visionset.kernel.errors import (
     AssetNotWritable,
     SchemaHasNoDetectableClass,
@@ -95,6 +96,9 @@ class PreLabelOutcome:
     #: a meaningful share of the model's output says so instead of reporting a
     #: clean success.
     regions_discarded: int = 0
+    #: Regions whose geometry has no overlap with a measured asset. Kept
+    #: separate from unmappable labels because their class mapping succeeded.
+    regions_out_of_bounds: int = 0
 
 
 def unsupported_prompt_message(connection_name: str) -> str:
@@ -202,6 +206,10 @@ def pre_label(
     the phrase list, and a merged answer is discarded rather than guessed onto
     either half. ``PreLabelOutcome.regions_discarded`` says how many.
 
+    A region whose mapped geometry has no overlap with a measured asset is also
+    passed over before the atomic write. ``PreLabelOutcome.regions_out_of_bounds``
+    says how many; unmeasured assets remain eligible.
+
     Raises:
         InferenceConnectionNotFound: no such connection.
         InferenceConnectionNotSetUp: a local connection whose weights are absent.
@@ -234,7 +242,7 @@ def pre_label(
     annotations_service = AnnotationService(workspace)
     ingest = IngestService(workspace)
 
-    considered = labeled = written = skipped = discarded = 0
+    considered = labeled = written = skipped = discarded = out_of_bounds = 0
     model_ref: str | None = None
     for job_id, asset_id in targets:
         # Between assets, which is the only place stopping is honest: the last
@@ -248,6 +256,7 @@ def pre_label(
                 stopped_early=True,
                 assets_skipped=skipped,
                 regions_discarded=discarded,
+                regions_out_of_bounds=out_of_bounds,
             )
 
         asset = ingest.asset(batch.project_id, asset_id)
@@ -273,9 +282,17 @@ def pre_label(
                 class_by_answer=class_by_answer,
             )
             discarded += unmapped
-            if proposed:
+            in_bounds = [
+                annotation
+                for annotation in proposed
+                if geometry_intersects_asset(
+                    annotation.geometry, width=asset.width, height=asset.height
+                )
+            ]
+            out_of_bounds += len(proposed) - len(in_bounds)
+            if in_bounds:
                 try:
-                    annotations_service.enter_unreviewed(job_id, proposed)
+                    annotations_service.enter_unreviewed(job_id, in_bounds)
                 except AssetNotWritable:
                     # The batch is `in_annotation`, so somebody working in it
                     # while this run is in flight is the normal case, not a
@@ -287,12 +304,18 @@ def pre_label(
                     skipped += 1
                 else:
                     labeled += 1
-                    written += len(proposed)
+                    written += len(in_bounds)
         if on_progress is not None:
             on_progress(considered, total)
 
     return PreLabelOutcome(
-        considered, labeled, written, model_ref, assets_skipped=skipped, regions_discarded=discarded
+        considered,
+        labeled,
+        written,
+        model_ref,
+        assets_skipped=skipped,
+        regions_discarded=discarded,
+        regions_out_of_bounds=out_of_bounds,
     )
 
 

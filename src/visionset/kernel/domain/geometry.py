@@ -18,6 +18,8 @@ exists.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from math import isfinite
 from typing import Annotated, Final, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -29,9 +31,9 @@ class BboxGeometry(BaseModel):
     """An axis-aligned rectangle: top-left corner plus size.
 
     ``width`` and ``height`` must be strictly positive — a zero-area box is as
-    meaningless as a negative one, so neither is accepted. ``x`` and ``y`` are
-    unconstrained: an annotation may legitimately start outside the asset's
-    bounds when an object is clipped by the frame edge.
+    meaningless as a negative one, so neither is accepted. A box may extend
+    beyond an asset's frame, but cannot be wholly disjoint when that asset
+    records its dimensions.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -133,3 +135,140 @@ this set with no second edit and no chance of the two disagreeing. It is what
 ``SchemaService`` checks a proposed ``LabelClass`` against: declaring a class
 whose geometry has no model would create a class nobody could ever annotate.
 """
+
+
+@dataclass(frozen=True)
+class _Frame:
+    width: float
+    height: float
+
+
+def geometry_intersects_asset(geometry: Geometry, *, width: int | None, height: int | None) -> bool:
+    if width is None or height is None or not _coordinates_are_finite(geometry):
+        return True
+    frame = _Frame(width=float(width), height=float(height))
+    if isinstance(geometry, ClassificationGeometry):
+        return True
+    if isinstance(geometry, BboxGeometry):
+        return _bbox_intersects_frame(geometry, frame)
+    if isinstance(geometry, PolylineGeometry):
+        return _path_intersects_frame(geometry.points, frame, closed=False)
+    return _path_intersects_frame(geometry.points, frame, closed=True)
+
+
+def _coordinates_are_finite(geometry: Geometry) -> bool:
+    if isinstance(geometry, ClassificationGeometry):
+        return True
+    if isinstance(geometry, BboxGeometry):
+        return all(
+            isfinite(value) for value in (geometry.x, geometry.y, geometry.width, geometry.height)
+        )
+    return all(isfinite(value) for point in geometry.points for value in point)
+
+
+def _bbox_intersects_frame(geometry: BboxGeometry, frame: _Frame) -> bool:
+    return (
+        geometry.x <= frame.width
+        and geometry.x + geometry.width >= 0.0
+        and geometry.y <= frame.height
+        and geometry.y + geometry.height >= 0.0
+    )
+
+
+def _path_intersects_frame(
+    points: list[tuple[float, float]], frame: _Frame, *, closed: bool
+) -> bool:
+    if any(_point_is_in_frame(point, frame) for point in points):
+        return True
+
+    frame_edges = _frame_edges(frame)
+    segments = list(zip(points, points[1:], strict=False))
+    if closed:
+        segments.append((points[-1], points[0]))
+    if any(
+        _segments_intersect(start, end, edge_start, edge_end)
+        for start, end in segments
+        for edge_start, edge_end in frame_edges
+    ):
+        return True
+
+    return closed and any(_point_is_in_polygon(corner, points) for corner in _frame_corners(frame))
+
+
+def _point_is_in_frame(point: tuple[float, float], frame: _Frame) -> bool:
+    x, y = point
+    return 0.0 <= x <= frame.width and 0.0 <= y <= frame.height
+
+
+def _frame_edges(
+    frame: _Frame,
+) -> tuple[
+    tuple[tuple[float, float], tuple[float, float]],
+    tuple[tuple[float, float], tuple[float, float]],
+    tuple[tuple[float, float], tuple[float, float]],
+    tuple[tuple[float, float], tuple[float, float]],
+]:
+    top_left = (0.0, 0.0)
+    top_right = (frame.width, 0.0)
+    bottom_right = (frame.width, frame.height)
+    bottom_left = (0.0, frame.height)
+    return (
+        (top_left, top_right),
+        (top_right, bottom_right),
+        (bottom_right, bottom_left),
+        (bottom_left, top_left),
+    )
+
+
+def _frame_corners(frame: _Frame) -> tuple[tuple[float, float], ...]:
+    return ((0.0, 0.0), (frame.width, 0.0), (frame.width, frame.height), (0.0, frame.height))
+
+
+def _segments_intersect(
+    first_start: tuple[float, float],
+    first_end: tuple[float, float],
+    second_start: tuple[float, float],
+    second_end: tuple[float, float],
+) -> bool:
+    first_second_start = _cross_product(first_start, first_end, second_start)
+    first_second_end = _cross_product(first_start, first_end, second_end)
+    second_first_start = _cross_product(second_start, second_end, first_start)
+    second_first_end = _cross_product(second_start, second_end, first_end)
+
+    if first_second_start == 0.0 and _point_is_on_segment(second_start, first_start, first_end):
+        return True
+    if first_second_end == 0.0 and _point_is_on_segment(second_end, first_start, first_end):
+        return True
+    if second_first_start == 0.0 and _point_is_on_segment(first_start, second_start, second_end):
+        return True
+    if second_first_end == 0.0 and _point_is_on_segment(first_end, second_start, second_end):
+        return True
+    return (first_second_start > 0.0) != (first_second_end > 0.0) and (
+        second_first_start > 0.0
+    ) != (second_first_end > 0.0)
+
+
+def _point_is_in_polygon(point: tuple[float, float], points: list[tuple[float, float]]) -> bool:
+    winding_number = 0
+    for start, end in zip(points, [*points[1:], points[0]], strict=True):
+        if _cross_product(start, end, point) == 0.0 and _point_is_on_segment(point, start, end):
+            return True
+        if start[1] <= point[1] < end[1] and _cross_product(start, end, point) > 0.0:
+            winding_number += 1
+        elif end[1] <= point[1] < start[1] and _cross_product(start, end, point) < 0.0:
+            winding_number -= 1
+    return winding_number != 0
+
+
+def _point_is_on_segment(
+    point: tuple[float, float], start: tuple[float, float], end: tuple[float, float]
+) -> bool:
+    return min(start[0], end[0]) <= point[0] <= max(start[0], end[0]) and min(
+        start[1], end[1]
+    ) <= point[1] <= max(start[1], end[1])
+
+
+def _cross_product(
+    start: tuple[float, float], end: tuple[float, float], point: tuple[float, float]
+) -> float:
+    return (end[0] - start[0]) * (point[1] - start[1]) - (end[1] - start[1]) * (point[0] - start[0])

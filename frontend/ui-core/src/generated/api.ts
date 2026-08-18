@@ -3063,9 +3063,9 @@ export interface components {
          * @description An axis-aligned rectangle: top-left corner plus size.
          *
          *     ``width`` and ``height`` must be strictly positive — a zero-area box is as
-         *     meaningless as a negative one, so neither is accepted. ``x`` and ``y`` are
-         *     unconstrained: an annotation may legitimately start outside the asset's
-         *     bounds when an object is clipped by the frame edge.
+         *     meaningless as a negative one, so neither is accepted. A box may extend
+         *     beyond an asset's frame, but cannot be wholly disjoint when that asset
+         *     records its dimensions.
          */
         BboxGeometry: {
             /** Height */
@@ -3961,8 +3961,9 @@ export interface components {
          *     set before the first forward pass, so both its progress and its total are
          *     counted in the unit its own work is over.
          *
-         *     **The outcome, once the job has one.** `stopped_early`, `assets_labeled` and
-         *     `regions_discarded` are the handler's own account of what a settled run did.
+         *     **The outcome, once the job has one.** `stopped_early`, `assets_labeled`,
+         *     `regions_discarded` and `regions_out_of_bounds` are the handler's own
+         *     account of what a settled run did.
          *     They are `null` while the job is still `queued` or `running`, and `null`
          *     where it ended `failed` before producing one — but a `cancelled` run still
          *     carries them: stopping partway is a coherent outcome for a handler whose
@@ -3984,6 +3985,8 @@ export interface components {
             job_id: string;
             /** Regions Discarded */
             regions_discarded: number | null;
+            /** Regions Out Of Bounds */
+            regions_out_of_bounds: number | null;
             state: components["schemas"]["BackgroundJobState"];
             /** Stopped Early */
             stopped_early: boolean | null;

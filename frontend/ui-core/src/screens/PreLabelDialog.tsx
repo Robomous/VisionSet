@@ -137,6 +137,7 @@ interface RunView {
   readonly stoppedEarly: boolean | null;
   readonly assetsLabeled: number | null;
   readonly regionsDiscarded: number | null;
+  readonly regionsOutOfBounds: number | null;
 }
 
 /**
@@ -148,6 +149,7 @@ function viewFromJob(job: BackgroundJob): RunView {
   const stoppedEarly = job.result.stopped_early;
   const assetsLabeled = job.result.assets_labeled;
   const regionsDiscarded = job.result.regions_discarded;
+  const regionsOutOfBounds = job.result.regions_out_of_bounds;
   return {
     jobId: job.id,
     state: job.state,
@@ -157,6 +159,7 @@ function viewFromJob(job: BackgroundJob): RunView {
     stoppedEarly: typeof stoppedEarly === "boolean" ? stoppedEarly : null,
     assetsLabeled: typeof assetsLabeled === "number" ? assetsLabeled : null,
     regionsDiscarded: typeof regionsDiscarded === "number" ? regionsDiscarded : null,
+    regionsOutOfBounds: typeof regionsOutOfBounds === "number" ? regionsOutOfBounds : null,
   };
 }
 
@@ -171,6 +174,7 @@ function viewFromRun(run: PreLabelRun): RunView {
     stoppedEarly: run.stopped_early,
     assetsLabeled: run.assets_labeled,
     regionsDiscarded: run.regions_discarded,
+    regionsOutOfBounds: run.regions_out_of_bounds,
   };
 }
 
@@ -223,24 +227,35 @@ function failedProgress(view: RunView): string | null {
 }
 
 /** What a settled run actually did, in words — including the one count no other UI shows. */
-function DoneSummary({ result }: { readonly result: BackgroundJob["result"] }): JSX.Element {
-  const labeled = typeof result.assets_labeled === "number" ? result.assets_labeled : 0;
-  const written = typeof result.annotations_written === "number" ? result.annotations_written : 0;
-  const discarded = typeof result.regions_discarded === "number" ? result.regions_discarded : 0;
-  const skipped = typeof result.assets_skipped === "number" ? result.assets_skipped : 0;
-  const stoppedEarly = result.stopped_early === true;
+function DoneSummary({
+  view,
+  result,
+}: {
+  readonly view: RunView;
+  readonly result: BackgroundJob["result"] | null;
+}): JSX.Element {
+  const labeled = typeof result?.assets_labeled === "number" ? result.assets_labeled : 0;
+  const written = typeof result?.annotations_written === "number" ? result.annotations_written : 0;
+  const discarded = view.regionsDiscarded ?? 0;
+  const outOfBounds = view.regionsOutOfBounds ?? 0;
+  const skipped = typeof result?.assets_skipped === "number" ? result.assets_skipped : 0;
+  const stoppedEarly = result?.stopped_early === true;
 
   return (
     <div className="flex flex-col gap-1" data-testid="prelabel-summary">
-      <p className="text-body text-foreground">
-        Labeled {labeled} asset{labeled === 1 ? "" : "s"}, writing {written} region
-        {written === 1 ? "" : "s"} for you to correct.
-      </p>
+      {result !== null && (
+        <p className="text-body text-foreground">
+          Labeled {labeled} asset{labeled === 1 ? "" : "s"}, writing {written} region
+          {written === 1 ? "" : "s"} for you to correct.
+        </p>
+      )}
       {discarded > 0 && (
         <p className="text-meta text-muted-foreground" data-testid="prelabel-discarded">
-          Discarded {discarded} region{discarded === 1 ? "" : "s"} for naming a class the
-          prompt did not ask for.
+          {discarded} model region{discarded === 1 ? " did" : "s did"} not match a requested class.
         </p>
+      )}
+      {outOfBounds > 0 && (
+        <p>{`${outOfBounds} model region${outOfBounds === 1 ? " was" : "s were"} outside their asset and were skipped.`}</p>
       )}
       {skipped > 0 && (
         <p className="text-meta text-muted-foreground">
@@ -510,7 +525,9 @@ function PreLabelDialog({
             </p>
           )}
 
-          {mode === "done" && launched !== null && <DoneSummary result={launched.result} />}
+          {mode === "done" && view !== null && (
+            <DoneSummary view={view} result={launched?.result ?? null} />
+          )}
 
           {mode === "stopped" && view !== null && (
             <p className="text-body text-foreground" data-testid="prelabel-stopped-summary">

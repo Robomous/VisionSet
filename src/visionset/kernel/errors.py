@@ -619,6 +619,10 @@ class DisallowedGeometry(InvalidAnnotation):
     """
 
 
+class AnnotationGeometryOutOfBounds(InvalidAnnotation):
+    """A spatial annotation has no overlap with its measured asset."""
+
+
 class DuplicateClassificationTag(InvalidAnnotation):
     """This asset already carries a tag of this class.
 

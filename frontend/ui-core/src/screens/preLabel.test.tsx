@@ -168,6 +168,7 @@ function preLabelRunOf(overrides: Record<string, unknown> = {}): Record<string, 
     stopped_early: true,
     assets_labeled: 9,
     regions_discarded: 0,
+    regions_out_of_bounds: 0,
     ...overrides,
   };
 }
@@ -462,7 +463,7 @@ it("offers Edit these frames once a run succeeds, and sets the segment filter", 
   expect(screen.getByTestId("segment-pre_labeled").getAttribute("aria-pressed")).toBe("true");
 });
 
-it("says how many regions a run discarded, in words, when it discarded any", async () => {
+it("separates unmappable and out-of-bounds model regions in a completed job", async () => {
   on("GET", /\/background-jobs\//, {
     status: 200,
     body: backgroundJobOf({
@@ -471,6 +472,7 @@ it("says how many regions a run discarded, in words, when it discarded any", asy
         assets_labeled: 40,
         annotations_written: 90,
         regions_discarded: 3,
+        regions_out_of_bounds: 2,
         assets_skipped: 0,
         stopped_early: false,
       },
@@ -481,8 +483,9 @@ it("says how many regions a run discarded, in words, when it discarded any", asy
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByRole("button", { name: /start/i }));
 
-  const discarded = await screen.findByTestId("prelabel-discarded");
-  expect(discarded.textContent).toMatch(/3 regions/);
+  const summary = await screen.findByTestId("prelabel-summary");
+  expect(summary.textContent).toContain("3 model regions did not match a requested class");
+  expect(summary.textContent).toContain("2 model regions were outside their asset and were skipped");
 });
 
 it("says nothing about discarded regions when a run discarded none", async () => {
@@ -494,6 +497,7 @@ it("says nothing about discarded regions when a run discarded none", async () =>
         assets_labeled: 40,
         annotations_written: 90,
         regions_discarded: 0,
+        regions_out_of_bounds: 0,
         assets_skipped: 0,
         stopped_early: false,
       },
@@ -507,6 +511,8 @@ it("says nothing about discarded regions when a run discarded none", async () =>
   await screen.findByRole("button", { name: /edit these frames/i });
   expect(screen.queryByTestId("prelabel-discarded")).toBeNull();
   expect(screen.queryByText(/^0$/)).toBeNull();
+  expect(screen.queryByText(/did not match a requested class/i)).toBeNull();
+  expect(screen.queryByText(/outside their asset and were skipped/i)).toBeNull();
 });
 
 /**
@@ -556,6 +562,7 @@ it("on reopen after a failed run, shows the handler's error and offers Try again
         stopped_early: null,
         assets_labeled: null,
         regions_discarded: null,
+        regions_out_of_bounds: null,
       }),
     },
     { counts: { unannotated: 43, total: 48 } },
@@ -583,6 +590,7 @@ it("on reopen after a complete run, disables Start with its reason adjacent and 
         stopped_early: false,
         assets_labeled: 48,
         regions_discarded: 0,
+        regions_out_of_bounds: 2,
       }),
     },
     { counts: { unannotated: 0, total: 48 } },
@@ -594,6 +602,9 @@ it("on reopen after a complete run, disables Start with its reason adjacent and 
   expect(start.disabled).toBe(true);
   const reason = await screen.findByTestId("prelabel-blocked-reason");
   expect(reason.textContent).toMatch(/pre-labeled/i);
+  expect((await screen.findByTestId("prelabel-summary")).textContent).toContain(
+    "2 model regions were outside their asset and were skipped",
+  );
 
   const edit = await screen.findByRole("button", { name: /edit these frames/i });
   await userEvent.click(edit);
