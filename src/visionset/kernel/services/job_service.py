@@ -185,8 +185,9 @@ class JobService:
         """Close the job, if every asset in it has been dealt with.
 
         Dealt with means ``SETTLED_PROGRESS``: labeled, skipped, or accepted. An
-        ``unannotated`` asset means the work is not done; a ``review_pending``
-        one means the review is not.
+        ``unannotated`` asset means the work is not done, a ``pre_labeled`` one
+        means a model's guess is still unjudged, and a ``review_pending`` one
+        means the review is not.
 
         Completing a job does **not** complete its batch. ``BatchService`` derives
         that from its jobs when asked, and one machine in two places is one too

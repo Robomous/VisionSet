@@ -60,9 +60,10 @@ class AttentionKind(StrEnum):
 class ResumeKind(StrEnum):
     """What an open batch is being offered for, and so what `next_asset_id` is.
 
-    `annotate` - a frame nobody has labeled, which is that frame.
-    `review` - every frame is labeled or set aside and some await a reviewer,
-    which is the first of those. `open` - neither, and `next_asset_id` is null.
+    `annotate` - a frame nobody has judged, whether nobody has labeled it or
+    only a model has, which is that frame. `review` - every frame is judged
+    and some await a reviewer, which is the first of those. `open` - neither,
+    and `next_asset_id` is null.
     """
 
     ANNOTATE = "annotate"
@@ -142,9 +143,10 @@ class ResumeTarget(BaseModel):
     #: ``in_annotation`` has at least one job. A batch with none is not offered
     #: at all rather than offered with nothing to open.
     job_id: UUID
-    #: Where to land, in batch order: the first ``unannotated`` frame under
-    #: ``annotate``, the first ``review_pending`` one under ``review``, NULL
-    #: under ``open``. Which of those it is comes off ``kind``.
+    #: Where to land, in batch order: the first ``unannotated`` or
+    #: ``pre_labeled`` frame under ``annotate``, the first ``review_pending``
+    #: one under ``review``, NULL under ``open``. Which of those it is comes
+    #: off ``kind``.
     next_asset_id: UUID | None = None
     #: Settled assets, i.e. those not blocking the job from completing. Counted
     #: against ``SETTLED_PROGRESS`` rather than against ``annotated`` alone, so a

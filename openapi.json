@@ -605,6 +605,7 @@
         "description": "Per-asset annotation progress inside a job.",
         "enum": [
           "unannotated",
+          "pre_labeled",
           "annotated",
           "skipped",
           "review_pending",
@@ -3287,6 +3288,10 @@
             "title": "Annotated",
             "type": "integer"
           },
+          "pre_labeled": {
+            "title": "Pre Labeled",
+            "type": "integer"
+          },
           "review_pending": {
             "title": "Review Pending",
             "type": "integer"
@@ -3306,6 +3311,7 @@
         },
         "required": [
           "unannotated",
+          "pre_labeled",
           "annotated",
           "skipped",
           "review_pending",
@@ -3728,7 +3734,7 @@
         "type": "object"
       },
       "ResumeKind": {
-        "description": "What an open batch is being offered for, and so what `next_asset_id` is.\n\n`annotate` - a frame nobody has labeled, which is that frame.\n`review` - every frame is labeled or set aside and some await a reviewer,\nwhich is the first of those. `open` - neither, and `next_asset_id` is null.",
+        "description": "What an open batch is being offered for, and so what `next_asset_id` is.\n\n`annotate` - a frame nobody has judged, whether nobody has labeled it or\nonly a model has, which is that frame. `review` - every frame is judged\nand some await a reviewer, which is the first of those. `open` - neither,\nand `next_asset_id` is null.",
         "enum": [
           "annotate",
           "review",
@@ -5962,7 +5968,7 @@
     },
     "/batches/{batch_id}/pre-label": {
       "post": {
-        "description": "Ask a model to label every untouched asset in this batch, and answer at once.\n\nThe `pre_label` action. Labels land at `review_pending`, never at\n`annotated`: nobody judged them, so they arrive awaiting review rather than\nclaiming to be somebody's work.\n\n**Only assets nothing has touched \u2014 which is stronger than reading\n`unannotated`.** An asset that is already annotated, skipped, awaiting\nreview or accepted is passed over, and so is an `unannotated` one that\nstill carries annotations from an earlier round that was skipped and then\nrestored: that sequence deletes no labels, so progress alone does not\nprove an asset untouched. A run never writes over what a person did, and\na second run picks up only what is still untouched.\n\n**The batch's pinned schema is the prompt.** The model is asked for each class\nthe schema declares that a box can be written as; an answer naming one of\nthose classes, matched case-insensitively, is written under the schema's own\nspelling, and an answer naming none of them is discarded. A schema whose\nclasses are all polygons, polylines or tags \u2014 or whose box classes each\nrequire an attribute a prediction cannot supply \u2014 has nowhere for a\ndetection to land and is refused.\n\n**202, not 200.** A batch is hundreds of forward passes, so this follows the\nlaunch-and-poll contract the export and weight-download routes use: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state` is\n`succeeded`, then re-read the batch's assets. Progress on the row is counted\nin assets.\n\n**Everything a caller can be told now is told now**, and no refusal creates a\njob \u2014 so a caller holding a job id holds one that will run. These refusals\nare about the request, and the caller can act on each. They are checked in\nthis order, and it is the order `pre_label` itself checks in, so a request\nwrong about the connection and the batch both always names the connection:\na connection whose weights have not arrived is 409\n`INFERENCE_CONNECTION_NOT_SET_UP`; a connection whose model answers places\nrather than words is 422 `UNSUPPORTED_PROMPT`; a batch that is not\n`in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no\nclass a box can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.\n\nTwo failures are about this installation rather than about the request, and\nanswer 500 carrying the message that says which: a machine without the\noptional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the\nexact command that installs it, and a workspace whose records no longer\nhold together \u2014 a batch pinned to a schema version that is not stored \u2014 is\n`WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no\nstate here a caller can change, so the remedy is the one the message names.\n\n**Asking twice joins the run already in flight rather than starting a second\none.** A request arriving while this batch has a pre-labeling run queued or\nrunning is answered with that run's id, so a double-click and a second tab\nwatch one run instead of paying for the same inference twice.",
+        "description": "Ask a model to label every untouched asset in this batch, and answer at once.\n\nThe `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:\nnobody judged them, so they arrive editable and correctable rather than\nclaiming to be somebody's work \u2014 and, being unjudged, they never reach the\nDataset until a person has taken them over.\n\n**Only assets nothing has touched \u2014 which is stronger than reading\n`unannotated`.** An asset that is already annotated, skipped, awaiting\nreview or accepted is passed over, and so is an `unannotated` one that\nstill carries annotations from an earlier round that was skipped and then\nrestored: that sequence deletes no labels, so progress alone does not\nprove an asset untouched. A run never writes over what a person did, and\na second run picks up only what is still untouched.\n\n**The batch's pinned schema is the prompt.** The model is asked for each class\nthe schema declares that a box can be written as; an answer naming one of\nthose classes, matched case-insensitively, is written under the schema's own\nspelling, and an answer naming none of them is discarded. A schema whose\nclasses are all polygons, polylines or tags \u2014 or whose box classes each\nrequire an attribute a prediction cannot supply \u2014 has nowhere for a\ndetection to land and is refused.\n\n**202, not 200.** A batch is hundreds of forward passes, so this follows the\nlaunch-and-poll contract the export and weight-download routes use: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state` is\n`succeeded`, then re-read the batch's assets. Progress on the row is counted\nin assets.\n\n**Everything a caller can be told now is told now**, and no refusal creates a\njob \u2014 so a caller holding a job id holds one that will run. These refusals\nare about the request, and the caller can act on each. They are checked in\nthis order, and it is the order `pre_label` itself checks in, so a request\nwrong about the connection and the batch both always names the connection:\na connection whose weights have not arrived is 409\n`INFERENCE_CONNECTION_NOT_SET_UP`; a connection whose model answers places\nrather than words is 422 `UNSUPPORTED_PROMPT`; a batch that is not\n`in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no\nclass a box can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.\n\nTwo failures are about this installation rather than about the request, and\nanswer 500 carrying the message that says which: a machine without the\noptional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the\nexact command that installs it, and a workspace whose records no longer\nhold together \u2014 a batch pinned to a schema version that is not stored \u2014 is\n`WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no\nstate here a caller can change, so the remedy is the one the message names.\n\n**Asking twice joins the run already in flight rather than starting a second\none.** A request arriving while this batch has a pre-labeling run queued or\nrunning is answered with that run's id, so a double-click and a second tab\nwatch one run instead of paying for the same inference twice.",
         "operationId": "pre_label_batch",
         "parameters": [
           {
@@ -8823,7 +8829,7 @@
     },
     "/jobs/{job_id}/assets/{asset_id}/progress": {
       "put": {
-        "description": "Record where one asset of this job has got to.\n\nOne route rather than five verbs, because the legal moves are a table in the\nkernel and a second spelling of it would drift: `unannotated` to `annotated`\nor `skipped`, `annotated` to `review_pending` or back, `review_pending` to\n`accepted` or back to `annotated`, and `accepted` nowhere at all. Anything\nelse is 409 `INVALID_TRANSITION`.\n\nSetting the state an asset is already in is a no-op rather than a refusal \u2014\nbut the batch gate fires first, so writing into a closed batch is refused\nwhether or not the value would have changed: 409 `BATCH_NOT_IN_ANNOTATION`.\n\n409 `STALE_WRITE` is the other one, and it is not the same complaint: the\nmove was legal from the state the caller read, and somebody else moved the\nasset in between. Re-read the progress and decide again \u2014 resending this\nrequest unchanged would land a decision made about a state nobody is in any\nmore.\n\nLabels move `unannotated` and `annotated` on their own as annotations are\nadded and deleted. This route is for the decisions that are nobody's\nconsequence: skipping, submitting for review, accepting.",
+        "description": "Record where one asset of this job has got to.\n\nOne route rather than five verbs, because the legal moves are a table in the\nkernel and a second spelling of it would drift: `unannotated` to `annotated`,\n`pre_labeled` or `skipped`; `pre_labeled` to `annotated`, `unannotated` or\n`skipped`; `annotated` to `review_pending` or back; `review_pending` to\n`accepted` or back to `annotated`; and `accepted` nowhere at all. Anything\nelse is 409 `INVALID_TRANSITION`.\n\nSetting the state an asset is already in is a no-op rather than a refusal \u2014\nbut the batch gate fires first, so writing into a closed batch is refused\nwhether or not the value would have changed: 409 `BATCH_NOT_IN_ANNOTATION`.\n\n409 `STALE_WRITE` is the other one, and it is not the same complaint: the\nmove was legal from the state the caller read, and somebody else moved the\nasset in between. Re-read the progress and decide again \u2014 resending this\nrequest unchanged would land a decision made about a state nobody is in any\nmore.\n\nLabels move `unannotated`, `pre_labeled` and `annotated` on their own as\nannotations are written, edited or deleted. This route is for the decisions\nthat are nobody's consequence: skipping, submitting for review, accepting.",
         "operationId": "set_asset_progress",
         "parameters": [
           {
@@ -9041,7 +9047,7 @@
     },
     "/jobs/{job_id}/complete": {
       "post": {
-        "description": "Close the job, if every asset in it has been dealt with.\n\nDealt with means `annotated`, `skipped` or `accepted`. An `unannotated` asset\nmeans the labeling has not happened and a `review_pending` one means the\nreview has not; either answers 409 `JOB_NOT_COMPLETE` and says how many are\noutstanding.\n\nA job that is not `in_progress` is 409 `INVALID_TRANSITION`, and a batch that\nis not open for annotation is 409 `BATCH_NOT_IN_ANNOTATION`. Neither has a\nremedy on this route: `completed` is where the table ends, so settled work is\ncorrected through a new batch rather than reopened.\n\nCompleting a job does not complete its batch \u2014 `POST /batches/{id}/complete`\nderives that from all of them.",
+        "description": "Close the job, if every asset in it has been dealt with.\n\nDealt with means `annotated`, `skipped` or `accepted`. An `unannotated` asset\nmeans the labeling has not happened, a `pre_labeled` one means a model's\nguess is still unjudged, and a `review_pending` one means the review has\nnot; any of the three answers 409 `JOB_NOT_COMPLETE` and says how many are\noutstanding.\n\nA job that is not `in_progress` is 409 `INVALID_TRANSITION`, and a batch that\nis not open for annotation is 409 `BATCH_NOT_IN_ANNOTATION`. Neither has a\nremedy on this route: `completed` is where the table ends, so settled work is\ncorrected through a new batch rather than reopened.\n\nCompleting a job does not complete its batch \u2014 `POST /batches/{id}/complete`\nderives that from all of them.",
         "operationId": "complete_job",
         "parameters": [
           {

@@ -294,7 +294,7 @@ def pre_label_batch(
 
     **Interrupting is safe.** A run only ever writes to an asset nothing has
     touched, and commits one asset's labels in the same transaction as its move
-    to `review_pending` — so a cut-off call has entered some prefix of the
+    to `pre_labeled` — so a cut-off call has entered some prefix of the
     untouched assets and touched nothing else, and calling this again resumes
     with whatever is still untouched rather than starting over or double-writing
     what already landed.
@@ -304,10 +304,11 @@ def pre_label_batch(
     review or accepted is passed over, and so is an `unannotated` one that
     still carries annotations from a round that was skipped and later
     restored, since that sequence deletes no labels. What is written lands at
-    `review_pending`, never at `annotated` — nobody judged it. An asset
-    somebody starts working while this call is still running is passed over
-    the same way rather than failing the whole call; `assets_skipped` in the
-    result says how many.
+    `pre_labeled`, never at `annotated` — nobody judged it, so it stays
+    editable and out of the Dataset until somebody does. An asset somebody
+    starts working while this call is still running is passed over the same
+    way rather than failing the whole call; `assets_skipped` in the result
+    says how many.
 
     **A region the model answered with a label that names no class asked for is
     discarded, not fatal.** A text-prompted detector answers with text decoded

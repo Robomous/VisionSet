@@ -63,8 +63,8 @@ def get_job(job_id: JobRef) -> dict[str, Any]:
     `batch_state` matters because nothing may be written unless it is
     `in_annotation` — if it is `approved`, call `start_batch` first.
 
-    `progress.unannotated` is how much is left; when it and `review_pending` are
-    both zero the job can be completed.
+    `progress.unannotated` is how much is left; the job can be completed once
+    it, `progress.pre_labeled` and `progress.review_pending` are all zero.
 
     `job_id` comes from `approve_batch`, `get_batch` or `list_batch_assets`. It
     is not the `ingest_job_id` an `ingest` run returns — that names the run that
@@ -78,8 +78,9 @@ def complete_job(job_id: JobRef) -> dict[str, Any]:
     """Close a job, once every one of its assets has been settled.
 
     Settled means `annotated`, `skipped` or `accepted`. An asset still
-    `unannotated` or `review_pending` blocks this, and the remedy is either to
-    annotate it or to `set_asset_progress` it to `skipped`.
+    `unannotated`, `pre_labeled` or `review_pending` blocks this, and the
+    remedy is either to annotate it — which also takes over a `pre_labeled`
+    frame — or to `set_asset_progress` it to `skipped`.
 
     You do not have to start the job first. A job nobody has written to yet is
     started here before it is closed, and `job_started` in the answer says
@@ -110,9 +111,11 @@ def next_pending_assets(
     stops appearing once it has been annotated or skipped and the walk terminates
     without you tracking position.
 
-    An empty `items` means every asset in the job has been settled and the job
-    can be completed. Each `id` is what `get_asset_image` and `add_annotations`
-    take.
+    An empty `items` means nothing is bare-unlabeled — not that the job can be
+    completed: a `pre_labeled` asset carries a model's guess rather than
+    nothing, so it never appears here, but it still blocks `complete_job` until
+    somebody edits or skips it. `list_batch_assets` is how to find those; `id`
+    from either is what `get_asset_image` and `add_annotations` take.
     """
     with opened_workspace() as workspace:
         assets = JobService(workspace).next_pending(identifier(job_id, what="job_id"), count)

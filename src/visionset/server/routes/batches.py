@@ -316,9 +316,10 @@ def pre_label_batch(
 ) -> BackgroundJobOut:
     """Ask a model to label every untouched asset in this batch, and answer at once.
 
-    The `pre_label` action. Labels land at `review_pending`, never at
-    `annotated`: nobody judged them, so they arrive awaiting review rather than
-    claiming to be somebody's work.
+    The `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:
+    nobody judged them, so they arrive editable and correctable rather than
+    claiming to be somebody's work — and, being unjudged, they never reach the
+    Dataset until a person has taken them over.
 
     **Only assets nothing has touched — which is stronger than reading
     `unannotated`.** An asset that is already annotated, skipped, awaiting

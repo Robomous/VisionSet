@@ -391,9 +391,10 @@ export interface paths {
          * Pre Label Batch
          * @description Ask a model to label every untouched asset in this batch, and answer at once.
          *
-         *     The `pre_label` action. Labels land at `review_pending`, never at
-         *     `annotated`: nobody judged them, so they arrive awaiting review rather than
-         *     claiming to be somebody's work.
+         *     The `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:
+         *     nobody judged them, so they arrive editable and correctable rather than
+         *     claiming to be somebody's work — and, being unjudged, they never reach the
+         *     Dataset until a person has taken them over.
          *
          *     **Only assets nothing has touched — which is stronger than reading
          *     `unannotated`.** An asset that is already annotated, skipped, awaiting
@@ -1397,9 +1398,10 @@ export interface paths {
          * @description Record where one asset of this job has got to.
          *
          *     One route rather than five verbs, because the legal moves are a table in the
-         *     kernel and a second spelling of it would drift: `unannotated` to `annotated`
-         *     or `skipped`, `annotated` to `review_pending` or back, `review_pending` to
-         *     `accepted` or back to `annotated`, and `accepted` nowhere at all. Anything
+         *     kernel and a second spelling of it would drift: `unannotated` to `annotated`,
+         *     `pre_labeled` or `skipped`; `pre_labeled` to `annotated`, `unannotated` or
+         *     `skipped`; `annotated` to `review_pending` or back; `review_pending` to
+         *     `accepted` or back to `annotated`; and `accepted` nowhere at all. Anything
          *     else is 409 `INVALID_TRANSITION`.
          *
          *     Setting the state an asset is already in is a no-op rather than a refusal —
@@ -1412,9 +1414,9 @@ export interface paths {
          *     request unchanged would land a decision made about a state nobody is in any
          *     more.
          *
-         *     Labels move `unannotated` and `annotated` on their own as annotations are
-         *     added and deleted. This route is for the decisions that are nobody's
-         *     consequence: skipping, submitting for review, accepting.
+         *     Labels move `unannotated`, `pre_labeled` and `annotated` on their own as
+         *     annotations are written, edited or deleted. This route is for the decisions
+         *     that are nobody's consequence: skipping, submitting for review, accepting.
          */
         put: operations["set_asset_progress"];
         post?: never;
@@ -1461,8 +1463,9 @@ export interface paths {
          * @description Close the job, if every asset in it has been dealt with.
          *
          *     Dealt with means `annotated`, `skipped` or `accepted`. An `unannotated` asset
-         *     means the labeling has not happened and a `review_pending` one means the
-         *     review has not; either answers 409 `JOB_NOT_COMPLETE` and says how many are
+         *     means the labeling has not happened, a `pre_labeled` one means a model's
+         *     guess is still unjudged, and a `review_pending` one means the review has
+         *     not; any of the three answers 409 `JOB_NOT_COMPLETE` and says how many are
          *     outstanding.
          *
          *     A job that is not `in_progress` is 409 `INVALID_TRANSITION`, and a batch that
@@ -2739,7 +2742,7 @@ export interface components {
          * @description Per-asset annotation progress inside a job.
          * @enum {string}
          */
-        AssetProgress: "unannotated" | "annotated" | "skipped" | "review_pending" | "accepted";
+        AssetProgress: "unannotated" | "pre_labeled" | "annotated" | "skipped" | "review_pending" | "accepted";
         /**
          * AssetProgressOut
          * @description Where one asset of a job has got to.
@@ -4008,6 +4011,8 @@ export interface components {
             accepted: number;
             /** Annotated */
             annotated: number;
+            /** Pre Labeled */
+            pre_labeled: number;
             /** Review Pending */
             review_pending: number;
             /** Skipped */
@@ -4211,9 +4216,10 @@ export interface components {
          * ResumeKind
          * @description What an open batch is being offered for, and so what `next_asset_id` is.
          *
-         *     `annotate` - a frame nobody has labeled, which is that frame.
-         *     `review` - every frame is labeled or set aside and some await a reviewer,
-         *     which is the first of those. `open` - neither, and `next_asset_id` is null.
+         *     `annotate` - a frame nobody has judged, whether nobody has labeled it or
+         *     only a model has, which is that frame. `review` - every frame is judged
+         *     and some await a reviewer, which is the first of those. `open` - neither,
+         *     and `next_asset_id` is null.
          * @enum {string}
          */
         ResumeKind: "annotate" | "review" | "open";

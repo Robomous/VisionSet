@@ -521,7 +521,7 @@ def test_pre_labeling_blocks_and_returns_what_it_wrote(
     assert outcome["assets_skipped"] == 0
     assert outcome["regions_discarded"] == 0
     assert "stopped_early" not in outcome
-    assert payload(call("get_batch", batch_id=batch_id))["progress"]["review_pending"] == 2
+    assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
 
 
 def test_a_batch_that_is_not_being_annotated_is_refused_and_writes_nothing(

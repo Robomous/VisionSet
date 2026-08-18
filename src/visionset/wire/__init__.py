@@ -423,9 +423,10 @@ def thumbnail_backfill(value: ThumbnailBackfill) -> dict[str, Any]:
 
 
 def progress_counts(counts: Mapping[AssetProgress, int]) -> dict[str, Any]:
-    """Five named fields and a total, not an open map — the wire model's own reason."""
+    """Six named fields and a total, not an open map — the wire model's own reason."""
     return {
         "unannotated": counts[AssetProgress.UNANNOTATED],
+        "pre_labeled": counts[AssetProgress.PRE_LABELED],
         "annotated": counts[AssetProgress.ANNOTATED],
         "skipped": counts[AssetProgress.SKIPPED],
         "review_pending": counts[AssetProgress.REVIEW_PENDING],

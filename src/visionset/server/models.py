@@ -888,7 +888,7 @@ class AssetPage(Page[AssetOut]):
 # --- batches -----------------------------------------------------------------
 
 
-# Five explicit fields rather than ``dict[AssetProgress, int]``, which would emit
+# Six explicit fields rather than ``dict[AssetProgress, int]``, which would emit
 # an open object and generate as a ``Record<string, number>`` — a type that
 # cannot tell a client which keys it will actually find. ``JobService`` already
 # guarantees every state is present, so the fields are honest, and the price is
@@ -897,6 +897,9 @@ class ProgressCounts(BaseModel):
     """How many assets sit in each annotation state."""
 
     unannotated: int
+    #: A model wrote these labels and no person has judged them yet. Editable,
+    #: but never counted toward promotion or a completed batch.
+    pre_labeled: int
     annotated: int
     skipped: int
     review_pending: int
@@ -907,6 +910,7 @@ class ProgressCounts(BaseModel):
     def of(cls, counts: dict[AssetProgress, int]) -> Self:
         return cls(
             unannotated=counts[AssetProgress.UNANNOTATED],
+            pre_labeled=counts[AssetProgress.PRE_LABELED],
             annotated=counts[AssetProgress.ANNOTATED],
             skipped=counts[AssetProgress.SKIPPED],
             review_pending=counts[AssetProgress.REVIEW_PENDING],

@@ -473,7 +473,7 @@ class AnnotationNotFromModel(VisionSetError):
     """A label without model provenance was offered to the unreviewed entry path.
 
     That path exists so unattended prediction can write labels nobody has judged,
-    and it moves an asset straight to ``review_pending`` — a state the ordinary
+    and it moves an asset straight to ``pre_labeled`` — a state the ordinary
     writes cannot reach. Admitting a hand-made label through it would make it a
     way around the write gate rather than a narrow door beside one, so provenance
     is what the door checks.
@@ -483,12 +483,12 @@ class AnnotationNotFromModel(VisionSetError):
 class AssetNotWritable(VisionSetError):
     """Labels were written onto an asset whose progress says labeling is over.
 
-    ``WRITABLE_PROGRESS`` is the two states this allows — ``unannotated`` and
-    ``annotated`` — and the other three each record a decision: skipped, awaiting
-    review, accepted by one. The write is refused rather than stored, because
-    stored is worse: a ``skipped`` asset is left out of ``PROMOTABLE_PROGRESS``,
-    so the labels would be accepted, kept, and then dropped at promotion with
-    nothing telling anybody it happened.
+    ``WRITABLE_PROGRESS`` is the three states this allows — ``unannotated``,
+    ``pre_labeled`` and ``annotated`` — and the other three each record a
+    decision: skipped, awaiting review, accepted by one. The write is refused
+    rather than stored, because stored is worse: a ``skipped`` asset is left out
+    of ``PROMOTABLE_PROGRESS``, so the labels would be accepted, kept, and then
+    dropped at promotion with nothing telling anybody it happened.
 
     Not a ``BatchNotInAnnotation``, though the two fire on the same call and one
     reads much like the other. That one is about the *batch* — nobody opened it —

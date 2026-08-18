@@ -19,7 +19,7 @@ defect: a schema of opaque codes is refused up front instead of quietly returnin
 nothing.
 
 **One asset is one transaction.** ``enter_unreviewed`` commits an asset's labels
-and its move to ``review_pending`` together, so a run that dies has either not
+and its move to ``pre_labeled`` together, so a run that dies has either not
 touched an asset or fully entered it. That is also what makes a second run safe:
 it collects the untouched assets again, and the ones already entered are no longer
 among them.
