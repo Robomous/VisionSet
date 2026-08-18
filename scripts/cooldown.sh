@@ -275,7 +275,7 @@ case "${1:-}" in
     # To stdout and exit 0 for `--help`, to stderr and exit 2 for no arguments
     # at all, which is a mistake rather than a question.
     if [[ "${1:-}" == "" ]]; then
-      echo "usage: cooldown.sh <command> [args...] | --days | --cutoff" >&2
+      echo "usage: cooldown.sh <command> [args...] | --days | --cutoff | --audit" >&2
       exit 2
     fi
     # Delimited by where the code starts rather than by a line number, so growing

@@ -82,7 +82,8 @@ learn which release the cool-down allows for each package the lockfile does not 
 again with no cutoff at all, pinning those versions, because uv is exactly incremental when nothing
 invalidates the lock. The diff you get is the package you asked for. Do not reach for
 `--upgrade-package` to reproduce this by hand — it makes exceptions to pinned versions, and under a
-cutoff there are no pinned versions left for it to except.
+cutoff there are no pinned versions left for it to except. Pointing uv at another project —
+`--directory`, `--project`, `--script` — takes the whole-set path instead.
 
 **The second pass is audited, and the audit can refuse.** Having run without a cool-down, it is
 checked rather than trusted: `uv.lock` records an `upload-time` for every artifact, so the wrapper

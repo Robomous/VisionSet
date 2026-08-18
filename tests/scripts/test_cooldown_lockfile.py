@@ -6,10 +6,14 @@ with a lockfile, and the `frontend` CI job that runs `tests/scripts/*.test.mjs`
 deliberately installs no Python tooling. The `python` job has uv by construction,
 which is the same job that runs the `uv sync --locked` this gate protects.
 
-Every case here drives real uv against a project with **no dependencies**. That is
-what makes the gate hermetic — uv reaches no index, so `--offline` holds and the
-suite neither needs the network nor is affected by what happens to be published —
-while still exercising the actual lockfile writer rather than a description of it.
+Three suites, each shaped by what it needs to reach. The lockfile-shape cases
+drive real uv against a project with **no dependencies**, so `--offline` holds and
+the suite reaches no index while still exercising the actual lockfile writer. The
+audit cases write lockfile text by hand — the audit only ever reads `upload-time`
+fields, so a crafted fixture exercises it without a resolve. The narrowed-`uv add`
+cases replace `uv` (and, where a case needs it, `cp`) with a stub, because what is
+under test there is the sequencing across two passes — what each pass is handed
+and what is on disk between them — not a real resolution.
 """
 
 from __future__ import annotations
@@ -288,6 +292,10 @@ exit "$(cat "$STUB_STATE/exit$n" 2>/dev/null || echo 0)"
 # interrupt_cp<N> marker kills itself before it can run at all, so whatever it
 # was asked to copy is provably still missing from the destination — a real
 # interruption landing inside a copy loop, not a simulation of one.
+#
+# This shadows `cp` for the whole subprocess tree, including the `cp` STUB_UV
+# runs internally to install a pass's lockfile — a future interrupt_cp<N> has to
+# count those calls too, or it will silently target the wrong one.
 STUB_CP = """#!/usr/bin/env bash
 n=$(cat "$STUB_STATE/cpcount" 2>/dev/null || echo 0)
 n=$((n + 1))
