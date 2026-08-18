@@ -613,6 +613,7 @@ export type ProjectSummary = components["schemas"]["ProjectSummaryOut"];
 export type IngestFailure = components["schemas"]["IngestFailureOut"];
 export type Batch = components["schemas"]["BatchOut"];
 export type BatchPage = components["schemas"]["BatchPage"];
+export type PreLabelRun = components["schemas"]["PreLabelRunOut"];
 
 export const ingestKeys = {
   sources: (projectId: string) => ["projects", projectId, "sources"] as const,

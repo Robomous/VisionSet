@@ -88,6 +88,7 @@ function answer(path: string): unknown {
       allowed_actions: batchActions("in_annotation"),
       promoted_asset_count: 0,
       parent_batch_id: null,
+      pre_label_run: null,
       progress: {
         unannotated: 1,
         annotated: 1,

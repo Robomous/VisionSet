@@ -98,6 +98,7 @@ function batch(overrides: Record<string, unknown> = {}): Record<string, unknown>
     allowed_actions: batchActions(state),
     promoted_asset_count: 0,
     parent_batch_id: null,
+    pre_label_run: null,
     ...overrides,
   };
 }
@@ -151,6 +152,21 @@ function backgroundJobOf(overrides: Record<string, unknown> = {}): Record<string
     processed: 0,
     total: null,
     result: {},
+    ...overrides,
+  };
+}
+
+/** A full `PreLabelRunOut` — every field `checkGetBatch` requires, `BatchOut.pre_label_run`. */
+function preLabelRunOf(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    job_id: "88888888-8888-4888-8888-888888888888",
+    state: "cancelled",
+    assets_processed: 12,
+    assets_total: 48,
+    error: null,
+    stopped_early: true,
+    assets_labeled: 9,
+    regions_discarded: 0,
     ...overrides,
   };
 }
@@ -490,4 +506,95 @@ it("says nothing about discarded regions when a run discarded none", async () =>
   await screen.findByRole("button", { name: /review these frames/i });
   expect(screen.queryByTestId("prelabel-discarded")).toBeNull();
   expect(screen.queryByText(/^0$/)).toBeNull();
+});
+
+/**
+ * Reopening the dialog with no job id of its own: `BatchOut.pre_label_run` is
+ * the only way it can know what happened, on `ConnectionJob`'s reasoning for a
+ * connection's download. Three prior outcomes, three verbs — none of them
+ * `Start`.
+ */
+
+it("on reopen after a cancelled run, states the prior outcome and offers Continue", async () => {
+  renderGallery(
+    {
+      allowed_actions: ["pre_label"],
+      pre_label_run: preLabelRunOf({
+        state: "cancelled",
+        assets_processed: 12,
+        assets_total: 48,
+        stopped_early: true,
+        assets_labeled: 9,
+      }),
+    },
+    { counts: { unannotated: 36, total: 48 } },
+  );
+
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect(await screen.findByText(/laboured over 12 of 48 assets and stopped/i)).not.toBeNull();
+  expect(await screen.findByText(/36 assets remain untouched/i)).not.toBeNull();
+  expect(screen.queryByRole("button", { name: /^start$/i })).toBeNull();
+
+  const resume = (await screen.findByRole("button", { name: /^continue$/i })) as HTMLButtonElement;
+  // Asserted directly: a disabled native button silently no-ops a click, so
+  // clicking it and finding nothing happened would pass whether or not it was
+  // actually enabled.
+  expect(resume.disabled).toBe(false);
+});
+
+it("on reopen after a failed run, shows the handler's error and offers Try again", async () => {
+  renderGallery(
+    {
+      allowed_actions: ["pre_label"],
+      pre_label_run: preLabelRunOf({
+        state: "failed",
+        assets_processed: 5,
+        assets_total: 48,
+        error: "the model server is unreachable",
+        stopped_early: null,
+        assets_labeled: null,
+        regions_discarded: null,
+      }),
+    },
+    { counts: { unannotated: 43, total: 48 } },
+  );
+
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect(await screen.findByText("the model server is unreachable")).not.toBeNull();
+  expect(await screen.findByText(/reached 5 of 48 assets before stopping/i)).not.toBeNull();
+  expect(screen.queryByRole("button", { name: /^start$/i })).toBeNull();
+
+  const retry = (await screen.findByRole("button", { name: /try again/i })) as HTMLButtonElement;
+  expect(retry.disabled).toBe(false);
+});
+
+it("on reopen after a complete run, disables Start with its reason adjacent and offers Review", async () => {
+  renderGallery(
+    {
+      allowed_actions: ["pre_label"],
+      pre_label_run: preLabelRunOf({
+        state: "succeeded",
+        assets_processed: 48,
+        assets_total: 48,
+        error: null,
+        stopped_early: false,
+        assets_labeled: 48,
+        regions_discarded: 0,
+      }),
+    },
+    { counts: { unannotated: 0, total: 48 } },
+  );
+
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  const start = (await screen.findByTestId("prelabel-submit")) as HTMLButtonElement;
+  expect(start.disabled).toBe(true);
+  const reason = await screen.findByTestId("prelabel-blocked-reason");
+  expect(reason.textContent).toMatch(/pre-labeled/i);
+
+  const review = await screen.findByRole("button", { name: /review these frames/i });
+  await userEvent.click(review);
+  expect(screen.getByTestId("segment-review").getAttribute("aria-pressed")).toBe("true");
 });

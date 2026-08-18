@@ -95,6 +95,7 @@ function batch(state: Batch["state"], overrides: Partial<Batch> = {}): Batch {
     allowed_actions: batchActions(state),
     promoted_asset_count: 0,
     parent_batch_id: null,
+    pre_label_run: null,
     progress: {
       unannotated: 48,
       annotated: 0,

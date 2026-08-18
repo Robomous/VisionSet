@@ -132,6 +132,7 @@ function batch(overrides: Partial<Batch> = {}): Batch {
     allowed_actions: batchActions("completed"),
     promoted_asset_count: 0,
     parent_batch_id: null,
+    pre_label_run: null,
     ...overrides,
   } as Batch;
 }

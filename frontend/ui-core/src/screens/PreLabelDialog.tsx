@@ -22,21 +22,36 @@
  * count shown here, is an upper bound on what a run will touch rather than an
  * exact one — which is why the string below says "up to".
  *
- * ## The job is a background one, and this dialog watches it
+ * ## The job is a background one, and this dialog watches it — even one it did
+ * not launch
  *
  * The route answers 202 with a job to poll, on the export and download routes'
  * contract. Without a rendering of it, `succeeded`/`failed`/`cancelled` are only
  * a polling predicate — so this holds the job in state and shows it, on
  * `ExportDialog`'s precedent, rather than closing over an outcome nobody saw.
  *
- * ## Four modes, and the primary action changes with them
+ * A run also outlives the *dialog*: `batch.pre_label_run` is `BatchOut`'s own
+ * memory of the most recent one, live or settled, on `ConnectionJob`'s
+ * reasoning. Reopening this dialog after a cancelled run, a failure, or a run
+ * that finished must not read as a blank form with a smaller count and no sign
+ * anything happened — so every render here is driven by a `RunView` resolved
+ * from *either* source: the job this session launched, when there is one, and
+ * the batch's own remembered run otherwise. Watching the remembered job's id
+ * also means a run still genuinely in flight — started elsewhere — keeps
+ * polling here rather than sitting frozen at whatever the initial read caught.
  *
- * Configure, running, done and failed each get their own body and their own
- * primary press — never the same "Start" re-offered once a run has already
- * settled. `Start` (and its done/failed twins, `Run again` and `Try again`) is
- * disabled once nothing untouched remains: with `untouched === 0` a launch is a
- * guaranteed no-op, and re-running what just finished is never the user's next
- * real step.
+ * ## Five modes, and the primary action changes with them
+ *
+ * Configure, running, done, stopped and failed each get their own body and
+ * their own primary press — never the same "Start" re-offered once a run has
+ * already settled. `stopped` is a cancelled or orphaned run: `Continue`, never
+ * `Start` — restarting is not what cancelling asked for, and only untouched
+ * assets are ever eligible, so it cannot duplicate a label.
+ *
+ * `Start` (and its twins) is disabled once nothing untouched remains: with
+ * `untouched === 0` a launch is a guaranteed no-op. That reason renders next to
+ * the disabled press rather than at the bottom of the form, and the config
+ * fields collapse to one line of context once they stop being live choices.
  */
 
 import { useEffect, useState, type JSX } from "react";
@@ -46,7 +61,7 @@ import { Sparkles } from "lucide-react";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
-import { Badge } from "../primitives/Badge";
+import { Alert, Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import {
   Dialog,
@@ -64,7 +79,14 @@ import {
   SelectValue,
 } from "../primitives/Select";
 import type { BadgeTone, Segment } from "./batchState";
-import { batchKeys, useBackgroundJob, usePreLabelBatch, type Batch, type BackgroundJob } from "./queries";
+import {
+  batchKeys,
+  useBackgroundJob,
+  usePreLabelBatch,
+  type Batch,
+  type BackgroundJob,
+  type PreLabelRun,
+} from "./queries";
 
 /** The capability a candidate connection has to declare. Read off the wire, never guessed. */
 const TEXT_DETECT = "text_detect" as const;
@@ -95,39 +117,116 @@ const JOB_STATE_VARIANT: Record<string, BadgeTone> = {
   cancelled: "neutral",
 };
 
-/** The four faces of this dialog, over the watched job and nothing else. */
-type Mode = "configure" | "running" | "done" | "failed";
+/** The five faces of this dialog, over the watched run and nothing else. */
+type Mode = "configure" | "running" | "done" | "stopped" | "failed";
 
-function modeOf(launched: BackgroundJob | null): Mode {
-  if (launched === null) return "configure";
-  if (isLive(launched.state)) return "running";
-  return launched.state === "succeeded" ? "done" : "failed";
+/**
+ * One run, read the same way whether it is the job this session launched or
+ * the batch's own memory of an earlier one. Every mode, every summary and
+ * every progress line below reads this shape and never `BackgroundJob` or
+ * `PreLabelRun` directly, so a reopened dialog and a freshly launched one
+ * render through one path rather than two that can drift apart.
+ */
+interface RunView {
+  readonly jobId: string;
+  readonly state: BackgroundJob["state"];
+  readonly processed: number;
+  readonly total: number | null;
+  readonly error: string | null;
+  readonly stoppedEarly: boolean | null;
+  readonly assetsLabeled: number | null;
+  readonly regionsDiscarded: number | null;
 }
 
 /**
  * A `BackgroundJob.result` promises nothing beyond its own type (`check.ts`'s
- * `isJsonValue`), so every key this dialog reads is narrowed right where it is
- * read rather than assumed.
+ * `isJsonValue`), so every key read out of it is narrowed right here rather
+ * than assumed.
  */
-function readCount(result: BackgroundJob["result"], key: string): number {
-  const value = result[key];
-  return typeof value === "number" ? value : 0;
+function viewFromJob(job: BackgroundJob): RunView {
+  const stoppedEarly = job.result.stopped_early;
+  const assetsLabeled = job.result.assets_labeled;
+  const regionsDiscarded = job.result.regions_discarded;
+  return {
+    jobId: job.id,
+    state: job.state,
+    processed: job.processed,
+    total: job.total,
+    error: job.error,
+    stoppedEarly: typeof stoppedEarly === "boolean" ? stoppedEarly : null,
+    assetsLabeled: typeof assetsLabeled === "number" ? assetsLabeled : null,
+    regionsDiscarded: typeof regionsDiscarded === "number" ? regionsDiscarded : null,
+  };
 }
 
-/** "Labels up to N of M untouched assets" only means something when N is not zero. */
+/** `BatchOut.pre_label_run`, read the same way — already typed, nothing to narrow. */
+function viewFromRun(run: PreLabelRun): RunView {
+  return {
+    jobId: run.job_id,
+    state: run.state,
+    processed: run.assets_processed,
+    total: run.assets_total,
+    error: run.error,
+    stoppedEarly: run.stopped_early,
+    assetsLabeled: run.assets_labeled,
+    regionsDiscarded: run.regions_discarded,
+  };
+}
+
+function modeOf(view: RunView | null): Mode {
+  if (view === null) return "configure";
+  if (isLive(view.state)) return "running";
+  if (view.state === "succeeded") return "done";
+  if (view.state === "cancelled") return "stopped";
+  return "failed";
+}
+
+/** "Labels up to N of M untouched assets" — shown only while there is something to run. */
 function untouchedSummary(untouched: number, total: number): string {
-  if (untouched === 0) {
-    return "Every asset here has already been pre-labeled or worked — there is nothing left for a run to touch.";
-  }
   return `Labels up to ${untouched} of ${total} untouched asset${total === 1 ? "" : "s"}.`;
+}
+
+/**
+ * Why `Start` (or a twin of it) is dead, said next to the button rather than
+ * lost among other muted text. Attributes the state to pre-labeling only when
+ * a settled, successful run actually says so — otherwise this describes the
+ * state itself, since a client cannot verify a batch was hand-worked.
+ */
+function blockedReason(view: RunView | null): string {
+  if (view !== null && view.state === "succeeded") {
+    const labeled = view.assetsLabeled;
+    return labeled === null
+      ? "This batch has been pre-labeled — nothing here is untouched for a run to reach."
+      : `This batch has been pre-labeled — ${labeled} asset${labeled === 1 ? "" : "s"} labeled, and nothing here is untouched for another run to reach.`;
+  }
+  return "Nothing here is untouched — there is nothing left for a run to touch.";
+}
+
+/** "A previous run laboured over N of M frames and stopped", with what remains. */
+function stoppedSummary(view: RunView, untouched: number): string {
+  const of =
+    view.total === null
+      ? `${view.processed} asset${view.processed === 1 ? "" : "s"}`
+      : `${view.processed} of ${view.total} asset${view.total === 1 ? "" : "s"}`;
+  return untouched > 0
+    ? `A previous run laboured over ${of} and stopped — ${untouched} asset${untouched === 1 ? "" : "s"} remain untouched.`
+    : `A previous run laboured over ${of} and stopped.`;
+}
+
+/** "It reached N of M assets before stopping" — `null` when there is nothing to say. */
+function failedProgress(view: RunView): string | null {
+  if (view.processed === 0 && view.total === null) return null;
+  return view.total === null
+    ? `It reached ${view.processed} asset${view.processed === 1 ? "" : "s"} before stopping.`
+    : `It reached ${view.processed} of ${view.total} asset${view.total === 1 ? "" : "s"} before stopping.`;
 }
 
 /** What a settled run actually did, in words — including the one count no other UI shows. */
 function DoneSummary({ result }: { readonly result: BackgroundJob["result"] }): JSX.Element {
-  const labeled = readCount(result, "assets_labeled");
-  const written = readCount(result, "annotations_written");
-  const discarded = readCount(result, "regions_discarded");
-  const skipped = readCount(result, "assets_skipped");
+  const labeled = typeof result.assets_labeled === "number" ? result.assets_labeled : 0;
+  const written = typeof result.annotations_written === "number" ? result.annotations_written : 0;
+  const discarded = typeof result.regions_discarded === "number" ? result.regions_discarded : 0;
+  const skipped = typeof result.assets_skipped === "number" ? result.assets_skipped : 0;
   const stoppedEarly = result.stopped_early === true;
 
   return (
@@ -152,6 +251,33 @@ function DoneSummary({ result }: { readonly result: BackgroundJob["result"] }): 
         <p className="text-meta text-muted-foreground">The run stopped before reaching every asset.</p>
       )}
     </div>
+  );
+}
+
+/**
+ * `Start`, disabled, with `Review these frames` beside it where there is
+ * something to review. The shared shape for every mode that has nothing left
+ * to launch — `configure`, `stopped` and `failed` all reach it the same way;
+ * `done` keeps its own footer because `Review` is offered there unconditionally.
+ */
+function BlockedActions({
+  reviewPending,
+  onReview,
+}: {
+  readonly reviewPending: number;
+  readonly onReview: () => void;
+}): JSX.Element {
+  return (
+    <>
+      <Button variant="secondary" data-testid="prelabel-submit" disabled>
+        Start
+      </Button>
+      {reviewPending > 0 && (
+        <Button variant="primary" data-testid="prelabel-review" onClick={onReview}>
+          Review these frames
+        </Button>
+      )}
+    </>
   );
 }
 
@@ -205,15 +331,26 @@ function PreLabelDialog({
   const [connectionId, setConnectionId] = useState("");
   const [confidence, setConfidence] = useState(DEFAULT_CONFIDENCE);
   const [jobId, setJobId] = useState<string | null>(null);
+  const remembered = batch?.pre_label_run ?? null;
   // Guards the second invalidation so a job polled past its own settling does
   // not re-fire it on every subsequent tick — `ExportDialog`'s `saved` for the
   // same reason: the *transition* into `succeeded` is what matters, not every
-  // read that finds it there.
-  const [settled, setSettled] = useState(false);
+  // read that finds it there. Seeded from the remembered run's own settledness
+  // so a batch reopened onto an already-finished run does not read as a fresh
+  // transition and re-invalidate a batch nothing changed about.
+  const [settled, setSettled] = useState<boolean>(
+    () => remembered !== null && isSettled(remembered.state),
+  );
   const preLabel = usePreLabelBatch(batch?.id ?? "");
-  const job = useBackgroundJob(jobId);
+  // The job this session launched if there is one, otherwise the batch's own
+  // remembered run — watched by its id so a run still genuinely in flight,
+  // started elsewhere, keeps polling here rather than sitting frozen.
+  const watchedJobId = jobId ?? remembered?.job_id ?? null;
+  const job = useBackgroundJob(watchedJobId);
   const launched = job.data ?? null;
-  const mode = modeOf(launched);
+  const view: RunView | null =
+    launched !== null ? viewFromJob(launched) : remembered !== null ? viewFromRun(remembered) : null;
+  const mode = modeOf(view);
 
   const active = candidates.find((row) => row.id === connectionId) ?? candidates[0];
   const untouched = batch?.progress.unannotated ?? 0;
@@ -221,6 +358,10 @@ function PreLabelDialog({
   // progress can move, and the two only diverge for a draft — which cannot
   // declare `pre_label` at all.
   const total = batch?.progress.total ?? 0;
+  const reviewPending = batch?.progress.review_pending ?? 0;
+  // A launch would be a guaranteed no-op: only untouched assets are ever
+  // eligible, whichever verb offers the press.
+  const blocked = untouched === 0;
   const confidenceValue = Number(confidence);
   // `confidence.trim() !== ""` first: `Number("")` is `0`, a value inside the
   // valid range, so an emptied field would otherwise read as a valid `0` and
@@ -231,29 +372,31 @@ function PreLabelDialog({
     Number.isFinite(confidenceValue) &&
     confidenceValue >= 0 &&
     confidenceValue <= 1;
-  const running = preLabel.isPending || (launched !== null && isLive(launched.state));
-  // `Start`'s own twins — `Run again`, `Try again` — share this: a launch with
-  // no untouched asset left is a guaranteed no-op, whichever mode offers it.
-  const launchDisabled = running || active === undefined || !validConfidence || untouched === 0;
+  const running = preLabel.isPending || mode === "running";
+  // `Start`'s own twins — `Continue`, `Run again`, `Try again` — share this: a
+  // launch with no untouched asset left is a guaranteed no-op, whichever mode
+  // offers it.
+  const launchDisabled = running || active === undefined || !validConfidence || blocked;
   // The primitive the effect is actually a function of, not the object that
   // carries it — a `useBatch` refetch elsewhere on the page can mint a new
   // `Batch` with the same id, and that identity churn must not matter here.
   const batchId = batch?.id ?? null;
+  const viewState = view?.state ?? null;
 
   useEffect(() => {
-    if (settled || launched === null || !isSettled(launched.state) || batchId === null) return;
+    if (settled || viewState === null || !isSettled(viewState) || batchId === null) return;
     setSettled(true);
-    if (launched.state !== "succeeded") return;
+    if (viewState !== "succeeded") return;
     void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
     void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
-  }, [settled, launched, batchId, queries]);
+  }, [settled, viewState, batchId, queries]);
 
   function submit(): void {
     if (batch === null || active === undefined) return;
-    // Reset the settle guard before every launch, `Run again`/`Try again`
-    // included — otherwise a retry after a failure would settle a second time
-    // with the guard already tripped, and its own success would never
-    // invalidate the batch.
+    // Reset the settle guard before every launch, `Continue`/`Run again`/`Try
+    // again` included — otherwise a retry after a failure would settle a
+    // second time with the guard already tripped, and its own success would
+    // never invalidate the batch.
     setSettled(false);
     preLabel.mutate(
       { connectionId: active.id, minimumConfidence: confidenceValue },
@@ -284,7 +427,7 @@ function PreLabelDialog({
         </DialogDescription>
 
         <div className="flex flex-col gap-3">
-          {(mode === "configure" || mode === "running") && (
+          {(mode === "configure" || mode === "running") && !blocked && (
             <>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="prelabel-model">Model</Label>
@@ -341,17 +484,25 @@ function PreLabelDialog({
             </>
           )}
 
-          {launched !== null && (
+          {mode === "configure" && blocked && active !== undefined && (
+            // Model and threshold are context here, not choices: nothing is
+            // about to run, so one line replaces the two live fields above.
+            <p className="text-meta text-muted-foreground" data-testid="prelabel-config-summary">
+              {active.name} · minimum prompt affinity {confidence}
+            </p>
+          )}
+
+          {view !== null && (
             <p className="flex items-center gap-2 text-meta text-muted-foreground">
               <Badge
-                variant={JOB_STATE_VARIANT[launched.state] ?? "neutral"}
+                variant={JOB_STATE_VARIANT[view.state] ?? "neutral"}
                 data-testid="prelabel-job-state"
               >
-                {JOB_STATE_LABEL[launched.state] ?? launched.state}
+                {JOB_STATE_LABEL[view.state] ?? view.state}
               </Badge>
-              {launched.total !== null && (
+              {view.total !== null && (
                 <span>
-                  {launched.processed} of {launched.total}
+                  {view.processed} of {view.total}
                 </span>
               )}
             </p>
@@ -359,13 +510,30 @@ function PreLabelDialog({
 
           {mode === "done" && launched !== null && <DoneSummary result={launched.result} />}
 
-          {/* A job that stopped without labeling anything. Its `error` is the
-              handler's own account, the only one there is for a failure that
-              happened after the launch had already been answered. */}
-          {mode === "failed" && launched !== null && launched.state === "failed" && (
-            <FieldError data-testid="prelabel-job-error">
-              {launched.error ?? "The run stopped without saying why."}
-            </FieldError>
+          {mode === "stopped" && view !== null && (
+            <p className="text-body text-foreground" data-testid="prelabel-stopped-summary">
+              {stoppedSummary(view, untouched)}
+            </p>
+          )}
+
+          {mode === "failed" && view !== null && (
+            <>
+              {failedProgress(view) !== null && (
+                <p className="text-body text-foreground" data-testid="prelabel-failed-progress">
+                  {failedProgress(view)}
+                </p>
+              )}
+              {/* The handler's own account — the only one there is for a
+                  failure that happened after the launch had already been
+                  answered. */}
+              <FieldError data-testid="prelabel-job-error">
+                {view.error ?? "The run stopped without saying why."}
+              </FieldError>
+            </>
+          )}
+
+          {blocked && mode !== "running" && (
+            <Alert data-testid="prelabel-blocked-reason">{blockedReason(view)}</Alert>
           )}
 
           {preLabel.isError && (
@@ -374,21 +542,6 @@ function PreLabelDialog({
         </div>
 
         <DialogFooter>
-          {mode === "configure" && (
-            <>
-              <Button variant="secondary" onClick={close}>
-                Close
-              </Button>
-              <Button
-                variant="primary"
-                data-testid="prelabel-submit"
-                disabled={launchDisabled}
-                onClick={submit}
-              >
-                {running ? "Labeling…" : "Start"}
-              </Button>
-            </>
-          )}
           {mode === "running" && (
             // The run keeps going in the background — closing only stops
             // watching it, so this is the one button and it is the primary one.
@@ -396,41 +549,84 @@ function PreLabelDialog({
               Close
             </Button>
           )}
-          {mode === "done" && (
+
+          {mode !== "running" && (
             <>
               <Button variant="secondary" onClick={close}>
                 Close
               </Button>
-              {untouched > 0 && (
-                // Quiet, deliberately: the next real step is reviewing what this
-                // run already produced, not launching another one over it.
-                <Button
-                  variant="secondary"
-                  data-testid="prelabel-run-again"
-                  disabled={launchDisabled}
-                  onClick={submit}
-                >
-                  Run again
-                </Button>
+
+              {mode === "configure" &&
+                (blocked ? (
+                  <BlockedActions reviewPending={reviewPending} onReview={review} />
+                ) : (
+                  <Button
+                    variant="primary"
+                    data-testid="prelabel-submit"
+                    disabled={launchDisabled}
+                    onClick={submit}
+                  >
+                    {running ? "Labeling…" : "Start"}
+                  </Button>
+                ))}
+
+              {mode === "done" && (
+                <>
+                  {blocked ? (
+                    <Button variant="secondary" data-testid="prelabel-submit" disabled>
+                      Start
+                    </Button>
+                  ) : (
+                    // Quiet, deliberately: the next real step is reviewing what
+                    // this run already produced, not launching another one over it.
+                    <Button
+                      variant="secondary"
+                      data-testid="prelabel-run-again"
+                      disabled={launchDisabled}
+                      onClick={submit}
+                    >
+                      Run again
+                    </Button>
+                  )}
+                  <Button variant="primary" data-testid="prelabel-review" onClick={review}>
+                    Review these frames
+                  </Button>
+                </>
               )}
-              <Button variant="primary" data-testid="prelabel-review" onClick={review}>
-                Review these frames
-              </Button>
-            </>
-          )}
-          {mode === "failed" && (
-            <>
-              <Button variant="secondary" onClick={close}>
-                Close
-              </Button>
-              <Button
-                variant="primary"
-                data-testid="prelabel-retry"
-                disabled={launchDisabled}
-                onClick={submit}
-              >
-                Try again
-              </Button>
+
+              {mode === "stopped" &&
+                (blocked ? (
+                  <BlockedActions reviewPending={reviewPending} onReview={review} />
+                ) : (
+                  <div className="flex flex-col items-end gap-1">
+                    <Button
+                      variant="primary"
+                      data-testid="prelabel-continue"
+                      disabled={launchDisabled}
+                      onClick={submit}
+                    >
+                      Continue
+                    </Button>
+                    <FieldHint data-testid="prelabel-continue-hint">
+                      Only untouched assets are eligible — this can&rsquo;t create a duplicate
+                      label.
+                    </FieldHint>
+                  </div>
+                ))}
+
+              {mode === "failed" &&
+                (blocked ? (
+                  <BlockedActions reviewPending={reviewPending} onReview={review} />
+                ) : (
+                  <Button
+                    variant="primary"
+                    data-testid="prelabel-retry"
+                    disabled={launchDisabled}
+                    onClick={submit}
+                  >
+                    Try again
+                  </Button>
+                ))}
             </>
           )}
         </DialogFooter>

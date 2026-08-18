@@ -1561,6 +1561,7 @@ describe("the project header", () => {
       allowed_actions: batchActions(fields.state as BatchState),
       promoted_asset_count: 0,
       parent_batch_id: null,
+      pre_label_run: null,
     };
   }
 
