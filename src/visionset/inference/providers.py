@@ -54,7 +54,7 @@ from visionset.kernel.ports import Provider, Runner
 
 _Key = tuple[str, str]
 
-__all__ = ["ProviderPool", "Runner", "provider_for", "resident"]
+__all__ = ["ProviderPool", "Runner", "not_set_up_message", "provider_for", "resident"]
 """``Runner`` is re-exported rather than redefined.
 
 It moved to ``kernel/ports/provider.py``, beside the ``Provider`` whose ``build``
@@ -134,6 +134,19 @@ def resident() -> ProviderPool:
     return _RESIDENT
 
 
+def not_set_up_message(connection_name: str) -> str:
+    """The sentence a connection whose weights have not arrived gets.
+
+    A function rather than a literal, so ``_local`` and a route that must
+    refuse the same fact before it would otherwise build a runner raise the
+    identical sentence.
+    """
+    return (
+        f"connection {connection_name!r} has no weights on this machine yet; "
+        "run its download_weights action first"
+    )
+
+
 def provider_for(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
     """The thing that will answer for this connection, or the reason nothing can.
 
@@ -177,10 +190,7 @@ def _local(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
     worth more than a guess that is right most of the time.
     """
     if connection.setup_state is not ConnectionSetupState.READY:
-        raise InferenceConnectionNotSetUp(
-            f"connection {connection.name!r} has no weights on this machine yet; "
-            "run its download_weights action first"
-        )
+        raise InferenceConnectionNotSetUp(not_set_up_message(connection.name))
     drivers = registered().providers
     if connection.model_id == STUB_MODEL_ID:
         # Before ``require()``, and that ordering is the point rather than an

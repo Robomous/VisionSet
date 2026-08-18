@@ -92,7 +92,7 @@ from visionset.inference.prelabel import (
     require_detectable_schema,
     unsupported_prompt_message,
 )
-from visionset.inference.providers import ProviderPool, provider_for, resident
+from visionset.inference.providers import ProviderPool, not_set_up_message, provider_for, resident
 from visionset.inference.registry import (
     GROUP,
     Discovery,
@@ -180,6 +180,7 @@ __all__ = [
     "known_sizes",
     "measure",
     "no_detectable_class_message",
+    "not_set_up_message",
     "published_digests",
     "purge",
     "MINIMUM_FRAGMENT_SHARE",

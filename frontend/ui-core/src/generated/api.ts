@@ -415,11 +415,14 @@ export interface paths {
          *
          *     **Everything a caller can be told now is told now**, and no refusal creates a
          *     job — so a caller holding a job id holds one that will run. These refusals
-         *     are about the request, and the caller can act on each: a batch that is not
-         *     `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a connection whose model
-         *     answers places rather than words is 422 `UNSUPPORTED_PROMPT`; a pinned
-         *     schema with no class a box can be written as is 409
-         *     `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+         *     are about the request, and the caller can act on each. They are checked in
+         *     this order, and it is the order `pre_label` itself checks in, so a request
+         *     wrong about the connection and the batch both always names the connection:
+         *     a connection whose weights have not arrived is 409
+         *     `INFERENCE_CONNECTION_NOT_SET_UP`; a connection whose model answers places
+         *     rather than words is 422 `UNSUPPORTED_PROMPT`; a batch that is not
+         *     `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no
+         *     class a box can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
          *
          *     One failure is about this installation rather than about the request, and
          *     answers 500 carrying the message that says so: a machine without the

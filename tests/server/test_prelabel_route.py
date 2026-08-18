@@ -191,6 +191,20 @@ def attribute_gated_batch(
 
 
 @pytest.fixture()
+def approved_batch(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> OpenBatch:
+    """Approved but not started — wrong for `pre_label` on batch state alone."""
+    project_id = project_with_schema(client, classes=[DETECTABLE])
+    batch_id = batch_from_ingest(client, runner, tmp_path, project_id, images=3)
+    connection_id = _connection(
+        client, runner, monkeypatch, family="grounding-dino", capability="text_detect"
+    )
+    assert client.post(f"/batches/{batch_id}/approve").status_code == 200
+    return OpenBatch(project_id=project_id, id=batch_id, connection_id=connection_id)
+
+
+@pytest.fixture()
 def segmenter_connection(
     client: TestClient, runner: InlineDispatcher, monkeypatch: pytest.MonkeyPatch
 ) -> str:
@@ -328,6 +342,51 @@ def test_a_schema_whose_box_class_requires_an_attribute_is_refused_before_a_job_
     body = response.json()
     assert body["code"] == "SCHEMA_HAS_NO_DETECTABLE_CLASS"
     assert body["message"]
+    assert _pre_label_job_count(client) == 0
+
+
+def test_a_not_set_up_connection_is_refused_before_a_job_exists(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    """A connection that answers words but has no weights yet must not be told
+    it answers places — `setup_state` is checked before the capability read,
+    which is empty on a connection nobody has downloaded weights for."""
+    body = {
+        "name": f"c-{uuid4().hex[:8]}",
+        "connection_type": "local",
+        "model_id": "some/grounding-dino",
+        "model_revision": "v1",
+        "device": "cpu",
+        "precision": "fp32",
+    }
+    made = client.post("/inference/connections", json=body).json()
+
+    response = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": made["id"]},
+    )
+
+    assert response.status_code == 409
+    body_out = response.json()
+    assert body_out["code"] == "INFERENCE_CONNECTION_NOT_SET_UP"
+    assert body_out["message"]
+    assert _pre_label_job_count(client) == 0
+
+
+def test_the_connection_is_refused_before_the_batch_state(
+    client: TestClient, approved_batch: OpenBatch, segmenter_connection: str
+) -> None:
+    """An approved-but-not-started batch and a point-prompt connection are both
+    wrong at once. The connection's refusal wins — the same order `pre_label`
+    itself checks in — so REST and MCP never disagree about which of the two
+    reasons a caller gets back."""
+    response = client.post(
+        f"/batches/{approved_batch.id}/pre-label",
+        json={"connection_id": segmenter_connection},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "UNSUPPORTED_PROMPT"
     assert _pre_label_job_count(client) == 0
 
 

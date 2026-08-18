@@ -37,6 +37,7 @@ from fastapi import Query, Response, status
 from visionset.inference import (
     STUB_MODEL_ID,
     capabilities_of,
+    not_set_up_message,
     require_detectable_schema,
     unsupported_prompt_message,
 )
@@ -47,10 +48,11 @@ from visionset.kernel.domain import (
     AnnotationJobState,
     AssetProgress,
     BackgroundJobSpec,
+    ConnectionSetupState,
     MembershipChange,
     ModelCapability,
 )
-from visionset.kernel.errors import UnsupportedPrompt
+from visionset.kernel.errors import InferenceConnectionNotSetUp, UnsupportedPrompt
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
@@ -322,11 +324,14 @@ def pre_label_batch(
 
     **Everything a caller can be told now is told now**, and no refusal creates a
     job — so a caller holding a job id holds one that will run. These refusals
-    are about the request, and the caller can act on each: a batch that is not
-    `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a connection whose model
-    answers places rather than words is 422 `UNSUPPORTED_PROMPT`; a pinned
-    schema with no class a box can be written as is 409
-    `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+    are about the request, and the caller can act on each. They are checked in
+    this order, and it is the order `pre_label` itself checks in, so a request
+    wrong about the connection and the batch both always names the connection:
+    a connection whose weights have not arrived is 409
+    `INFERENCE_CONNECTION_NOT_SET_UP`; a connection whose model answers places
+    rather than words is 422 `UNSUPPORTED_PROMPT`; a batch that is not
+    `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no
+    class a box can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
 
     One failure is about this installation rather than about the request, and
     answers 500 carrying the message that says so: a machine without the
@@ -340,7 +345,9 @@ def pre_label_batch(
     watch one run instead of paying for the same inference twice.
     """
     service = BatchService(workspace)
-    batch = service.require_pre_labelable(batch_id)
+    # The connection first, matching `pre_label`'s own order: what a build can
+    # run is an answer about a setup somebody is part-way through, independent
+    # of this batch's state, and a caller most needs it first.
     connection = InferenceConnectionService(workspace).get(body.connection_id)
     # Before the job exists, on the download route's terms: a refusal a request
     # can make is a refusal the request makes. Discovering a missing install
@@ -348,10 +355,19 @@ def pre_label_batch(
     # to go and find.
     if connection.model_id != STUB_MODEL_ID:
         require_local_inference()
+    if connection.setup_state is not ConnectionSetupState.READY:
+        # Before the capability check: `model_family` is written only by a
+        # completed weight download, so a connection that simply has not
+        # finished downloading yet reads no capabilities at all. Answering
+        # `UNSUPPORTED_PROMPT` for that would claim the model answers places
+        # rather than words, which is false — it answers words fine and has no
+        # weights yet.
+        raise InferenceConnectionNotSetUp(not_set_up_message(connection.name))
     # `capabilities` is derived from the model family rather than stored on the
     # row, so it is asked for here the same way the connection wire model asks.
     if ModelCapability.TEXT_DETECT not in capabilities_of(connection.model_family):
         raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
+    batch = service.require_pre_labelable(batch_id)
     require_detectable_schema(workspace, batch)
 
     running = service.live_job(batch_id, job_type=pre_label_job_type)
