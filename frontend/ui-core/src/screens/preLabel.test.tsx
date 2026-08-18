@@ -10,7 +10,7 @@
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
@@ -254,6 +254,28 @@ it("shows the places-not-words refusal too, in the kernel's own sentence", async
   expect(await screen.findByText(/answers places rather than words/i)).not.toBeNull();
 });
 
+it("says nothing answers text prompts yet, when nothing does", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect(await screen.findByTestId("prelabel-no-connections")).not.toBeNull();
+  // No dead control beside the explanation: a select with nothing to choose
+  // from is worse than no select at all.
+  expect(screen.queryByTestId("prelabel-model")).toBeNull();
+});
+
+it("disables the start press for a prompt affinity outside 0 to 1", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  const confidence = await screen.findByTestId("prelabel-confidence");
+  await userEvent.clear(confidence);
+  await userEvent.type(confidence, "1.5");
+
+  const submit = screen.getByRole("button", { name: /start/i }) as HTMLButtonElement;
+  expect(submit.disabled).toBe(true);
+});
+
 it("sends the chosen model and the typed confidence, not a default nobody set", async () => {
   renderGallery({ allowed_actions: ["pre_label"] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
@@ -267,4 +289,93 @@ it("sends the chosen model and the typed confidence, not a default nobody set", 
   const post = sent.find((r) => r.method === "POST" && r.url.endsWith("/pre-label"));
   const body = JSON.parse(await post!.clone().text());
   expect(body).toEqual({ connection_id: DETECTOR.id, minimum_confidence: 0.5 });
+});
+
+/**
+ * The second invalidation, driven across a real poll transition.
+ *
+ * The only piece of logic in this dialog nothing else in the suite proves:
+ * `PreLabelDialog`'s own `useEffect` re-invalidates the batch and its assets
+ * when the polled job *settles*, guarded so it fires once. Answering the
+ * final state on the first read (`dataset.test.tsx`'s `exportWith` does
+ * exactly that) would never exercise the guard at all — the job has to
+ * genuinely move `queued` -> `running` -> `succeeded` across sequential
+ * polls, which needs a counter-based stub and fake timers to cross the
+ * `DEFAULT_POLL_MS` interval without a real two-second wait per tick.
+ */
+it("invalidates the batch a second time only once the polled job settles, and only once", async () => {
+  vi.useFakeTimers();
+  try {
+    renderGallery({ allowed_actions: ["pre_label"] });
+
+    // Three different bodies for the same route, in call order — the shape
+    // no existing fixture in this suite provides, and the one thing that
+    // actually exercises the `settled` guard.
+    const jobAt = [
+      backgroundJobOf({ state: "queued" }),
+      backgroundJobOf({ state: "running", processed: 2, total: 5 }),
+      backgroundJobOf({ state: "succeeded", processed: 5, total: 5 }),
+    ];
+    let poll = 0;
+    handlers.push((request) => {
+      if (request.method !== "GET" || !/\/background-jobs\//.test(new URL(request.url).pathname)) {
+        return undefined;
+      }
+      const body = jobAt[Math.min(poll, jobAt.length - 1)];
+      poll += 1;
+      return { status: 200, body };
+    });
+
+    // `screen.findByRole` and `userEvent` both wait on the *native*
+    // `setTimeout`, unaware that it is now fake; `fireEvent` is synchronous
+    // and needs no timer at all, and `vi.waitFor` pumps the fake clock on
+    // every check it makes, which is what lets React Query's own
+    // `setTimeout(fn, 0)` notification (`notifyManager`) actually fire.
+    //
+    // Waiting for *enabled*, not merely present: the submit button renders
+    // immediately but stays `disabled` until `useConnections` resolves and
+    // picks a default candidate, and a click on a disabled native button is
+    // a silent no-op rather than a refusal to render one.
+    async function press(name: RegExp): Promise<void> {
+      const button = await vi.waitFor(() => {
+        const found = screen.queryByRole("button", { name }) as HTMLButtonElement | null;
+        if (found === null) throw new Error(`button ${name} not yet rendered`);
+        if (found.disabled) throw new Error(`button ${name} still disabled`);
+        return found;
+      });
+      fireEvent.click(button);
+    }
+
+    await press(/pre-label/i);
+    await press(/start/i);
+
+    const batchGets = () =>
+      sent.filter((r) => r.method === "GET" && new URL(r.url).pathname === `/batches/${BATCH}`).length;
+
+    // The launch's own invalidation (on the 202) plus the first poll read,
+    // "queued" — nothing about the settle-time invalidation has run yet.
+    await vi.waitFor(() => expect(poll).toBeGreaterThanOrEqual(1));
+    const afterLaunch = batchGets();
+
+    // One interval: queued -> running. Still not settled, so the guard must
+    // not have fired.
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.waitFor(() => expect(poll).toBe(2));
+    expect(batchGets()).toBe(afterLaunch);
+
+    // The second interval: running -> succeeded. This is the transition the
+    // `settled` guard exists for, and the batch and its assets should be
+    // re-read because of it.
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.waitFor(() => expect(poll).toBe(3));
+    await vi.waitFor(() => expect(batchGets()).toBe(afterLaunch + 1));
+
+    // Further ticks: `isSettled` stops the poll itself, and even if it did
+    // not, the guard would not fire a second time.
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(poll).toBe(3);
+    expect(batchGets()).toBe(afterLaunch + 1);
+  } finally {
+    vi.useRealTimers();
+  }
 });

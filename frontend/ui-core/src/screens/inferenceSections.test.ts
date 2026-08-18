@@ -98,6 +98,17 @@ it("no longer says nothing asks a text-prompt model, now that pre-labeling does"
   }
 });
 
+it("promises only the classes a box can actually be written as, not every declared class", () => {
+  // `detectable_classes` in `prelabel.py` drops a class for either of two
+  // reasons — no `bbox` in its geometries, or a required attribute a
+  // prediction cannot supply — so "every class it declares" was untrue the
+  // moment a schema had either kind of class in it.
+  const [, detect] = sectionsOf([]);
+  expect(detect!.purpose).not.toContain("each class it declares");
+  expect(detect!.purpose).not.toContain("every class");
+  expect(detect!.purpose).toContain("box alone can satisfy");
+});
+
 it("raises neither derived section until something is in it", () => {
   expect(sectionsOf([connection("sam", ["point_suggest"])]).map((one) => one.key)).toEqual([
     "point_suggest",

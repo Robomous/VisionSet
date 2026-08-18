@@ -176,9 +176,10 @@ function PreLabelDialog({
       <DialogContent data-testid="pre-label-dialog">
         <DialogTitle>Pre-label {batch?.name}</DialogTitle>
         <DialogDescription>
-          Asks the model for every class this batch&rsquo;s schema declares, over every asset
-          nothing has touched yet. What it finds lands <strong>awaiting review</strong>, never as
-          somebody&rsquo;s own annotation.
+          Asks the model for every class this batch&rsquo;s schema admits as a box on its
+          own — never a polygon, polyline or tag, and never one that requires an attribute a
+          prediction cannot supply — over every asset nothing has touched yet. What it finds
+          lands <strong>awaiting review</strong>, never as somebody&rsquo;s own annotation.
         </DialogDescription>
 
         <div className="flex flex-col gap-3">

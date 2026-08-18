@@ -98,7 +98,7 @@ const CAPABILITY_COPY: Record<KnownMembers["ModelCapability"], CapabilityCopy> =
   text_detect: {
     title: "Find objects from a description",
     purpose:
-      "A batch's schema becomes the prompt: the model is asked for each class it declares, and what it finds enters the batch awaiting review.",
+      "A batch's schema becomes the prompt: the model is asked for each class a box alone can satisfy, and what it finds enters the batch awaiting review.",
     empty: {
       kind: "invite",
       title: "Add a connection that answers words",
