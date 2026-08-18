@@ -373,20 +373,21 @@ function pointsOf(payload: readonly Record<string, unknown>[]): readonly (readon
 
 /**
  * The gesture the insertion test above stops one step short of: dragging the
- * vertex it just created, in the same gesture sequence, with no deselect and no
- * reselect in between. Reselecting is the reported workaround, so a scenario that
- * clicks away and back proves nothing about the defect.
+ * vertex it just created, in the same sequence, with no deselect and no reselect
+ * in between. The distinction is the whole scenario — a click away and back
+ * collapses the text range that breaks this, so a version that reselects passes
+ * over the defect without touching it.
  *
  * The `dragstart` counter is the second half and a different claim: the canvas is
- * not a surface a native drag may begin on, whatever the engine did or did not
- * recognise under the pointer. It is registered before the gesture and read after
- * it, because a listener added afterwards would count nothing and pass.
+ * not a surface a native drag may begin on, whatever is under the pointer. It is
+ * registered before the gesture and read after it, because a listener added
+ * afterwards would count nothing and pass.
+ *
+ * Both halves fail together without `userSelect: "none"` on the pane, and the
+ * engine is not involved in either: `polygonTool.test.ts` drives the same insert
+ * and drag through the state machine and has always passed.
  */
 test("a vertex inserted by double-click drags without reselecting", async ({ page }) => {
-  // The vertex does not move in the gesture that follows its insertion, and a
-  // native drag starts instead. Marked failing rather than skipped: a skip
-  // records nothing, and this line is what goes red the day the seam is closed.
-  test.fail();
   const frame = await frameOf(page);
 
   await page.evaluate(() => {
