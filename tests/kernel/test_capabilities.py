@@ -96,6 +96,7 @@ from visionset.kernel.services import (
 SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 
 UNANNOTATED = AssetProgress.UNANNOTATED
+PRE_LABELED = AssetProgress.PRE_LABELED
 ANNOTATED = AssetProgress.ANNOTATED
 SKIPPED = AssetProgress.SKIPPED
 REVIEW_PENDING = AssetProgress.REVIEW_PENDING
@@ -204,6 +205,7 @@ class Fixture:
 #: The shortest legal walk from ``unannotated`` to each progress state.
 _ROUTE_TO: dict[AssetProgress, tuple[AssetProgress, ...]] = {
     UNANNOTATED: (),
+    PRE_LABELED: (PRE_LABELED,),
     ANNOTATED: (ANNOTATED,),
     SKIPPED: (SKIPPED,),
     REVIEW_PENDING: (ANNOTATED, REVIEW_PENDING),

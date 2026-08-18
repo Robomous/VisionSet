@@ -3,7 +3,14 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from visionset.kernel.domain import Annotation, AssetProgress, progress_after_annotating
+from visionset.kernel.domain import (
+    PROMOTABLE_PROGRESS,
+    SETTLED_PROGRESS,
+    WRITABLE_PROGRESS,
+    Annotation,
+    AssetProgress,
+    progress_after_annotating,
+)
 
 
 def _make(**overrides: object) -> Annotation:
@@ -51,12 +58,32 @@ def test_unknown_provenance_rejected() -> None:
         _make(provenance="alien")
 
 
-def test_unjudged_labels_land_at_review_pending_rather_than_annotated() -> None:
-    """A model's labels enter where a person has not looked at them yet."""
+def test_a_model_s_labels_land_pre_labeled_rather_than_awaiting_review() -> None:
     assert (
         progress_after_annotating(AssetProgress.UNANNOTATED, has_annotations=True, judged=False)
-        is AssetProgress.REVIEW_PENDING
+        is AssetProgress.PRE_LABELED
     )
+
+
+def test_a_person_editing_a_pre_labeled_frame_takes_it_over() -> None:
+    """Responsibility follows the edit; nobody presses a button for it."""
+    assert (
+        progress_after_annotating(AssetProgress.PRE_LABELED, has_annotations=True)
+        is AssetProgress.ANNOTATED
+    )
+
+
+def test_deleting_the_last_label_returns_a_pre_labeled_frame_to_unannotated() -> None:
+    assert (
+        progress_after_annotating(AssetProgress.PRE_LABELED, has_annotations=False)
+        is AssetProgress.UNANNOTATED
+    )
+
+
+def test_pre_labeled_is_editable_but_never_reaches_the_dataset() -> None:
+    assert AssetProgress.PRE_LABELED in WRITABLE_PROGRESS
+    assert AssetProgress.PRE_LABELED not in PROMOTABLE_PROGRESS
+    assert AssetProgress.PRE_LABELED not in SETTLED_PROGRESS
 
 
 def test_judged_is_the_default_so_a_person_writing_a_label_is_unchanged() -> None:

@@ -236,7 +236,7 @@ JOB_MOVES: Final[Mapping[JobAction, Move[AnnotationJobState]]] = {
 ASSET_MOVES: Final[Mapping[AssetAction, Move[AssetProgress]]] = {
     AssetAction.SKIP: Move(
         AssetProgress.SKIPPED,
-        frozenset({AssetProgress.UNANNOTATED, AssetProgress.ANNOTATED}),
+        frozenset({AssetProgress.UNANNOTATED, AssetProgress.ANNOTATED, AssetProgress.PRE_LABELED}),
     ),
     AssetAction.RESTORE: Move(AssetProgress.UNANNOTATED, frozenset({AssetProgress.SKIPPED})),
     AssetAction.SUBMIT_FOR_REVIEW: Move(
@@ -247,11 +247,16 @@ ASSET_MOVES: Final[Mapping[AssetAction, Move[AssetProgress]]] = {
         AssetProgress.ANNOTATED, frozenset({AssetProgress.REVIEW_PENDING})
     ),
 }
-"""The five progress edges that have a name somebody can click.
+"""The five actions naming a progress edge somebody can click.
 
 ``accept`` and ``return_to_annotator`` are the two halves of ``review_pending``,
 and the second is named for what it does rather than for the edge it rides: "back
 to annotated" describes the table, "return to annotator" describes the act.
+
+``skip`` claims three origins rather than one: a person may decide against
+labeling a frame whether it has never been touched, already carries a person's
+work, or still carries only a model's — the decision is the same act from all
+three.
 """
 
 
@@ -267,16 +272,19 @@ UNNAMED_EDGES: Final[frozenset[tuple[AssetProgress, AssetProgress]]] = frozenset
 )
 """Legal progress edges that deliberately have no action name.
 
-Three moves. The first two are an annotation appearing or disappearing on its own —
-``unannotated -> annotated`` when the first label lands, and back again when the
-last one goes — so this is *computed from* ``progress_after_annotating`` rather
-than listed beside it. Nobody performs these: ``AnnotationService`` makes them in
-the same transaction as the write, and they are the consequence of ``annotate``,
-which is an action and is declared.
+Five moves, all of them *computed from* ``progress_after_annotating`` rather
+than listed beside it. The first two are an annotation appearing or
+disappearing on its own — ``unannotated -> annotated`` when the first label
+lands, and back again when the last one goes. Nobody performs these:
+``AnnotationService`` makes them in the same transaction as the write, and they
+are the consequence of ``annotate``, which is an action and is declared.
 
-The third is ``unannotated -> review_pending``, which an unjudged write makes in
-the same transaction as its labels. It is derived here for the same reason the
-other two are: this set can only grow if the domain's own derivation rule does.
+The other three are the same shape one state over. ``unannotated ->
+pre_labeled`` is what an unjudged write makes in the same transaction as its
+labels; ``pre_labeled -> annotated`` is a person's edit taking the frame over,
+and ``pre_labeled -> unannotated`` is that edit deleting the model's last
+label. Each is derived here for the reason the first two are: this set can
+only grow if the domain's own derivation rule does.
 
 Offering any of them as its own control would be offering to change a marker
 while its labels stay put, which is the one thing the progress machine exists to
