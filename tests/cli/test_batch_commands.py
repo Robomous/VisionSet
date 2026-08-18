@@ -13,10 +13,15 @@ from tests.cli._flow import (
     ok,
     payload,
     run,
+    runner,
     started_batch,
     workspace,
 )
 
+from visionset.cli.main import app
+from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE
+from visionset.inference import prelabel as prelabel_module
+from visionset.kernel.domain import AssetPrediction, BboxGeometry, PredictedRegion
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR,
     DatasetService,
@@ -41,6 +46,68 @@ def _trunk_size(root: Path, name: str) -> int:
         project = ProjectService(service).get_by_name(name)
         dataset = ProjectService(service).get_dataset(project.id)
         return len(DatasetService(service).assets(dataset.id))
+
+
+class _FakePredictor:
+    """A detector that returns one confident sign box for every requested asset."""
+
+    def __init__(self) -> None:
+        self.minimum_confidences: list[float] = []
+
+    def predict(self, request: object) -> object:
+        self.minimum_confidences.append(request.minimum_confidence)  # type: ignore[attr-defined]
+        return (
+            AssetPrediction(
+                asset_id=target.asset_id,
+                model_ref="acme/detector@abc123",
+                regions=(
+                    PredictedRegion(
+                        label="sign",
+                        confidence=0.9,
+                        geometry=BboxGeometry(x=1.0, y=2.0, width=3.0, height=4.0),
+                    ),
+                ),
+            )
+            for target in request.targets  # type: ignore[attr-defined]
+        )
+
+
+class _FakePool:
+    def __init__(self, predictor: _FakePredictor) -> None:
+        self._predictor = predictor
+
+    def get(self, connection: object, *, workspace_root: Path) -> object:
+        return self._predictor
+
+
+@pytest.fixture()
+def predicting(monkeypatch: pytest.MonkeyPatch) -> _FakePredictor:
+    """Replace the process-wide pool at the seam the shared operation resolves."""
+    predictor = _FakePredictor()
+    monkeypatch.setattr(prelabel_module, "resident", lambda: _FakePool(predictor))
+    return predictor
+
+
+def _connection(root: Path) -> str:
+    """Create the local connection through the public CLI command."""
+    return str(
+        payload(
+            root,
+            "inference",
+            "create",
+            "detector",
+            "--type",
+            "local",
+            "--model",
+            "acme/detector",
+            "--revision",
+            "abc123",
+            "--device",
+            "cpu",
+            "--precision",
+            "fp32",
+        )["id"]
+    )
 
 
 # --- list --------------------------------------------------------------------
@@ -163,6 +230,93 @@ def test_complete_with_an_outstanding_job_exits_one(root: Path, tmp_path: Path) 
 def test_complete_closes_a_finished_batch(root: Path, tmp_path: Path) -> None:
     name, _ = completed_batch(root, tmp_path)
     assert payload(root, "batch", "list", "-p", name)["items"][0]["state"] == "completed"
+
+
+# --- pre-label ---------------------------------------------------------------
+
+
+def test_pre_label_by_connection_id_writes_every_untouched_asset(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    name, batch = started_batch(root, tmp_path)
+    connection = _connection(root)
+
+    result = run(root, "batch", "pre-label", batch, connection)
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == "6\n"
+    assert "Pre-labeling 1/6 asset(s)." in result.stderr
+    assert "Pre-labeling 6/6 asset(s)." in result.stderr
+    assert "Pre-labeled 6 asset(s), wrote 6 annotation(s)." in result.stderr
+    assert predicting.minimum_confidences == [DEFAULT_MINIMUM_CONFIDENCE] * 6
+    assert payload(root, "batch", "list", "-p", name)["items"][0]["progress"]["pre_labeled"] == 6
+
+
+def test_pre_label_json_emits_the_complete_outcome(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    _, batch = started_batch(root, tmp_path)
+
+    outcome = payload(root, "batch", "pre-label", batch, _connection(root))
+
+    assert outcome == {
+        "assets_considered": 6,
+        "assets_labeled": 6,
+        "annotations_written": 6,
+        "model_ref": "acme/detector@abc123",
+        "stopped_early": False,
+        "assets_skipped": 0,
+        "regions_discarded": 0,
+    }
+
+
+def test_pre_label_resolves_a_connection_name_and_passes_its_confidence(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    _, batch = started_batch(root, tmp_path)
+    _connection(root)
+
+    assert (
+        run(root, "batch", "pre-label", batch, "detector", "--minimum-confidence", "0.5").exit_code
+        == 0
+    )
+    assert predicting.minimum_confidences == [0.5] * 6
+
+
+def test_batch_help_lists_pre_label() -> None:
+    assert "pre-label" in runner.invoke(app, ["batch", "--help"]).stdout
+
+
+@pytest.mark.parametrize("minimum_confidence", ["-0.01", "1.01"])
+def test_pre_label_rejects_a_confidence_outside_the_closed_unit_interval(
+    root: Path, tmp_path: Path, minimum_confidence: str
+) -> None:
+    _, batch = started_batch(root, tmp_path)
+
+    assert (
+        run(
+            root,
+            "batch",
+            "pre-label",
+            batch,
+            _connection(root),
+            "--minimum-confidence",
+            minimum_confidence,
+        ).exit_code
+        == 2
+    )
+
+
+def test_pre_label_refuses_a_draft_batch_without_writing_stdout(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    _, batch = ingested_batch(root, tmp_path)
+
+    result = run(root, "batch", "pre-label", batch, _connection(root))
+
+    assert result.exit_code == 1, result.output
+    assert "Error: batch 'stills' is 'draft', not 'in_annotation'" in result.stderr
+    assert result.stdout == ""
 
 
 # --- promote -----------------------------------------------------------------
