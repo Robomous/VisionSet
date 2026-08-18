@@ -9773,7 +9773,7 @@
     },
     "/projects/{project_id}/assets/{asset_id}": {
       "get": {
-        "description": "One ingested item, by id.\n\nAn asset belonging to a different project reads as 404 rather than 403, like\nevery cross-scope reference here.\n\n`content_hash` identifies the bytes and `thumbnail_hash` the cached preview,\nbut neither is a URL \u2014 the two routes below are, and they take this asset's\nid.",
+        "description": "One ingested item, by id.\n\nAn unknown project is 404 `PROJECT_NOT_FOUND` and an unknown asset is 404\n`ASSET_NOT_FOUND`. An asset belonging to a different project answers the\nsecond of those rather than 403, like every cross-scope reference here.\n\n`content_hash` identifies the bytes and `thumbnail_hash` the cached preview,\nbut neither is a URL \u2014 the two routes below are, and they take this asset's\nid.",
         "operationId": "get_asset",
         "parameters": [
           {
@@ -9872,7 +9872,7 @@
     },
     "/projects/{project_id}/assets/{asset_id}/batches": {
       "get": {
-        "description": "Every batch that carries this asset, oldest membership first.\n\n**The membership edge walked backwards.** Every other read goes from a batch\nto its assets; this asks which rounds of work an asset has been through, and\nit is what a correction batch's lineage looks like from the asset's side \u2014\nthe original and its corrections, in the order they were cut.\n\nA dedicated route rather than a field on `AssetOut`, and the reason is cost:\na listing of fifty thousand assets would pay one join per row for a fact\nalmost no reader of that listing wants. This is asked about one asset, by\nsomebody looking at that asset.\n\nAn asset in no batch answers `{\"items\": [], \"total\": 0}` \u2014 the ordinary state\nof anything ingested without a target, and not a 404. The 404 here is for the\nasset or the project, which is resolved first.",
+        "description": "Every batch that carries this asset, oldest membership first.\n\n**The membership edge walked backwards.** Every other read goes from a batch\nto its assets; this asks which rounds of work an asset has been through, and\nit is what a correction batch's lineage looks like from the asset's side \u2014\nthe original and its corrections, in the order they were cut.\n\nA dedicated route rather than a field on `AssetOut`, and the reason is cost:\na listing of fifty thousand assets would pay one join per row for a fact\nalmost no reader of that listing wants. This is asked about one asset, by\nsomebody looking at that asset.\n\nAn asset in no batch answers `{\"items\": [], \"total\": 0}` \u2014 the ordinary state\nof anything ingested without a target, and not a 404. The 404 here is for the\nasset or the project, which is resolved first: 404 `PROJECT_NOT_FOUND` or 404\n`ASSET_NOT_FOUND`. A batch deleted between that read and its progress is 404\n`BATCH_NOT_FOUND`, and asking again answers without it.",
         "operationId": "list_asset_batches",
         "parameters": [
           {
@@ -9971,7 +9971,7 @@
     },
     "/projects/{project_id}/assets/{asset_id}/content": {
       "get": {
-        "description": "The asset's own bytes, streamed.\n\nThe original that was ingested, not a re-encode \u2014 for a video frame that is\nthe PNG extraction wrote, which is the picture an annotator drew on and the\npicture an exporter ships.\n\n`Content-Type` comes from what the ingest actually probed. An asset written\nbefore the pipeline recorded a format is served as\n`application/octet-stream`, because inventing one would be worse than\nadmitting it.\n\nCached forever and never revalidated: identity is content, so these bytes\ncannot change. The `ETag` is the content hash.\n\n404 `WORKSPACE_CORRUPT` is not among the answers \u2014 a recorded hash with no\nblob behind it is a guarantee failing, and is 500.",
+        "description": "The asset's own bytes, streamed.\n\nThe original that was ingested, not a re-encode \u2014 for a video frame that is\nthe PNG extraction wrote, which is the picture an annotator drew on and the\npicture an exporter ships.\n\n`Content-Type` comes from what the ingest actually probed. An asset written\nbefore the pipeline recorded a format is served as\n`application/octet-stream`, because inventing one would be worse than\nadmitting it.\n\nCached forever and never revalidated: identity is content, so these bytes\ncannot change. The `ETag` is the content hash.\n\nAn unknown project or asset is 404 \u2014 `PROJECT_NOT_FOUND` and\n`ASSET_NOT_FOUND` \u2014 and those are the only two. 404 `WORKSPACE_CORRUPT` is\nnot among the answers: a recorded hash with no blob behind it is a guarantee\nfailing, and is 500.",
         "operationId": "get_asset_content",
         "parameters": [
           {
@@ -10074,7 +10074,7 @@
     },
     "/projects/{project_id}/assets/{asset_id}/thumbnail": {
       "get": {
-        "description": "The asset's cached preview, streamed. Always JPEG.\n\nA preview is a cache, so this reads one and never renders one. An asset with\nno preview is 404 `THUMBNAIL_NOT_CACHED` \u2014 which has three causes with one\nremedy: the asset predates the cache, its bytes would not render, or no run\nhas reached it yet. A backfill fills what it can.\n\nCached the same way `content` is, and for the same reason. The `ETag` is the\nthumbnail hash, which is a cache key and not an identity: two machines may\nhold different preview bytes for one image, so never compare these across\nworkspaces.",
+        "description": "The asset's cached preview, streamed. Always JPEG.\n\nA preview is a cache, so this reads one and never renders one. An asset with\nno preview is 404 `THUMBNAIL_NOT_CACHED` \u2014 which has three causes with one\nremedy: the asset predates the cache, its bytes would not render, or no run\nhas reached it yet. A backfill fills what it can. The other two 404s are the\nordinary ones, resolved before the cache is consulted: 404 `PROJECT_NOT_FOUND`\nand 404 `ASSET_NOT_FOUND`, which say the thing itself is not here rather than\nthat its preview is missing.\n\nCached the same way `content` is, and for the same reason. The `ETag` is the\nthumbnail hash, which is a cache key and not an identity: two machines may\nhold different preview bytes for one image, so never compare these across\nworkspaces.",
         "operationId": "get_asset_thumbnail",
         "parameters": [
           {

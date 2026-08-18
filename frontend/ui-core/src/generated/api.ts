@@ -1553,8 +1553,9 @@ export interface paths {
          * Get Asset
          * @description One ingested item, by id.
          *
-         *     An asset belonging to a different project reads as 404 rather than 403, like
-         *     every cross-scope reference here.
+         *     An unknown project is 404 `PROJECT_NOT_FOUND` and an unknown asset is 404
+         *     `ASSET_NOT_FOUND`. An asset belonging to a different project answers the
+         *     second of those rather than 403, like every cross-scope reference here.
          *
          *     `content_hash` identifies the bytes and `thumbnail_hash` the cached preview,
          *     but neither is a URL — the two routes below are, and they take this asset's
@@ -1592,7 +1593,9 @@ export interface paths {
          *
          *     An asset in no batch answers `{"items": [], "total": 0}` — the ordinary state
          *     of anything ingested without a target, and not a 404. The 404 here is for the
-         *     asset or the project, which is resolved first.
+         *     asset or the project, which is resolved first: 404 `PROJECT_NOT_FOUND` or 404
+         *     `ASSET_NOT_FOUND`. A batch deleted between that read and its progress is 404
+         *     `BATCH_NOT_FOUND`, and asking again answers without it.
          */
         get: operations["list_asset_batches"];
         put?: never;
@@ -1626,8 +1629,10 @@ export interface paths {
          *     Cached forever and never revalidated: identity is content, so these bytes
          *     cannot change. The `ETag` is the content hash.
          *
-         *     404 `WORKSPACE_CORRUPT` is not among the answers — a recorded hash with no
-         *     blob behind it is a guarantee failing, and is 500.
+         *     An unknown project or asset is 404 — `PROJECT_NOT_FOUND` and
+         *     `ASSET_NOT_FOUND` — and those are the only two. 404 `WORKSPACE_CORRUPT` is
+         *     not among the answers: a recorded hash with no blob behind it is a guarantee
+         *     failing, and is 500.
          */
         get: operations["get_asset_content"];
         put?: never;
@@ -1652,7 +1657,10 @@ export interface paths {
          *     A preview is a cache, so this reads one and never renders one. An asset with
          *     no preview is 404 `THUMBNAIL_NOT_CACHED` — which has three causes with one
          *     remedy: the asset predates the cache, its bytes would not render, or no run
-         *     has reached it yet. A backfill fills what it can.
+         *     has reached it yet. A backfill fills what it can. The other two 404s are the
+         *     ordinary ones, resolved before the cache is consulted: 404 `PROJECT_NOT_FOUND`
+         *     and 404 `ASSET_NOT_FOUND`, which say the thing itself is not here rather than
+         *     that its preview is missing.
          *
          *     Cached the same way `content` is, and for the same reason. The `ETag` is the
          *     thumbnail hash, which is a cache key and not an identity: two machines may

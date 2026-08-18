@@ -225,12 +225,6 @@ def _route(name: str) -> tuple[ModuleType, ast.FunctionDef]:
 #: an exemption left behind is a rule this file would no longer prove. Nothing may
 #: be added here.
 KNOWN_SHORT: Final[dict[str, frozenset[str]]] = {
-    "assets::get_asset": frozenset({"ASSET_NOT_FOUND", "PROJECT_NOT_FOUND"}),
-    "assets::get_asset_content": frozenset({"ASSET_NOT_FOUND", "PROJECT_NOT_FOUND"}),
-    "assets::get_asset_thumbnail": frozenset({"ASSET_NOT_FOUND", "PROJECT_NOT_FOUND"}),
-    "assets::list_asset_batches": frozenset(
-        {"ASSET_NOT_FOUND", "BATCH_NOT_FOUND", "PROJECT_NOT_FOUND"}
-    ),
     "background_jobs::get_background_job_artifact": frozenset({"BACKGROUND_JOB_NOT_FOUND"}),
     "batches::add_batch_assets": frozenset({"BATCH_NOT_FOUND"}),
     "batches::approve_batch": frozenset({"BATCH_NOT_FOUND"}),
