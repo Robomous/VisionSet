@@ -99,14 +99,24 @@ can see whether the add forced any package past the cutoff. If one did, `uv.lock
 virtualenv may already hold them, and `uv sync` puts it back in step. To read the same audit over
 any two lockfiles, `bash scripts/cooldown.sh --audit old.lock new.lock`.
 
-**A refusal names the version the cool-down would have taken.** The commonest way to reach one is
-a package that is neither new nor named, forced upward by the resolution and so carrying no pin:
-the second pass takes its newest release and the audit refuses the lot. The first pass already
-resolved a version of that package the cool-down vets, so the refusal reports it and prints the
-command that takes it — the same command with `-P name==version` appended, which the wrapper
-accepts and leaves alone. Where the refused package is one the second pass *was* pinned to, there
-is no such advice: that version was asked for and the resolution did not produce it, and saying so
-is more use than suggesting the same ask again.
+**A version the cool-down vets is taken, not reported.** The commonest way to reach a refusal is a
+package that is neither new nor named, forced upward by the resolution and so carrying no pin: the
+pass with no cutoff takes its newest release and the audit refuses the lot. The first pass already
+resolved a version of that package the cool-down vets, and both narrowed forms accept a
+`-P name==version` and leave it alone — so rather than printing that version for somebody to re-run
+with, the wrapper pins the refused packages to it and resolves again. Only the refused ones:
+pinning everything a pass moved would replay the first pass's rollbacks, since it resolved under
+the cutoff and so holds an older release for anything locked younger than the cutoff, and taking
+those would undo a bump somebody merged this week.
+
+**The widening is bounded at two extra passes.** A widened pass can itself force a further package
+upward, and the pins cannot be computed until a pass has run, so the loop stops at a stated ceiling
+rather than at a fixpoint: four resolutions at the very worst, where the common single-package case
+settles in three. Three situations still refuse, all of them exit 3 with `uv.lock` and
+`pyproject.toml` put back. A pin the resolution will not honour has no second version to try. A
+package the first pass never resolved has no vetted version to pin it to. And a cascade that
+outruns the bound prints the command carrying every pin already taken, so re-running resumes rather
+than starting over and stopping in the same place.
 
 **When it fires.** `pnpm add <pkg>` with no version asks for `latest`, so a too-new release is
 refused outright (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`) rather than silently downgraded. Wait, or
