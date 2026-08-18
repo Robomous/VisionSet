@@ -11,8 +11,8 @@
  *
  * ## An option can be two lines
  *
- * Some options are an identifier plus the facts about it — a model id, then its
- * download size and what it is for. On one line that is a sentence long enough to
+ * Some options are an identifier plus the facts about it — a model id, then the
+ * one line saying what it is for. On one line that is a sentence long enough to
  * wrap inside a control measured for one line, which reads as squashed text
  * rather than as a choice.
  *

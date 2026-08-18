@@ -1,7 +1,7 @@
 /**
  * The Inference section: what it offers, what it refuses to offer, and why.
  *
- * Three claims here that nothing else in the suite makes:
+ * Five claims here that nothing else in the suite makes:
  *
  * 1. **Availability is the wire's.** Every row below declares its own
  *    `allowed_actions`, and the tests that matter are the ones where a declared
@@ -19,6 +19,12 @@
  *    to put a row: two abilities on one connection, an ability nothing consumes
  *    yet, and a connection that has not declared anything at all. A row in no
  *    section is a connection nobody can download, edit or delete.
+ * 5. **What the form may offer is the installation's**, served rather than
+ *    compiled in — so the model field is a query, with the three states a query
+ *    has. None of them is a disabled control: it says it is reading, it renders
+ *    the refusal as prose, or it says nothing is offered by name — and the last
+ *    two leave the free model id and revision fields in place, because a model
+ *    id typed by hand needs no catalog at all.
  *
  * The requests are stubbed, never the questions: every mutation goes out on the
  * path that reaches it, and the refusals come back from the stub.
@@ -32,15 +38,40 @@ import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
 import { CapabilitySection, InferenceScreen, bytes } from "./InferenceScreen";
-import { CURATED_MODELS, DEFAULT_MODEL } from "./inferenceCatalog";
 import { sectionsOf } from "./inferenceSections";
 import { CONNECTION_POLL_MS, type Connection } from "../data/inferenceQueries";
 
 const API = "http://visionset.test";
 
+// Spelled here rather than read from a module: the catalog is the server's
+// answer now, and a fixture that imported the ids it then asserts on would be
+// proving the screen agrees with itself.
+const SAM_BASE_PLUS = "facebook/sam2.1-hiera-base-plus";
+const SAM_BASE_PLUS_COMMIT = "b7320756a13354e7530a63935656d35b2f91a290";
+const SAM_BASE_PLUS_HINT = "base-plus — the balanced default";
+const SAM3 = "facebook/sam3";
+const SAM3_COMMIT = "3c879f39826c281e95690f02c7821c4de09afae7";
+const SAM3_HINT = "wants a GPU";
+const SAM3_NOTE =
+  "Meta publishes these weights under the SAM License and grants access by request.";
+const SAM3_URL = "https://huggingface.co/facebook/sam3";
+const DINO_TINY = "IDEA-Research/grounding-dino-tiny";
+const DINO_TINY_HINT = "tiny — fastest, comfortable on a CPU";
+
+/** An answer that never arrives, which is what a slow server is to a query. */
+const NEVER = Symbol("never");
+
 type Answer = { status: number; body?: unknown };
-let handlers: ((request: Request) => Answer | undefined)[] = [];
+// A handler may answer now, later (a promise the test settles), or never.
+let handlers: ((request: Request) => Answer | Promise<Answer> | typeof NEVER | undefined)[] = [];
 const sent: Request[] = [];
+
+function respond(answer: Answer): Response {
+  return new Response(answer.status === 204 ? null : JSON.stringify(answer.body ?? null), {
+    status: answer.status,
+    headers: { "content-type": "application/json" },
+  });
+}
 
 beforeEach(() => {
   handlers = [];
@@ -50,13 +81,9 @@ beforeEach(() => {
     sent.push(request);
     for (const handler of handlers) {
       const answer = handler(request);
+      if (answer === NEVER) return new Promise<Response>(() => undefined);
       if (answer !== undefined) {
-        return Promise.resolve(
-          new Response(answer.status === 204 ? null : JSON.stringify(answer.body ?? null), {
-            status: answer.status,
-            headers: { "content-type": "application/json" },
-          }),
-        );
+        return answer instanceof Promise ? answer.then(respond) : Promise.resolve(respond(answer));
       }
     }
     return Promise.resolve(
@@ -96,8 +123,8 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     id: "11111111-1111-4111-8111-111111111111",
     name: "sam2-local",
     connection_type: "local",
-    model_id: DEFAULT_MODEL.modelId,
-    model_revision: DEFAULT_MODEL.revision,
+    model_id: SAM_BASE_PLUS,
+    model_revision: SAM_BASE_PLUS_COMMIT,
     device: "cuda",
     precision: "fp16",
     endpoint_url: null,
@@ -122,6 +149,97 @@ function listing(rows: readonly Connection[]): void {
     status: 200,
     body: { items: rows, total: rows.length },
   });
+}
+
+/**
+ * What the server answers for the installed drivers.
+ *
+ * Spelled in full, and every field required — the generated runtime check
+ * refuses a response missing one, which renders this screen's error card in
+ * every case and reads exactly like a component bug rather than a stub bug.
+ */
+const SERVED: unknown = {
+  items: [
+    {
+      provider_id: "sam",
+      families: {
+        sam2: "point_suggest",
+        sam2_video: "point_suggest",
+        sam3_video: "point_suggest",
+      },
+      curated: [
+        {
+          model_id: SAM_BASE_PLUS,
+          model_revision: SAM_BASE_PLUS_COMMIT,
+          family: "sam2_video",
+          capability: "point_suggest",
+          hint: SAM_BASE_PLUS_HINT,
+          access_note: null,
+          access_url: null,
+        },
+        {
+          model_id: SAM3,
+          model_revision: SAM3_COMMIT,
+          family: "sam3_video",
+          capability: "point_suggest",
+          hint: SAM3_HINT,
+          access_note: SAM3_NOTE,
+          access_url: SAM3_URL,
+        },
+      ],
+    },
+    {
+      provider_id: "grounding-dino",
+      families: { "grounding-dino": "text_detect" },
+      curated: [
+        {
+          model_id: DINO_TINY,
+          model_revision: "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          family: "grounding-dino",
+          capability: "text_detect",
+          hint: DINO_TINY_HINT,
+          access_note: null,
+          access_url: null,
+        },
+      ],
+    },
+  ],
+  total: 2,
+};
+
+function catalog(body: unknown = SERVED, status = 200): void {
+  on("GET", /\/inference\/providers$/, { status, body });
+}
+
+/** The catalog request a slow server has not answered yet, and will not. */
+function catalogHangs(): void {
+  handlers.push(providersOnly(() => NEVER));
+}
+
+/**
+ * A catalog answer the test releases by hand.
+ *
+ * The only way to write the sequence that leaked a model between openings: the
+ * dialog has to be discarded while the request is in flight, and the answer has
+ * to land after it.
+ */
+function catalogOnCue(): () => void {
+  let release = (): void => undefined;
+  const served = new Promise<Answer>((settle) => {
+    release = () => settle({ status: 200, body: SERVED });
+  });
+  handlers.push(providersOnly(() => served));
+  return release;
+}
+
+/** A handler that answers the providers route and passes everything else on. */
+function providersOnly(
+  answer: () => Answer | Promise<Answer> | typeof NEVER,
+): (request: Request) => Answer | Promise<Answer> | typeof NEVER | undefined {
+  return (request) =>
+    request.method === "GET" && new URL(request.url).pathname.endsWith("/inference/providers")
+      ? answer()
+      : undefined;
 }
 
 /**
@@ -187,8 +305,8 @@ function sizeIs(totalBytes: number, fileCount = 3): void {
   on("GET", /^\/inference\/download-size$/, {
     status: 200,
     body: {
-      model_id: DEFAULT_MODEL.modelId,
-      model_revision: DEFAULT_MODEL.revision,
+      model_id: SAM_BASE_PLUS,
+      model_revision: SAM_BASE_PLUS_COMMIT,
       total_bytes: totalBytes,
       file_count: fileCount,
     },
@@ -230,7 +348,7 @@ it("shows the model and its revision the way a person reads them", async () => {
   listing([connection()]);
   render(mount(<InferenceScreen />));
   expect(
-    await screen.findByText(`${DEFAULT_MODEL.modelId} @ ${DEFAULT_MODEL.revision}`),
+    await screen.findByText(`${SAM_BASE_PLUS} @ ${SAM_BASE_PLUS_COMMIT}`),
   ).not.toBeNull();
 });
 
@@ -287,6 +405,7 @@ it("shows a connection serving two abilities under both, and edits the one conne
       allowed_actions: ["update", "delete"],
     }),
   ]);
+  catalog();
   render(mount(<InferenceScreen />));
 
   const detect = await screen.findByTestId("section-text_detect");
@@ -545,6 +664,11 @@ it("never re-reads a list nothing is moving in", async () => {
   const first = reads;
   await new Promise((done) => setTimeout(done, CONNECTION_POLL_MS * 2));
   expect(reads).toBe(first);
+  // Nor was the catalog ever asked for. It is the connection form's read, and
+  // the form is arranged to exist only while its dialog is open - a claim only a
+  // request log can hold, because the browser suite stubs that route for every
+  // scenario and would answer a stray request without complaining.
+  expect(sent.some((one) => one.url.includes("/inference/providers"))).toBe(false);
 });
 
 it("shows no progress for a connection that has never been downloaded", async () => {
@@ -558,30 +682,33 @@ it("shows no progress for a connection that has never been downloaded", async ()
 
 it("asks where the model runs before asking anything else", async () => {
   listing([]);
+  catalog();
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   expect(await screen.findByTestId("choose-type")).not.toBeNull();
   expect(screen.queryByTestId("connection-name")).toBeNull();
 });
 
-it("pre-fills the local form with the default curated model, pinned", async () => {
+it("pins the offered revision rather than asking anybody to type one", async () => {
   listing([]);
+  catalog();
   sizeIs(1_200_000_000);
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
-  expect((await screen.findByTestId("connection-model")).textContent).toContain(
-    DEFAULT_MODEL.modelId,
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
   );
-  // A curated entry carries its own revision, so there is nothing to type and
-  // nothing left showing a branch name.
+  // An offer carries its own revision, so there is nothing to type and nothing
+  // left showing a branch name.
   expect(screen.queryByTestId("connection-revision")).toBeNull();
   const asked = sent.find((one) => one.url.includes("download-size"));
-  expect(asked!.url).toContain(encodeURIComponent(DEFAULT_MODEL.revision));
+  expect(asked!.url).toContain(encodeURIComponent(SAM_BASE_PLUS_COMMIT));
 });
 
 it("shows the download size before anything is confirmed", async () => {
   listing([]);
+  catalog();
   sizeIs(1_200_000_000, 4);
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
@@ -594,6 +721,7 @@ it("shows the download size before anything is confirmed", async () => {
 
 it("keeps the local form usable when the size cannot be read, and quotes the refusal", async () => {
   listing([]);
+  catalog();
   on("GET", /^\/inference\/download-size$/, {
     status: 500,
     body: {
@@ -615,6 +743,7 @@ it("keeps the local form usable when the size cannot be read, and quotes the ref
 
 it("asks for no size at all for an http connection", async () => {
   listing([]);
+  catalog();
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-http"));
@@ -624,6 +753,7 @@ it("asks for no size at all for an http connection", async () => {
 
 it("sends only the fields the chosen kind carries", async () => {
   listing([]);
+  catalog();
   const bodies: unknown[] = [];
   handlers.push((request) => {
     if (request.method !== "POST" || !request.url.endsWith("/inference/connections")) return;
@@ -653,6 +783,7 @@ it("sends only the fields the chosen kind carries", async () => {
 
 it("keeps what was typed when a create is refused", async () => {
   listing([]);
+  catalog();
   on("POST", /^\/inference\/connections$/, {
     status: 409,
     body: { code: "ENTITY_ALREADY_EXISTS", message: "That name is taken." },
@@ -671,6 +802,7 @@ it("keeps what was typed when a create is refused", async () => {
 
 it("has no credential field, because where a secret lives is still open", async () => {
   listing([]);
+  catalog();
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-http"));
@@ -678,52 +810,213 @@ it("has no credential field, because where a secret lives is still open", async 
   expect(screen.queryByLabelText(/credential|token|api key|secret/i)).toBeNull();
 });
 
-// --- the curated list, and the fields that are closed sets ----------------------
+// --- the served catalog, and the fields that are closed sets --------------------
 
-it("offers every curated model, grouped, from the one module that holds them", async () => {
+it("opens a new local connection on the model the installation offers by default", async () => {
   listing([]);
-  sizeIs(1_200_000_000);
+  catalog();
   render(mount(<InferenceScreen />));
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
-  await userEvent.click(await screen.findByTestId("connection-model"));
 
-  // Derived from the catalog rather than listed here: a model id spelled out in
-  // this file would be a second source, which is exactly what the module exists
-  // to prevent.
-  for (const group of CURATED_MODELS) {
-    expect(screen.getByText(group.label)).not.toBeNull();
-    for (const model of group.models) {
-      const option = screen.getByRole("option", { name: new RegExp(model.modelId) });
-      expect(option.textContent).toContain(bytes(model.totalBytes));
-      expect(option.textContent).toContain(model.hint);
-    }
-  }
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(screen.getByTestId("choose-local"));
+
+  // Not in the same tick as the kind: the catalog is a query, and the field says
+  // so until it can answer.
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
+  );
 });
 
-it("stacks each option: the id on one line, what it costs on the next (#472)", async () => {
+it("builds the model list from what the wire served, under this build's own headings", async () => {
+  // The headings are this build's copy over the abilities the wire named: a
+  // driver declares which ability it serves and never how it is named on screen.
   listing([]);
-  sizeIs(1_200_000_000);
+  catalog();
+  render(mount(<InferenceScreen />));
+
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(screen.getByTestId("choose-local"));
+  await userEvent.click(await screen.findByTestId("connection-model"));
+
+  expect(screen.getByText("Interactive segmentation (point prompts)")).not.toBeNull();
+  expect(screen.getByText("Text-prompt detection")).not.toBeNull();
+  expect(screen.getByRole("option", { name: new RegExp(DINO_TINY) })).not.toBeNull();
+});
+
+it("says the catalog is being read rather than showing a dead control", async () => {
+  listing([]);
+  // An answer that never arrives, which is what a slow server looks like. A stub
+  // that refused instead would be testing the refusal, and a disabled grey select
+  // is precisely what neither state may render.
+  catalogHangs();
+  render(mount(<InferenceScreen />));
+
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(screen.getByTestId("choose-local"));
+
+  expect(await screen.findByTestId("catalog-loading")).not.toBeNull();
+  expect(screen.queryByTestId("connection-model")).toBeNull();
+  // And no free model id field either, which is the state's other half rather
+  // than an accident of the seeding order. Nothing is known yet about what is
+  // offered, so a field for typing an id would be inviting somebody to answer a
+  // question the server is still answering - and it would move under whatever
+  // they had typed the moment the list landed.
+  expect(screen.queryByTestId("connection-custom-model")).toBeNull();
+});
+
+it("renders a refusal as prose when the catalog cannot be read, and leaves the form usable", async () => {
+  listing([]);
+  catalog({ code: "WORKSPACE_BUSY", message: "The workspace is busy." }, 503);
+  render(mount(<InferenceScreen />));
+
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(screen.getByTestId("choose-local"));
+
+  const refusal = await screen.findByTestId("catalog-unavailable");
+  expect(refusal.textContent).toContain("busy");
+  // Prose, not an empty select — and the form still works: a model id typed by
+  // hand needs no catalog at all, so not knowing what is offered is not a reason
+  // to stop somebody configuring a connection.
+  expect(screen.queryByTestId("connection-model")).toBeNull();
+  expect(screen.getByTestId("connection-custom-model")).not.toBeNull();
+  // And another attempt is offered rather than being a reload away, which is what
+  // buys the query its `retry: false`.
+  expect(within(refusal).getByRole("button", { name: "Try again" })).not.toBeNull();
+});
+
+it("invites an installation with nothing to offer, rather than showing an empty list", async () => {
+  listing([]);
+  catalog({ items: [], total: 0 });
+  render(mount(<InferenceScreen />));
+
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(screen.getByTestId("choose-local"));
+
+  const empty = await screen.findByTestId("catalog-empty");
+  expect(empty.textContent).toContain("driver");
+  expect(screen.getByTestId("connection-custom-model")).not.toBeNull();
+});
+
+it("opens a reused dialog on nothing a discarded session left behind", async () => {
+  // A local session abandoned while the catalog was still in flight, and the
+  // answer landing after it. The form that opens next is a different connection
+  // and an HTTP one: it names whatever somebody else's endpoint runs, so a model
+  // id it did not ask for is one nobody typed and nothing on screen explains.
+  listing([]);
+  const serve = catalogOnCue();
+  render(mount(<InferenceScreen />));
+
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(screen.getByTestId("choose-local"));
+  await screen.findByTestId("catalog-loading");
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByTestId("connection-dialog")).toBeNull());
+
+  serve();
+
+  await userEvent.click(screen.getByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-http"));
+
+  expect(value(await screen.findByTestId("connection-custom-model"))).toBe("");
+  expect(value(screen.getByTestId("connection-revision"))).toBe("");
+});
+
+it("lands a successful retry on the offers it just read", async () => {
+  // What the control promises. The catalog refused, so the form is on its free
+  // fields; the retry then works, and leaving it on an empty Custom would make
+  // the select it just filled the only way forward.
+  listing([]);
+  let asked = 0;
+  handlers.push(
+    providersOnly(() => {
+      asked += 1;
+      return asked === 1
+        ? { status: 503, body: { code: "WORKSPACE_BUSY", message: "The workspace is busy." } }
+        : { status: 200, body: SERVED };
+    }),
+  );
+  render(mount(<InferenceScreen />));
+
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(screen.getByTestId("choose-local"));
+  const refusal = await screen.findByTestId("catalog-unavailable");
+  await userEvent.click(within(refusal).getByRole("button", { name: "Try again" }));
+
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
+  );
+  expect(screen.queryByTestId("connection-custom-model")).toBeNull();
+});
+
+it("keeps a model id typed while the catalog was refusing", async () => {
+  // The other side of the retry: the sentinel is only re-seeded where nobody has
+  // put anything under it. A model id typed by hand is a decision, and a list
+  // arriving afterwards is not a reason to discard one.
+  listing([]);
+  let asked = 0;
+  handlers.push(
+    providersOnly(() => {
+      asked += 1;
+      return asked === 1
+        ? { status: 503, body: { code: "WORKSPACE_BUSY", message: "The workspace is busy." } }
+        : { status: 200, body: SERVED };
+    }),
+  );
+  render(mount(<InferenceScreen />));
+
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(screen.getByTestId("choose-local"));
+  const refusal = await screen.findByTestId("catalog-unavailable");
+  await userEvent.type(screen.getByTestId("connection-custom-model"), "someone/else");
+  await userEvent.click(within(refusal).getByRole("button", { name: "Try again" }));
+
+  const model = await screen.findByTestId("connection-model");
+  await waitFor(() => expect(model.textContent).toContain("Custom"));
+  expect(value(screen.getByTestId("connection-custom-model"))).toBe("someone/else");
+});
+
+it("shows a stored connection as the offer it names", async () => {
+  // The edit form used to resolve the stored pair against a constant, in the tick
+  // the dialog opened. It resolves against a served list now, which arrives after
+  // it — and the select must land on the offer rather than on Custom.
+  listing([connection({ model_id: SAM_BASE_PLUS, model_revision: SAM_BASE_PLUS_COMMIT })]);
+  catalog();
+  render(mount(<InferenceScreen />));
+
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-edit"));
+
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
+  );
+});
+
+it("stacks each option: the id on one line, what it is for on the next", async () => {
+  listing([]);
+  catalog();
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
 
   // The closed trigger first, which is where the squash was visible: it shows the
   // selected option's own two lines rather than a second copy of the layout.
-  const trigger = await screen.findByTestId("connection-model");
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
+  );
+  const trigger = screen.getByTestId("connection-model");
   const triggerMeta = trigger.querySelector(".text-muted-foreground");
-  expect(trigger.textContent).toContain(DEFAULT_MODEL.modelId);
-  expect(triggerMeta?.textContent).toContain(DEFAULT_MODEL.hint);
+  expect(triggerMeta?.textContent).toContain(SAM_BASE_PLUS_HINT);
   // The id keeps the line to itself — the whole point of the restructure.
-  expect(triggerMeta?.textContent).not.toContain(DEFAULT_MODEL.modelId);
+  expect(triggerMeta?.textContent).not.toContain(SAM_BASE_PLUS);
 
   await userEvent.click(trigger);
-  for (const group of CURATED_MODELS) {
-    for (const model of group.models) {
-      const option = screen.getByRole("option", { name: new RegExp(model.modelId) });
-      const meta = option.querySelector(".text-muted-foreground");
-      expect(meta?.textContent).toBe(`${bytes(model.totalBytes)} · ${model.hint}`);
-    }
+  for (const [modelId, hint] of [
+    [SAM_BASE_PLUS, SAM_BASE_PLUS_HINT],
+    [SAM3, SAM3_HINT],
+    [DINO_TINY, DINO_TINY_HINT],
+  ]) {
+    const option = screen.getByRole("option", { name: new RegExp(modelId!) });
+    expect(option.querySelector(".text-muted-foreground")?.textContent).toBe(hint);
   }
   // Including Custom, so no row in the list is a different height from its
   // neighbours.
@@ -732,28 +1025,29 @@ it("stacks each option: the id on one line, what it costs on the next (#472)", a
 });
 
 it("states a model's access requirement while it is being chosen, not when it is downloaded", async () => {
-  // Principle 9, on the one entry that has a requirement: a gated model refuses
-  // its own download with a sentence naming the remedy, and by the time that
-  // arrives somebody has chosen a model, created a connection and pressed a
+  // Principle 9, on the one offer that carries a requirement: a gated model
+  // refuses its own download with a sentence naming the remedy, and by the time
+  // that arrives somebody has chosen a model, created a connection and pressed a
   // button. This is the same fact while the choice is still open.
-  const gated = CURATED_MODELS.flatMap((group) => group.models).find(
-    (model) => model.access !== undefined,
-  )!;
   listing([]);
+  catalog();
   sizeIs(1_200_000_000);
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
+  );
 
   // The form opens on an entry anybody can fetch, so there is nothing to say.
   expect(screen.queryByTestId("model-access")).toBeNull();
 
-  await userEvent.click(await screen.findByTestId("connection-model"));
-  await userEvent.click(screen.getByRole("option", { name: new RegExp(gated.modelId) }));
+  await userEvent.click(screen.getByTestId("connection-model"));
+  await userEvent.click(screen.getByRole("option", { name: new RegExp(SAM3) }));
 
   const line = await screen.findByTestId("model-access");
-  expect(line.textContent).toContain(gated.access!.note);
-  expect(line.querySelector("a")?.getAttribute("href")).toBe(gated.access!.href);
+  expect(line.textContent).toContain(SAM3_NOTE);
+  expect(line.querySelector("a")?.getAttribute("href")).toBe(SAM3_URL);
   // Nothing has been created and nothing has been fetched: the requirement is on
   // screen strictly before either becomes possible.
   expect(sent.some((one) => one.method === "POST")).toBe(false);
@@ -763,21 +1057,19 @@ it("drops the access line again when the choice moves back to an open model", as
   // The line describes the current choice rather than the dialog's history. One
   // left behind would tell somebody a model they are not using needs approval,
   // which is the same defect as never showing it, pointed the other way.
-  const gated = CURATED_MODELS.flatMap((group) => group.models).find(
-    (model) => model.access !== undefined,
-  )!;
   listing([]);
+  catalog();
   sizeIs(1_200_000_000);
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
 
   await userEvent.click(await screen.findByTestId("connection-model"));
-  await userEvent.click(screen.getByRole("option", { name: new RegExp(gated.modelId) }));
+  await userEvent.click(screen.getByRole("option", { name: new RegExp(SAM3) }));
   expect(await screen.findByTestId("model-access")).not.toBeNull();
 
-  await userEvent.click(await screen.findByTestId("connection-model"));
-  await userEvent.click(screen.getByRole("option", { name: new RegExp(DEFAULT_MODEL.modelId) }));
+  await userEvent.click(screen.getByTestId("connection-model"));
+  await userEvent.click(screen.getByRole("option", { name: new RegExp(SAM_BASE_PLUS) }));
   expect(screen.queryByTestId("model-access")).toBeNull();
 });
 
@@ -785,37 +1077,40 @@ it("keeps saying a model needs access when it is pinned to another commit", asyn
   // An access gate belongs to the repository, not to the revision: choosing a
   // different commit of the same model does not exempt anybody from its terms.
   // The line is therefore looked up by model id alone, where the select's own
-  // "is this the curated entry" test compares both halves — a distinction no
+  // "is this the offered entry" test compares both halves — a distinction no
   // other test in this file could see, and the reason this one exists.
-  const gated = CURATED_MODELS.flatMap((group) => group.models).find(
-    (model) => model.access !== undefined,
-  )!;
   listing([
     connection({
       name: "pinned-elsewhere",
-      model_id: gated.modelId,
+      model_id: SAM3,
       model_revision: "0000000000000000000000000000000000000000",
       allowed_actions: ["update", "delete"],
     }),
   ]);
+  catalog();
   sizeIs(1_200_000_000);
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("actions-pinned-elsewhere"));
   await userEvent.click(await screen.findByTestId("action-edit"));
 
   const line = await screen.findByTestId("model-access");
-  expect(line.textContent).toContain(gated.access!.note);
+  expect(line.textContent).toContain(SAM3_NOTE);
 });
 
 it("curates without restricting: Custom reveals the free model and revision", async () => {
   listing([]);
+  catalog();
   sizeIs(1_200_000_000);
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
+  // Once the list is on screen, so this is the offered state hiding the free
+  // fields rather than the loading state hiding them.
+  const select = await screen.findByTestId("connection-model");
+  await waitFor(() => expect(select.textContent).toContain(SAM_BASE_PLUS));
   expect(screen.queryByTestId("connection-custom-model")).toBeNull();
 
-  await userEvent.click(await screen.findByTestId("connection-model"));
+  await userEvent.click(select);
   await userEvent.click(screen.getByRole("option", { name: /Custom model/ }));
 
   const model = await screen.findByTestId("connection-custom-model");
@@ -829,6 +1124,7 @@ it("curates without restricting: Custom reveals the free model and revision", as
 
 it("offers half precision only where an adapter would honour it", async () => {
   listing([]);
+  catalog();
   sizeIs(1_200_000_000);
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
@@ -850,6 +1146,7 @@ it("offers half precision only where an adapter would honour it", async () => {
 
 it("moves the precision with the device rather than leaving a refused pair", async () => {
   listing([]);
+  catalog();
   sizeIs(1_200_000_000);
   const posted: Record<string, unknown>[] = [];
   handlers.push((request) => {
@@ -860,6 +1157,11 @@ it("moves the precision with the device rather than leaving a refused pair", asy
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
   await userEvent.type(await screen.findByTestId("connection-name"), "sam2");
+  // The model half of the pair arrives with the catalog, and the form is not
+  // complete until it has.
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
+  );
 
   await userEvent.click(screen.getByTestId("connection-device"));
   await userEvent.click(screen.getByRole("option", { name: "cuda" }));
@@ -882,6 +1184,7 @@ it("renders the kernel's refusal of a pair it disagrees with, as prose", async (
   // the kernel is the authority, and whatever it refuses reaches a person in the
   // words the kernel wrote. Nothing here is computed client-side.
   listing([]);
+  catalog();
   sizeIs(1_200_000_000);
   on("POST", /^\/inference\/connections$/, {
     status: 422,
@@ -894,6 +1197,9 @@ it("renders the kernel's refusal of a pair it disagrees with, as prose", async (
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
   await userEvent.type(await screen.findByTestId("connection-name"), "sam2");
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
+  );
   await userEvent.click(screen.getByTestId("connection-submit"));
   expect((await screen.findByTestId("connection-error")).textContent).toContain(
     "fp16 is not available on cpu",
@@ -907,6 +1213,7 @@ it("shows a stored device the form does not offer instead of rewriting it", asyn
   listing([
     connection({ setup_state: "ready", device: "cuda:1", allowed_actions: ["update", "delete"] }),
   ]);
+  catalog();
   sizeIs(1_200_000_000);
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
@@ -914,10 +1221,10 @@ it("shows a stored device the form does not offer instead of rewriting it", asyn
   expect((await screen.findByTestId("connection-device")).textContent).toContain("cuda:1");
 });
 
-it("shows a curated model at another revision as a custom connection", async () => {
-  // The pair is the identity. A row naming a curated model at a revision the
-  // list does not pin is not that entry, and showing it as one would misreport
-  // which weights it runs.
+it("shows an offered model at another revision as a custom connection", async () => {
+  // The pair is the identity. A row naming an offered model at a revision no
+  // driver pins is not that entry, and showing it as one would misreport which
+  // weights it runs.
   listing([
     connection({
       model_revision: "0000000000000000000000000000000000000000",
@@ -925,6 +1232,7 @@ it("shows a curated model at another revision as a custom connection", async () 
       allowed_actions: ["update", "delete"],
     }),
   ]);
+  catalog();
   sizeIs(1_200_000_000);
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
@@ -1339,6 +1647,7 @@ it("polls while a check is live, and stops when it settles", async () => {
 
 it("edits without offering to change the kind", async () => {
   listing([connection({ setup_state: "ready", allowed_actions: ["update", "delete"] })]);
+  catalog();
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-edit"));
@@ -1361,8 +1670,8 @@ it("lands an edited row at Not set up without a reload", async () => {
           allowed_actions: ["download_weights", "update", "delete"],
         })
       : connection({
-          // Pinned to a revision the curated list does not name, so the form
-          // offers the revision as a field to edit rather than as a fixed pair.
+          // Pinned to a revision no offer names, so the form offers the revision
+          // as a field to edit rather than as a fixed pair.
           model_revision: "0000000000000000000000000000000000000000",
           setup_state: "ready",
           capabilities: ["point_suggest"],
@@ -1375,6 +1684,7 @@ it("lands an edited row at Not set up without a reload", async () => {
     edited = true;
     return { status: 200, body: connection({ setup_state: "not_set_up" }) };
   });
+  catalog();
   sizeIs(1_200_000_000);
 
   render(mount(<InferenceScreen />));
@@ -1399,6 +1709,7 @@ it("sends an edit carrying only the fields ConnectionUpdate declares", async () 
   // the case below proves it still does, so this is not passing on a client
   // that stopped sending it anywhere.
   listing([connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);
+  catalog();
   handlers.push((request) =>
     request.method === "PATCH" ? { status: 200, body: connection() } : undefined,
   );
@@ -1425,6 +1736,7 @@ it("sends an edit carrying only the fields ConnectionUpdate declares", async () 
 
 it("sends a create carrying the kind, which only the create model declares", async () => {
   listing([]);
+  catalog();
   handlers.push((request) =>
     request.method === "POST" ? { status: 201, body: connection() } : undefined,
   );
@@ -1433,6 +1745,9 @@ it("sends a create carrying the kind, which only the create model declares", asy
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
   await userEvent.type(await screen.findByTestId("connection-name"), "sam2-local");
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
+  );
   await userEvent.click(await screen.findByTestId("connection-submit"));
 
   const post = await waitFor(() => {

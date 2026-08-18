@@ -41,6 +41,107 @@ const CHECK_JOB = "55555555-5555-4555-8555-555555555555";
 
 const GIGABYTE = 1_000_000_000;
 
+/**
+ * What `GET /inference/providers` answers once the two shipped drivers are
+ * installed — the curated ladder each declares, mirrored field for field so a
+ * missing one fails the generated shape check rather than the assertion below it.
+ */
+const PROVIDERS = {
+  items: [
+    {
+      provider_id: "grounding-dino",
+      families: { "grounding-dino": "text_detect", "mm-grounding-dino": "text_detect" },
+      curated: [
+        {
+          model_id: "IDEA-Research/grounding-dino-tiny",
+          model_revision: "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          family: "grounding-dino",
+          capability: "text_detect",
+          hint: "tiny — fastest, comfortable on a CPU",
+          access_note: null,
+          access_url: null,
+        },
+        {
+          model_id: "IDEA-Research/grounding-dino-base",
+          model_revision: "12bdfa3120f3e7ec7b434d90674b3396eccf88eb",
+          family: "grounding-dino",
+          capability: "text_detect",
+          hint: "base — more accurate, wants a GPU",
+          access_note: null,
+          access_url: null,
+        },
+      ],
+    },
+    {
+      provider_id: "sam",
+      families: {
+        sam2: "point_suggest",
+        sam2_video: "point_suggest",
+        sam3_video: "point_suggest",
+      },
+      curated: [
+        {
+          model_id: "facebook/sam2.1-hiera-tiny",
+          model_revision: "de431c4043854a71d8101e17995dfe596bf101a5",
+          family: "sam2_video",
+          capability: "point_suggest",
+          hint: "tiny — fastest, comfortable on a CPU",
+          access_note: null,
+          access_url: null,
+        },
+        {
+          model_id: "facebook/sam2.1-hiera-small",
+          model_revision: "ee5bba1d82bb8749febdf90f45e84b687142ba03",
+          family: "sam2_video",
+          capability: "point_suggest",
+          hint: "small — a little more accurate, still light",
+          access_note: null,
+          access_url: null,
+        },
+        {
+          model_id: "facebook/sam2.1-hiera-base-plus",
+          model_revision: "b7320756a13354e7530a63935656d35b2f91a290",
+          family: "sam2_video",
+          capability: "point_suggest",
+          hint: "base-plus — the balanced default",
+          access_note: null,
+          access_url: null,
+        },
+        {
+          model_id: "facebook/sam2.1-hiera-large",
+          model_revision: "665f8e2ad61cf5f53d65644ff27c8ee525124610",
+          family: "sam2_video",
+          capability: "point_suggest",
+          hint: "large — the most accurate, wants a GPU",
+          access_note: null,
+          access_url: null,
+        },
+        {
+          model_id: "facebook/sam3",
+          model_revision: "3c879f39826c281e95690f02c7821c4de09afae7",
+          family: "sam3_video",
+          capability: "point_suggest",
+          hint: "wants a GPU",
+          access_note:
+            "Meta publishes these weights under the SAM License and grants access by " +
+            "request. Ask for it, then set HF_TOKEN before downloading.",
+          access_url: "https://huggingface.co/facebook/sam3",
+        },
+      ],
+    },
+    {
+      // The third installed driver — the no-op stand-in `cycle.spec.ts` uses
+      // against a real server. It curates nothing by name, but it is still a
+      // row the real route reports, and a fixture that drops it is answering
+      // a question the server was never asked.
+      provider_id: "stub",
+      families: { visionset_stub: "point_suggest" },
+      curated: [],
+    },
+  ],
+  total: 3,
+};
+
 interface Download {
   readonly state: string;
   readonly bytes_done: number;
@@ -118,6 +219,11 @@ async function serveApi(page: Page, next: () => unknown): Promise<void> {
   await page.route("**/api/session", (route) => route.fulfill({ json: { issued: false } }));
   await page.route("**/api/inference/connections*", (route) =>
     route.fulfill({ status: 200, json: { items: [next()], total: 1 } }),
+  );
+  // The create form's own read. It has to hold the whole offered set, because
+  // one scenario below asserts the list is taller than the window.
+  await page.route("**/api/inference/providers*", (route) =>
+    route.fulfill({ status: 200, json: PROVIDERS }),
   );
   await page.route("**/api/projects**", (route) =>
     route.fulfill({ status: 200, json: { items: [], total: 0 } }),
@@ -392,6 +498,10 @@ test("a model whose weights have to be asked for says so before it can be downlo
   // The form opens on a model anybody can fetch, so there is nothing to say yet.
   await expect(page.getByTestId("model-access")).toHaveCount(0);
 
+  // The trigger only exists once the catalog request has answered — before
+  // that the field shows `catalog-loading` instead — so wait for it rather
+  // than racing the click against the still-open request.
+  await expect(page.getByTestId("connection-model")).toBeVisible();
   await page.getByTestId("connection-model").click();
   await page.getByRole("option", { name: /facebook\/sam3/ }).click();
 
@@ -424,6 +534,9 @@ test("a model list taller than the window scrolls instead of running off it", as
   await openInference(page);
   await page.getByTestId("new-connection").click();
   await page.getByTestId("choose-local").click();
+  // The trigger only exists once the catalog request has answered — wait for
+  // it rather than racing the click against the still-open request.
+  await expect(page.getByTestId("connection-model")).toBeVisible();
   await page.getByTestId("connection-model").click();
 
   const listbox = page.getByRole("listbox");
@@ -439,4 +552,69 @@ test("a model list taller than the window scrolls instead of running off it", as
   await expect(last).toBeVisible();
   await last.click();
   await expect(page.getByTestId("connection-custom-model")).toBeVisible();
+});
+
+test("a model the installation offers is chosen and becomes a connection", async ({ page }) => {
+  // The whole slice in one journey, and it cannot live in `inference.test.tsx`:
+  // the claim is that the pair sent to the server is the pair the server itself
+  // served. `IDEA-Research/grounding-dino-tiny` and its revision are also what
+  // the deleted frontend constant used to hold, so asserting those wouldn't tell
+  // a copy from a read — a build that still carried the old copy would pass
+  // identically. This catalog's id and revision exist nowhere in this build:
+  // `acme/vision-widget` is offered by nothing shipped, so the only way the form
+  // can send it back is by having read it off the wire just now.
+  await serveApi(page, () => connection("not_set_up", null));
+  const ACME_REVISION = "beefbeefbeefbeefbeefbeefbeefbeefbeefbeef";
+  await page.route("**/api/inference/providers*", (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        items: [
+          {
+            provider_id: "acme",
+            families: { acme_widget: "point_suggest" },
+            curated: [
+              {
+                model_id: "acme/vision-widget",
+                model_revision: ACME_REVISION,
+                family: "acme_widget",
+                capability: "point_suggest",
+                hint: "a model no shipped driver curates",
+                access_note: null,
+                access_url: null,
+              },
+            ],
+          },
+        ],
+        total: 1,
+      },
+    }),
+  );
+  const created: unknown[] = [];
+  await page.route("**/api/inference/connections", async (route, request) => {
+    if (request.method() !== "POST") return route.fallback();
+    created.push(JSON.parse(request.postData() ?? "{}"));
+    return route.fulfill({ status: 201, json: connection("not_set_up", null) });
+  });
+  await page.route("**/api/inference/download-size*", (route) =>
+    route.fulfill({
+      status: 200,
+      json: { model_id: "m", model_revision: "r", total_bytes: 1_200_000_000, file_count: 3 },
+    }),
+  );
+  await openInference(page);
+
+  await page.getByTestId("new-connection").click();
+  await page.getByTestId("choose-local").click();
+  await expect(page.getByTestId("connection-model")).toBeVisible();
+  await page.getByTestId("connection-model").click();
+  await page.getByRole("option", { name: /vision-widget/ }).click();
+  await page.getByTestId("connection-name").fill("widget");
+  await page.getByTestId("connection-submit").click();
+
+  await expect.poll(() => created.length).toBe(1);
+  expect(created[0]).toMatchObject({
+    model_id: "acme/vision-widget",
+    model_revision: ACME_REVISION,
+  });
 });
