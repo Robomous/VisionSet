@@ -100,6 +100,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "UnserializableManifest": (409, "UNSERIALIZABLE_MANIFEST"),
     "LossyExportNotConsented": (409, "LOSSY_EXPORT_NOT_CONSENTED"),
     # 422 — the payload itself is wrong
+    "AnnotationNotFromModel": (422, "ANNOTATION_NOT_FROM_MODEL"),
     "InvalidName": (422, "INVALID_NAME"),
     "InferenceConnectionInvalid": (422, "INFERENCE_CONNECTION_INVALID"),
     "InvalidSchema": (422, "INVALID_SCHEMA"),

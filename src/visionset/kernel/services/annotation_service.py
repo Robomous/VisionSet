@@ -66,12 +66,14 @@ from visionset.kernel.domain import (
     AnnotationOperation,
     AnnotationSchema,
     AnnotationsWritten,
+    AssetProgress,
     Batch,
     ClassificationGeometry,
     progress_after_annotating,
 )
 from visionset.kernel.errors import (
     AnnotationNotFound,
+    AnnotationNotFromModel,
     AssetNotInJob,
     AssetNotWritable,
     DisallowedGeometry,
@@ -180,6 +182,58 @@ class AnnotationService:
 
             stored = [uow.annotations.add(annotation) for annotation in proposed]
             _refresh_progress(uow, job, (a.asset_id for a in proposed))
+
+        self._announce(job.id, batch.id, AnnotationOperation.ADD, stored)
+        return stored
+
+    def enter_unreviewed(self, job_id: UUID, annotations: Sequence[Annotation]) -> list[Annotation]:
+        """Store a model's labels on untouched assets, awaiting review, atomically.
+
+        The fourth write and the narrowest. Labels and the move to
+        ``review_pending`` commit in one transaction, so a run that dies has
+        either not touched an asset or fully entered it — never left it at
+        ``annotated`` carrying labels nobody has looked at.
+
+        Two gates narrower than the other three. The asset must be
+        ``unannotated``, so nothing a person has touched is written over; and
+        every annotation must carry model provenance, which is what keeps this
+        from being a way around the write gate rather than a door beside it.
+        ``model_ref`` and ``confidence`` come checked by ``Annotation`` itself.
+
+        An asset a model found nothing on is not passed here at all: "found
+        nothing" and "reviewed and found empty" are different facts.
+
+        Raises:
+            JobNotFound: no such job in this workspace.
+            BatchNotInAnnotation: the job's batch is not open for annotation.
+            JobFinished: the job is already completed.
+            AssetNotInJob: an annotation names an asset the job does not carry.
+            AssetNotWritable: an asset is not ``unannotated``.
+            AnnotationNotFromModel: an annotation does not carry model provenance.
+            InvalidAnnotation: an annotation does not satisfy the pinned version.
+            StaleWrite: an asset moved between this call's read and its write.
+            WorkspaceCorrupt: the open batch has no pinned schema version.
+        """
+        with self._workspace.unit_of_work() as uow:
+            job = self._jobs.require_job(uow, job_id)
+            batch = self._jobs.require_open_batch(uow, job)
+            self._jobs.require_open_job(job)
+            schema = self._pinned_schema(batch)
+
+            proposed = [
+                annotation.model_copy(update={"schema_version": schema.version, "job_id": job.id})
+                for annotation in annotations
+            ]
+            tagged = _tags_already_on(uow, {a.asset_id for a in proposed})
+            for index, annotation in enumerate(proposed):
+                with _blaming(index):
+                    _require_model_made(annotation)
+                    _require_untouched(job, annotation.asset_id)
+                    _validate(annotation, schema)
+                    _require_untagged(tagged, annotation)
+
+            stored = [uow.annotations.add(annotation) for annotation in proposed]
+            _refresh_progress(uow, job, (a.asset_id for a in proposed), judged=False)
 
         self._announce(job.id, batch.id, AnnotationOperation.ADD, stored)
         return stored
@@ -438,6 +492,30 @@ def _require_writable(job: AnnotationJob, asset_id: UUID) -> None:
         )
 
 
+def _require_model_made(annotation: Annotation) -> None:
+    """Refuse a label this door was not built for."""
+    if annotation.provenance != "model":
+        raise AnnotationNotFromModel(
+            f"annotation {annotation.id} is {annotation.provenance!r}, and only a model's "
+            f"labels enter awaiting review; a person's labels are written through add"
+        )
+
+
+def _require_untouched(job: AnnotationJob, asset_id: UUID) -> None:
+    """Refuse an asset somebody has already worked, without erasing what they did.
+
+    The membership check first, on ``_require_writable``'s reasoning: "this job
+    does not carry that asset" is the more basic complaint.
+    """
+    _require_asset_in_job(job, asset_id)
+    progress = job.progress[asset_id]
+    if progress is not AssetProgress.UNANNOTATED:
+        raise AssetNotWritable(
+            f"asset {asset_id} in job {job.id} is {progress.value!r}, so somebody has "
+            f"already worked it; a model's labels only enter an asset nothing has touched"
+        )
+
+
 def _tags_already_on(
     uow: UnitOfWork,
     asset_ids: set[UUID],
@@ -540,7 +618,13 @@ def _validate(annotation: Annotation, schema: AnnotationSchema) -> None:
             )
 
 
-def _refresh_progress(uow: UnitOfWork, job: AnnotationJob, asset_ids: Iterable[UUID]) -> None:
+def _refresh_progress(
+    uow: UnitOfWork,
+    job: AnnotationJob,
+    asset_ids: Iterable[UUID],
+    *,
+    judged: bool = True,
+) -> None:
     """Move each touched asset to wherever its annotations now put it.
 
     Inside the caller's transaction, so labels and progress commit together —
@@ -570,12 +654,16 @@ def _refresh_progress(uow: UnitOfWork, job: AnnotationJob, asset_ids: Iterable[U
 
     One timestamp for the whole call rather than one per asset, because a caller
     that labeled six frames in one request did that at one moment.
+
+    ``judged`` is passed through to the domain rule rather than decided here: which
+    of two entry states a write earns is a domain question, and this function's job
+    is to commit whatever answer comes back inside the caller's transaction.
     """
     touched_at = datetime.now(UTC)
     for asset_id in dict.fromkeys(asset_ids):
         remaining = uow.annotations.list(asset_id)
         current = job.progress[asset_id]
-        moved = progress_after_annotating(current, has_annotations=bool(remaining))
+        moved = progress_after_annotating(current, has_annotations=bool(remaining), judged=judged)
         target = current if moved is None else moved
         stored = uow.set_asset_progress(
             job.id, asset_id, expected=current, progress=target, touched_at=touched_at

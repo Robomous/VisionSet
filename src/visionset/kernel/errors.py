@@ -469,6 +469,17 @@ class AssetNotInBatch(VisionSetError):
     """
 
 
+class AnnotationNotFromModel(VisionSetError):
+    """A label without model provenance was offered to the unreviewed entry path.
+
+    That path exists so unattended prediction can write labels nobody has judged,
+    and it moves an asset straight to ``review_pending`` — a state the ordinary
+    writes cannot reach. Admitting a hand-made label through it would make it a
+    way around the write gate rather than a narrow door beside one, so provenance
+    is what the door checks.
+    """
+
+
 class AssetNotWritable(VisionSetError):
     """Labels were written onto an asset whose progress says labeling is over.
 

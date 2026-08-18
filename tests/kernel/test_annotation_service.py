@@ -18,6 +18,7 @@ from sqlalchemy import text
 
 from visionset.kernel import (
     AnnotationNotFound,
+    AnnotationNotFromModel,
     AssetNotInJob,
     AssetNotWritable,
     BatchNotInAnnotation,
@@ -29,6 +30,7 @@ from visionset.kernel import (
     JobNotFound,
     LabelClassNotInSchema,
     MissingRequiredAttribute,
+    StaleWrite,
     UnknownAttribute,
 )
 from visionset.kernel.domain import (
@@ -1122,3 +1124,120 @@ def test_it_survives_a_round_trip_through_the_store(tmp_path: Path) -> None:
     (read_back,) = fixture.annotations.for_asset(job.id, stored.asset_id)
 
     assert read_back.job_id == job.id
+
+
+def _prediction(asset_id: UUID, **overrides: Any) -> Annotation:
+    """A valid ``sign`` a model produced: model provenance, ref and score."""
+    return _box(
+        asset_id,
+        provenance="model",
+        model_ref="acme/detector@abc123",
+        confidence=0.62,
+        **overrides,
+    )
+
+
+def test_unreviewed_labels_land_with_the_asset_awaiting_review(tmp_path: Path) -> None:
+    """The labels and the move are one write, so neither can be seen alone."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+
+    (stored,) = fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+
+    assert stored.provenance == "model"
+    assert stored.model_ref == "acme/detector@abc123"
+    assert fixture.progress_of(job, asset_id) is AssetProgress.REVIEW_PENDING
+    fixture.close()
+
+
+def test_a_failure_inside_the_call_leaves_neither_labels_nor_a_move(tmp_path: Path) -> None:
+    """The crash window the composition would have: labels at ``annotated``.
+
+    Provoked at the last possible moment — the progress write — so the labels are
+    already in the session when it fails. Both must roll back, or the asset is
+    left carrying unreviewed labels at a state that claims somebody wrote them.
+    """
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    service = AnnotationService(fixture.workspace)
+
+    def explode(*_: Any, **__: Any) -> None:
+        raise RuntimeError("the worker died here")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("visionset.kernel.services.annotation_service._refresh_progress", explode)
+        with pytest.raises(RuntimeError):
+            service.enter_unreviewed(job.id, [_prediction(asset_id)])
+
+    assert fixture.annotations.for_asset(job.id, asset_id) == []
+    assert fixture.progress_of(job, asset_id) is AssetProgress.UNANNOTATED
+    fixture.close()
+
+
+def test_an_asset_that_is_not_unannotated_is_refused(tmp_path: Path) -> None:
+    """Only untouched assets: a person's work is never overwritten."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    fixture.annotations.add(job.id, [_box(asset_id)])
+    assert fixture.progress_of(job, asset_id) is AssetProgress.ANNOTATED
+
+    with pytest.raises(AssetNotWritable):
+        fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+
+    assert len(fixture.annotations.for_asset(job.id, asset_id)) == 1
+    fixture.close()
+
+
+def test_a_human_annotation_cannot_use_this_door(tmp_path: Path) -> None:
+    """This path is not a general bypass of the write gate."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+
+    with pytest.raises(AnnotationNotFromModel):
+        fixture.annotations.enter_unreviewed(job.id, [_box(fixture.assets[0])])
+
+    assert fixture.progress_of(job, fixture.assets[0]) is AssetProgress.UNANNOTATED
+    fixture.close()
+
+
+def test_one_bad_prediction_stores_none_of_them(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+
+    with pytest.raises(LabelClassNotInSchema):
+        fixture.annotations.enter_unreviewed(
+            job.id,
+            [_prediction(asset_id), _prediction(asset_id, label_class="ghost")],
+        )
+
+    assert fixture.annotations.for_asset(job.id, asset_id) == []
+    assert fixture.progress_of(job, asset_id) is AssetProgress.UNANNOTATED
+    fixture.close()
+
+
+def test_an_asset_moved_underneath_the_call_is_refused_and_nothing_is_written(
+    tmp_path: Path,
+) -> None:
+    """An asset that moved before this call ran is refused, and no label survives.
+
+    Either error is correct and which one arrives depends on where the move
+    landed: the gate sees it if it was already stored, the guard on
+    ``set_asset_progress`` sees it if it lands mid-call. The guard's own race has
+    its coverage in ``tests/kernel/test_concurrency.py``; what matters here is
+    that a refusal leaves nothing behind.
+    """
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    stale = fixture.jobs.get(job.id)
+    fixture.jobs.mark(job.id, asset_id, AssetProgress.SKIPPED)
+
+    with pytest.raises((StaleWrite, AssetNotWritable)):
+        AnnotationService(fixture.workspace).enter_unreviewed(stale.id, [_prediction(asset_id)])
+
+    assert fixture.annotations.for_asset(job.id, asset_id) == []
+    fixture.close()
