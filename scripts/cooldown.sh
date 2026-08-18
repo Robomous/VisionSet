@@ -105,10 +105,12 @@ cooldown_cutoff() {
 # print "file 1 is not in sorted order" and then produce a wrong answer.
 
 # `name=version` for every locked package, one per line. Both keys are matched at
-# column zero, where a lockfile only ever has one package's own fields — a nested
-# table's keys are indented, so this cannot pick up a dependency's name.
+# column zero, where a nested table's keys are indented and cannot be mistaken for
+# a dependency's name — but the lockfile's own top-level `version = 1` schema
+# field sits at column zero too, so a version line only counts once a name has
+# been seen.
 lock_versions() {
-  awk '/^name = /{n=$3} /^version = /{print n"="$3}' "$1" | tr -d '"'
+  awk '/^name = /{n=$3} /^version = / && n != ""{print n"="$3}' "$1" | tr -d '"'
 }
 
 # Every artifact timestamp for one package, truncated to whole seconds. uv writes
@@ -134,7 +136,9 @@ audit_lock() {
     if [[ -z "$pair" ]]; then continue; fi
     name="${pair%%=*}"
     while read -r stamp; do
-      if [[ "$stamp" > "$cutoff" ]]; then
+      # `[[ >` collates under the shell's locale, not raw bytes; force C so this
+      # really is the byte comparison the rest of the file reasons about.
+      if (LC_ALL=C; [[ "$stamp" > "$cutoff" ]]); then
         echo "$name==${pair#*=}"
         verdict=3
         break
@@ -180,14 +184,17 @@ nearest_lock() {
   done
 }
 
-# Everything a resolution can rewrite: the lockfile at the workspace root and the
-# manifests between here and it.
+# Everything a resolution can rewrite: the lockfile nearest_lock found and the
+# manifests between here and it. Bounded at that lock's directory rather than
+# walked to `/`, so a stray uv.lock or pyproject.toml above the workspace root —
+# a file uv itself never reads — is neither snapshotted nor restored.
 state_files() {
-  local dir="$PWD"
+  local dir="$PWD" stop
+  stop="$(dirname "$lock")"
   while :; do
     if [[ -f "$dir/uv.lock" ]]; then echo "$dir/uv.lock"; fi
     if [[ -f "$dir/pyproject.toml" ]]; then echo "$dir/pyproject.toml"; fi
-    if [[ "$dir" == "/" ]]; then break; fi
+    if [[ "$dir" == "$stop" || "$dir" == "/" ]]; then break; fi
     dir="$(dirname "$dir")"
   done
 }
@@ -209,6 +216,41 @@ restore_state() {
     saved="$dir/$(echo "$file" | tr / _)"
     if [[ -f "$saved" ]]; then cp "$saved" "$file"; else rm -f "$file"; fi
   done < <(state_files)
+}
+
+# ---------------------------------------------------------------------------
+# The cutoff resolves, and then it must not survive into the lockfile.
+# ---------------------------------------------------------------------------
+#
+# uv records a global exclude-newer in uv.lock's `[options]` table, and `--locked`
+# counts it as part of what the lock has to agree with. A lockfile resolved
+# through this script therefore carries a rolling timestamp that is already wrong
+# by the time it is committed, and the `uv sync --locked` every CI job runs
+# answers "Ignoring existing lockfile due to removal of global exclude newer" and
+# then refuses it.
+#
+# Dropping the recorded line is the rule at the top of this file rather than an
+# exception to it: the cool-down polices what gets *into* the lock, and a recorded
+# cutoff is the lock re-litigating it on every machine that installs it. Resolved
+# versions are untouched, so the cool-down's choices are exactly what stays.
+#
+# Re-running `uv lock` without the cutoff is not the fix and is the trap: uv
+# discards a lockfile whose recorded cutoff has gone and resolves again, walking
+# straight past the versions the cool-down excluded.
+scrub_recorded_cutoff() {
+  local lock="$1" tmp
+  grep -qxF "exclude-newer = \"$cutoff\"" "$lock" || return 0
+  tmp="$(mktemp "${lock}.cooldown.XXXXXX")"
+  # Drop the line, and the `[options]` table with it when the line was all it
+  # held, so the result is shaped exactly like a lock resolved without a cutoff.
+  awk -v drop="exclude-newer = \"$cutoff\"" '
+    $0 == drop { next }
+    $0 == "[options]" { held = 1; next }
+    held { held = 0; if ($0 == "") next; print "[options]" }
+    { print }
+  ' "$lock" >"$tmp"
+  mv "$tmp" "$lock"
+  echo "cooldown: removed the recorded cutoff from ${lock}" >&2
 }
 
 case "${1:-}" in
@@ -259,41 +301,6 @@ echo "cooldown: ${COOLDOWN_DAYS} days — refusing anything published after ${cu
 # resolves — `add`, `lock`, `sync`, `pip install`, `build` — without this script
 # needing to know which spelling each of them accepts.
 export UV_EXCLUDE_NEWER="$cutoff"
-
-# ---------------------------------------------------------------------------
-# The cutoff resolves, and then it must not survive into the lockfile.
-# ---------------------------------------------------------------------------
-#
-# uv records a global exclude-newer in uv.lock's `[options]` table, and `--locked`
-# counts it as part of what the lock has to agree with. A lockfile resolved
-# through this script therefore carries a rolling timestamp that is already wrong
-# by the time it is committed, and the `uv sync --locked` every CI job runs
-# answers "Ignoring existing lockfile due to removal of global exclude newer" and
-# then refuses it.
-#
-# Dropping the recorded line is the rule at the top of this file rather than an
-# exception to it: the cool-down polices what gets *into* the lock, and a recorded
-# cutoff is the lock re-litigating it on every machine that installs it. Resolved
-# versions are untouched, so the cool-down's choices are exactly what stays.
-#
-# Re-running `uv lock` without the cutoff is not the fix and is the trap: uv
-# discards a lockfile whose recorded cutoff has gone and resolves again, walking
-# straight past the versions the cool-down excluded.
-scrub_recorded_cutoff() {
-  local lock="$1" tmp
-  grep -qxF "exclude-newer = \"$cutoff\"" "$lock" || return 0
-  tmp="$(mktemp "${lock}.cooldown.XXXXXX")"
-  # Drop the line, and the `[options]` table with it when the line was all it
-  # held, so the result is shaped exactly like a lock resolved without a cutoff.
-  awk -v drop="exclude-newer = \"$cutoff\"" '
-    $0 == drop { next }
-    $0 == "[options]" { held = 1; next }
-    held { held = 0; if ($0 == "") next; print "[options]" }
-    { print }
-  ' "$lock" >"$tmp"
-  mv "$tmp" "$lock"
-  echo "cooldown: removed the recorded cutoff from ${lock}" >&2
-}
 
 # ---------------------------------------------------------------------------
 # An add is an add.
@@ -347,52 +354,67 @@ if is_uv_add "$@" && lock="$(nearest_lock)"; then
   status=0
   UV_EXCLUDE_NEWER="$cutoff" UV_NO_SYNC=1 "$@" >&2 || status=$?
   if [[ "$status" -ne 0 ]]; then
-    restore_state "$snapshot"
     echo "cooldown: the add does not resolve under the cutoff; nothing was changed" >&2
     exit "$status"
   fi
 
-  # Packages the add brings in that the lockfile did not have. One it already
-  # carries needs no pin: the second pass keeps it by leaving it alone.
-  lock_versions "$snapshot/baseline.lock" | cut -d= -f1 | LC_ALL=C sort >"$snapshot/before"
-  pins=()
-  while read -r pair; do
-    if ! grep -qxF "${pair%%=*}" "$snapshot/before"; then
-      pins+=(-P "${pair%%=*}==${pair#*=}")
-      echo "cooldown: ${pair%%=*} ${pair#*=} is the newest release the cool-down allows" >&2
+  # nearest_lock walks from $PWD, but that is only ever a guess at which project
+  # uv itself will resolve. If $PWD has no uv.lock of its own and some ancestor
+  # above it happens to hold a stray one, nearest_lock returns that ancestor's
+  # file while pass 1 resolves — and writes — a lock somewhere else entirely.
+  # Reading $lock for the vetted set would then see a file pass 1 never touched:
+  # an empty vetted set, a second pass with no pins, and no cool-down applied at
+  # all. Pass 1 always stamps `[options] exclude-newer` into whatever lock it
+  # writes, so a $lock that comes back byte-identical to the baseline is proof
+  # pass 1 wrote somewhere else. Fall back to the whole-set path below — the
+  # safe direction to be wrong in, since it applies the cutoff to more than it
+  # has to rather than to nothing.
+  if cmp -s "$snapshot/baseline.lock" "$lock"; then
+    restore_state "$snapshot"
+    rm -rf "$snapshot"
+    trap - EXIT
+    echo "cooldown: pass 1 did not write $lock; applying the cool-down to the whole resolution instead" >&2
+  else
+    # Packages the add brings in that the lockfile did not have. One it already
+    # carries needs no pin: the second pass keeps it by leaving it alone.
+    lock_versions "$snapshot/baseline.lock" | cut -d= -f1 | LC_ALL=C sort >"$snapshot/before"
+    pins=()
+    while read -r pair; do
+      if ! grep -qxF "${pair%%=*}" "$snapshot/before"; then
+        pins+=(-P "${pair%%=*}==${pair#*=}")
+        echo "cooldown: ${pair%%=*} ${pair#*=} is the newest release the cool-down allows" >&2
+      fi
+    done < <(lock_versions "$lock")
+
+    restore_state "$snapshot"
+    unset UV_EXCLUDE_NEWER
+
+    status=0
+    "$@" "${pins[@]+"${pins[@]}"}" || status=$?
+    if [[ "$status" -ne 0 ]]; then
+      echo "cooldown: the add failed; nothing was changed" >&2
+      exit "$status"
     fi
-  done < <(lock_versions "$lock")
 
-  restore_state "$snapshot"
-  unset UV_EXCLUDE_NEWER
+    violations=""
+    audit_status=0
+    violations="$(audit_lock "$snapshot/baseline.lock" "$lock" "$cutoff")" || audit_status=$?
+    if [[ "$audit_status" -ne 0 ]]; then
+      {
+        echo "cooldown: refusing this add — it needs versions published after ${cutoff}:"
+        echo "$violations" | sed 's/^/  /'
+        echo "cooldown: uv.lock and pyproject.toml are unchanged. The environment may"
+        echo "cooldown: hold that set already; \`uv sync\` puts it back in step."
+      } >&2
+      exit "$audit_status"
+    fi
 
-  status=0
-  "$@" "${pins[@]+"${pins[@]}"}" || status=$?
-  if [[ "$status" -ne 0 ]]; then
-    restore_state "$snapshot"
-    echo "cooldown: the add failed; nothing was changed" >&2
-    exit "$status"
+    scrub_recorded_cutoff "$lock"
+    # The add landed; nothing left to undo. Disarm the restore so the EXIT trap
+    # only cleans up the snapshot instead of overwriting what just succeeded.
+    trap 'rm -rf "$snapshot"' EXIT
+    exit 0
   fi
-
-  violations=""
-  audit_status=0
-  violations="$(audit_lock "$snapshot/baseline.lock" "$lock" "$cutoff")" || audit_status=$?
-  if [[ "$audit_status" -ne 0 ]]; then
-    restore_state "$snapshot"
-    {
-      echo "cooldown: refusing this add — it needs versions published after ${cutoff}:"
-      echo "$violations" | sed 's/^/  /'
-      echo "cooldown: uv.lock and pyproject.toml are unchanged. The environment may"
-      echo "cooldown: hold that set already; \`uv sync\` puts it back in step."
-    } >&2
-    exit "$audit_status"
-  fi
-
-  scrub_recorded_cutoff "$lock"
-  # The add landed; nothing left to undo. Disarm the restore so the EXIT trap
-  # only cleans up the snapshot instead of overwriting what just succeeded.
-  trap 'rm -rf "$snapshot"' EXIT
-  exit 0
 fi
 
 # Not `exec`, because the scrub happens after the command returns — its exit

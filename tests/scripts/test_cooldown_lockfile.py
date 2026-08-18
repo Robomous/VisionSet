@@ -536,6 +536,34 @@ def test_a_relocating_environment_variable_takes_the_broad_path(stubbed) -> None
         assert re.search(r"pass 1 exclude_newer: \d{4}", _calls(state)), var
 
 
+def test_a_stray_ancestor_lock_falls_back_to_the_whole_set_path(stubbed) -> None:
+    """nearest_lock walks up from $PWD and can land on a lock uv itself never
+    touches: an ancestor's stray uv.lock when the project actually being resolved
+    — nested below it, with no lock of its own — is a different one. Pass 1
+    resolves that nested project for real and leaves the ancestor lock
+    untouched, which is the wrapper's only signal that it was watching the wrong
+    file. The add still has to happen, so a second, real call follows — and it
+    must carry the cool-down, unlike the bug this guards against."""
+    project, state, env = stubbed
+    nested = project / "nested"
+    nested.mkdir()
+    (nested / "pyproject.toml").write_text(
+        '[project]\nname = "nested"\nversion = "0.1.0"\n'
+        'requires-python = ">=3.12"\ndependencies = []\n'
+    )
+    (state / "pass1.lock").write_text(_baseline_plus(ARRIVED))
+
+    done = _wrapped(nested, env, "uv", "add", "arrived")
+    assert done.returncode == 0, done.stderr
+    calls = _calls(state)
+    assert (state / "count").read_text().strip() == "2", calls
+    # The narrowed pin logic never ran — no `-P`, and the cool-down carried
+    # through instead of being dropped the way the unfixed wrapper drops it.
+    assert "pass 2 argv: add arrived\n" in calls, calls
+    assert re.search(r"pass 2 exclude_newer: \d{4}-\d{2}-\d{2}T", calls), calls
+    assert (project / "uv.lock").read_text() == BASELINE_LOCK, "the ancestor lock was touched"
+
+
 def test_an_interrupted_first_pass_changes_nothing(stubbed) -> None:
     """A run killed between the two passes — Ctrl-C, a cancelled CI job — must
     not leave the throwaway first pass's whole-set re-resolution on disk: that
