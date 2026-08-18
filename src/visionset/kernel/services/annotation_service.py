@@ -29,27 +29,29 @@ Five things shape this module:
   constructed, so it can never reach a service to be reported here. That is the
   division ``docs/schemas.md`` draws: per-value validity is pydantic's, validity
   that needs another object is the service's.
-- **Progress follows the annotations, but only two edges of it under ``add``,
+- **Progress follows the annotations, for three of its states under ``add``,
   ``update`` and ``delete`` — and it gates them.** The first annotation on an
-  asset moves it ``unannotated -> annotated``; deleting the last moves it back.
-  ``skipped`` and ``accepted`` are people's decisions and stay with
-  ``JobService.mark``; ``review_pending`` is reached that way too, or directly,
-  by ``enter_unreviewed`` below. The rule is ``progress_after_annotating`` in
-  ``domain/task.py``, and it is applied through this service's own unit of work
-  so that labels and progress commit together. ``unannotated`` and ``annotated``
-  are ``WRITABLE_PROGRESS``, and a write through ``add``, ``update`` or
-  ``delete`` onto any of the other three is refused with ``AssetNotWritable``:
-  the progress machine has no account of it, and for a ``skipped`` asset the
-  labels would be stored and then dropped at promotion with nothing saying so.
-- **A model can also write straight to ``review_pending``, unattended.**
+  asset moves it ``unannotated -> annotated``, or, on a model's still-untouched
+  guess, ``pre_labeled -> annotated``; deleting the last moves either back to
+  ``unannotated``. ``skipped``, ``review_pending`` and ``accepted`` are people's
+  decisions and stay with ``JobService.mark``. The rule is
+  ``progress_after_annotating`` in ``domain/task.py``, and it is applied through
+  this service's own unit of work so that labels and progress commit together.
+  ``unannotated``, ``pre_labeled`` and ``annotated`` are ``WRITABLE_PROGRESS``,
+  and a write through ``add``, ``update`` or ``delete`` onto any of the other
+  three is refused with ``AssetNotWritable``: the progress machine has no
+  account of it, and for a ``skipped`` asset the labels would be stored and then
+  dropped at promotion with nothing saying so.
+- **A model can also write straight to ``pre_labeled``, unattended.**
   ``enter_unreviewed`` is the fourth write and the narrowest: every annotation
   must carry ``provenance='model'``, the asset must be exactly ``unannotated``
   AND carry no annotations at all — a labeled-then-skipped-then-restored asset
   reads ``unannotated`` again without its boxes having gone anywhere, so
   progress alone cannot prove untouched — and the labels commit with the move
-  to ``review_pending`` in the same transaction. It is the only door
-  unattended prediction uses — accepting a model's *suggestion* is still a
-  person's hand, and still goes through ``add``.
+  to ``pre_labeled`` in the same transaction. It is the only door unattended
+  prediction uses — accepting a model's *suggestion* is still a person's hand,
+  and still goes through ``add``, landing at ``annotated`` the same way any
+  other edit does.
 
 Both gates above the asset are ``JobService``'s, reused rather than restated:
 this service calls ``require_job``, ``require_open_batch`` and
@@ -198,10 +200,10 @@ class AnnotationService:
         return stored
 
     def enter_unreviewed(self, job_id: UUID, annotations: Sequence[Annotation]) -> list[Annotation]:
-        """Store a model's labels on untouched assets, awaiting review, atomically.
+        """Store a model's labels on untouched assets, unattended, atomically.
 
         The fourth write and the narrowest. Labels and the move to
-        ``review_pending`` commit in one transaction, so a run that dies has
+        ``pre_labeled`` commit in one transaction, so a run that dies has
         either not touched an asset or fully entered it — never left it at
         ``annotated`` carrying labels nobody has looked at.
 
@@ -517,7 +519,7 @@ def _require_model_made(annotation: Annotation) -> None:
     if annotation.provenance != "model":
         raise AnnotationNotFromModel(
             f"annotation {annotation.id} is {annotation.provenance!r}, and only a model's "
-            f"labels enter awaiting review; a person's labels are written through add"
+            f"labels enter unattended; a person's labels are written through add"
         )
 
 

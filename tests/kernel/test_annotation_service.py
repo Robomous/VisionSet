@@ -80,6 +80,7 @@ KIOSK = LabelClass(
 GHOST = LabelClass(name="ghost", geometries=(GeometryType.BBOX,))
 
 UNANNOTATED = AssetProgress.UNANNOTATED
+PRE_LABELED = AssetProgress.PRE_LABELED
 ANNOTATED = AssetProgress.ANNOTATED
 SKIPPED = AssetProgress.SKIPPED
 REVIEW_PENDING = AssetProgress.REVIEW_PENDING
@@ -88,6 +89,7 @@ ACCEPTED = AssetProgress.ACCEPTED
 #: The shortest legal walk from ``unannotated`` to each state.
 _ROUTES: dict[AssetProgress, tuple[AssetProgress, ...]] = {
     UNANNOTATED: (),
+    PRE_LABELED: (PRE_LABELED,),
     ANNOTATED: (ANNOTATED,),
     SKIPPED: (SKIPPED,),
     REVIEW_PENDING: (ANNOTATED, REVIEW_PENDING),
@@ -528,7 +530,7 @@ def test_an_annotation_from_another_workspace_reads_as_missing(tmp_path: Path) -
     stranger.close()
 
 
-# --- progress follows the annotations, and only two edges of it ---------------
+# --- progress follows the annotations, and only for three of its states ------
 
 
 @pytest.mark.parametrize("has_annotations", [True, False], ids=["with", "without"])
@@ -543,7 +545,7 @@ def test_every_move_annotating_can_make_is_one_the_table_allows(
     assert target in ASSET_PROGRESS_TRANSITIONS[current]
 
 
-def test_annotations_only_ever_move_the_two_states_they_are_evidence_of() -> None:
+def test_annotations_only_ever_move_the_states_they_are_evidence_of() -> None:
     """The other three are people's decisions, and stay with `JobService.mark`."""
     moved = {
         current
@@ -551,7 +553,7 @@ def test_annotations_only_ever_move_the_two_states_they_are_evidence_of() -> Non
         for has in (True, False)
         if progress_after_annotating(current, has_annotations=has) is not None
     }
-    assert moved == {UNANNOTATED, ANNOTATED}
+    assert moved == {UNANNOTATED, ANNOTATED, PRE_LABELED}
 
 
 def test_the_first_annotation_moves_the_asset_to_annotated(tmp_path: Path) -> None:
@@ -1137,7 +1139,7 @@ def _prediction(asset_id: UUID, **overrides: Any) -> Annotation:
     )
 
 
-def test_unreviewed_labels_land_with_the_asset_awaiting_review(tmp_path: Path) -> None:
+def test_unreviewed_labels_land_pre_labeled(tmp_path: Path) -> None:
     """The labels and the move are one write, so neither can be seen alone."""
     fixture = Fixture(tmp_path)
     job = fixture.working()
@@ -1147,7 +1149,33 @@ def test_unreviewed_labels_land_with_the_asset_awaiting_review(tmp_path: Path) -
 
     assert stored.provenance == "model"
     assert stored.model_ref == "acme/detector@abc123"
-    assert fixture.progress_of(job, asset_id) is AssetProgress.REVIEW_PENDING
+    assert fixture.progress_of(job, asset_id) is AssetProgress.PRE_LABELED
+    fixture.close()
+
+
+def test_unreviewed_labels_land_pre_labeled_and_stay_editable(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+
+    fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+
+    assert fixture.progress_of(job, asset_id) is AssetProgress.PRE_LABELED
+    # The point of the whole change: a person can correct it with no move first.
+    fixture.annotations.add(job.id, [_box(asset_id)])
+    assert fixture.progress_of(job, asset_id) is AssetProgress.ANNOTATED
+    fixture.close()
+
+
+def test_a_pre_labeled_asset_is_not_a_second_run_s_target(tmp_path: Path) -> None:
+    """`enter_unreviewed` still only ever writes onto untouched assets."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+
+    with pytest.raises(AssetNotWritable):
+        fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
     fixture.close()
 
 
