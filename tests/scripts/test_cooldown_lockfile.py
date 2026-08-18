@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -831,3 +832,37 @@ def test_a_package_the_first_pass_never_saw_has_no_vetted_version_to_name(stubbe
     assert "sidecar==3.0.0" in done.stderr
     assert "holds no version of sidecar" in done.stderr
     assert "to take the vetted versions" not in done.stderr, done.stderr
+
+
+def test_the_command_a_refusal_prints_is_one_the_wrapper_accepts(stubbed) -> None:
+    """The printed command is parsed out of the refusal and run as printed. A test
+    that restated the command instead would prove only that two strings match, and
+    the claim being made is that the line is executable."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(_baseline_plus(ARRIVED))
+    (state / "pass2.lock").write_text(
+        _lock(_entry("settled", "9.0.0", "2099-06-01T00:00:00.000Z"), YOUNG, ROOTED, ARRIVED)
+    )
+
+    refused = _wrapped(project, env, "uv", "add", "arrived")
+    assert refused.returncode == 3, refused.stderr
+    printed = [line for line in refused.stderr.splitlines() if line.startswith("cooldown:   bash ")]
+    assert len(printed) == 1, refused.stderr
+    argv = shlex.split(printed[0][len("cooldown:   ") :])
+    assert argv[:2] == ["bash", str(COOLDOWN)], argv
+
+    # The refusal put uv.lock and pyproject.toml back, so the same command runs
+    # against the same starting state — this time against a resolution that
+    # honours the pin.
+    (state / "count").unlink()
+    (state / "calls.txt").unlink()
+    _both_passes_land(state, _baseline_plus(ARRIVED))
+
+    done = subprocess.run(argv, cwd=project, env=env, capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stderr
+    assert (state / "count").read_text().strip() == "2", "the suggested command went broad"
+    # The caller's pin survives into the second pass and the wrapper's own is
+    # appended after it, rather than over it.
+    assert "pass 2 argv: add arrived -P settled==1.0.0 -P arrived==1.0.0" in _calls(state), _calls(
+        state
+    )
