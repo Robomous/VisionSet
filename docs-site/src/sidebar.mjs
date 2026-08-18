@@ -47,6 +47,7 @@ export const sidebar = [
           { slug: "architecture/backend/mcp" },
           { slug: "architecture/backend/jobs" },
           { slug: "architecture/backend/inference" },
+          { slug: "architecture/backend/providers" },
           { slug: "architecture/backend/formats" },
         ],
       },
