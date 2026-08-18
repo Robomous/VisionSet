@@ -1198,8 +1198,87 @@ describe("the bulk bar", () => {
 
     expect((screen.getByTestId("bulk-skip") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId("bulk-restore") as HTMLButtonElement).disabled).toBe(true);
-    // Said once, where two zeroes on two buttons would just look broken.
-    expect(screen.getByTestId("bulk-unavailable").textContent).toContain("skipped or restored");
+    expect((screen.getByTestId("bulk-return") as HTMLButtonElement).disabled).toBe(true);
+    // Said once, where three zeroes on three buttons would just look broken.
+    expect(screen.getByTestId("bulk-unavailable").textContent).toContain(
+      "skipped, restored or returned to the annotator",
+    );
+  });
+
+  it("offers Return to annotator for a review_pending frame the wire declares it on", async () => {
+    await withFrames("review_pending", "unannotated");
+    selectAll(2);
+
+    // One of the two: `review_pending` is the frame the move exists for, and
+    // `unannotated` declares none of the three moves this bar offers.
+    expect((screen.getByTestId("bulk-return") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByTestId("bulk-return").textContent).toContain("(1)");
+  });
+
+  it("leaves Return to annotator disabled on a selection with nothing to return", async () => {
+    await withFrames("unannotated", "annotated");
+    selectAll(2);
+
+    expect((screen.getByTestId("bulk-return") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("bulk-return").textContent).toContain("(0)");
+  });
+
+  it("sends review_pending → annotated for the frames selected, and only those", async () => {
+    await withFrames("review_pending", "review_pending", "annotated");
+    selectAll(3);
+    await userEvent.click(screen.getByTestId("bulk-return"));
+
+    await waitFor(() =>
+      expect(sentProgress()).toEqual([
+        { path: `/jobs/${JOB}/assets/asset-0/progress`, progress: "annotated" },
+        { path: `/jobs/${JOB}/assets/asset-1/progress`, progress: "annotated" },
+      ]),
+    );
+  });
+
+  it("moves the selection and the gallery reflects it, not just the request", async () => {
+    // A stateful stub, unlike `withFrames`'s fixed page: this is the one test in
+    // the file that has to prove the *tile* changed, not only that a request
+    // went out, so `/assets` has to answer differently after the write lands.
+    const items = [tile(0, "review_pending", "in_annotation"), tile(1, "annotated", "in_annotation")];
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({
+        state: "in_annotation",
+        schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 2, review_pending: 1, annotated: 1 },
+      }),
+    });
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname.endsWith("/assets")) {
+        return { status: 200, body: { total: items.length, items } };
+      }
+      if (request.method === "PUT" && url.pathname.endsWith("/progress")) {
+        const assetId = url.pathname.split("/").at(-2) ?? "";
+        const item = items.find((one) => (one.id as string) === assetId);
+        if (item !== undefined) {
+          item.progress = "annotated";
+          item.allowed_actions = assetActions("annotated", { batchState: "in_annotation" });
+        }
+        return { status: 200, body: { asset_id: assetId, progress: "annotated" } };
+      }
+      return undefined;
+    });
+    on("GET", /\/annotations$/, { status: 200, body: [] });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    await screen.findByTestId("tile-asset-0");
+    expect(screen.getByTestId("state-asset-0").textContent).toContain("in review");
+
+    await userEvent.click(screen.getByTestId("select-asset-0"));
+    await userEvent.click(screen.getByTestId("bulk-return"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("state-asset-0").textContent).toContain("annotated"),
+    );
+    // Its own count moves with it, read off the same refetched page.
+    expect(screen.getByTestId("state-asset-1").textContent).toContain("annotated");
   });
 
   /**
@@ -1441,6 +1520,20 @@ describe("the bulk bar", () => {
       expect(said.textContent).toContain("3 refused");
       // Three identical sentences is not more information than one.
       expect(said.textContent?.match(/not open for annotation/g)).toHaveLength(1);
+    });
+
+    it("renders a Return to annotator refusal as a sentence, not a code", async () => {
+      await withFrames("review_pending");
+      refuse({ code: "ASSET_NOT_WRITABLE", message: "asset ... is not writable" });
+      selectAll(1);
+      await userEvent.click(screen.getByTestId("bulk-return"));
+
+      const said = await screen.findByTestId("bulk-partial");
+      expect(said.textContent).toContain("0 moved");
+      expect(said.textContent).toContain(
+        "This frame's labeling is settled — its labels cannot be changed here.",
+      );
+      expect(said.textContent).not.toContain("ASSET_NOT_WRITABLE");
     });
 
     it("says somebody else moved the frame, for the refusal that means that (#302)", async () => {

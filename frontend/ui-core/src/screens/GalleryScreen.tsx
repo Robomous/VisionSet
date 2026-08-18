@@ -1315,14 +1315,22 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
 /**
  * What to do with a selection — and only what it can actually do.
  *
- * ## Two actions, because a skip is a decision and decisions get reversed
+ * ## Reversals, because a decision made in bulk gets corrected in bulk too
  *
  * Without `Restore`, `skipped → unannotated` — which the kernel calls "the
  * decision was reversed while the job is open" — has **no spelling anywhere in the
  * browser**, and a mis-aimed shift-click over forty frames is unrecoverable
  * without opening each one in the annotator.
  *
- * `Remove from batch` is the third, and it is **not** called `Delete frames`
+ * `Return to annotator` answers the same gap for `review_pending → annotated`,
+ * which only started arriving in bulk once pre-labeling could put forty-eight
+ * frames into `review_pending` in one action. It is named for the act rather
+ * than the edge — `capabilities.py`'s own reasoning: "back to annotated
+ * describes the table, return to annotator describes the act" — and it never
+ * widens which progress a bulk action can *reach*; it only adds the one edge
+ * the wire already declared and the gallery could not yet ask for.
+ *
+ * `Remove from batch` is the fourth, and it is **not** called `Delete frames`
  * anywhere — control, dialog or report. "Delete" is the wrong word by exactly the
  * amount the confirmation would have to un-teach: this removes membership, and the
  * frame stays in its project, keeps its annotations and stays in every other batch
@@ -1405,6 +1413,7 @@ function BulkBar({
 
   const skippable = targets(ASSET_ACTION.skip);
   const restorable = targets(ASSET_ACTION.restore);
+  const returnable = targets(ASSET_ACTION.returnToAnnotator);
 
   /**
    * Why nothing here can be pressed, when nothing can.
@@ -1482,6 +1491,24 @@ function BulkBar({
       </Button>
 
       {/*
+        `review_pending → annotated`, the same shape as `Restore` above and the
+        same reason: pre-labeling can put forty-eight frames into
+        `review_pending` in one action, and until now the only way back was
+        `return_to_annotator` pressed one frame at a time in the annotator.
+      */}
+      <Button
+        variant="secondary"
+        size="sm"
+        data-testid="bulk-return"
+        disabled={returnable.length === 0 || bulk.isPending}
+        {...(withheld === null ? {} : { title: withheld })}
+        onClick={() => bulk.mutate({ targets: returnable, progress: "annotated" })}
+      >
+        <Undo2 className="size-4" aria-hidden="true" />
+        {bulk.isPending ? "Working…" : `Return to annotator (${returnable.length})`}
+      </Button>
+
+      {/*
         Batch-level, so it is enabled or disabled for the whole selection rather
         than counting targets like the two above. Disabled-with-reason rather
         than hidden: taking frames out of a batch is meaningful on this screen in
@@ -1541,15 +1568,14 @@ function BulkBar({
       {/*
         Said once, and only when it is the whole story — but which story it is
         depends on whether the *batch* is closed or the *frames* are settled.
-        `accepted` has no exit at all and `review_pending` leaves only towards a
-        reviewer, so a selection of those in an open batch is a selection this bar
-        genuinely cannot act on. A completed batch is a different sentence with a
-        different remedy, and running them together is what made a closed batch
-        read as a broken bar.
+        `accepted` has no exit at all, so a selection of only `accepted` frames
+        in an open batch is a selection this bar genuinely cannot act on. A
+        completed batch is a different sentence with a different remedy, and
+        running them together is what made a closed batch read as a broken bar.
       */}
-      {skippable.length === 0 && restorable.length === 0 && (
+      {skippable.length === 0 && restorable.length === 0 && returnable.length === 0 && (
         <span className="text-meta text-muted-foreground" data-testid="bulk-unavailable">
-          {withheld ?? "Nothing here can be skipped or restored."}
+          {withheld ?? "Nothing here can be skipped, restored or returned to the annotator."}
           {/*
             The sentence says "corrections happen in a correction batch" and
             points at the header's control, and the selection this bar is

@@ -898,3 +898,53 @@ describe("principle 10 — no exit loses work", () => {
     expect(screen.getByTestId("save-state")).toBeDefined();
   });
 });
+
+describe("the review_pending read-only notice names its remedy", () => {
+  it("names Return to annotator on the banner while the batch is open", async () => {
+    progress = "review_pending";
+    await open();
+
+    // `settledBecause` for `review_pending`, read off the general read-only
+    // banner — the same surface `accepted` and `unannotated`-elsewhere use, and
+    // the one `skipped` alone is exempted from.
+    const said = screen.getByTestId("readonly-banner");
+    expect(said.textContent).toMatch(/return it to the annotator/i);
+
+    // The control the sentence names is real, on this toolbar, gated on the
+    // same wire declaration.
+    await userEvent.click(screen.getByTestId("more-actions"));
+    expect(await screen.findByTestId("return-to-annotator")).toBeDefined();
+  });
+
+  it("withholds the sentence once the batch is closed, and the control with it", async () => {
+    // `return_to_annotator` is withheld by the wire once the batch stops being
+    // `in_annotation` — `assetActions` answers `[]` for every progress there —
+    // so the closed-batch sentence takes over rather than naming a move that
+    // no longer exists.
+    progress = "review_pending";
+    closedBatch = true;
+    await open();
+
+    const said = screen.getByTestId("readonly-banner");
+    expect(said.textContent).not.toMatch(/return it to the annotator/i);
+    expect(said.textContent).toContain("Viewing only");
+
+    await userEvent.click(screen.getByTestId("more-actions"));
+    expect(screen.queryByTestId("return-to-annotator")).toBeNull();
+  });
+
+  it("sends review_pending → annotated when the toolbar's own control is pressed", async () => {
+    progress = "review_pending";
+    await open();
+
+    await userEvent.click(screen.getByTestId("more-actions"));
+    await userEvent.click(await screen.findByTestId("return-to-annotator"));
+
+    await waitFor(() =>
+      expect(sent.some((request) => request.path.endsWith("/progress"))).toBe(true),
+    );
+    expect(sent.find((request) => request.path.endsWith("/progress"))?.body).toContain(
+      "annotated",
+    );
+  });
+});
