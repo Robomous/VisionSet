@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -723,3 +724,145 @@ def test_a_narrowed_lock_upgrade_is_audited_like_an_add(stubbed) -> None:
     assert done.returncode == 3, done.stderr
     assert "settled==9.0.0" in done.stderr
     assert (project / "uv.lock").read_text() == before_lock
+
+
+# --------------------------------------------------------------------------
+# What a refusal says
+# --------------------------------------------------------------------------
+#
+# A package the resolution forces upward is neither new nor named, so the pin rule
+# leaves it alone, the second pass takes its newest release, and the audit refuses
+# the lot. The first pass resolved a version of it the cool-down vets, and these
+# cases are about that answer reaching the person reading the refusal instead of
+# dying with the snapshot.
+
+DRIFTING = _entry("drifting", "1.0.0", "1999-02-01T00:00:00.000Z")
+
+
+def test_a_transitively_upgraded_package_is_refused_with_its_vetted_version(stubbed) -> None:
+    """`settled` is in the lockfile and nobody named it, so it carries no pin. The
+    second pass moves it anyway; the first pass says 1.0.0 is what the cool-down
+    allows, and that is what the refusal has to report."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(_baseline_plus(ARRIVED))
+    (state / "pass2.lock").write_text(
+        _lock(_entry("settled", "9.0.0", "2099-06-01T00:00:00.000Z"), YOUNG, ROOTED, ARRIVED)
+    )
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 3, done.stderr
+    assert "settled==9.0.0" in done.stderr
+    assert "cooldown: the cool-down vets settled==1.0.0." in done.stderr
+    assert "cooldown: to take the vetted versions, re-run with:" in done.stderr
+    assert f"cooldown:   bash {COOLDOWN} uv add arrived -P settled==1.0.0" in done.stderr
+
+
+def test_every_refused_package_lands_on_one_re_run_command(stubbed) -> None:
+    """Two violations, one command. A command per package would be refused for the
+    next package in the list before it could do anything."""
+    project, state, env = stubbed
+    (project / "uv.lock").write_text(_lock(SETTLED, DRIFTING, YOUNG, ROOTED))
+    (state / "pass1.lock").write_text(_lock(SETTLED, DRIFTING, YOUNG, ROOTED, ARRIVED))
+    (state / "pass2.lock").write_text(
+        _lock(
+            _entry("settled", "9.0.0", "2099-06-01T00:00:00.000Z"),
+            _entry("drifting", "8.0.0", "2099-07-01T00:00:00.000Z"),
+            YOUNG,
+            ROOTED,
+            ARRIVED,
+        )
+    )
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 3, done.stderr
+    assert "cooldown: the cool-down vets drifting==1.0.0." in done.stderr
+    assert "cooldown: the cool-down vets settled==1.0.0." in done.stderr
+    assert (
+        f"cooldown:   bash {COOLDOWN} uv add arrived "
+        "-P drifting==1.0.0 -P settled==1.0.0" in done.stderr
+    ), done.stderr
+
+
+def test_a_violation_the_wrapper_pinned_gets_no_advice(stubbed) -> None:
+    """`arrived` is new, so the wrapper pinned it to the vetted version and the
+    resolution produced something else anyway. Printing the same pin back would be
+    advice that provably cannot work."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(_baseline_plus(ARRIVED))
+    (state / "pass2.lock").write_text(
+        _baseline_plus(_entry("arrived", "9.0.0", "2099-06-01T00:00:00.000Z"))
+    )
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 3, done.stderr
+    assert "arrived==9.0.0" in done.stderr
+    assert "arrived was pinned to the version the cool-down vets" in done.stderr
+    assert "to take the vetted versions" not in done.stderr, done.stderr
+    assert "-P arrived==1.0.0" not in done.stderr, done.stderr
+
+
+def test_a_violation_the_caller_pinned_gets_no_advice(stubbed) -> None:
+    """A `-P name==version` the caller wrote is a version chosen on purpose. The
+    wrapper appends no pin over it, and it has none of its own to offer either."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(_lock(SETTLED_MOVED, YOUNG, ROOTED))
+    (state / "pass2.lock").write_text(
+        _lock(_entry("settled", "9.0.0", "2099-06-01T00:00:00.000Z"), YOUNG, ROOTED)
+    )
+
+    done = _wrapped(project, env, "uv", "lock", "-P", "settled==2.0.0")
+    assert done.returncode == 3, done.stderr
+    assert "settled==9.0.0" in done.stderr
+    assert "settled was pinned to the version the cool-down vets" in done.stderr
+    assert "to take the vetted versions" not in done.stderr, done.stderr
+
+
+def test_a_package_the_first_pass_never_saw_has_no_vetted_version_to_name(stubbed) -> None:
+    """The second pass pulled in `sidecar`, which the cool-down's own resolution
+    never reached. There is nothing vetted to pin it to, and the refusal says that
+    rather than naming a version nobody resolved."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(_baseline_plus(ARRIVED))
+    (state / "pass2.lock").write_text(
+        _baseline_plus(ARRIVED, _entry("sidecar", "3.0.0", "2099-06-01T00:00:00.000Z"))
+    )
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 3, done.stderr
+    assert "sidecar==3.0.0" in done.stderr
+    assert "holds no version of sidecar" in done.stderr
+    assert "to take the vetted versions" not in done.stderr, done.stderr
+
+
+def test_the_command_a_refusal_prints_is_one_the_wrapper_accepts(stubbed) -> None:
+    """The printed command is parsed out of the refusal and run as printed. A test
+    that restated the command instead would prove only that two strings match, and
+    the claim being made is that the line is executable."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(_baseline_plus(ARRIVED))
+    (state / "pass2.lock").write_text(
+        _lock(_entry("settled", "9.0.0", "2099-06-01T00:00:00.000Z"), YOUNG, ROOTED, ARRIVED)
+    )
+
+    refused = _wrapped(project, env, "uv", "add", "arrived")
+    assert refused.returncode == 3, refused.stderr
+    printed = [line for line in refused.stderr.splitlines() if line.startswith("cooldown:   bash ")]
+    assert len(printed) == 1, refused.stderr
+    argv = shlex.split(printed[0][len("cooldown:   ") :])
+    assert argv[:2] == ["bash", str(COOLDOWN)], argv
+
+    # The refusal put uv.lock and pyproject.toml back, so the same command runs
+    # against the same starting state — this time against a resolution that
+    # honours the pin.
+    (state / "count").unlink()
+    (state / "calls.txt").unlink()
+    _both_passes_land(state, _baseline_plus(ARRIVED))
+
+    done = subprocess.run(argv, cwd=project, env=env, capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stderr
+    assert (state / "count").read_text().strip() == "2", "the suggested command went broad"
+    # The caller's pin survives into the second pass and the wrapper's own is
+    # appended after it, rather than over it.
+    assert "pass 2 argv: add arrived -P settled==1.0.0 -P arrived==1.0.0" in _calls(state), _calls(
+        state
+    )
