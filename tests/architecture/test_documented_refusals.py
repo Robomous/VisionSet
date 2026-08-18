@@ -218,6 +218,87 @@ def _route(name: str) -> tuple[ModuleType, ast.FunctionDef]:
     raise AssertionError(f"no route function named {name!r}")
 
 
+#: Routes whose published enumeration is short today, and by what.
+#:
+#: Every entry is a defect in a published contract. Each is corrected in this same
+#: change and its entry deleted with it, and this constant goes with the last one —
+#: an exemption left behind is a rule this file would no longer prove. Nothing may
+#: be added here.
+KNOWN_SHORT: Final[dict[str, frozenset[str]]] = {
+    "annotations::add_annotations": frozenset(
+        {"INVALID_ANNOTATION", "JOB_FINISHED", "JOB_NOT_FOUND"}
+    ),
+    "annotations::delete_annotations": frozenset(
+        {"ASSET_NOT_IN_JOB", "BATCH_NOT_IN_ANNOTATION", "JOB_FINISHED", "JOB_NOT_FOUND"}
+    ),
+    "annotations::update_annotations": frozenset({"BATCH_NOT_IN_ANNOTATION", "JOB_FINISHED"}),
+    "assets::get_asset": frozenset({"ASSET_NOT_FOUND", "PROJECT_NOT_FOUND"}),
+    "assets::get_asset_content": frozenset({"ASSET_NOT_FOUND", "PROJECT_NOT_FOUND"}),
+    "assets::get_asset_thumbnail": frozenset({"ASSET_NOT_FOUND", "PROJECT_NOT_FOUND"}),
+    "assets::list_asset_batches": frozenset(
+        {"ASSET_NOT_FOUND", "BATCH_NOT_FOUND", "PROJECT_NOT_FOUND"}
+    ),
+    "background_jobs::get_background_job_artifact": frozenset({"BACKGROUND_JOB_NOT_FOUND"}),
+    "batches::add_batch_assets": frozenset({"BATCH_NOT_FOUND"}),
+    "batches::approve_batch": frozenset({"BATCH_NOT_FOUND"}),
+    "batches::complete_batch": frozenset({"INVALID_TRANSITION"}),
+    "batches::create_correction_batch": frozenset({"INVALID_TRANSITION"}),
+    "batches::list_batch_assets": frozenset({"BATCH_NOT_FOUND"}),
+    "datasets::list_dataset_assets": frozenset({"DATASET_NOT_FOUND"}),
+    "datasets::remove_dataset_asset": frozenset({"DATASET_NOT_FOUND"}),
+    "inference::suggest_region": frozenset(
+        {
+            "ASSET_NOT_FOUND",
+            "INFERENCE_CONNECTION_NOT_FOUND",
+            "PROJECT_NOT_FOUND",
+            "UNSUPPORTED_PROMPT",
+        }
+    ),
+    "jobs::complete_job": frozenset({"BATCH_NOT_IN_ANNOTATION", "INVALID_TRANSITION"}),
+    "jobs::set_asset_progress": frozenset({"BATCH_NOT_IN_ANNOTATION", "STALE_WRITE"}),
+    "jobs::start_job": frozenset({"INVALID_TRANSITION"}),
+    "releases::export_release": frozenset({"RELEASE_NOT_FOUND"}),
+    "releases::get_release_assignment": frozenset({"RELEASE_NOT_FOUND"}),
+    "releases::publish_release": frozenset({"DATASET_NOT_FOUND", "UNSERIALIZABLE_MANIFEST"}),
+    "schemas::create_schema_version": frozenset({"SCHEMA_VERSION_CONFLICT"}),
+    "schemas::get_schema_draft": frozenset({"PROJECT_NOT_FOUND", "SCHEMA_DRAFT_NOT_FOUND"}),
+    "schemas::publish_schema_draft": frozenset({"SCHEMA_VERSION_CONFLICT"}),
+    "sources::register_image_source": frozenset({"INVALID_NAME"}),
+    "sources::register_video_source": frozenset({"CORRUPT_MEDIA", "UNSUPPORTED_MEDIA"}),
+    "sources::start_ingest": frozenset({"BATCH_NOT_FOUND", "SOURCE_NOT_FOUND"}),
+}
+
+
+def shortfalls() -> dict[str, frozenset[str]]:
+    """Every route whose docstring names a status and enumerates it short."""
+    found: dict[str, frozenset[str]] = {}
+    for module, node in route_functions():
+        missing = missing_codes(ast.get_docstring(node) or "", reachable_codes(module, node)[0])
+        if missing:
+            found[f"{module.__name__.rsplit('.', 1)[-1]}::{node.name}"] = missing
+    return found
+
+
+def test_no_documented_status_is_enumerated_short() -> None:
+    assert shortfalls() == KNOWN_SHORT, (
+        "a published docstring names a status and not every refusal it can answer "
+        "at that status; name the missing codes, or stop naming the status"
+    )
+
+
+def test_every_route_in_play_reaches_something_that_declares_what_it_raises() -> None:
+    """A route this gate cannot see into must not read as one it has cleared."""
+    unprovable = sorted(
+        f"{module.__name__.rsplit('.', 1)[-1]}::{node.name}"
+        for module, node in route_functions()
+        if named_statuses(ast.get_docstring(node) or "") and not reachable_codes(module, node)[1]
+    )
+    assert unprovable == [], (
+        "these routes document a refusal but call nothing that declares what it "
+        "raises, so nothing here was proved; give the service or helper a Raises: block"
+    )
+
+
 def test_declared_raises_reads_a_block_and_stops_at_the_next_section() -> None:
     def documented() -> None:
         """One line.

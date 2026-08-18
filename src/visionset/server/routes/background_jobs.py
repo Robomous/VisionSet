@@ -60,6 +60,9 @@ def _require(workspace: WorkspaceDep, job_id: UUID) -> BackgroundJob:
     dispatcher — treats a vanished row as "stop" and would otherwise have to write
     a ``try``. Turning that into the domain error is this layer's job, and doing it
     once here is what keeps the three routes below from each spelling it.
+
+    Raises:
+        BackgroundJobNotFound: no such job in this workspace.
     """
     job = workspace.job_queue.get(job_id)
     if job is None:
