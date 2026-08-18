@@ -336,11 +336,13 @@ def pre_label_batch(
     `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no
     class a box can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
 
-    One failure is about this installation rather than about the request, and
-    answers 500 carrying the message that says so: a machine without the
+    Two failures are about this installation rather than about the request, and
+    answer 500 carrying the message that says which: a machine without the
     optional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the
-    exact command that installs it. Not worth resending unchanged — there is
-    no state here to change, so the remedy is the one the message names.
+    exact command that installs it, and a workspace whose records no longer
+    hold together — a batch pinned to a schema version that is not stored — is
+    `WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no
+    state here a caller can change, so the remedy is the one the message names.
 
     **Asking twice joins the run already in flight rather than starting a second
     one.** A request arriving while this batch has a pre-labeling run queued or
