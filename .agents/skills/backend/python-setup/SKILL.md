@@ -38,6 +38,13 @@ had three days to look at. uv has no rolling setting for it — `--exclude-newer
 dates only — so `scripts/cooldown.sh` computes the cutoff at the moment of the call and exports
 `UV_EXCLUDE_NEWER`. Use it for anything that **resolves**: `uv add`, `uv lock`, `uv pip install`.
 
+`uv add` through the wrapper is narrowed: a cutoff makes uv discard the lockfile and re-resolve
+everything, so the wrapper runs the add twice — once under the cutoff to learn which release the
+cool-down allows, then again with no cutoff, pinning it — and the diff is the package you asked
+for rather than every pin in the file. It audits the result and refuses with exit 3 if the add
+needed a version published inside the window, leaving `uv.lock` and `pyproject.toml` untouched.
+`uv lock` is not narrowed: a refresh moving the whole set is what a refresh is.
+
 Do **not** put it in front of `uv sync`. A cutoff on a plain sync makes uv discard the lockfile and
 re-resolve (`Ignoring existing lockfile due to addition of timestamp cutoff`), which is the opposite
 of what a sync is for; CI uses `uv sync --locked` so it cannot happen there. The cool-down governs
