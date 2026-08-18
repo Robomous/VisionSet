@@ -8595,7 +8595,7 @@
     },
     "/jobs/{job_id}/assets/{asset_id}/progress": {
       "put": {
-        "description": "Record where one asset of this job has got to.\n\nOne route rather than five verbs, because the legal moves are a table in the\nkernel and a second spelling of it would drift: `unannotated` to `annotated`\nor `skipped`, `annotated` to `review_pending` or back, `review_pending` to\n`accepted` or back to `annotated`, and `accepted` nowhere at all. Anything\nelse is 409 `INVALID_TRANSITION`.\n\nSetting the state an asset is already in is a no-op rather than a refusal \u2014\nbut the batch gate fires first, so writing into a closed batch is refused\nwhether or not the value would have changed.\n\nLabels move `unannotated` and `annotated` on their own as annotations are\nadded and deleted. This route is for the decisions that are nobody's\nconsequence: skipping, submitting for review, accepting.",
+        "description": "Record where one asset of this job has got to.\n\nOne route rather than five verbs, because the legal moves are a table in the\nkernel and a second spelling of it would drift: `unannotated` to `annotated`\nor `skipped`, `annotated` to `review_pending` or back, `review_pending` to\n`accepted` or back to `annotated`, and `accepted` nowhere at all. Anything\nelse is 409 `INVALID_TRANSITION`.\n\nSetting the state an asset is already in is a no-op rather than a refusal \u2014\nbut the batch gate fires first, so writing into a closed batch is refused\nwhether or not the value would have changed: 409 `BATCH_NOT_IN_ANNOTATION`.\n\n409 `STALE_WRITE` is the other one, and it is not the same complaint: the\nmove was legal from the state the caller read, and somebody else moved the\nasset in between. Re-read the progress and decide again \u2014 resending this\nrequest unchanged would land a decision made about a state nobody is in any\nmore.\n\nLabels move `unannotated` and `annotated` on their own as annotations are\nadded and deleted. This route is for the decisions that are nobody's\nconsequence: skipping, submitting for review, accepting.",
         "operationId": "set_asset_progress",
         "parameters": [
           {
@@ -8813,7 +8813,7 @@
     },
     "/jobs/{job_id}/complete": {
       "post": {
-        "description": "Close the job, if every asset in it has been dealt with.\n\nDealt with means `annotated`, `skipped` or `accepted`. An `unannotated` asset\nmeans the labeling has not happened and a `review_pending` one means the\nreview has not; either answers 409 `JOB_NOT_COMPLETE` and says how many are\noutstanding.\n\nCompleting a job does not complete its batch \u2014 `POST /batches/{id}/complete`\nderives that from all of them.",
+        "description": "Close the job, if every asset in it has been dealt with.\n\nDealt with means `annotated`, `skipped` or `accepted`. An `unannotated` asset\nmeans the labeling has not happened and a `review_pending` one means the\nreview has not; either answers 409 `JOB_NOT_COMPLETE` and says how many are\noutstanding.\n\nA job that is not `in_progress` is 409 `INVALID_TRANSITION`, and a batch that\nis not open for annotation is 409 `BATCH_NOT_IN_ANNOTATION`. Neither has a\nremedy on this route: `completed` is where the table ends, so settled work is\ncorrected through a new batch rather than reopened.\n\nCompleting a job does not complete its batch \u2014 `POST /batches/{id}/complete`\nderives that from all of them.",
         "operationId": "complete_job",
         "parameters": [
           {
@@ -9103,7 +9103,7 @@
     },
     "/jobs/{job_id}/start": {
       "post": {
-        "description": "Take the job from `pending` to `in_progress`.\n\nThe batch has to be open first: a job in a batch nobody started is 409\n`BATCH_NOT_IN_ANNOTATION`.",
+        "description": "Take the job from `pending` to `in_progress`.\n\nThe batch has to be open first: a job in a batch nobody started is 409\n`BATCH_NOT_IN_ANNOTATION`. A job that is not `pending` has no such move to\nmake and is 409 `INVALID_TRANSITION` \u2014 the table runs one way, so a job that\nis already in progress or finished never starts again.",
         "operationId": "start_job",
         "parameters": [
           {

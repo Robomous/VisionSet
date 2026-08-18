@@ -1326,7 +1326,13 @@ export interface paths {
          *
          *     Setting the state an asset is already in is a no-op rather than a refusal —
          *     but the batch gate fires first, so writing into a closed batch is refused
-         *     whether or not the value would have changed.
+         *     whether or not the value would have changed: 409 `BATCH_NOT_IN_ANNOTATION`.
+         *
+         *     409 `STALE_WRITE` is the other one, and it is not the same complaint: the
+         *     move was legal from the state the caller read, and somebody else moved the
+         *     asset in between. Re-read the progress and decide again — resending this
+         *     request unchanged would land a decision made about a state nobody is in any
+         *     more.
          *
          *     Labels move `unannotated` and `annotated` on their own as annotations are
          *     added and deleted. This route is for the decisions that are nobody's
@@ -1380,6 +1386,11 @@ export interface paths {
          *     means the labeling has not happened and a `review_pending` one means the
          *     review has not; either answers 409 `JOB_NOT_COMPLETE` and says how many are
          *     outstanding.
+         *
+         *     A job that is not `in_progress` is 409 `INVALID_TRANSITION`, and a batch that
+         *     is not open for annotation is 409 `BATCH_NOT_IN_ANNOTATION`. Neither has a
+         *     remedy on this route: `completed` is where the table ends, so settled work is
+         *     corrected through a new batch rather than reopened.
          *
          *     Completing a job does not complete its batch — `POST /batches/{id}/complete`
          *     derives that from all of them.
@@ -1457,7 +1468,9 @@ export interface paths {
          * @description Take the job from `pending` to `in_progress`.
          *
          *     The batch has to be open first: a job in a batch nobody started is 409
-         *     `BATCH_NOT_IN_ANNOTATION`.
+         *     `BATCH_NOT_IN_ANNOTATION`. A job that is not `pending` has no such move to
+         *     make and is 409 `INVALID_TRANSITION` — the table runs one way, so a job that
+         *     is already in progress or finished never starts again.
          */
         post: operations["start_job"];
         delete?: never;
