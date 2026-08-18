@@ -89,6 +89,7 @@ from visionset.inference.prelabel import (
     detectable_classes,
     no_detectable_class_message,
     pre_label,
+    require_detectable_schema,
     unsupported_prompt_message,
 )
 from visionset.inference.providers import ProviderPool, provider_for, resident
@@ -199,6 +200,7 @@ __all__ = [
     "pre_label",
     "provider_for",
     "require",
+    "require_detectable_schema",
     "resident",
     "suggest",
     "suppressed",

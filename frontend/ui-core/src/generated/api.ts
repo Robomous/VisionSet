@@ -414,12 +414,18 @@ export interface paths {
          *     in assets.
          *
          *     **Everything a caller can be told now is told now**, and no refusal creates a
-         *     job — so a caller holding a job id holds one that will run. A batch that is
-         *     not `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a connection whose model
-         *     answers places rather than words is 422 `UNSUPPORTED_PROMPT`; a pinned schema
-         *     with no class a box can be written as is 409
-         *     `SCHEMA_HAS_NO_DETECTABLE_CLASS`; a deployment without the local runtime is
-         *     refused here too, with the exact install command in the message.
+         *     job — so a caller holding a job id holds one that will run. These refusals
+         *     are about the request, and the caller can act on each: a batch that is not
+         *     `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a connection whose model
+         *     answers places rather than words is 422 `UNSUPPORTED_PROMPT`; a pinned
+         *     schema with no class a box can be written as is 409
+         *     `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+         *
+         *     One failure is about this installation rather than about the request, and
+         *     answers 500 carrying the message that says so: a machine without the
+         *     optional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the
+         *     exact command that installs it. Not worth resending unchanged — there is
+         *     no state here to change, so the remedy is the one the message names.
          *
          *     **Asking twice joins the run already in flight rather than starting a second
          *     one.** A request arriving while this batch has a pre-labeling run queued or

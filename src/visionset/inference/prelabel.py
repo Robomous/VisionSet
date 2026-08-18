@@ -36,6 +36,7 @@ from visionset.kernel.domain import (
     AnnotationSchema,
     AssetPrediction,
     AssetProgress,
+    Batch,
     GeometryType,
     PredictionRequest,
     PredictionTarget,
@@ -128,6 +129,33 @@ def detectable_classes(schema: AnnotationSchema) -> tuple[str, ...]:
     )
 
 
+def require_detectable_schema(workspace: WorkspaceService, batch: Batch) -> AnnotationSchema:
+    """The pinned schema of a batch already established as pre-labelable, or the refusal.
+
+    The one read the route and the orchestration both need before they can go
+    on — resolved here once so neither repeats the other's guard or drifts from
+    it. ``batch`` is expected to have already passed
+    :meth:`BatchService.require_pre_labelable`, which is what makes a ``None``
+    pin unreachable rather than merely unlikely.
+
+    Raises:
+        WorkspaceCorrupt: the batch is open but pinned no schema version — a
+            broken invariant, since approval is what pins one and it is never
+            unset.
+        SchemaHasNoDetectableClass: the pinned schema holds no class a
+            detection could be written as.
+    """
+    if batch.schema_version is None:
+        raise WorkspaceCorrupt(
+            f"batch {batch.name!r} is {batch.state.value!r} but pinned no schema version; "
+            "approval is what pins one, and it is never unset"
+        )
+    schema = SchemaService(workspace).get(batch.project_id, batch.schema_version)
+    if not detectable_classes(schema):
+        raise SchemaHasNoDetectableClass(no_detectable_class_message(schema.version))
+    return schema
+
+
 def pre_label(
     workspace: WorkspaceService,
     *,
@@ -168,19 +196,8 @@ def pre_label(
 
     batches = BatchService(workspace)
     batch = batches.require_pre_labelable(batch_id)
-    if batch.schema_version is None:
-        # Unreachable through the check above: approval is what pins a schema
-        # version, and `require_pre_labelable` has just established this batch
-        # is open for annotation, which only follows approval. A `None` here is
-        # a broken invariant rather than a missing schema.
-        raise WorkspaceCorrupt(
-            f"batch {batch.name!r} is {batch.state.value!r} but pinned no schema version; "
-            "approval is what pins one, and it is never unset"
-        )
-    schema = SchemaService(workspace).get(batch.project_id, batch.schema_version)
+    schema = require_detectable_schema(workspace, batch)
     phrases = detectable_classes(schema)
-    if not phrases:
-        raise SchemaHasNoDetectableClass(no_detectable_class_message(schema.version))
 
     jobs = batches.jobs(batch_id)
     targets = _untouched(jobs)

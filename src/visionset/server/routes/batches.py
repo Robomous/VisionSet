@@ -37,8 +37,7 @@ from fastapi import Query, Response, status
 from visionset.inference import (
     STUB_MODEL_ID,
     capabilities_of,
-    detectable_classes,
-    no_detectable_class_message,
+    require_detectable_schema,
     unsupported_prompt_message,
 )
 from visionset.inference import require as require_local_inference
@@ -51,14 +50,13 @@ from visionset.kernel.domain import (
     MembershipChange,
     ModelCapability,
 )
-from visionset.kernel.errors import SchemaHasNoDetectableClass, UnsupportedPrompt
+from visionset.kernel.errors import UnsupportedPrompt
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
     InferenceConnectionService,
     JobService,
     ProjectService,
-    SchemaService,
 )
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
@@ -323,12 +321,18 @@ def pre_label_batch(
     in assets.
 
     **Everything a caller can be told now is told now**, and no refusal creates a
-    job — so a caller holding a job id holds one that will run. A batch that is
-    not `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a connection whose model
-    answers places rather than words is 422 `UNSUPPORTED_PROMPT`; a pinned schema
-    with no class a box can be written as is 409
-    `SCHEMA_HAS_NO_DETECTABLE_CLASS`; a deployment without the local runtime is
-    refused here too, with the exact install command in the message.
+    job — so a caller holding a job id holds one that will run. These refusals
+    are about the request, and the caller can act on each: a batch that is not
+    `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a connection whose model
+    answers places rather than words is 422 `UNSUPPORTED_PROMPT`; a pinned
+    schema with no class a box can be written as is 409
+    `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+
+    One failure is about this installation rather than about the request, and
+    answers 500 carrying the message that says so: a machine without the
+    optional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the
+    exact command that installs it. Not worth resending unchanged — there is
+    no state here to change, so the remedy is the one the message names.
 
     **Asking twice joins the run already in flight rather than starting a second
     one.** A request arriving while this batch has a pre-labeling run queued or
@@ -348,9 +352,7 @@ def pre_label_batch(
     # row, so it is asked for here the same way the connection wire model asks.
     if ModelCapability.TEXT_DETECT not in capabilities_of(connection.model_family):
         raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
-    schema = SchemaService(workspace).get(batch.project_id, batch.schema_version)
-    if not detectable_classes(schema):
-        raise SchemaHasNoDetectableClass(no_detectable_class_message(schema.version))
+    require_detectable_schema(workspace, batch)
 
     running = service.live_job(batch_id, job_type=pre_label_job_type)
     job = running or workspace.job_queue.enqueue(
