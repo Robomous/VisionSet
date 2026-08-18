@@ -171,10 +171,11 @@ leaves the record intact. The gesture is in [ui.md](ui.md); what it proposes is 
 
 **A second door writes the same provenance unattended.** `AnnotationService.enter_unreviewed` is
 the only other way a `provenance="model"` annotation enters a workspace, and the two doors differ
-on both ends. `add` accepts an asset that is `unannotated` or `annotated` and either provenance,
-and lands new labels at `annotated`; `enter_unreviewed` accepts only an `unannotated` asset and
-only `provenance="model"`, and lands its labels at `review_pending`, because nothing has judged
-what it wrote. The gesture behind it is a batch-level action, not a per-asset one - see
+on both ends. `add` accepts an asset that is `unannotated`, `annotated` or `pre_labeled` and
+either provenance, and lands new labels at `annotated` - taking over a `pre_labeled` asset the
+same way it labels an untouched one; `enter_unreviewed` accepts only an `unannotated` asset and
+only `provenance="model"`, and lands its labels at `pre_labeled`, because nothing has judged what
+it wrote. The gesture behind it is a batch-level action, not a per-asset one - see
 [batches.md](batches.md).
 
 ## `delete` has no `confirm=`
@@ -185,20 +186,22 @@ not the destruction of a lifecycle entity the way deleting a project or a batch 
 lifecycle gates are the guard instead: once the work closes - the batch, or just this job -
 nothing here can touch it at all.
 
-## Progress follows the annotations - three edges of it
+## Progress follows the annotations - five edges of it
 
 | Current | Has annotations | Becomes |
 | --- | --- | --- |
 | `unannotated` | yes, judged (`add`) | `annotated` |
-| `unannotated` | yes, unjudged (`enter_unreviewed`) | `review_pending` |
+| `unannotated` | yes, unjudged (`enter_unreviewed`) | `pre_labeled` |
 | `annotated` | no | `unannotated` |
+| `pre_labeled` | yes, edited by a person (`add`/`update`) | `annotated` |
+| `pre_labeled` | no | `unannotated` |
 | anything else | either | *unchanged* |
 
 `skipped` and `accepted` are people's decisions, not consequences of a row existing, so
 annotations never move them - `JobService.mark` is the only door to either. `review_pending` is
-reached both ways: a person submits through `mark`, or a model's unattended write lands there
-directly. See [jobs.md](jobs.md) for the decision side and the paragraph above for the write
-side.
+the same: a person reaches it only by submitting through `mark`, unaffected by any of the edges
+above - a model's unattended write lands at `pre_labeled`, not there. See [jobs.md](jobs.md) for
+the decision side and the paragraph above for the write side.
 
 The rule is `progress_after_annotating` in `kernel/domain/task.py` - pure, so a test can sweep
 it against `ASSET_PROGRESS_TRANSITIONS` rather than against prose - and `AnnotationService`

@@ -314,11 +314,11 @@ declaring differently depending on which endpoint answered - is worse than one h
 ## Pre-labeling
 
 A batch that is `in_annotation` can ask a text-prompt model to label its **untouched** assets -
-`unannotated`, and carrying no annotations at all. An asset already `annotated`, `skipped`,
-`review_pending` or `accepted` is passed over, and so is an `unannotated` one that still carries a
-person's boxes from an earlier round that was skipped and then restored - progress alone does not
-prove untouched, since that sequence deletes nothing. Either way, a run never writes over what a
-person did.
+`unannotated`, and carrying no annotations at all. An asset already `pre_labeled`, `annotated`,
+`skipped`, `review_pending` or `accepted` is passed over, and so is an `unannotated` one that
+still carries a person's boxes from an earlier round that was skipped and then restored - progress
+alone does not prove untouched, since that sequence deletes nothing. Either way, a run never
+writes over what a person - or an earlier run - did.
 
 **An asset somebody starts working while a run is still going is passed over too, not fatal.** The
 batch is `in_annotation`, so that is the ordinary case rather than a race: the run skips it and
@@ -333,11 +333,14 @@ crossed the boundary between two phrases, most often - is discarded rather than 
 either half; the outcome's `regions_discarded` says how many. A schema with no such class is
 refused up front; see [inference.md](inference.md#what-a-connection-can-be-asked-for).
 
-**What lands enters at `review_pending`, never `annotated`.** Nobody judged it, so it arrives
-awaiting review rather than claiming to be somebody's work - see
-[annotations.md](annotations.md#provenance-is-the-models-own-rule-not-the-services). One asset
-is one transaction: its labels and its move to `review_pending` commit together, so a run that
-stops midway has either not touched an asset or fully entered it.
+**What lands enters at `pre_labeled`, never `annotated`.** Nobody judged it, so it arrives in its
+own editable state rather than claiming to be somebody's work - see
+[annotations.md](annotations.md#provenance-is-the-models-own-rule-not-the-services). It is not
+`review_pending` either: that state is a person's submission, waiting on a reviewer who cannot
+edit it in the meantime, and a detector's unreviewed guesses need correcting far more often than
+a person's finished work needs a second opinion. One asset is one transaction: its labels and its
+move to `pre_labeled` commit together, so a run that stops midway has either not touched an asset
+or fully entered it.
 
 **A second run picks up whatever is still untouched.** Nothing here is a one-shot: since the
 entry rule only ever writes onto `unannotated`, running it again after a partial run, an
