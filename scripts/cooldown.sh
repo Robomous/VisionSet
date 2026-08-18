@@ -44,6 +44,9 @@
 #   bash scripts/cooldown.sh --days                # 3
 #   bash scripts/cooldown.sh --cutoff              # 2026-08-04T09:00:00Z
 #
+#   bash scripts/cooldown.sh --audit old.lock new.lock   # what a resolve moved
+#                                                        # past the cutoff; 3 if any
+#
 # The two query forms exist so the gate in tests/scripts/cooldown.test.mjs and
 # the docs can read the number from here rather than restating it.
 #
@@ -84,43 +87,136 @@ cooldown_cutoff() {
     || date -u -v"-${days}d" +%Y-%m-%dT%H:%M:%SZ
 }
 
-case "${1:-}" in
-  --days)
-    echo "$COOLDOWN_DAYS"
-    exit 0
-    ;;
-  --cutoff)
-    cooldown_cutoff "$COOLDOWN_DAYS"
-    exit 0
-    ;;
-  "" | --help | -h)
-    # To stdout and exit 0 for `--help`, to stderr and exit 2 for no arguments
-    # at all, which is a mistake rather than a question.
-    if [[ "${1:-}" == "" ]]; then
-      echo "usage: cooldown.sh <command> [args...] | --days | --cutoff" >&2
-      exit 2
-    fi
-    sed -n '2,60p' "${BASH_SOURCE[0]}"
-    exit 0
-    ;;
-esac
+# ---------------------------------------------------------------------------
+# The audit: what a resolution moved, and whether the cool-down vetted it.
+# ---------------------------------------------------------------------------
+#
+# uv records `upload-time` on every sdist and wheel it locks, so the lockfile
+# already carries the one fact the cool-down cares about and no index has to be
+# asked. Comparing a candidate lock against the baseline it was resolved from
+# names exactly the packages that resolution moved; any of them carrying an
+# artifact published after the cutoff is a version the cool-down did not vet.
+#
+# Only the packages that moved are judged. One the resolution left alone may well
+# postdate today's cutoff — it entered under an older one, and re-litigating it
+# on every later command is the install-time behaviour this file refuses.
+#
+# LC_ALL=C throughout: `comm` compares bytes, and locale-collated input makes it
+# print "file 1 is not in sorted order" and then produce a wrong answer.
 
-if [[ "$COOLDOWN_DAYS" == "0" ]]; then
-  echo "cooldown: disabled for this invocation (VISIONSET_COOLDOWN_DAYS=0)" >&2
-  exec "$@"
-fi
+# `name=version` for every locked package, one per line. Both keys are matched at
+# column zero, where a nested table's keys are indented and cannot be mistaken for
+# a dependency's name — but the lockfile's own top-level `version = 1` schema
+# field sits at column zero too, so a version line only counts once a name has
+# been seen.
+lock_versions() {
+  awk '/^name = /{n=$3} /^version = / && n != ""{print n"="$3}' "$1" | tr -d '"'
+}
 
-cutoff="$(cooldown_cutoff "$COOLDOWN_DAYS")"
+# Every artifact timestamp for one package, truncated to whole seconds. uv writes
+# fractions on some entries and not others, and ".500Z" sorts *below* a bare "Z"
+# in a byte comparison — truncating both sides is what keeps a stamp half a second
+# past the cutoff from reading as older than it.
+lock_upload_times() {
+  awk -v want="\"$2\"" '
+    /^\[\[package\]\]/ { inpkg = 0 }
+    /^name = /         { inpkg = ($3 == want) }
+    inpkg && match($0, /upload-time = "[^"]+"/) {
+      print substr(substr($0, RSTART + 15, RLENGTH - 16), 1, 19)
+    }
+  ' "$1"
+}
 
-# Announced rather than silent. A resolution that skipped a release is a fact
-# somebody reading a CI log needs, otherwise "why did it not pick 2.1.0" has no
-# answer anywhere.
-echo "cooldown: ${COOLDOWN_DAYS} days — refusing anything published after ${cutoff}" >&2
+# Prints every `name==version` the candidate moved that the cutoff would refuse.
+# Returns 0 when the candidate is clean, 3 when it is not — uv uses 1 and 2, so a
+# cool-down refusal stays distinguishable from a resolution that simply failed.
+audit_lock() {
+  local baseline="$1" candidate="$2" cutoff="${3:0:19}" verdict=0 pair name stamp
+  while read -r pair; do
+    if [[ -z "$pair" ]]; then continue; fi
+    name="${pair%%=*}"
+    while read -r stamp; do
+      # `[[ >` collates under the shell's locale, not raw bytes; force C so this
+      # really is the byte comparison the rest of the file reasons about.
+      if (LC_ALL=C; [[ "$stamp" > "$cutoff" ]]); then
+        echo "$name==${pair#*=}"
+        verdict=3
+        break
+      fi
+    done < <(lock_upload_times "$candidate" "$name")
+  done < <(LC_ALL=C comm -13 <(lock_versions "$baseline" | LC_ALL=C sort) \
+                             <(lock_versions "$candidate" | LC_ALL=C sort))
+  return "$verdict"
+}
 
-# UV_EXCLUDE_NEWER rather than the flag, so this wraps every uv subcommand that
-# resolves — `add`, `lock`, `sync`, `pip install`, `build` — without this script
-# needing to know which spelling each of them accepts.
-export UV_EXCLUDE_NEWER="$cutoff"
+# Only the exact `uv add …` form is narrowed, and only when this call is the
+# only thing that decides where uv works. nearest_lock and state_files both walk
+# from $PWD, so anything that can point uv at a project elsewhere — --directory,
+# --project, --script on the command line, or UV_WORKING_DIR/UV_PROJECT in the
+# environment — takes the broad path instead, which is the safe direction to be
+# wrong in: it applies the cool-down to more than it has to rather than to less.
+is_uv_add() {
+  if [[ "${1:-}" != "uv" || "${2:-}" != "add" ]]; then
+    return 1
+  fi
+  if [[ -n "${UV_WORKING_DIR:-}" || -n "${UV_PROJECT:-}" ]]; then
+    return 1
+  fi
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --directory | --directory=* | --project | --project=* | --script | --script=*)
+        return 1
+        ;;
+    esac
+  done
+  return 0
+}
+
+# uv finds the lockfile by walking up from the working directory, so this walks
+# the same path. Nothing found means nothing to protect.
+nearest_lock() {
+  local dir="$PWD"
+  while :; do
+    if [[ -f "$dir/uv.lock" ]]; then echo "$dir/uv.lock"; return 0; fi
+    if [[ "$dir" == "/" ]]; then return 1; fi
+    dir="$(dirname "$dir")"
+  done
+}
+
+# Everything a resolution can rewrite: the lockfile nearest_lock found and the
+# manifests between here and it. Bounded at that lock's directory rather than
+# walked to `/`, so a stray uv.lock or pyproject.toml above the workspace root —
+# a file uv itself never reads — is neither snapshotted nor restored.
+state_files() {
+  local dir="$PWD" stop
+  stop="$(dirname "$lock")"
+  while :; do
+    if [[ -f "$dir/uv.lock" ]]; then echo "$dir/uv.lock"; fi
+    if [[ -f "$dir/pyproject.toml" ]]; then echo "$dir/pyproject.toml"; fi
+    if [[ "$dir" == "$stop" || "$dir" == "/" ]]; then break; fi
+    dir="$(dirname "$dir")"
+  done
+}
+
+# Snapshots are keyed by the whole path with the separators flattened, so two
+# files with the same basename in different directories cannot collide.
+snapshot_state() {
+  local dir="$1" file
+  while read -r file; do
+    cp "$file" "$dir/$(echo "$file" | tr / _)"
+  done < <(state_files)
+}
+
+# A file with no snapshot did not exist before this run and is removed rather
+# than restored — otherwise a first-ever lock would survive a refusal.
+restore_state() {
+  local dir="$1" file saved
+  while read -r file; do
+    saved="$dir/$(echo "$file" | tr / _)"
+    if [[ -f "$saved" ]]; then cp "$saved" "$file"; else rm -f "$file"; fi
+  done < <(state_files)
+}
 
 # ---------------------------------------------------------------------------
 # The cutoff resolves, and then it must not survive into the lockfile.
@@ -156,6 +252,172 @@ scrub_recorded_cutoff() {
   mv "$tmp" "$lock"
   echo "cooldown: removed the recorded cutoff from ${lock}" >&2
 }
+
+case "${1:-}" in
+  --days)
+    echo "$COOLDOWN_DAYS"
+    exit 0
+    ;;
+  --cutoff)
+    cooldown_cutoff "$COOLDOWN_DAYS"
+    exit 0
+    ;;
+  --audit)
+    if [[ $# -ne 3 ]]; then
+      echo "usage: cooldown.sh --audit <baseline-lock> <candidate-lock>" >&2
+      exit 2
+    fi
+    audit_status=0
+    audit_lock "$2" "$3" "$(cooldown_cutoff "$COOLDOWN_DAYS")" || audit_status=$?
+    exit "$audit_status"
+    ;;
+  "" | --help | -h)
+    # To stdout and exit 0 for `--help`, to stderr and exit 2 for no arguments
+    # at all, which is a mistake rather than a question.
+    if [[ "${1:-}" == "" ]]; then
+      echo "usage: cooldown.sh <command> [args...] | --days | --cutoff | --audit" >&2
+      exit 2
+    fi
+    # Delimited by where the code starts rather than by a line number, so growing
+    # the header above cannot silently truncate the help below.
+    sed -n '2,/^set -euo pipefail$/p' "${BASH_SOURCE[0]}" | sed '$d'
+    exit 0
+    ;;
+esac
+
+if [[ "$COOLDOWN_DAYS" == "0" ]]; then
+  echo "cooldown: disabled for this invocation (VISIONSET_COOLDOWN_DAYS=0)" >&2
+  exec "$@"
+fi
+
+cutoff="$(cooldown_cutoff "$COOLDOWN_DAYS")"
+
+# Announced rather than silent. A resolution that skipped a release is a fact
+# somebody reading a CI log needs, otherwise "why did it not pick 2.1.0" has no
+# answer anywhere.
+echo "cooldown: ${COOLDOWN_DAYS} days — refusing anything published after ${cutoff}" >&2
+
+# UV_EXCLUDE_NEWER rather than the flag, so this wraps every uv subcommand that
+# resolves — `add`, `lock`, `sync`, `pip install`, `build` — without this script
+# needing to know which spelling each of them accepts.
+export UV_EXCLUDE_NEWER="$cutoff"
+
+# ---------------------------------------------------------------------------
+# An add is an add.
+# ---------------------------------------------------------------------------
+#
+# A cutoff is not a filter uv applies to a resolution it already has; it is part
+# of what a lockfile has to agree with, so introducing one makes uv throw the lock
+# away and resolve the whole graph again. For `uv lock` that is the point — a
+# refresh refreshes. For `uv add` it is not: adding one package rewrites every pin
+# in the file, carries a dozen unrelated upgrades into a diff nobody can review
+# for them, and rolls back any version the lockfile holds that is younger than the
+# cutoff, undoing a bump somebody merged this week.
+#
+# Neither `--upgrade-package` nor `--exclude-newer-package` narrows it. The first
+# makes an exception to pinned versions, and once the lock is ignored there are no
+# pinned versions left for it to except; the second invalidates the lock the same
+# way and leaves every *other* package resolving with no cool-down at all.
+#
+# So the add runs twice. The first pass resolves under the cutoff and is thrown
+# away — all it is for is learning which versions the cool-down vets for packages
+# the lockfile does not yet have. The second restores the lockfile and runs with
+# no cutoff, because uv is exactly incremental without one, pinning those versions
+# so the add lands the vetted release rather than the newest one. The audit above
+# then checks the result, since the second pass carried no cool-down of its own.
+if is_uv_add "$@" && lock="$(nearest_lock)"; then
+  snapshot="$(mktemp -d "${TMPDIR:-/tmp}/cooldown.XXXXXX")"
+  # Nothing to restore from until the snapshot is complete: restore_state reads a
+  # missing backup as "this file did not exist before the run" and removes it, so
+  # arming the restoring trap over a half-copied snapshot would delete the very
+  # files it exists to protect. INT and TERM exit rather than fold into the EXIT
+  # trap: without an explicit exit the script would run on past the point it was
+  # interrupted, and could reach a later failure with the snapshot already gone,
+  # turning a second restore_state into a delete instead of a no-op.
+  trap 'rm -rf "$snapshot"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  snapshot_state "$snapshot"
+  cp "$lock" "$snapshot/baseline.lock"
+
+  # A run killed between the two passes must not leave the throwaway first
+  # pass's whole-set re-resolution on disk — that lockfile carries a recorded
+  # cutoff, which is exactly what makes every later `uv sync --locked` refuse
+  # it. Now that the snapshot is complete, the EXIT trap restores from it before
+  # it deletes it, so an interruption from here on undoes the same way an
+  # explicit failure does.
+  trap 'restore_state "$snapshot"; rm -rf "$snapshot"' EXIT
+
+  # Captured with `|| status=$?` rather than `if ! cmd`, because inside the body
+  # of an `if !` the `$?` on offer is the negation's, which is always zero.
+  status=0
+  UV_EXCLUDE_NEWER="$cutoff" UV_NO_SYNC=1 "$@" >&2 || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    echo "cooldown: the add does not resolve under the cutoff; nothing was changed" >&2
+    exit "$status"
+  fi
+
+  # nearest_lock walks from $PWD, but that is only ever a guess at which project
+  # uv itself will resolve. If $PWD has no uv.lock of its own and some ancestor
+  # above it happens to hold a stray one, nearest_lock returns that ancestor's
+  # file while pass 1 resolves — and writes — a lock somewhere else entirely.
+  # Reading $lock for the vetted set would then see a file pass 1 never touched:
+  # an empty vetted set, a second pass with no pins, and no cool-down applied at
+  # all. Pass 1 always stamps `[options] exclude-newer` into whatever lock it
+  # writes, so a $lock that comes back byte-identical to the baseline is proof
+  # pass 1 wrote somewhere else. Fall back to the whole-set path below — the
+  # safe direction to be wrong in, since it applies the cutoff to more than it
+  # has to rather than to nothing.
+  if cmp -s "$snapshot/baseline.lock" "$lock"; then
+    restore_state "$snapshot"
+    # Clear the trap before removing the snapshot, so an interruption does not
+    # restore files out of a directory that is already gone.
+    trap - EXIT
+    rm -rf "$snapshot"
+    echo "cooldown: pass 1 did not write $lock; applying the cool-down to the whole resolution instead" >&2
+  else
+    # Packages the add brings in that the lockfile did not have. One it already
+    # carries needs no pin: the second pass keeps it by leaving it alone.
+    lock_versions "$snapshot/baseline.lock" | cut -d= -f1 | LC_ALL=C sort >"$snapshot/before"
+    pins=()
+    while read -r pair; do
+      if ! grep -qxF "${pair%%=*}" "$snapshot/before"; then
+        pins+=(-P "${pair%%=*}==${pair#*=}")
+        echo "cooldown: ${pair%%=*} ${pair#*=} is the newest release the cool-down allows" >&2
+      fi
+    done < <(lock_versions "$lock")
+
+    restore_state "$snapshot"
+    unset UV_EXCLUDE_NEWER
+
+    status=0
+    "$@" "${pins[@]+"${pins[@]}"}" || status=$?
+    if [[ "$status" -ne 0 ]]; then
+      echo "cooldown: the add failed; nothing was changed" >&2
+      exit "$status"
+    fi
+
+    violations=""
+    audit_status=0
+    violations="$(audit_lock "$snapshot/baseline.lock" "$lock" "$cutoff")" || audit_status=$?
+    if [[ "$audit_status" -ne 0 ]]; then
+      {
+        echo "cooldown: refusing this add — it needs versions published after ${cutoff}:"
+        echo "$violations" | sed 's/^/  /'
+        echo "cooldown: uv.lock and pyproject.toml are unchanged. The environment may"
+        echo "cooldown: hold that set already; \`uv sync\` puts it back in step."
+      } >&2
+      exit "$audit_status"
+    fi
+
+    scrub_recorded_cutoff "$lock"
+    # The add landed; nothing left to undo. Disarm the restore so the EXIT trap
+    # only cleans up the snapshot instead of overwriting what just succeeded.
+    trap 'rm -rf "$snapshot"' EXIT
+    exit 0
+  fi
+fi
 
 # Not `exec`, because the scrub happens after the command returns — its exit
 # status is carried out by hand instead.
