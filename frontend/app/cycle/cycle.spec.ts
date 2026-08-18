@@ -39,6 +39,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { saveNow } from "../e2e/_frame";
+import { emptyWorkspace } from "./_workspace";
 
 const CYCLE_DIR = process.env["VISIONSET_CYCLE_DIR"] ?? "";
 
@@ -114,6 +115,26 @@ const REPINNED = "built-in stand-in, repinned";
 function projectFor(info: TestInfo): string {
   return `browser-cycle-${info.repeatEachIndex}-${info.retry}`;
 }
+
+/**
+ * Every attempt starts on an empty workspace — a retry included, and every
+ * repetition of `--repeat-each`.
+ *
+ * On the first attempt of a freshly built workspace this deletes nothing and
+ * costs two reads. It exists for the second: the workspace is rebuilt once per
+ * *server* start, not once per attempt, so without this a retry inherits the
+ * previous attempt's projects and dies on Home's first-run invitation — an
+ * assertion about the workspace, three steps in, unrelated to whatever actually
+ * failed.
+ *
+ * Unconditional rather than guarded on `retry`, because a repair that only runs
+ * on the rare attempt has the same property as the defect it repairs: nothing
+ * exercises it until the day it matters. Run every time, its two reads are
+ * proved by every run of this suite.
+ */
+test.beforeEach(async ({ request }) => {
+  await emptyWorkspace(request, token());
+});
 
 test("the whole cycle, from opening the app to a downloaded export", async ({ page }, info) => {
   test.slow();
