@@ -131,6 +131,7 @@ def test_the_outcome_is_null_before_the_job_settles() -> None:
     assert run.stopped_early is None
     assert run.assets_labeled is None
     assert run.regions_discarded is None
+    assert run.regions_out_of_bounds is None
 
 
 def test_a_succeeded_run_carries_the_handlers_outcome() -> None:
@@ -148,6 +149,7 @@ def test_a_succeeded_run_carries_the_handlers_outcome() -> None:
             "stopped_early": False,
             "assets_skipped": 1,
             "regions_discarded": 2,
+            "regions_out_of_bounds": 1,
         },
     )
 
@@ -156,6 +158,26 @@ def test_a_succeeded_run_carries_the_handlers_outcome() -> None:
     assert run.stopped_early is False
     assert run.assets_labeled == 6
     assert run.regions_discarded == 2
+    assert run.regions_out_of_bounds == 1
+
+
+def test_a_pre_label_result_ignores_boolean_and_malformed_counts() -> None:
+    job = BackgroundJob(
+        type=PRE_LABEL_JOB_TYPE,
+        payload=pre_label_job_payload(uuid4(), uuid4(), 0.35),
+        state=BackgroundJobState.SUCCEEDED,
+        result={
+            "assets_labeled": True,
+            "regions_discarded": "two",
+            "regions_out_of_bounds": 1.0,
+        },
+    )
+
+    run = PreLabelRun.of(job)
+
+    assert run.assets_labeled is None
+    assert run.regions_discarded is None
+    assert run.regions_out_of_bounds is None
 
 
 def test_a_failed_run_keeps_the_sentence_and_has_no_outcome() -> None:
@@ -184,7 +206,12 @@ def test_a_cancelled_run_still_carries_its_outcome() -> None:
         state=BackgroundJobState.CANCELLED,
         processed=12,
         total=48,
-        result={"stopped_early": True, "assets_labeled": 4, "regions_discarded": 0},
+        result={
+            "stopped_early": True,
+            "assets_labeled": 4,
+            "regions_discarded": 0,
+            "regions_out_of_bounds": 0,
+        },
     )
 
     run = PreLabelRun.of(job)
@@ -227,7 +254,12 @@ def test_a_settled_run_stays_readable(workspace: WorkspaceService, batches: Batc
         job.id,
         BackgroundJobOutcome(
             state=BackgroundJobState.SUCCEEDED,
-            result={"stopped_early": False, "assets_labeled": 3, "regions_discarded": 1},
+            result={
+                "stopped_early": False,
+                "assets_labeled": 3,
+                "regions_discarded": 1,
+                "regions_out_of_bounds": 2,
+            },
             processed=5,
             total=5,
         ),
@@ -239,6 +271,7 @@ def test_a_settled_run_stays_readable(workspace: WorkspaceService, batches: Batc
     assert run.state is BackgroundJobState.SUCCEEDED
     assert run.assets_labeled == 3
     assert run.regions_discarded == 1
+    assert run.regions_out_of_bounds == 2
 
 
 def test_a_cancelled_run_reports_how_far_it_got(
@@ -251,7 +284,12 @@ def test_a_cancelled_run_reports_how_far_it_got(
         job.id,
         BackgroundJobOutcome(
             state=BackgroundJobState.CANCELLED,
-            result={"stopped_early": True, "assets_labeled": 4, "regions_discarded": 0},
+            result={
+                "stopped_early": True,
+                "assets_labeled": 4,
+                "regions_discarded": 0,
+                "regions_out_of_bounds": 0,
+            },
             processed=12,
             total=48,
         ),

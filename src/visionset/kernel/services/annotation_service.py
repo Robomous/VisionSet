@@ -84,7 +84,9 @@ from visionset.kernel.domain import (
     ClassificationGeometry,
     progress_after_annotating,
 )
+from visionset.kernel.domain.geometry import geometry_intersects_asset
 from visionset.kernel.errors import (
+    AnnotationGeometryOutOfBounds,
     AnnotationNotFound,
     AnnotationNotFromModel,
     AssetNotInJob,
@@ -187,6 +189,7 @@ class AnnotationService:
                 with _blaming(index):
                     _require_writable(job, annotation.asset_id)
                     _validate(annotation, schema)
+                    _require_geometry_on_asset(uow, annotation)
                     # Checked inside this transaction and against a set that grows
                     # as the loop goes, so a request carrying the same tag twice is
                     # refused at the *second* position rather than by the index at
@@ -247,6 +250,7 @@ class AnnotationService:
                     _require_model_made(annotation)
                     _require_untouched(uow, job, annotation.asset_id)
                     _validate(annotation, schema)
+                    _require_geometry_on_asset(uow, annotation)
                     _require_untagged(tagged, annotation)
 
             stored = [uow.annotations.add(annotation) for annotation in proposed]
@@ -304,6 +308,7 @@ class AnnotationService:
                         }
                     )
                     _validate(replacement, schema)
+                    _require_geometry_on_asset(uow, replacement)
                 replacements.append(replacement)
 
             # After the loop, because an update may *move* a tag: the row being
@@ -511,6 +516,20 @@ def _require_writable(job: AnnotationJob, asset_id: UUID) -> None:
         raise AssetNotWritable(
             f"asset {asset_id} in job {job.id} is {progress.value!r}, so its labels are "
             f"settled; annotations are only written while an asset is {legal}"
+        )
+
+
+def _require_geometry_on_asset(uow: UnitOfWork, annotation: Annotation) -> None:
+    """Refuse a spatial annotation wholly outside its measured asset."""
+    asset = uow.assets.get(annotation.asset_id)
+    if asset is None:
+        raise WorkspaceCorrupt(
+            f"annotation {annotation.id} names asset {annotation.asset_id}, which does not exist"
+        )
+    if not geometry_intersects_asset(annotation.geometry, width=asset.width, height=asset.height):
+        raise AnnotationGeometryOutOfBounds(
+            f"a {annotation.geometry.type.value} annotation on asset {asset.id} has no overlap "
+            f"with its {asset.width} by {asset.height} pixel frame"
         )
 
 

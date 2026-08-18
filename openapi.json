@@ -1445,7 +1445,7 @@
       },
       "BboxGeometry": {
         "additionalProperties": false,
-        "description": "An axis-aligned rectangle: top-left corner plus size.\n\n``width`` and ``height`` must be strictly positive \u2014 a zero-area box is as\nmeaningless as a negative one, so neither is accepted. ``x`` and ``y`` are\nunconstrained: an annotation may legitimately start outside the asset's\nbounds when an object is clipped by the frame edge.",
+        "description": "An axis-aligned rectangle: top-left corner plus size.\n\n``width`` and ``height`` must be strictly positive \u2014 a zero-area box is as\nmeaningless as a negative one, so neither is accepted. A box may extend\nbeyond an asset's frame, but cannot be wholly disjoint when that asset\nrecords its dimensions.",
         "properties": {
           "height": {
             "exclusiveMinimum": 0.0,
@@ -3185,7 +3185,7 @@
         "type": "object"
       },
       "PreLabelRunOut": {
-        "description": "A batch's most recent pre-labeling run: which job, how far, and what it found.\n\nPresent whenever pre-labeling has ever been asked for on this batch, and\ndescribing the most recent run \u2014 including one this session did not launch.\nA dialog reopened after a reload, in a second tab, or after a run started\nfrom the terminal reads the same state from here rather than from a job id\na component happened to keep.\n\n**Assets, where a download counts bytes and a check counts files.** The\nhandler owns a loop over the batch's untouched assets and knows the whole\nset before the first forward pass, so both its progress and its total are\ncounted in the unit its own work is over.\n\n**The outcome, once the job has one.** `stopped_early`, `assets_labeled` and\n`regions_discarded` are the handler's own account of what a settled run did.\nThey are `null` while the job is still `queued` or `running`, and `null`\nwhere it ended `failed` before producing one \u2014 but a `cancelled` run still\ncarries them: stopping partway is a coherent outcome for a handler whose\ncontract is to write only where nothing has been written.",
+        "description": "A batch's most recent pre-labeling run: which job, how far, and what it found.\n\nPresent whenever pre-labeling has ever been asked for on this batch, and\ndescribing the most recent run \u2014 including one this session did not launch.\nA dialog reopened after a reload, in a second tab, or after a run started\nfrom the terminal reads the same state from here rather than from a job id\na component happened to keep.\n\n**Assets, where a download counts bytes and a check counts files.** The\nhandler owns a loop over the batch's untouched assets and knows the whole\nset before the first forward pass, so both its progress and its total are\ncounted in the unit its own work is over.\n\n**The outcome, once the job has one.** `stopped_early`, `assets_labeled`,\n`regions_discarded` and `regions_out_of_bounds` are the handler's own\naccount of what a settled run did.\nThey are `null` while the job is still `queued` or `running`, and `null`\nwhere it ended `failed` before producing one \u2014 but a `cancelled` run still\ncarries them: stopping partway is a coherent outcome for a handler whose\ncontract is to write only where nothing has been written.",
         "properties": {
           "assets_labeled": {
             "anyOf": [
@@ -3240,6 +3240,17 @@
             ],
             "title": "Regions Discarded"
           },
+          "regions_out_of_bounds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regions Out Of Bounds"
+          },
           "state": {
             "$ref": "#/components/schemas/BackgroundJobState"
           },
@@ -3263,7 +3274,8 @@
           "error",
           "stopped_early",
           "assets_labeled",
-          "regions_discarded"
+          "regions_discarded",
+          "regions_out_of_bounds"
         ],
         "title": "PreLabelRunOut",
         "type": "object"

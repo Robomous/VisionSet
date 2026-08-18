@@ -618,7 +618,8 @@ class PreLabelRun(BaseModel):
     is known, on ``ConnectionJob``'s own reasoning.
 
     **The handler's own outcome, carried rather than re-derived.**
-    ``stopped_early``, ``assets_labeled`` and ``regions_discarded`` are read
+    ``stopped_early``, ``assets_labeled``, ``regions_discarded`` and
+    ``regions_out_of_bounds`` are read
     straight out of the settled job's ``result`` — the dict ``prelabel.py``'s
     ``run`` returns — because a bare progress count cannot say how a cancelled
     run differs from an untouched batch, nor how many of a model's answers were
@@ -658,6 +659,10 @@ class PreLabelRun(BaseModel):
     #: for, discarded rather than written. ``None`` until the job settles with a
     #: result.
     regions_discarded: int | None = None
+    #: Regions whose mapped geometry had no overlap with a measured asset,
+    #: discarded rather than written. ``None`` until the job settles with a
+    #: result.
+    regions_out_of_bounds: int | None = None
 
     @model_validator(mode="after")
     def _progress_is_within_its_total(self) -> Self:
@@ -689,6 +694,7 @@ class PreLabelRun(BaseModel):
         stopped_early = result.get("stopped_early")
         assets_labeled = result.get("assets_labeled")
         regions_discarded = result.get("regions_discarded")
+        regions_out_of_bounds = result.get("regions_out_of_bounds")
         return cls(
             batch_id=UUID(named),
             job_id=job.id,
@@ -697,9 +703,15 @@ class PreLabelRun(BaseModel):
             assets_total=job.total,
             error=job.error,
             stopped_early=stopped_early if isinstance(stopped_early, bool) else None,
-            assets_labeled=assets_labeled if isinstance(assets_labeled, int) else None,
-            regions_discarded=regions_discarded if isinstance(regions_discarded, int) else None,
+            assets_labeled=_result_int(assets_labeled),
+            regions_discarded=_result_int(regions_discarded),
+            regions_out_of_bounds=(_result_int(regions_out_of_bounds)),
         )
+
+
+def _result_int(value: object) -> int | None:
+    """An integer job-result value, without accepting Python's boolean subtype."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 class InferenceConnection(BaseModel):

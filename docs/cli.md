@@ -360,7 +360,8 @@ interrupted run. The batch id goes to stdout.
 `pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT]` blocks and calls
 `visionset.inference.pre_label` inline because a terminal has no dispatcher. Progress and the
 summary are written to stderr; normal stdout contains `annotations_written`. With `--json`, the
-command prints the complete outcome instead.
+command prints the complete outcome instead, including `regions_discarded` for unmappable model
+labels and `regions_out_of_bounds` for mapped regions without overlap with a measured asset.
 
 `--jobs-of N` is the `BySize` partition; with no flag the batch becomes one job. There is no
 `batch create` and no membership editing: a batch is born from an ingest. See

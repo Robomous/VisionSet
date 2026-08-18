@@ -514,13 +514,15 @@ def test_pre_labeling_blocks_and_returns_what_it_wrote(
 
     outcome = payload(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
 
-    assert outcome["assets_considered"] == 2
-    assert outcome["assets_labeled"] == 2
-    assert outcome["annotations_written"] == 2
-    assert outcome["model_ref"] == "acme/detector@abc123"
-    assert outcome["assets_skipped"] == 0
-    assert outcome["regions_discarded"] == 0
-    assert "stopped_early" not in outcome
+    assert outcome == {
+        "assets_considered": 2,
+        "assets_labeled": 2,
+        "annotations_written": 2,
+        "model_ref": "acme/detector@abc123",
+        "assets_skipped": 0,
+        "regions_discarded": 0,
+        "regions_out_of_bounds": 0,
+    }
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
 
 

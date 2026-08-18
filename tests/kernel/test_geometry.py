@@ -14,6 +14,7 @@ from visionset.kernel.domain import (
     PolygonGeometry,
     PolylineGeometry,
 )
+from visionset.kernel.domain.geometry import geometry_intersects_asset
 
 geometry_adapter: TypeAdapter[Geometry] = TypeAdapter(Geometry)
 
@@ -208,3 +209,38 @@ def test_implemented_geometries_names_exactly_the_variants_of_the_union() -> Non
     }
     assert IMPLEMENTED_GEOMETRIES == from_the_union == expected
     assert set(GeometryType) > IMPLEMENTED_GEOMETRIES  # the rest is roadmap
+
+
+def test_geometry_intersects_asset_skips_an_unmeasured_frame() -> None:
+    box = BboxGeometry(x=200.0, y=100.0, width=10.0, height=10.0)
+    assert geometry_intersects_asset(box, width=None, height=80)
+    assert geometry_intersects_asset(box, width=100, height=None)
+
+
+@pytest.mark.parametrize(
+    ("geometry", "expected"),
+    [
+        (BboxGeometry(x=-10, y=10, width=20, height=20), True),
+        (BboxGeometry(x=100, y=10, width=5, height=20), True),
+        (BboxGeometry(x=101, y=10, width=5, height=20), False),
+        (PolylineGeometry(points=[(-10, 40), (110, 40)]), True),
+        (PolylineGeometry(points=[(-10, -10), (-5, -5)]), False),
+        (PolygonGeometry(points=[(-10, -10), (110, -10), (110, 90), (-10, 90)]), True),
+        (PolygonGeometry(points=[(110, 90), (120, 90), (120, 100)]), False),
+        (ClassificationGeometry(), True),
+    ],
+)
+def test_geometry_intersects_asset_handles_every_supported_variant(
+    geometry: Geometry, expected: bool
+) -> None:
+    assert geometry_intersects_asset(geometry, width=100, height=80) is expected
+
+
+def test_geometry_intersects_asset_accepts_a_polygon_that_encloses_the_frame() -> None:
+    polygon = PolygonGeometry(points=[(-10, -10), (110, -10), (110, 90), (-10, 90)])
+    assert geometry_intersects_asset(polygon, width=100, height=80)
+
+
+def test_geometry_intersects_asset_accepts_non_finite_coordinates() -> None:
+    box = BboxGeometry(x=float("nan"), y=100.0, width=10.0, height=10.0)
+    assert geometry_intersects_asset(box, width=100, height=80)
