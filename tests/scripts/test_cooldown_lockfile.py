@@ -780,3 +780,37 @@ def test_every_refused_package_lands_on_one_re_run_command(stubbed) -> None:
         f"cooldown:   bash {COOLDOWN} uv add arrived "
         "-P drifting==1.0.0 -P settled==1.0.0" in done.stderr
     ), done.stderr
+
+
+def test_a_violation_the_wrapper_pinned_gets_no_advice(stubbed) -> None:
+    """`arrived` is new, so the wrapper pinned it to the vetted version and the
+    resolution produced something else anyway. Printing the same pin back would be
+    advice that provably cannot work."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(_baseline_plus(ARRIVED))
+    (state / "pass2.lock").write_text(
+        _baseline_plus(_entry("arrived", "9.0.0", "2099-06-01T00:00:00.000Z"))
+    )
+
+    done = _wrapped(project, env, "uv", "add", "arrived")
+    assert done.returncode == 3, done.stderr
+    assert "arrived==9.0.0" in done.stderr
+    assert "arrived was pinned to the version the cool-down vets" in done.stderr
+    assert "to take the vetted versions" not in done.stderr, done.stderr
+    assert "-P arrived==1.0.0" not in done.stderr, done.stderr
+
+
+def test_a_violation_the_caller_pinned_gets_no_advice(stubbed) -> None:
+    """A `-P name==version` the caller wrote is a version chosen on purpose. The
+    wrapper appends no pin over it, and it has none of its own to offer either."""
+    project, state, env = stubbed
+    (state / "pass1.lock").write_text(_lock(SETTLED_MOVED, YOUNG, ROOTED))
+    (state / "pass2.lock").write_text(
+        _lock(_entry("settled", "9.0.0", "2099-06-01T00:00:00.000Z"), YOUNG, ROOTED)
+    )
+
+    done = _wrapped(project, env, "uv", "lock", "-P", "settled==2.0.0")
+    assert done.returncode == 3, done.stderr
+    assert "settled==9.0.0" in done.stderr
+    assert "settled was pinned to the version the cool-down vets" in done.stderr
+    assert "to take the vetted versions" not in done.stderr, done.stderr
