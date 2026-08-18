@@ -42,6 +42,7 @@ from visionset.kernel.domain.batch import (
     CORRECTABLE_STATES,
     DELETABLE_STATES,
     EDITABLE_STATES,
+    PRE_LABELABLE_STATES,
     PROMOTABLE_STATES,
     REPINNABLE_STATES,
     BatchState,
@@ -91,6 +92,7 @@ class BatchAction(OpenVocabulary):
     REPIN = "repin"
     PROMOTE = "promote"
     CREATE_CORRECTION = "create_correction"
+    PRE_LABEL = "pre_label"
     EDIT_MEMBERSHIP = "edit_membership"
     DELETE = "delete"
 
@@ -188,10 +190,11 @@ BATCH_GATES: Final[Mapping[BatchAction, frozenset[BatchState]]] = {
     BatchAction.REPIN: REPINNABLE_STATES,
     BatchAction.PROMOTE: PROMOTABLE_STATES,
     BatchAction.CREATE_CORRECTION: CORRECTABLE_STATES,
+    BatchAction.PRE_LABEL: PRE_LABELABLE_STATES,
     BatchAction.EDIT_MEMBERSHIP: EDITABLE_STATES,
     BatchAction.DELETE: DELETABLE_STATES,
 }
-"""The five batch actions that change no state, and so appear in no table row.
+"""The six batch actions that change no state, and so appear in no table row.
 
 ``create_correction`` is the odd one even here, and worth naming: every other
 action in this file is something done **to** the resource declaring it, while
@@ -212,6 +215,12 @@ batch be deleted" is a question about the batch's state and about nothing else,
 which is what this table answers. The entry is ``DELETABLE_STATES`` itself, the
 set ``BatchService.delete`` raises ``BatchImmutable`` against; a second frozenset
 spelled out beside it is exactly the hand-mirror this module exists to remove.
+
+``pre_label`` is declared from the batch's state alone, on ``complete``'s
+precedent: whether this machine has the local runtime installed, and whether the
+pinned schema declares a class a detection can land on, are not facts about the
+batch. Hiding the control on either ground would leave their refusals — one of
+which carries an install command — with nowhere to be shown.
 """
 
 
@@ -227,7 +236,7 @@ JOB_MOVES: Final[Mapping[JobAction, Move[AnnotationJobState]]] = {
 ASSET_MOVES: Final[Mapping[AssetAction, Move[AssetProgress]]] = {
     AssetAction.SKIP: Move(
         AssetProgress.SKIPPED,
-        frozenset({AssetProgress.UNANNOTATED, AssetProgress.ANNOTATED}),
+        frozenset({AssetProgress.UNANNOTATED, AssetProgress.ANNOTATED, AssetProgress.PRE_LABELED}),
     ),
     AssetAction.RESTORE: Move(AssetProgress.UNANNOTATED, frozenset({AssetProgress.SKIPPED})),
     AssetAction.SUBMIT_FOR_REVIEW: Move(
@@ -238,11 +247,16 @@ ASSET_MOVES: Final[Mapping[AssetAction, Move[AssetProgress]]] = {
         AssetProgress.ANNOTATED, frozenset({AssetProgress.REVIEW_PENDING})
     ),
 }
-"""The five progress edges that have a name somebody can click.
+"""The five actions naming a progress edge somebody can click.
 
 ``accept`` and ``return_to_annotator`` are the two halves of ``review_pending``,
 and the second is named for what it does rather than for the edge it rides: "back
 to annotated" describes the table, "return to annotator" describes the act.
+
+``skip`` claims three origins rather than one: a person may decide against
+labeling a frame whether it has never been touched, already carries a person's
+work, or still carries only a model's — the decision is the same act from all
+three.
 """
 
 
@@ -250,19 +264,31 @@ UNNAMED_EDGES: Final[frozenset[tuple[AssetProgress, AssetProgress]]] = frozenset
     (current, landed)
     for current in AssetProgress
     for has_annotations in (True, False)
-    if (landed := progress_after_annotating(current, has_annotations=has_annotations)) is not None
+    for judged in (True, False)
+    if (
+        landed := progress_after_annotating(current, has_annotations=has_annotations, judged=judged)
+    )
+    is not None
 )
 """Legal progress edges that deliberately have no action name.
 
-Exactly the two moves an annotation appearing or disappearing makes on its own —
-``unannotated -> annotated`` when the first label lands, and back again when the
-last one goes — so this is *computed from* ``progress_after_annotating`` rather
-than listed beside it. Nobody performs these: ``AnnotationService`` makes them in
-the same transaction as the write, and they are the consequence of ``annotate``,
-which is an action and is declared.
+Five moves, all of them *computed from* ``progress_after_annotating`` rather
+than listed beside it. The first two are an annotation appearing or
+disappearing on its own — ``unannotated -> annotated`` when the first label
+lands, and back again when the last one goes. Nobody performs these:
+``AnnotationService`` makes them in the same transaction as the write, and they
+are the consequence of ``annotate``, which is an action and is declared.
 
-Offering either as its own control would be offering to change a marker while its
-labels stay put, which is the one thing the progress machine exists to prevent.
+The other three are the same shape one state over. ``unannotated ->
+pre_labeled`` is what an unjudged write makes in the same transaction as its
+labels; ``pre_labeled -> annotated`` is a person's edit taking the frame over,
+and ``pre_labeled -> unannotated`` is that edit deleting the model's last
+label. Each is derived here for the reason the first two are: this set can
+only grow if the domain's own derivation rule does.
+
+Offering any of them as its own control would be offering to change a marker
+while its labels stay put, which is the one thing the progress machine exists to
+prevent.
 
 Named at all so that a *new* edge cannot quietly arrive with no capability:
 ``test_every_edge_is_named_by_an_action_or_deliberately_not`` requires every edge

@@ -116,6 +116,17 @@ usefully tell "wrong state for this move" from "wrong state for this act".
 """
 
 
+PRE_LABELABLE_STATES: Final[frozenset[BatchState]] = frozenset({BatchState.IN_ANNOTATION})
+"""The states in which a model may pre-label a batch's untouched assets.
+
+``in_annotation`` alone, and it is the same gate the annotation writes already
+pass: a pre-label is a write, so it needs a batch whose jobs are open. A set of
+its own rather than a reference to another, on ``CORRECTABLE_STATES``' reasoning
+— it happens to have one member today, and which states admit unattended writing
+is a decision that should have to be made rather than inherited.
+"""
+
+
 DELETABLE_STATES: Final[frozenset[BatchState]] = frozenset(
     {BatchState.DRAFT, BatchState.APPROVED, BatchState.IN_ANNOTATION}
 )

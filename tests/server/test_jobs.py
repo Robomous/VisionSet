@@ -89,6 +89,7 @@ def test_progress_carries_every_state_even_the_empty_ones(
 
     assert client.get(f"/jobs/{job_id}/progress").json() == {
         "unannotated": 3,
+        "pre_labeled": 0,
         "annotated": 0,
         "skipped": 0,
         "review_pending": 0,

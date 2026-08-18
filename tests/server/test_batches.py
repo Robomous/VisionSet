@@ -180,6 +180,7 @@ def test_a_draft_batch_reports_its_assets_and_no_progress(
     assert body["asset_count"] == 3
     assert body["progress"] == {
         "unannotated": 0,
+        "pre_labeled": 0,
         "annotated": 0,
         "skipped": 0,
         "review_pending": 0,

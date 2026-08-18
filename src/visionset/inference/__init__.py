@@ -83,7 +83,16 @@ from visionset.inference.masks import (
     tolerance_for,
 )
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
-from visionset.inference.providers import ProviderPool, provider_for, resident
+from visionset.inference.prelabel import (
+    DEFAULT_MINIMUM_CONFIDENCE,
+    PreLabelOutcome,
+    detectable_classes,
+    no_detectable_class_message,
+    pre_label,
+    require_detectable_schema,
+    unsupported_prompt_message,
+)
+from visionset.inference.providers import ProviderPool, not_set_up_message, provider_for, resident
 from visionset.inference.registry import (
     GROUP,
     Discovery,
@@ -142,6 +151,7 @@ __all__ = [
     "enable_mps_fallback",
     "DEFAULT_EMBEDDING_CAPACITY",
     "DEFAULT_IOU_THRESHOLD",
+    "DEFAULT_MINIMUM_CONFIDENCE",
     "DEFAULT_PROVIDER_CAPACITY",
     "DEFAULT_SIZE_CAPACITY",
     "EXTRA",
@@ -152,10 +162,12 @@ __all__ = [
     "DownloadSizes",
     "LocalSamProvider",
     "LocalTransformersProvider",
+    "PreLabelOutcome",
     "ProviderPool",
     "cache_root",
     "capabilities_of",
     "check_integrity",
+    "detectable_classes",
     "digest_of",
     "download",
     "download_size",
@@ -167,6 +179,8 @@ __all__ = [
     "READ_CHUNK",
     "known_sizes",
     "measure",
+    "no_detectable_class_message",
+    "not_set_up_message",
     "published_digests",
     "purge",
     "MINIMUM_FRAGMENT_SHARE",
@@ -184,10 +198,13 @@ __all__ = [
     "shapes_from",
     "simplified",
     "tolerance_for",
+    "pre_label",
     "provider_for",
     "require",
+    "require_detectable_schema",
     "resident",
     "suggest",
     "suppressed",
+    "unsupported_prompt_message",
     "with_families",
 ]

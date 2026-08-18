@@ -97,9 +97,11 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "ConfirmationRequired": (409, "CONFIRMATION_REQUIRED"),
     "DestructiveSchemaChange": (409, "DESTRUCTIVE_SCHEMA_CHANGE"),
     "SchemaChangeWouldOrphan": (409, "SCHEMA_CHANGE_WOULD_ORPHAN"),
+    "SchemaHasNoDetectableClass": (409, "SCHEMA_HAS_NO_DETECTABLE_CLASS"),
     "UnserializableManifest": (409, "UNSERIALIZABLE_MANIFEST"),
     "LossyExportNotConsented": (409, "LOSSY_EXPORT_NOT_CONSENTED"),
     # 422 — the payload itself is wrong
+    "AnnotationNotFromModel": (422, "ANNOTATION_NOT_FROM_MODEL"),
     "InvalidName": (422, "INVALID_NAME"),
     "InferenceConnectionInvalid": (422, "INFERENCE_CONNECTION_INVALID"),
     "InvalidSchema": (422, "INVALID_SCHEMA"),

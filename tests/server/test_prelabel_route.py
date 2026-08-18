@@ -1,0 +1,460 @@
+"""The pre-label route: refusals before a job exists, and the launch-and-poll 202.
+
+`tests/inference/test_prelabel.py` owns what a run actually writes; this is the
+wire's own business — the status, the code a client branches on, and that a
+refusal never leaves a row in the queue.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+import pytest
+from fastapi.testclient import TestClient
+from tests.server._api import api_client
+from tests.server._flow import batch_from_ingest, project_with_schema
+from tests.server._jobs import InlineDispatcher, ManualDispatcher
+
+from visionset.inference import weights as weights_module
+from visionset.kernel.domain import DownloadSize
+from visionset.server.routes import batches as batches_routes
+from visionset.server.routes import inference as inference_routes
+
+#: A plain box class with no required attribute, so it is exactly what
+#: `detectable_classes` admits — unlike `_flow.SIGN`, whose required `occluded`
+#: is the other refusal this suite proves.
+DETECTABLE = {"name": "sign", "geometries": ["bbox"]}
+#: A box class demanding an attribute a model's answer never carries.
+ATTRIBUTE_GATED = {
+    "name": "sign",
+    "geometries": ["bbox"],
+    "attributes": [{"name": "occluded", "kind": "boolean", "required": True}],
+}
+#: Nothing here admits `bbox`, so a schema of only this has nowhere for a
+#: detection to land.
+POLYGON_ONLY = {"name": "lane", "geometries": ["polygon"]}
+
+FETCHED_BYTES = 4_000_000_000
+
+
+@pytest.fixture()
+def runner() -> InlineDispatcher:
+    return InlineDispatcher()
+
+
+@pytest.fixture()
+def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
+    with api_client(tmp_path / "ws", dispatcher=runner) as made:
+        yield made
+
+
+@pytest.fixture(autouse=True)
+def _local_setup_is_faked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let a connection reach `ready` and declare a family, on no network and no extra.
+
+    Three seams, all of them already this suite's precedent in
+    `tests/server/test_inference.py`: the install check on both routes that make
+    one — the weight download and pre-labeling itself — the transfer, and the
+    size lookup a create form reads before anybody commits to a download.
+    """
+    monkeypatch.setattr(inference_routes, "require_local_inference", lambda: None)
+    monkeypatch.setattr(batches_routes, "require_local_inference", lambda: None)
+    monkeypatch.setattr(weights_module, "download", lambda connection, *, into, on_bytes=None: into)
+    monkeypatch.setattr(
+        weights_module,
+        "download_size",
+        lambda model_id, model_revision: DownloadSize(
+            model_id=model_id,
+            model_revision=model_revision,
+            total_bytes=FETCHED_BYTES,
+            file_count=2,
+        ),
+    )
+
+
+def _connection(
+    client: TestClient,
+    runner: InlineDispatcher | ManualDispatcher,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    family: str,
+    capability: str,
+) -> str:
+    """A `ready` local connection whose model declares ``capability``.
+
+    `fetch_weights` reads the config the moment the transfer finishes and
+    records what it found on the same row — so the family this test wants has
+    to be in place *before* the download runs, not after. Faked here rather
+    than left real for `test_inference.py`'s reason: the real read needs the
+    optional runtime this environment does not carry.
+
+    ``runner.wait()`` rather than relying on ``wake()`` alone: a
+    ``ManualDispatcher`` only counts a wake, so a caller that needs the
+    connection genuinely `ready` before it goes on has to ask for the run
+    itself, the way ``batch_from_ingest`` already does for an ingest.
+    """
+    monkeypatch.setattr(weights_module, "family_of", lambda *_, **__: family)
+    body: dict[str, Any] = {
+        "name": f"c-{uuid4().hex[:8]}",
+        "connection_type": "local",
+        "model_id": f"some/{family}",
+        "model_revision": "v1",
+        "device": "cpu",
+        "precision": "fp32",
+    }
+    made = client.post("/inference/connections", json=body).json()
+    connection_id = made["id"]
+    queued = client.post(f"/inference/connections/{connection_id}/download")
+    assert queued.status_code == 202, queued.text
+    runner.wait()
+    got = client.get(f"/inference/connections/{connection_id}").json()
+    assert got["setup_state"] == "ready", got
+    assert got["capabilities"] == [capability], got
+    return str(connection_id)
+
+
+def _pre_label_job_count(client: TestClient) -> int:
+    """How many pre-label jobs this workspace has ever queued.
+
+    Not `total` from the listing: an ingest and a connection download both
+    queue jobs of their own kind on the way to a batch this suite can use, so a
+    caller proving *this* refusal created no job has to count its own kind.
+    """
+    items = client.get("/background-jobs").json()["items"]
+    return sum(1 for item in items if item["type"] == "annotation.pre_label")
+
+
+@dataclass(frozen=True)
+class OpenBatch:
+    project_id: str
+    id: str
+    connection_id: str
+
+
+def _open_batch(
+    client: TestClient,
+    runner: InlineDispatcher | ManualDispatcher,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    classes: list[dict[str, Any]],
+) -> OpenBatch:
+    """A batch open for annotation, pinned to ``classes``, paired with a
+    text-detect connection ready to answer it."""
+    project_id = project_with_schema(client, classes=classes)
+    batch_id = batch_from_ingest(client, runner, tmp_path, project_id, images=3)
+    connection_id = _connection(
+        client, runner, monkeypatch, family="grounding-dino", capability="text_detect"
+    )
+    assert client.post(f"/batches/{batch_id}/approve").status_code == 200
+    assert client.post(f"/batches/{batch_id}/start").status_code == 200
+    return OpenBatch(project_id=project_id, id=batch_id, connection_id=connection_id)
+
+
+@pytest.fixture()
+def in_annotation_batch(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> OpenBatch:
+    return _open_batch(client, runner, tmp_path, monkeypatch, classes=[DETECTABLE])
+
+
+@pytest.fixture()
+def draft_batch(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> OpenBatch:
+    project_id = project_with_schema(client, classes=[DETECTABLE])
+    batch_id = batch_from_ingest(client, runner, tmp_path, project_id, images=3)
+    connection_id = _connection(
+        client, runner, monkeypatch, family="grounding-dino", capability="text_detect"
+    )
+    return OpenBatch(project_id=project_id, id=batch_id, connection_id=connection_id)
+
+
+@pytest.fixture()
+def polygon_only_batch(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> OpenBatch:
+    return _open_batch(client, runner, tmp_path, monkeypatch, classes=[POLYGON_ONLY])
+
+
+@pytest.fixture()
+def attribute_gated_batch(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> OpenBatch:
+    """Every class admits `bbox`, but each one also demands an attribute — the
+    second reason `detectable_classes` excludes a class, proved on its own."""
+    return _open_batch(client, runner, tmp_path, monkeypatch, classes=[ATTRIBUTE_GATED])
+
+
+@pytest.fixture()
+def approved_batch(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> OpenBatch:
+    """Approved but not started — wrong for `pre_label` on batch state alone."""
+    project_id = project_with_schema(client, classes=[DETECTABLE])
+    batch_id = batch_from_ingest(client, runner, tmp_path, project_id, images=3)
+    connection_id = _connection(
+        client, runner, monkeypatch, family="grounding-dino", capability="text_detect"
+    )
+    assert client.post(f"/batches/{batch_id}/approve").status_code == 200
+    return OpenBatch(project_id=project_id, id=batch_id, connection_id=connection_id)
+
+
+@pytest.fixture()
+def segmenter_connection(
+    client: TestClient, runner: InlineDispatcher, monkeypatch: pytest.MonkeyPatch
+) -> str:
+    return _connection(
+        client, runner, monkeypatch, family="visionset_stub", capability="point_suggest"
+    )
+
+
+# --- the happy path -------------------------------------------------------------
+
+
+def test_pre_labeling_answers_202_and_points_at_the_job(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id, "minimum_confidence": 0.35},
+    )
+
+    assert response.status_code == 202, response.text
+    assert response.headers["location"] == f"/background-jobs/{response.json()['id']}"
+
+
+def test_asking_twice_joins_the_run_already_in_flight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second request arriving while the first run is still queued gets that
+    run's id back rather than a second job — proved with a dispatcher that never
+    settles a job on its own, so the first launch is still `queued` when the
+    second request asks."""
+    manual = ManualDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=manual) as client:
+        manual.bind(client.app.state.workspace_handle)
+        monkeypatch.setattr(inference_routes, "require_local_inference", lambda: None)
+        monkeypatch.setattr(batches_routes, "require_local_inference", lambda: None)
+        monkeypatch.setattr(
+            weights_module, "download", lambda connection, *, into, on_bytes=None: into
+        )
+        monkeypatch.setattr(
+            weights_module,
+            "download_size",
+            lambda model_id, model_revision: DownloadSize(
+                model_id=model_id,
+                model_revision=model_revision,
+                total_bytes=FETCHED_BYTES,
+                file_count=2,
+            ),
+        )
+        batch = _open_batch(client, manual, tmp_path, monkeypatch, classes=[DETECTABLE])
+
+        body = {"connection_id": batch.connection_id}
+        first = client.post(f"/batches/{batch.id}/pre-label", json=body)
+        second = client.post(f"/batches/{batch.id}/pre-label", json=body)
+
+        assert first.status_code == second.status_code == 202
+        assert first.json()["id"] == second.json()["id"]
+        assert _pre_label_job_count(client) == 1
+
+
+def test_an_in_annotation_batch_declares_the_action(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = client.get(f"/batches/{in_annotation_batch.id}")
+
+    assert "pre_label" in response.json()["allowed_actions"]
+
+
+# --- the batch remembers the run, after the page that launched it is gone --------
+
+
+def test_a_batch_with_no_pre_label_run_reports_none(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = client.get(f"/batches/{in_annotation_batch.id}")
+
+    assert response.json()["pre_label_run"] is None
+
+
+def test_a_settled_run_is_readable_with_no_job_id_of_its_own(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    """The whole feature: a dialog reopened holding no job id can still say what
+    happened, because the batch itself carries its most recent run.
+
+    The launch has no real weights behind it here, so the run settles `failed`
+    — which is exactly the outcome this proves reaches the batch: `job_id`,
+    `state` and the handler's own `error` sentence, none of them invented.
+    """
+    launched = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id, "minimum_confidence": 0.35},
+    ).json()
+
+    reopened = client.get(f"/batches/{in_annotation_batch.id}").json()
+
+    run = reopened["pre_label_run"]
+    assert run is not None
+    assert run["job_id"] == launched["id"]
+    assert run["state"] == "failed"
+    assert run["error"]
+
+
+def test_the_project_listing_carries_the_run_too(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    """The listing and the single-batch read agree, at the one-query cost model
+    `_promoted` already pays for `promoted_asset_count`."""
+    client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id, "minimum_confidence": 0.35},
+    )
+
+    listing = client.get(f"/projects/{in_annotation_batch.project_id}/batches").json()
+    row = next(item for item in listing["items"] if item["id"] == in_annotation_batch.id)
+
+    assert row["pre_label_run"] is not None
+    assert row["pre_label_run"]["state"] == "failed"
+
+
+def test_a_draft_batch_does_not_declare_the_action(
+    client: TestClient, draft_batch: OpenBatch
+) -> None:
+    response = client.get(f"/batches/{draft_batch.id}")
+
+    assert "pre_label" not in response.json()["allowed_actions"]
+
+
+# --- refusals, and that none of them creates a job -------------------------------
+
+
+def test_a_batch_that_is_not_being_annotated_is_refused_and_queues_nothing(
+    client: TestClient, draft_batch: OpenBatch
+) -> None:
+    response = client.post(
+        f"/batches/{draft_batch.id}/pre-label",
+        json={"connection_id": draft_batch.connection_id},
+    )
+
+    assert response.status_code == 409
+    body = response.json()
+    assert body["code"] == "BATCH_NOT_IN_ANNOTATION"
+    assert body["message"]
+    assert _pre_label_job_count(client) == 0
+
+
+def test_a_point_prompt_connection_is_refused_before_a_job_exists(
+    client: TestClient, in_annotation_batch: OpenBatch, segmenter_connection: str
+) -> None:
+    response = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": segmenter_connection},
+    )
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["code"] == "UNSUPPORTED_PROMPT"
+    assert body["message"]
+    assert _pre_label_job_count(client) == 0
+
+
+def test_a_schema_with_no_box_class_is_refused_before_a_job_exists(
+    client: TestClient, polygon_only_batch: OpenBatch
+) -> None:
+    response = client.post(
+        f"/batches/{polygon_only_batch.id}/pre-label",
+        json={"connection_id": polygon_only_batch.connection_id},
+    )
+
+    assert response.status_code == 409
+    body = response.json()
+    assert body["code"] == "SCHEMA_HAS_NO_DETECTABLE_CLASS"
+    assert body["message"]
+    assert _pre_label_job_count(client) == 0
+
+
+def test_a_schema_whose_box_class_requires_an_attribute_is_refused_before_a_job_exists(
+    client: TestClient, attribute_gated_batch: OpenBatch
+) -> None:
+    """The refusal `detectable_classes` grew a second reason for: a bare
+    prediction can never carry the attribute value this class demands."""
+    response = client.post(
+        f"/batches/{attribute_gated_batch.id}/pre-label",
+        json={"connection_id": attribute_gated_batch.connection_id},
+    )
+
+    assert response.status_code == 409
+    body = response.json()
+    assert body["code"] == "SCHEMA_HAS_NO_DETECTABLE_CLASS"
+    assert body["message"]
+    assert _pre_label_job_count(client) == 0
+
+
+def test_a_not_set_up_connection_is_refused_before_a_job_exists(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    """A connection that answers words but has no weights yet must not be told
+    it answers places — `setup_state` is checked before the capability read,
+    which is empty on a connection nobody has downloaded weights for."""
+    body = {
+        "name": f"c-{uuid4().hex[:8]}",
+        "connection_type": "local",
+        "model_id": "some/grounding-dino",
+        "model_revision": "v1",
+        "device": "cpu",
+        "precision": "fp32",
+    }
+    made = client.post("/inference/connections", json=body).json()
+
+    response = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": made["id"]},
+    )
+
+    assert response.status_code == 409
+    body_out = response.json()
+    assert body_out["code"] == "INFERENCE_CONNECTION_NOT_SET_UP"
+    assert body_out["message"]
+    assert _pre_label_job_count(client) == 0
+
+
+def test_the_connection_is_refused_before_the_batch_state(
+    client: TestClient, approved_batch: OpenBatch, segmenter_connection: str
+) -> None:
+    """An approved-but-not-started batch and a point-prompt connection are both
+    wrong at once. The connection's refusal wins — the same order `pre_label`
+    itself checks in — so REST and MCP never disagree about which of the two
+    reasons a caller gets back."""
+    response = client.post(
+        f"/batches/{approved_batch.id}/pre-label",
+        json={"connection_id": segmenter_connection},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "UNSUPPORTED_PROMPT"
+    assert _pre_label_job_count(client) == 0
+
+
+def test_an_unknown_batch_is_not_found(client: TestClient) -> None:
+    response = client.post(f"/batches/{uuid4()}/pre-label", json={"connection_id": str(uuid4())})
+
+    assert response.status_code == 404
+
+
+def test_a_confidence_outside_the_unit_interval_is_a_validation_error(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id, "minimum_confidence": 1.5},
+    )
+
+    assert response.status_code == 422
+    assert _pre_label_job_count(client) == 0

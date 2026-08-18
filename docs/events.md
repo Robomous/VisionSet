@@ -92,13 +92,15 @@ custom encoder - which is what makes a webhook a subscriber rather than a rewrit
 | --- | --- | --- |
 | `BatchApproved` | `BatchService.approve` | `batch_id`, `project_id`, `schema_version`, `job_ids`, `asset_count` |
 | `BatchCompleted` | `BatchService.complete` | `batch_id`, `project_id`, `asset_count` |
-| `AnnotationsWritten` | `AnnotationService.add` / `update` / `delete` | `job_id`, `batch_id`, `operation`, `asset_ids`, `annotation_ids` |
+| `AnnotationsWritten` | `AnnotationService.add` / `enter_unreviewed` / `update` / `delete` | `job_id`, `batch_id`, `operation`, `asset_ids`, `annotation_ids` |
 | `ReleasePublished` | `ReleaseService.publish` | `release_id`, `dataset_id`, `project_id`, `tag`, `manifest_hash`, `schema_version`, `asset_count`, `annotation_count` |
 | `IngestCompleted` | `IngestService.ingest` | `ingest_job_id`, `project_id`, `source_id`, `asset_count` |
 
-`AnnotationsWritten` is one per **call**, not one per box: the three writes are all-or-nothing
-over a whole payload, so one call is one thing that happened. Its `asset_ids` are deduplicated -
-several boxes on one image are one asset touched.
+`AnnotationsWritten` is one per **call**, not one per box: all four writes are all-or-nothing
+over a whole payload, so one call is one thing that happened. `enter_unreviewed` publishes it
+under `operation: "add"`, the same as `add` itself - the event names the shape of the write, new
+rows landing, not the progress the write happened to leave behind. Its `asset_ids` are
+deduplicated - several boxes on one image are one asset touched.
 
 `ReleasePublished` carries `manifest_hash` so a subscriber can read the entire frozen snapshot
 out of the blob store without being handed it. It is also why publishing writes no

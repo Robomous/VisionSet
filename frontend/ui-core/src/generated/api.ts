@@ -378,6 +378,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/batches/{batch_id}/pre-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pre Label Batch
+         * @description Ask a model to label every untouched asset in this batch, and answer at once.
+         *
+         *     The `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:
+         *     nobody judged them, so they arrive editable and correctable rather than
+         *     claiming to be somebody's work — and, being unjudged, they never reach the
+         *     Dataset until a person has taken them over.
+         *
+         *     **Only assets nothing has touched — which is stronger than reading
+         *     `unannotated`.** An asset that is already annotated, skipped, awaiting
+         *     review or accepted is passed over, and so is an `unannotated` one that
+         *     still carries annotations from an earlier round that was skipped and then
+         *     restored: that sequence deletes no labels, so progress alone does not
+         *     prove an asset untouched. A run never writes over what a person did, and
+         *     a second run picks up only what is still untouched.
+         *
+         *     **The batch's pinned schema is the prompt.** The model is asked for each class
+         *     the schema declares that a box can be written as; an answer naming one of
+         *     those classes, matched case-insensitively, is written under the schema's own
+         *     spelling, and an answer naming none of them is discarded. A schema whose
+         *     classes are all polygons, polylines or tags — or whose box classes each
+         *     require an attribute a prediction cannot supply — has nowhere for a
+         *     detection to land and is refused.
+         *
+         *     **202, not 200.** A batch is hundreds of forward passes, so this follows the
+         *     launch-and-poll contract the export and weight-download routes use: poll `GET
+         *     /background-jobs/{id}` — the `Location` header names it — until `state` is
+         *     `succeeded`, then re-read the batch's assets. Progress on the row is counted
+         *     in assets.
+         *
+         *     **Everything a caller can be told now is told now**, and no refusal creates a
+         *     job — so a caller holding a job id holds one that will run. These refusals
+         *     are about the request, and the caller can act on each. They are checked in
+         *     this order, and it is the order `pre_label` itself checks in, so a request
+         *     wrong about the connection and the batch both always names the connection:
+         *     a connection whose weights have not arrived is 409
+         *     `INFERENCE_CONNECTION_NOT_SET_UP`; a connection whose model answers places
+         *     rather than words is 422 `UNSUPPORTED_PROMPT`; a batch that is not
+         *     `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no
+         *     class a box can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+         *
+         *     Two failures are about this installation rather than about the request, and
+         *     answer 500 carrying the message that says which: a machine without the
+         *     optional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the
+         *     exact command that installs it, and a workspace whose records no longer
+         *     hold together — a batch pinned to a schema version that is not stored — is
+         *     `WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no
+         *     state here a caller can change, so the remedy is the one the message names.
+         *
+         *     **Asking twice joins the run already in flight rather than starting a second
+         *     one.** A request arriving while this batch has a pre-labeling run queued or
+         *     running is answered with that run's id, so a double-click and a second tab
+         *     watch one run instead of paying for the same inference twice.
+         */
+        post: operations["pre_label_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/batches/{batch_id}/promote": {
         parameters: {
             query?: never;
@@ -1327,9 +1398,10 @@ export interface paths {
          * @description Record where one asset of this job has got to.
          *
          *     One route rather than five verbs, because the legal moves are a table in the
-         *     kernel and a second spelling of it would drift: `unannotated` to `annotated`
-         *     or `skipped`, `annotated` to `review_pending` or back, `review_pending` to
-         *     `accepted` or back to `annotated`, and `accepted` nowhere at all. Anything
+         *     kernel and a second spelling of it would drift: `unannotated` to `annotated`,
+         *     `pre_labeled` or `skipped`; `pre_labeled` to `annotated`, `unannotated` or
+         *     `skipped`; `annotated` to `review_pending` or back; `review_pending` to
+         *     `accepted` or back to `annotated`; and `accepted` nowhere at all. Anything
          *     else is 409 `INVALID_TRANSITION`.
          *
          *     Setting the state an asset is already in is a no-op rather than a refusal —
@@ -1342,9 +1414,9 @@ export interface paths {
          *     request unchanged would land a decision made about a state nobody is in any
          *     more.
          *
-         *     Labels move `unannotated` and `annotated` on their own as annotations are
-         *     added and deleted. This route is for the decisions that are nobody's
-         *     consequence: skipping, submitting for review, accepting.
+         *     Labels move `unannotated`, `pre_labeled` and `annotated` on their own as
+         *     annotations are written, edited or deleted. This route is for the decisions
+         *     that are nobody's consequence: skipping, submitting for review, accepting.
          */
         put: operations["set_asset_progress"];
         post?: never;
@@ -1391,8 +1463,9 @@ export interface paths {
          * @description Close the job, if every asset in it has been dealt with.
          *
          *     Dealt with means `annotated`, `skipped` or `accepted`. An `unannotated` asset
-         *     means the labeling has not happened and a `review_pending` one means the
-         *     review has not; either answers 409 `JOB_NOT_COMPLETE` and says how many are
+         *     means the labeling has not happened, a `pre_labeled` one means a model's
+         *     guess is still unjudged, and a `review_pending` one means the review has
+         *     not; any of the three answers 409 `JOB_NOT_COMPLETE` and says how many are
          *     outstanding.
          *
          *     A job that is not `in_progress` is 409 `INVALID_TRANSITION`, and a batch that
@@ -2669,7 +2742,7 @@ export interface components {
          * @description Per-asset annotation progress inside a job.
          * @enum {string}
          */
-        AssetProgress: "unannotated" | "annotated" | "skipped" | "review_pending" | "accepted";
+        AssetProgress: "unannotated" | "pre_labeled" | "annotated" | "skipped" | "review_pending" | "accepted";
         /**
          * AssetProgressOut
          * @description Where one asset of a job has got to.
@@ -2813,7 +2886,7 @@ export interface components {
          * @description What can be asked of a batch. Declaration order is display order.
          * @enum {string}
          */
-        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "edit_membership" | "delete" | (string & {});
+        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "pre_label" | "edit_membership" | "delete" | (string & {});
         /**
          * BatchApprove
          * @description How to cut the batch into jobs. One job for the whole batch by default.
@@ -2930,6 +3003,7 @@ export interface components {
             name: string;
             /** Parent Batch Id */
             parent_batch_id: string | null;
+            pre_label_run: components["schemas"]["PreLabelRunOut"] | null;
             progress: components["schemas"]["ProgressCounts"];
             /**
              * Project Id
@@ -3854,6 +3928,64 @@ export interface components {
             type: "polyline";
         };
         /**
+         * PreLabelRequest
+         * @description Which model should pre-label this batch, and how sure it has to be.
+         */
+        PreLabelRequest: {
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /**
+             * Minimum Confidence
+             * @default 0.35
+             */
+            minimum_confidence: number;
+        };
+        /**
+         * PreLabelRunOut
+         * @description A batch's most recent pre-labeling run: which job, how far, and what it found.
+         *
+         *     Present whenever pre-labeling has ever been asked for on this batch, and
+         *     describing the most recent run — including one this session did not launch.
+         *     A dialog reopened after a reload, in a second tab, or after a run started
+         *     from the terminal reads the same state from here rather than from a job id
+         *     a component happened to keep.
+         *
+         *     **Assets, where a download counts bytes and a check counts files.** The
+         *     handler owns a loop over the batch's untouched assets and knows the whole
+         *     set before the first forward pass, so both its progress and its total are
+         *     counted in the unit its own work is over.
+         *
+         *     **The outcome, once the job has one.** `stopped_early`, `assets_labeled` and
+         *     `regions_discarded` are the handler's own account of what a settled run did.
+         *     They are `null` while the job is still `queued` or `running`, and `null`
+         *     where it ended `failed` before producing one — but a `cancelled` run still
+         *     carries them: stopping partway is a coherent outcome for a handler whose
+         *     contract is to write only where nothing has been written.
+         */
+        PreLabelRunOut: {
+            /** Assets Labeled */
+            assets_labeled: number | null;
+            /** Assets Processed */
+            assets_processed: number;
+            /** Assets Total */
+            assets_total: number | null;
+            /** Error */
+            error: string | null;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Regions Discarded */
+            regions_discarded: number | null;
+            state: components["schemas"]["BackgroundJobState"];
+            /** Stopped Early */
+            stopped_early: boolean | null;
+        };
+        /**
          * Precision
          * @description The numeric precision a local connection asks its weights to be loaded in.
          *
@@ -3879,6 +4011,8 @@ export interface components {
             accepted: number;
             /** Annotated */
             annotated: number;
+            /** Pre Labeled */
+            pre_labeled: number;
             /** Review Pending */
             review_pending: number;
             /** Skipped */
@@ -4082,9 +4216,10 @@ export interface components {
          * ResumeKind
          * @description What an open batch is being offered for, and so what `next_asset_id` is.
          *
-         *     `annotate` - a frame nobody has labeled, which is that frame.
-         *     `review` - every frame is labeled or set aside and some await a reviewer,
-         *     which is the first of those. `open` - neither, and `next_asset_id` is null.
+         *     `annotate` - a frame nobody has judged, whether nobody has labeled it or
+         *     only a model has, which is that frame. `review` - every frame is judged
+         *     and some await a reviewer, which is the first of those. `open` - neither,
+         *     and `next_asset_id` is null.
          * @enum {string}
          */
         ResumeKind: "annotate" | "review" | "open";
@@ -5490,6 +5625,86 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pre_label_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10590,7 +10805,7 @@ export type OpenMember<A extends string> = A | (string & {});
 /** The members this build compiled against, per vocabulary the contract may grow. */
 export interface KnownMembers {
   AssetAction: "annotate" | "skip" | "restore" | "submit_for_review" | "accept" | "return_to_annotator";
-  BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "edit_membership" | "delete";
+  BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "pre_label" | "edit_membership" | "delete";
   ConnectionAction: "download_weights" | "check_integrity" | "update" | "delete";
   JobAction: "start" | "complete";
   ModelCapability: "point_suggest" | "text_detect";

@@ -96,6 +96,7 @@ from visionset.kernel.services import (
 SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 
 UNANNOTATED = AssetProgress.UNANNOTATED
+PRE_LABELED = AssetProgress.PRE_LABELED
 ANNOTATED = AssetProgress.ANNOTATED
 SKIPPED = AssetProgress.SKIPPED
 REVIEW_PENDING = AssetProgress.REVIEW_PENDING
@@ -204,6 +205,7 @@ class Fixture:
 #: The shortest legal walk from ``unannotated`` to each progress state.
 _ROUTE_TO: dict[AssetProgress, tuple[AssetProgress, ...]] = {
     UNANNOTATED: (),
+    PRE_LABELED: (PRE_LABELED,),
     ANNOTATED: (ANNOTATED,),
     SKIPPED: (SKIPPED,),
     REVIEW_PENDING: (ANNOTATED, REVIEW_PENDING),
@@ -356,6 +358,13 @@ def _invoke_batch(fixture: Fixture, action: BatchAction) -> Callable[[], None]:
         assert child.state is BatchState.DRAFT
         assert child.asset_ids == fixture.batches.get(batch_id).asset_ids
 
+    def pre_label() -> None:
+        # `require_pre_labelable` is the gate the route consults before it
+        # resolves a connection or reads a schema — neither of which this
+        # fixture has to set up, since the declaration is a fact about the
+        # batch's state alone.
+        assert fixture.batches.require_pre_labelable(batch_id).state is BatchState.IN_ANNOTATION
+
     return {
         BatchAction.APPROVE: approve,
         BatchAction.START: start,
@@ -363,6 +372,7 @@ def _invoke_batch(fixture: Fixture, action: BatchAction) -> Callable[[], None]:
         BatchAction.REPIN: repin,
         BatchAction.PROMOTE: promote,
         BatchAction.CREATE_CORRECTION: create_correction,
+        BatchAction.PRE_LABEL: pre_label,
         BatchAction.EDIT_MEMBERSHIP: edit_membership,
         BatchAction.DELETE: delete,
     }[action]
@@ -409,6 +419,14 @@ def test_completing_a_batch_is_declared_from_the_table_and_can_still_refuse(
     fixture.settle_everything()
     assert fixture.batches.complete(fixture.batch.id).state is BatchState.COMPLETED
     fixture.close()
+
+
+def test_pre_label_is_offered_only_while_a_batch_is_being_annotated() -> None:
+    """Before it, no jobs carry assets; after it, the work is closed."""
+    assert BatchAction.PRE_LABEL in batch_actions(BatchState.IN_ANNOTATION)
+    for state in BatchState:
+        if state is not BatchState.IN_ANNOTATION:
+            assert BatchAction.PRE_LABEL not in batch_actions(state)
 
 
 # --- enforcement: jobs --------------------------------------------------------

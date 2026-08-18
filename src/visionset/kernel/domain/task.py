@@ -37,6 +37,7 @@ class AssetProgress(StrEnum):
     """Per-asset annotation progress inside a job."""
 
     UNANNOTATED = "unannotated"
+    PRE_LABELED = "pre_labeled"
     ANNOTATED = "annotated"
     SKIPPED = "skipped"
     REVIEW_PENDING = "review_pending"
@@ -62,7 +63,7 @@ OPEN_JOB_STATES: Final[frozenset[AnnotationJobState]] = frozenset(
 """The job states work may still happen in.
 
 ``JobService`` and ``AnnotationService`` both consult this before touching
-anything a job carries — labels through the three annotation writes, progress
+anything a job carries — labels through the four annotation writes, progress
 through ``mark`` — and :func:`~visionset.kernel.domain.capabilities.asset_actions`
 reads the same set, so what an asset declares and what it accepts cannot drift.
 
@@ -85,7 +86,12 @@ is the annotation job, the way ``JOB_TRANSITIONS`` is and
 
 
 ASSET_PROGRESS_TRANSITIONS: Final[Mapping[AssetProgress, frozenset[AssetProgress]]] = {
-    AssetProgress.UNANNOTATED: frozenset({AssetProgress.ANNOTATED, AssetProgress.SKIPPED}),
+    AssetProgress.UNANNOTATED: frozenset(
+        {AssetProgress.ANNOTATED, AssetProgress.SKIPPED, AssetProgress.PRE_LABELED}
+    ),
+    AssetProgress.PRE_LABELED: frozenset(
+        {AssetProgress.ANNOTATED, AssetProgress.UNANNOTATED, AssetProgress.SKIPPED}
+    ),
     AssetProgress.ANNOTATED: frozenset(
         {AssetProgress.UNANNOTATED, AssetProgress.SKIPPED, AssetProgress.REVIEW_PENDING}
     ),
@@ -97,6 +103,13 @@ ASSET_PROGRESS_TRANSITIONS: Final[Mapping[AssetProgress, frozenset[AssetProgress
 
 - ``unannotated -> annotated`` — it was labeled; ``-> skipped`` — it was decided
   against, which is recorded rather than erased from the batch.
+- ``unannotated -> pre_labeled`` — a model wrote labels nobody has judged, so
+  they enter their own editable state rather than claiming to be somebody's
+  work or awaiting a reviewer that human-submitted work waits for.
+- ``pre_labeled -> annotated`` — a person edited the model's labels and so took
+  responsibility for them; ``-> unannotated`` — the model's last label was
+  removed; ``-> skipped`` — a person decided against labeling it, the same
+  choice available from ``unannotated``.
 - ``annotated -> unannotated`` — the last annotation on it was deleted;
   ``-> review_pending`` — it was submitted; ``-> skipped`` — it was decided
   against after all.
@@ -121,6 +134,10 @@ outstanding work. ``unannotated`` blocks because the labeling has not happened;
 Review is optional in M1 — an asset may be done at ``annotated`` — so this set is
 generous on purpose. Making it ``{accepted, skipped}`` would mean no job could
 ever finish without a reviewer, and there is no review surface yet.
+
+``pre_labeled`` is deliberately absent. A batch where every frame carries a
+model's unreviewed guess is not done — that is exactly the work still
+outstanding — so it cannot let a job, and through it a batch, complete.
 """
 
 
@@ -145,27 +162,41 @@ put back exactly what that person kept out.
 Every state here is in ``SETTLED_PROGRESS``, and it has to be: promotion only
 happens from a ``completed`` batch, and a batch cannot complete while any asset
 is unsettled, so a promotable-but-unsettled state would be unreachable.
+
+``pre_labeled`` is excluded for the same reason and is the one this matters most
+for: an asset at ``annotated`` may enter the Dataset when its batch completes, so
+a model's labels that no person has ever seen must never sit there. Provenance
+already records who wrote a label; this is what stops that record from also
+being the thing that lets it into the curated trunk unseen.
 """
 
 
 WRITABLE_PROGRESS: Final[frozenset[AssetProgress]] = frozenset(
-    {AssetProgress.UNANNOTATED, AssetProgress.ANNOTATED}
+    {AssetProgress.UNANNOTATED, AssetProgress.ANNOTATED, AssetProgress.PRE_LABELED}
 )
 """The states in which an asset's labels may still be added to, edited or removed.
 
-``AnnotationService`` consults this on every write, beside the batch gate. The
-two answer different questions — is this batch open at all, and is *this asset*
-still being labeled — and both have to hold.
+``AnnotationService.add``, ``update`` and ``delete`` consult this on every
+write, beside the batch gate. The two answer different questions — is this
+batch open at all, and is *this asset* still being labeled — and both have to
+hold. ``enter_unreviewed`` is narrower still and does not consult this set at
+all: it writes only onto ``unannotated``, because a model's unattended labels
+must never land over work a person has already touched.
 
-Exactly the two states :func:`progress_after_annotating` knows how to move
-between, and that is the whole argument. The other three each record somebody's
-decision that labeling is over: ``skipped`` says a person chose not to label
-this, ``review_pending`` says a person submitted it, ``accepted`` says a reviewer
-took it. A write onto any of them lands labels the progress machine will not
-account for — and for ``skipped`` it is worse than untidy, because
-``PROMOTABLE_PROGRESS`` leaves the asset out of the trunk, so the work is
-accepted, stored, and then silently dropped at promotion with nothing anywhere
-saying so.
+``pre_labeled`` belongs here for the reason the state exists at all: a model's
+guess is expected to need correcting, and correcting it is what ``add``,
+``update`` and ``delete`` are for. Editing it is also what takes it over —
+``progress_after_annotating`` moves it to ``annotated`` the moment a label
+changes, so nothing here has to ask whose work it is before allowing the write.
+
+Exactly the three states those three writes may touch. The other three are
+settled: ``skipped`` says a person chose not to label this, ``accepted`` says a
+reviewer took it, and ``review_pending`` says a person submitted it for review.
+A write through ``add``, ``update`` or ``delete`` onto any of the three settled
+states lands labels the progress machine will not account for — and for
+``skipped`` it is worse than untidy, because ``PROMOTABLE_PROGRESS`` leaves the
+asset out of the trunk, so the work is accepted, stored, and then silently
+dropped at promotion with nothing anywhere saying so.
 
 Refusing is what makes that unreachable. The remedy is to move the progress first
 where the transition table allows it — ``skipped -> unannotated`` is the
@@ -175,28 +206,45 @@ rather than behind the record's back.
 
 
 def progress_after_annotating(
-    current: AssetProgress, *, has_annotations: bool
+    current: AssetProgress, *, has_annotations: bool, judged: bool = True
 ) -> AssetProgress | None:
     """Where this asset's progress should land now, or ``None`` to leave it.
 
-    The only two moves a row appearing or disappearing can justify:
-    ``unannotated -> annotated`` when the first annotation lands, and
-    ``annotated -> unannotated`` when the last one goes.
+    The only moves a row appearing or disappearing can justify: an annotation's
+    last row going moves it ``annotated -> unannotated`` (or, for a model's
+    still-untouched guess, ``pre_labeled -> unannotated``), and its first row
+    landing moves it to ``annotated`` or, unjudged, to ``pre_labeled`` — see
+    ``judged`` below.
 
     Everything else is somebody's decision rather than a consequence.
-    ``skipped`` says a person chose not to label this; ``review_pending`` says
-    a person submitted it; ``accepted`` says a reviewer took it. None of those
-    is contradicted by an annotation being drawn or erased, so annotations
-    never move them — ``JobService.mark`` is the door for a decision, and it
-    consults ``ASSET_PROGRESS_TRANSITIONS`` the same way.
+    ``skipped`` says a person chose not to label this; ``accepted`` says a
+    reviewer took it. Neither is contradicted by an annotation being drawn or
+    erased, so annotations never move them — ``JobService.mark`` is the door for
+    a decision, and it consults ``ASSET_PROGRESS_TRANSITIONS`` the same way.
 
     Pure, and separate from ``AnnotationService`` on purpose: "what does this
     mean for progress" is a domain question, and keeping it here is what lets
     a test sweep it against the transition table rather than against prose.
+
+    ``judged`` says whether a person exercised judgement on the labels that just
+    arrived. Unattended prediction is a silent write, so its labels enter at
+    ``pre_labeled`` rather than claiming to be work somebody did — and they get
+    there in one move, because a path through ``annotated`` has a window in which a
+    crash would leave unreviewed labels looking reviewed.
+
+    A person's first edit on a ``pre_labeled`` frame takes it over: that is a
+    consequence of editing it, not a button somebody presses. It is its own pair
+    of branches rather than folded into ``unannotated``'s, because ``judged`` has
+    nothing to decide once a model has already written here — there is no
+    unattended path *out* of ``pre_labeled``, only a person's.
     """
     if current is AssetProgress.UNANNOTATED and has_annotations:
-        return AssetProgress.ANNOTATED
+        return AssetProgress.ANNOTATED if judged else AssetProgress.PRE_LABELED
     if current is AssetProgress.ANNOTATED and not has_annotations:
+        return AssetProgress.UNANNOTATED
+    if current is AssetProgress.PRE_LABELED and has_annotations:
+        return AssetProgress.ANNOTATED
+    if current is AssetProgress.PRE_LABELED and not has_annotations:
         return AssetProgress.UNANNOTATED
     return None
 

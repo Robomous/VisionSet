@@ -101,6 +101,7 @@ function mount(node: ReactNode): JSX.Element {
 
 const NO_PROGRESS = {
   unannotated: 0,
+  pre_labeled: 0,
   annotated: 0,
   skipped: 0,
   review_pending: 0,
@@ -124,6 +125,7 @@ function batch(overrides: Record<string, unknown> = {}): Record<string, unknown>
     allowed_actions: batchActions(state),
     promoted_asset_count: 0,
     parent_batch_id: null,
+    pre_label_run: null,
     ...overrides,
   };
 }
@@ -474,6 +476,7 @@ describe("the gallery", () => {
         progress: {
           total: 48,
           unannotated: 30,
+          pre_labeled: 2,
           annotated: 8,
           review_pending: 5,
           accepted: 1,
@@ -492,9 +495,11 @@ describe("the gallery", () => {
       expect(screen.getByTestId("segment-all").textContent).toContain("All (48)"),
     );
     expect(screen.getByTestId("segment-unannotated").textContent).toContain("(30)");
+    expect(screen.getByTestId("segment-pre_labeled").textContent).toContain("Model-labeled (2)");
     expect(screen.getByTestId("segment-review").textContent).toContain("In review (5)");
-    // 8 annotated + 1 accepted + 4 skipped. `review_pending` is deliberately not
-    // in here, which is the whole reason the mapping is written down.
+    // 8 annotated + 1 accepted + 4 skipped. `review_pending` and `pre_labeled`
+    // are deliberately not in here, which is the whole reason the mapping is
+    // written down.
     expect(screen.getByTestId("segment-done").textContent).toContain("Done (13)");
   });
 
@@ -1198,8 +1203,87 @@ describe("the bulk bar", () => {
 
     expect((screen.getByTestId("bulk-skip") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId("bulk-restore") as HTMLButtonElement).disabled).toBe(true);
-    // Said once, where two zeroes on two buttons would just look broken.
-    expect(screen.getByTestId("bulk-unavailable").textContent).toContain("skipped or restored");
+    expect((screen.getByTestId("bulk-return") as HTMLButtonElement).disabled).toBe(true);
+    // Said once, where three zeroes on three buttons would just look broken.
+    expect(screen.getByTestId("bulk-unavailable").textContent).toContain(
+      "skipped, restored or returned to the annotator",
+    );
+  });
+
+  it("offers Return to annotator for a review_pending frame the wire declares it on", async () => {
+    await withFrames("review_pending", "unannotated");
+    selectAll(2);
+
+    // One of the two: `review_pending` is the frame the move exists for, and
+    // `unannotated` declares none of the three moves this bar offers.
+    expect((screen.getByTestId("bulk-return") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByTestId("bulk-return").textContent).toContain("(1)");
+  });
+
+  it("leaves Return to annotator disabled on a selection with nothing to return", async () => {
+    await withFrames("unannotated", "annotated");
+    selectAll(2);
+
+    expect((screen.getByTestId("bulk-return") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("bulk-return").textContent).toContain("(0)");
+  });
+
+  it("sends review_pending → annotated for the frames selected, and only those", async () => {
+    await withFrames("review_pending", "review_pending", "annotated");
+    selectAll(3);
+    await userEvent.click(screen.getByTestId("bulk-return"));
+
+    await waitFor(() =>
+      expect(sentProgress()).toEqual([
+        { path: `/jobs/${JOB}/assets/asset-0/progress`, progress: "annotated" },
+        { path: `/jobs/${JOB}/assets/asset-1/progress`, progress: "annotated" },
+      ]),
+    );
+  });
+
+  it("moves the selection and the gallery reflects it, not just the request", async () => {
+    // A stateful stub, unlike `withFrames`'s fixed page: this is the one test in
+    // the file that has to prove the *tile* changed, not only that a request
+    // went out, so `/assets` has to answer differently after the write lands.
+    const items = [tile(0, "review_pending", "in_annotation"), tile(1, "annotated", "in_annotation")];
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({
+        state: "in_annotation",
+        schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 2, review_pending: 1, annotated: 1 },
+      }),
+    });
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname.endsWith("/assets")) {
+        return { status: 200, body: { total: items.length, items } };
+      }
+      if (request.method === "PUT" && url.pathname.endsWith("/progress")) {
+        const assetId = url.pathname.split("/").at(-2) ?? "";
+        const item = items.find((one) => (one.id as string) === assetId);
+        if (item !== undefined) {
+          item.progress = "annotated";
+          item.allowed_actions = assetActions("annotated", { batchState: "in_annotation" });
+        }
+        return { status: 200, body: { asset_id: assetId, progress: "annotated" } };
+      }
+      return undefined;
+    });
+    on("GET", /\/annotations$/, { status: 200, body: [] });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    await screen.findByTestId("tile-asset-0");
+    expect(screen.getByTestId("state-asset-0").textContent).toContain("in review");
+
+    await userEvent.click(screen.getByTestId("select-asset-0"));
+    await userEvent.click(screen.getByTestId("bulk-return"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("state-asset-0").textContent).toContain("annotated"),
+    );
+    // Its own count moves with it, read off the same refetched page.
+    expect(screen.getByTestId("state-asset-1").textContent).toContain("annotated");
   });
 
   /**
@@ -1443,6 +1527,20 @@ describe("the bulk bar", () => {
       expect(said.textContent?.match(/not open for annotation/g)).toHaveLength(1);
     });
 
+    it("renders a Return to annotator refusal as a sentence, not a code", async () => {
+      await withFrames("review_pending");
+      refuse({ code: "ASSET_NOT_WRITABLE", message: "asset ... is not writable" });
+      selectAll(1);
+      await userEvent.click(screen.getByTestId("bulk-return"));
+
+      const said = await screen.findByTestId("bulk-partial");
+      expect(said.textContent).toContain("0 moved");
+      expect(said.textContent).toContain(
+        "This frame's labeling is settled — its labels cannot be changed here.",
+      );
+      expect(said.textContent).not.toContain("ASSET_NOT_WRITABLE");
+    });
+
     it("says somebody else moved the frame, for the refusal that means that (#302)", async () => {
       // The kernel now refuses a progress write decided against a state that has
       // since moved, rather than applying it on top and answering 200 to both
@@ -1620,6 +1718,166 @@ describe("the gallery header's way into the annotator", () => {
     // and the wire declares it.
     await open("annotated", "unannotated");
     expect(screen.queryByTestId("promote-drive-01")).toBeNull();
+  });
+});
+
+/**
+ * The batch's own next step, on the batch's own page.
+ *
+ * An `approved` batch used to have exactly one header action, `View frames`,
+ * which reads as "the work is finished or unavailable" over a batch showing
+ * `0 of N annotated` — because the header answered only "can I annotate these
+ * frames" (asset-level, correctly no) and never "what is this batch's next
+ * move" (batch-level, `start`). This is the second question, gated on the
+ * batch's own `allowed_actions` rather than on `batch.state`.
+ */
+describe("the gallery header's own next step", () => {
+  function frames(batchState: BatchState, ...states: string[]): Record<string, unknown> {
+    return {
+      total: states.length,
+      items: states.map((progress, at) => ({
+        id: `asset-${at}`,
+        project_id: PROJECT,
+        modality: "image",
+        content_hash: `${at}`.padStart(8, "0") + "deadbeef",
+        width: 1280,
+        height: 720,
+        format: "jpeg",
+        source_id: SOURCE,
+        frame_index: at,
+        frame_timestamp: at,
+        thumbnail_hash: "cafebabe",
+        ingested_at: "2026-08-01T09:00:00Z",
+        job_id: JOB,
+        progress,
+        allowed_actions: assetActions(progress as Progress, { batchState }),
+      })),
+    };
+  }
+
+  async function openIn(batchState: BatchState, ...states: string[]): Promise<void> {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({
+        state: batchState,
+        schema_version: 1,
+        progress: { ...NO_PROGRESS, total: states.length, unannotated: states.length },
+      }),
+    });
+    on("GET", /\/assets$/, { status: 200, body: frames(batchState, ...states) });
+    on("GET", /\/annotations$/, { status: 200, body: [] });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={vi.fn()} />));
+    await screen.findByTestId("tile-asset-0");
+  }
+
+  it("offers Start annotating on an approved batch, not View frames", async () => {
+    await openIn("approved", "unannotated", "unannotated");
+    expect(screen.getByTestId("start-batch").textContent).toContain("Start annotating");
+    // The per-frame door is not offered beside it — a batch that has not
+    // started has nothing settled yet for that door to show.
+    expect(screen.queryByTestId("start-annotating")).toBeNull();
+  });
+
+  it("offers no Start on a completed batch, only View frames", async () => {
+    await openIn("completed", "annotated", "skipped");
+    expect(screen.queryByTestId("start-batch")).toBeNull();
+    expect(screen.getByTestId("start-annotating").textContent).toContain("View frames");
+  });
+
+  it("offers no Start on an in_annotation batch, only the annotator entry", async () => {
+    await openIn("in_annotation", "annotated", "unannotated", "unannotated");
+    expect(screen.queryByTestId("start-batch")).toBeNull();
+    expect(screen.getByTestId("start-annotating")).toBeTruthy();
+  });
+
+  it("performs the batch's own start rather than navigating into the annotator", async () => {
+    let started = false;
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname === `/batches/${BATCH}`) {
+        return {
+          status: 200,
+          body: batch({
+            state: started ? "in_annotation" : "approved",
+            schema_version: 1,
+            progress: { ...NO_PROGRESS, total: 2, unannotated: 2 },
+          }),
+        };
+      }
+      if (request.method === "POST" && url.pathname === `/batches/${BATCH}/start`) {
+        started = true;
+        return { status: 200, body: batch({ state: "in_annotation", schema_version: 1 }) };
+      }
+      return undefined;
+    });
+    on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+
+    const opened = vi.fn();
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={opened} />));
+    await userEvent.click(await screen.findByTestId("start-batch"));
+
+    // The badge moves — the batch actually re-reads as `in_annotation` — and
+    // nothing in the header sent this press into the annotator to get there.
+    await waitFor(() => expect(screen.getByTestId("batch-state").textContent).toBe("in progress"));
+    expect(screen.queryByTestId("start-batch")).toBeNull();
+    expect(opened).not.toHaveBeenCalled();
+  });
+
+  it("disables Start while the transition is in flight, not only after the click", async () => {
+    // The gate has to sit under `globalThis.fetch` *before* the client is
+    // built — `openapi-fetch` reads `globalThis.fetch` once, at
+    // `createClient()` time, so stubbing it after `render` would wrap a
+    // reference this client never uses.
+    const inner = globalThis.fetch;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal("fetch", async (request: Request) => {
+      if (request.method === "POST" && new URL(request.url).pathname.endsWith("/start")) {
+        await gate;
+      }
+      return inner(request);
+    });
+
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({
+        state: "approved",
+        schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 1, unannotated: 1 },
+      }),
+    });
+    on("GET", /\/assets$/, { status: 200, body: frames("approved", "unannotated") });
+    on("GET", /\/annotations$/, { status: 200, body: [] });
+    on("POST", /\/start$/, { status: 200, body: batch({ state: "in_annotation", schema_version: 1 }) });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={vi.fn()} />));
+    await screen.findByTestId("start-batch");
+
+    await userEvent.click(screen.getByTestId("start-batch"));
+    expect((screen.getByTestId("start-batch") as HTMLButtonElement).disabled).toBe(true);
+
+    release?.();
+    await waitFor(() =>
+      expect((screen.getByTestId("start-batch") as HTMLButtonElement).disabled).toBe(false),
+    );
+  });
+
+  it("renders a refused start as prose, not the raw code", async () => {
+    await openIn("approved", "unannotated");
+    handlers.push((request) =>
+      request.method === "POST" && new URL(request.url).pathname.endsWith("/start")
+        ? { status: 409, body: { code: "INVALID_TRANSITION", message: "moved already" } }
+        : undefined,
+    );
+
+    await userEvent.click(screen.getByTestId("start-batch"));
+
+    const said = await screen.findByTestId("start-batch-error");
+    expect(said.textContent).toContain("already moved on");
+    expect(said.textContent).not.toContain("INVALID_TRANSITION");
   });
 });
 

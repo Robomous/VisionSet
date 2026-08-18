@@ -295,7 +295,13 @@ class LocalTransformersProvider:
 
 
 def _labels_in(raw: dict[str, Any]) -> list[str]:
-    """The phrase each box answered under.
+    """The text each box decoded to — not necessarily a phrase anybody asked for.
+
+    The post-processor turns a token span back into text over the prompt
+    string; a span crossing the boundary between two phrases decodes as both of
+    them joined, so this can return text that names no phrase in the prompt.
+    Mapping an answer back onto a class, and discarding what cannot be mapped,
+    is the caller's job.
 
     Two keys because the post-processor renamed one: ``text_labels`` is the
     current spelling and ``labels`` is what older releases wrote. Read both, in

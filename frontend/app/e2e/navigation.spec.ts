@@ -34,6 +34,7 @@ const JOB = "33333333-3333-4333-8333-333333333333";
 
 const NO_PROGRESS = {
   unannotated: 0,
+  pre_labeled: 0,
   annotated: 0,
   skipped: 0,
   review_pending: 0,
@@ -110,6 +111,7 @@ async function serveApi(page: Page): Promise<void> {
           allowed_actions: batchActions("in_annotation"),
           promoted_asset_count: 0,
           parent_batch_id: null,
+          pre_label_run: null,
           schema_version: 1,
           asset_count: 1,
           progress: { ...NO_PROGRESS, unannotated: 1, total: 1 },

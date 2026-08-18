@@ -396,6 +396,33 @@ def connection_job_payload(connection_id: UUID) -> dict[str, JsonValue]:
     return {CONNECTION_JOB_KEY: str(connection_id)}
 
 
+PRE_LABEL_JOB_TYPE: Final = "annotation.pre_label"
+"""The background job that asks a text-prompt model to label a batch's untouched assets."""
+
+BATCH_JOB_KEY: Final = "batch_id"
+"""Which batch a background job is about, inside its payload."""
+
+PRE_LABEL_CONFIDENCE_KEY: Final = "minimum_confidence"
+"""The floor a run applies to what the model returns, inside its payload."""
+
+
+def pre_label_job_payload(
+    batch_id: UUID, connection_id: UUID, minimum_confidence: float
+) -> dict[str, JsonValue]:
+    """The payload a pre-labeling job carries. Built here, read here.
+
+    Three facts and no more: which batch, which connection answers, and the floor
+    the run applies. Everything else the handler needs — the phrases, the asset
+    set — is derived on the other side from the batch itself, because a payload
+    that carried them would be a copy of state that can move underneath it.
+    """
+    return {
+        BATCH_JOB_KEY: str(batch_id),
+        CONNECTION_JOB_KEY: str(connection_id),
+        PRE_LABEL_CONFIDENCE_KEY: minimum_confidence,
+    }
+
+
 class ConnectionJob(BaseModel):
     """Background work against one connection, read off its job row.
 
@@ -571,6 +598,108 @@ class ConnectionJobs(BaseModel):
 
     downloads: Mapping[UUID, WeightDownload] = Field(default_factory=dict)
     checks: Mapping[UUID, IntegrityCheck] = Field(default_factory=dict)
+
+
+class PreLabelRun(BaseModel):
+    """A batch's most recent pre-labeling run, read off its job row.
+
+    ``ConnectionJob``'s model, applied to a batch instead of a connection: a run
+    outlives the request that launched it and the page that asked, so the only
+    way a screen can show one it did not itself launch — a reopened dialog, a
+    second tab, a run somebody started from the terminal — is for the batch it
+    lists to say so. Derived, never stored: persisting a copy would be a second
+    encoding of numbers the job row already holds. Not a subclass of
+    ``ConnectionJob``, because its identity is a batch rather than a connection —
+    the shape is shared by imitation, not by inheritance.
+
+    **Named for what its handler counts.** ``prelabel.py``'s unit is assets, so
+    ``assets_processed``/``assets_total`` are named here rather than borrowing a
+    download's or a check's vocabulary — the counts belong where the job type
+    is known, on ``ConnectionJob``'s own reasoning.
+
+    **The handler's own outcome, carried rather than re-derived.**
+    ``stopped_early``, ``assets_labeled`` and ``regions_discarded`` are read
+    straight out of the settled job's ``result`` — the dict ``prelabel.py``'s
+    ``run`` returns — because a bare progress count cannot say how a cancelled
+    run differs from an untouched batch, nor how many of a model's answers were
+    thrown away for naming a class nobody asked for. ``None`` until the job has
+    settled with a result: a failed run never reaches the point of building one.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The job type this is read from. Not a field: it is a fact about the
+    #: class, on ``ConnectionJob.JOB_TYPE``'s terms.
+    JOB_TYPE: ClassVar[str] = PRE_LABEL_JOB_TYPE
+
+    batch_id: UUID
+    job_id: UUID
+    state: BackgroundJobState
+    #: Assets looked at so far, clamped to :attr:`assets_total` for
+    #: :func:`_at_most`'s reason: the two can come from different places and a
+    #: cosmetic mismatch must not read as a bar past its own end.
+    assets_processed: int = Field(default=0, ge=0)
+    #: The whole eligible set, or ``None`` before the run has derived it. Unlike
+    #: a download's total this is known almost immediately: the asset set is
+    #: computed up front rather than discovered mid-run.
+    assets_total: int | None = Field(default=None, ge=0)
+    #: Why it failed, in the handler's own sentence. ``None`` unless
+    #: :attr:`state` is ``failed``.
+    error: str | None = None
+    #: Whether the run stopped before reaching every eligible asset —
+    #: cancelled, or an orphan a crash left behind. ``None`` until the job
+    #: settles with a result.
+    stopped_early: bool | None = None
+    #: Assets the run actually wrote a label onto. Narrower than
+    #: :attr:`assets_processed`: an asset a person started working on mid-run is
+    #: passed over, not labeled. ``None`` until the job settles with a result.
+    assets_labeled: int | None = None
+    #: Regions the model answered with a class the schema's prompt never asked
+    #: for, discarded rather than written. ``None`` until the job settles with a
+    #: result.
+    regions_discarded: int | None = None
+
+    @model_validator(mode="after")
+    def _progress_is_within_its_total(self) -> Self:
+        if self.assets_total is not None and self.assets_processed > self.assets_total:
+            raise ValueError(
+                f"a pre-label run cannot have processed {self.assets_processed} of "
+                f"{self.assets_total} assets"
+            )
+        return self
+
+    @classmethod
+    def of(cls, job: BackgroundJob) -> Self:
+        """That job read as a batch's pre-labeling run.
+
+        ``ConnectionJob.of``'s shape: check the type, read the batch out of the
+        payload, and the run's own outcome — where the job has settled with one
+        — out of ``result``.
+
+        Raises:
+            ValueError: the job is not a pre-labeling run, or its payload names
+                no batch.
+        """
+        if job.type != cls.JOB_TYPE:
+            raise ValueError(f"job {job.id} is a {job.type!r}, not a {cls.JOB_TYPE!r}")
+        named = job.payload.get(BATCH_JOB_KEY)
+        if not isinstance(named, str):
+            raise ValueError(f"job {job.id} names no batch")
+        result = job.result
+        stopped_early = result.get("stopped_early")
+        assets_labeled = result.get("assets_labeled")
+        regions_discarded = result.get("regions_discarded")
+        return cls(
+            batch_id=UUID(named),
+            job_id=job.id,
+            state=job.state,
+            assets_processed=_at_most(job.processed, job.total),
+            assets_total=job.total,
+            error=job.error,
+            stopped_early=stopped_early if isinstance(stopped_early, bool) else None,
+            assets_labeled=assets_labeled if isinstance(assets_labeled, int) else None,
+            regions_discarded=regions_discarded if isinstance(regions_discarded, int) else None,
+        )
 
 
 class InferenceConnection(BaseModel):

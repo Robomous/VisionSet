@@ -120,6 +120,7 @@ describe("the action names the client imports", () => {
         "create_correction",
         "delete",
         "edit_membership",
+        "pre_label",
         "promote",
         "repin",
         "start",

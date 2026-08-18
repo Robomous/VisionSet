@@ -27,7 +27,7 @@
  * ## The filter is reused, not respelled
  *
  * `SEGMENTS`, `SEGMENT_LABEL` and `inSegment` come from `screens/batchState.ts`,
- * so the grouping rule — which of the five states counts as *done* — has one
+ * so the grouping rule — which of the six states counts as *done* — has one
  * spelling for the batch view and this one. What differs is the **denominator**:
  * the batch view reads `ProgressCounts` off the batch because it is paging a
  * window over fifty thousand frames and a count describing the page would lie

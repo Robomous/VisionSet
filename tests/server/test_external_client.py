@@ -174,6 +174,7 @@ def test_an_external_client_drives_the_cycle_from_ingest_to_an_exported_release(
         )
         assert ok(client.get(f"/jobs/{job_id}/progress"), 200) == {
             "unannotated": 0,
+            "pre_labeled": 0,
             "annotated": 1,
             "skipped": 1,
             "review_pending": 0,
@@ -189,6 +190,7 @@ def test_an_external_client_drives_the_cycle_from_ingest_to_an_exported_release(
     assert completed["state"] == "completed"
     assert completed["progress"] == {
         "unannotated": 0,
+        "pre_labeled": 0,
         "annotated": 2,
         "skipped": 2,
         "review_pending": 0,

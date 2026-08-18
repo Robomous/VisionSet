@@ -32,7 +32,7 @@ type AssetAction = KnownMembers["AssetAction"];
 const BATCH_ACTIONS: Record<BatchState, readonly BatchAction[]> = {
   draft: ["approve", "edit_membership", "delete"],
   approved: ["start", "repin", "delete"],
-  in_annotation: ["complete", "repin", "delete"],
+  in_annotation: ["complete", "repin", "pre_label", "delete"],
   completed: ["promote", "create_correction"],
 };
 
@@ -46,6 +46,7 @@ const JOB_ACTIONS: Record<JobState, readonly JobAction[]> = {
 /** `asset_actions`, given an open batch. */
 const ASSET_ACTIONS: Record<Progress, readonly AssetAction[]> = {
   unannotated: ["annotate", "skip"],
+  pre_labeled: ["annotate", "skip"],
   annotated: ["annotate", "skip", "submit_for_review"],
   skipped: ["restore"],
   review_pending: ["accept", "return_to_annotator"],

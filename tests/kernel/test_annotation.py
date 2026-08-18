@@ -3,7 +3,14 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from visionset.kernel.domain import Annotation
+from visionset.kernel.domain import (
+    PROMOTABLE_PROGRESS,
+    SETTLED_PROGRESS,
+    WRITABLE_PROGRESS,
+    Annotation,
+    AssetProgress,
+    progress_after_annotating,
+)
 
 
 def _make(**overrides: object) -> Annotation:
@@ -49,3 +56,49 @@ def test_schema_version_must_be_positive() -> None:
 def test_unknown_provenance_rejected() -> None:
     with pytest.raises(ValidationError):
         _make(provenance="alien")
+
+
+def test_a_model_s_labels_land_pre_labeled_rather_than_awaiting_review() -> None:
+    assert (
+        progress_after_annotating(AssetProgress.UNANNOTATED, has_annotations=True, judged=False)
+        is AssetProgress.PRE_LABELED
+    )
+
+
+def test_a_person_editing_a_pre_labeled_frame_takes_it_over() -> None:
+    """Responsibility follows the edit; nobody presses a button for it."""
+    assert (
+        progress_after_annotating(AssetProgress.PRE_LABELED, has_annotations=True)
+        is AssetProgress.ANNOTATED
+    )
+
+
+def test_deleting_the_last_label_returns_a_pre_labeled_frame_to_unannotated() -> None:
+    assert (
+        progress_after_annotating(AssetProgress.PRE_LABELED, has_annotations=False)
+        is AssetProgress.UNANNOTATED
+    )
+
+
+def test_pre_labeled_is_editable_but_never_reaches_the_dataset() -> None:
+    assert AssetProgress.PRE_LABELED in WRITABLE_PROGRESS
+    assert AssetProgress.PRE_LABELED not in PROMOTABLE_PROGRESS
+    assert AssetProgress.PRE_LABELED not in SETTLED_PROGRESS
+
+
+def test_judged_is_the_default_so_a_person_writing_a_label_is_unchanged() -> None:
+    assert (
+        progress_after_annotating(AssetProgress.UNANNOTATED, has_annotations=True)
+        is AssetProgress.ANNOTATED
+    )
+
+
+def test_unjudged_changes_nothing_else() -> None:
+    """Only the one edge moves; every other answer is what it always was."""
+    for current in AssetProgress:
+        for has_annotations in (True, False):
+            if current is AssetProgress.UNANNOTATED and has_annotations:
+                continue
+            assert progress_after_annotating(
+                current, has_annotations=has_annotations, judged=False
+            ) is progress_after_annotating(current, has_annotations=has_annotations)

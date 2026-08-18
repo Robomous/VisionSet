@@ -1,6 +1,6 @@
 # Background jobs
 
-Work that outlives the request that asked for it: a queue, a dispatcher, and four
+Work that outlives the request that asked for it: a queue, a dispatcher, and five
 handlers. Introduced by #328.
 
 `docs/jobs.md` describes an **annotation** job: a slice of a batch assigned
@@ -32,21 +32,24 @@ handling for one GIL.
 | `export.release` | `visionset/jobs/export.py` | `POST /releases/{id}/export` |
 | `inference.download_weights` | `visionset/jobs/weights.py` | `POST /inference/connections/{id}/download` |
 | `inference.check_integrity` | `visionset/jobs/integrity.py` | `POST /inference/connections/{id}/check-integrity` |
+| `annotation.pre_label` | `visionset/jobs/prelabel.py` | `POST /batches/{id}/pre-label` |
 
-The last two are why the throttled progress below matters: a weight download is
-gigabytes and an integrity check reads every byte of them, so both report for
-minutes rather than seconds. Neither has a CLI equivalent that queues —
-`visionset inference download` runs the same body inline, because a terminal has
-no worker to hand it to.
+The last three are why the throttled progress below matters: a weight download is
+gigabytes, an integrity check reads every byte of them, and pre-labeling is one
+forward pass per untouched asset, so all three report for minutes rather than
+seconds. `processed` and `total` are counted in **assets** for pre-labeling, where
+the other two count bytes and files. None of the three has a CLI equivalent that
+queues — `visionset inference download` runs the same body inline, because a
+terminal has no worker to hand it to, and pre-labeling has no CLI command at all.
 
-They are also the only two launchers that **join a run instead of starting a
-second one**: asked for a kind this connection already has queued or running,
-the route answers with that job. It is the route's own read of the queue rather
-than anything `enqueue` does, so every other launcher above queues a fresh job
-each time it is asked — and because nothing brackets the read and the enqueue,
-even those two coalesce the ordinary repetition rather than guaranteeing
-uniqueness. `docs/inference.md` says what that buys and what it deliberately
-does not refuse.
+They are also the only three launchers that **join a run instead of starting a
+second one**: asked for a kind this connection or this batch already has queued
+or running, the route answers with that job. It is the route's own read of the
+queue rather than anything `enqueue` does, so every other launcher above queues a
+fresh job each time it is asked — and because nothing brackets the read and the
+enqueue, even these three coalesce the ordinary repetition rather than
+guaranteeing uniqueness. `docs/inference.md` and `docs/batches.md` say what that
+buys and what it deliberately does not refuse.
 
 Verify, publish, promote and thumbnail backfill are still synchronous. They are
 future job types, not an oversight - each answers inside its request today and
@@ -174,7 +177,7 @@ inside a pool with no job id in the traceback.
    route, deliberately.
 
 `idempotent` is the whole retry policy, and it is one boolean because the only
-decision is whether running the work twice is safe. All four of today's are, and
+decision is whether running the work twice is safe. All five of today's are, and
 each had to argue it in its own module.
 
 ## Why `visionset.jobs` is not in the kernel
