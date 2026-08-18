@@ -44,6 +44,7 @@ concurrency:
 jobs:
   python:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # ffmpeg is installed below. If that ever breaks, the video tests must go red — a
       # silently skipped video test looks exactly like a passing one.
@@ -63,11 +64,43 @@ jobs:
         with:
           persist-credentials: false
 
-      # ffmpeg is a binary, not a Python dependency: the video fixtures shell out to it.
+      # The ubuntu-24.04 runner routes apt through /etc/apt/apt-mirrors.txt with
+      # azure.archive.ubuntu.com first. When that mirror degrades it does not fail,
+      # it stalls: apt pays a timeout per index before falling back, which is how a
+      # fifteen-second step became a fifty-minute one and held a pull request behind
+      # a check that was never going to arrive. Pin the fallback as the only mirror.
+      # It is the canonical archive, and a mirrorlist whose first entry can silently
+      # cost an hour is not a mirrorlist worth keeping.
+      #
+      # One file at a time, because the layout moves: this image carries `.sources`
+      # and no `.list`, and it has been the other way round. Patching them in a single
+      # `sed` reads as tidier and is the trap — an unmatched glob fails the whole
+      # invocation, so one absent path leaves *every* file unpatched while the step
+      # still reports success, which is the silent half-fix this exists to prevent.
+      # The `[ -f ]` guard makes each file independent and makes an absent one a
+      # no-op. The pattern matches the host alone, with no scheme, so it holds whether
+      # the entry is written http or https.
+      - name: Pin apt to archive.ubuntu.com
+        run: |
+          for f in /etc/apt/apt-mirrors.txt /etc/apt/sources.list \
+                   /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            [ -f "$f" ] || continue
+            sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' "$f"
+          done
+
+      # `-o` options rather than bare `apt-get`, because the pin above removes the
+      # mirror that stalls and these bound what any *other* mirror can cost. A
+      # fifteen-second ceiling per request with three retries turns an unreachable
+      # index into seconds of noise instead of an unbounded wait; without them apt's
+      # own default is patient enough to outlast the job.
+      #
+      # ffmpeg is installed rather than assumed: unlike the browsers, it is not in
+      # the runner image, and the video fixtures shell out to it.
       - name: Install ffmpeg
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=15
+          sudo apt-get install -y --no-install-recommends \
+            -o Acquire::Retries=3 -o Acquire::http::Timeout=15 ffmpeg
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -125,6 +158,7 @@ jobs:
   e2e:
     name: e2e (${{ matrix.surface }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -156,6 +190,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -211,6 +246,7 @@ jobs:
   annotator-e2e:
     name: annotator e2e (chromium)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -237,15 +273,30 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Cache browsers
+        id: browsers
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
-      # `--with-deps` installs OS libraries, which the cache above does not hold, so
-      # it runs on a hit too. The browser download is what the cache actually saves.
+      # No `--with-deps`, deliberately. That flag is an `apt-get` hidden behind a
+      # browser installer, and apt is the entire reason this step has hung: the
+      # runner's mirrorlist puts a mirror first that stalls rather than fails, and
+      # one afternoon it turned a fifteen-second step into a fifty-minute one.
+      #
+      # The libraries it would install are already here. This image ships Google
+      # Chrome, Chromium, Edge and Firefox, and none of those could be installed
+      # without the shared libraries a Chromium build links — so `--with-deps` asks
+      # Ubuntu's archive for packages the machine already has. What Playwright does
+      # still need is its own pinned build, which comes from Playwright's CDN rather
+      # than from apt, and which is exactly what the cache above holds.
+      #
+      # If a library ever is genuinely absent, the browser fails to launch in the run
+      # below and says so. That is a loud failure at a named step, which is the kind
+      # worth having; the alternative was a silent stall with no output at all.
       - name: Install chromium
-        run: pnpm --filter @visionset/app exec playwright install --with-deps chromium
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @visionset/app exec playwright install chromium
 
       # `frontend/app` resolves `@visionset/annotator` and `@visionset/ui-core`
       # through their `dist/`, so an unbuilt workspace package is served silently
@@ -282,6 +333,7 @@ jobs:
   cycle-e2e:
     name: browser cycle (chromium)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -314,13 +366,30 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Cache browsers
+        id: browsers
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
+      # No `--with-deps`, deliberately. That flag is an `apt-get` hidden behind a
+      # browser installer, and apt is the entire reason this step has hung: the
+      # runner's mirrorlist puts a mirror first that stalls rather than fails, and
+      # one afternoon it turned a fifteen-second step into a fifty-minute one.
+      #
+      # The libraries it would install are already here. This image ships Google
+      # Chrome, Chromium, Edge and Firefox, and none of those could be installed
+      # without the shared libraries a Chromium build links — so `--with-deps` asks
+      # Ubuntu's archive for packages the machine already has. What Playwright does
+      # still need is its own pinned build, which comes from Playwright's CDN rather
+      # than from apt, and which is exactly what the cache above holds.
+      #
+      # If a library ever is genuinely absent, the browser fails to launch in the run
+      # below and says so. That is a loud failure at a named step, which is the kind
+      # worth having; the alternative was a silent stall with no output at all.
       - name: Install chromium
-        run: pnpm --filter @visionset/app exec playwright install --with-deps chromium
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @visionset/app exec playwright install chromium
 
       # The config's own webServer builds the engine, the design system and the
       # bundle, copies it into the package data, creates a throwaway workspace and
@@ -348,6 +417,7 @@ jobs:
   wheel:
     name: wheel (build, install, serve)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       VISIONSET_REQUIRE_WHEEL: "1"
     steps:
@@ -402,6 +472,7 @@ jobs:
   thirty-minute-flow:
     name: 30-minute flow (wheel, end to end)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       # The clip is generated rather than committed, and the export is checked by
       # the tool it exists for. Both are errors here rather than skips: a gate
@@ -414,10 +485,28 @@ jobs:
         with:
           persist-credentials: false
 
+      # The mirror pin, argued in the `python` job at the top of this file.
+      - name: Pin apt to archive.ubuntu.com
+        run: |
+          for f in /etc/apt/apt-mirrors.txt /etc/apt/sources.list \
+                   /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            [ -f "$f" ] || continue
+            sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' "$f"
+          done
+
+      # `-o` options rather than bare `apt-get`, because the pin above removes the
+      # mirror that stalls and these bound what any *other* mirror can cost. A
+      # fifteen-second ceiling per request with three retries turns an unreachable
+      # index into seconds of noise instead of an unbounded wait; without them apt's
+      # own default is patient enough to outlast the job.
+      #
+      # ffmpeg is installed rather than assumed: unlike the browsers, it is not in
+      # the runner image, and the video fixtures shell out to it.
       - name: Install ffmpeg
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=15
+          sudo apt-get install -y --no-install-recommends \
+            -o Acquire::Retries=3 -o Acquire::http::Timeout=15 ffmpeg
 
       - uses: pnpm/action-setup@v6 # reads packageManager from package.json
 
@@ -505,6 +594,7 @@ jobs:
   inference-smoke:
     name: inference smoke (transformers, torch on cpu)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       # A missing runtime is an error rather than a skip, the
       # VISIONSET_REQUIRE_FFMPEG rule: a job that exists to exercise the runtime
@@ -571,6 +661,7 @@ jobs:
   format-smoke:
     name: format smoke (ultralytics, pycocotools)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       VISIONSET_REQUIRE_ULTRALYTICS: "1"
       VISIONSET_REQUIRE_PYCOCOTOOLS: "1"
@@ -617,6 +708,7 @@ jobs:
     name: annotator bench (chromium, manual)
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -639,13 +731,30 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Cache browsers
+        id: browsers
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
+      # No `--with-deps`, deliberately. That flag is an `apt-get` hidden behind a
+      # browser installer, and apt is the entire reason this step has hung: the
+      # runner's mirrorlist puts a mirror first that stalls rather than fails, and
+      # one afternoon it turned a fifteen-second step into a fifty-minute one.
+      #
+      # The libraries it would install are already here. This image ships Google
+      # Chrome, Chromium, Edge and Firefox, and none of those could be installed
+      # without the shared libraries a Chromium build links — so `--with-deps` asks
+      # Ubuntu's archive for packages the machine already has. What Playwright does
+      # still need is its own pinned build, which comes from Playwright's CDN rather
+      # than from apt, and which is exactly what the cache above holds.
+      #
+      # If a library ever is genuinely absent, the browser fails to launch in the run
+      # below and says so. That is a loud failure at a named step, which is the kind
+      # worth having; the alternative was a silent stall with no output at all.
       - name: Install chromium
-        run: pnpm --filter @visionset/app exec playwright install --with-deps chromium
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @visionset/app exec playwright install chromium
 
       # No separate build step, unlike `annotator-e2e`: this suite's web server
       # builds the engine *and* the application, because it serves `vite preview`
@@ -663,6 +772,7 @@ jobs:
   openapi:
     name: OpenAPI contract drift gate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -707,6 +817,7 @@ jobs:
   docs-site:
     name: docs site
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -750,6 +861,7 @@ jobs:
   docker:
     name: dev image (docker/api.Dockerfile)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
