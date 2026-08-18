@@ -149,16 +149,66 @@ audit_lock() {
   return "$verdict"
 }
 
-# Only the exact `uv add …` form is narrowed, and only when this call is the
-# only thing that decides where uv works. nearest_lock and state_files both walk
-# from $PWD, so anything that can point uv at a project elsewhere — --directory,
-# --project, --script on the command line, or UV_WORKING_DIR/UV_PROJECT in the
-# environment — takes the broad path instead, which is the safe direction to be
-# wrong in: it applies the cool-down to more than it has to rather than to less.
-is_uv_add() {
-  if [[ "${1:-}" != "uv" || "${2:-}" != "add" ]]; then
+# Whether the command names packages to upgrade at all. `-P`, `--upgrade-package`
+# and `--upgrade-package=name` are the same flag; a caller who pins their own
+# version with `name==version` has still named one.
+has_upgrade_package() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      -P | --upgrade-package | --upgrade-package=* | -P?*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# The packages named for upgrade that the caller did *not* pin themselves, one
+# per line. A `name==version` they wrote is a version they chose on purpose: the
+# resolution is still narrowed and the audit still judges the result, but nothing
+# here appends a pin over the top of theirs.
+upgrade_package_names() {
+  local arg value want=0
+  for arg in "$@"; do
+    value=""
+    if [[ "$want" == 1 ]]; then
+      value="$arg"
+      want=0
+    else
+      case "$arg" in
+        -P | --upgrade-package) want=1; continue ;;
+        --upgrade-package=*) value="${arg#--upgrade-package=}" ;;
+        -P?*) value="${arg#-P}" ;;
+        *) continue ;;
+      esac
+    fi
+    case "$value" in
+      "" | *==*) ;;
+      *) echo "$value" ;;
+    esac
+  done
+}
+
+# Two forms are narrowed: `uv add …`, and a `uv lock` that names packages to
+# upgrade. A bare `uv lock` is not one of them, and neither is `uv lock
+# --upgrade` — a refresh moving the whole set is what a refresh is for, and the
+# cutoff re-resolving everything is the behaviour those ask for rather than a
+# blast radius they suffer.
+#
+# Either form is narrowed only when this call is the only thing that decides
+# where uv works. nearest_lock and state_files both walk from $PWD, so anything
+# that can point uv at a project elsewhere — --directory, --project, --script on
+# the command line, or UV_WORKING_DIR/UV_PROJECT in the environment — takes the
+# broad path instead, which is the safe direction to be wrong in: it applies the
+# cool-down to more than it has to rather than to less.
+is_narrowable() {
+  if [[ "${1:-}" != "uv" ]]; then
     return 1
   fi
+  case "${2:-}" in
+    add) ;;
+    lock) if ! has_upgrade_package "$@"; then return 1; fi ;;
+    *) return 1 ;;
+  esac
   if [[ -n "${UV_WORKING_DIR:-}" || -n "${UV_PROJECT:-}" ]]; then
     return 1
   fi
@@ -325,7 +375,7 @@ export UV_EXCLUDE_NEWER="$cutoff"
 # no cutoff, because uv is exactly incremental without one, pinning those versions
 # so the add lands the vetted release rather than the newest one. The audit above
 # then checks the result, since the second pass carried no cool-down of its own.
-if is_uv_add "$@" && lock="$(nearest_lock)"; then
+if is_narrowable "$@" && lock="$(nearest_lock)"; then
   snapshot="$(mktemp -d "${TMPDIR:-/tmp}/cooldown.XXXXXX")"
   # Nothing to restore from until the snapshot is complete: restore_state reads a
   # missing backup as "this file did not exist before the run" and removes it, so
@@ -354,7 +404,7 @@ if is_uv_add "$@" && lock="$(nearest_lock)"; then
   status=0
   UV_EXCLUDE_NEWER="$cutoff" UV_NO_SYNC=1 "$@" >&2 || status=$?
   if [[ "$status" -ne 0 ]]; then
-    echo "cooldown: the add does not resolve under the cutoff; nothing was changed" >&2
+    echo "cooldown: this does not resolve under the cutoff; nothing was changed" >&2
     exit "$status"
   fi
 
@@ -377,14 +427,31 @@ if is_uv_add "$@" && lock="$(nearest_lock)"; then
     rm -rf "$snapshot"
     echo "cooldown: pass 1 did not write $lock; applying the cool-down to the whole resolution instead" >&2
   else
-    # Packages the add brings in that the lockfile did not have. One it already
-    # carries needs no pin: the second pass keeps it by leaving it alone.
-    lock_versions "$snapshot/baseline.lock" | cut -d= -f1 | LC_ALL=C sort >"$snapshot/before"
+    # Two kinds of package get a pin. One the lockfile did not have, because the
+    # second pass has nothing to keep and would otherwise take its newest release.
+    # And one the command named for upgrade, which is already in the lockfile and
+    # so invisible to the first rule — leaving it unpinned would mean the second
+    # pass moving it with no cool-down applied, which is the whole thing being
+    # prevented here. Every other package needs no pin: the second pass keeps it
+    # by leaving it alone.
+    lock_versions "$snapshot/baseline.lock" >"$snapshot/before-pairs"
+    cut -d= -f1 "$snapshot/before-pairs" | LC_ALL=C sort >"$snapshot/before"
+    upgrade_package_names "$@" | LC_ALL=C sort >"$snapshot/named"
     pins=()
     while read -r pair; do
-      if ! grep -qxF "${pair%%=*}" "$snapshot/before"; then
-        pins+=(-P "${pair%%=*}==${pair#*=}")
-        echo "cooldown: ${pair%%=*} ${pair#*=} is the newest release the cool-down allows" >&2
+      name="${pair%%=*}"
+      version="${pair#*=}"
+      if grep -qxF "$name" "$snapshot/before" && ! grep -qxF "$name" "$snapshot/named"; then
+        continue
+      fi
+      pins+=(-P "$name==$version")
+      if grep -qxF "$pair" "$snapshot/before-pairs"; then
+        # Named for upgrade, and the cool-down allows nothing newer than what is
+        # already locked. That is an answer rather than a failure, and pinning the
+        # locked version is what makes the second pass leave it where it is.
+        echo "cooldown: $name is already at the newest release the cool-down allows" >&2
+      else
+        echo "cooldown: $name $version is the newest release the cool-down allows" >&2
       fi
     done < <(lock_versions "$lock")
 
@@ -394,7 +461,7 @@ if is_uv_add "$@" && lock="$(nearest_lock)"; then
     status=0
     "$@" "${pins[@]+"${pins[@]}"}" || status=$?
     if [[ "$status" -ne 0 ]]; then
-      echo "cooldown: the add failed; nothing was changed" >&2
+      echo "cooldown: the command failed; nothing was changed" >&2
       exit "$status"
     fi
 
@@ -403,7 +470,7 @@ if is_uv_add "$@" && lock="$(nearest_lock)"; then
     violations="$(audit_lock "$snapshot/baseline.lock" "$lock" "$cutoff")" || audit_status=$?
     if [[ "$audit_status" -ne 0 ]]; then
       {
-        echo "cooldown: refusing this add — it needs versions published after ${cutoff}:"
+        echo "cooldown: refusing this resolution — it needs versions published after ${cutoff}:"
         echo "$violations" | sed 's/^/  /'
         echo "cooldown: uv.lock and pyproject.toml are unchanged. The environment may"
         echo "cooldown: hold that set already; \`uv sync\` puts it back in step."
@@ -412,7 +479,7 @@ if is_uv_add "$@" && lock="$(nearest_lock)"; then
     fi
 
     scrub_recorded_cutoff "$lock"
-    # The add landed; nothing left to undo. Disarm the restore so the EXIT trap
+    # It landed; nothing left to undo. Disarm the restore so the EXIT trap
     # only cleans up the snapshot instead of overwriting what just succeeded.
     trap 'rm -rf "$snapshot"' EXIT
     exit 0
