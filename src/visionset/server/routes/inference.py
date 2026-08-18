@@ -397,11 +397,20 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
     about the nearest edge instead would return a mask, and a confidence, for a
     question nobody asked.
 
-    An empty `regions` is a successful answer with nothing to propose. Refusals
-    are reserved for things the caller can act on: an unknown project, asset or
-    connection is 404; a connection whose weights are not here yet, or whose kind
-    this build cannot run, is 409 and names what to do; a connection whose model
-    answers words rather than places is 422, as is a prompt point off the asset.
+    An empty `regions` is a successful answer with nothing to propose. What the
+    caller can act on refuses in the 4xx range: an unknown project, asset or
+    connection is 404; a connection whose weights are not here yet is 409
+    `INFERENCE_CONNECTION_NOT_SET_UP` and names what to do; a connection whose
+    model answers words rather than places is 422, as is a prompt point off the
+    asset.
+
+    Two failures are about this installation rather than about the request, and
+    answer 500 carrying the message that says which: a connection of a kind this
+    build ships no adapter for is `INFERENCE_CONNECTION_NOT_RUNNABLE`, and a
+    model that will not fit the device it was asked to run on is
+    `INFERENCE_OUT_OF_MEMORY`. Neither is worth a retry: there is no state to
+    change here, so the remedy is a different connection, a different device, or
+    a build that ships the adapter.
     """
     prompt = PointPrompt(
         positive=tuple((point.x, point.y) for point in body.positive),
