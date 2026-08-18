@@ -152,7 +152,7 @@ def approve_batch(
     A batch that is not a draft is 409 `INVALID_TRANSITION`; an empty one is 409
     `EMPTY_BATCH`, because it would have no jobs and could never complete; a
     project with no schema is 404 `SCHEMA_NOT_FOUND`, since there is nothing to
-    pin.
+    pin, and an unknown batch is 404 `BATCH_NOT_FOUND`.
     """
     partition = None if body is None else body.to_domain()
     batch = BatchService(workspace).approve(batch_id, partition)
@@ -214,6 +214,10 @@ def complete_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     Derived rather than declared: this reads the jobs and answers 409
     `BATCH_NOT_COMPLETE` while any of them is outstanding. A completed batch is
     what lets its annotated assets be promoted into the project's dataset.
+
+    A batch that is not `in_annotation` has no closing move to make and is 409
+    `INVALID_TRANSITION` — the same one-way table that leaves `completed` with no
+    exit at all, which is why correcting settled work is a new batch.
     """
     batch = BatchService(workspace).complete(batch_id)
     return BatchOut.of(
@@ -236,7 +240,8 @@ def create_correction_batch(
 
     Addressed as a sub-resource of the parent because the parent is what decides:
     `create_correction` is declared on `BatchOut` exactly while the batch is
-    `completed`, and a 409 is what a client gets for asking otherwise.
+    `completed`, and 409 `INVALID_TRANSITION` is what a client gets for asking
+    otherwise.
 
     `asset_ids` defaults to **the parent's whole membership**, since "correct
     this batch" is the ordinary ask. A subset is the other one — the three frames
@@ -282,7 +287,8 @@ def list_batch_assets(
     The order is stored, so reading twice gives the same sequence and an ingest
     into an existing batch appends rather than reshuffles. `total` is the size of
     the whole batch and not of the page; an offset past the end is an empty list
-    and a 200, never a 404.
+    and a 200, never a 404. The 404 belongs to the batch itself, which is
+    resolved first: an unknown one is `BATCH_NOT_FOUND`.
 
     `job_id` and `progress` are null while the batch is a draft, because a draft
     has no jobs. Bytes are not here: an asset is named by its hashes, and
@@ -365,7 +371,8 @@ def add_batch_assets(
 
     An id that is not an asset of this batch's project is 404 `ASSET_NOT_FOUND`
     and **nothing is written** — the whole call is refused, for the reason
-    annotation writes are all-or-nothing.
+    annotation writes are all-or-nothing. An unknown batch is 404
+    `BATCH_NOT_FOUND`, resolved before any id is read.
     """
     return _membership(workspace, BatchService(workspace).add_assets(batch_id, body.asset_ids))
 

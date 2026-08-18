@@ -88,10 +88,14 @@ export interface paths {
          *     through a JSON column, and a route that trusts a stored path to stay inside
          *     the directory it was written for is one bad row away from serving `/etc`.
          *
-         *     404 if the job never produced one, or if the file is gone — an export
-         *     directory is not garbage-collected, but a workspace is a directory somebody
-         *     can tidy. 409 while the job has not succeeded, because "not yet" and "never"
-         *     are different answers and only one of them is worth retrying.
+         *     A job this workspace does not hold is 404 `BACKGROUND_JOB_NOT_FOUND`. There
+         *     is a 404 for the artifact too — the job never produced one, or the file is
+         *     gone, since an export directory is not garbage-collected but a workspace is a
+         *     directory somebody can tidy — and a 409 while the job has not succeeded,
+         *     because "not yet" and "never" are different answers and only one of them is
+         *     worth retrying. Those last two carry the status's own name rather than a
+         *     domain code: nothing about them is a state of the job that a client could
+         *     branch on.
          */
         get: operations["get_background_job_artifact"];
         put?: never;
@@ -207,7 +211,7 @@ export interface paths {
          *     A batch that is not a draft is 409 `INVALID_TRANSITION`; an empty one is 409
          *     `EMPTY_BATCH`, because it would have no jobs and could never complete; a
          *     project with no schema is 404 `SCHEMA_NOT_FOUND`, since there is nothing to
-         *     pin.
+         *     pin, and an unknown batch is 404 `BATCH_NOT_FOUND`.
          */
         post: operations["approve_batch"];
         delete?: never;
@@ -230,7 +234,8 @@ export interface paths {
          *     The order is stored, so reading twice gives the same sequence and an ingest
          *     into an existing batch appends rather than reshuffles. `total` is the size of
          *     the whole batch and not of the page; an offset past the end is an empty list
-         *     and a 200, never a 404.
+         *     and a 200, never a 404. The 404 belongs to the batch itself, which is
+         *     resolved first: an unknown one is `BATCH_NOT_FOUND`.
          *
          *     `job_id` and `progress` are null while the batch is a draft, because a draft
          *     has no jobs. Bytes are not here: an asset is named by its hashes, and
@@ -255,7 +260,8 @@ export interface paths {
          *
          *     An id that is not an asset of this batch's project is 404 `ASSET_NOT_FOUND`
          *     and **nothing is written** — the whole call is refused, for the reason
-         *     annotation writes are all-or-nothing.
+         *     annotation writes are all-or-nothing. An unknown batch is 404
+         *     `BATCH_NOT_FOUND`, resolved before any id is read.
          */
         post: operations["add_batch_assets"];
         /**
@@ -298,6 +304,10 @@ export interface paths {
          *     Derived rather than declared: this reads the jobs and answers 409
          *     `BATCH_NOT_COMPLETE` while any of them is outstanding. A completed batch is
          *     what lets its annotated assets be promoted into the project's dataset.
+         *
+         *     A batch that is not `in_annotation` has no closing move to make and is 409
+         *     `INVALID_TRANSITION` — the same one-way table that leaves `completed` with no
+         *     exit at all, which is why correcting settled work is a new batch.
          */
         post: operations["complete_batch"];
         delete?: never;
@@ -326,7 +336,8 @@ export interface paths {
          *
          *     Addressed as a sub-resource of the parent because the parent is what decides:
          *     `create_correction` is declared on `BatchOut` exactly while the batch is
-         *     `completed`, and a 409 is what a client gets for asking otherwise.
+         *     `completed`, and 409 `INVALID_TRANSITION` is what a client gets for asking
+         *     otherwise.
          *
          *     `asset_ids` defaults to **the parent's whole membership**, since "correct
          *     this batch" is the ordinary ask. A subset is the other one — the three frames
