@@ -89,6 +89,10 @@ def require() -> None:
     rule that a refusal a request can make is a refusal the request makes.
     Discovering a missing install inside a worker would put an install command
     on a failed row somebody has to go and find.
+
+    Raises:
+        LocalInferenceUnavailable: the optional runtime is not installed, with
+            the command that installs it.
     """
     for name in MODULES:
         imported(name)

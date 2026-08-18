@@ -95,7 +95,8 @@ def list_dataset_assets(
     Paged, and the second route in the API that is — the trunk accumulates every
     batch a project ever completed, so it is the other collection that can hold
     fifty thousand items. `total` is the size of the whole trunk and not of the
-    page; an offset past the end is an empty list and a 200, never a 404.
+    page; an offset past the end is an empty list and a 200, never a 404. The
+    404 is the dataset itself: an unknown one is `DATASET_NOT_FOUND`.
 
     Order is the stored insertion order, so reading twice gives the same sequence
     and promoting a new batch appends rather than reshuffles.
@@ -121,7 +122,8 @@ def remove_dataset_asset(workspace: WorkspaceDep, dataset_id: UUID, asset_id: UU
     204 whether or not the asset was a member. An id that was never in the trunk
     leaves it in the state the caller asked for, and reporting that as a 404
     would make a retry of a successful request look like a failure. The change
-    log records only the calls that actually changed something.
+    log records only the calls that actually changed something. The dataset is
+    the one thing that has to exist: an unknown one is 404 `DATASET_NOT_FOUND`.
 
     Not permanent, either: re-promoting the batch the asset came from puts it
     back, because the trunk keeps no memory of removals.

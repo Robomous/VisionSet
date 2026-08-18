@@ -88,10 +88,14 @@ export interface paths {
          *     through a JSON column, and a route that trusts a stored path to stay inside
          *     the directory it was written for is one bad row away from serving `/etc`.
          *
-         *     404 if the job never produced one, or if the file is gone — an export
-         *     directory is not garbage-collected, but a workspace is a directory somebody
-         *     can tidy. 409 while the job has not succeeded, because "not yet" and "never"
-         *     are different answers and only one of them is worth retrying.
+         *     A job this workspace does not hold is 404 `BACKGROUND_JOB_NOT_FOUND`. There
+         *     is a 404 for the artifact too — the job never produced one, or the file is
+         *     gone, since an export directory is not garbage-collected but a workspace is a
+         *     directory somebody can tidy — and a 409 while the job has not succeeded,
+         *     because "not yet" and "never" are different answers and only one of them is
+         *     worth retrying. Those last two carry the status's own name rather than a
+         *     domain code: nothing about them is a state of the job that a client could
+         *     branch on.
          */
         get: operations["get_background_job_artifact"];
         put?: never;
@@ -207,7 +211,7 @@ export interface paths {
          *     A batch that is not a draft is 409 `INVALID_TRANSITION`; an empty one is 409
          *     `EMPTY_BATCH`, because it would have no jobs and could never complete; a
          *     project with no schema is 404 `SCHEMA_NOT_FOUND`, since there is nothing to
-         *     pin.
+         *     pin, and an unknown batch is 404 `BATCH_NOT_FOUND`.
          */
         post: operations["approve_batch"];
         delete?: never;
@@ -230,7 +234,8 @@ export interface paths {
          *     The order is stored, so reading twice gives the same sequence and an ingest
          *     into an existing batch appends rather than reshuffles. `total` is the size of
          *     the whole batch and not of the page; an offset past the end is an empty list
-         *     and a 200, never a 404.
+         *     and a 200, never a 404. The 404 belongs to the batch itself, which is
+         *     resolved first: an unknown one is `BATCH_NOT_FOUND`.
          *
          *     `job_id` and `progress` are null while the batch is a draft, because a draft
          *     has no jobs. Bytes are not here: an asset is named by its hashes, and
@@ -255,7 +260,8 @@ export interface paths {
          *
          *     An id that is not an asset of this batch's project is 404 `ASSET_NOT_FOUND`
          *     and **nothing is written** — the whole call is refused, for the reason
-         *     annotation writes are all-or-nothing.
+         *     annotation writes are all-or-nothing. An unknown batch is 404
+         *     `BATCH_NOT_FOUND`, resolved before any id is read.
          */
         post: operations["add_batch_assets"];
         /**
@@ -298,6 +304,10 @@ export interface paths {
          *     Derived rather than declared: this reads the jobs and answers 409
          *     `BATCH_NOT_COMPLETE` while any of them is outstanding. A completed batch is
          *     what lets its annotated assets be promoted into the project's dataset.
+         *
+         *     A batch that is not `in_annotation` has no closing move to make and is 409
+         *     `INVALID_TRANSITION` — the same one-way table that leaves `completed` with no
+         *     exit at all, which is why correcting settled work is a new batch.
          */
         post: operations["complete_batch"];
         delete?: never;
@@ -326,7 +336,8 @@ export interface paths {
          *
          *     Addressed as a sub-resource of the parent because the parent is what decides:
          *     `create_correction` is declared on `BatchOut` exactly while the batch is
-         *     `completed`, and a 409 is what a client gets for asking otherwise.
+         *     `completed`, and 409 `INVALID_TRANSITION` is what a client gets for asking
+         *     otherwise.
          *
          *     `asset_ids` defaults to **the parent's whole membership**, since "correct
          *     this batch" is the ordinary ask. A subset is the other one — the three frames
@@ -492,7 +503,8 @@ export interface paths {
          *     Paged, and the second route in the API that is — the trunk accumulates every
          *     batch a project ever completed, so it is the other collection that can hold
          *     fifty thousand items. `total` is the size of the whole trunk and not of the
-         *     page; an offset past the end is an empty list and a 200, never a 404.
+         *     page; an offset past the end is an empty list and a 200, never a 404. The
+         *     404 is the dataset itself: an unknown one is `DATASET_NOT_FOUND`.
          *
          *     Order is the stored insertion order, so reading twice gives the same sequence
          *     and promoting a new batch appends rather than reshuffles.
@@ -527,7 +539,8 @@ export interface paths {
          *     204 whether or not the asset was a member. An id that was never in the trunk
          *     leaves it in the state the caller asked for, and reporting that as a 404
          *     would make a retry of a successful request look like a failure. The change
-         *     log records only the calls that actually changed something.
+         *     log records only the calls that actually changed something. The dataset is
+         *     the one thing that has to exist: an unknown one is 404 `DATASET_NOT_FOUND`.
          *
          *     Not permanent, either: re-promoting the batch the asset came from puts it
          *     back, because the trunk keeps no memory of removals.
@@ -602,7 +615,15 @@ export interface paths {
          *     `V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`. A dataset
          *     with no assets is 409 `EMPTY_RELEASE`; zero *annotations* is fine, since
          *     unlabeled images are legitimate training data. A project with no schema is 404
-         *     `SCHEMA_NOT_FOUND`, because there is no version to pin.
+         *     `SCHEMA_NOT_FOUND`, because there is no version to pin, and an unknown dataset
+         *     is 404 `DATASET_NOT_FOUND`.
+         *
+         *     One refusal is about the labels rather than about the request: an annotation
+         *     carrying a coordinate canonical JSON cannot express — a NaN or an infinity —
+         *     is 409 `UNSERIALIZABLE_MANIFEST`, and the message names it. Nothing is
+         *     published, because writing that value as `null` would lose it silently and
+         *     writing it as `NaN` would produce a manifest no other tool can read. The
+         *     remedy is to correct the annotation and publish again.
          */
         post: operations["publish_release"];
         delete?: never;
@@ -1083,10 +1104,11 @@ export interface paths {
          *
          *     An empty `regions` is a successful answer with nothing to propose. These
          *     refusals are about the request, and the caller can act on each: an unknown
-         *     project, asset or connection is 404; a connection whose weights are not here
+         *     project, asset or connection is 404 — `PROJECT_NOT_FOUND`, `ASSET_NOT_FOUND`
+         *     or `INFERENCE_CONNECTION_NOT_FOUND`; a connection whose weights are not here
          *     yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` and names what to do; a
-         *     connection whose model answers words rather than places is 422, as is a
-         *     prompt point off the asset.
+         *     connection whose model answers words rather than places is 422
+         *     `UNSUPPORTED_PROMPT`, as is a prompt point off the asset.
          *
          *     Three failures are about this installation rather than about the request,
          *     and answer 500 carrying the message that says which: a connection of a kind
@@ -1207,9 +1229,17 @@ export interface paths {
          *     which one it was. `schema_version` is not yours to set: the pinned version is
          *     stamped onto whatever you send, and comes back on the response.
          *
-         *     The batch must be `in_annotation`, or this is 409
-         *     `BATCH_NOT_IN_ANNOTATION`. An asset the job does not carry is 422
-         *     `ASSET_NOT_IN_JOB`.
+         *     An unknown job is 404 `JOB_NOT_FOUND`. The batch must be `in_annotation`, or
+         *     this is 409 `BATCH_NOT_IN_ANNOTATION`, and the job itself must still be open:
+         *     one that was completed is 409 `JOB_FINISHED`, and a completed job has no way
+         *     back, so the remedy is a new job over those assets rather than a retry. An
+         *     asset the job does not carry is 422 `ASSET_NOT_IN_JOB`.
+         *
+         *     An annotation the pinned version does not describe is 422
+         *     `INVALID_ANNOTATION`, which is the general answer; the specific ones carry
+         *     their own codes — `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`,
+         *     `MISSING_REQUIRED_ATTRIBUTE` and their kin — so a client that wants to say
+         *     what is wrong reads the code rather than the status.
          *
          *     The asset must also still be open for labeling — `unannotated` or
          *     `annotated`. One that was skipped, submitted for review or accepted is 409
@@ -1228,7 +1258,10 @@ export interface paths {
          *     whole call with 404 `ANNOTATION_NOT_FOUND` and removes nothing — there is no
          *     partial delete, for the reason there is no partial write. Removing a label is
          *     still a write, so an asset that was skipped, submitted or accepted is 409
-         *     `ASSET_NOT_WRITABLE` here too.
+         *     `ASSET_NOT_WRITABLE` here too, a batch that is not open for annotation is 409
+         *     `BATCH_NOT_IN_ANNOTATION`, and a job that was completed is 409 `JOB_FINISHED`.
+         *     An unknown job is 404 `JOB_NOT_FOUND`, and an id naming an annotation that
+         *     sits outside this job is 422 `ASSET_NOT_IN_JOB`.
          *
          *     No confirmation gate: taking a box off is the ordinary annotator edit loop,
          *     not the destruction of a lifecycle entity. The batch gate is the guard, so
@@ -1248,7 +1281,11 @@ export interface paths {
          *     without anything saying so.
          *
          *     All-or-nothing, and `detail.index` names the culprit, exactly as on the POST.
-         *     An asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST.
+         *     An asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,
+         *     and so are the two gates around it: a batch that is not open for annotation
+         *     is 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409
+         *     `JOB_FINISHED`. An edit is a write, and every gate that stops a new label
+         *     stops a replacement too.
          */
         patch: operations["update_annotations"];
         trace?: never;
@@ -1297,7 +1334,13 @@ export interface paths {
          *
          *     Setting the state an asset is already in is a no-op rather than a refusal —
          *     but the batch gate fires first, so writing into a closed batch is refused
-         *     whether or not the value would have changed.
+         *     whether or not the value would have changed: 409 `BATCH_NOT_IN_ANNOTATION`.
+         *
+         *     409 `STALE_WRITE` is the other one, and it is not the same complaint: the
+         *     move was legal from the state the caller read, and somebody else moved the
+         *     asset in between. Re-read the progress and decide again — resending this
+         *     request unchanged would land a decision made about a state nobody is in any
+         *     more.
          *
          *     Labels move `unannotated` and `annotated` on their own as annotations are
          *     added and deleted. This route is for the decisions that are nobody's
@@ -1351,6 +1394,11 @@ export interface paths {
          *     means the labeling has not happened and a `review_pending` one means the
          *     review has not; either answers 409 `JOB_NOT_COMPLETE` and says how many are
          *     outstanding.
+         *
+         *     A job that is not `in_progress` is 409 `INVALID_TRANSITION`, and a batch that
+         *     is not open for annotation is 409 `BATCH_NOT_IN_ANNOTATION`. Neither has a
+         *     remedy on this route: `completed` is where the table ends, so settled work is
+         *     corrected through a new batch rather than reopened.
          *
          *     Completing a job does not complete its batch — `POST /batches/{id}/complete`
          *     derives that from all of them.
@@ -1428,7 +1476,9 @@ export interface paths {
          * @description Take the job from `pending` to `in_progress`.
          *
          *     The batch has to be open first: a job in a batch nobody started is 409
-         *     `BATCH_NOT_IN_ANNOTATION`.
+         *     `BATCH_NOT_IN_ANNOTATION`. A job that is not `pending` has no such move to
+         *     make and is 409 `INVALID_TRANSITION` — the table runs one way, so a job that
+         *     is already in progress or finished never starts again.
          */
         post: operations["start_job"];
         delete?: never;
@@ -1538,8 +1588,9 @@ export interface paths {
          * Get Asset
          * @description One ingested item, by id.
          *
-         *     An asset belonging to a different project reads as 404 rather than 403, like
-         *     every cross-scope reference here.
+         *     An unknown project is 404 `PROJECT_NOT_FOUND` and an unknown asset is 404
+         *     `ASSET_NOT_FOUND`. An asset belonging to a different project answers the
+         *     second of those rather than 403, like every cross-scope reference here.
          *
          *     `content_hash` identifies the bytes and `thumbnail_hash` the cached preview,
          *     but neither is a URL — the two routes below are, and they take this asset's
@@ -1577,7 +1628,9 @@ export interface paths {
          *
          *     An asset in no batch answers `{"items": [], "total": 0}` — the ordinary state
          *     of anything ingested without a target, and not a 404. The 404 here is for the
-         *     asset or the project, which is resolved first.
+         *     asset or the project, which is resolved first: 404 `PROJECT_NOT_FOUND` or 404
+         *     `ASSET_NOT_FOUND`. A batch deleted between that read and its progress is 404
+         *     `BATCH_NOT_FOUND`, and asking again answers without it.
          */
         get: operations["list_asset_batches"];
         put?: never;
@@ -1611,8 +1664,10 @@ export interface paths {
          *     Cached forever and never revalidated: identity is content, so these bytes
          *     cannot change. The `ETag` is the content hash.
          *
-         *     404 `WORKSPACE_CORRUPT` is not among the answers — a recorded hash with no
-         *     blob behind it is a guarantee failing, and is 500.
+         *     An unknown project or asset is 404 — `PROJECT_NOT_FOUND` and
+         *     `ASSET_NOT_FOUND` — and those are the only two. 404 `WORKSPACE_CORRUPT` is
+         *     not among the answers: a recorded hash with no blob behind it is a guarantee
+         *     failing, and is 500.
          */
         get: operations["get_asset_content"];
         put?: never;
@@ -1637,7 +1692,10 @@ export interface paths {
          *     A preview is a cache, so this reads one and never renders one. An asset with
          *     no preview is 404 `THUMBNAIL_NOT_CACHED` — which has three causes with one
          *     remedy: the asset predates the cache, its bytes would not render, or no run
-         *     has reached it yet. A backfill fills what it can.
+         *     has reached it yet. A backfill fills what it can. The other two 404s are the
+         *     ordinary ones, resolved before the cache is consulted: 404 `PROJECT_NOT_FOUND`
+         *     and 404 `ASSET_NOT_FOUND`, which say the thing itself is not here rather than
+         *     that its preview is missing.
          *
          *     Cached the same way `content` is, and for the same reason. The `ETag` is the
          *     thumbnail hash, which is a cache key and not an identity: two machines may
@@ -1793,9 +1851,10 @@ export interface paths {
          *     person. `curated` is the one a schema editor writes; `annotation` is the one
          *     that accumulates while somebody is labeling and needs a class.
          *
-         *     404 means nobody has started one, which is the ordinary state of most
-         *     projects. It is deliberately not the same refusal as a project with no
-         *     published version, and the two carry different codes.
+         *     404 `SCHEMA_DRAFT_NOT_FOUND` means nobody has started one, which is the
+         *     ordinary state of most projects. It is deliberately not the same refusal as
+         *     an unknown project, which is 404 `PROJECT_NOT_FOUND`: the codes are what tell
+         *     "there is nothing written yet" from "there is no such project".
          */
         get: operations["get_schema_draft"];
         /**
@@ -1861,7 +1920,9 @@ export interface paths {
          *     those; a version is not.
          *
          *     409 `STALE_WRITE` means the draft moved since `revision` was read, and no
-         *     version was created.
+         *     version was created. 409 `SCHEMA_VERSION_CONFLICT` means something else
+         *     published while this call was deciding the next version number; that one is
+         *     worth resending unchanged, since the retry re-reads the maximum.
          *
          *     The draft is gone afterwards even when nothing was written: publishing the
          *     contract already in force answers with the version already in force, and the
@@ -1974,6 +2035,11 @@ export interface paths {
          *     exist under an affected class it answers 409 `SCHEMA_CHANGE_WOULD_ORPHAN`
          *     instead, and **no flag overrides that one** — which is why a client branches
          *     on `code` and not on the status.
+         *
+         *     The third 409 is the one that *is* worth an immediate retry: two writers
+         *     racing for the same next version number is `SCHEMA_VERSION_CONFLICT`, and
+         *     resending the identical request re-reads the maximum and lands on the one
+         *     after it. No flag is involved, and none is needed.
          */
         post: operations["create_schema_version"];
         delete?: never;
@@ -2044,8 +2110,8 @@ export interface paths {
          *     and a file that is not an image is reported there rather than refused now.
          *
          *     `name` exists because the staged path's basename is a digest; a blank one is
-         *     refused by the kernel's own `InvalidName` (422) — the domain already refuses
-         *     with a mapped error, so no wire validator restates it.
+         *     422 `INVALID_NAME`, refused by the kernel's own `InvalidName` — the domain
+         *     already refuses with a mapped error, so no wire validator restates it.
          */
         post: operations["register_image_source"];
         delete?: never;
@@ -2068,7 +2134,10 @@ export interface paths {
          * @description Offer a project a clip, to be cut at `extraction_fps`.
          *
          *     The clip is probed on the way in, so a file that is not a video, or one
-         *     whose bytes will not decode, is 422 here rather than a run that fails later.
+         *     whose bytes will not decode, is 422 here rather than a run that fails later:
+         *     422 `UNSUPPORTED_MEDIA` for a kind of file this cannot cut, and 422
+         *     `CORRUPT_MEDIA` for one that is the right kind and will not decode. The
+         *     message says what was wrong with the file and never where it was put.
          *
          *     The rate is part of what the source *is*: the same clip registered at 1 fps
          *     and again at 5 fps is two sources over one file, which is what makes "the
@@ -2158,7 +2227,9 @@ export interface paths {
          *
          *     A release published without a recipe is 404 `NO_SPLIT_RECIPE`. That is not a
          *     defect in the release: no recipe means one undivided set, and answering
-         *     all-train would be indistinguishable from a real recipe that said so.
+         *     all-train would be indistinguishable from a real recipe that said so. An
+         *     unknown release is the other 404, `RELEASE_NOT_FOUND` — the code is what
+         *     tells "there is no such release" from "that release divides into one fold".
          */
         get: operations["get_release_assignment"];
         put?: never;
@@ -2196,8 +2267,9 @@ export interface paths {
          *     installed — and an unknown name is 404 `EXPORT_FORMAT_NOT_FOUND` on this
          *     request. A format that cannot carry everything the release holds is 409
          *     `LOSSY_EXPORT_NOT_CONSENTED` on this request too, and retrying is the
-         *     identical call plus `allow_lossy=true`. Neither refusal creates a job, so a
-         *     caller holding a job id holds one that will run.
+         *     identical call plus `allow_lossy=true`. An unknown release is 404
+         *     `RELEASE_NOT_FOUND`. None of the three creates a job, so a caller holding a
+         *     job id holds one that will run.
          *
          *     A POST because it does work and writes files, though it changes nothing a
          *     later read can see: the release is immutable, and re-exporting overwrites the
@@ -2355,8 +2427,9 @@ export interface paths {
          *     `batch_id` puts what this run gathers into a batch that already exists,
          *     which is how a second source joins the first one's batch. It has to be a
          *     draft — an approved batch has been cut into jobs already, so adding to it is
-         *     409 `BATCH_NOT_EDITABLE` — and an unknown one is a 404. Both are answered
-         *     here, before the job row is written. `batch_name` names a new batch instead;
+         *     409 `BATCH_NOT_EDITABLE` — and an unknown one is 404 `BATCH_NOT_FOUND`. Both
+         *     are answered here, before the job row is written, as is 404
+         *     `SOURCE_NOT_FOUND` for the source this run would read. `batch_name` names a new batch instead;
          *     passing neither uses the source's own name.
          */
         post: operations["start_ingest"];
