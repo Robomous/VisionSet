@@ -41,8 +41,10 @@ dates only — so `scripts/cooldown.sh` computes the cutoff at the moment of the
 `uv add` through the wrapper is narrowed: a cutoff makes uv discard the lockfile and re-resolve
 everything, so the wrapper runs the add twice — once under the cutoff to learn which release the
 cool-down allows, then again with no cutoff, pinning it — and the diff is the package you asked
-for rather than every pin in the file. It audits the result and refuses with exit 3 if the add
-needed a version published inside the window, leaving `uv.lock` and `pyproject.toml` untouched.
+for rather than every pin in the file. It audits the result, and where a package the resolution forced
+upward carries no pin it takes the version the first pass vetted and resolves again — at most
+twice. What survives that is refused with exit 3, leaving `uv.lock` and `pyproject.toml`
+untouched.
 `uv lock --upgrade-package <pkg>` is narrowed the same way and for the same reason, except that a
 package you name is already in the lockfile and is pinned because you named it. A bare `uv lock`
 and `uv lock --upgrade` are not narrowed: neither names anything, and a refresh moving the whole

@@ -55,10 +55,13 @@
 # Overriding it
 # ---------------------------------------------------------------------------
 #
-# Neither of these is the first resort. A resolution refused because one package
-# was forced past the cutoff prints the version the cool-down vets and the command
-# that takes it, and that command keeps the cool-down on. The two exits below are
-# for taking a version the cool-down has not vetted at all.
+# Neither of these is the first resort. A package the resolution forces past the
+# cutoff is pinned to the version the cool-down vets and the resolution is run
+# again, so the commonest refusal now resolves itself with the cool-down still on.
+# Where one survives — a pin the resolver will not honour, a package the cool-down
+# never resolved, or a cascade that outruns the bound — the refusal prints the
+# command that carries the pins, and that command keeps the cool-down on too. The
+# two exits below are for taking a version the cool-down has not vetted at all.
 #
 # A cool-down nobody can escape is a cool-down people turn off. Two deliberate
 # exits, and both are meant to be visible in a diff or a transcript:
@@ -156,30 +159,29 @@ audit_lock() {
 }
 
 # ---------------------------------------------------------------------------
-# What a refusal knows, and what it is allowed to say.
+# What a violation knows, and what can be done about it.
 # ---------------------------------------------------------------------------
 #
 # The first pass resolved the whole graph under the cutoff, so it holds a vetted
 # version of every package it touched — including the ones the pin rule leaves
 # alone because they were already locked and nobody named them. Such a package can
-# still be forced upward by the resolution, and when the second pass takes its
-# newest release the audit refuses everything. Reporting the first pass's answer is
-# what keeps that refusal from being a dead end whose only exit turns the cool-down
-# off wholesale: both narrowed forms accept a caller's `-P name==version` and leave
-# it untouched, so the printed command is a route rather than a hint.
+# still be forced upward by the resolution, and when a pass with no cutoff takes
+# its newest release the audit refuses everything. The first pass's answer is what
+# turns that refusal from a dead end into a pin: both narrowed forms accept a
+# `-P name==version` and leave it untouched, so the version it names is a route the
+# wrapper can take itself.
 #
-# A name the second pass was already handed a pin for gets no such advice. That
-# version was asked for and the resolution did not produce it, so repeating the ask
-# is not a next step — and a suggestion that provably cannot work would be worse
-# than saying nothing. Neither is there advice for a name the first pass never
-# resolved: there is no vetted version to name.
+# A name a pass was already handed a pin for has no second answer. That version was
+# asked for and the resolution did not produce it, so repeating the ask is not a
+# next step. Neither is there one for a name the first pass never resolved: there
+# is no vetted version to pin it to.
 #
-# Every pin belongs on one command. A command per package would be refused for the
-# next package in the list before it could do anything.
-suggest_vetted_versions() {
-  local violations="$1" snapshot="$2" name vetted line suggestions
-  shift 2
-  suggestions=()
+# The reasons go to stdout for a caller to print; the pins go to $snapshot/suggested
+# for a caller to take. One function rather than two, because a rule split across a
+# site that widens and a site that explains would drift.
+vetted_pins_for() {
+  local violations="$1" snapshot="$2" name vetted line
+  : >"$snapshot/suggested"
   while read -r line; do
     if [[ -z "$line" ]]; then continue; fi
     name="${line%%==*}"
@@ -195,16 +197,36 @@ suggest_vetted_versions() {
       continue
     fi
     echo "cooldown: the cool-down vets $name==$vetted."
-    suggestions+=(-P "$name==$vetted")
+    echo "$name==$vetted" >>"$snapshot/suggested"
   done <<<"$violations"
-  if [[ "${#suggestions[@]}" -gt 0 ]]; then
-    echo "cooldown: to take the vetted versions, re-run with:"
-    # %q throughout, so a requirement spelled `httpx>=1.0` survives being copied
-    # out of a terminal.
-    printf 'cooldown:   bash %q' "$0"
-    printf ' %q' "$@" "${suggestions[@]}"
-    printf '\n'
-  fi
+}
+
+# The command a surviving refusal leaves behind, from the pins vetted_pins_for
+# could form. Every pin belongs on one command: a command per package would be
+# refused for the next package in the list before it could do anything. The pins
+# the wrapper already took are passed in ahead of them, so re-running resumes where
+# the bound stopped it rather than starting over and stopping in the same place.
+print_rerun_command() {
+  local snapshot="$1" line suggestions
+  shift
+  suggestions=()
+  while read -r line; do
+    if [[ -n "$line" ]]; then suggestions+=(-P "$line"); fi
+  done <"$snapshot/suggested"
+  if [[ "${#suggestions[@]}" -eq 0 ]]; then return 0; fi
+  echo "cooldown: to take the vetted versions, re-run with:"
+  # %q throughout, so a requirement spelled `httpx>=1.0` survives being copied
+  # out of a terminal.
+  printf 'cooldown:   bash %q' "$0"
+  printf ' %q' "$@" "${suggestions[@]}"
+  printf '\n'
+}
+
+# The two lines every giving-up path ends on. A refusal restores the lockfile and
+# the manifest, but not the virtualenv, which may already hold the refused set.
+echo_unchanged_note() {
+  echo "cooldown: uv.lock and pyproject.toml are unchanged. The environment may"
+  echo "cooldown: hold that set already; \`uv sync\` puts it back in step."
 }
 
 # Whether the command names packages to upgrade at all. `-P`, `--upgrade-package`
@@ -550,26 +572,94 @@ if is_narrowable "$@" && lock="$(nearest_lock)"; then
     restore_state "$snapshot"
     unset UV_EXCLUDE_NEWER
 
-    status=0
-    "$@" "${pins[@]+"${pins[@]}"}" || status=$?
-    if [[ "$status" -ne 0 ]]; then
-      echo "cooldown: the command failed; nothing was changed" >&2
-      exit "$status"
-    fi
-
+    # -----------------------------------------------------------------------
+    # A refused audit is a question, not yet an answer.
+    # -----------------------------------------------------------------------
+    #
+    # A package the resolution forces upward is neither new nor named, so the pin
+    # rule leaves it alone, the pass takes its newest release, and the audit
+    # refuses the lot. The first pass already resolved a version of it the
+    # cool-down vets, and a pin is something this wrapper can take rather than
+    # print: pin the refused packages to those versions and resolve again.
+    #
+    # Only the refused packages are pinned. Pinning everything a pass moved would
+    # replay the first pass's rollbacks — it resolved under the cutoff, so its
+    # answer holds an older release for anything locked younger than the cutoff,
+    # and taking those would undo a bump somebody merged this week.
+    #
+    # Bounded at two extra passes. The pins cannot be computed before a pass has
+    # run, and each widening can itself force a further package upward, so the
+    # loop needs a ceiling somebody can state rather than one it discovers. Two
+    # covers a cascade; past that the refusal prints the pins already taken, so a
+    # re-run resumes rather than starting over and stopping in the same place.
+    # -----------------------------------------------------------------------
+    MAX_WIDENINGS=2
+    taken=()
+    widenings=0
     violations=""
-    audit_status=0
-    violations="$(audit_lock "$snapshot/baseline.lock" "$lock" "$cutoff")" || audit_status=$?
-    if [[ "$audit_status" -ne 0 ]]; then
+    while :; do
+      status=0
+      "$@" "${pins[@]+"${pins[@]}"}" || status=$?
+      if [[ "$status" -ne 0 ]]; then
+        if [[ "$widenings" -gt 0 ]]; then
+          # The pins that made this impossible are the wrapper's own, so a
+          # resolver error here is not the caller's failure to report. What they
+          # asked about is the cool-down, and the audit already answered it.
+          {
+            echo "cooldown: refusing this resolution — it needs versions published after ${cutoff}:"
+            echo "$violations" | sed 's/^/  /'
+            echo "cooldown: pinning the versions the cool-down vets leaves this resolution"
+            echo "cooldown: with no solution, so there is no other pin to try."
+            echo_unchanged_note
+          } >&2
+          exit 3
+        fi
+        echo "cooldown: the command failed; nothing was changed" >&2
+        exit "$status"
+      fi
+
+      audit_status=0
+      violations="$(audit_lock "$snapshot/baseline.lock" "$lock" "$cutoff")" || audit_status=$?
+      if [[ "$audit_status" -eq 0 ]]; then
+        break
+      fi
+
+      # Once per refused audit, because the same call writes the pin list the
+      # widening below reads — asking twice would print every reason twice.
+      reasons="$(vetted_pins_for "$violations" "$snapshot")"
+
+      if [[ ! -s "$snapshot/suggested" || "$widenings" -ge "$MAX_WIDENINGS" ]]; then
+        {
+          echo "cooldown: refusing this resolution — it needs versions published after ${cutoff}:"
+          echo "$violations" | sed 's/^/  /'
+          if [[ -n "$reasons" ]]; then echo "$reasons"; fi
+          print_rerun_command "$snapshot" "$@" "${taken[@]+"${taken[@]}"}"
+          echo_unchanged_note
+        } >&2
+        exit "$audit_status"
+      fi
+
+      # A round that goes on to widen has refused nothing, and does not say it has.
       {
-        echo "cooldown: refusing this resolution — it needs versions published after ${cutoff}:"
+        echo "cooldown: this resolution needs versions published after ${cutoff}:"
         echo "$violations" | sed 's/^/  /'
-        suggest_vetted_versions "$violations" "$snapshot" "$@"
-        echo "cooldown: uv.lock and pyproject.toml are unchanged. The environment may"
-        echo "cooldown: hold that set already; \`uv sync\` puts it back in step."
+        if [[ -n "$reasons" ]]; then echo "$reasons"; fi
       } >&2
-      exit "$audit_status"
-    fi
+      while read -r pair; do
+        if [[ -z "$pair" ]]; then continue; fi
+        pins+=(-P "$pair")
+        taken+=(-P "$pair")
+        # Recorded as pinned, so a pin this resolution will not honour is named
+        # as one next time round rather than suggested again.
+        echo "${pair%%==*}" >>"$snapshot/pinned"
+      done <"$snapshot/suggested"
+      widenings=$((widenings + 1))
+      echo "cooldown: taking those and resolving again" >&2
+      # Every pass resolves incrementally from the baseline, never from the
+      # lockfile the pass before it wrote — that is what keeps the audit's
+      # comparison and uv's starting point the same file.
+      restore_state "$snapshot"
+    done
 
     scrub_recorded_cutoff "$lock"
     # It landed; nothing left to undo. Disarm the restore so the EXIT trap
