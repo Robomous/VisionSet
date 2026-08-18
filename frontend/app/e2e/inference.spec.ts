@@ -250,11 +250,14 @@ test("the screen is a list of abilities, and a connection sits under the one it 
   // names, kinds and model ids never did.
   await expect(suggest).toContainText("suggest tool");
 
-  // And the ability nothing consumes yet says so, with nothing to press: the
-  // missing half is the surface that would ask, not the connection.
+  // text_detect has a consumer now — pre-labeling a batch — so an ability
+  // nothing serves invites a first connection the same way point_suggest's
+  // own empty state does below, rather than reporting a surface that does
+  // not exist.
   const detect = page.getByTestId("section-text_detect");
-  await expect(detect.getByTestId("section-nothing")).toBeVisible();
-  await expect(detect.locator("button")).toHaveCount(0);
+  await expect(
+    detect.getByRole("button", { name: "Add a text-prompt connection" }),
+  ).toBeVisible();
 });
 
 test("a section nothing serves invites a first connection for it", async ({ page }) => {
