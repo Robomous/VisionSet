@@ -71,6 +71,16 @@ const STUB_MODEL_ID = "visionset/stub-segmenter";
 const STAND_IN = "built-in stand-in";
 
 /**
+ * What the same connection is called after the walk edits it.
+ *
+ * A second constant rather than a literal at the call site, because a rename
+ * moves two test ids at once — the row is `connection-{name}` and its menu
+ * trigger is `actions-{name}` — so the new name is read in three places and a
+ * typo in one of them fails as a timeout rather than as a mismatch.
+ */
+const REPINNED = "built-in stand-in, repinned";
+
+/**
  * A project name nothing else in the workspace will collide with — **including
  * this same spec on another repetition**.
  *
@@ -1349,10 +1359,66 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expectArchive(download);
   });
 
+  await test.step("edit the connection, and watch the row answer for it", async () => {
+    /*
+     * A stub cannot referee this body, because it is written by whoever wrote
+     * the body — only a real server, checking the request against
+     * `ConnectionUpdate`, can catch a field the dialog serialises but the
+     * schema forbids. Two edits, because the kernel compares the model
+     * reference rather than asking whether it was supplied: a rename carries
+     * that reference too, so only a real PATCH tells apart the repin that must
+     * undo setup from the rename that must not. Last in the walk and nothing
+     * is put back, since no later step reads this connection.
+     */
+    // The export dialog is still up, and deliberately: it holds the outcome so
+    // the badge can announce it once the poll has stopped, which means it closes
+    // the way every other dialog here does rather than on its own. So this step
+    // starts by doing what the person who has just taken the download does. The
+    // walk dismisses a dialog this way once already, in the delete step.
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("export-dialog")).toHaveCount(0);
+
+    await page.getByTestId("rail-inference").click();
+    await expect(page.getByTestId("inference-screen")).toBeVisible();
+    await expect(page.getByTestId("connection-status")).toContainText(/ready/i);
+
+    // A rename, which sends the model reference the row already has. That it is
+    // *accepted* is the half that would have caught a PATCH carrying the kind;
+    // that the row is still ready afterwards is the half that catches a server
+    // reading "supplied" as "moved".
+    await page.getByTestId(`actions-${STAND_IN}`).click();
+    await page.getByTestId("action-edit").click();
+    await page.getByTestId("connection-name").fill(REPINNED);
+    await page.getByTestId("connection-submit").click();
+
+    // The dialog closes only on success — a refusal leaves it open holding what
+    // was typed — so its absence is the first thing that says the server took
+    // the body.
+    await expect(page.getByTestId("connection-dialog")).toHaveCount(0);
+    await expect(page.getByTestId(`connection-${REPINNED}`)).toBeVisible();
+    await expect(page.getByTestId("connection-status")).toContainText(/ready/i);
+
+    // And a reference that really does move. The revision is free text on a
+    // connection — the commit-hash rule belongs to catalog entries, which is why
+    // the setup step above could pin this one to `stub` at all.
+    await page.getByTestId(`actions-${REPINNED}`).click();
+    await page.getByTestId("action-edit").click();
+    await expect(page.getByTestId("connection-revision")).toBeVisible();
+    await page.getByTestId("connection-revision").fill("stub-repinned");
+    await page.getByTestId("connection-submit").click();
+
+    await expect(page.getByTestId("connection-dialog")).toHaveCount(0);
+    await expect(page.getByTestId("connection-status")).toContainText(/not set up/i);
+
+    // The remedy is offered on the row it happened to, which is the other half
+    // of what "undoes its setup" is allowed to mean.
+    await expect(page.getByTestId("download-weights")).toBeVisible();
+  });
+
   await test.step("the whole walk produced a clean console", async () => {
-    // Last, so it covers everything above rather than one screen: eleven
-    // navigations, a reload, two viewport changes and a download, and the browser
-    // should have had nothing to say about any of it.
+    // Last, so it covers everything above rather than one screen — every
+    // navigation, reload, viewport change and download the walk performs — and
+    // the browser should have had nothing to say about any of it.
     //
     // **Stated rather than implied: headless chromium does not request
     // `/favicon.ico` on its own**, so this assertion cannot reproduce the original
