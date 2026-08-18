@@ -1250,7 +1250,26 @@ function describeDestructiveClasses(classes: readonly string[]): string {
   return `${named.slice(0, -1).join(", ")}, and ${named.at(-1) ?? "another class"}`;
 }
 
-/** Retryable: a publishable preview says the change narrows the contract. */
+/**
+ * Retryable: a publishable preview says the change narrows the contract.
+ *
+ * The counts are the point. A confirmation that asks "are you sure?" without
+ * saying what yes costs is a speed bump, and the two numbers worth saying are
+ * both already measured: how many classes narrow, and how many annotations are
+ * at risk. The second is always zero here — a preview carrying blockers is
+ * refused outright and never reaches this dialog — and a measured zero is the
+ * reason the publish is offered at all, so it is stated rather than implied.
+ *
+ * It says nothing about what becomes of annotations *after* the publish. An
+ * open batch pinned to the outgoing version can still write the removed class,
+ * and whether that is tolerated or forbidden is not something this dialog is
+ * entitled to answer.
+ *
+ * A shape removed from a class and the class itself removed are indistinguishable
+ * here: the wire's change record carries the class name but not the geometry, so
+ * the copy counts classes, which is true of both, rather than guessing which
+ * happened.
+ */
 function DestructiveDialog({
   preview,
   pending,
@@ -1268,11 +1287,14 @@ function DestructiveDialog({
       <DialogContent data-testid="destructive-dialog">
         <DialogTitle>This narrows the schema</DialogTitle>
         <DialogDescription>
-          This change narrows the schema for {describeDestructiveClasses(destructiveClasses)}.
+          <span className="tabular-nums">{formatCount(destructiveClasses.length)}</span>{" "}
+          {destructiveClasses.length === 1 ? "class narrows" : "classes narrow"}:{" "}
+          {describeDestructiveClasses(destructiveClasses)}.
         </DialogDescription>
         <DialogDescription>
-          Existing annotations are not touched. Saving anyway publishes the new version and leaves
-          earlier ones exactly as they are — a version is immutable.
+          No annotations use what this removes — that is why it can be published at all. Publishing
+          creates a new version; the versions before it keep everything they already declared,
+          because a version is immutable.
         </DialogDescription>
         <DialogFooter>
           <Button variant="secondary" onClick={onCancel}>
