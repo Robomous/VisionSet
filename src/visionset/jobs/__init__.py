@@ -27,7 +27,7 @@ ports, ``BackgroundJob`` is a domain model, and ``SqliteJobQueue`` is a kernel
 adapter. What lives here is *what the work is* and *where it runs*.
 """
 
-from visionset.jobs import export, ingest, integrity, weights
+from visionset.jobs import export, ingest, integrity, prelabel, weights
 from visionset.jobs.registry import (
     REGISTRY,
     HandlerRef,
@@ -49,6 +49,7 @@ __all__ = [
     "export",
     "ingest",
     "integrity",
+    "prelabel",
     "weights",
     "known_types",
     "load",

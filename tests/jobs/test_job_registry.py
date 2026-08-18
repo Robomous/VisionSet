@@ -22,6 +22,7 @@ SHIPPED = {
     "export.release",
     "inference.download_weights",
     "inference.check_integrity",
+    "annotation.pre_label",
 }
 
 
