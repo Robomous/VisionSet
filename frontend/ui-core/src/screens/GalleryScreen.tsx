@@ -59,7 +59,12 @@ import { FieldError, Input } from "../primitives/Input";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { Breadcrumb } from "../patterns/Breadcrumb";
 import { parentLabel } from "../patterns/parentLabel";
-import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
+import {
+  ApproveDialog,
+  BatchProgressBar,
+  CompleteBatchButton,
+  StartAnnotatingButton,
+} from "./BatchLifecycle";
 import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
 import { BatchOverflowMenu } from "./DeleteBatch";
 import { PreLabelButton } from "./PreLabelDialog";
@@ -688,6 +693,8 @@ function BatchHeader({
    * behind it.
    */
   const editable = declaring(assets, ASSET_ACTION.annotate).length > 0;
+  /** The batch's own next step — `approved` declares `start` and nothing else here does. */
+  const startsAnnotation = declares(batch, BATCH_ACTION.start);
 
   const facts: string[] = [];
   if (source.data !== undefined) facts.push(source.data.name);
@@ -741,7 +748,17 @@ function BatchHeader({
               Approve batch
             </Button>
           )}
-          {onStartAnnotating !== undefined && openable && (
+          {/*
+            The batch's own next step, answered from `allowed_actions` rather
+            than from the per-frame door below: an `approved` batch has no
+            frame declaring `annotate` yet, so `editable` is false and the
+            fallback read `View frames` on work that had not started. `start`
+            is the only action this button performs, and it replaces the
+            per-frame door rather than sitting beside it — a batch cannot be
+            both "not started" and "has frames to view".
+          */}
+          {startsAnnotation && batch !== undefined && <StartAnnotatingButton batch={batch} />}
+          {!startsAnnotation && onStartAnnotating !== undefined && openable && (
             <Button
               variant="secondary"
               size="sm"

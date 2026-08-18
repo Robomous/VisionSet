@@ -23,7 +23,7 @@
  */
 
 import { useState, type JSX } from "react";
-import { SquareCheckBig } from "lucide-react";
+import { Play, SquareCheckBig } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
@@ -45,7 +45,13 @@ import {
   SelectValue,
 } from "../primitives/Select";
 import { annotatedShare, outstandingWork } from "./batchState";
-import { useApproveBatch, useFinishBatch, type Batch, type ProgressCounts } from "./queries";
+import {
+  useApproveBatch,
+  useBatchTransition,
+  useFinishBatch,
+  type Batch,
+  type ProgressCounts,
+} from "./queries";
 
 /**
  * The counts, as one bar and a readout.
@@ -312,5 +318,51 @@ export function ApproveDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// --- starting the batch --------------------------------------------------------
+
+/**
+ * The batch's own next step, on the page the batch owns.
+ *
+ * An `approved` batch declares `start` and nothing in the gallery header asked
+ * for it: the only control there was the per-frame door, which reads `View
+ * frames` before any job exists to write to — a passive label on a batch whose
+ * actual next move is sitting one tab away, on the Batches row. This is that
+ * same move, `useBatchTransition(batchId, "start")`, so the table and the
+ * gallery send the identical mutation rather than two spellings of it.
+ *
+ * Deliberately does not navigate. Landing back on the gallery re-reads the
+ * batch as `in_annotation`, and the header then offers Pre-label beside Open
+ * annotator — the choice a batch of any size is worth making explicitly, not
+ * one a jump straight into the annotator would skip past.
+ */
+export function StartAnnotatingButton({
+  batch,
+  className,
+}: {
+  readonly batch: Batch;
+  readonly className?: string;
+}): JSX.Element {
+  const start = useBatchTransition(batch.id, "start");
+  const refusal = start.isError ? asApiError(start.error) : null;
+
+  return (
+    <div className={className ?? "flex flex-col items-end gap-1"}>
+      <Button
+        variant="primary"
+        size="sm"
+        data-testid="start-batch"
+        disabled={start.isPending}
+        onClick={() => start.mutate()}
+      >
+        <Play className="size-4" aria-hidden="true" />
+        {start.isPending ? "Starting…" : "Start annotating"}
+      </Button>
+      {refusal !== null && (
+        <FieldError data-testid="start-batch-error">{refusalProse(refusal)}</FieldError>
+      )}
+    </div>
   );
 }

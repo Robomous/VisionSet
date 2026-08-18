@@ -1717,6 +1717,166 @@ describe("the gallery header's way into the annotator", () => {
   });
 });
 
+/**
+ * The batch's own next step, on the batch's own page.
+ *
+ * An `approved` batch used to have exactly one header action, `View frames`,
+ * which reads as "the work is finished or unavailable" over a batch showing
+ * `0 of N annotated` — because the header answered only "can I annotate these
+ * frames" (asset-level, correctly no) and never "what is this batch's next
+ * move" (batch-level, `start`). This is the second question, gated on the
+ * batch's own `allowed_actions` rather than on `batch.state`.
+ */
+describe("the gallery header's own next step", () => {
+  function frames(batchState: BatchState, ...states: string[]): Record<string, unknown> {
+    return {
+      total: states.length,
+      items: states.map((progress, at) => ({
+        id: `asset-${at}`,
+        project_id: PROJECT,
+        modality: "image",
+        content_hash: `${at}`.padStart(8, "0") + "deadbeef",
+        width: 1280,
+        height: 720,
+        format: "jpeg",
+        source_id: SOURCE,
+        frame_index: at,
+        frame_timestamp: at,
+        thumbnail_hash: "cafebabe",
+        ingested_at: "2026-08-01T09:00:00Z",
+        job_id: JOB,
+        progress,
+        allowed_actions: assetActions(progress as Progress, { batchState }),
+      })),
+    };
+  }
+
+  async function openIn(batchState: BatchState, ...states: string[]): Promise<void> {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({
+        state: batchState,
+        schema_version: 1,
+        progress: { ...NO_PROGRESS, total: states.length, unannotated: states.length },
+      }),
+    });
+    on("GET", /\/assets$/, { status: 200, body: frames(batchState, ...states) });
+    on("GET", /\/annotations$/, { status: 200, body: [] });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={vi.fn()} />));
+    await screen.findByTestId("tile-asset-0");
+  }
+
+  it("offers Start annotating on an approved batch, not View frames", async () => {
+    await openIn("approved", "unannotated", "unannotated");
+    expect(screen.getByTestId("start-batch").textContent).toContain("Start annotating");
+    // The per-frame door is not offered beside it — a batch that has not
+    // started has nothing settled yet for that door to show.
+    expect(screen.queryByTestId("start-annotating")).toBeNull();
+  });
+
+  it("offers no Start on a completed batch, only View frames", async () => {
+    await openIn("completed", "annotated", "skipped");
+    expect(screen.queryByTestId("start-batch")).toBeNull();
+    expect(screen.getByTestId("start-annotating").textContent).toContain("View frames");
+  });
+
+  it("offers no Start on an in_annotation batch, only the annotator entry", async () => {
+    await openIn("in_annotation", "annotated", "unannotated", "unannotated");
+    expect(screen.queryByTestId("start-batch")).toBeNull();
+    expect(screen.getByTestId("start-annotating")).toBeTruthy();
+  });
+
+  it("performs the batch's own start rather than navigating into the annotator", async () => {
+    let started = false;
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname === `/batches/${BATCH}`) {
+        return {
+          status: 200,
+          body: batch({
+            state: started ? "in_annotation" : "approved",
+            schema_version: 1,
+            progress: { ...NO_PROGRESS, total: 2, unannotated: 2 },
+          }),
+        };
+      }
+      if (request.method === "POST" && url.pathname === `/batches/${BATCH}/start`) {
+        started = true;
+        return { status: 200, body: batch({ state: "in_annotation", schema_version: 1 }) };
+      }
+      return undefined;
+    });
+    on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+
+    const opened = vi.fn();
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={opened} />));
+    await userEvent.click(await screen.findByTestId("start-batch"));
+
+    // The badge moves — the batch actually re-reads as `in_annotation` — and
+    // nothing in the header sent this press into the annotator to get there.
+    await waitFor(() => expect(screen.getByTestId("batch-state").textContent).toBe("in progress"));
+    expect(screen.queryByTestId("start-batch")).toBeNull();
+    expect(opened).not.toHaveBeenCalled();
+  });
+
+  it("disables Start while the transition is in flight, not only after the click", async () => {
+    // The gate has to sit under `globalThis.fetch` *before* the client is
+    // built — `openapi-fetch` reads `globalThis.fetch` once, at
+    // `createClient()` time, so stubbing it after `render` would wrap a
+    // reference this client never uses.
+    const inner = globalThis.fetch;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal("fetch", async (request: Request) => {
+      if (request.method === "POST" && new URL(request.url).pathname.endsWith("/start")) {
+        await gate;
+      }
+      return inner(request);
+    });
+
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({
+        state: "approved",
+        schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 1, unannotated: 1 },
+      }),
+    });
+    on("GET", /\/assets$/, { status: 200, body: frames("approved", "unannotated") });
+    on("GET", /\/annotations$/, { status: 200, body: [] });
+    on("POST", /\/start$/, { status: 200, body: batch({ state: "in_annotation", schema_version: 1 }) });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={vi.fn()} />));
+    await screen.findByTestId("start-batch");
+
+    await userEvent.click(screen.getByTestId("start-batch"));
+    expect((screen.getByTestId("start-batch") as HTMLButtonElement).disabled).toBe(true);
+
+    release?.();
+    await waitFor(() =>
+      expect((screen.getByTestId("start-batch") as HTMLButtonElement).disabled).toBe(false),
+    );
+  });
+
+  it("renders a refused start as prose, not the raw code", async () => {
+    await openIn("approved", "unannotated");
+    handlers.push((request) =>
+      request.method === "POST" && new URL(request.url).pathname.endsWith("/start")
+        ? { status: 409, body: { code: "INVALID_TRANSITION", message: "moved already" } }
+        : undefined,
+    );
+
+    await userEvent.click(screen.getByTestId("start-batch"));
+
+    const said = await screen.findByTestId("start-batch-error");
+    expect(said.textContent).toContain("already moved on");
+    expect(said.textContent).not.toContain("INVALID_TRANSITION");
+  });
+});
+
 describe("the jobs strip", () => {
   const OTHER_JOB = "88888888-8888-4888-8888-888888888888";
 
