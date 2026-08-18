@@ -1,8 +1,9 @@
 # usage: from visionset.cli.batches import batch_app
 """``visionset batch`` — the lifecycle, and the gate into the trunk.
 
-Five commands, each exactly one service call: ``list``, then the one-way walk
-``approve`` → ``start`` → ``complete``, then ``promote``.
+Six commands: ``list``, then the one-way walk ``approve`` → ``start`` →
+``complete``, then ``promote``; ``pre-label`` invokes shared inference inline,
+because a terminal has no dispatcher.
 
 **There is no ``batch create``, and none of the membership commands.** A batch is
 born from an ingest; curating one out of an arbitrary subset of assets has no
@@ -25,6 +26,7 @@ the same reason its route hangs off ``/batches/{id}``.
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Annotated, Final
 from uuid import UUID
 
@@ -34,10 +36,13 @@ from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption, resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
+from visionset.cli.inference import ConnectionArgument, _resolve
+from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, pre_label
 from visionset.kernel.domain import AssetProgress, BySize, Partition
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
+    InferenceConnectionService,
     JobService,
     ProjectService,
     WorkspaceService,
@@ -181,6 +186,45 @@ def batch_start(
         counts = JobService(service).batch_progress(started.id)
         promoted = _promoted(service, started.project_id)
     _echo(started.id, started.state.value, json_out, wire.batch(started, counts, promoted=promoted))
+
+
+@batch_app.command("pre-label")
+def batch_pre_label(
+    batch: BatchArgument,
+    connection: ConnectionArgument,
+    minimum_confidence: Annotated[
+        float,
+        typer.Option(
+            "--minimum-confidence",
+            min=0.0,
+            max=1.0,
+            help="The floor a prediction must clear to be written, in [0, 1].",
+        ),
+    ] = DEFAULT_MINIMUM_CONFIDENCE,
+    json_out: JsonOption = False,
+    workspace: WorkspaceOption = None,
+) -> None:
+    """Ask a model to label every untouched asset in an open batch.
+
+    This blocks because a terminal has no dispatcher to claim an enqueued run.
+    """
+    with opened_workspace(workspace) as service:
+        connections = InferenceConnectionService(service)
+        outcome = pre_label(
+            service,
+            batch_id=batch,
+            connection_id=_resolve(connections, connection),
+            minimum_confidence=minimum_confidence,
+            on_progress=lambda done, total: note(f"Pre-labeling {done}/{total} asset(s)."),
+        )
+    if json_out:
+        document(asdict(outcome))
+        return
+    note(
+        f"Pre-labeled {outcome.assets_labeled} asset(s), "
+        f"wrote {outcome.annotations_written} annotation(s)."
+    )
+    typer.echo(str(outcome.annotations_written))
 
 
 @batch_app.command("complete")
