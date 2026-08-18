@@ -272,6 +272,58 @@ def test_an_in_annotation_batch_declares_the_action(
     assert "pre_label" in response.json()["allowed_actions"]
 
 
+# --- the batch remembers the run, after the page that launched it is gone --------
+
+
+def test_a_batch_with_no_pre_label_run_reports_none(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = client.get(f"/batches/{in_annotation_batch.id}")
+
+    assert response.json()["pre_label_run"] is None
+
+
+def test_a_settled_run_is_readable_with_no_job_id_of_its_own(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    """The whole feature: a dialog reopened holding no job id can still say what
+    happened, because the batch itself carries its most recent run.
+
+    The launch has no real weights behind it here, so the run settles `failed`
+    — which is exactly the outcome this proves reaches the batch: `job_id`,
+    `state` and the handler's own `error` sentence, none of them invented.
+    """
+    launched = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id, "minimum_confidence": 0.35},
+    ).json()
+
+    reopened = client.get(f"/batches/{in_annotation_batch.id}").json()
+
+    run = reopened["pre_label_run"]
+    assert run is not None
+    assert run["job_id"] == launched["id"]
+    assert run["state"] == "failed"
+    assert run["error"]
+
+
+def test_the_project_listing_carries_the_run_too(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    """The listing and the single-batch read agree, at the one-query cost model
+    `_promoted` already pays for `promoted_asset_count`."""
+    client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id, "minimum_confidence": 0.35},
+    )
+
+    listing = client.get(f"/projects/{in_annotation_batch.project_id}/batches").json()
+    row = next(item for item in listing["items"] if item["id"] == in_annotation_batch.id)
+
+    assert row["pre_label_run"] is not None
+    assert row["pre_label_run"]["state"] == "failed"
+
+
 def test_a_draft_batch_does_not_declare_the_action(
     client: TestClient, draft_batch: OpenBatch
 ) -> None:

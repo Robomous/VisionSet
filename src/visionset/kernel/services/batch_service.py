@@ -33,7 +33,7 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import NoReturn
 from uuid import UUID
 
@@ -44,6 +44,7 @@ from visionset.kernel.domain import (
     DELETABLE_STATES,
     EDITABLE_STATES,
     LIVE_JOB_STATES,
+    PRE_LABEL_JOB_TYPE,
     PRE_LABELABLE_STATES,
     REPINNABLE_STATES,
     AnnotationJob,
@@ -60,6 +61,7 @@ from visionset.kernel.domain import (
     ClassShape,
     MembershipChange,
     Partition,
+    PreLabelRun,
     Project,
     SchemaDiff,
     SingleJob,
@@ -138,6 +140,46 @@ class BatchService:
             if job.payload.get(BATCH_JOB_KEY) == str(batch_id):
                 return job
         return None
+
+    def latest_pre_label_job(self, batch_id: UUID) -> PreLabelRun | None:
+        """That batch's most recent pre-labeling run, live or settled, if it has one.
+
+        ``live_job``'s sibling: the same question about the same job type, asked
+        over every state rather than only the live ones — a dialog reopened
+        after a cancelled run or a failure needs the *last* thing that happened
+        here, not only one still in flight. Delegates to :meth:`pre_label_runs`
+        rather than repeating its payload match: the queue read costs the same
+        either way, so a second body here would only be a second place for that
+        match to drift from the first.
+        """
+        return self.pre_label_runs().get(batch_id)
+
+    def pre_label_runs(self) -> Mapping[UUID, PreLabelRun]:
+        """Every batch's most recent pre-labeling run, read from the queue at once.
+
+        ``InferenceConnectionService.connection_jobs``'s reasoning, one resource
+        over: a caller listing batches needs this for every row, and reading the
+        queue once for the whole page is what keeps a listing from costing a
+        query per batch — the ``promoted`` parameter's cost model, applied here
+        instead of to trunk membership.
+
+        The newest per batch, because both questions get asked: *is something
+        running now* and *what happened last time*. The queue answers
+        newest-first, so the first job seen for a batch is that batch's latest.
+
+        A job whose payload names no batch is skipped rather than raised over:
+        it cannot be a run this method is about, and a batch listing is the
+        wrong place to discover a malformed row.
+        """
+        latest: dict[UUID, PreLabelRun] = {}
+        for job in self._workspace.job_queue.list(types={PRE_LABEL_JOB_TYPE}):
+            named = job.payload.get(BATCH_JOB_KEY)
+            if not isinstance(named, str):
+                continue
+            batch_id = UUID(named)
+            if batch_id not in latest:
+                latest[batch_id] = PreLabelRun.of(job)
+        return latest
 
     def assets(self, batch_id: UUID) -> list[Asset]:
         """Everything in the batch, in membership order.

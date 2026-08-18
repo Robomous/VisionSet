@@ -3000,6 +3000,7 @@ export interface components {
             name: string;
             /** Parent Batch Id */
             parent_batch_id: string | null;
+            pre_label_run: components["schemas"]["PreLabelRunOut"] | null;
             progress: components["schemas"]["ProgressCounts"];
             /**
              * Project Id
@@ -3938,6 +3939,48 @@ export interface components {
              * @default 0.35
              */
             minimum_confidence: number;
+        };
+        /**
+         * PreLabelRunOut
+         * @description A batch's most recent pre-labeling run: which job, how far, and what it found.
+         *
+         *     Present whenever pre-labeling has ever been asked for on this batch, and
+         *     describing the most recent run — including one this session did not launch.
+         *     A dialog reopened after a reload, in a second tab, or after a run started
+         *     from the terminal reads the same state from here rather than from a job id
+         *     a component happened to keep.
+         *
+         *     **Assets, where a download counts bytes and a check counts files.** The
+         *     handler owns a loop over the batch's untouched assets and knows the whole
+         *     set before the first forward pass, so both its progress and its total are
+         *     counted in the unit its own work is over.
+         *
+         *     **The outcome, once the job has one.** `stopped_early`, `assets_labeled` and
+         *     `regions_discarded` are the handler's own account of what a settled run did.
+         *     They are `null` while the job is still `queued` or `running`, and `null`
+         *     where it ended `failed` before producing one — but a `cancelled` run still
+         *     carries them: stopping partway is a coherent outcome for a handler whose
+         *     contract is to write only where nothing has been written.
+         */
+        PreLabelRunOut: {
+            /** Assets Labeled */
+            assets_labeled: number | null;
+            /** Assets Processed */
+            assets_processed: number;
+            /** Assets Total */
+            assets_total: number | null;
+            /** Error */
+            error: string | null;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Regions Discarded */
+            regions_discarded: number | null;
+            state: components["schemas"]["BackgroundJobState"];
+            /** Stopped Early */
+            stopped_early: boolean | null;
         };
         /**
          * Precision

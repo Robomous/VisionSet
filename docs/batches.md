@@ -346,6 +346,15 @@ landed. `visionset.inference.pre_label` is the one implementation an SDK caller,
 all run - see [background-jobs.md](background-jobs.md) for the `annotation.pre_label` job type
 this is queued as over HTTP, and [mcp.md](mcp.md) for the synchronous `pre_label_batch` tool.
 
+**The batch remembers its own run.** `BatchService.latest_pre_label_job` reads the queue for the
+most recent `annotation.pre_label` job naming this batch - live or settled - and projects it as
+`PreLabelRun`, on `ConnectionJob`'s reasoning: a run outlives the request that launched it, so a
+reload, a second tab or a run started at a terminal can only be shown by the batch itself saying
+so. Counted in assets, the unit this handler works in, and carrying the outcome
+`prelabel.py`'s `run` returns once the job has settled - `stopped_early`, `assets_labeled`,
+`regions_discarded` - so a client can tell a cancelled run from an untouched batch. Derived, never
+stored, and published on `BatchOut` as `pre_label_run`, `null` where none ever ran.
+
 ## What approval and completion announce
 
 `approve` and `complete` each publish a [domain event](events.md) - `BatchApproved`, carrying
@@ -428,6 +437,7 @@ The [API](api.md) is this service with the curation half left off.
 ```
 GET  /projects/{id}/batches                          → 200 BatchPage
 GET  /batches/{id}                                   → 200 BatchOut, with per-state counts
+                                                        and the batch's own pre_label_run
 POST /batches/{id}/approve   { "partition": … }      → 200 BatchOut
 POST /batches/{id}/start                             → 200 BatchOut
 POST /batches/{id}/repin?allow_destructive=          → 200 BatchOut

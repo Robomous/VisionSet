@@ -83,13 +83,18 @@ def _promoted(workspace: WorkspaceService, project_id: UUID) -> frozenset[UUID]:
 
 
 def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any]:
-    """The batch, its progress and its jobs — the shape three tools return."""
+    """The batch, its progress and its jobs — the shape most tools return."""
     batches = BatchService(workspace)
     batch = batches.get(batch_id)
     counts = JobService(workspace).batch_progress(batch.id)
     jobs = batches.jobs(batch.id)
     return {
-        **wire.batch(batch, counts, promoted=_promoted(workspace, batch.project_id)),
+        **wire.batch(
+            batch,
+            counts,
+            promoted=_promoted(workspace, batch.project_id),
+            pre_labeled=batches.latest_pre_label_job(batch.id),
+        ),
         "jobs": [wire.job(j, batch_id=batch.id, batch_state=batch.state) for j in jobs],
     }
 
@@ -192,12 +197,18 @@ def list_batches(project: ProjectRef) -> dict[str, Any]:
     """
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)
-        found = BatchService(workspace).list(resolved.id)
+        batches = BatchService(workspace)
+        found = batches.list(resolved.id)
         jobs = JobService(workspace)
         counts = [jobs.batch_progress(b.id) for b in found]
         promoted = _promoted(workspace, resolved.id)
+        # One queue read for the whole listing rather than one per batch.
+        pre_label_runs = batches.pre_label_runs()
     return wire.page(
-        [wire.batch(b, c, promoted=promoted) for b, c in zip(found, counts, strict=True)],
+        [
+            wire.batch(b, c, promoted=promoted, pre_labeled=pre_label_runs.get(b.id))
+            for b, c in zip(found, counts, strict=True)
+        ],
     )
 
 

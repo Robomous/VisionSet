@@ -103,6 +103,7 @@ from visionset.kernel.domain import (
     PolygonGeometry,
     PolylineGeometry,
     Precision,
+    PreLabelRun,
     Project,
     ProjectStats,
     ProjectSummary,
@@ -914,6 +915,64 @@ class ProgressCounts(BaseModel):
         )
 
 
+class PreLabelRunOut(BaseModel):
+    """A batch's most recent pre-labeling run: which job, how far, and what it found.
+
+    Present whenever pre-labeling has ever been asked for on this batch, and
+    describing the most recent run — including one this session did not launch.
+    A dialog reopened after a reload, in a second tab, or after a run started
+    from the terminal reads the same state from here rather than from a job id
+    a component happened to keep.
+
+    **Assets, where a download counts bytes and a check counts files.** The
+    handler owns a loop over the batch's untouched assets and knows the whole
+    set before the first forward pass, so both its progress and its total are
+    counted in the unit its own work is over.
+
+    **The outcome, once the job has one.** `stopped_early`, `assets_labeled` and
+    `regions_discarded` are the handler's own account of what a settled run did.
+    They are `null` while the job is still `queued` or `running`, and `null`
+    where it ended `failed` before producing one — but a `cancelled` run still
+    carries them: stopping partway is a coherent outcome for a handler whose
+    contract is to write only where nothing has been written.
+    """
+
+    job_id: UUID
+    state: BackgroundJobState
+    #: Assets looked at so far.
+    assets_processed: int
+    #: The whole eligible set, or `null` before the run has derived it.
+    assets_total: int | None
+    #: Why it failed, in the handler's own sentence. `null` unless `state` is
+    #: `failed`.
+    error: str | None
+    #: Whether the run stopped before reaching every eligible asset —
+    #: cancelled, or an orphan a crash left behind. `null` until the job settles
+    #: with a result.
+    stopped_early: bool | None
+    #: Assets the run actually wrote a label onto. Narrower than
+    #: `assets_processed`: an asset a person started working on mid-run is
+    #: passed over, not labeled. `null` until the job settles with a result.
+    assets_labeled: int | None
+    #: Regions the model answered with a class the schema's prompt never asked
+    #: for, discarded rather than written. `null` until the job settles with a
+    #: result.
+    regions_discarded: int | None
+
+    @classmethod
+    def of(cls, run: PreLabelRun) -> Self:
+        return cls(
+            job_id=run.job_id,
+            state=run.state,
+            assets_processed=run.assets_processed,
+            assets_total=run.assets_total,
+            error=run.error,
+            stopped_early=run.stopped_early,
+            assets_labeled=run.assets_labeled,
+            regions_discarded=run.regions_discarded,
+        )
+
+
 # ``asset_ids`` is deliberately absent: membership is the paged listing's job,
 # and a batch of fifty thousand frames would otherwise ship its whole roll call
 # on every read of its name. ``schema_version`` is null exactly while the batch
@@ -938,7 +997,8 @@ class ProgressCounts(BaseModel):
 # the caller reads the trunk's membership **once per request** and every batch in
 # a listing tests against the same set, so a page of twenty batches is one extra
 # query rather than twenty. ``batch.asset_ids`` is already in memory — it is what
-# ``asset_count`` counts.
+# ``asset_count`` counts. ``pre_label_run`` follows the same model, one call to
+# ``BatchService.pre_label_runs`` for the whole listing.
 class BatchOut(BaseModel):
     """A curated slice of a project's assets that moves through annotation together."""
 
@@ -955,6 +1015,12 @@ class BatchOut(BaseModel):
     # means *not a correction of anything*, which is complete rather than
     # unknown — every batch that exists today answers null.
     parent_batch_id: UUID | None
+    #: The most recent pre-labeling run against this batch, or `null` where none
+    #: ever was. `ConnectionOut.download`'s reason, one resource over: a run
+    #: outlives the request that launched it and the page that asked, so a
+    #: dialog reopened after a cancelled or failed run can only tell that apart
+    #: from a batch nobody has touched because the batch itself says so.
+    pre_label_run: PreLabelRunOut | None
 
     @classmethod
     def of(
@@ -963,6 +1029,7 @@ class BatchOut(BaseModel):
         counts: dict[AssetProgress, int],
         *,
         promoted: AbstractSet[UUID],
+        pre_label_run: PreLabelRun | None = None,
     ) -> Self:
         return cls(
             id=batch.id,
@@ -975,6 +1042,7 @@ class BatchOut(BaseModel):
             allowed_actions=batch_actions(batch.state),
             promoted_asset_count=sum(1 for one in batch.asset_ids if one in promoted),
             parent_batch_id=batch.parent_batch_id,
+            pre_label_run=None if pre_label_run is None else PreLabelRunOut.of(pre_label_run),
         )
 
 

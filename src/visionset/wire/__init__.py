@@ -88,6 +88,7 @@ from visionset.kernel.domain import (
     LabelClass,
     PolygonGeometry,
     PolylineGeometry,
+    PreLabelRun,
     Project,
     Release,
     ReleaseVerification,
@@ -433,11 +434,32 @@ def progress_counts(counts: Mapping[AssetProgress, int]) -> dict[str, Any]:
     }
 
 
+def pre_label_run(value: PreLabelRun) -> dict[str, Any]:
+    """A batch's most recent pre-labeling run: which job, how far, and what it found.
+
+    Assets, on ``weight_download``'s and ``integrity_check``'s terms: the
+    handler's own unit, named where its job type is known. ``stopped_early``,
+    ``assets_labeled`` and ``regions_discarded`` are null until the job settles
+    with a result — a cancelled run still carries them, a failed one never does.
+    """
+    return {
+        "job_id": str(value.job_id),
+        "state": value.state.value,
+        "assets_processed": value.assets_processed,
+        "assets_total": value.assets_total,
+        "error": value.error,
+        "stopped_early": value.stopped_early,
+        "assets_labeled": value.assets_labeled,
+        "regions_discarded": value.regions_discarded,
+    }
+
+
 def batch(
     value: Batch,
     counts: Mapping[AssetProgress, int],
     *,
     promoted: AbstractSet[UUID],
+    pre_labeled: PreLabelRun | None = None,
 ) -> dict[str, Any]:
     """A batch and where its assets have got to. ``asset_ids`` is absent.
 
@@ -446,6 +468,11 @@ def batch(
     the whole answer and ``value.asset_ids`` is already in hand. Keyword-only and
     with no default, because a default would report zero promoted for a batch
     nobody checked — a number that looks like an answer and is not one.
+
+    ``pre_labeled`` is that batch's most recent pre-labeling run, on the same
+    terms ``connection`` reads ``download`` and ``check``: a caller with no view
+    of the queue passes nothing and ``pre_label_run`` is null, which is also
+    what a batch never pre-labeled publishes.
     """
     return {
         "id": str(value.id),
@@ -458,6 +485,7 @@ def batch(
         "allowed_actions": [a.value for a in batch_actions(value.state)],
         "promoted_asset_count": sum(1 for one in value.asset_ids if one in promoted),
         "parent_batch_id": None if value.parent_batch_id is None else str(value.parent_batch_id),
+        "pre_label_run": None if pre_labeled is None else pre_label_run(pre_labeled),
     }
 
 

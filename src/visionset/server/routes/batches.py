@@ -131,11 +131,21 @@ def create_batch(workspace: WorkspaceDep, project_id: UUID, body: BatchCreate) -
 def list_batches(workspace: WorkspaceDep, project_id: UUID) -> BatchPage:
     """Every batch of that project, in the order they were created."""
     jobs = JobService(workspace)
-    found = BatchService(workspace).list(project_id)
+    batches = BatchService(workspace)
+    found = batches.list(project_id)
     promoted = _promoted(workspace, project_id)
+    # One queue read for the whole page, `_promoted`'s cost model: without it a
+    # page of twenty batches would ask the queue once per row.
+    pre_label_runs = batches.pre_label_runs()
     return BatchPage(
         items=[
-            BatchOut.of(batch, jobs.batch_progress(batch.id), promoted=promoted) for batch in found
+            BatchOut.of(
+                batch,
+                jobs.batch_progress(batch.id),
+                promoted=promoted,
+                pre_label_run=pre_label_runs.get(batch.id),
+            )
+            for batch in found
         ],
         total=len(found),
     )
@@ -150,11 +160,13 @@ def get_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     already whatever the ingest gathered. `schema_version` is null until approval
     pins one, and moves after that only through `repin`.
     """
-    batch = BatchService(workspace).get(batch_id)
+    batches = BatchService(workspace)
+    batch = batches.get(batch_id)
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
         promoted=_promoted(workspace, batch.project_id),
+        pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
 
@@ -225,11 +237,13 @@ def repin_batch(
     `INVALID_TRANSITION`. Re-pinning onto the version already pinned changes
     nothing. Annotations already written keep the version they were stamped with.
     """
-    batch = BatchService(workspace).repin(batch_id, allow_destructive=allow_destructive)
+    batches = BatchService(workspace)
+    batch = batches.repin(batch_id, allow_destructive=allow_destructive)
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
         promoted=_promoted(workspace, batch.project_id),
+        pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
 
@@ -245,11 +259,13 @@ def complete_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     `INVALID_TRANSITION` — the same one-way table that leaves `completed` with no
     exit at all, which is why correcting settled work is a new batch.
     """
-    batch = BatchService(workspace).complete(batch_id)
+    batches = BatchService(workspace)
+    batch = batches.complete(batch_id)
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
         promoted=_promoted(workspace, batch.project_id),
+        pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
 
