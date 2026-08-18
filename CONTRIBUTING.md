@@ -85,6 +85,13 @@ invalidates the lock. The diff you get is the package you asked for. Do not reac
 cutoff there are no pinned versions left for it to except. Pointing uv at another project —
 `--directory`, `--project`, `--script` — takes the whole-set path instead.
 
+**A wrapped `uv lock` that names packages moves those and nothing else.**
+`bash scripts/cooldown.sh uv lock --upgrade-package <pkg>` runs the same two passes for the same
+reason, with one difference: a package you name for upgrade is already in the lockfile, so the rule
+that decides an add's pins — pin what is new — cannot see it, and it is pinned because you named it.
+A bare `uv lock` and `uv lock --upgrade` are left alone deliberately. Neither names anything, both
+are refreshes, and a refresh moving the whole set is what a refresh is for.
+
 **The second pass is audited, and the audit can refuse.** Having run without a cool-down, it is
 checked rather than trusted: `uv.lock` records an `upload-time` for every artifact, so the wrapper
 can see whether the add forced any package past the cutoff. If one did, `uv.lock` and

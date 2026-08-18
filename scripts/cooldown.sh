@@ -38,7 +38,8 @@
 # Usage:
 #
 #   bash scripts/cooldown.sh uv add httpx          # any resolving command
-#   bash scripts/cooldown.sh uv lock --upgrade
+#   bash scripts/cooldown.sh uv lock -P polars     # moves polars and nothing else
+#   bash scripts/cooldown.sh uv lock --upgrade     # the whole set, on purpose
 #   bash scripts/cooldown.sh uv pip install ultralytics
 #
 #   bash scripts/cooldown.sh --days                # 3
