@@ -43,11 +43,13 @@ Five things shape this module:
   labels would be stored and then dropped at promotion with nothing saying so.
 - **A model can also write straight to ``review_pending``, unattended.**
   ``enter_unreviewed`` is the fourth write and the narrowest: every annotation
-  must carry ``provenance='model'``, the asset must be exactly ``unannotated``,
-  and the labels commit with the move to ``review_pending`` in the same
-  transaction. It is the only door unattended prediction uses — accepting a
-  model's *suggestion* is still a person's hand, and still goes through
-  ``add``.
+  must carry ``provenance='model'``, the asset must be exactly ``unannotated``
+  AND carry no annotations at all — a labeled-then-skipped-then-restored asset
+  reads ``unannotated`` again without its boxes having gone anywhere, so
+  progress alone cannot prove untouched — and the labels commit with the move
+  to ``review_pending`` in the same transaction. It is the only door
+  unattended prediction uses — accepting a model's *suggestion* is still a
+  person's hand, and still goes through ``add``.
 
 Both gates above the asset are ``JobService``'s, reused rather than restated:
 this service calls ``require_job``, ``require_open_batch`` and
@@ -204,10 +206,13 @@ class AnnotationService:
         ``annotated`` carrying labels nobody has looked at.
 
         Two gates narrower than the other three. The asset must be
-        ``unannotated``, so nothing a person has touched is written over; and
-        every annotation must carry model provenance, which is what keeps this
-        from being a way around the write gate rather than a door beside it.
-        ``model_ref`` and ``confidence`` come checked by ``Annotation`` itself.
+        ``unannotated`` AND carry no annotations at all, so nothing a person
+        has touched is written over — even an asset that was labeled, skipped
+        and restored, which reads ``unannotated`` again without erasing the
+        boxes already on it. Every annotation must also carry model
+        provenance, which is what keeps this from being a way around the
+        write gate rather than a door beside it. ``model_ref`` and
+        ``confidence`` come checked by ``Annotation`` itself.
 
         An asset a model found nothing on is not passed here at all: "found
         nothing" and "reviewed and found empty" are different facts.
@@ -217,7 +222,8 @@ class AnnotationService:
             BatchNotInAnnotation: the job's batch is not open for annotation.
             JobFinished: the job is already completed.
             AssetNotInJob: an annotation names an asset the job does not carry.
-            AssetNotWritable: an asset is not ``unannotated``.
+            AssetNotWritable: an asset is not ``unannotated``, or already
+                carries annotations from a skipped-and-restored round.
             AnnotationNotFromModel: an annotation does not carry model provenance.
             InvalidAnnotation: an annotation does not satisfy the pinned version.
             StaleWrite: an asset moved between this call's read and its write.
@@ -237,7 +243,7 @@ class AnnotationService:
             for index, annotation in enumerate(proposed):
                 with _blaming(index):
                     _require_model_made(annotation)
-                    _require_untouched(job, annotation.asset_id)
+                    _require_untouched(uow, job, annotation.asset_id)
                     _validate(annotation, schema)
                     _require_untagged(tagged, annotation)
 
@@ -515,11 +521,18 @@ def _require_model_made(annotation: Annotation) -> None:
         )
 
 
-def _require_untouched(job: AnnotationJob, asset_id: UUID) -> None:
+def _require_untouched(uow: UnitOfWork, job: AnnotationJob, asset_id: UUID) -> None:
     """Refuse an asset somebody has already worked, without erasing what they did.
 
     The membership check first, on ``_require_writable``'s reasoning: "this job
     does not carry that asset" is the more basic complaint.
+
+    Progress alone does not prove untouched: ``annotated -> skipped ->
+    unannotated`` is a legal sequence under ``JobService.mark`` that deletes no
+    labels, so a restored asset can read ``unannotated`` while a person's boxes
+    still sit on it. This checks both, in the same transaction, so a model's
+    labels are refused from landing beside a person's rather than only from
+    landing on a progress value that lied about it.
     """
     _require_asset_in_job(job, asset_id)
     progress = job.progress[asset_id]
@@ -527,6 +540,12 @@ def _require_untouched(job: AnnotationJob, asset_id: UUID) -> None:
         raise AssetNotWritable(
             f"asset {asset_id} in job {job.id} is {progress.value!r}, so somebody has "
             f"already worked it; a model's labels only enter an asset nothing has touched"
+        )
+    if uow.annotations.list(asset_id):
+        raise AssetNotWritable(
+            f"asset {asset_id} in job {job.id} reads 'unannotated' but already carries "
+            f"annotations from work that was skipped and then restored; a model's labels "
+            f"only enter an asset nothing has touched, including its history"
         )
 
 

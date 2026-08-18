@@ -43,7 +43,12 @@ from visionset.kernel.domain import (
     TextPrompt,
     media_type_of,
 )
-from visionset.kernel.errors import SchemaHasNoDetectableClass, UnsupportedPrompt, WorkspaceCorrupt
+from visionset.kernel.errors import (
+    AssetNotWritable,
+    SchemaHasNoDetectableClass,
+    UnsupportedPrompt,
+    WorkspaceCorrupt,
+)
 from visionset.kernel.ports import ModelProvider
 from visionset.kernel.services import (
     AnnotationService,
@@ -77,6 +82,10 @@ class PreLabelOutcome:
     #: What actually answered. ``None`` when nothing was asked.
     model_ref: str | None = None
     stopped_early: bool = False
+    #: Untouched at the run's snapshot, but worked by somebody before this run
+    #: reached them. Passed over rather than an error, on the same idempotency
+    #: argument that makes a second run safe.
+    assets_skipped: int = 0
 
 
 def unsupported_prompt_message(connection_name: str) -> str:
@@ -174,6 +183,11 @@ def pre_label(
     then the schema, because a batch with nowhere to write a box is refused
     before a single image is read.
 
+    An asset untouched when the run started but worked by somebody before the
+    run reaches it is passed over, not fatal — the batch is open for
+    annotation, so that is the normal case rather than a race. The run keeps
+    going and ``PreLabelOutcome.assets_skipped`` says how many.
+
     Raises:
         InferenceConnectionNotFound: no such connection.
         InferenceConnectionNotSetUp: a local connection whose weights are absent.
@@ -200,18 +214,20 @@ def pre_label(
     phrases = detectable_classes(schema)
 
     jobs = batches.jobs(batch_id)
-    targets = _untouched(jobs)
+    targets = _untouched(workspace, jobs)
     total = len(targets)
     annotations_service = AnnotationService(workspace)
     ingest = IngestService(workspace)
 
-    considered = labeled = written = 0
+    considered = labeled = written = skipped = 0
     model_ref: str | None = None
     for job_id, asset_id in targets:
         # Between assets, which is the only place stopping is honest: the last
         # asset is committed and the next has not been touched.
         if should_stop is not None and should_stop():
-            return PreLabelOutcome(considered, labeled, written, model_ref, stopped_early=True)
+            return PreLabelOutcome(
+                considered, labeled, written, model_ref, stopped_early=True, assets_skipped=skipped
+            )
 
         asset = ingest.asset(batch.project_id, asset_id)
         with ingest.open_content(asset) as handle:
@@ -231,28 +247,54 @@ def pre_label(
             model_ref = answer.model_ref
             proposed = _annotations_from(answer, asset_id=asset_id, schema_version=schema.version)
             if proposed:
-                annotations_service.enter_unreviewed(job_id, proposed)
-                labeled += 1
-                written += len(proposed)
+                try:
+                    annotations_service.enter_unreviewed(job_id, proposed)
+                except AssetNotWritable:
+                    # The batch is `in_annotation`, so somebody working in it
+                    # while this run is in flight is the normal case, not a
+                    # race to report as a failure. Passing over an asset that
+                    # moved underneath is the same decision as never having
+                    # selected it — the run's own idempotency already makes
+                    # that call for a second run; this is the first run
+                    # discovering it needed to make the call too.
+                    skipped += 1
+                else:
+                    labeled += 1
+                    written += len(proposed)
         if on_progress is not None:
             on_progress(considered, total)
 
-    return PreLabelOutcome(considered, labeled, written, model_ref)
+    return PreLabelOutcome(considered, labeled, written, model_ref, assets_skipped=skipped)
 
 
-def _untouched(jobs: Sequence[AnnotationJob]) -> tuple[tuple[UUID, UUID], ...]:
+def _untouched(
+    workspace: WorkspaceService, jobs: Sequence[AnnotationJob]
+) -> tuple[tuple[UUID, UUID], ...]:
     """Every ``(job, asset)`` nobody has worked, in a stable order.
 
     Read off the jobs rather than off the batch's membership, because the write
     needs the job that carries the asset and a batch of any size is partitioned
     into several.
+
+    Progress alone does not prove untouched: ``annotated -> skipped ->
+    unannotated`` is legal and deletes no labels, so an asset can read
+    ``unannotated`` while a person's boxes still sit on it. Checking that it
+    also carries no annotations is what makes this filter the same rule
+    ``enter_unreviewed`` enforces, so such an asset is passed over silently
+    here rather than reaching the run as a refusal.
     """
-    return tuple(
+    candidates = [
         (job.id, asset_id)
         for job in jobs
         for asset_id, progress in job.progress.items()
         if progress is AssetProgress.UNANNOTATED
-    )
+    ]
+    with workspace.unit_of_work() as uow:
+        return tuple(
+            (job_id, asset_id)
+            for job_id, asset_id in candidates
+            if not uow.annotations.list(asset_id)
+        )
 
 
 def _annotations_from(

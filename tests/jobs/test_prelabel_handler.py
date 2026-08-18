@@ -132,6 +132,7 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
         "annotations_written": 3,
         "model_ref": "acme/detector@abc123",
         "stopped_early": False,
+        "assets_skipped": 0,
     }
     assert captured["batch_id"] == batch_id
     assert captured["connection_id"] == connection_id

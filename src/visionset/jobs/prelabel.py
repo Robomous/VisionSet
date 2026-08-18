@@ -73,6 +73,11 @@ def run(
     **What it reports is assets.** A job row's ``processed`` and ``total`` are an
     absolute count of whatever this run works in, and the total is known before
     the first forward pass because the asset set is derived up front.
+
+    **An asset somebody starts working while this runs is skipped, not fatal.**
+    The batch is open for annotation, so a person touching an asset mid-run is
+    the ordinary case; the run passes it over and keeps going, and
+    ``assets_skipped`` in the result says how many.
     """
     if reporter.is_cancelled():
         return {}
@@ -97,4 +102,5 @@ def run(
         "annotations_written": outcome.annotations_written,
         "model_ref": outcome.model_ref,
         "stopped_early": outcome.stopped_early,
+        "assets_skipped": outcome.assets_skipped,
     }

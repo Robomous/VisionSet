@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from io import BytesIO
 from pathlib import Path
 from typing import Final
@@ -77,6 +77,12 @@ class FakeModelProvider:
         self._pool.calls += 1
         self._pool.last_prompt = request.prompt
         for target in request.targets:
+            if self._pool.on_asset is not None:
+                # Runs between the run reading this asset and it writing the
+                # answer — exactly where a concurrent annotator's edit would
+                # land in a real run, which is what makes this the seam a
+                # mid-run race test hooks into.
+                self._pool.on_asset(target.asset_id)
             yield AssetPrediction(
                 asset_id=target.asset_id, model_ref=self._pool.model_ref, regions=self._pool.regions
             )
@@ -103,12 +109,17 @@ class FakeProviderPool:
         kind: str = "detector",
         model_ref: str = "acme/detector@abc123",
         regions: tuple[PredictedRegion, ...] = DEFAULT_REGIONS,
+        on_asset: Callable[[UUID], None] | None = None,
     ) -> None:
         self.calls = 0
         self.last_prompt: Prompt | None = None
         self.model_ref = model_ref
         self.regions = regions
         self._kind = kind
+        #: Called with each asset's id right before its answer is yielded, so a
+        #: test can move an asset underneath a run in flight the same moment a
+        #: real concurrent annotator would.
+        self.on_asset = on_asset
 
     def get(self, connection: InferenceConnection, *, workspace_root: Path) -> object:
         if self._kind == "segmenter":
@@ -186,6 +197,9 @@ class Fixture:
 
     def label_by_hand(self, asset_id: UUID) -> None:
         self.annotations.add(self._job_id, [_box(asset_id)])
+
+    def mark(self, asset_id: UUID, progress: AssetProgress) -> None:
+        self.jobs.mark(self._job_id, asset_id, progress)
 
     def annotations_on(self, asset_id: UUID) -> list[Annotation]:
         return self.annotations.for_asset(self._job_id, asset_id)
@@ -267,6 +281,59 @@ def test_an_asset_somebody_worked_is_passed_over_silently(prelabel_fixture: Fixt
     assert outcome.assets_considered == 2
     job = prelabel_fixture.job()
     assert job.progress[prelabel_fixture.assets[0]] is AssetProgress.ANNOTATED
+
+
+def test_a_skipped_and_restored_asset_is_passed_over_silently(prelabel_fixture: Fixture) -> None:
+    """``annotated -> skipped -> unannotated`` deletes no labels, so the asset
+    reads ``unannotated`` again while a person's boxes still sit on it. The run
+    must pass it over the same way it passes over any touched asset, rather
+    than reaching the kernel's refusal for it."""
+    asset_id = prelabel_fixture.assets[0]
+    prelabel_fixture.label_by_hand(asset_id)
+    prelabel_fixture.mark(asset_id, AssetProgress.SKIPPED)
+    prelabel_fixture.mark(asset_id, AssetProgress.UNANNOTATED)
+
+    outcome = pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert outcome.assets_considered == 2
+    assert len(prelabel_fixture.annotations_on(asset_id)) == 1
+    assert prelabel_fixture.job().progress[asset_id] is AssetProgress.UNANNOTATED
+
+
+def test_an_asset_that_moves_mid_run_is_skipped_and_the_run_completes(
+    prelabel_fixture: Fixture,
+) -> None:
+    """The batch is `in_annotation`, so somebody working in it while a run is
+    mid-flight is the normal case, not a race to fail the whole run over. The
+    asset that moved is skipped; the rest are entered; the outcome says so."""
+    moved_asset = prelabel_fixture.assets[1]
+
+    def move_it(asset_id: UUID) -> None:
+        if asset_id == moved_asset:
+            prelabel_fixture.mark(asset_id, AssetProgress.SKIPPED)
+
+    prelabel_fixture.pool.on_asset = move_it
+
+    outcome = pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert outcome.assets_considered == 3
+    assert outcome.assets_labeled == 2
+    assert outcome.assets_skipped == 1
+    job = prelabel_fixture.job()
+    assert job.progress[moved_asset] is AssetProgress.SKIPPED
+    for asset_id in prelabel_fixture.assets:
+        if asset_id != moved_asset:
+            assert job.progress[asset_id] is AssetProgress.REVIEW_PENDING
 
 
 def test_a_second_run_picks_up_only_what_is_still_untouched(prelabel_fixture: Fixture) -> None:

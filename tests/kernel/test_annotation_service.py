@@ -1191,6 +1191,26 @@ def test_an_asset_that_is_not_unannotated_is_refused(tmp_path: Path) -> None:
     fixture.close()
 
 
+def test_a_skipped_and_restored_asset_keeps_its_labels_and_is_refused(tmp_path: Path) -> None:
+    """``annotated -> skipped -> unannotated`` deletes no labels, so progress
+    alone lies about the asset being untouched. A model must not land beside a
+    person's boxes just because the marker cycled back to ``unannotated``."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    (human,) = fixture.annotations.add(job.id, [_box(asset_id)])
+    fixture.jobs.mark(job.id, asset_id, AssetProgress.SKIPPED)
+    fixture.jobs.mark(job.id, asset_id, AssetProgress.UNANNOTATED)
+    assert fixture.progress_of(job, asset_id) is AssetProgress.UNANNOTATED
+
+    with pytest.raises(AssetNotWritable):
+        fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+
+    assert fixture.annotations.for_asset(job.id, asset_id) == [human]
+    assert fixture.progress_of(job, asset_id) is AssetProgress.UNANNOTATED
+    fixture.close()
+
+
 def test_a_human_annotation_cannot_use_this_door(tmp_path: Path) -> None:
     """This path is not a general bypass of the write gate."""
     fixture = Fixture(tmp_path)

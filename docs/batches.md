@@ -314,8 +314,15 @@ declaring differently depending on which endpoint answered - is worse than one h
 ## Pre-labeling
 
 A batch that is `in_annotation` can ask a text-prompt model to label its **untouched** assets -
-`unannotated`, and nothing else. An asset already `annotated`, `skipped`, `review_pending` or
-`accepted` is passed over, so a run never writes over what a person did.
+`unannotated`, and carrying no annotations at all. An asset already `annotated`, `skipped`,
+`review_pending` or `accepted` is passed over, and so is an `unannotated` one that still carries a
+person's boxes from an earlier round that was skipped and then restored - progress alone does not
+prove untouched, since that sequence deletes nothing. Either way, a run never writes over what a
+person did.
+
+**An asset somebody starts working while a run is still going is passed over too, not fatal.** The
+batch is `in_annotation`, so that is the ordinary case rather than a race: the run skips it and
+keeps going, and the outcome's `assets_skipped` says how many.
 
 **The batch's pinned schema is the prompt.** The model is asked for each class the schema
 declares that a box can be written as - the same class names an annotator would use - so an
