@@ -71,6 +71,16 @@ const STUB_MODEL_ID = "visionset/stub-segmenter";
 const STAND_IN = "built-in stand-in";
 
 /**
+ * What the same connection is called after the walk edits it.
+ *
+ * A second constant rather than a literal at the call site, because a rename
+ * moves two test ids at once — the row is `connection-{name}` and its menu
+ * trigger is `actions-{name}` — so the new name is read in three places and a
+ * typo in one of them fails as a timeout rather than as a mismatch.
+ */
+const REPINNED = "built-in stand-in, repinned";
+
+/**
  * A project name nothing else in the workspace will collide with — **including
  * this same spec on another repetition**.
  *
@@ -1347,6 +1357,72 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       page.getByTestId("export-submit").click(),
     ]);
     await expectArchive(download);
+  });
+
+  await test.step("edit the connection, and watch the row answer for it", async () => {
+    /*
+     * **The keys this form sends have never been judged by a server that has to
+     * accept them.** `ConnectionUpdate` forbids fields it does not declare and
+     * declares no `connection_type`, while the dialog serialises every field it
+     * holds on every save — so the two are one 422 apart, and the only thing
+     * between them is a body function that was split in two. A stub cannot
+     * referee that: it is written by whoever wrote the body.
+     *
+     * Two edits, because the branch this exercises has two directions and each
+     * is invisible to the other's half. Pointing a connection at a different
+     * revision undoes its setup, since the files on disk are the *previous*
+     * reference's; a rename does not, even though it arrives carrying the same
+     * model reference, because the kernel compares rather than asking whether a
+     * field was supplied. A step that did only one of them would pass while the
+     * other was broken.
+     *
+     * Last in the walk, and nothing is put back. No later step reads this
+     * connection, and re-downloading to restore it would assert nothing that
+     * the setup step above has not already asserted.
+     */
+    // The export dialog is still up, and deliberately: it holds the outcome so
+    // the badge can announce it once the poll has stopped, which means it closes
+    // the way every other dialog here does rather than on its own. So this step
+    // starts by doing what the person who has just taken the download does. The
+    // walk dismisses a dialog this way once already, in the delete step.
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("export-dialog")).toHaveCount(0);
+
+    await page.getByTestId("rail-inference").click();
+    await expect(page.getByTestId("inference-screen")).toBeVisible();
+    await expect(page.getByTestId("connection-status")).toContainText(/ready/i);
+
+    // A rename, which sends the model reference the row already has. That it is
+    // *accepted* is the half that would have caught a PATCH carrying the kind;
+    // that the row is still ready afterwards is the half that catches a server
+    // reading "supplied" as "moved".
+    await page.getByTestId(`actions-${STAND_IN}`).click();
+    await page.getByTestId("action-edit").click();
+    await page.getByTestId("connection-name").fill(REPINNED);
+    await page.getByTestId("connection-submit").click();
+
+    // The dialog closes only on success — a refusal leaves it open holding what
+    // was typed — so its absence is the first thing that says the server took
+    // the body.
+    await expect(page.getByTestId("connection-dialog")).toHaveCount(0);
+    await expect(page.getByTestId(`connection-${REPINNED}`)).toBeVisible();
+    await expect(page.getByTestId("connection-status")).toContainText(/ready/i);
+
+    // And a reference that really does move. The revision is free text on a
+    // connection — the commit-hash rule belongs to catalog entries, which is why
+    // the setup step above could pin this one to `stub` at all.
+    await page.getByTestId(`actions-${REPINNED}`).click();
+    await page.getByTestId("action-edit").click();
+    await expect(page.getByTestId("connection-revision")).toBeVisible();
+    await page.getByTestId("connection-revision").fill("stub-repinned");
+    await page.getByTestId("connection-submit").click();
+
+    await expect(page.getByTestId("connection-dialog")).toHaveCount(0);
+    await expect(page.getByTestId("connection-status")).toContainText(/not set up/i);
+
+    // The remedy is offered on the row it happened to, which is the other half
+    // of what "undoes its setup" is allowed to mean.
+    await expect(page.getByTestId("download-weights")).toBeVisible();
   });
 
   await test.step("the whole walk produced a clean console", async () => {
