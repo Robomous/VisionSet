@@ -225,14 +225,6 @@ def _route(name: str) -> tuple[ModuleType, ast.FunctionDef]:
 #: an exemption left behind is a rule this file would no longer prove. Nothing may
 #: be added here.
 KNOWN_SHORT: Final[dict[str, frozenset[str]]] = {
-    "inference::suggest_region": frozenset(
-        {
-            "ASSET_NOT_FOUND",
-            "INFERENCE_CONNECTION_NOT_FOUND",
-            "PROJECT_NOT_FOUND",
-            "UNSUPPORTED_PROMPT",
-        }
-    ),
     "jobs::complete_job": frozenset({"BATCH_NOT_IN_ANNOTATION", "INVALID_TRANSITION"}),
     "jobs::set_asset_progress": frozenset({"BATCH_NOT_IN_ANNOTATION", "STALE_WRITE"}),
     "jobs::start_job": frozenset({"INVALID_TRANSITION"}),
