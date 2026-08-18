@@ -69,6 +69,7 @@ GET    /batches/{batch_id}
 DELETE /batches/{batch_id}                                ?confirm=true
 POST   /batches/{batch_id}/approve                        with a partition spec
 POST   /batches/{batch_id}/start
+POST   /batches/{batch_id}/pre-label                      launch, poll the job
 POST   /batches/{batch_id}/repin                          ?allow_destructive=
 POST   /batches/{batch_id}/complete
 POST   /batches/{batch_id}/corrections                    a new batch over a completed one

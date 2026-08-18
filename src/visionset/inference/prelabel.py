@@ -31,7 +31,6 @@ from uuid import UUID
 
 from visionset.inference.providers import ProviderPool, resident
 from visionset.kernel.domain import (
-    PRE_LABELABLE_STATES,
     Annotation,
     AnnotationJob,
     AnnotationSchema,
@@ -42,7 +41,6 @@ from visionset.kernel.domain import (
     PredictionTarget,
     TextPrompt,
     media_type_of,
-    require_state,
 )
 from visionset.kernel.errors import SchemaHasNoDetectableClass, UnsupportedPrompt, WorkspaceCorrupt
 from visionset.kernel.ports import ModelProvider
@@ -78,6 +76,34 @@ class PreLabelOutcome:
     #: What actually answered. ``None`` when nothing was asked.
     model_ref: str | None = None
     stopped_early: bool = False
+
+
+def unsupported_prompt_message(connection_name: str) -> str:
+    """The sentence a connection whose model answers places, not words, gets.
+
+    A function rather than a literal, so the route that refuses before
+    enqueueing and the orchestration that refuses inside the job raise the
+    identical sentence without either retyping the other's copy.
+    """
+    return (
+        f"connection {connection_name!r} runs a model that answers places rather than "
+        "words, so it cannot be asked what is in a picture; use a connection whose "
+        "model declares text_detect"
+    )
+
+
+def no_detectable_class_message(schema_version: int) -> str:
+    """The sentence a schema with no class a detection can land on gets.
+
+    True of both reasons :func:`detectable_classes` excludes a class — missing
+    ``bbox`` or a required attribute a prediction cannot supply — because it
+    describes the outcome rather than either cause.
+    """
+    return (
+        f"schema version {schema_version} declares no class that a box can be written "
+        f"as, so a detector has nowhere to put what it finds; add a class whose "
+        f"geometries include bbox, or pre-label a batch pinned to one that has"
+    )
 
 
 def detectable_classes(schema: AnnotationSchema) -> tuple[str, ...]:
@@ -126,7 +152,7 @@ def pre_label(
         InferenceConnectionNotRunnable: nothing here runs that kind.
         UnsupportedPrompt: that connection's model answers places, not words.
         BatchNotFound: no such batch in this workspace.
-        InvalidTransition: the batch is not open for annotation, so a model
+        BatchNotInAnnotation: the batch is not open for annotation, so a model
             cannot pre-label it.
         WorkspaceCorrupt: the batch is open but pinned no schema version — a
             broken invariant, since approval is what pins one.
@@ -138,25 +164,15 @@ def pre_label(
         # Refused here rather than inside the adapter, because the adapter it
         # would reach has no `predict` to refuse from. The split between the two
         # ports is what makes this checkable before anything loads.
-        raise UnsupportedPrompt(
-            f"connection {connection.name!r} runs a model that answers places rather than "
-            "words, so it cannot be asked what is in a picture; use a connection whose "
-            "model declares text_detect"
-        )
+        raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
 
     batches = BatchService(workspace)
-    batch = batches.get(batch_id)
-    require_state(
-        PRE_LABELABLE_STATES,
-        batch.state,
-        subject=f"batch {batch.name!r}",
-        refusal="a model cannot pre-label it",
-    )
+    batch = batches.require_pre_labelable(batch_id)
     if batch.schema_version is None:
-        # Unreachable through the checks above: approval is what pins a schema
-        # version, and `require_state` has just established this batch is open
-        # for annotation, which only follows approval. A `None` here is a
-        # broken invariant rather than a missing schema.
+        # Unreachable through the check above: approval is what pins a schema
+        # version, and `require_pre_labelable` has just established this batch
+        # is open for annotation, which only follows approval. A `None` here is
+        # a broken invariant rather than a missing schema.
         raise WorkspaceCorrupt(
             f"batch {batch.name!r} is {batch.state.value!r} but pinned no schema version; "
             "approval is what pins one, and it is never unset"
@@ -164,11 +180,7 @@ def pre_label(
     schema = SchemaService(workspace).get(batch.project_id, batch.schema_version)
     phrases = detectable_classes(schema)
     if not phrases:
-        raise SchemaHasNoDetectableClass(
-            f"schema version {schema.version} declares no class that a box can be written "
-            f"as, so a detector has nowhere to put what it finds; add a class whose "
-            f"geometries include bbox, or pre-label a batch pinned to one that has"
-        )
+        raise SchemaHasNoDetectableClass(no_detectable_class_message(schema.version))
 
     jobs = batches.jobs(batch_id)
     targets = _untouched(jobs)

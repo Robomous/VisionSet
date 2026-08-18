@@ -94,7 +94,7 @@ export const checkBatchAssetPage: Check<Schemas["BatchAssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchAssetOut)], "total": [true, isInteger] } as const);
 
 export const checkBatchAction: Check<Schemas["BatchAction"]> =
-  /*#__PURE__*/ openOneOf(["approve", "start", "complete", "repin", "promote", "create_correction", "edit_membership", "delete"] as const);
+  /*#__PURE__*/ openOneOf(["approve", "start", "complete", "repin", "promote", "create_correction", "pre_label", "edit_membership", "delete"] as const);
 
 export const checkBatchState: Check<Schemas["BatchState"]> =
   /*#__PURE__*/ oneOf(["draft", "approved", "in_annotation", "completed"] as const);
@@ -408,6 +408,7 @@ export const checkListReleases = checkReleasePage;
 export const checkListSchemaVersions = checkSchemaVersionPage;
 export const checkListSources = checkSourcePage;
 export const checkNextPendingAssets = checkAssetPage;
+export const checkPreLabelBatch = checkBackgroundJobOut;
 export const checkPreviewSchemaChange = checkSchemaChangePreviewOut;
 export const checkPromoteBatch = checkAssetPage;
 export const checkPublishRelease = checkReleaseOut;

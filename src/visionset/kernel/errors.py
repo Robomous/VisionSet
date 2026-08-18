@@ -1159,7 +1159,9 @@ class SchemaHasNoDetectableClass(VisionSetError):
     """The pinned schema declares no class a detection could be written as.
 
     A text-prompt model answers with boxes, so a schema whose every class is a
-    polygon, a polyline or a classification tag has nowhere for one to land. The
-    run is refused rather than started, because starting it would spend the
-    inference to write nothing and report success.
+    polygon, a polyline or a classification tag has nowhere for one to land —
+    and neither does a box class that requires an attribute, since a model's
+    answer carries no attribute values to satisfy it. The run is refused rather
+    than started, because starting it would spend the inference to write
+    nothing and report success.
     """

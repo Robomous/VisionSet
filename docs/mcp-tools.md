@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-48 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+49 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -33,6 +33,7 @@ error envelope, and the three gate words.
 | `get_batch` | `batch_id` | Read one batch: its state, its schema pin, its progress and its jobs. |
 | `approve_batch` | `batch_id`, `jobs_of`? | Freeze a batch, pin the project's active schema, and cut it into jobs. |
 | `start_batch` | `batch_id` | Open an approved batch for annotation. |
+| `pre_label_batch` | `batch_id`, `connection`, `minimum_confidence`? | Ask a model to label every untouched asset in a batch. Launches; does not wait. |
 | `repin_batch` | `batch_id`, `allow_destructive`? | Move a batch's schema pin onto the project's *current* active version. |
 | `list_batch_assets` | `batch_id`, `limit`?, `offset`? | List a batch's assets, with the job each belongs to and its progress. |
 | `create_batch` | `project`, `name`, `asset_ids`? | Start a draft batch over a chosen set of a project's assets. |

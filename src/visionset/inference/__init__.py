@@ -87,7 +87,9 @@ from visionset.inference.prelabel import (
     DEFAULT_MINIMUM_CONFIDENCE,
     PreLabelOutcome,
     detectable_classes,
+    no_detectable_class_message,
     pre_label,
+    unsupported_prompt_message,
 )
 from visionset.inference.providers import ProviderPool, provider_for, resident
 from visionset.inference.registry import (
@@ -176,6 +178,7 @@ __all__ = [
     "READ_CHUNK",
     "known_sizes",
     "measure",
+    "no_detectable_class_message",
     "published_digests",
     "purge",
     "MINIMUM_FRAGMENT_SHARE",
@@ -199,5 +202,6 @@ __all__ = [
     "resident",
     "suggest",
     "suppressed",
+    "unsupported_prompt_message",
     "with_families",
 ]

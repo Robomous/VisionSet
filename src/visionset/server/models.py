@@ -45,7 +45,7 @@ from uuid import UUID, uuid4
 from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-from visionset.inference import capabilities_of
+from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, capabilities_of
 from visionset.kernel.domain import (
     DEFAULT_DETAIL,
     ActivityEntry,
@@ -1114,6 +1114,21 @@ class BatchApprove(BaseModel):
 
     def to_domain(self) -> Partition | None:
         return None if self.partition is None else self.partition.to_domain()
+
+
+class PreLabelRequest(BaseModel):
+    """Which model should pre-label this batch, and how sure it has to be."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The inference connection that answers. Its model must declare
+    #: `text_detect`; a point-prompt connection is refused.
+    connection_id: UUID
+    #: The floor a prediction must clear to be written, in [0, 1]. A text-prompt
+    #: model scores *prompt affinity* — how well a region matches the words it was
+    #: asked for — which is a different scale from a point-prompt model's mask
+    #: quality, so a threshold tuned for one does not transfer to the other.
+    minimum_confidence: float = Field(default=DEFAULT_MINIMUM_CONFIDENCE, ge=0.0, le=1.0)
 
 
 # --- jobs --------------------------------------------------------------------

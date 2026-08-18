@@ -42,6 +42,7 @@ from visionset.kernel.domain.batch import (
     CORRECTABLE_STATES,
     DELETABLE_STATES,
     EDITABLE_STATES,
+    PRE_LABELABLE_STATES,
     PROMOTABLE_STATES,
     REPINNABLE_STATES,
     BatchState,
@@ -91,6 +92,7 @@ class BatchAction(OpenVocabulary):
     REPIN = "repin"
     PROMOTE = "promote"
     CREATE_CORRECTION = "create_correction"
+    PRE_LABEL = "pre_label"
     EDIT_MEMBERSHIP = "edit_membership"
     DELETE = "delete"
 
@@ -188,10 +190,11 @@ BATCH_GATES: Final[Mapping[BatchAction, frozenset[BatchState]]] = {
     BatchAction.REPIN: REPINNABLE_STATES,
     BatchAction.PROMOTE: PROMOTABLE_STATES,
     BatchAction.CREATE_CORRECTION: CORRECTABLE_STATES,
+    BatchAction.PRE_LABEL: PRE_LABELABLE_STATES,
     BatchAction.EDIT_MEMBERSHIP: EDITABLE_STATES,
     BatchAction.DELETE: DELETABLE_STATES,
 }
-"""The five batch actions that change no state, and so appear in no table row.
+"""The six batch actions that change no state, and so appear in no table row.
 
 ``create_correction`` is the odd one even here, and worth naming: every other
 action in this file is something done **to** the resource declaring it, while
@@ -212,6 +215,12 @@ batch be deleted" is a question about the batch's state and about nothing else,
 which is what this table answers. The entry is ``DELETABLE_STATES`` itself, the
 set ``BatchService.delete`` raises ``BatchImmutable`` against; a second frozenset
 spelled out beside it is exactly the hand-mirror this module exists to remove.
+
+``pre_label`` is declared from the batch's state alone, on ``complete``'s
+precedent: whether this machine has the local runtime installed, and whether the
+pinned schema declares a class a detection can land on, are not facts about the
+batch. Hiding the control on either ground would leave their refusals — one of
+which carries an install command — with nowhere to be shown.
 """
 
 

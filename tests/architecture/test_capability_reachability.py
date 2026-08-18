@@ -66,6 +66,7 @@ SURFACES: Final[dict[BatchAction, tuple[str, str, str]]] = {
         "/batches/{batch_id}/corrections",
         "create_correction_batch",
     ),
+    BatchAction.PRE_LABEL: ("POST", "/batches/{batch_id}/pre-label", "pre_label_batch"),
     BatchAction.EDIT_MEMBERSHIP: (
         "DELETE",
         "/batches/{batch_id}/assets",

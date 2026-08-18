@@ -38,15 +38,19 @@ from typing import NoReturn
 from uuid import UUID
 
 from visionset.kernel.domain import (
+    BATCH_JOB_KEY,
     BATCH_TRANSITIONS,
     CORRECTABLE_STATES,
     DELETABLE_STATES,
     EDITABLE_STATES,
+    LIVE_JOB_STATES,
+    PRE_LABELABLE_STATES,
     REPINNABLE_STATES,
     AnnotationJob,
     AnnotationJobState,
     AnnotationSchema,
     Asset,
+    BackgroundJob,
     Batch,
     BatchApproved,
     BatchCompleted,
@@ -75,6 +79,7 @@ from visionset.kernel.errors import (
     BatchNotComplete,
     BatchNotEditable,
     BatchNotFound,
+    BatchNotInAnnotation,
     ConfirmationRequired,
     DestructiveSchemaChange,
     EmptyBatch,
@@ -119,6 +124,20 @@ class BatchService:
         """
         with self._workspace.unit_of_work() as uow:
             return jobs_of(uow, self.require_batch(uow, batch_id))
+
+    def live_job(self, batch_id: UUID, *, job_type: str) -> BackgroundJob | None:
+        """That kind of work already under way against this batch, if any.
+
+        ``InferenceConnectionService.live_job``'s counterpart, over
+        :data:`~visionset.kernel.domain.inference.BATCH_JOB_KEY` instead of a
+        connection's. What a route asks so that a second request joins the run
+        already in flight instead of paying for the same inference twice — see
+        that method for the coalescing it does and does not promise.
+        """
+        for job in self._workspace.job_queue.list(states=LIVE_JOB_STATES, types={job_type}):
+            if job.payload.get(BATCH_JOB_KEY) == str(batch_id):
+                return job
+        return None
 
     def assets(self, batch_id: UUID) -> list[Asset]:
         """Everything in the batch, in membership order.
@@ -392,6 +411,37 @@ class BatchService:
             InvalidTransition: the batch is not ``approved``.
         """
         return self._move(batch_id, BatchState.IN_ANNOTATION)
+
+    def require_pre_labelable(self, batch_id: UUID) -> Batch:
+        """The batch, if a model may pre-label it right now.
+
+        ``require_downloadable``'s construction: the gate a caller consults
+        before it commits to anything, so a route or the orchestration behind it
+        refuses in the same breath rather than after resolving a connection or
+        reading a schema. Everything else pre-labeling can be refused for — the
+        connection's prompt kind, the pinned schema's classes, the local runtime
+        — is a fact this service cannot see; this checks only what
+        :data:`PRE_LABELABLE_STATES` decides.
+
+        Raises :class:`BatchNotInAnnotation` rather than ``InvalidTransition``,
+        on ``JobService.require_open_batch``'s precedent: pre-labeling is a
+        write, made through the same jobs an annotator writes through, so it is
+        refused in the one vocabulary every other write into a closed batch
+        already uses.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
+            BatchNotInAnnotation: the batch is not ``in_annotation``, so a model
+                cannot pre-label it.
+        """
+        batch = self.get(batch_id)
+        if batch.state not in PRE_LABELABLE_STATES:
+            raise BatchNotInAnnotation(
+                f"batch {batch.name!r} is {batch.state.value!r}, not "
+                f"{BatchState.IN_ANNOTATION.value!r}; a model cannot pre-label a batch "
+                f"nobody opened"
+            )
+        return batch
 
     def repin(self, batch_id: UUID, *, allow_destructive: bool = False) -> Batch:
         """Move the batch's schema pin onto the project's current active version.

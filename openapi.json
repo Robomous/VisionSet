@@ -969,6 +969,7 @@
           "repin",
           "promote",
           "create_correction",
+          "pre_label",
           "edit_membership",
           "delete"
         ],
@@ -3146,6 +3147,29 @@
           "points"
         ],
         "title": "PolylineGeometry",
+        "type": "object"
+      },
+      "PreLabelRequest": {
+        "additionalProperties": false,
+        "description": "Which model should pre-label this batch, and how sure it has to be.",
+        "properties": {
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "minimum_confidence": {
+            "default": 0.35,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Minimum Confidence",
+            "type": "number"
+          }
+        },
+        "required": [
+          "connection_id"
+        ],
+        "title": "PreLabelRequest",
         "type": "object"
       },
       "Precision": {
@@ -5836,6 +5860,115 @@
           }
         ],
         "summary": "List Batch Jobs",
+        "tags": [
+          "batches"
+        ]
+      }
+    },
+    "/batches/{batch_id}/pre-label": {
+      "post": {
+        "description": "Ask a model to label every untouched asset in this batch, and answer at once.\n\nThe `pre_label` action. Labels land at `review_pending`, never at\n`annotated`: nobody judged them, so they arrive awaiting review rather than\nclaiming to be somebody's work.\n\n**Only assets nothing has touched.** An asset that is already annotated,\nskipped, awaiting review or accepted is passed over, so a run never writes\nover what a person did \u2014 and a second run picks up only what is still\nuntouched.\n\n**The batch's pinned schema is the prompt.** The model is asked for each class\nthe schema declares that a box can be written as, so every answer maps back to\na class this batch already admits. A schema whose classes are all polygons,\npolylines or tags \u2014 or whose box classes each require an attribute a\nprediction cannot supply \u2014 has nowhere for a detection to land and is\nrefused.\n\n**202, not 200.** A batch is hundreds of forward passes, so this follows the\nlaunch-and-poll contract the export and weight-download routes use: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state` is\n`succeeded`, then re-read the batch's assets. Progress on the row is counted\nin assets.\n\n**Everything a caller can be told now is told now**, and no refusal creates a\njob \u2014 so a caller holding a job id holds one that will run. A batch that is\nnot `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a connection whose model\nanswers places rather than words is 422 `UNSUPPORTED_PROMPT`; a pinned schema\nwith no class a box can be written as is 409\n`SCHEMA_HAS_NO_DETECTABLE_CLASS`; a deployment without the local runtime is\nrefused here too, with the exact install command in the message.\n\n**Asking twice joins the run already in flight rather than starting a second\none.** A request arriving while this batch has a pre-labeling run queued or\nrunning is answered with that run's id, so a double-click and a second tab\nwatch one run instead of paying for the same inference twice.",
+        "operationId": "pre_label_batch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreLabelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pre Label Batch",
         "tags": [
           "batches"
         ]

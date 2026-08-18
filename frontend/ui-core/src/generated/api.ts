@@ -378,6 +378,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/batches/{batch_id}/pre-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pre Label Batch
+         * @description Ask a model to label every untouched asset in this batch, and answer at once.
+         *
+         *     The `pre_label` action. Labels land at `review_pending`, never at
+         *     `annotated`: nobody judged them, so they arrive awaiting review rather than
+         *     claiming to be somebody's work.
+         *
+         *     **Only assets nothing has touched.** An asset that is already annotated,
+         *     skipped, awaiting review or accepted is passed over, so a run never writes
+         *     over what a person did — and a second run picks up only what is still
+         *     untouched.
+         *
+         *     **The batch's pinned schema is the prompt.** The model is asked for each class
+         *     the schema declares that a box can be written as, so every answer maps back to
+         *     a class this batch already admits. A schema whose classes are all polygons,
+         *     polylines or tags — or whose box classes each require an attribute a
+         *     prediction cannot supply — has nowhere for a detection to land and is
+         *     refused.
+         *
+         *     **202, not 200.** A batch is hundreds of forward passes, so this follows the
+         *     launch-and-poll contract the export and weight-download routes use: poll `GET
+         *     /background-jobs/{id}` — the `Location` header names it — until `state` is
+         *     `succeeded`, then re-read the batch's assets. Progress on the row is counted
+         *     in assets.
+         *
+         *     **Everything a caller can be told now is told now**, and no refusal creates a
+         *     job — so a caller holding a job id holds one that will run. A batch that is
+         *     not `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a connection whose model
+         *     answers places rather than words is 422 `UNSUPPORTED_PROMPT`; a pinned schema
+         *     with no class a box can be written as is 409
+         *     `SCHEMA_HAS_NO_DETECTABLE_CLASS`; a deployment without the local runtime is
+         *     refused here too, with the exact install command in the message.
+         *
+         *     **Asking twice joins the run already in flight rather than starting a second
+         *     one.** A request arriving while this batch has a pre-labeling run queued or
+         *     running is answered with that run's id, so a double-click and a second tab
+         *     watch one run instead of paying for the same inference twice.
+         */
+        post: operations["pre_label_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/batches/{batch_id}/promote": {
         parameters: {
             query?: never;
@@ -2813,7 +2868,7 @@ export interface components {
          * @description What can be asked of a batch. Declaration order is display order.
          * @enum {string}
          */
-        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "edit_membership" | "delete" | (string & {});
+        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "pre_label" | "edit_membership" | "delete" | (string & {});
         /**
          * BatchApprove
          * @description How to cut the batch into jobs. One job for the whole batch by default.
@@ -3852,6 +3907,22 @@ export interface components {
              * @enum {string}
              */
             type: "polyline";
+        };
+        /**
+         * PreLabelRequest
+         * @description Which model should pre-label this batch, and how sure it has to be.
+         */
+        PreLabelRequest: {
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /**
+             * Minimum Confidence
+             * @default 0.35
+             */
+            minimum_confidence: number;
         };
         /**
          * Precision
@@ -5490,6 +5561,86 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pre_label_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10590,7 +10741,7 @@ export type OpenMember<A extends string> = A | (string & {});
 /** The members this build compiled against, per vocabulary the contract may grow. */
 export interface KnownMembers {
   AssetAction: "annotate" | "skip" | "restore" | "submit_for_review" | "accept" | "return_to_annotator";
-  BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "edit_membership" | "delete";
+  BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "pre_label" | "edit_membership" | "delete";
   ConnectionAction: "download_weights" | "check_integrity" | "update" | "delete";
   JobAction: "start" | "complete";
   ModelCapability: "point_suggest" | "text_detect";
