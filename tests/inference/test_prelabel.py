@@ -310,7 +310,9 @@ def test_the_default_floor_sits_below_the_observed_detection_range() -> None:
     assert DEFAULT_MINIMUM_CONFIDENCE == 0.35
 
 
-def test_every_untouched_asset_is_labeled_and_awaits_review(prelabel_fixture: Fixture) -> None:
+def test_every_untouched_asset_is_labeled_and_enters_pre_labeled(prelabel_fixture: Fixture) -> None:
+    """Unattended labels enter their own editable state, not the human-review
+    queue: a model's guess never claims to be work a person has already judged."""
     outcome = pre_label(
         prelabel_fixture.workspace,
         batch_id=prelabel_fixture.batch.id,
@@ -322,7 +324,7 @@ def test_every_untouched_asset_is_labeled_and_awaits_review(prelabel_fixture: Fi
     assert outcome.assets_labeled == 3
     job = prelabel_fixture.job()
     for asset_id in prelabel_fixture.assets:
-        assert job.progress[asset_id] is AssetProgress.REVIEW_PENDING
+        assert job.progress[asset_id] is AssetProgress.PRE_LABELED
 
 
 def test_an_asset_somebody_worked_is_passed_over_silently(prelabel_fixture: Fixture) -> None:
@@ -391,7 +393,7 @@ def test_an_asset_that_moves_mid_run_is_skipped_and_the_run_completes(
     assert job.progress[moved_asset] is AssetProgress.SKIPPED
     for asset_id in prelabel_fixture.assets:
         if asset_id != moved_asset:
-            assert job.progress[asset_id] is AssetProgress.REVIEW_PENDING
+            assert job.progress[asset_id] is AssetProgress.PRE_LABELED
 
 
 def test_a_second_run_picks_up_only_what_is_still_untouched(prelabel_fixture: Fixture) -> None:
@@ -565,12 +567,12 @@ def test_stopping_leaves_what_was_entered_entered(prelabel_fixture: Fixture) -> 
     assert outcome.stopped_early is True
     assert outcome.assets_labeled == 1
     job = prelabel_fixture.job()
-    at_review = [
+    pre_labeled = [
         asset_id
         for asset_id in prelabel_fixture.assets
-        if job.progress[asset_id] is AssetProgress.REVIEW_PENDING
+        if job.progress[asset_id] is AssetProgress.PRE_LABELED
     ]
-    assert len(at_review) == 1
+    assert len(pre_labeled) == 1
 
 
 def test_progress_is_reported_in_assets(prelabel_fixture: Fixture) -> None:
@@ -607,7 +609,7 @@ def test_a_merged_span_is_discarded_and_the_run_completes(
     assert outcome.regions_discarded == 3
     job = merged_span_fixture.job()
     for asset_id in merged_span_fixture.assets:
-        assert job.progress[asset_id] is AssetProgress.REVIEW_PENDING
+        assert job.progress[asset_id] is AssetProgress.PRE_LABELED
         written = merged_span_fixture.annotations_on(asset_id)
         assert [annotation.label_class for annotation in written] == ["car"]
 

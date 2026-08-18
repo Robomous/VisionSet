@@ -125,6 +125,7 @@ function assets(
 const BATCH_COUNTS = {
   total: 48,
   unannotated: 30,
+  pre_labeled: 0,
   annotated: 8,
   review_pending: 5,
   accepted: 1,
@@ -135,6 +136,7 @@ const BATCH_COUNTS = {
 const SETTLED_COUNTS = {
   total: 48,
   unannotated: 0,
+  pre_labeled: 0,
   annotated: 3,
   review_pending: 0,
   accepted: 0,
@@ -197,6 +199,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           allowed_actions: batchActions(current),
           promoted_asset_count: 0,
           parent_batch_id: null,
+          pre_label_run: null,
         },
       });
     }
@@ -247,6 +250,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           allowed_actions: batchActions(current),
           promoted_asset_count: 0,
           parent_batch_id: null,
+          pre_label_run: null,
         },
       });
     }
@@ -273,6 +277,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           allowed_actions: batchActions(current),
           promoted_asset_count: 0,
           parent_batch_id: null,
+          pre_label_run: null,
         },
       });
     }
@@ -307,6 +312,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
             allowed_actions: batchActions(current),
             promoted_asset_count: 0,
             parent_batch_id: null,
+            pre_label_run: null,
           },
           changed,
         },
