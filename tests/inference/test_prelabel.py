@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from visionset.inference.prelabel import DEFAULT_MINIMUM_CONFIDENCE, detectable_classes, pre_label
-from visionset.kernel import SchemaHasNoDetectableClass, UnsupportedPrompt
+from visionset.kernel import BatchNotInAnnotation, SchemaHasNoDetectableClass, UnsupportedPrompt
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
@@ -370,6 +370,43 @@ def test_a_point_prompt_connection_is_refused(segmenter_fixture: Fixture) -> Non
             connection_id=segmenter_fixture.connection.id,
             pool=segmenter_fixture.pool,
         )
+
+
+def test_a_batch_that_is_not_in_annotation_is_refused_before_anything_loads(
+    tmp_path: Path,
+) -> None:
+    """The connection resolves first — its own docstring's order — but the
+    model is never asked: the batch-state gate stops the run before the loop
+    that would ask it anything, exactly like the two schema refusals above."""
+    workspace = WorkspaceService.init(tmp_path / "draft-ws")
+    try:
+        batches = BatchService(workspace)
+        connections = InferenceConnectionService(workspace)
+        project = ProjectService(workspace).create("draft-project")
+        SchemaService(workspace).create_version(project.id, [POST])
+        content_hash = workspace.blob_store.put(BytesIO(b"draft"))
+        with workspace.unit_of_work() as uow:
+            asset_id = uow.assets.add(
+                Asset(project_id=project.id, content_hash=content_hash, uri="/draft.png")
+            ).id
+        # A draft, never approved: `require_pre_labelable` refuses every state
+        # but `in_annotation`, and a draft is the one furthest from it.
+        batch = batches.create(project.id, "first", [asset_id])
+        connection = connections.create(
+            "draft-connection",
+            connection_type=ConnectionType.HTTP,
+            model_id="acme/detector",
+            model_revision="abc123",
+            endpoint_url="http://localhost:9",
+        )
+        pool = FakeProviderPool()
+
+        with pytest.raises(BatchNotInAnnotation):
+            pre_label(workspace, batch_id=batch.id, connection_id=connection.id, pool=pool)
+
+        assert pool.calls == 0
+    finally:
+        workspace.close()
 
 
 def test_an_asset_the_model_found_nothing_on_stays_untouched(

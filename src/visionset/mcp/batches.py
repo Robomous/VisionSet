@@ -46,31 +46,13 @@ from uuid import UUID
 from pydantic import Field
 
 from visionset import wire
-from visionset.inference import (
-    DEFAULT_MINIMUM_CONFIDENCE,
-    STUB_MODEL_ID,
-    capabilities_of,
-    detectable_classes,
-    no_detectable_class_message,
-    unsupported_prompt_message,
-)
-from visionset.inference import require as require_local_inference
-from visionset.jobs.prelabel import JOB_TYPE as pre_label_job_type
-from visionset.jobs.prelabel import payload_for as pre_label_payload_for
-from visionset.kernel.domain import (
-    BackgroundJob,
-    BackgroundJobSpec,
-    BySize,
-    ModelCapability,
-    Partition,
-)
-from visionset.kernel.errors import SchemaHasNoDetectableClass, UnsupportedPrompt
+from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, pre_label
+from visionset.kernel.domain import BySize, Partition
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
     JobService,
     ProjectService,
-    SchemaService,
     WorkspaceService,
 )
 from visionset.mcp._resolve import (
@@ -274,24 +256,6 @@ def start_batch(batch_id: BatchRef) -> dict[str, Any]:
         return _batch_payload(workspace, started.id)
 
 
-def _job_payload(job: BackgroundJob) -> dict[str, Any]:
-    """The background job a caller polls, in `ingest_job`'s shape.
-
-    Not `wire.ingest_job`: this is a different domain type, and the first
-    background job any MCP tool has ever queued rather than run inline — there
-    is no shape to reuse yet. The same handful of fields a poller needs either
-    way: what it is, how far it has got, and what stopped it if it did.
-    """
-    return {
-        "id": str(job.id),
-        "type": job.type,
-        "state": job.state.value,
-        "processed": job.processed,
-        "total": job.total,
-        "error": job.error,
-    }
-
-
 def pre_label_batch(
     batch_id: BatchRef,
     connection: ConnectionRef,
@@ -308,72 +272,52 @@ def pre_label_batch(
         ),
     ] = DEFAULT_MINIMUM_CONFIDENCE,
 ) -> dict[str, Any]:
-    """Ask a model to label every untouched asset in a batch. Launches; does not wait.
+    """Ask a model to label every untouched asset in a batch. This blocks until it is done.
 
-    Unlike `download_connection_weights` and `export_release`, this does not
-    block: a batch is hundreds of forward passes, which can run far longer than
-    a tool call should sit open. It queues the work and returns at once with
-    `job` — its id and `state` are what there is to poll — call `get_batch`
-    again once you expect it to be done, and read the newly `review_pending`
-    assets there. The job itself runs the next time this workspace's server
-    picks queued work off the queue, ordinarily at once if `visionset server`
-    is already running against it.
+    `download_connection_weights`'s pattern, not a shortcut: a stdio server has
+    no background worker, so a tool that queued this work would answer with a
+    job id nothing was ever going to claim — the API queues it instead, because
+    the API has a dispatcher. This call runs one forward pass per untouched
+    asset, so the wait is roughly that many times one image's inference time;
+    for a batch of any size, expect minutes.
+
+    **Interrupting is safe.** A run only ever writes to an asset nothing has
+    touched, and commits one asset's labels in the same transaction as its move
+    to `review_pending` — so a cut-off call has entered some prefix of the
+    untouched assets and touched nothing else, and calling this again resumes
+    with whatever is still untouched rather than starting over or double-writing
+    what already landed.
 
     **Only assets nothing has touched.** An asset that is already annotated,
-    skipped, awaiting review or accepted is passed over, so a run never writes
-    over what a person did, and labels land at `review_pending`, never at
-    `annotated` — nobody judged them.
+    skipped, awaiting review or accepted is passed over, and what is written
+    lands at `review_pending`, never at `annotated` — nobody judged it.
 
     **The batch's pinned schema is the prompt.** The model is asked for each
     class the schema declares that a box can be written as, so every answer maps
     back to a class this batch already admits. A schema whose classes are all
     polygons, polylines or tags — or whose box classes each require an attribute
     a prediction cannot supply — has nowhere for a detection to land and is
-    refused.
+    refused before anything runs.
 
-    **Everything this call can tell you now, it tells you now**, and no refusal
-    queues a job: a batch that is not `in_annotation` is refused, a connection
-    whose model answers places rather than words is refused, a pinned schema
-    with no class a box can be written as is refused, and a deployment without
-    the local runtime is refused here too, with the install command in the
-    message.
-
-    **Asking twice joins the run already in flight rather than starting a
-    second one.** A call arriving while this batch has a pre-labeling run queued
-    or running is answered with that run's id, so calling this again after a
-    timeout costs nothing extra.
+    Also refused before anything runs: a batch that is not `in_annotation`, a
+    connection whose model answers places rather than words, and a deployment
+    without the local runtime — with the install command in the message.
     """
     with opened_workspace() as workspace:
-        batches = BatchService(workspace)
-        resolved_batch_id = identifier(batch_id, what="batch_id")
-        batch = batches.require_pre_labelable(resolved_batch_id)
         resolved_connection = resolve_connection(workspace, connection)
-        # Before the job exists, on the download tool's terms: a refusal a call
-        # can make is a refusal the call makes, rather than a failed row an
-        # agent has to go and read.
-        if resolved_connection.model_id != STUB_MODEL_ID:
-            require_local_inference()
-        if ModelCapability.TEXT_DETECT not in capabilities_of(resolved_connection.model_family):
-            raise UnsupportedPrompt(unsupported_prompt_message(resolved_connection.name))
-        schema = SchemaService(workspace).get(batch.project_id, batch.schema_version)
-        if not detectable_classes(schema):
-            raise SchemaHasNoDetectableClass(no_detectable_class_message(schema.version))
-
-        running = batches.live_job(resolved_batch_id, job_type=pre_label_job_type)
-        job = running or workspace.job_queue.enqueue(
-            BackgroundJobSpec(
-                type=pre_label_job_type,
-                payload=pre_label_payload_for(
-                    resolved_batch_id, resolved_connection.id, minimum_confidence
-                ),
-                idempotent=True,
-            )
+        outcome = pre_label(
+            workspace,
+            batch_id=identifier(batch_id, what="batch_id"),
+            connection_id=resolved_connection.id,
+            minimum_confidence=minimum_confidence,
         )
-        # Nested under `job` rather than returned flat: a top-level `error` key
-        # is the envelope `guarded` wraps a refusal in, and a *successful* result
-        # carrying one under the same name would read as one to a client that
-        # only checks for the key's presence.
-        return {"job": _job_payload(job)}
+    return {
+        "assets_considered": outcome.assets_considered,
+        "assets_labeled": outcome.assets_labeled,
+        "annotations_written": outcome.annotations_written,
+        "model_ref": outcome.model_ref,
+        "stopped_early": outcome.stopped_early,
+    }
 
 
 def repin_batch(

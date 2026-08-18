@@ -120,7 +120,7 @@ page groups them by what they are for.
 | `remove_batch_assets` | Take assets out of a draft. Deletes nothing. |
 | `approve_batch` | Freeze it, pin the schema, cut it into jobs. |
 | `start_batch` | Open it for annotation. |
-| `pre_label_batch` | Ask a model to label every untouched asset. Launches; does not wait. |
+| `pre_label_batch` | Ask a model to label every untouched asset. Blocks until it is done. |
 | `repin_batch` | Move its schema pin onto the current active version. |
 | `list_batch_assets` | What is in it, paged, with each asset's job and progress. |
 | `complete_batch` | Close it, once every job is complete. |
@@ -296,12 +296,15 @@ guard is that a batch which is no longer `in_annotation` refuses every write.
 
 ## Stated limits
 
-**Ingest, export, weight downloads and integrity checks are synchronous.** A stdio server has no
-background worker: something has to do the decode, and an agent driving a "resume" loop would
-block for exactly as long as doing the work in the first place. A long video makes `ingest` a
-long call, and a large model makes `download_connection_weights` one — minutes, with nothing to
-poll from here. A cut-off download changed nothing (the connection is only marked ready once
-every file is here) and the retry resumes the cache rather than starting over.
+**Ingest, export, weight downloads, integrity checks and pre-labeling are synchronous.** A
+stdio server has no background worker: something has to do the decode, and an agent driving a
+"resume" loop would block for exactly as long as doing the work in the first place. A long video
+makes `ingest` a long call, a large model makes `download_connection_weights` one, and a batch of
+untouched assets makes `pre_label_batch` one — minutes, with nothing to poll from here. A cut-off
+download changed nothing (the connection is only marked ready once every file is here) and the
+retry resumes the cache rather than starting over; a cut-off pre-labeling call has written only
+the assets it fully entered, one commit per asset, so calling it again resumes with whatever is
+still untouched.
 
 There is therefore no ingest polling, and no `resume_ingest`. If a call is cut off part way, call
 `ingest` again - registration is idempotent on `(kind, path, extraction_fps)` and content

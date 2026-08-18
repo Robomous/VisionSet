@@ -19,10 +19,8 @@ from tests.mcp._flow import (
     schema,
 )
 
-from visionset.inference import weights as weights_module
-from visionset.kernel.domain import PRE_LABEL_JOB_TYPE, DownloadSize
-from visionset.kernel.services import WorkspaceService
-from visionset.mcp import batches as mcp_batches
+from visionset.inference import prelabel as prelabel_module
+from visionset.kernel.domain import AssetPrediction, BboxGeometry, PredictedRegion
 
 
 def test_a_freshly_ingested_batch_is_a_draft_with_no_jobs_and_no_pin(
@@ -432,131 +430,134 @@ def test_the_tool_is_absent_from_the_default_listing(
     assert payload(call("get_batch", batch_id=batch_id))["state"] == "draft"
 
 
-# --- pre-labeling: launches a job and answers with it, before waiting on it ----
+# --- pre-labeling: blocks, and answers with what it wrote ---------------------
 
 
-@pytest.fixture(autouse=True)
-def _local_runtime_is_present(monkeypatch: pytest.MonkeyPatch) -> None:
-    """This module's connections are never real; the runtime check would refuse
-    every one of them for a reason no test here is about."""
-    monkeypatch.setattr(mcp_batches, "require_local_inference", lambda: None)
+class _FakePredictor:
+    """A `ModelProvider` that answers from a script, structurally conforming to
+    the port `pre_label` narrows to — `tests/inference/test_prelabel.py`'s
+    `FakeModelProvider`, minimal for this file's own purpose."""
+
+    def __init__(self, *, model_ref: str, regions: tuple[PredictedRegion, ...]) -> None:
+        self.model_ref = model_ref
+        self._regions = regions
+
+    def predict(self, request: object) -> object:
+        return (
+            AssetPrediction(
+                asset_id=target.asset_id, model_ref=self.model_ref, regions=self._regions
+            )
+            for target in request.targets  # type: ignore[attr-defined]
+        )
 
 
-def _connection(monkeypatch: pytest.MonkeyPatch, *, family: str, capability: str) -> str:
-    """A `ready` local connection whose model declares ``capability``.
+class _FakeSegmenter:
+    """Structurally a point segmenter and nothing a text prompt could reach: no
+    `predict` at all, which is what makes `isinstance(runner, ModelProvider)`
+    false and lets `pre_label` refuse it before this is ever asked anything."""
 
-    `download_connection_weights` blocks, so by the time it answers the family
-    is already on the row — the family has to be faked *before* that call, the
-    same ordering `tests/server/test_prelabel_route.py` learned from
-    `fetch_weights` reading it the moment the transfer finishes.
+
+class _FakePool:
+    def __init__(self, runner: object) -> None:
+        self._runner = runner
+
+    def get(self, connection: object, *, workspace_root: Path) -> object:
+        return self._runner
+
+
+def _predicting(
+    monkeypatch: pytest.MonkeyPatch, *, kind: str = "detector", label: str = "sign"
+) -> None:
+    """Stand in for what a connection resolves to, the way `pre_label`'s own
+    kernel suite does through its `pool` parameter — the MCP tool exposes no
+    such parameter, since an agent has no business choosing a fake one, so this
+    reaches the same seam through the module-level pool `pre_label` asks for
+    when none is passed.
     """
-    monkeypatch.setattr(weights_module, "download", lambda connection, *, into, on_bytes=None: into)
-    monkeypatch.setattr(
-        weights_module,
-        "download_size",
-        lambda model_id, model_revision: DownloadSize(
-            model_id=model_id,
-            model_revision=model_revision,
-            total_bytes=4_000_000_000,
-            file_count=2,
+    regions = (
+        PredictedRegion(
+            label=label, confidence=0.9, geometry=BboxGeometry(x=1.0, y=2.0, width=3.0, height=4.0)
         ),
     )
-    monkeypatch.setattr(weights_module, "family_of", lambda *_, **__: family)
+    runner = (
+        _FakeSegmenter()
+        if kind == "segmenter"
+        else _FakePredictor(model_ref="acme/detector@abc123", regions=regions)
+    )
+    monkeypatch.setattr(prelabel_module, "resident", lambda: _FakePool(runner))
+
+
+def _connection() -> str:
+    """A configured local connection. Nothing here downloads its weights: the
+    resolution `pre_label` would build a runner from is faked by `_predicting`
+    in every test that reaches it, so a connection only has to exist."""
     created = payload(
         call(
             "create_inference_connection",
             name=f"c-{uuid4().hex[:8]}",
             connection_type="local",
-            model_id=f"some/{family}",
+            model_id="some/grounding-dino",
             model_revision="v1",
             device="cpu",
             precision="fp32",
         )
     )
-    ready = payload(call("download_connection_weights", connection=created["id"]))
-    assert ready["setup_state"] == "ready", ready
-    assert ready["capabilities"] == [capability], ready
     return str(created["id"])
 
 
-def _pre_label_job_count(tmp_path: Path) -> int:
-    """How many pre-label jobs this workspace has ever queued.
-
-    Read through the kernel rather than a tool: no MCP tool lists background
-    jobs, and `_flow.py`'s own rule is that state read back for an assertion
-    goes through the SDK precisely because the tool under test cannot also be
-    the evidence.
-    """
-    workspace = WorkspaceService.open(tmp_path / "ws")
-    try:
-        return len(workspace.job_queue.list(types={PRE_LABEL_JOB_TYPE}))
-    finally:
-        workspace.close()
-
-
-def test_pre_labeling_launches_a_job_and_returns_it_to_poll(
+def test_pre_labeling_blocks_and_returns_what_it_wrote(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
-    connection_id = _connection(monkeypatch, family="grounding-dino", capability="text_detect")
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
 
-    launched = payload(call("pre_label_batch", batch_id=batch_id, connection=connection_id))["job"]
+    outcome = payload(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
 
-    assert launched["state"] == "queued"
-    assert launched["type"] == PRE_LABEL_JOB_TYPE
-    assert _pre_label_job_count(tmp_path) == 1
-
-
-def test_asking_twice_joins_the_run_already_in_flight(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Nothing here ever drains the queue, so the first launch is still
-    `queued` when the second call asks — an MCP session has no dispatcher of
-    its own to race against."""
-    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
-    connection_id = _connection(monkeypatch, family="grounding-dino", capability="text_detect")
-
-    first = payload(call("pre_label_batch", batch_id=batch_id, connection=connection_id))["job"]
-    second = payload(call("pre_label_batch", batch_id=batch_id, connection=connection_id))["job"]
-
-    assert first["id"] == second["id"]
-    assert _pre_label_job_count(tmp_path) == 1
+    assert outcome["assets_considered"] == 2
+    assert outcome["assets_labeled"] == 2
+    assert outcome["annotations_written"] == 2
+    assert outcome["model_ref"] == "acme/detector@abc123"
+    assert outcome["stopped_early"] is False
+    assert payload(call("get_batch", batch_id=batch_id))["progress"]["review_pending"] == 2
 
 
-def test_a_batch_that_is_not_being_annotated_is_refused_and_queues_nothing(
+def test_a_batch_that_is_not_being_annotated_is_refused_and_writes_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _, batch_id = ingested(monkeypatch, tmp_path, count=2)
-    connection_id = _connection(monkeypatch, family="grounding-dino", capability="text_detect")
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
 
     refusal = error(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
 
     assert refusal["message"]
-    assert _pre_label_job_count(tmp_path) == 0
 
 
-def test_a_point_prompt_connection_is_refused_before_a_job_exists(
+def test_a_point_prompt_connection_is_refused_before_anything_is_asked(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
-    connection_id = _connection(monkeypatch, family="visionset_stub", capability="point_suggest")
+    connection_id = _connection()
+    _predicting(monkeypatch, kind="segmenter")
 
     refusal = error(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
 
     assert refusal["message"]
-    assert _pre_label_job_count(tmp_path) == 0
+    assert payload(call("get_batch", batch_id=batch_id))["progress"]["review_pending"] == 0
 
 
-def test_a_schema_with_no_box_class_is_refused_before_a_job_exists(
+def test_a_schema_with_no_box_class_is_refused_and_writes_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2, classes=[CENTERLINE])
-    connection_id = _connection(monkeypatch, family="grounding-dino", capability="text_detect")
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
 
     refusal = error(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
 
     assert refusal["message"]
-    assert _pre_label_job_count(tmp_path) == 0
+    assert payload(call("get_batch", batch_id=batch_id))["progress"]["review_pending"] == 0
 
 
 def test_the_batch_declares_pre_label_only_while_in_annotation(
