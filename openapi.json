@@ -6239,7 +6239,7 @@
     },
     "/datasets/{dataset_id}/assets": {
       "get": {
-        "description": "Everything in the trunk, in the order it was promoted.\n\nPaged, and the second route in the API that is \u2014 the trunk accumulates every\nbatch a project ever completed, so it is the other collection that can hold\nfifty thousand items. `total` is the size of the whole trunk and not of the\npage; an offset past the end is an empty list and a 200, never a 404.\n\nOrder is the stored insertion order, so reading twice gives the same sequence\nand promoting a new batch appends rather than reshuffles.",
+        "description": "Everything in the trunk, in the order it was promoted.\n\nPaged, and the second route in the API that is \u2014 the trunk accumulates every\nbatch a project ever completed, so it is the other collection that can hold\nfifty thousand items. `total` is the size of the whole trunk and not of the\npage; an offset past the end is an empty list and a 200, never a 404. The\n404 is the dataset itself: an unknown one is `DATASET_NOT_FOUND`.\n\nOrder is the stored insertion order, so reading twice gives the same sequence\nand promoting a new batch appends rather than reshuffles.",
         "operationId": "list_dataset_assets",
         "parameters": [
           {
@@ -6360,7 +6360,7 @@
     },
     "/datasets/{dataset_id}/assets/{asset_id}": {
       "delete": {
-        "description": "Take one asset out of the trunk.\n\nCuration, not deletion: the asset, its annotations and its bytes all stay\nexactly where they were, and only the membership row goes. That is why there\nis no `confirm` gate here \u2014 there is nothing to destroy.\n\n204 whether or not the asset was a member. An id that was never in the trunk\nleaves it in the state the caller asked for, and reporting that as a 404\nwould make a retry of a successful request look like a failure. The change\nlog records only the calls that actually changed something.\n\nNot permanent, either: re-promoting the batch the asset came from puts it\nback, because the trunk keeps no memory of removals.",
+        "description": "Take one asset out of the trunk.\n\nCuration, not deletion: the asset, its annotations and its bytes all stay\nexactly where they were, and only the membership row goes. That is why there\nis no `confirm` gate here \u2014 there is nothing to destroy.\n\n204 whether or not the asset was a member. An id that was never in the trunk\nleaves it in the state the caller asked for, and reporting that as a 404\nwould make a retry of a successful request look like a failure. The change\nlog records only the calls that actually changed something. The dataset is\nthe one thing that has to exist: an unknown one is 404 `DATASET_NOT_FOUND`.\n\nNot permanent, either: re-promoting the batch the asset came from puts it\nback, because the trunk keeps no memory of removals.",
         "operationId": "remove_dataset_asset",
         "parameters": [
           {
@@ -11582,7 +11582,7 @@
     },
     "/projects/{project_id}/sources/images": {
       "post": {
-        "description": "Offer a project a folder of stills.\n\nThe parts are staged as one directory and that directory becomes the source.\nUploading the same files again returns the **same** source rather than a\nsecond one: staging is content-addressed, so identical bytes under identical\nfilenames land on the same path, and registration is idempotent on that path.\n\nNothing is decoded here \u2014 what the files turn out to be is read at ingest,\nand a file that is not an image is reported there rather than refused now.\n\n`name` exists because the staged path's basename is a digest; a blank one is\nrefused by the kernel's own `InvalidName` (422) \u2014 the domain already refuses\nwith a mapped error, so no wire validator restates it.",
+        "description": "Offer a project a folder of stills.\n\nThe parts are staged as one directory and that directory becomes the source.\nUploading the same files again returns the **same** source rather than a\nsecond one: staging is content-addressed, so identical bytes under identical\nfilenames land on the same path, and registration is idempotent on that path.\n\nNothing is decoded here \u2014 what the files turn out to be is read at ingest,\nand a file that is not an image is reported there rather than refused now.\n\n`name` exists because the staged path's basename is a digest; a blank one is\n422 `INVALID_NAME`, refused by the kernel's own `InvalidName` \u2014 the domain\nalready refuses with a mapped error, so no wire validator restates it.",
         "operationId": "register_image_source",
         "parameters": [
           {
@@ -11681,7 +11681,7 @@
     },
     "/projects/{project_id}/sources/video": {
       "post": {
-        "description": "Offer a project a clip, to be cut at `extraction_fps`.\n\nThe clip is probed on the way in, so a file that is not a video, or one\nwhose bytes will not decode, is 422 here rather than a run that fails later.\n\nThe rate is part of what the source *is*: the same clip registered at 1 fps\nand again at 5 fps is two sources over one file, which is what makes \"the\nsame source yields the same assets\" mean anything.",
+        "description": "Offer a project a clip, to be cut at `extraction_fps`.\n\nThe clip is probed on the way in, so a file that is not a video, or one\nwhose bytes will not decode, is 422 here rather than a run that fails later:\n422 `UNSUPPORTED_MEDIA` for a kind of file this cannot cut, and 422\n`CORRUPT_MEDIA` for one that is the right kind and will not decode. The\nmessage says what was wrong with the file and never where it was put.\n\nThe rate is part of what the source *is*: the same clip registered at 1 fps\nand again at 5 fps is two sources over one file, which is what makes \"the\nsame source yields the same assets\" mean anything.",
         "operationId": "register_video_source",
         "parameters": [
           {
@@ -12621,7 +12621,7 @@
         ]
       },
       "post": {
-        "description": "Launch a run over the source and answer at once with the job to poll.\n\n**202, not 201**: the row exists, the work does not. Poll\n`GET /ingest-jobs/{id}` \u2014 the `Location` header names it \u2014 and watch\n`processed` climb until `state` is `completed` or `failed`.\n\nA run that could not even be recorded is refused here; everything that goes\nwrong afterwards is reported *on the job*, which is the whole point of the\nshape. Unreadable files land in `failures` and do not fail the run; a\nmissing ffmpeg does, in `error`.\n\n`batch_id` puts what this run gathers into a batch that already exists,\nwhich is how a second source joins the first one's batch. It has to be a\ndraft \u2014 an approved batch has been cut into jobs already, so adding to it is\n409 `BATCH_NOT_EDITABLE` \u2014 and an unknown one is a 404. Both are answered\nhere, before the job row is written. `batch_name` names a new batch instead;\npassing neither uses the source's own name.",
+        "description": "Launch a run over the source and answer at once with the job to poll.\n\n**202, not 201**: the row exists, the work does not. Poll\n`GET /ingest-jobs/{id}` \u2014 the `Location` header names it \u2014 and watch\n`processed` climb until `state` is `completed` or `failed`.\n\nA run that could not even be recorded is refused here; everything that goes\nwrong afterwards is reported *on the job*, which is the whole point of the\nshape. Unreadable files land in `failures` and do not fail the run; a\nmissing ffmpeg does, in `error`.\n\n`batch_id` puts what this run gathers into a batch that already exists,\nwhich is how a second source joins the first one's batch. It has to be a\ndraft \u2014 an approved batch has been cut into jobs already, so adding to it is\n409 `BATCH_NOT_EDITABLE` \u2014 and an unknown one is 404 `BATCH_NOT_FOUND`. Both\nare answered here, before the job row is written, as is 404\n`SOURCE_NOT_FOUND` for the source this run would read. `batch_name` names a new batch instead;\npassing neither uses the source's own name.",
         "operationId": "start_ingest",
         "parameters": [
           {

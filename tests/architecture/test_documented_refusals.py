@@ -225,8 +225,6 @@ def _route(name: str) -> tuple[ModuleType, ast.FunctionDef]:
 #: an exemption left behind is a rule this file would no longer prove. Nothing may
 #: be added here.
 KNOWN_SHORT: Final[dict[str, frozenset[str]]] = {
-    "datasets::list_dataset_assets": frozenset({"DATASET_NOT_FOUND"}),
-    "datasets::remove_dataset_asset": frozenset({"DATASET_NOT_FOUND"}),
     "inference::suggest_region": frozenset(
         {
             "ASSET_NOT_FOUND",
@@ -244,9 +242,6 @@ KNOWN_SHORT: Final[dict[str, frozenset[str]]] = {
     "schemas::create_schema_version": frozenset({"SCHEMA_VERSION_CONFLICT"}),
     "schemas::get_schema_draft": frozenset({"PROJECT_NOT_FOUND", "SCHEMA_DRAFT_NOT_FOUND"}),
     "schemas::publish_schema_draft": frozenset({"SCHEMA_VERSION_CONFLICT"}),
-    "sources::register_image_source": frozenset({"INVALID_NAME"}),
-    "sources::register_video_source": frozenset({"CORRUPT_MEDIA", "UNSUPPORTED_MEDIA"}),
-    "sources::start_ingest": frozenset({"BATCH_NOT_FOUND", "SOURCE_NOT_FOUND"}),
 }
 
 

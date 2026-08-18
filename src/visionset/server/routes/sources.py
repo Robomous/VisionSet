@@ -84,8 +84,8 @@ def register_image_source(
     and a file that is not an image is reported there rather than refused now.
 
     `name` exists because the staged path's basename is a digest; a blank one is
-    refused by the kernel's own `InvalidName` (422) — the domain already refuses
-    with a mapped error, so no wire validator restates it.
+    422 `INVALID_NAME`, refused by the kernel's own `InvalidName` — the domain
+    already refuses with a mapped error, so no wire validator restates it.
     """
     # ``capture_params`` is not on the wire. It is an opaque operator-supplied
     # mapping, and threading a JSON object through a multipart form is a
@@ -106,7 +106,10 @@ def register_video_source(
     """Offer a project a clip, to be cut at `extraction_fps`.
 
     The clip is probed on the way in, so a file that is not a video, or one
-    whose bytes will not decode, is 422 here rather than a run that fails later.
+    whose bytes will not decode, is 422 here rather than a run that fails later:
+    422 `UNSUPPORTED_MEDIA` for a kind of file this cannot cut, and 422
+    `CORRUPT_MEDIA` for one that is the right kind and will not decode. The
+    message says what was wrong with the file and never where it was put.
 
     The rate is part of what the source *is*: the same clip registered at 1 fps
     and again at 5 fps is two sources over one file, which is what makes "the
@@ -158,8 +161,9 @@ def start_ingest(
     `batch_id` puts what this run gathers into a batch that already exists,
     which is how a second source joins the first one's batch. It has to be a
     draft — an approved batch has been cut into jobs already, so adding to it is
-    409 `BATCH_NOT_EDITABLE` — and an unknown one is a 404. Both are answered
-    here, before the job row is written. `batch_name` names a new batch instead;
+    409 `BATCH_NOT_EDITABLE` — and an unknown one is 404 `BATCH_NOT_FOUND`. Both
+    are answered here, before the job row is written, as is 404
+    `SOURCE_NOT_FOUND` for the source this run would read. `batch_name` names a new batch instead;
     passing neither uses the source's own name.
     """
     job = IngestService(workspace).enqueue(

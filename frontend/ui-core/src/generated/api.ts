@@ -503,7 +503,8 @@ export interface paths {
          *     Paged, and the second route in the API that is — the trunk accumulates every
          *     batch a project ever completed, so it is the other collection that can hold
          *     fifty thousand items. `total` is the size of the whole trunk and not of the
-         *     page; an offset past the end is an empty list and a 200, never a 404.
+         *     page; an offset past the end is an empty list and a 200, never a 404. The
+         *     404 is the dataset itself: an unknown one is `DATASET_NOT_FOUND`.
          *
          *     Order is the stored insertion order, so reading twice gives the same sequence
          *     and promoting a new batch appends rather than reshuffles.
@@ -538,7 +539,8 @@ export interface paths {
          *     204 whether or not the asset was a member. An id that was never in the trunk
          *     leaves it in the state the caller asked for, and reporting that as a 404
          *     would make a retry of a successful request look like a failure. The change
-         *     log records only the calls that actually changed something.
+         *     log records only the calls that actually changed something. The dataset is
+         *     the one thing that has to exist: an unknown one is 404 `DATASET_NOT_FOUND`.
          *
          *     Not permanent, either: re-promoting the batch the asset came from puts it
          *     back, because the trunk keeps no memory of removals.
@@ -2078,8 +2080,8 @@ export interface paths {
          *     and a file that is not an image is reported there rather than refused now.
          *
          *     `name` exists because the staged path's basename is a digest; a blank one is
-         *     refused by the kernel's own `InvalidName` (422) — the domain already refuses
-         *     with a mapped error, so no wire validator restates it.
+         *     422 `INVALID_NAME`, refused by the kernel's own `InvalidName` — the domain
+         *     already refuses with a mapped error, so no wire validator restates it.
          */
         post: operations["register_image_source"];
         delete?: never;
@@ -2102,7 +2104,10 @@ export interface paths {
          * @description Offer a project a clip, to be cut at `extraction_fps`.
          *
          *     The clip is probed on the way in, so a file that is not a video, or one
-         *     whose bytes will not decode, is 422 here rather than a run that fails later.
+         *     whose bytes will not decode, is 422 here rather than a run that fails later:
+         *     422 `UNSUPPORTED_MEDIA` for a kind of file this cannot cut, and 422
+         *     `CORRUPT_MEDIA` for one that is the right kind and will not decode. The
+         *     message says what was wrong with the file and never where it was put.
          *
          *     The rate is part of what the source *is*: the same clip registered at 1 fps
          *     and again at 5 fps is two sources over one file, which is what makes "the
@@ -2389,8 +2394,9 @@ export interface paths {
          *     `batch_id` puts what this run gathers into a batch that already exists,
          *     which is how a second source joins the first one's batch. It has to be a
          *     draft — an approved batch has been cut into jobs already, so adding to it is
-         *     409 `BATCH_NOT_EDITABLE` — and an unknown one is a 404. Both are answered
-         *     here, before the job row is written. `batch_name` names a new batch instead;
+         *     409 `BATCH_NOT_EDITABLE` — and an unknown one is 404 `BATCH_NOT_FOUND`. Both
+         *     are answered here, before the job row is written, as is 404
+         *     `SOURCE_NOT_FOUND` for the source this run would read. `batch_name` names a new batch instead;
          *     passing neither uses the source's own name.
          */
         post: operations["start_ingest"];
