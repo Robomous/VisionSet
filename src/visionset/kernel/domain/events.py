@@ -36,7 +36,12 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 
 class AnnotationOperation(StrEnum):
-    """Which of ``AnnotationService``'s three writes produced an event.
+    """Which shape of write on ``AnnotationService`` produced an event.
+
+    Three members for four writes: ``enter_unreviewed`` publishes ``ADD``, the
+    same as ``add``, because both are new rows landing rather than an edit or a
+    removal — what differs between them is the progress the write leaves
+    behind, which this enum does not carry.
 
     The counterpart of :class:`~visionset.kernel.domain.dataset.DatasetOperation`:
     an enum so an emitter cannot misspell one, and so a subscriber has somewhere

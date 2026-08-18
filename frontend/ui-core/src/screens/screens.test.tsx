@@ -1552,6 +1552,7 @@ describe("the project header", () => {
       schema_version: fields.schemaVersion === undefined ? 1 : fields.schemaVersion,
       progress: {
         unannotated: fields.unannotated ?? 4,
+        pre_labeled: 0,
         annotated: 0,
         skipped: 0,
         review_pending: 0,
@@ -1561,6 +1562,7 @@ describe("the project header", () => {
       allowed_actions: batchActions(fields.state as BatchState),
       promoted_asset_count: 0,
       parent_batch_id: null,
+      pre_label_run: null,
     };
   }
 

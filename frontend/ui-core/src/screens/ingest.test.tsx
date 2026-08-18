@@ -35,9 +35,10 @@ vi.mock("./clipProbe", () => ({
 }));
 
 const API = "http://visionset.test";
-// `ProgressCounts` is six counters and the server always sends all six.
+// `ProgressCounts` is seven counters and the server always sends all seven.
 const NO_PROGRESS = {
   unannotated: 0,
+  pre_labeled: 0,
   annotated: 0,
   review_pending: 0,
   accepted: 0,
@@ -543,8 +544,8 @@ describe("launching a run", () => {
       status: 200,
       body: {
         items: [
-          { id: "b1", project_id: PROJECT, name: "open", state: "draft", schema_version: null, asset_count: 4, progress: NO_PROGRESS, allowed_actions: batchActions("draft"), promoted_asset_count: 0, parent_batch_id: null },
-          { id: "b2", project_id: PROJECT, name: "frozen", state: "in_annotation", schema_version: 1, asset_count: 9, progress: NO_PROGRESS, allowed_actions: batchActions("in_annotation"), promoted_asset_count: 0, parent_batch_id: null },
+          { id: "b1", project_id: PROJECT, name: "open", state: "draft", schema_version: null, asset_count: 4, progress: NO_PROGRESS, allowed_actions: batchActions("draft"), promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
+          { id: "b2", project_id: PROJECT, name: "frozen", state: "in_annotation", schema_version: 1, asset_count: 9, progress: NO_PROGRESS, allowed_actions: batchActions("in_annotation"), promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
         ],
         total: 2,
       },

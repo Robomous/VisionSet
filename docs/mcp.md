@@ -79,7 +79,7 @@ it, and what twelve real agent runs did with it - see
 
 ## The tools
 
-Forty-eight tools are offered by default, in the order an agent meets them, plus the three
+Forty-nine tools are offered by default, in the order an agent meets them, plus the three
 below that are offered only on request — see
 [above](#destructive-tools-are-not-offered-unless-you-ask).
 [mcp-tools.md](mcp-tools.md) is the complete listing, generated from the server itself; this
@@ -120,6 +120,7 @@ page groups them by what they are for.
 | `remove_batch_assets` | Take assets out of a draft. Deletes nothing. |
 | `approve_batch` | Freeze it, pin the schema, cut it into jobs. |
 | `start_batch` | Open it for annotation. |
+| `pre_label_batch` | Ask a model to label every untouched asset. Blocks until it is done. |
 | `repin_batch` | Move its schema pin onto the current active version. |
 | `list_batch_assets` | What is in it, paged, with each asset's job and progress. |
 | `complete_batch` | Close it, once every job is complete. |
@@ -295,12 +296,15 @@ guard is that a batch which is no longer `in_annotation` refuses every write.
 
 ## Stated limits
 
-**Ingest, export, weight downloads and integrity checks are synchronous.** A stdio server has no
-background worker: something has to do the decode, and an agent driving a "resume" loop would
-block for exactly as long as doing the work in the first place. A long video makes `ingest` a
-long call, and a large model makes `download_connection_weights` one — minutes, with nothing to
-poll from here. A cut-off download changed nothing (the connection is only marked ready once
-every file is here) and the retry resumes the cache rather than starting over.
+**Ingest, export, weight downloads, integrity checks and pre-labeling are synchronous.** A
+stdio server has no background worker: something has to do the decode, and an agent driving a
+"resume" loop would block for exactly as long as doing the work in the first place. A long video
+makes `ingest` a long call, a large model makes `download_connection_weights` one, and a batch of
+untouched assets makes `pre_label_batch` one — minutes, with nothing to poll from here. A cut-off
+download changed nothing (the connection is only marked ready once every file is here) and the
+retry resumes the cache rather than starting over; a cut-off pre-labeling call has written only
+the assets it fully entered, one commit per asset, so calling it again resumes with whatever is
+still untouched.
 
 There is therefore no ingest polling, and no `resume_ingest`. If a call is cut off part way, call
 `ingest` again - registration is idempotent on `(kind, path, extraction_fps)` and content
@@ -312,7 +316,7 @@ The API's upload staging exists because HTTP has bytes where the kernel has path
 beside the workspace and has the filesystem.
 
 **One workspace per server.** No tool takes a workspace parameter — threading one through
-forty-four tools would put a path an agent has no way to know into every call. The workspace is
+fifty-two tools would put a path an agent has no way to know into every call. The workspace is
 opened and closed per tool call rather than held, so the file is never kept from `visionset server`
 or a second agent between calls.
 
@@ -324,13 +328,14 @@ out of the object to pick the variant, and omitting it fails. Always send
 ## What is not here, and why
 
 Fifty candidate tools were recorded across the four REST tasks; thirty of them shipped and
-twenty did not. Nineteen have been added since, each because a surface grew a capability an
+twenty did not. Twenty have been added since, each because a surface grew a capability an
 agent had no way to reach: `check_export`, the plan-before-apply half of an export on the
 `preview_schema_change` precedent; the four batch-composition tools above; the seven
 inference-connection tools, closing the Inference section's SDK-first parity; the four
 schema-draft tools above, because composing a schema across several calls needs somewhere to
-hold a class before it is finished; and the three deletions, which are advertised only on
-request. That is forty-eight offered by default and fifty-one in all. The parity rule means
+hold a class before it is finished; the three deletions, which are advertised only on
+request; and `pre_label_batch`, closing the last capability declared with no consumer. That
+is forty-nine offered by default and fifty-two in all. The parity rule means
 *evaluated*, not *implemented* — tool-selection accuracy degrades with count, so a tool ships
 only when an agent has a reason to reach for it that no neighbour covers.
 

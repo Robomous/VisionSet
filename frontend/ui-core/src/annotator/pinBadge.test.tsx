@@ -69,7 +69,8 @@ function answer(path: string, search: string): unknown {
       allowed_actions: batchActions("in_annotation"),
       promoted_asset_count: 0,
       parent_batch_id: null,
-      progress: { unannotated: 1, annotated: 0, skipped: 0, review_pending: 0, accepted: 0, total: 1 },
+      pre_label_run: null,
+      progress: { unannotated: 1, pre_labeled: 0, annotated: 0, skipped: 0, review_pending: 0, accepted: 0, total: 1 },
     };
   }
   if (path.endsWith("/schema/compare")) {

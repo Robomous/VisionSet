@@ -38,7 +38,7 @@ import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
 import { CapabilitySection, InferenceScreen, bytes } from "./InferenceScreen";
-import { sectionsOf } from "./inferenceSections";
+import { sectionsOf, type ConnectionSection } from "./inferenceSections";
 import { CONNECTION_POLL_MS, type Connection } from "../data/inferenceQueries";
 
 const API = "http://visionset.test";
@@ -446,14 +446,39 @@ it("describes an ability nothing consumes yet, and offers no way into it", async
   // Principle 9 from the other side. The missing half is the surface that would
   // ask, so there is nothing here somebody could press to get one — and an
   // invitation to configure a connection nothing can use is that same offer.
-  listing([connection({ setup_state: "ready", capabilities: ["point_suggest"] })]);
-  render(mount(<InferenceScreen />));
+  //
+  // Built directly rather than through a real capability: both named abilities
+  // now have a consumer (`point_suggest` the editor's suggest tool, `text_detect`
+  // pre-labeling), so the scenario this test protects — a described ability with
+  // nowhere to be used — has no live example left in `CAPABILITY_COPY`. What is
+  // still real is `CapabilitySection`'s own rendering of the `describe` kind, and
+  // that is what stays under test.
+  const nothingYet: ConnectionSection = {
+    key: "example_ability",
+    title: "An ability with no surface yet",
+    purpose: "Nothing in the app asks for this yet.",
+    empty: { kind: "describe", line: "Nothing here could be used yet." },
+    known: true,
+    connections: [],
+  };
 
-  const detect = await screen.findByTestId("section-text_detect");
-  expect(within(detect).getByTestId("section-nothing").textContent).toContain(
-    "nowhere to be used yet",
+  render(
+    mount(
+      <CapabilitySection
+        section={nothingYet}
+        filtering={false}
+        onAdd={() => undefined}
+        onEdit={() => undefined}
+        onDelete={() => undefined}
+      />,
+    ),
   );
-  expect(within(detect).queryAllByRole("button")).toEqual([]);
+
+  const section = await screen.findByTestId("section-example_ability");
+  expect(within(section).getByTestId("section-nothing").textContent).toContain(
+    "Nothing here could be used yet.",
+  );
+  expect(within(section).queryAllByRole("button")).toEqual([]);
 });
 
 it("shows a connection whose ability this build has no name for", async () => {

@@ -83,12 +83,14 @@ cannot validate the class, the geometry or the attributes either.
 
 ## Every call is all-or-nothing
 
-`add`, `update` and `delete` each take a sequence and run in one transaction. A payload with
-one bad box stores nothing at all: a half-labeled asset is not a state a caller can reach.
+`add`, `update`, `delete` and `enter_unreviewed` each take a sequence and run in one transaction.
+A payload with one bad box stores nothing at all: a half-labeled asset is not a state a caller
+can reach.
 
 Which is also why each publishes exactly one [`AnnotationsWritten`](events.md) after the commit,
 naming its operation - one per call, not one per box, because the call is the thing that
-happened.
+happened. `enter_unreviewed` names its operation `add`, the same as `add` itself - both are new
+rows landing, and the event does not carry which progress the write left behind.
 
 ## Attributes are keyed by exact name
 
@@ -167,6 +169,15 @@ connection - the model's identity is **copied** at write time, so deleting the c
 leaves the record intact. The gesture is in [ui.md](ui.md); what it proposes is in
 [inference.md](inference.md).
 
+**A second door writes the same provenance unattended.** `AnnotationService.enter_unreviewed` is
+the only other way a `provenance="model"` annotation enters a workspace, and the two doors differ
+on both ends. `add` accepts an asset that is `unannotated`, `annotated` or `pre_labeled` and
+either provenance, and lands new labels at `annotated` - taking over a `pre_labeled` asset the
+same way it labels an untouched one; `enter_unreviewed` accepts only an `unannotated` asset and
+only `provenance="model"`, and lands its labels at `pre_labeled`, because nothing has judged what
+it wrote. The gesture behind it is a batch-level action, not a per-asset one - see
+[batches.md](batches.md).
+
 ## `delete` has no `confirm=`
 
 The one exception to the rule in [projects.md](projects.md) and [batches.md](batches.md).
@@ -175,17 +186,22 @@ not the destruction of a lifecycle entity the way deleting a project or a batch 
 lifecycle gates are the guard instead: once the work closes - the batch, or just this job -
 nothing here can touch it at all.
 
-## Progress follows the annotations - two edges of it
+## Progress follows the annotations - five edges of it
 
 | Current | Has annotations | Becomes |
 | --- | --- | --- |
-| `unannotated` | yes | `annotated` |
+| `unannotated` | yes, judged (`add`) | `annotated` |
+| `unannotated` | yes, unjudged (`enter_unreviewed`) | `pre_labeled` |
 | `annotated` | no | `unannotated` |
+| `pre_labeled` | yes, edited by a person (`add`/`update`) | `annotated` |
+| `pre_labeled` | no | `unannotated` |
 | anything else | either | *unchanged* |
 
-`skipped`, `review_pending` and `accepted` are people's decisions, not consequences of a row
-existing, so annotations never move them. `JobService.mark` is the door for a decision; see
-[jobs.md](jobs.md).
+`skipped` and `accepted` are people's decisions, not consequences of a row existing, so
+annotations never move them - `JobService.mark` is the only door to either. `review_pending` is
+the same: a person reaches it only by submitting through `mark`, unaffected by any of the edges
+above - a model's unattended write lands at `pre_labeled`, not there. See [jobs.md](jobs.md) for
+the decision side and the paragraph above for the write side.
 
 The rule is `progress_after_annotating` in `kernel/domain/task.py` - pure, so a test can sweep
 it against `ASSET_PROGRESS_TRANSITIONS` rather than against prose - and `AnnotationService`

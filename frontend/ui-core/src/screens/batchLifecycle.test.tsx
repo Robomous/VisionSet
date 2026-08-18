@@ -88,8 +88,10 @@ const DRAFT: Batch = {
   allowed_actions: batchActions("draft"),
   promoted_asset_count: 0,
   parent_batch_id: null,
+  pre_label_run: null,
   progress: {
     unannotated: 48,
+    pre_labeled: 0,
     annotated: 0,
     skipped: 0,
     review_pending: 0,
@@ -169,6 +171,7 @@ describe("the approve dialog's refusals", () => {
         allowed_actions: batchActions("approved"),
         promoted_asset_count: 0,
         parent_batch_id: null,
+        pre_label_run: null,
       },
     });
     const closed = vi.fn();

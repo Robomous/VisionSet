@@ -284,12 +284,15 @@ same table and named sets this service enforces with - never a second copy of th
 | --- | --- | --- |
 | `draft` | `approve`, `edit_membership`, `delete` | `BATCH_TRANSITIONS`, `EDITABLE_STATES`, `DELETABLE_STATES` |
 | `approved` | `start`, `repin`, `delete` | `BATCH_TRANSITIONS`, `REPINNABLE_STATES`, `DELETABLE_STATES` |
-| `in_annotation` | `complete`, `repin`, `delete` | as above |
+| `in_annotation` | `complete`, `repin`, `pre_label`, `delete` | as above, plus `PRE_LABELABLE_STATES` |
 | `completed` | `promote`, `create_correction` | `PROMOTABLE_STATES`, `CORRECTABLE_STATES` |
 
-Five of the eight change no state at all and so appear in no row of `BATCH_TRANSITIONS` - which
+Six of the nine change no state at all and so appear in no row of `BATCH_TRANSITIONS` - which
 is why those sets are named rather than written inline. Promotion is the clearest: it moves
-assets into the trunk and leaves the batch exactly where it was.
+assets into the trunk and leaves the batch exactly where it was. `pre_label` is declared from
+the batch's state alone, on `complete`'s precedent - whether the local runtime is installed and
+whether the pinned schema has a class a detection can land on are not facts about the batch, and
+hiding the control on either ground would leave their refusals nowhere to be shown.
 
 **`delete` is declared last, and it is the one action that ends the batch rather than moving it
 along.** It was withdrawn in #331, when the rule and `BatchService.delete` were real but nothing
@@ -307,6 +310,53 @@ declaration and the refusal can never disagree.
 jobs, and a projection cannot read them, so it is declared wherever the transition table allows
 it and answers `BatchNotComplete` if the work is not done. The alternative - the same batch
 declaring differently depending on which endpoint answered - is worse than one honest caveat.
+
+## Pre-labeling
+
+A batch that is `in_annotation` can ask a text-prompt model to label its **untouched** assets -
+`unannotated`, and carrying no annotations at all. An asset already `pre_labeled`, `annotated`,
+`skipped`, `review_pending` or `accepted` is passed over, and so is an `unannotated` one that
+still carries a person's boxes from an earlier round that was skipped and then restored - progress
+alone does not prove untouched, since that sequence deletes nothing. Either way, a run never
+writes over what a person - or an earlier run - did.
+
+**An asset somebody starts working while a run is still going is passed over too, not fatal.** The
+batch is `in_annotation`, so that is the ordinary case rather than a race: the run skips it and
+keeps going, and the outcome's `assets_skipped` says how many.
+
+**The batch's pinned schema is the prompt.** The model is asked for each class the schema
+declares that a box can be written as - the same class names an annotator would use. A
+text-prompted detector answers with text decoded from spans over that prompt rather than a
+choice from the list, so an answer naming one of the classes, matched case-insensitively, is
+written under the schema's own spelling, and an answer naming none of them - a span that
+crossed the boundary between two phrases, most often - is discarded rather than guessed onto
+either half; the outcome's `regions_discarded` says how many. A schema with no such class is
+refused up front; see [inference.md](inference.md#what-a-connection-can-be-asked-for).
+
+**What lands enters at `pre_labeled`, never `annotated`.** Nobody judged it, so it arrives in its
+own editable state rather than claiming to be somebody's work - see
+[annotations.md](annotations.md#provenance-is-the-models-own-rule-not-the-services). It is not
+`review_pending` either: that state is a person's submission, waiting on a reviewer who cannot
+edit it in the meantime, and a detector's unreviewed guesses need correcting far more often than
+a person's finished work needs a second opinion. One asset is one transaction: its labels and its
+move to `pre_labeled` commit together, so a run that stops midway has either not touched an asset
+or fully entered it.
+
+**A second run picks up whatever is still untouched.** Nothing here is a one-shot: since the
+entry rule only ever writes onto `unannotated`, running it again after a partial run, an
+interruption, or a person handling some assets in the meantime costs nothing on what already
+landed. `visionset.inference.pre_label` is the one implementation an SDK caller, the API and MCP
+all run - see [background-jobs.md](background-jobs.md) for the `annotation.pre_label` job type
+this is queued as over HTTP, and [mcp.md](mcp.md) for the synchronous `pre_label_batch` tool.
+
+**The batch remembers its own run.** `BatchService.latest_pre_label_job` reads the queue for the
+most recent `annotation.pre_label` job naming this batch - live or settled - and projects it as
+`PreLabelRun`, on `ConnectionJob`'s reasoning: a run outlives the request that launched it, so a
+reload, a second tab or a run started at a terminal can only be shown by the batch itself saying
+so. Counted in assets, the unit this handler works in, and carrying the outcome
+`prelabel.py`'s `run` returns once the job has settled - `stopped_early`, `assets_labeled`,
+`regions_discarded` - so a client can tell a cancelled run from an untouched batch. Derived, never
+stored, and published on `BatchOut` as `pre_label_run`, `null` where none ever ran.
 
 ## What approval and completion announce
 
@@ -390,10 +440,12 @@ The [API](api.md) is this service with the curation half left off.
 ```
 GET  /projects/{id}/batches                          → 200 BatchPage
 GET  /batches/{id}                                   → 200 BatchOut, with per-state counts
+                                                        and the batch's own pre_label_run
 POST /batches/{id}/approve   { "partition": … }      → 200 BatchOut
 POST /batches/{id}/start                             → 200 BatchOut
 POST /batches/{id}/repin?allow_destructive=          → 200 BatchOut
 POST /batches/{id}/complete                          → 200 BatchOut
+POST /batches/{id}/pre-label { "connection_id": …, "minimum_confidence": … } → 202 BackgroundJobOut
 POST /batches/{id}/promote                           → 200 AssetPage, the assets that entered
 GET  /batches/{id}/jobs                              → 200 JobPage
 GET  /batches/{id}/assets?limit=&offset=             → 200 BatchAssetPage

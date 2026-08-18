@@ -98,6 +98,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (batches.get_batch, READS),
     (batches.approve_batch, WRITES),
     (batches.start_batch, WRITES),
+    (batches.pre_label_batch, WRITES),
     (batches.repin_batch, WRITES),
     (batches.list_batch_assets, READS),
     (batches.create_batch, WRITES),

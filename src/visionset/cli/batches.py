@@ -89,17 +89,24 @@ def batch_list(
     """List a project's batches with where their assets have got to."""
     with opened_workspace(workspace) as service:
         resolved = resolve_project(service, project)
-        batches = BatchService(service).list(resolved.id)
+        batch_service = BatchService(service)
+        batches = batch_service.list(resolved.id)
         jobs = JobService(service)
         # One progress read per batch, which is exactly what the REST listing
         # does. The counts are the point of the listing: a batch's name and state
         # do not say whether anybody has started on it.
         counts = [jobs.batch_progress(batch.id) for batch in batches]
         promoted = _promoted(service, resolved.id)
+        # One queue read for the whole listing rather than one per batch — the
+        # same cost model REST's listing uses.
+        pre_label_runs = batch_service.pre_label_runs()
     if json_out:
         document(
             wire.page(
-                [wire.batch(b, c, promoted=promoted) for b, c in zip(batches, counts, strict=True)]
+                [
+                    wire.batch(b, c, promoted=promoted, pre_labeled=pre_label_runs.get(b.id))
+                    for b, c in zip(batches, counts, strict=True)
+                ]
             )
         )
         return
@@ -188,14 +195,16 @@ def batch_complete(
     while any is outstanding.
     """
     with opened_workspace(workspace) as service:
-        completed = BatchService(service).complete(batch)
+        batches = BatchService(service)
+        completed = batches.complete(batch)
         counts = JobService(service).batch_progress(completed.id)
         promoted = _promoted(service, completed.project_id)
+        pre_labeled = batches.latest_pre_label_job(completed.id)
     _echo(
         completed.id,
         completed.state.value,
         json_out,
-        wire.batch(completed, counts, promoted=promoted),
+        wire.batch(completed, counts, promoted=promoted, pre_labeled=pre_labeled),
     )
 
 

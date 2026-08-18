@@ -37,6 +37,7 @@ const DATASET = "66666666-6666-4666-8666-666666666666";
 
 const NO_PROGRESS = {
   unannotated: 0,
+  pre_labeled: 0,
   annotated: 0,
   skipped: 0,
   review_pending: 0,
@@ -87,6 +88,7 @@ function answer(path: string): unknown {
       allowed_actions: batchActions("in_annotation"),
       promoted_asset_count: 0,
       parent_batch_id: null,
+      pre_label_run: null,
     };
   }
   if (path === `/batches/${BATCH}/assets`) return { items: [], total: 0 };

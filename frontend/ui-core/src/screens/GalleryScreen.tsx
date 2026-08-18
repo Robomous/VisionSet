@@ -59,9 +59,15 @@ import { FieldError, Input } from "../primitives/Input";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { Breadcrumb } from "../patterns/Breadcrumb";
 import { parentLabel } from "../patterns/parentLabel";
-import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
+import {
+  ApproveDialog,
+  BatchProgressBar,
+  CompleteBatchButton,
+  StartAnnotatingButton,
+} from "./BatchLifecycle";
 import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
 import { BatchOverflowMenu } from "./DeleteBatch";
+import { PreLabelButton } from "./PreLabelDialog";
 import { PromoteButton } from "./PromoteButton";
 import {
   ASSET_ACTION,
@@ -415,7 +421,7 @@ export function GalleryScreen({
     (one) => one.id === batch.data?.parent_batch_id,
   )?.name;
   const counts = batch.data === undefined
-    ? { all: total, unannotated: total, review: 0, done: 0 }
+    ? { all: total, unannotated: total, pre_labeled: 0, review: 0, done: 0 }
     : segmentCounts(batch.data.progress);
 
   return (
@@ -450,6 +456,7 @@ export function GalleryScreen({
         {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
         {...(onDeleted === undefined ? {} : { onDeleted })}
         onApprove={() => setApproving(true)}
+        onSegment={setSegment}
         {...(onOpenAsset === undefined
           ? {}
           : {
@@ -626,6 +633,7 @@ function BatchHeader({
   onOpenDataset,
   onOpenBatch,
   onDeleted,
+  onSegment,
 }: {
   readonly batch: Batch | undefined;
   readonly projectId: string;
@@ -645,6 +653,8 @@ function BatchHeader({
   readonly onStartAnnotating?: () => void;
   /** Where to go when this screen's subject stops existing. */
   readonly onDeleted?: () => void;
+  /** Where a settled pre-label run's "Edit these frames" sends the segment filter. */
+  readonly onSegment: (segment: Segment) => void;
 }): JSX.Element {
   const first = assets[0];
   const source = useSource(first?.source_id ?? undefined);
@@ -683,6 +693,8 @@ function BatchHeader({
    * behind it.
    */
   const editable = declaring(assets, ASSET_ACTION.annotate).length > 0;
+  /** The batch's own next step — `approved` declares `start` and nothing else here does. */
+  const startsAnnotation = declares(batch, BATCH_ACTION.start);
 
   const facts: string[] = [];
   if (source.data !== undefined) facts.push(source.data.name);
@@ -736,7 +748,17 @@ function BatchHeader({
               Approve batch
             </Button>
           )}
-          {onStartAnnotating !== undefined && openable && (
+          {/*
+            The batch's own next step, answered from `allowed_actions` rather
+            than from the per-frame door below: an `approved` batch has no
+            frame declaring `annotate` yet, so `editable` is false and the
+            fallback read `View frames` on work that had not started. `start`
+            is the only action this button performs, and it replaces the
+            per-frame door rather than sitting beside it — a batch cannot be
+            both "not started" and "has frames to view".
+          */}
+          {startsAnnotation && batch !== undefined && <StartAnnotatingButton batch={batch} />}
+          {!startsAnnotation && onStartAnnotating !== undefined && openable && (
             <Button
               variant="secondary"
               size="sm"
@@ -755,6 +777,14 @@ function BatchHeader({
               {!editable ? "View frames" : waiting ? "Start annotating" : "Open annotator"}
             </Button>
           )}
+          {/*
+            Offloading the first pass to a model, before anybody opens the
+            annotator at all — the surface `text_detect` was declared for and had
+            nowhere to run. Capability-gated on `pre_label`, which the kernel
+            declares from the batch's state alone (`in_annotation`), so this
+            control needs nothing beyond the batch itself.
+          */}
+          {batch !== undefined && <PreLabelButton batch={batch} onSegment={onSegment} />}
           {/*
             The closing move, on the screen the work is done from. Living only on
             the batch table one tab away is how a person settles forty-eight frames
@@ -951,7 +981,7 @@ function JobRow({
 // --- toolbar -----------------------------------------------------------------
 
 /**
- * The four segments and the density ladder.
+ * The five segments and the density ladder.
  *
  * The counts come off the **batch's** `ProgressCounts`, never off the loaded
  * pages: the pages are a window onto a collection that can hold fifty thousand,
@@ -974,7 +1004,7 @@ function Toolbar({
   /**
    * False for a draft. Every frame in one is in the same state — there is nothing
    * to filter *between* — and the counts behind the segments are the documented
-   * zeros a batch with no jobs reports, so four segments reading `(0)` over a full
+   * zeros a batch with no jobs reports, so five segments reading `(0)` over a full
    * grid is the screen contradicting itself.
    *
    * The density slider stays either way: how big the thumbnails are is a question
@@ -1302,14 +1332,22 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
 /**
  * What to do with a selection — and only what it can actually do.
  *
- * ## Two actions, because a skip is a decision and decisions get reversed
+ * ## Reversals, because a decision made in bulk gets corrected in bulk too
  *
  * Without `Restore`, `skipped → unannotated` — which the kernel calls "the
  * decision was reversed while the job is open" — has **no spelling anywhere in the
  * browser**, and a mis-aimed shift-click over forty frames is unrecoverable
  * without opening each one in the annotator.
  *
- * `Remove from batch` is the third, and it is **not** called `Delete frames`
+ * `Return to annotator` answers the same gap for `review_pending → annotated`,
+ * which only started arriving in bulk once pre-labeling could put forty-eight
+ * frames into `review_pending` in one action. It is named for the act rather
+ * than the edge — `capabilities.py`'s own reasoning: "back to annotated
+ * describes the table, return to annotator describes the act" — and it never
+ * widens which progress a bulk action can *reach*; it only adds the one edge
+ * the wire already declared and the gallery could not yet ask for.
+ *
+ * `Remove from batch` is the fourth, and it is **not** called `Delete frames`
  * anywhere — control, dialog or report. "Delete" is the wrong word by exactly the
  * amount the confirmation would have to un-teach: this removes membership, and the
  * frame stays in its project, keeps its annotations and stays in every other batch
@@ -1392,6 +1430,7 @@ function BulkBar({
 
   const skippable = targets(ASSET_ACTION.skip);
   const restorable = targets(ASSET_ACTION.restore);
+  const returnable = targets(ASSET_ACTION.returnToAnnotator);
 
   /**
    * Why nothing here can be pressed, when nothing can.
@@ -1469,6 +1508,24 @@ function BulkBar({
       </Button>
 
       {/*
+        `review_pending → annotated`, the same shape as `Restore` above and the
+        same reason: pre-labeling can put forty-eight frames into
+        `review_pending` in one action, and until now the only way back was
+        `return_to_annotator` pressed one frame at a time in the annotator.
+      */}
+      <Button
+        variant="secondary"
+        size="sm"
+        data-testid="bulk-return"
+        disabled={returnable.length === 0 || bulk.isPending}
+        {...(withheld === null ? {} : { title: withheld })}
+        onClick={() => bulk.mutate({ targets: returnable, progress: "annotated" })}
+      >
+        <Undo2 className="size-4" aria-hidden="true" />
+        {bulk.isPending ? "Working…" : `Return to annotator (${returnable.length})`}
+      </Button>
+
+      {/*
         Batch-level, so it is enabled or disabled for the whole selection rather
         than counting targets like the two above. Disabled-with-reason rather
         than hidden: taking frames out of a batch is meaningful on this screen in
@@ -1528,15 +1585,14 @@ function BulkBar({
       {/*
         Said once, and only when it is the whole story — but which story it is
         depends on whether the *batch* is closed or the *frames* are settled.
-        `accepted` has no exit at all and `review_pending` leaves only towards a
-        reviewer, so a selection of those in an open batch is a selection this bar
-        genuinely cannot act on. A completed batch is a different sentence with a
-        different remedy, and running them together is what made a closed batch
-        read as a broken bar.
+        `accepted` has no exit at all, so a selection of only `accepted` frames
+        in an open batch is a selection this bar genuinely cannot act on. A
+        completed batch is a different sentence with a different remedy, and
+        running them together is what made a closed batch read as a broken bar.
       */}
-      {skippable.length === 0 && restorable.length === 0 && (
+      {skippable.length === 0 && restorable.length === 0 && returnable.length === 0 && (
         <span className="text-meta text-muted-foreground" data-testid="bulk-unavailable">
-          {withheld ?? "Nothing here can be skipped or restored."}
+          {withheld ?? "Nothing here can be skipped, restored or returned to the annotator."}
           {/*
             The sentence says "corrections happen in a correction batch" and
             points at the header's control, and the selection this bar is

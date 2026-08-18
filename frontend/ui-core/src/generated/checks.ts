@@ -64,7 +64,7 @@ export const checkAssetPage: Check<Schemas["AssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkAssetOut)], "total": [true, isInteger] } as const);
 
 export const checkAssetProgress: Check<Schemas["AssetProgress"]> =
-  /*#__PURE__*/ oneOf(["unannotated", "annotated", "skipped", "review_pending", "accepted"] as const);
+  /*#__PURE__*/ oneOf(["unannotated", "pre_labeled", "annotated", "skipped", "review_pending", "accepted"] as const);
 
 export const checkAssetProgressOut: Check<Schemas["AssetProgressOut"]> =
   /*#__PURE__*/ object({ "asset_id": [true, isString], "progress": [true, checkAssetProgress] } as const);
@@ -94,16 +94,19 @@ export const checkBatchAssetPage: Check<Schemas["BatchAssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchAssetOut)], "total": [true, isInteger] } as const);
 
 export const checkBatchAction: Check<Schemas["BatchAction"]> =
-  /*#__PURE__*/ openOneOf(["approve", "start", "complete", "repin", "promote", "create_correction", "edit_membership", "delete"] as const);
+  /*#__PURE__*/ openOneOf(["approve", "start", "complete", "repin", "promote", "create_correction", "pre_label", "edit_membership", "delete"] as const);
 
 export const checkBatchState: Check<Schemas["BatchState"]> =
   /*#__PURE__*/ oneOf(["draft", "approved", "in_annotation", "completed"] as const);
 
+export const checkPreLabelRunOut: Check<Schemas["PreLabelRunOut"]> =
+  /*#__PURE__*/ object({ "assets_labeled": [true, either([isInteger, isNull] as const)], "assets_processed": [true, isInteger], "assets_total": [true, either([isInteger, isNull] as const)], "error": [true, either([isString, isNull] as const)], "job_id": [true, isString], "regions_discarded": [true, either([isInteger, isNull] as const)], "state": [true, checkBackgroundJobState], "stopped_early": [true, either([isBoolean, isNull] as const)] } as const);
+
 export const checkProgressCounts: Check<Schemas["ProgressCounts"]> =
-  /*#__PURE__*/ object({ "accepted": [true, isInteger], "annotated": [true, isInteger], "review_pending": [true, isInteger], "skipped": [true, isInteger], "total": [true, isInteger], "unannotated": [true, isInteger] } as const);
+  /*#__PURE__*/ object({ "accepted": [true, isInteger], "annotated": [true, isInteger], "pre_labeled": [true, isInteger], "review_pending": [true, isInteger], "skipped": [true, isInteger], "total": [true, isInteger], "unannotated": [true, isInteger] } as const);
 
 export const checkBatchOut: Check<Schemas["BatchOut"]> =
-  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkBatchAction)], "asset_count": [true, isInteger], "id": [true, isString], "name": [true, isString], "parent_batch_id": [true, either([isString, isNull] as const)], "progress": [true, checkProgressCounts], "project_id": [true, isString], "promoted_asset_count": [true, isInteger], "schema_version": [true, either([isInteger, isNull] as const)], "state": [true, checkBatchState] } as const);
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkBatchAction)], "asset_count": [true, isInteger], "id": [true, isString], "name": [true, isString], "parent_batch_id": [true, either([isString, isNull] as const)], "pre_label_run": [true, either([checkPreLabelRunOut, isNull] as const)], "progress": [true, checkProgressCounts], "project_id": [true, isString], "promoted_asset_count": [true, isInteger], "schema_version": [true, either([isInteger, isNull] as const)], "state": [true, checkBatchState] } as const);
 
 export const checkBatchMembershipOut: Check<Schemas["BatchMembershipOut"]> =
   /*#__PURE__*/ object({ "batch": [true, checkBatchOut], "changed": [true, arrayOf(isString)] } as const);
@@ -408,6 +411,7 @@ export const checkListReleases = checkReleasePage;
 export const checkListSchemaVersions = checkSchemaVersionPage;
 export const checkListSources = checkSourcePage;
 export const checkNextPendingAssets = checkAssetPage;
+export const checkPreLabelBatch = checkBackgroundJobOut;
 export const checkPreviewSchemaChange = checkSchemaChangePreviewOut;
 export const checkPromoteBatch = checkAssetPage;
 export const checkPublishRelease = checkReleaseOut;

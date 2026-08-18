@@ -44,7 +44,13 @@ const SCHEMA = {
   ],
 };
 
-type Progress = "unannotated" | "annotated" | "skipped" | "review_pending" | "accepted";
+type Progress =
+  | "unannotated"
+  | "pre_labeled"
+  | "annotated"
+  | "skipped"
+  | "review_pending"
+  | "accepted";
 
 const sent: { method: string; path: string; body: string }[] = [];
 let progress: Progress = "unannotated";
@@ -66,6 +72,7 @@ let assetCount = 1;
  */
 let jobCounts: {
   unannotated: number;
+  pre_labeled: number;
   annotated: number;
   skipped: number;
   review_pending: number;
@@ -90,6 +97,7 @@ function assetId(index: number): string {
 /** Every progress the kernel declares, swept rather than sampled. */
 const PROGRESS_STATES = [
   "unannotated",
+  "pre_labeled",
   "annotated",
   "skipped",
   "review_pending",
@@ -125,8 +133,10 @@ function answer(path: string): unknown {
       allowed_actions: batchActions(closedBatch ? "completed" : "in_annotation"),
       promoted_asset_count: 0,
       parent_batch_id: null,
+      pre_label_run: null,
       progress: {
         unannotated: 1,
+        pre_labeled: 0,
         annotated: 0,
         skipped: 0,
         review_pending: 0,
@@ -544,7 +554,7 @@ describe("the flow verb", () => {
   it("names the blocker with its count, from the same progress the readout shows (#427)", async () => {
     assetCount = 1;
     jobSettled = false;
-    jobCounts = { unannotated: 2, annotated: 1, skipped: 0, review_pending: 1, accepted: 0, total: 4 };
+    jobCounts = { unannotated: 2, pre_labeled: 0, annotated: 1, skipped: 0, review_pending: 1, accepted: 0, total: 4 };
     await open();
 
     // `outstandingWork`: unannotated + review_pending — the two states whose
@@ -558,7 +568,7 @@ describe("the flow verb", () => {
   it("speaks singular for a single unresolved frame", async () => {
     assetCount = 1;
     jobSettled = false;
-    jobCounts = { unannotated: 1, annotated: 3, skipped: 0, review_pending: 0, accepted: 0, total: 4 };
+    jobCounts = { unannotated: 1, pre_labeled: 0, annotated: 3, skipped: 0, review_pending: 0, accepted: 0, total: 4 };
     await open();
 
     await userEvent.hover(screen.getByTestId("finish-job"));
@@ -572,7 +582,7 @@ describe("the flow verb", () => {
     assetCount = 1;
     jobSettled = true;
     progress = "annotated";
-    jobCounts = { unannotated: 0, annotated: 4, skipped: 0, review_pending: 0, accepted: 0, total: 4 };
+    jobCounts = { unannotated: 0, pre_labeled: 0, annotated: 4, skipped: 0, review_pending: 0, accepted: 0, total: 4 };
     await open();
 
     const finish = screen.getByTestId("finish-job");
@@ -789,7 +799,7 @@ describe("the frame's state, in prose", () => {
     const state = screen.getByTestId("asset-progress");
     expect(state.getAttribute("data-progress")).toBe("annotated");
     // `PROGRESS_LABEL`'s own wording, which is what makes the microtext read
-    // `● annotated · Saved` rather than a second spelling of the five states.
+    // `● annotated · Saved` rather than a second spelling of the six states.
     expect(state.textContent).toContain("annotated");
   });
 
@@ -896,5 +906,86 @@ describe("principle 10 — no exit loses work", () => {
 
     expect(screen.queryByTestId("save")).toBeNull();
     expect(screen.getByTestId("save-state")).toBeDefined();
+  });
+});
+
+describe("the review_pending read-only notice names its remedy", () => {
+  it("names Return to annotator on the banner while the batch is open", async () => {
+    progress = "review_pending";
+    await open();
+
+    // `settledBecause` for `review_pending`, read off the general read-only
+    // banner — the same surface `accepted` and `unannotated`-elsewhere use, and
+    // the one `skipped` alone is exempted from.
+    const said = screen.getByTestId("readonly-banner");
+    expect(said.textContent).toMatch(/return it to the annotator/i);
+
+    // The control the sentence names is real, on this toolbar, gated on the
+    // same wire declaration.
+    await userEvent.click(screen.getByTestId("more-actions"));
+    expect(await screen.findByTestId("return-to-annotator")).toBeDefined();
+  });
+
+  it("withholds the sentence once the batch is closed, and the control with it", async () => {
+    // `return_to_annotator` is withheld by the wire once the batch stops being
+    // `in_annotation` — `assetActions` answers `[]` for every progress there —
+    // so the closed-batch sentence takes over rather than naming a move that
+    // no longer exists.
+    progress = "review_pending";
+    closedBatch = true;
+    await open();
+
+    const said = screen.getByTestId("readonly-banner");
+    expect(said.textContent).not.toMatch(/return it to the annotator/i);
+    expect(said.textContent).toContain("Viewing only");
+
+    await userEvent.click(screen.getByTestId("more-actions"));
+    expect(screen.queryByTestId("return-to-annotator")).toBeNull();
+  });
+
+  it("sends review_pending → annotated when the toolbar's own control is pressed", async () => {
+    progress = "review_pending";
+    await open();
+
+    await userEvent.click(screen.getByTestId("more-actions"));
+    await userEvent.click(await screen.findByTestId("return-to-annotator"));
+
+    await waitFor(() =>
+      expect(sent.some((request) => request.path.endsWith("/progress"))).toBe(true),
+    );
+    expect(sent.find((request) => request.path.endsWith("/progress"))?.body).toContain(
+      "annotated",
+    );
+  });
+});
+
+describe("a pre_labeled frame opens editable, not viewed", () => {
+  it("renders no read-only banner over a model's unjudged guess", async () => {
+    // `pre_labeled` is in `WRITABLE_PROGRESS`, so the wire declares `annotate`
+    // on it exactly as it does for `unannotated` — this is the fix for the
+    // defect a user hit, proved at the surface that showed it.
+    progress = "pre_labeled";
+    annotated = true;
+    await open();
+
+    expect(screen.queryByTestId("readonly-banner")).toBeNull();
+  });
+
+  it("leaves the delete control live, unlike a settled frame's", async () => {
+    // Asserted on the property rather than by clicking and reading nothing
+    // back — a disabled button silently no-ops a click.
+    progress = "pre_labeled";
+    annotated = true;
+    await open();
+
+    expect(screen.getByTestId("object-delete-0")).toHaveProperty("disabled", false);
+  });
+
+  it("still offers the classes region a settled frame withholds", async () => {
+    progress = "pre_labeled";
+    annotated = true;
+    await open();
+
+    expect(screen.getByTestId("class-region")).toBeDefined();
   });
 });

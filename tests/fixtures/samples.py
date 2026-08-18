@@ -247,10 +247,11 @@ ASSET = Asset(
 
 COUNTS = {
     AssetProgress.UNANNOTATED: 1,
-    AssetProgress.ANNOTATED: 2,
-    AssetProgress.SKIPPED: 3,
-    AssetProgress.REVIEW_PENDING: 4,
-    AssetProgress.ACCEPTED: 5,
+    AssetProgress.PRE_LABELED: 2,
+    AssetProgress.ANNOTATED: 3,
+    AssetProgress.SKIPPED: 4,
+    AssetProgress.REVIEW_PENDING: 5,
+    AssetProgress.ACCEPTED: 6,
 }
 
 # Settled progress, so ``allowed_actions`` comes out non-empty: an in-progress job

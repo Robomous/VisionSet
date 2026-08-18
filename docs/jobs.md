@@ -41,7 +41,8 @@ Underneath it, each asset moves through `ASSET_PROGRESS_TRANSITIONS`:
 
 | From | Can become | Why |
 | --- | --- | --- |
-| `unannotated` | `annotated`, `skipped` | It was labeled, or decided against. |
+| `unannotated` | `annotated`, `skipped`, `pre_labeled` | It was labeled, decided against, or a model wrote unjudged labels onto it. |
+| `pre_labeled` | `annotated`, `unannotated`, `skipped` | A person's edit took it over; its last label was deleted; it was decided against. |
 | `annotated` | `unannotated`, `skipped`, `review_pending` | Its last annotation was deleted; it was decided against after all; it was submitted. |
 | `skipped` | `unannotated` | The decision was reversed while the job is open. |
 | `review_pending` | `annotated`, `accepted` | A reviewer sent it back, or took it. |
@@ -49,24 +50,29 @@ Underneath it, each asset moves through `ASSET_PROGRESS_TRANSITIONS`:
 
 Anything outside the table raises `InvalidTransition`, naming what the asset *can* become.
 
-### Two of those edges are derived from the annotations
+### Five of those edges are derived from the annotations
 
 Progress is still deliberately not the annotations - the paragraph at the top of this page
-holds. The two just share one derived edge each way: writing the first annotation on an asset
-moves it `unannotated → annotated`, and deleting its last one moves it back.
-`AnnotationService` does that itself, in the same transaction as the write, so no caller has to
-remember to `mark` after labeling.
+holds. Five edges above are still consequences of a write, not of `mark`: writing the first
+annotation on an untouched asset moves it `unannotated → annotated`, and deleting its last one
+moves it back - the ordinary pair, made by `AnnotationService.add`, `update` and `delete`. A
+third, made only by `AnnotationService.enter_unreviewed`, moves an `unannotated` asset straight to
+`pre_labeled` when a model's labels land on it unattended. The other two are the same shape one
+state over: a person's first edit on a `pre_labeled` frame takes it over, moving it to
+`annotated`, and deleting its last label returns it to `unannotated` - both made by the same
+`add`, `update` and `delete`, not a new door. All five commit in the same transaction as the
+write that causes them, so no caller has to remember to `mark` after labeling.
 
-The other three states are exactly the ones no annotation can justify. `skipped` means somebody
-chose not to label this; `review_pending` means somebody submitted it; `accepted` means a
-reviewer took it. A box being drawn or erased contradicts none of them, so `mark` stays the only
-door to a decision. The rule is `progress_after_annotating` in `kernel/domain/task.py`; see
-[annotations.md](annotations.md).
+The other three states are the ones no annotation write can justify by itself. `skipped` means
+somebody chose not to label this; `accepted` means a reviewer took it; `review_pending` means a
+person submitted this for review. A box being drawn or erased contradicts none of them, so `mark`
+stays their only door. The rule underneath every write-derived edge is `progress_after_annotating`
+in `kernel/domain/task.py`; see [annotations.md](annotations.md).
 
 ### ...and the other three refuse the write outright
 
 ```python
-WRITABLE_PROGRESS  # {unannotated, annotated}
+WRITABLE_PROGRESS  # {unannotated, annotated, pre_labeled}
 ```
 
 `AnnotationService.add`, `update` and `delete` all consult this, beside the batch gate. An asset
@@ -94,9 +100,10 @@ finished job is *inside a batch that is still open*. The batch gate therefore ha
 about it, and until this existed a completed job went on accepting labels and progress moves: the
 word "finished" describing nothing, and work landing where nobody would look for it.
 
-`AnnotationService.add`, `update` and `delete` consult it, and so does `JobService.mark`; all four
-answer `JobFinished` (409 `JOB_FINISHED`). Reads are untouched - `AnnotationService.for_asset`
-passes no gate but membership, because a viewer over finished work has to be able to show it.
+`AnnotationService.add`, `enter_unreviewed`, `update` and `delete` consult it, and so does
+`JobService.mark`; all five answer `JobFinished` (409 `JOB_FINISHED`). Reads are untouched -
+`AnnotationService.for_asset` passes no gate but membership, because a viewer over finished work
+has to be able to show it.
 
 The remedy is not a move. `JOB_TRANSITIONS` gives `completed` no way back, by the same
 forward-only argument a completed batch is immutable by, so correcting finished work means a
@@ -178,6 +185,7 @@ re-deriving the rules from `JOB_TRANSITIONS` would drop. `complete` is refined b
 | Progress | Declares |
 | --- | --- |
 | `unannotated` | `annotate`, `skip` |
+| `pre_labeled` | `annotate`, `skip` |
 | `annotated` | `annotate`, `skip`, `submit_for_review` |
 | `skipped` | `restore` |
 | `review_pending` | `accept`, `return_to_annotator` |
@@ -191,10 +199,15 @@ job empties the column the same way**, inside a batch that is still open: `asset
 
 `annotate` is not a progress move: it is the right to add, change or remove labels, which is
 `WRITABLE_PROGRESS` and the two lifecycle gates together. The five others each name one edge of
-`ASSET_PROGRESS_TRANSITIONS`. Two legal edges deliberately have **no** name - `unannotated ↔
-annotated`, the pair an annotation appearing or disappearing makes on its own. They are the
-consequence of `annotate`, which is declared; offering either as its own control would mean
-changing the marker while the labels stay put.
+`ASSET_PROGRESS_TRANSITIONS`. Five legal edges deliberately have **no** name. The first two are
+`unannotated ↔ annotated`, the pair an annotation appearing or disappearing makes on its own. The
+other three are the same shape one state over: `unannotated → pre_labeled` is what a model's
+unattended write makes in the same transaction as its labels, `pre_labeled → annotated` is a
+person's edit taking the frame over, and `pre_labeled → unannotated` is that edit deleting the
+model's last label. Nobody clicks any of the five: four of them are the consequence of `annotate`,
+which is declared on both `unannotated` and `pre_labeled`, and the entry edge into `pre_labeled`
+is the consequence of a batch-level pre-label action rather than a per-asset one. Offering any of
+them as its own control would mean changing the marker while the labels stay put.
 
 ## Settled, not terminal
 

@@ -139,14 +139,16 @@ says what may be done to it. A second copy of those declarations here would be t
 hand-mirrored table the capabilities contract forbids, one layer up.
 
 **The resume target declares its own kind, and the screen renders it rather than
-working it out.** `annotate` means `next_asset_id` is a frame nobody has labeled,
-`review` means it is one awaiting a reviewer, and `open` means the batch is settled
-throughout and there is no frame at all. The card's label follows - *Continue
-annotating*, *Review annotations*, *Open batch* - and so does its destination: the
-first two open the editor, the third the gallery. The two editor cases are the same
-route because a `review_pending` frame opens read-only with the review actions on it,
-which is the position [the annotator section below](#review-is-a-flow-not-an-api-only-edge)
-already takes.
+working it out.** `annotate` means `next_asset_id` is a frame nobody has judged -
+unlabeled or carrying only a model's unreviewed guess, either way a frame the
+annotator can write to - `review` means it is one awaiting a reviewer, and `open`
+means the batch is settled throughout and there is no frame at all. The card's
+label follows - *Continue annotating*, *Review annotations*, *Open batch* - and so
+does its destination: the first two open the editor, the third the gallery. The two
+editor cases are the same route because a `review_pending` frame opens read-only
+with the review actions on it, which is the position
+[the annotator section below](#review-is-a-flow-not-an-api-only-edge) already
+takes.
 
 The order between the three is resolved on the server. It is a judgment about what
 somebody should do next rather than a fact the rest of the response restates, so a
@@ -300,11 +302,13 @@ that undoes that, which is on the same toolbar. `accepted` has no exit at all,
 which is why correcting accepted work needs a correction batch rather than a
 progress move, and the banner says that instead.
 
-**The job counter reads "past `unannotated`", not the `annotated` count.** A
-readout that counted only `annotated` goes *backwards* when a frame is accepted,
-which is the one thing a progress readout must never do. It had that bug, and it
-never bit because nothing could produce `accepted`; the real-server cycle run
-caught it the moment the review moves landed, at 3 of 3 becoming 2 of 3.
+**The job counter reads "past `unannotated` and `pre_labeled`", not the `annotated`
+count.** A readout that counted only `annotated` goes *backwards* when a frame is
+accepted, which is the one thing a progress readout must never do. It had that
+bug, and it never bit because nothing could produce `accepted`; the real-server
+cycle run caught it the moment the review moves landed, at 3 of 3 becoming 2 of 3.
+A model's unreviewed guess is excluded from the count the same way `unannotated`
+is, for the same reason: nobody has made a decision about the frame yet.
 
 #### Read-only is a mode, not an accident
 
@@ -370,8 +374,8 @@ it from a refusal.
 
 #### Reversing a skip is an action, never a side effect of drawing
 
-`progress_after_annotating` moves an asset only `unannotated ↔ annotated`, because
-`skipped` is a person's decision and drawing a box does not contradict a decision.
+`progress_after_annotating` never moves an asset to or from `skipped`, because
+that is a person's decision and drawing a box does not contradict a decision.
 That rule is right, and until #187 the browser simply never offered the one exit
 `ASSET_PROGRESS_TRANSITIONS` allows - so a user could label a skipped asset, watch
 the save succeed, and lose the work at promotion, since `PROMOTABLE_PROGRESS`
@@ -723,6 +727,34 @@ mounts - a count of *jobs* would need a second request the Batches row never mak
 and a dialog that said "3 jobs" on one screen and nothing on the other would be two
 dialogs. From the gallery it navigates to the Batches tab, replacing history: the
 screen's whole subject has stopped existing.
+
+#### Pre-labeling: the surface `text_detect` was declared for
+
+Gated on `pre_label` in the batch's own `allowed_actions`, never on the batch's state read
+locally - the same rule every control on this screen follows. It is the reason the
+capability stopped being an orphan: a connection could declare `text_detect` from the day the
+Inference dashboard shipped a section for it, and nothing in the app ever asked one until this
+control existed to.
+
+The model select is narrowed to connections whose `capabilities` include `text_detect`, read
+off the wire rather than guessed from a name or a model id, on `inferenceQueries.ts`'s standing
+rule. The confidence field defaults to `0.35` and is labelled **prompt affinity**, deliberately
+never "confidence" or "accuracy": a text-prompt model scores how well a region matches the words
+it was asked for, a point-prompt model's suggest tool scores mask quality against a click, and
+the two run on different scales - 37-78% observed for the first, 68-98% for the second - so a
+bare percentage next to a shape would not say which one it was on. The dialog states how many
+of the batch's assets are untouched, because that is what the run will actually consider - an
+asset already pre-labeled, annotated, skipped, awaiting review or accepted is passed over, and a
+label that lands enters at `pre_labeled`, never `annotated`, so an annotator corrects a machine's
+guess rather than inheriting it silently as their own work.
+
+The route answers `202` with a background job, on the export and weight-download routes'
+contract, and the dialog polls it exactly as `ExportDialog` polls an export: nothing here waits
+for the run to finish, but nothing closes over an outcome unseen either. Every refusal the route
+can produce reaches the dialog as prose - a batch that stopped being `in_annotation` under the
+press, a connection whose model answers places rather than words, a pinned schema with no class
+a detection can be written as, and a local runtime that is not installed, whose message carries
+the exact `pip install` to run.
 
 ### The ingest flow, and the order the domain forces
 

@@ -45,6 +45,7 @@ from starlette.responses import JSONResponse, Response
 
 from visionset.kernel import (
     AnnotationNotFound,
+    AnnotationNotFromModel,
     AssetNotFound,
     AssetNotInBatch,
     AssetNotInJob,
@@ -101,6 +102,7 @@ from visionset.kernel import (
     ReleaseTagTaken,
     SchemaChangeWouldOrphan,
     SchemaDraftNotFound,
+    SchemaHasNoDetectableClass,
     SchemaNotFound,
     SchemaVersionConflict,
     SourceNotFound,
@@ -263,6 +265,10 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # move. What refuses it is the asset's state, and the remedy is to change that
     # state and resubmit — which is exactly what 409 is for here.
     AssetNotWritable: ErrorRule(409, "ASSET_NOT_WRITABLE"),
+    # 422 rather than 409: this is a malformed payload rather than a resource in
+    # the wrong state. A hand-made label sent through this door is never made
+    # legal by a later state change, so there is nothing here to resubmit.
+    AnnotationNotFromModel: ErrorRule(422, "ANNOTATION_NOT_FROM_MODEL"),
     # The job-level sibling of the two above, and 409 for their reason. Its
     # remedy is the one that is not a retry: nothing re-opens a completed job, so
     # a client that reads this code offers a correction batch rather than a
@@ -275,6 +281,10 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     ConfirmationRequired: ErrorRule(409, "CONFIRMATION_REQUIRED"),
     DestructiveSchemaChange: ErrorRule(409, "DESTRUCTIVE_SCHEMA_CHANGE"),
     SchemaChangeWouldOrphan: ErrorRule(409, "SCHEMA_CHANGE_WOULD_ORPHAN"),
+    # The batch is well formed to pre-label; the pinned schema is what refuses —
+    # no class it declares is one a detection can be written as. The remedy is to
+    # pin a schema with a detectable class and resubmit, which is what 409 is for.
+    SchemaHasNoDetectableClass: ErrorRule(409, "SCHEMA_HAS_NO_DETECTABLE_CLASS"),
     # Not a 422: the request body is valid, and the defect is in state that was
     # written and stored long before — a NaN coordinate only surfaces when a
     # release tries to freeze it. The remedy is "fix the annotation and publish

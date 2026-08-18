@@ -71,8 +71,10 @@ beforeEach(() => {
               allowed_actions: batchActions("in_annotation"),
               promoted_asset_count: 0,
               parent_batch_id: null,
+              pre_label_run: null,
               progress: {
                 unannotated: 1,
+                pre_labeled: 0,
                 annotated: 0,
                 skipped: 0,
                 review_pending: 0,

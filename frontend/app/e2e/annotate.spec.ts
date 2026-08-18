@@ -206,8 +206,10 @@ async function serveApi(
     allowed_actions: batchActions(lifecycle.batch),
     promoted_asset_count: 0,
     parent_batch_id: null,
+    pre_label_run: null,
     progress: {
       unannotated: 2,
+      pre_labeled: 0,
       annotated: 0,
       skipped: 0,
       review_pending: 0,
@@ -334,6 +336,7 @@ async function serveApi(
       return route.fulfill({
         json: {
           unannotated: count("unannotated"),
+          pre_labeled: count("pre_labeled"),
           annotated: count("annotated"),
           skipped: count("skipped"),
           review_pending: count("review_pending"),

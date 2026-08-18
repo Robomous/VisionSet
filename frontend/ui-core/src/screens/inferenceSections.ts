@@ -98,11 +98,12 @@ const CAPABILITY_COPY: Record<KnownMembers["ModelCapability"], CapabilityCopy> =
   text_detect: {
     title: "Find objects from a description",
     purpose:
-      "A text-prompt model is told in words what to look for. Nothing in the app asks one yet — the surface that would, labeling a batch before anybody opens it, is still being designed.",
+      "A batch's schema becomes the prompt: the model is asked for each class a box alone can satisfy, and what it finds enters the batch awaiting review.",
     empty: {
-      // The destination is pre-labeling a batch, cf. #425.
-      kind: "describe",
-      line: "No connection answers text prompts, and one configured here would have nowhere to be used yet.",
+      kind: "invite",
+      title: "Add a connection that answers words",
+      body: "A text-prompt model labels a batch before anybody opens it, so an annotator reviews a draft instead of starting from an empty frame.",
+      cta: "Add a text-prompt connection",
     },
   },
 };

@@ -46,6 +46,7 @@ from uuid import UUID
 from pydantic import Field
 
 from visionset import wire
+from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, pre_label
 from visionset.kernel.domain import BySize, Partition
 from visionset.kernel.services import (
     BatchService,
@@ -54,7 +55,13 @@ from visionset.kernel.services import (
     ProjectService,
     WorkspaceService,
 )
-from visionset.mcp._resolve import ProjectRef, identifier, resolve_project
+from visionset.mcp._resolve import (
+    ConnectionRef,
+    ProjectRef,
+    identifier,
+    resolve_connection,
+    resolve_project,
+)
 from visionset.mcp._workspace import opened_workspace
 
 BatchRef = Annotated[str, Field(description="The batch, by id. Batch names are not unique.")]
@@ -76,13 +83,18 @@ def _promoted(workspace: WorkspaceService, project_id: UUID) -> frozenset[UUID]:
 
 
 def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any]:
-    """The batch, its progress and its jobs — the shape three tools return."""
+    """The batch, its progress and its jobs — the shape most tools return."""
     batches = BatchService(workspace)
     batch = batches.get(batch_id)
     counts = JobService(workspace).batch_progress(batch.id)
     jobs = batches.jobs(batch.id)
     return {
-        **wire.batch(batch, counts, promoted=_promoted(workspace, batch.project_id)),
+        **wire.batch(
+            batch,
+            counts,
+            promoted=_promoted(workspace, batch.project_id),
+            pre_labeled=batches.latest_pre_label_job(batch.id),
+        ),
         "jobs": [wire.job(j, batch_id=batch.id, batch_state=batch.state) for j in jobs],
     }
 
@@ -185,12 +197,18 @@ def list_batches(project: ProjectRef) -> dict[str, Any]:
     """
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)
-        found = BatchService(workspace).list(resolved.id)
+        batches = BatchService(workspace)
+        found = batches.list(resolved.id)
         jobs = JobService(workspace)
         counts = [jobs.batch_progress(b.id) for b in found]
         promoted = _promoted(workspace, resolved.id)
+        # One queue read for the whole listing rather than one per batch.
+        pre_label_runs = batches.pre_label_runs()
     return wire.page(
-        [wire.batch(b, c, promoted=promoted) for b, c in zip(found, counts, strict=True)],
+        [
+            wire.batch(b, c, promoted=promoted, pre_labeled=pre_label_runs.get(b.id))
+            for b, c in zip(found, counts, strict=True)
+        ],
     )
 
 
@@ -247,6 +265,84 @@ def start_batch(batch_id: BatchRef) -> dict[str, Any]:
     with opened_workspace() as workspace:
         started = BatchService(workspace).start(identifier(batch_id, what="batch_id"))
         return _batch_payload(workspace, started.id)
+
+
+def pre_label_batch(
+    batch_id: BatchRef,
+    connection: ConnectionRef,
+    minimum_confidence: Annotated[
+        float,
+        Field(
+            ge=0.0,
+            le=1.0,
+            description=(
+                "The floor a prediction must clear to be written, in [0, 1]. Tuned for a "
+                "text-prompt model's prompt-affinity score — a point-prompt model's mask "
+                "quality is a different scale and does not share a threshold with this."
+            ),
+        ),
+    ] = DEFAULT_MINIMUM_CONFIDENCE,
+) -> dict[str, Any]:
+    """Ask a model to label every untouched asset in a batch. This blocks until it is done.
+
+    `download_connection_weights`'s pattern, not a shortcut: a stdio server has
+    no background worker, so a tool that queued this work would answer with a
+    job id nothing was ever going to claim — the API queues it instead, because
+    the API has a dispatcher. This call runs one forward pass per untouched
+    asset, so the wait is roughly that many times one image's inference time;
+    for a batch of any size, expect minutes.
+
+    **Interrupting is safe.** A run only ever writes to an asset nothing has
+    touched, and commits one asset's labels in the same transaction as its move
+    to `pre_labeled` — so a cut-off call has entered some prefix of the
+    untouched assets and touched nothing else, and calling this again resumes
+    with whatever is still untouched rather than starting over or double-writing
+    what already landed.
+
+    **Only assets nothing has touched — not merely assets reading
+    `unannotated`.** An asset that is already annotated, skipped, awaiting
+    review or accepted is passed over, and so is an `unannotated` one that
+    still carries annotations from a round that was skipped and later
+    restored, since that sequence deletes no labels. What is written lands at
+    `pre_labeled`, never at `annotated` — nobody judged it, so it stays
+    editable and out of the Dataset until somebody does. An asset somebody
+    starts working while this call is still running is passed over the same
+    way rather than failing the whole call; `assets_skipped` in the result
+    says how many.
+
+    **A region the model answered with a label that names no class asked for is
+    discarded, not fatal.** A text-prompted detector answers with text decoded
+    from spans over the prompt, not a choice from the classes it was asked
+    about, so a span crossing the boundary between two phrases can answer with
+    neither of them; `regions_discarded` in the result says how many.
+
+    **The batch's pinned schema is the prompt.** The model is asked for each
+    class the schema declares that a box can be written as; an answer naming one
+    of those classes, matched case-insensitively, is written under the schema's
+    own spelling. A schema whose classes are all polygons, polylines or tags —
+    or whose box classes each require an attribute a prediction cannot supply —
+    has nowhere for a detection to land and is refused before anything runs.
+
+    Also refused before anything runs: a batch that is not `in_annotation`, a
+    connection whose model answers places rather than words, and a deployment
+    without the local runtime — with the install command in the message.
+    """
+    with opened_workspace() as workspace:
+        resolved_connection = resolve_connection(workspace, connection)
+        outcome = pre_label(
+            workspace,
+            batch_id=identifier(batch_id, what="batch_id"),
+            connection_id=resolved_connection.id,
+            minimum_confidence=minimum_confidence,
+        )
+    return {
+        "assets_considered": outcome.assets_considered,
+        "assets_labeled": outcome.assets_labeled,
+        "annotations_written": outcome.annotations_written,
+        "model_ref": outcome.model_ref,
+        "assets_skipped": outcome.assets_skipped,
+        "regions_discarded": outcome.regions_discarded,
+    }
 
 
 def repin_batch(

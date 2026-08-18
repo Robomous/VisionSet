@@ -123,6 +123,7 @@ function batch(overrides: Partial<Batch> = {}): Batch {
     asset_count: 48,
     progress: {
       unannotated: 0,
+      pre_labeled: 0,
       annotated: 3,
       skipped: 45,
       review_pending: 0,
@@ -132,6 +133,7 @@ function batch(overrides: Partial<Batch> = {}): Batch {
     allowed_actions: batchActions("completed"),
     promoted_asset_count: 0,
     parent_batch_id: null,
+    pre_label_run: null,
     ...overrides,
   } as Batch;
 }

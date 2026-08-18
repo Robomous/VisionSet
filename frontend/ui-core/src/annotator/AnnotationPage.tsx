@@ -748,11 +748,13 @@ interface WorkspaceProps {
     readonly total: number;
     readonly unannotated: number;
     /**
-     * With `unannotated`, the other state that blocks the job's `complete` —
-     * `outstandingWork` sums exactly the two, and the Finish-job tooltip reads
-     * that sum. The full five-field model arrives from the wire; this
-     * type names only what the page consumes.
+     * With `unannotated` and `review_pending`, the third state that blocks the
+     * job's `complete` — a model's guess nobody has judged. `outstandingWork`
+     * sums exactly the three, and the Finish-job tooltip reads that sum. The
+     * full six-field model arrives from the wire; this type names only what
+     * the page consumes.
      */
+    readonly pre_labeled: number;
     readonly review_pending: number;
   } | null;
   /** Held by `JobScreen`, so `mod+c` here and `mod+v` on the next frame is one clipboard. */
@@ -1779,9 +1781,10 @@ function Workspace({
    *
    * The sentence names the blocker **with its count**: `outstandingWork`
    * is `batchState.ts`'s spelling of "how many frames still block completion" —
-   * `unannotated` plus `review_pending`, the same two states whose settling is
-   * what makes the kernel declare `complete` — so the number and the disable
-   * come from one progress read rather than a second derivation here. The
+   * `unannotated` plus `pre_labeled` plus `review_pending`, the same three
+   * states whose settling is what makes the kernel declare `complete` — so the
+   * number and the disable come from one progress read rather than a second
+   * derivation here. The
    * count-less sentence survives only for the moments the counts query has not
    * answered yet (or disagrees with a declaration mid-invalidation).
    */
@@ -3124,7 +3127,7 @@ function PinDiff({
  * reading of **status is never colour alone** (`DESIGN.md`).
  *
  * The words come from `batchState.ts`'s `PROGRESS_LABEL` rather than a second
- * copy: two spellings of the same five states are free to drift.
+ * copy: two spellings of the same six states are free to drift.
  *
  * **The colour comes from there too.** Unifying the words and not the colours
  * left `accepted` green here and near-black in the gallery — and, worse,

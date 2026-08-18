@@ -34,6 +34,7 @@ Composition follows ``docs/workspaces.md``: this service takes an open
 
 from __future__ import annotations
 
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Final
@@ -358,11 +359,16 @@ def _candidate(
     projection the batch asset listing builds for the same reason.
 
     Which frame depends on what the batch still needs, and the order of the two
-    searches *is* the priority: an unannotated frame if there is one, otherwise
-    the first waiting on a reviewer, otherwise nothing. Labeling comes first
-    because it is the work that cannot be done by anybody else later — a frame
-    nobody has drawn on blocks the batch outright, where one awaiting review is
-    already done and waiting on a second opinion.
+    searches *is* the priority: a frame nobody or only a model has labeled, if
+    there is one, otherwise the first waiting on a reviewer, otherwise nothing.
+    Labeling comes first because it is the work that cannot be done by anybody
+    else later — an ``unannotated`` frame blocks the batch outright and a
+    ``pre_labeled`` one is exactly as outstanding, since nobody has judged it —
+    where one awaiting review is already done and waiting on a second opinion.
+    ``unannotated`` and ``pre_labeled`` are searched together, as one tier in
+    batch order, so the frame offered is the earliest of either kind rather
+    than every unannotated frame before any pre-labeled one regardless of
+    position.
 
     A batch with no jobs is not a candidate. Nothing can open it — the editor is
     keyed on a job — and the kernel already makes it unreachable by refusing to
@@ -376,10 +382,10 @@ def _candidate(
     }
     settled = sum(1 for _, value in holders.values() if value in SETTLED_PROGRESS)
     waiting = sum(1 for _, value in holders.values() if value is AssetProgress.REVIEW_PENDING)
-    landing = _landing(batch, holders, AssetProgress.UNANNOTATED)
+    landing = _landing(batch, holders, {AssetProgress.UNANNOTATED, AssetProgress.PRE_LABELED})
     kind = ResumeKind.ANNOTATE
     if landing is None:
-        landing = _landing(batch, holders, AssetProgress.REVIEW_PENDING)
+        landing = _landing(batch, holders, {AssetProgress.REVIEW_PENDING})
         kind = ResumeKind.OPEN if landing is None else ResumeKind.REVIEW
     return _Candidate(
         touched_at=touched_at,
@@ -409,14 +415,16 @@ def _candidate(
 
 
 def _landing(
-    batch: Batch, holders: dict[UUID, tuple[UUID, AssetProgress]], progress: AssetProgress
+    batch: Batch,
+    holders: dict[UUID, tuple[UUID, AssetProgress]],
+    progress: AbstractSet[AssetProgress],
 ) -> tuple[UUID, UUID] | None:
-    """The first asset of this batch in one state, with the job that holds it."""
+    """The first asset of this batch in one of these states, with the job that holds it."""
     return next(
         (
             (asset_id, holders[asset_id][0])
             for asset_id in batch.asset_ids
-            if holders.get(asset_id, (None, None))[1] is progress
+            if holders.get(asset_id, (None, None))[1] in progress
         ),
         None,
     )

@@ -65,6 +65,7 @@ def test_list_json_carries_the_progress_counts(root: Path, tmp_path: Path) -> No
     progress = payload(root, "batch", "list", "-p", name)["items"][0]["progress"]
     assert progress == {
         "unannotated": 6,
+        "pre_labeled": 0,
         "annotated": 0,
         "skipped": 0,
         "review_pending": 0,

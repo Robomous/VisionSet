@@ -32,15 +32,40 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Query, status
+from fastapi import Query, Response, status
 
-from visionset.kernel.domain import AnnotationJobState, AssetProgress, MembershipChange
-from visionset.kernel.services import BatchService, DatasetService, JobService, ProjectService
-from visionset.server.dependencies import WorkspaceDep, protected_router
+from visionset.inference import (
+    STUB_MODEL_ID,
+    capabilities_of,
+    not_set_up_message,
+    require_detectable_schema,
+    unsupported_prompt_message,
+)
+from visionset.inference import require as require_local_inference
+from visionset.jobs.prelabel import JOB_TYPE as pre_label_job_type
+from visionset.jobs.prelabel import payload_for as pre_label_payload_for
+from visionset.kernel.domain import (
+    AnnotationJobState,
+    AssetProgress,
+    BackgroundJobSpec,
+    ConnectionSetupState,
+    MembershipChange,
+    ModelCapability,
+)
+from visionset.kernel.errors import InferenceConnectionNotSetUp, UnsupportedPrompt
+from visionset.kernel.services import (
+    BatchService,
+    DatasetService,
+    InferenceConnectionService,
+    JobService,
+    ProjectService,
+)
+from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
     AssetOut,
     AssetPage,
+    BackgroundJobOut,
     BatchApprove,
     BatchAssetOut,
     BatchAssetPage,
@@ -55,6 +80,7 @@ from visionset.server.models import (
     JobPage,
     LimitQuery,
     OffsetQuery,
+    PreLabelRequest,
     window,
 )
 
@@ -105,11 +131,21 @@ def create_batch(workspace: WorkspaceDep, project_id: UUID, body: BatchCreate) -
 def list_batches(workspace: WorkspaceDep, project_id: UUID) -> BatchPage:
     """Every batch of that project, in the order they were created."""
     jobs = JobService(workspace)
-    found = BatchService(workspace).list(project_id)
+    batches = BatchService(workspace)
+    found = batches.list(project_id)
     promoted = _promoted(workspace, project_id)
+    # One queue read for the whole page, `_promoted`'s cost model: without it a
+    # page of twenty batches would ask the queue once per row.
+    pre_label_runs = batches.pre_label_runs()
     return BatchPage(
         items=[
-            BatchOut.of(batch, jobs.batch_progress(batch.id), promoted=promoted) for batch in found
+            BatchOut.of(
+                batch,
+                jobs.batch_progress(batch.id),
+                promoted=promoted,
+                pre_label_run=pre_label_runs.get(batch.id),
+            )
+            for batch in found
         ],
         total=len(found),
     )
@@ -124,11 +160,13 @@ def get_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     already whatever the ingest gathered. `schema_version` is null until approval
     pins one, and moves after that only through `repin`.
     """
-    batch = BatchService(workspace).get(batch_id)
+    batches = BatchService(workspace)
+    batch = batches.get(batch_id)
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
         promoted=_promoted(workspace, batch.project_id),
+        pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
 
@@ -199,11 +237,13 @@ def repin_batch(
     `INVALID_TRANSITION`. Re-pinning onto the version already pinned changes
     nothing. Annotations already written keep the version they were stamped with.
     """
-    batch = BatchService(workspace).repin(batch_id, allow_destructive=allow_destructive)
+    batches = BatchService(workspace)
+    batch = batches.repin(batch_id, allow_destructive=allow_destructive)
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
         promoted=_promoted(workspace, batch.project_id),
+        pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
 
@@ -219,11 +259,13 @@ def complete_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     `INVALID_TRANSITION` — the same one-way table that leaves `completed` with no
     exit at all, which is why correcting settled work is a new batch.
     """
-    batch = BatchService(workspace).complete(batch_id)
+    batches = BatchService(workspace)
+    batch = batches.complete(batch_id)
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
         promoted=_promoted(workspace, batch.project_id),
+        pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
 
@@ -258,6 +300,112 @@ def create_correction_batch(
         JobService(workspace).batch_progress(created.id),
         promoted=_promoted(workspace, created.project_id),
     )
+
+
+@router.post(
+    "/{batch_id}/pre-label",
+    status_code=status.HTTP_202_ACCEPTED,
+    responses=documented(404, 409),
+)
+def pre_label_batch(
+    workspace: WorkspaceDep,
+    runner: RunnerDep,
+    response: Response,
+    batch_id: UUID,
+    body: PreLabelRequest,
+) -> BackgroundJobOut:
+    """Ask a model to label every untouched asset in this batch, and answer at once.
+
+    The `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:
+    nobody judged them, so they arrive editable and correctable rather than
+    claiming to be somebody's work — and, being unjudged, they never reach the
+    Dataset until a person has taken them over.
+
+    **Only assets nothing has touched — which is stronger than reading
+    `unannotated`.** An asset that is already annotated, skipped, awaiting
+    review or accepted is passed over, and so is an `unannotated` one that
+    still carries annotations from an earlier round that was skipped and then
+    restored: that sequence deletes no labels, so progress alone does not
+    prove an asset untouched. A run never writes over what a person did, and
+    a second run picks up only what is still untouched.
+
+    **The batch's pinned schema is the prompt.** The model is asked for each class
+    the schema declares that a box can be written as; an answer naming one of
+    those classes, matched case-insensitively, is written under the schema's own
+    spelling, and an answer naming none of them is discarded. A schema whose
+    classes are all polygons, polylines or tags — or whose box classes each
+    require an attribute a prediction cannot supply — has nowhere for a
+    detection to land and is refused.
+
+    **202, not 200.** A batch is hundreds of forward passes, so this follows the
+    launch-and-poll contract the export and weight-download routes use: poll `GET
+    /background-jobs/{id}` — the `Location` header names it — until `state` is
+    `succeeded`, then re-read the batch's assets. Progress on the row is counted
+    in assets.
+
+    **Everything a caller can be told now is told now**, and no refusal creates a
+    job — so a caller holding a job id holds one that will run. These refusals
+    are about the request, and the caller can act on each. They are checked in
+    this order, and it is the order `pre_label` itself checks in, so a request
+    wrong about the connection and the batch both always names the connection:
+    a connection whose weights have not arrived is 409
+    `INFERENCE_CONNECTION_NOT_SET_UP`; a connection whose model answers places
+    rather than words is 422 `UNSUPPORTED_PROMPT`; a batch that is not
+    `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no
+    class a box can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+
+    Two failures are about this installation rather than about the request, and
+    answer 500 carrying the message that says which: a machine without the
+    optional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the
+    exact command that installs it, and a workspace whose records no longer
+    hold together — a batch pinned to a schema version that is not stored — is
+    `WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no
+    state here a caller can change, so the remedy is the one the message names.
+
+    **Asking twice joins the run already in flight rather than starting a second
+    one.** A request arriving while this batch has a pre-labeling run queued or
+    running is answered with that run's id, so a double-click and a second tab
+    watch one run instead of paying for the same inference twice.
+    """
+    service = BatchService(workspace)
+    # The connection first, matching `pre_label`'s own order: what a build can
+    # run is an answer about a setup somebody is part-way through, independent
+    # of this batch's state, and a caller most needs it first.
+    connection = InferenceConnectionService(workspace).get(body.connection_id)
+    # Before the job exists, on the download route's terms: a refusal a request
+    # can make is a refusal the request makes. Discovering a missing install
+    # inside a worker would put an install command on a failed row somebody has
+    # to go and find.
+    if connection.model_id != STUB_MODEL_ID:
+        require_local_inference()
+    if connection.setup_state is not ConnectionSetupState.READY:
+        # Before the capability check: `model_family` is written only by a
+        # completed weight download, so a connection that simply has not
+        # finished downloading yet reads no capabilities at all. Answering
+        # `UNSUPPORTED_PROMPT` for that would claim the model answers places
+        # rather than words, which is false — it answers words fine and has no
+        # weights yet.
+        raise InferenceConnectionNotSetUp(not_set_up_message(connection.name))
+    # `capabilities` is derived from the model family rather than stored on the
+    # row, so it is asked for here the same way the connection wire model asks.
+    if ModelCapability.TEXT_DETECT not in capabilities_of(connection.model_family):
+        raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
+    batch = service.require_pre_labelable(batch_id)
+    require_detectable_schema(workspace, batch)
+
+    running = service.live_job(batch_id, job_type=pre_label_job_type)
+    job = running or workspace.job_queue.enqueue(
+        BackgroundJobSpec(
+            type=pre_label_job_type,
+            payload=pre_label_payload_for(batch_id, body.connection_id, body.minimum_confidence),
+            idempotent=True,
+        )
+    )
+    # Woken even when the answer is a run that already existed: what came back
+    # may be `queued`, and the dispatcher it waits for sleeps on its own interval.
+    runner.wake()
+    response.headers["Location"] = f"/background-jobs/{job.id}"
+    return BackgroundJobOut.of(job)
 
 
 @router.get("/{batch_id}/jobs", responses=documented(404))

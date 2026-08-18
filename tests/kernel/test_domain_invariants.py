@@ -49,6 +49,7 @@ def test_job_and_progress_states() -> None:
     assert [s.value for s in AnnotationJobState] == ["pending", "in_progress", "completed"]
     assert [s.value for s in AssetProgress] == [
         "unannotated",
+        "pre_labeled",
         "annotated",
         "skipped",
         "review_pending",

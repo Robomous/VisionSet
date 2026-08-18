@@ -50,6 +50,7 @@ from visionset.kernel.services import (
 SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 
 UNANNOTATED = AssetProgress.UNANNOTATED
+PRE_LABELED = AssetProgress.PRE_LABELED
 ANNOTATED = AssetProgress.ANNOTATED
 SKIPPED = AssetProgress.SKIPPED
 REVIEW_PENDING = AssetProgress.REVIEW_PENDING
@@ -111,6 +112,7 @@ class Fixture:
 #: The shortest legal walk from ``unannotated`` to each state.
 _ROUTES: dict[AssetProgress, tuple[AssetProgress, ...]] = {
     UNANNOTATED: (),
+    PRE_LABELED: (PRE_LABELED,),
     ANNOTATED: (ANNOTATED,),
     SKIPPED: (SKIPPED,),
     REVIEW_PENDING: (ANNOTATED, REVIEW_PENDING),
@@ -211,14 +213,17 @@ def test_accepted_and_completed_are_both_dead_ends() -> None:
 
 def test_settled_progress_is_exactly_the_three_that_need_no_more_work() -> None:
     assert sorted(SETTLED_PROGRESS) == sorted({ANNOTATED, SKIPPED, ACCEPTED})
-    # the complement is what blocks: work not done, and review not done
-    assert set(AssetProgress) - SETTLED_PROGRESS == {UNANNOTATED, REVIEW_PENDING}
+    # the complement is what blocks: work not done, a model's guess not taken
+    # over, and review not done
+    assert set(AssetProgress) - SETTLED_PROGRESS == {UNANNOTATED, PRE_LABELED, REVIEW_PENDING}
 
 
 # --- completion is derived from the assets ------------------------------------
 
 
-@pytest.mark.parametrize("blocking", [UNANNOTATED, REVIEW_PENDING], ids=lambda s: str(s.value))
+@pytest.mark.parametrize(
+    "blocking", [UNANNOTATED, PRE_LABELED, REVIEW_PENDING], ids=lambda s: str(s.value)
+)
 def test_a_job_cannot_complete_while_an_asset_is_unsettled(
     tmp_path: Path, blocking: AssetProgress
 ) -> None:

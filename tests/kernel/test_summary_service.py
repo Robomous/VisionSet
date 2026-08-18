@@ -548,6 +548,53 @@ def test_a_batch_with_nothing_left_is_still_offered_as_somewhere_to_open(
         fixture.close()
 
 
+def test_a_batch_of_only_pre_labeled_frames_is_still_something_to_carry_on_with(
+    tmp_path: Path,
+) -> None:
+    """A model's unjudged guess is exactly as outstanding as a blank frame.
+
+    Without this, a batch nobody has touched by hand but a model has fully
+    covered would fall through both searches and read as ``open`` — nothing
+    to land on — even though every frame in it still needs a person's edit
+    before the batch can complete.
+    """
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        assets = fixture.assets(project, 2)
+        batch, job = fixture.open_batch(project, "b", assets)
+        fixture.jobs.mark(job, assets[0], AssetProgress.PRE_LABELED)
+        fixture.jobs.mark(job, assets[1], AssetProgress.PRE_LABELED)
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.kind is ResumeKind.ANNOTATE
+        assert resume.batch_id == batch
+        assert resume.next_asset_id == assets[0]
+        assert (resume.annotated, resume.total) == (0, 2)
+    finally:
+        fixture.close()
+
+
+def test_the_landing_asset_is_the_first_of_either_kind_in_batch_order(tmp_path: Path) -> None:
+    """``unannotated`` and ``pre_labeled`` are one tier, searched together in order."""
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        assets = fixture.assets(project, 3)
+        _, job = fixture.open_batch(project, "b", assets)
+        fixture.jobs.mark(job, assets[0], AssetProgress.PRE_LABELED)
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.kind is ResumeKind.ANNOTATE
+        assert resume.next_asset_id == assets[0]
+    finally:
+        fixture.close()
+
+
 def test_a_frame_waiting_on_review_is_something_to_carry_on_with(tmp_path: Path) -> None:
     """``review_pending`` is neither settled nor unannotated, and it is the second kind."""
     fixture = Fixture(tmp_path)

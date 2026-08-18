@@ -6,7 +6,7 @@ schema version so that work in flight is judged by a contract that stopped
 moving; a job says who is labeling which assets. This service is where those two
 meet the thing they were guarding.
 
-Four things shape this module:
+Five things shape this module:
 
 - **Schema violations are a hard reject, at write time, in the kernel.** Not a
   warning, not a surface's good faith, not a nightly report. An annotation whose
@@ -29,16 +29,29 @@ Four things shape this module:
   constructed, so it can never reach a service to be reported here. That is the
   division ``docs/schemas.md`` draws: per-value validity is pydantic's, validity
   that needs another object is the service's.
-- **Progress follows the annotations, but only two edges of it — and it gates
-  them.** The first annotation on an asset moves it ``unannotated -> annotated``;
-  deleting the last moves it back. ``skipped``, ``review_pending`` and
-  ``accepted`` are people's decisions and stay with ``JobService.mark``. The rule
-  is ``progress_after_annotating`` in ``domain/task.py``, and it is applied
-  through this service's own unit of work so that labels and progress commit
-  together. Those same two states are ``WRITABLE_PROGRESS``, and a write onto any
-  of the other three is refused with ``AssetNotWritable``: the progress machine
-  has no account of it, and for a ``skipped`` asset the labels would be stored
-  and then dropped at promotion with nothing saying so.
+- **Progress follows the annotations, for three of its states under ``add``,
+  ``update`` and ``delete`` — and it gates them.** The first annotation on an
+  asset moves it ``unannotated -> annotated``, or, on a model's still-untouched
+  guess, ``pre_labeled -> annotated``; deleting the last moves either back to
+  ``unannotated``. ``skipped``, ``review_pending`` and ``accepted`` are people's
+  decisions and stay with ``JobService.mark``. The rule is
+  ``progress_after_annotating`` in ``domain/task.py``, and it is applied through
+  this service's own unit of work so that labels and progress commit together.
+  ``unannotated``, ``pre_labeled`` and ``annotated`` are ``WRITABLE_PROGRESS``,
+  and a write through ``add``, ``update`` or ``delete`` onto any of the other
+  three is refused with ``AssetNotWritable``: the progress machine has no
+  account of it, and for a ``skipped`` asset the labels would be stored and then
+  dropped at promotion with nothing saying so.
+- **A model can also write straight to ``pre_labeled``, unattended.**
+  ``enter_unreviewed`` is the fourth write and the narrowest: every annotation
+  must carry ``provenance='model'``, the asset must be exactly ``unannotated``
+  AND carry no annotations at all — a labeled-then-skipped-then-restored asset
+  reads ``unannotated`` again without its boxes having gone anywhere, so
+  progress alone cannot prove untouched — and the labels commit with the move
+  to ``pre_labeled`` in the same transaction. It is the only door unattended
+  prediction uses — accepting a model's *suggestion* is still a person's hand,
+  and still goes through ``add``, landing at ``annotated`` the same way any
+  other edit does.
 
 Both gates above the asset are ``JobService``'s, reused rather than restated:
 this service calls ``require_job``, ``require_open_batch`` and
@@ -66,12 +79,14 @@ from visionset.kernel.domain import (
     AnnotationOperation,
     AnnotationSchema,
     AnnotationsWritten,
+    AssetProgress,
     Batch,
     ClassificationGeometry,
     progress_after_annotating,
 )
 from visionset.kernel.errors import (
     AnnotationNotFound,
+    AnnotationNotFromModel,
     AssetNotInJob,
     AssetNotWritable,
     DisallowedGeometry,
@@ -180,6 +195,62 @@ class AnnotationService:
 
             stored = [uow.annotations.add(annotation) for annotation in proposed]
             _refresh_progress(uow, job, (a.asset_id for a in proposed))
+
+        self._announce(job.id, batch.id, AnnotationOperation.ADD, stored)
+        return stored
+
+    def enter_unreviewed(self, job_id: UUID, annotations: Sequence[Annotation]) -> list[Annotation]:
+        """Store a model's labels on untouched assets, unattended, atomically.
+
+        The fourth write and the narrowest. Labels and the move to
+        ``pre_labeled`` commit in one transaction, so a run that dies has
+        either not touched an asset or fully entered it — never left it at
+        ``annotated`` carrying labels nobody has looked at.
+
+        Two gates narrower than the other three. The asset must be
+        ``unannotated`` AND carry no annotations at all, so nothing a person
+        has touched is written over — even an asset that was labeled, skipped
+        and restored, which reads ``unannotated`` again without erasing the
+        boxes already on it. Every annotation must also carry model
+        provenance, which is what keeps this from being a way around the
+        write gate rather than a door beside it. ``model_ref`` and
+        ``confidence`` come checked by ``Annotation`` itself.
+
+        An asset a model found nothing on is not passed here at all: "found
+        nothing" and "reviewed and found empty" are different facts.
+
+        Raises:
+            JobNotFound: no such job in this workspace.
+            BatchNotInAnnotation: the job's batch is not open for annotation.
+            JobFinished: the job is already completed.
+            AssetNotInJob: an annotation names an asset the job does not carry.
+            AssetNotWritable: an asset is not ``unannotated``, or already
+                carries annotations from a skipped-and-restored round.
+            AnnotationNotFromModel: an annotation does not carry model provenance.
+            InvalidAnnotation: an annotation does not satisfy the pinned version.
+            StaleWrite: an asset moved between this call's read and its write.
+            WorkspaceCorrupt: the open batch has no pinned schema version.
+        """
+        with self._workspace.unit_of_work() as uow:
+            job = self._jobs.require_job(uow, job_id)
+            batch = self._jobs.require_open_batch(uow, job)
+            self._jobs.require_open_job(job)
+            schema = self._pinned_schema(batch)
+
+            proposed = [
+                annotation.model_copy(update={"schema_version": schema.version, "job_id": job.id})
+                for annotation in annotations
+            ]
+            tagged = _tags_already_on(uow, {a.asset_id for a in proposed})
+            for index, annotation in enumerate(proposed):
+                with _blaming(index):
+                    _require_model_made(annotation)
+                    _require_untouched(uow, job, annotation.asset_id)
+                    _validate(annotation, schema)
+                    _require_untagged(tagged, annotation)
+
+            stored = [uow.annotations.add(annotation) for annotation in proposed]
+            _refresh_progress(uow, job, (a.asset_id for a in proposed), judged=False)
 
         self._announce(job.id, batch.id, AnnotationOperation.ADD, stored)
         return stored
@@ -315,11 +386,13 @@ class AnnotationService:
     ) -> None:
         """Say what this call did, after its transaction committed.
 
-        Called from outside the ``unit_of_work`` block by all three writes, and
+        Called from outside the ``unit_of_work`` block by all four writes, and
         that placement is the whole point: an announcement is about work that
         happened, and a subscriber that raises out here has nothing left to
-        undo. The three differ only in the operation they name, so they share
-        one emitter rather than three that could drift.
+        undo. They share one emitter rather than four that could drift, and
+        ``enter_unreviewed`` announces itself as ``ADD`` — new rows landed, the
+        same fact ``add`` announces — because :class:`AnnotationOperation` names
+        the shape of the write, not the progress it happened to leave behind.
 
         ``asset_ids`` is deduplicated and keeps the order the annotations came
         in — several boxes on one image are one asset touched, not several.
@@ -392,7 +465,7 @@ class AnnotationService:
 def _blaming(index: int) -> Iterator[None]:
     """Name item ``index`` as the one at fault in whatever escapes this block.
 
-    All three writes here are all-or-nothing over a ``Sequence``, so a caller
+    All four writes here are all-or-nothing over a ``Sequence``, so a caller
     that gets a refusal has no way to work out *which* annotation caused it —
     nothing was written, and the message names a class or an attribute rather
     than a position. ``VisionSetError.index`` is that position, and setting it
@@ -424,9 +497,12 @@ def _require_writable(job: AnnotationJob, asset_id: UUID) -> None:
     the more basic complaint and answering it second would report an asset's
     progress as the reason a *different* job's asset was refused.
 
-    Only the three writes call this; :meth:`AnnotationService.for_asset` reads
-    through ``_require_asset_in_job`` alone, because reading back what a reviewer
-    accepted is exactly what a reviewer does.
+    Only ``add``, ``update`` and ``delete`` call this — ``enter_unreviewed``
+    has its own, narrower check, ``_require_untouched`` below, because
+    ``unannotated`` is legal here but is the *only* thing legal there.
+    :meth:`AnnotationService.for_asset` reads through ``_require_asset_in_job``
+    alone, because reading back what a reviewer accepted is exactly what a
+    reviewer does.
     """
     _require_asset_in_job(job, asset_id)
     progress = job.progress[asset_id]
@@ -435,6 +511,43 @@ def _require_writable(job: AnnotationJob, asset_id: UUID) -> None:
         raise AssetNotWritable(
             f"asset {asset_id} in job {job.id} is {progress.value!r}, so its labels are "
             f"settled; annotations are only written while an asset is {legal}"
+        )
+
+
+def _require_model_made(annotation: Annotation) -> None:
+    """Refuse a label this door was not built for."""
+    if annotation.provenance != "model":
+        raise AnnotationNotFromModel(
+            f"annotation {annotation.id} is {annotation.provenance!r}, and only a model's "
+            f"labels enter unattended; a person's labels are written through add"
+        )
+
+
+def _require_untouched(uow: UnitOfWork, job: AnnotationJob, asset_id: UUID) -> None:
+    """Refuse an asset somebody has already worked, without erasing what they did.
+
+    The membership check first, on ``_require_writable``'s reasoning: "this job
+    does not carry that asset" is the more basic complaint.
+
+    Progress alone does not prove untouched: ``annotated -> skipped ->
+    unannotated`` is a legal sequence under ``JobService.mark`` that deletes no
+    labels, so a restored asset can read ``unannotated`` while a person's boxes
+    still sit on it. This checks both, in the same transaction, so a model's
+    labels are refused from landing beside a person's rather than only from
+    landing on a progress value that lied about it.
+    """
+    _require_asset_in_job(job, asset_id)
+    progress = job.progress[asset_id]
+    if progress is not AssetProgress.UNANNOTATED:
+        raise AssetNotWritable(
+            f"asset {asset_id} in job {job.id} is {progress.value!r}, so somebody has "
+            f"already worked it; a model's labels only enter an asset nothing has touched"
+        )
+    if uow.annotations.list(asset_id):
+        raise AssetNotWritable(
+            f"asset {asset_id} in job {job.id} reads 'unannotated' but already carries "
+            f"annotations from work that was skipped and then restored; a model's labels "
+            f"only enter an asset nothing has touched, including its history"
         )
 
 
@@ -540,7 +653,13 @@ def _validate(annotation: Annotation, schema: AnnotationSchema) -> None:
             )
 
 
-def _refresh_progress(uow: UnitOfWork, job: AnnotationJob, asset_ids: Iterable[UUID]) -> None:
+def _refresh_progress(
+    uow: UnitOfWork,
+    job: AnnotationJob,
+    asset_ids: Iterable[UUID],
+    *,
+    judged: bool = True,
+) -> None:
     """Move each touched asset to wherever its annotations now put it.
 
     Inside the caller's transaction, so labels and progress commit together —
@@ -570,12 +689,16 @@ def _refresh_progress(uow: UnitOfWork, job: AnnotationJob, asset_ids: Iterable[U
 
     One timestamp for the whole call rather than one per asset, because a caller
     that labeled six frames in one request did that at one moment.
+
+    ``judged`` is passed through to the domain rule rather than decided here: which
+    of two entry states a write earns is a domain question, and this function's job
+    is to commit whatever answer comes back inside the caller's transaction.
     """
     touched_at = datetime.now(UTC)
     for asset_id in dict.fromkeys(asset_ids):
         remaining = uow.annotations.list(asset_id)
         current = job.progress[asset_id]
-        moved = progress_after_annotating(current, has_annotations=bool(remaining))
+        moved = progress_after_annotating(current, has_annotations=bool(remaining), judged=judged)
         target = current if moved is None else moved
         stored = uow.set_asset_progress(
             job.id, asset_id, expected=current, progress=target, touched_at=touched_at
