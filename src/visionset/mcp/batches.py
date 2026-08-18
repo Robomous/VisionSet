@@ -300,10 +300,11 @@ def pre_label_batch(
     what already landed.
 
     **Only assets nothing has touched — not merely assets reading
-    `unannotated`.** An asset that is already annotated, skipped, awaiting
-    review or accepted is passed over, and so is an `unannotated` one that
-    still carries annotations from a round that was skipped and later
-    restored, since that sequence deletes no labels. What is written lands at
+    `unannotated`.** An asset already `pre_labeled`, annotated, skipped,
+    awaiting review or accepted is passed over, and so is an `unannotated` one
+    that still carries annotations from a round that was skipped and later
+    restored, since that sequence deletes no labels. A frame this tool already
+    pre-labeled is therefore never re-asked about, at any confidence. What is written lands at
     `pre_labeled`, never at `annotated` — nobody judged it, so it stays
     editable and out of the Dataset until somebody does. An asset somebody
     starts working while this call is still running is passed over the same

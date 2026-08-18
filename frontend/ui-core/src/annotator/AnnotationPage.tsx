@@ -1102,8 +1102,9 @@ function Workspace({
    * so the write path, the undo step and the save diff are all the ones that
    * already exist. The frame enters at `annotated` through the normal settle,
    * which is the decision that matters here: an interactively accepted suggestion
-   * is not a *silent* write, so the `review_pending` constraint governs unattended
-   * batch prediction and not this.
+   * is not a *silent* write. A person chose this shape, so they own it, and
+   * `pre_labeled` — where unattended batch prediction lands, unowned — is not
+   * where an accepted suggestion belongs.
    *
    * The session is cleared rather than disarmed: somebody who accepted one shape
    * is usually about to click the next thing.
