@@ -159,10 +159,9 @@ def _rows(asset: ManifestAsset, index_of: Mapping[str, int]) -> Iterable[str]:
     width, height = dimensions_of(asset)
     for annotation in asset.annotations:
         index = index_of.get(annotation.label_class)
-        # A label whose class the manifest does not declare cannot happen —
-        # `SchemaChangeWouldOrphan` refuses to remove a class annotations depend
-        # on — but writing an index derived from nothing would be a silent lie in
-        # a file a trainer reads as ground truth.
+        # Publication rejects new inconsistent manifests, but archived or externally
+        # supplied manifests can still be malformed. An invented class index would
+        # silently mislabel a file a trainer reads as ground truth.
         if index is None:
             raise ExportSourceUnreadable(
                 f"asset {asset.asset_id} carries class {annotation.label_class!r}, "

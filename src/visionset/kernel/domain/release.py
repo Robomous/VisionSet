@@ -142,11 +142,10 @@ class Manifest(BaseModel):
 
     ``schema_version`` and ``classes`` are the project's *active* version at
     publication, while each :class:`ManifestAnnotation` keeps the version its own
-    batch pinned. Those can differ, because two batches can be approved against
-    two versions and both promoted into one trunk. The mixture is safe rather
-    than sloppy: ``SchemaChangeWouldOrphan`` refuses to remove a class that
-    annotations still depend on, so every label in here is still described by the
-    classes in here.
+    batch pinned. Batch writes validate against that pin; release publication
+    validates every copied annotation against the active schema before creating a
+    new manifest. Historic manifests remain readable, so exporters also defend
+    against malformed external or legacy content that did not traverse that gate.
 
     **The assets sort themselves**, by content hash and then by id, and each
     asset's annotations sort by id. That belongs here rather than in the service

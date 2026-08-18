@@ -142,10 +142,9 @@ class ClassificationExporter:
             image = f"{IMAGES_DIRNAME}/{fold}/{name}"
             for annotation in asset.annotations:
                 if annotation.label_class not in declared:
-                    # Cannot happen — `SchemaChangeWouldOrphan` refuses to remove
-                    # a class annotations depend on — but a row naming a class
-                    # outside `classes.txt` would be a silent lie in a file read
-                    # as ground truth.
+                    # Publication rejects new inconsistent manifests, but archived or
+                    # externally supplied manifests can still be malformed. A row
+                    # outside `classes.txt` would be a silent lie to its reader.
                     raise ExportSourceUnreadable(
                         f"asset {asset.asset_id} carries class {annotation.label_class!r}, "
                         f"which the release's schema does not declare"

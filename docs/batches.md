@@ -68,8 +68,9 @@ batches.get(batch.id).schema_version  # still 2
 ```
 
 A schema that evolved mid-batch would change the rules under work already in flight, which is
-exactly what versioning exists to prevent. Every annotation written into this batch's jobs is
-validated against the pinned version, not against whatever is newest.
+exactly what versioning exists to prevent. The pin is the validation contract for this batch's
+in-progress work: every annotation written into its jobs is validated against the pinned version,
+not against whatever is newest.
 
 Approving a project that has no schema raises `SchemaNotFound`. Creating version 1 here would
 be a second door to a schema, and [schemas.md](schemas.md) has only one.
@@ -93,8 +94,9 @@ invalidate anything already drawn. So there is nothing on this path for a manual
 step to protect — and what the manual step cost was that a class published while
 somebody was annotating stayed invisible to them until they found `repin`.
 
-A **narrowing** version moves nothing, with `allow_destructive` or without it:
-that flag says *publish this*, never *and drag every open batch across it*.
+A **narrowing** version moves nothing, with `allow_destructive` or without it: it does not move
+an open batch's validation contract. That flag says *publish this*, never *and drag every open
+batch across it*.
 Crossing a narrowing is `repin`, one batch at a time, judged against that batch's
 own labels.
 

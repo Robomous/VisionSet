@@ -295,6 +295,17 @@ class SchemaChangeWouldOrphan(VisionSetError):
             self.blockers = blockers
 
 
+class ReleaseContentWouldViolateSchema(VisionSetError):
+    """A release's active schema does not describe its candidate annotations."""
+
+    blockers: object | None = None
+
+    def __init__(self, message: str, *, blockers: object | None = None) -> None:
+        super().__init__(message)
+        if blockers is not None:
+            self.blockers = blockers
+
+
 class InvalidTransition(VisionSetError):
     """A state machine was asked to make a move that is not in its table.
 

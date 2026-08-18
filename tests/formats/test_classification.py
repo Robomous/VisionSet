@@ -226,6 +226,42 @@ def test_a_class_name_holding_a_newline_is_refused(tmp_path: Path) -> None:
     fixture.close()
 
 
+def test_an_undeclared_manifest_class_aborts_before_a_label_row_is_emitted(tmp_path: Path) -> None:
+    """Archived or externally supplied manifests bypass the publication consistency gate."""
+    fixture = Fixture(tmp_path, classes=CLASSES)
+    fixture.label(DRAWING)
+    release_id = fixture.publish()
+    manifest = fixture.releases.manifest(release_id)
+    first = next(asset for asset in manifest.assets if asset.annotations)
+    malformed = manifest.model_copy(
+        update={
+            "assets": (
+                first.model_copy(
+                    update={
+                        "annotations": (
+                            first.annotations[0].model_copy(update={"label_class": "undeclared"}),
+                        )
+                    }
+                ),
+                *manifest.assets[1:],
+            )
+        }
+    )
+    dest = tmp_path / "out"
+
+    with pytest.raises(ExportSourceUnreadable, match="undeclared"):
+        ClassificationExporter().export(
+            fixture.releases.get(release_id),
+            malformed,
+            dest,
+            content=fixture.workspace.blob_store.get,
+        )
+    fixture.close()
+
+    assert not (dest / LABELS_FILENAME).exists()
+    assert not (dest / CLASSES_FILENAME).exists()
+
+
 def test_the_plugin_declares_tags_supported_and_reduces_nothing() -> None:
     """The capability facts the compatibility report is computed against."""
     plugin = ClassificationExporter()

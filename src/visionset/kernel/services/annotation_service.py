@@ -85,19 +85,15 @@ from visionset.kernel.domain import (
     progress_after_annotating,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
+from visionset.kernel.domain.schema_validation import validate_schema_annotation
 from visionset.kernel.errors import (
     AnnotationGeometryOutOfBounds,
     AnnotationNotFound,
     AnnotationNotFromModel,
     AssetNotInJob,
     AssetNotWritable,
-    DisallowedGeometry,
     DuplicateClassificationTag,
-    InvalidAttributeValue,
-    LabelClassNotInSchema,
-    MissingRequiredAttribute,
     StaleWrite,
-    UnknownAttribute,
     VisionSetError,
     WorkspaceCorrupt,
 )
@@ -586,10 +582,10 @@ def _tags_already_on(
     replaced is itself one of the stored ones, and judging a replacement against
     a set that still contains it would refuse every no-op edit.
 
-    Reads the store, which is the one thing ``_validate`` deliberately never
-    does — so it lives here, beside its callers, rather than inside it. That
-    property is stated in ``_validate``'s own docstring and is worth keeping:
-    schema judgement is a pure function of the annotation and the version.
+    Reads the store, which is the one thing ``validate_schema_annotation``
+    deliberately never does — so it lives here, beside its callers, rather
+    than inside it. Schema judgement is a pure function of the annotation and
+    the version.
     """
     skip = ignoring or set()
     return {
@@ -620,56 +616,12 @@ def _require_untagged(tagged: set[tuple[UUID, str]], annotation: Annotation) -> 
 
 
 def _validate(annotation: Annotation, schema: AnnotationSchema) -> None:
-    """Refuse an annotation the pinned schema version would not recognize.
-
-    Classes and attributes are matched by **exact** name, the same way
-    ``domain/schema_diff.py`` matches them — which is what makes a rename read as
-    a remove plus an add there, and what makes ``LabelClass.name`` stored
-    stripped here.
-
-    The geometry rule is membership in **this class's** set. That is not the same
-    test as ``SchemaService.allowed_geometries``, which is the union across a
-    version's classes: it answers "what may this project draw?" and would happily
-    let a polygon through under a class that only accepts boxes.
-
-    Pure, and given the schema rather than reading one, so the whole rule can be
-    exercised without a workspace.
-    """
-    label_class = next((c for c in schema.classes if c.name == annotation.label_class), None)
-    if label_class is None:
-        known = ", ".join(repr(c.name) for c in schema.classes) or "no classes at all"
-        raise LabelClassNotInSchema(
-            f"class {annotation.label_class!r} is not in schema version {schema.version}, "
-            f"which declares {known}"
-        )
-
-    if annotation.geometry.type not in label_class.geometries:
-        allowed = ", ".join(geometry.value for geometry in label_class.geometries)
-        raise DisallowedGeometry(
-            f"class {label_class.name!r} accepts {allowed} in schema version "
-            f"{schema.version}, but this annotation carries a {annotation.geometry.type.value}"
-        )
-
-    declared = {attribute.name: attribute for attribute in label_class.attributes}
-    if undeclared := sorted(annotation.attributes.keys() - declared.keys()):
-        known = ", ".join(repr(name) for name in declared) or "no attributes at all"
-        raise UnknownAttribute(
-            f"class {label_class.name!r} does not declare "
-            f"{', '.join(repr(name) for name in undeclared)}; it declares {known}"
-        )
-
-    for attribute in label_class.attributes:
-        if attribute.name not in annotation.attributes:
-            if attribute.required:
-                raise MissingRequiredAttribute(
-                    f"class {label_class.name!r} requires attribute {attribute.name!r}; "
-                    f"its default is what a surface should offer, not a value the kernel fills in"
-                )
-            continue
-        if (reason := attribute.rejects(annotation.attributes[attribute.name])) is not None:
-            raise InvalidAttributeValue(
-                f"attribute {attribute.name!r} of class {label_class.name!r} {reason}"
-            )
+    validate_schema_annotation(
+        label_class=annotation.label_class,
+        geometry=annotation.geometry,
+        attributes=annotation.attributes,
+        schema=schema,
+    )
 
 
 def _refresh_progress(
