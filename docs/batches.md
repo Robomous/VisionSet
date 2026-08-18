@@ -325,8 +325,12 @@ batch is `in_annotation`, so that is the ordinary case rather than a race: the r
 keeps going, and the outcome's `assets_skipped` says how many.
 
 **The batch's pinned schema is the prompt.** The model is asked for each class the schema
-declares that a box can be written as - the same class names an annotator would use - so an
-answer always maps back to a class this batch already admits. A schema with no such class is
+declares that a box can be written as - the same class names an annotator would use. A
+text-prompted detector answers with text decoded from spans over that prompt rather than a
+choice from the list, so an answer naming one of the classes, matched case-insensitively, is
+written under the schema's own spelling, and an answer naming none of them - a span that
+crossed the boundary between two phrases, most often - is discarded rather than guessed onto
+either half; the outcome's `regions_discarded` says how many. A schema with no such class is
 refused up front; see [inference.md](inference.md#what-a-connection-can-be-asked-for).
 
 **What lands enters at `review_pending`, never `annotated`.** Nobody judged it, so it arrives

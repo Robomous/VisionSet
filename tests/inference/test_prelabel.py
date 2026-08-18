@@ -55,11 +55,31 @@ POST = LabelClass(name="post", geometries=(GeometryType.BBOX,))
 #: pre-labeling before anything runs.
 LANE = LabelClass(name="lane", geometries=(GeometryType.POLYGON,))
 
+#: The real schema the bug report was filed against: five classes, each
+#: declaring both ``bbox`` and ``polygon`` and no attributes. Multi-geometry on
+#: purpose — ``detectable_classes`` tests for ``bbox`` membership rather than
+#: equality, and this is the shape that actually reached the failing run.
+CAR = LabelClass(name="car", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
+TRUCK = LabelClass(name="truck", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
+MOTORCYCLE = LabelClass(name="motorcycle", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
+PEDESTRIAN = LabelClass(name="pedestrian", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
+BUS = LabelClass(name="bus", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
+VEHICLE_CLASSES: Final = (CAR, TRUCK, MOTORCYCLE, PEDESTRIAN, BUS)
+
 DEFAULT_REGIONS: Final = (
     PredictedRegion(
         label="post", confidence=0.62, geometry=BboxGeometry(x=1.0, y=2.0, width=3.0, height=4.0)
     ),
 )
+
+
+def _region(label: str, confidence: float = 0.9) -> PredictedRegion:
+    """A predicted box under ``label``, the shape a text-prompted detector answers with."""
+    return PredictedRegion(
+        label=label,
+        confidence=confidence,
+        geometry=BboxGeometry(x=1.0, y=2.0, width=3.0, height=4.0),
+    )
 
 
 class FakeModelProvider:
@@ -240,6 +260,44 @@ def segmenter_fixture(tmp_path: Path) -> Iterator[Fixture]:
 @pytest.fixture
 def empty_answer_fixture(tmp_path: Path) -> Iterator[Fixture]:
     fixture = Fixture(tmp_path, "empty-answer", regions=())
+    yield fixture
+    fixture.close()
+
+
+@pytest.fixture
+def merged_span_fixture(tmp_path: Path) -> Iterator[Fixture]:
+    """The bug report, reproduced: a mappable region beside the exact merged
+    span observed in the wild — two adjacent phrases the model answered as one."""
+    fixture = Fixture(
+        tmp_path,
+        "merged-span",
+        classes=VEHICLE_CLASSES,
+        regions=(_region("car"), _region("truck bus")),
+    )
+    yield fixture
+    fixture.close()
+
+
+@pytest.fixture
+def only_unmappable_fixture(tmp_path: Path) -> Iterator[Fixture]:
+    """Every region the model answered with is unmappable — nothing to write."""
+    fixture = Fixture(
+        tmp_path, "only-unmappable", classes=VEHICLE_CLASSES, regions=(_region("truck bus"),)
+    )
+    yield fixture
+    fixture.close()
+
+
+@pytest.fixture
+def capitalized_class_fixture(tmp_path: Path) -> Iterator[Fixture]:
+    """A schema class spelled with a capital, against the casefolded answer a
+    prompt built from it would actually receive back."""
+    fixture = Fixture(
+        tmp_path,
+        "capitalized-class",
+        classes=(LabelClass(name="Car", geometries=(GeometryType.BBOX, GeometryType.POLYGON)),),
+        regions=(_region("car"),),
+    )
     yield fixture
     fixture.close()
 
@@ -527,3 +585,67 @@ def test_progress_is_reported_in_assets(prelabel_fixture: Fixture) -> None:
     )
 
     assert reported[-1] == (3, 3)
+
+
+def test_a_merged_span_is_discarded_and_the_run_completes(
+    merged_span_fixture: Fixture,
+) -> None:
+    """The bug: a text-prompted detector can answer with text that was never one
+    of the phrases asked for. ``truck bus`` — the exact merged span observed
+    against a real model — must not fail the run; it is discarded and counted,
+    while the mappable region beside it is entered normally."""
+    outcome = pre_label(
+        merged_span_fixture.workspace,
+        batch_id=merged_span_fixture.batch.id,
+        connection_id=merged_span_fixture.connection.id,
+        pool=merged_span_fixture.pool,
+    )
+
+    assert outcome.assets_considered == 3
+    assert outcome.assets_labeled == 3
+    assert outcome.annotations_written == 3
+    assert outcome.regions_discarded == 3
+    job = merged_span_fixture.job()
+    for asset_id in merged_span_fixture.assets:
+        assert job.progress[asset_id] is AssetProgress.REVIEW_PENDING
+        written = merged_span_fixture.annotations_on(asset_id)
+        assert [annotation.label_class for annotation in written] == ["car"]
+
+
+def test_a_capitalized_class_receives_the_casefolded_answer(
+    capitalized_class_fixture: Fixture,
+) -> None:
+    """The prompt casefolds every phrase (``transformers_provider.prompt_text``),
+    so a class spelled ``Car`` sends ``car.`` and the model answers ``car``. The
+    match must fold case, and the annotation must carry the schema's own
+    spelling rather than the model's."""
+    pre_label(
+        capitalized_class_fixture.workspace,
+        batch_id=capitalized_class_fixture.batch.id,
+        connection_id=capitalized_class_fixture.connection.id,
+        pool=capitalized_class_fixture.pool,
+    )
+
+    written = capitalized_class_fixture.annotations_on(capitalized_class_fixture.assets[0])
+    assert [annotation.label_class for annotation in written] == ["Car"]
+
+
+def test_an_asset_whose_only_regions_are_unmappable_stays_unannotated(
+    only_unmappable_fixture: Fixture,
+) -> None:
+    """ "Found nothing writable" and "reviewed and found empty" are different
+    facts: an asset whose only answer is a merged span nobody could attribute
+    is left untouched, not entered with zero annotations."""
+    outcome = pre_label(
+        only_unmappable_fixture.workspace,
+        batch_id=only_unmappable_fixture.batch.id,
+        connection_id=only_unmappable_fixture.connection.id,
+        pool=only_unmappable_fixture.pool,
+    )
+
+    assert outcome.assets_labeled == 0
+    assert outcome.regions_discarded == 3
+    job = only_unmappable_fixture.job()
+    for asset_id in only_unmappable_fixture.assets:
+        assert job.progress[asset_id] is AssetProgress.UNANNOTATED
+        assert only_unmappable_fixture.annotations_on(asset_id) == []

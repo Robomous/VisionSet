@@ -9,8 +9,11 @@ down. It cannot move into ``visionset.kernel`` — running a model means torch �
 so it lives here beside the adapters, exactly as ``suggest`` does.
 
 **The schema is the prompt.** The phrases are the pinned schema's own class names,
-so an answer maps back to the class it was asked under and nothing comes back that
-has nowhere to be written. The cost is that class names have to be words a
+so a phrase a detector answers with is one a class was asked under — but a
+text-prompted detector decodes token spans, not a choice from the phrase list, and
+a span crossing a phrase boundary answers with text nobody asked for. That answer
+is matched back case-insensitively and discarded when it names no phrase; it is
+not written under either half. The cost is that class names have to be words a
 zero-shot model understands, and that is the honest constraint rather than a
 defect: a schema of opaque codes is refused up front instead of quietly returning
 nothing.
@@ -24,7 +27,7 @@ among them.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 from uuid import UUID
@@ -86,6 +89,12 @@ class PreLabelOutcome:
     #: reached them. Passed over rather than an error, on the same idempotency
     #: argument that makes a second run safe.
     assets_skipped: int = 0
+    #: Regions the model answered with a label that named no phrase asked for —
+    #: a span decoded across a phrase boundary, most often. Discarded before an
+    #: annotation is built rather than written and refused, so a run that drops
+    #: a meaningful share of the model's output says so instead of reporting a
+    #: clean success.
+    regions_discarded: int = 0
 
 
 def unsupported_prompt_message(connection_name: str) -> str:
@@ -188,6 +197,11 @@ def pre_label(
     annotation, so that is the normal case rather than a race. The run keeps
     going and ``PreLabelOutcome.assets_skipped`` says how many.
 
+    A region whose label names no phrase asked for is passed over the same
+    way: a text-prompted detector answers with decoded text, not a choice from
+    the phrase list, and a merged answer is discarded rather than guessed onto
+    either half. ``PreLabelOutcome.regions_discarded`` says how many.
+
     Raises:
         InferenceConnectionNotFound: no such connection.
         InferenceConnectionNotSetUp: a local connection whose weights are absent.
@@ -212,6 +226,7 @@ def pre_label(
     batch = batches.require_pre_labelable(batch_id)
     schema = require_detectable_schema(workspace, batch)
     phrases = detectable_classes(schema)
+    class_by_answer = _class_by_answer(phrases)
 
     jobs = batches.jobs(batch_id)
     targets = _untouched(workspace, jobs)
@@ -219,14 +234,20 @@ def pre_label(
     annotations_service = AnnotationService(workspace)
     ingest = IngestService(workspace)
 
-    considered = labeled = written = skipped = 0
+    considered = labeled = written = skipped = discarded = 0
     model_ref: str | None = None
     for job_id, asset_id in targets:
         # Between assets, which is the only place stopping is honest: the last
         # asset is committed and the next has not been touched.
         if should_stop is not None and should_stop():
             return PreLabelOutcome(
-                considered, labeled, written, model_ref, stopped_early=True, assets_skipped=skipped
+                considered,
+                labeled,
+                written,
+                model_ref,
+                stopped_early=True,
+                assets_skipped=skipped,
+                regions_discarded=discarded,
             )
 
         asset = ingest.asset(batch.project_id, asset_id)
@@ -245,7 +266,13 @@ def pre_label(
         considered += 1
         if answer is not None:
             model_ref = answer.model_ref
-            proposed = _annotations_from(answer, asset_id=asset_id, schema_version=schema.version)
+            proposed, unmapped = _annotations_from(
+                answer,
+                asset_id=asset_id,
+                schema_version=schema.version,
+                class_by_answer=class_by_answer,
+            )
+            discarded += unmapped
             if proposed:
                 try:
                     annotations_service.enter_unreviewed(job_id, proposed)
@@ -264,7 +291,9 @@ def pre_label(
         if on_progress is not None:
             on_progress(considered, total)
 
-    return PreLabelOutcome(considered, labeled, written, model_ref, assets_skipped=skipped)
+    return PreLabelOutcome(
+        considered, labeled, written, model_ref, assets_skipped=skipped, regions_discarded=discarded
+    )
 
 
 def _untouched(
@@ -297,24 +326,54 @@ def _untouched(
         )
 
 
+def _class_by_answer(phrases: Sequence[str]) -> dict[str, str]:
+    """The casefolded form of each phrase asked for, to the schema's own spelling.
+
+    ``prompt_text`` casefolds every phrase into the prompt, so the answer arrives
+    casefolded too; this is the one place both sides are compared, and it maps
+    the match back to what a person actually named the class.
+    """
+    return {phrase.casefold(): phrase for phrase in phrases}
+
+
 def _annotations_from(
-    answer: AssetPrediction, *, asset_id: UUID, schema_version: int
-) -> list[Annotation]:
-    """One label per region, carrying what produced it.
+    answer: AssetPrediction,
+    *,
+    asset_id: UUID,
+    schema_version: int,
+    class_by_answer: Mapping[str, str],
+) -> tuple[list[Annotation], int]:
+    """Regions mapped onto a class that was asked for, and how many could not be.
+
+    A region's label is text a detector decoded from spans over the prompt
+    string, not a choice from the phrases asked for — so a span crossing a
+    phrase boundary answers with text that names no class. Matching is
+    case-insensitive, against the same casefolding the prompt applied, and a
+    match is written under the schema's spelling rather than the model's. A
+    label matching nothing is dropped here, before an annotation is built:
+    writing it under either half of a merged answer would be inventing an
+    attribution nobody can check.
 
     ``schema_version`` is supplied because ``Annotation`` requires one; the
     service stamps the pinned value over it, which is what keeps a caller from
     claiming a version it does not get to choose.
     """
-    return [
-        Annotation(
-            asset_id=asset_id,
-            label_class=region.label,
-            schema_version=schema_version,
-            geometry=region.geometry,
-            provenance="model",
-            model_ref=answer.model_ref,
-            confidence=region.confidence,
+    annotations = []
+    unmapped = 0
+    for region in answer.regions:
+        label_class = class_by_answer.get(region.label.casefold())
+        if label_class is None:
+            unmapped += 1
+            continue
+        annotations.append(
+            Annotation(
+                asset_id=asset_id,
+                label_class=label_class,
+                schema_version=schema_version,
+                geometry=region.geometry,
+                provenance="model",
+                model_ref=answer.model_ref,
+                confidence=region.confidence,
+            )
         )
-        for region in answer.regions
-    ]
+    return annotations, unmapped

@@ -298,12 +298,18 @@ def pre_label_batch(
     the same way rather than failing the whole call; `assets_skipped` in the
     result says how many.
 
+    **A region the model answered with a label that names no class asked for is
+    discarded, not fatal.** A text-prompted detector answers with text decoded
+    from spans over the prompt, not a choice from the classes it was asked
+    about, so a span crossing the boundary between two phrases can answer with
+    neither of them; `regions_discarded` in the result says how many.
+
     **The batch's pinned schema is the prompt.** The model is asked for each
-    class the schema declares that a box can be written as, so every answer maps
-    back to a class this batch already admits. A schema whose classes are all
-    polygons, polylines or tags — or whose box classes each require an attribute
-    a prediction cannot supply — has nowhere for a detection to land and is
-    refused before anything runs.
+    class the schema declares that a box can be written as; an answer naming one
+    of those classes, matched case-insensitively, is written under the schema's
+    own spelling. A schema whose classes are all polygons, polylines or tags —
+    or whose box classes each require an attribute a prediction cannot supply —
+    has nowhere for a detection to land and is refused before anything runs.
 
     Also refused before anything runs: a batch that is not `in_annotation`, a
     connection whose model answers places rather than words, and a deployment
@@ -323,6 +329,7 @@ def pre_label_batch(
         "annotations_written": outcome.annotations_written,
         "model_ref": outcome.model_ref,
         "assets_skipped": outcome.assets_skipped,
+        "regions_discarded": outcome.regions_discarded,
     }
 
 

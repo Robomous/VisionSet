@@ -404,11 +404,12 @@ export interface paths {
          *     a second run picks up only what is still untouched.
          *
          *     **The batch's pinned schema is the prompt.** The model is asked for each class
-         *     the schema declares that a box can be written as, so every answer maps back to
-         *     a class this batch already admits. A schema whose classes are all polygons,
-         *     polylines or tags — or whose box classes each require an attribute a
-         *     prediction cannot supply — has nowhere for a detection to land and is
-         *     refused.
+         *     the schema declares that a box can be written as; an answer naming one of
+         *     those classes, matched case-insensitively, is written under the schema's own
+         *     spelling, and an answer naming none of them is discarded. A schema whose
+         *     classes are all polygons, polylines or tags — or whose box classes each
+         *     require an attribute a prediction cannot supply — has nowhere for a
+         *     detection to land and is refused.
          *
          *     **202, not 200.** A batch is hundreds of forward passes, so this follows the
          *     launch-and-poll contract the export and weight-download routes use: poll `GET

@@ -78,6 +78,12 @@ def run(
     The batch is open for annotation, so a person touching an asset mid-run is
     the ordinary case; the run passes it over and keeps going, and
     ``assets_skipped`` in the result says how many.
+
+    **A region the model answered with a label nobody asked for is discarded,
+    not fatal either.** A text-prompted detector answers with decoded text
+    rather than a choice from the prompt's phrases, so a merged answer is
+    dropped before it is ever written; ``regions_discarded`` in the result says
+    how many.
     """
     if reporter.is_cancelled():
         return {}
@@ -103,4 +109,5 @@ def run(
         "model_ref": outcome.model_ref,
         "stopped_early": outcome.stopped_early,
         "assets_skipped": outcome.assets_skipped,
+        "regions_discarded": outcome.regions_discarded,
     }
