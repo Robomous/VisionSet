@@ -62,7 +62,7 @@ OPEN_JOB_STATES: Final[frozenset[AnnotationJobState]] = frozenset(
 """The job states work may still happen in.
 
 ``JobService`` and ``AnnotationService`` both consult this before touching
-anything a job carries — labels through the three annotation writes, progress
+anything a job carries — labels through the four annotation writes, progress
 through ``mark`` — and :func:`~visionset.kernel.domain.capabilities.asset_actions`
 reads the same set, so what an asset declares and what it accepts cannot drift.
 
@@ -157,15 +157,18 @@ WRITABLE_PROGRESS: Final[frozenset[AssetProgress]] = frozenset(
 )
 """The states in which an asset's labels may still be added to, edited or removed.
 
-``AnnotationService`` consults this on every write, beside the batch gate. The
-two answer different questions — is this batch open at all, and is *this asset*
-still being labeled — and both have to hold.
+``AnnotationService.add``, ``update`` and ``delete`` consult this on every
+write, beside the batch gate. The two answer different questions — is this
+batch open at all, and is *this asset* still being labeled — and both have to
+hold. ``enter_unreviewed`` is narrower still and does not consult this set at
+all: it writes only onto ``unannotated``, because a model's unattended labels
+must never land over work a person has already touched.
 
-Exactly the two states :func:`progress_after_annotating` knows how to move
-between, and that is the whole argument. The other three each record somebody's
-decision that labeling is over: ``skipped`` says a person chose not to label
-this, ``review_pending`` says a person submitted it, ``accepted`` says a reviewer
-took it. A write onto any of them lands labels the progress machine will not
+Exactly the two states those three writes may touch. The other three are
+settled: ``skipped`` says a person chose not to label this, ``accepted`` says a
+reviewer took it, and ``review_pending`` says either a person submitted it or a
+model wrote it unattended. A write through ``add``, ``update`` or ``delete``
+onto any of the three settled states lands labels the progress machine will not
 account for — and for ``skipped`` it is worse than untidy, because
 ``PROMOTABLE_PROGRESS`` leaves the asset out of the trunk, so the work is
 accepted, stored, and then silently dropped at promotion with nothing anywhere
@@ -183,16 +186,16 @@ def progress_after_annotating(
 ) -> AssetProgress | None:
     """Where this asset's progress should land now, or ``None`` to leave it.
 
-    The only two moves a row appearing or disappearing can justify:
-    ``unannotated -> annotated`` when the first annotation lands, and
-    ``annotated -> unannotated`` when the last one goes.
+    The only moves a row appearing or disappearing can justify: an annotation's
+    last row going moves it ``annotated -> unannotated``, and its first row
+    landing moves it to ``annotated`` or, unjudged, straight to
+    ``review_pending`` — see ``judged`` below.
 
     Everything else is somebody's decision rather than a consequence.
-    ``skipped`` says a person chose not to label this; ``review_pending`` says
-    a person submitted it; ``accepted`` says a reviewer took it. None of those
-    is contradicted by an annotation being drawn or erased, so annotations
-    never move them — ``JobService.mark`` is the door for a decision, and it
-    consults ``ASSET_PROGRESS_TRANSITIONS`` the same way.
+    ``skipped`` says a person chose not to label this; ``accepted`` says a
+    reviewer took it. Neither is contradicted by an annotation being drawn or
+    erased, so annotations never move them — ``JobService.mark`` is the door for
+    a decision, and it consults ``ASSET_PROGRESS_TRANSITIONS`` the same way.
 
     Pure, and separate from ``AnnotationService`` on purpose: "what does this
     mean for progress" is a domain question, and keeping it here is what lets

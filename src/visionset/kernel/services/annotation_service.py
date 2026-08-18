@@ -6,7 +6,7 @@ schema version so that work in flight is judged by a contract that stopped
 moving; a job says who is labeling which assets. This service is where those two
 meet the thing they were guarding.
 
-Four things shape this module:
+Five things shape this module:
 
 - **Schema violations are a hard reject, at write time, in the kernel.** Not a
   warning, not a surface's good faith, not a nightly report. An annotation whose
@@ -29,16 +29,25 @@ Four things shape this module:
   constructed, so it can never reach a service to be reported here. That is the
   division ``docs/schemas.md`` draws: per-value validity is pydantic's, validity
   that needs another object is the service's.
-- **Progress follows the annotations, but only two edges of it — and it gates
-  them.** The first annotation on an asset moves it ``unannotated -> annotated``;
-  deleting the last moves it back. ``skipped``, ``review_pending`` and
-  ``accepted`` are people's decisions and stay with ``JobService.mark``. The rule
-  is ``progress_after_annotating`` in ``domain/task.py``, and it is applied
-  through this service's own unit of work so that labels and progress commit
-  together. Those same two states are ``WRITABLE_PROGRESS``, and a write onto any
-  of the other three is refused with ``AssetNotWritable``: the progress machine
-  has no account of it, and for a ``skipped`` asset the labels would be stored
-  and then dropped at promotion with nothing saying so.
+- **Progress follows the annotations, but only two edges of it under ``add``,
+  ``update`` and ``delete`` — and it gates them.** The first annotation on an
+  asset moves it ``unannotated -> annotated``; deleting the last moves it back.
+  ``skipped`` and ``accepted`` are people's decisions and stay with
+  ``JobService.mark``; ``review_pending`` is reached that way too, or directly,
+  by ``enter_unreviewed`` below. The rule is ``progress_after_annotating`` in
+  ``domain/task.py``, and it is applied through this service's own unit of work
+  so that labels and progress commit together. ``unannotated`` and ``annotated``
+  are ``WRITABLE_PROGRESS``, and a write through ``add``, ``update`` or
+  ``delete`` onto any of the other three is refused with ``AssetNotWritable``:
+  the progress machine has no account of it, and for a ``skipped`` asset the
+  labels would be stored and then dropped at promotion with nothing saying so.
+- **A model can also write straight to ``review_pending``, unattended.**
+  ``enter_unreviewed`` is the fourth write and the narrowest: every annotation
+  must carry ``provenance='model'``, the asset must be exactly ``unannotated``,
+  and the labels commit with the move to ``review_pending`` in the same
+  transaction. It is the only door unattended prediction uses — accepting a
+  model's *suggestion* is still a person's hand, and still goes through
+  ``add``.
 
 Both gates above the asset are ``JobService``'s, reused rather than restated:
 this service calls ``require_job``, ``require_open_batch`` and
@@ -369,11 +378,13 @@ class AnnotationService:
     ) -> None:
         """Say what this call did, after its transaction committed.
 
-        Called from outside the ``unit_of_work`` block by all three writes, and
+        Called from outside the ``unit_of_work`` block by all four writes, and
         that placement is the whole point: an announcement is about work that
         happened, and a subscriber that raises out here has nothing left to
-        undo. The three differ only in the operation they name, so they share
-        one emitter rather than three that could drift.
+        undo. They share one emitter rather than four that could drift, and
+        ``enter_unreviewed`` announces itself as ``ADD`` — new rows landed, the
+        same fact ``add`` announces — because :class:`AnnotationOperation` names
+        the shape of the write, not the progress it happened to leave behind.
 
         ``asset_ids`` is deduplicated and keeps the order the annotations came
         in — several boxes on one image are one asset touched, not several.
@@ -446,7 +457,7 @@ class AnnotationService:
 def _blaming(index: int) -> Iterator[None]:
     """Name item ``index`` as the one at fault in whatever escapes this block.
 
-    All three writes here are all-or-nothing over a ``Sequence``, so a caller
+    All four writes here are all-or-nothing over a ``Sequence``, so a caller
     that gets a refusal has no way to work out *which* annotation caused it —
     nothing was written, and the message names a class or an attribute rather
     than a position. ``VisionSetError.index`` is that position, and setting it
@@ -478,9 +489,12 @@ def _require_writable(job: AnnotationJob, asset_id: UUID) -> None:
     the more basic complaint and answering it second would report an asset's
     progress as the reason a *different* job's asset was refused.
 
-    Only the three writes call this; :meth:`AnnotationService.for_asset` reads
-    through ``_require_asset_in_job`` alone, because reading back what a reviewer
-    accepted is exactly what a reviewer does.
+    Only ``add``, ``update`` and ``delete`` call this — ``enter_unreviewed``
+    has its own, narrower check, ``_require_untouched`` below, because
+    ``unannotated`` is legal here but is the *only* thing legal there.
+    :meth:`AnnotationService.for_asset` reads through ``_require_asset_in_job``
+    alone, because reading back what a reviewer accepted is exactly what a
+    reviewer does.
     """
     _require_asset_in_job(job, asset_id)
     progress = job.progress[asset_id]

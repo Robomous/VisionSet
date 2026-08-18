@@ -61,7 +61,8 @@ parameter the row carries and keep only its name, which is a new connection wear
 
 ## Running a model here needs the `local-inference` extra
 
-The auto-labeling feature is always present. What is optional is the runtime that executes a model
+Both auto-labeling modes - suggesting a shape from a click, and pre-labeling a batch from its
+schema - are always present. What is optional is the runtime that executes a model
 *on this machine*:
 
 ```bash
@@ -344,10 +345,10 @@ about to send? So a connection also declares what it can be asked for.
 { "setup_state": "ready", "capabilities": ["point_suggest"], … }
 ```
 
-| Capability | Means |
-| --- | --- |
-| `point_suggest` | Give me the thing under these points |
-| `text_detect` | Find everything these words name |
+| Capability | Means | Consumed by |
+| --- | --- | --- |
+| `point_suggest` | Give me the thing under these points | [suggesting a shape from a click](#suggesting-a-shape-from-a-click), below |
+| `text_detect` | Find everything these words name | [pre-labeling a batch](batches.md#pre-labeling) |
 
 **The vocabulary is closed and the set of models answering to it is not.** These two are the
 whole of what a connection can declare, and each exists because a surface renders it. Which

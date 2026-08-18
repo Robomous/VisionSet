@@ -311,6 +311,30 @@ jobs, and a projection cannot read them, so it is declared wherever the transiti
 it and answers `BatchNotComplete` if the work is not done. The alternative - the same batch
 declaring differently depending on which endpoint answered - is worse than one honest caveat.
 
+## Pre-labeling
+
+A batch that is `in_annotation` can ask a text-prompt model to label its **untouched** assets -
+`unannotated`, and nothing else. An asset already `annotated`, `skipped`, `review_pending` or
+`accepted` is passed over, so a run never writes over what a person did.
+
+**The batch's pinned schema is the prompt.** The model is asked for each class the schema
+declares that a box can be written as - the same class names an annotator would use - so an
+answer always maps back to a class this batch already admits. A schema with no such class is
+refused up front; see [inference.md](inference.md#what-a-connection-can-be-asked-for).
+
+**What lands enters at `review_pending`, never `annotated`.** Nobody judged it, so it arrives
+awaiting review rather than claiming to be somebody's work - see
+[annotations.md](annotations.md#provenance-is-the-models-own-rule-not-the-services). One asset
+is one transaction: its labels and its move to `review_pending` commit together, so a run that
+stops midway has either not touched an asset or fully entered it.
+
+**A second run picks up whatever is still untouched.** Nothing here is a one-shot: since the
+entry rule only ever writes onto `unannotated`, running it again after a partial run, an
+interruption, or a person handling some assets in the meantime costs nothing on what already
+landed. `visionset.inference.pre_label` is the one implementation an SDK caller, the API and MCP
+all run - see [background-jobs.md](background-jobs.md) for the `annotation.pre_label` job type
+this is queued as over HTTP, and [mcp.md](mcp.md) for the synchronous `pre_label_batch` tool.
+
 ## What approval and completion announce
 
 `approve` and `complete` each publish a [domain event](events.md) - `BatchApproved`, carrying
