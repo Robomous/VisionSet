@@ -18,6 +18,32 @@ set -eu
 
 WORKSPACE="${VISIONSET_WORKSPACE:?VISIONSET_WORKSPACE must be set}"
 
+# The storage mount, checked before anything tries to write it. This container runs
+# as the developer rather than as root (see `user:` in docker/compose.yaml), and the
+# one thing that arrangement cannot fix by itself is a host directory that is
+# already somebody else's: Docker creates a missing bind-mount source as root,
+# before any container starts, so no line in this script can get ahead of it. That
+# is why the repository tracks `workspace-data/` as an empty directory — a checkout
+# that already carries it is one the daemon never has to invent — but a
+# VISIONSET_DATA pointing somewhere new, or a directory left behind by a stack that
+# ran as root, both land here.
+#
+# Said now, naming the remedy, rather than left to surface as a traceback out of
+# `visionset init` or later as a 500 with an incident id. A refusal whose reader
+# cannot act on it is the failure this file's guard below already argues against.
+DATA="$(dirname "$WORKSPACE")"
+if [ ! -w "$DATA" ]; then
+  echo "compose: $DATA is not writable by uid $(id -u):$(id -g)" >&2
+  echo "compose: the host directory behind it belongs to somebody else, most likely" >&2
+  echo "compose: root, from a stack that ran before this one had a user. Hand it back:" >&2
+  echo "compose:   sudo chown -R \"\$(id -u):\$(id -g)\" workspace-data" >&2
+  echo "compose: or, without sudo, through a container that is already root:" >&2
+  echo "compose:   docker run --rm -v \"\$PWD:/w\" alpine:3 \\" >&2
+  echo "compose:     chown -R $(id -u):$(id -g) /w/workspace-data" >&2
+  echo "compose: if VISIONSET_DATA is set, that path rather than workspace-data." >&2
+  exit 1
+fi
+
 # `visionset init` refuses a directory that already holds something, which is the
 # right behaviour for a command a person types and the wrong one for a container
 # that restarts. So the guard is the database file itself — the same thing

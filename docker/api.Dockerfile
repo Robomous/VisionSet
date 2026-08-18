@@ -108,4 +108,40 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --no-deps -e .
 
+# Who this container runs as, and it is whoever ran `docker compose` rather than
+# root. Every path under /workspace arrives on a bind mount, so a root process here
+# writes root-owned files into somebody's checkout — a `__pycache__` beside every
+# module uvicorn imports, and the workspace under /data — which the person who
+# started the stack then cannot rebuild over or delete without sudo.
+#
+# **Why this block is at the very end here and in the middle of the two node
+# images.** Nothing in a Python image is written at run time: the venv is at
+# /opt/venv, outside the mount, and UV_COMPILE_BYTECODE above has already written
+# every .pyc there is. So ownership costs two cheap layers at the bottom, and
+# changing the uid re-runs neither apt nor `uv sync`. The node images are the
+# opposite case — their watch builds and their caches write *into* directories the
+# install created — so there the chown has to join the install's own RUN or a
+# second layer duplicates the whole tree. docker/app.Dockerfile says it from that
+# side.
+#
+# /opt/venv is deliberately left root-owned. Nothing at run time writes to the
+# environment, and leaving it unwritable is how this file says so.
+#
+# `-o` on both permits a duplicate id, because a host uid or gid may collide with
+# one the base image already ships. Refusing to build over that would fail for the
+# developer who has such an id while protecting nothing.
+ARG VISIONSET_UID=1000
+ARG VISIONSET_GID=1000
+RUN groupadd -o -g "${VISIONSET_GID}" visionset \
+    && useradd -o -u "${VISIONSET_UID}" -g "${VISIONSET_GID}" \
+         -m -d /home/visionset -s /bin/sh visionset \
+    && chown -R "${VISIONSET_UID}:${VISIONSET_GID}" /workspace
+
+# A uid with no passwd entry is given HOME=/, which it cannot write, and what
+# breaks then names a cache rather than a home directory. `useradd -m` above makes
+# the entry; this makes the value independent of how it gets resolved.
+ENV HOME=/home/visionset
+
+USER visionset
+
 CMD ["sh", "/workspace/docker/api-dev.sh"]
