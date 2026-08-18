@@ -304,10 +304,13 @@ def pre_label_batch(
     `annotated`: nobody judged them, so they arrive awaiting review rather than
     claiming to be somebody's work.
 
-    **Only assets nothing has touched.** An asset that is already annotated,
-    skipped, awaiting review or accepted is passed over, so a run never writes
-    over what a person did — and a second run picks up only what is still
-    untouched.
+    **Only assets nothing has touched — which is stronger than reading
+    `unannotated`.** An asset that is already annotated, skipped, awaiting
+    review or accepted is passed over, and so is an `unannotated` one that
+    still carries annotations from an earlier round that was skipped and then
+    restored: that sequence deletes no labels, so progress alone does not
+    prove an asset untouched. A run never writes over what a person did, and
+    a second run picks up only what is still untouched.
 
     **The batch's pinned schema is the prompt.** The model is asked for each class
     the schema declares that a box can be written as, so every answer maps back to

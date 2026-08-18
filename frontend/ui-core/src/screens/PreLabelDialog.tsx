@@ -16,8 +16,11 @@
  * `review_pending`, never `annotated`: nobody has judged what comes back, so a
  * person reviews a draft instead of inheriting somebody else's unreviewed guess
  * as their own work. Only assets nothing has touched are asked for — the route's
- * own rule — so the count shown here is `progress.unannotated`, not the whole
- * batch.
+ * own rule, and it is stronger than `progress.unannotated` alone: a labeled,
+ * skipped and restored asset reads `unannotated` again without losing its
+ * boxes, and the route passes it over too. So `progress.unannotated`, the
+ * count shown here, is an upper bound on what a run will touch rather than an
+ * exact one — which is why the string below says "up to".
  *
  * ## The job is a background one, and this dialog watches it
  *

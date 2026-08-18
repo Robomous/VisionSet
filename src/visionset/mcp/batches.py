@@ -288,12 +288,15 @@ def pre_label_batch(
     with whatever is still untouched rather than starting over or double-writing
     what already landed.
 
-    **Only assets nothing has touched.** An asset that is already annotated,
-    skipped, awaiting review or accepted is passed over, and what is written
-    lands at `review_pending`, never at `annotated` — nobody judged it. An
-    asset somebody starts working while this call is still running is passed
-    over the same way rather than failing the whole call; `assets_skipped`
-    in the result says how many.
+    **Only assets nothing has touched — not merely assets reading
+    `unannotated`.** An asset that is already annotated, skipped, awaiting
+    review or accepted is passed over, and so is an `unannotated` one that
+    still carries annotations from a round that was skipped and later
+    restored, since that sequence deletes no labels. What is written lands at
+    `review_pending`, never at `annotated` — nobody judged it. An asset
+    somebody starts working while this call is still running is passed over
+    the same way rather than failing the whole call; `assets_skipped` in the
+    result says how many.
 
     **The batch's pinned schema is the prompt.** The model is asked for each
     class the schema declares that a box can be written as, so every answer maps
