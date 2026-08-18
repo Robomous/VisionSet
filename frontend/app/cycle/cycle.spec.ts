@@ -509,6 +509,10 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // Through **Custom model**, which is the point of it not being in the
     // curated list: nobody choosing a model is offered a segmenter that cannot
     // segment, and anybody who needs it can still name it.
+    //
+    // The trigger only exists once the real `/inference/providers` read has
+    // answered — wait for it rather than racing the click against that request.
+    await expect(page.getByTestId("connection-model")).toBeVisible();
     await page.getByTestId("connection-model").click();
     await page.getByRole("option", { name: /Custom model/ }).click();
     await page.getByTestId("connection-custom-model").fill(STUB_MODEL_ID);

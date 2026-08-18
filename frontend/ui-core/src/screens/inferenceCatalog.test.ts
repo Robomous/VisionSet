@@ -1,112 +1,164 @@
 /**
- * The curated list's own rules, which no screen test can see.
+ * What the form makes of a served catalog, which no screen test can see.
  *
- * A form test can prove the list is rendered from this module. It cannot prove
- * that an entry added later carries a commit rather than a branch, or that the
- * default is one of the entries at all — and those are exactly the mistakes an
- * addition makes, because the type accepts a plausible-looking string for both.
+ * A form test can prove the select is built from these functions. It cannot
+ * prove what happens to an entry whose capability this build has never heard of,
+ * to a catalog holding nothing, or to a preferred default that is not installed
+ * — and those are the cases a served list has and a hardcoded one did not.
+ *
+ * What used to be asserted here and is **not** gone: that every entry pins a
+ * commit rather than a branch, and that every entry says what it is for. Those
+ * are properties of a driver's declaration now, and
+ * `tests/inference/test_provider_conformance.py` holds every installed driver to
+ * them — including drivers this repository did not write, which is the half no
+ * test in this file could ever have covered.
  */
 
 import { expect, it } from "vitest";
 
+import type { CuratedEntry } from "../data/inferenceQueries";
 import {
-  CURATED_BY_ID,
-  CURATED_MODELS,
-  CUSTOM_MODEL,
-  DEFAULT_MODEL,
   DEVICES,
-  curatedEntry,
+  PREFERRED_MODEL_ID,
+  accessFor,
+  defaultEntry,
+  entriesOf,
+  entryFor,
+  groupsOf,
   precisionOn,
   precisionsFor,
 } from "./inferenceCatalog";
 
-const EVERY_MODEL = CURATED_MODELS.flatMap((group) => group.models);
+const COMMIT = "0".repeat(40);
 
-it("pins every curated entry to a commit, never to a moving pointer", () => {
-  // The form's own helper text says a moving pointer is not a provenance. A
-  // curated list that pinned `main` would be saying it while doing the opposite,
-  // and the size beside the entry would describe whatever the branch last was.
-  for (const model of EVERY_MODEL) {
-    expect(model.revision).toMatch(/^[0-9a-f]{40}$/);
-  }
+function entry(overrides: Partial<CuratedEntry> = {}): CuratedEntry {
+  return {
+    model_id: "acme/seg-small",
+    model_revision: COMMIT,
+    family: "acme_seg",
+    capability: "point_suggest",
+    hint: "small — light on a CPU",
+    access_note: null,
+    access_url: null,
+    ...overrides,
+  };
+}
+
+it("flattens the drivers into one list of offers, in the order they were served", () => {
+  const flat = entriesOf([
+    { provider_id: "acme", families: {}, curated: [entry({ model_id: "a" }), entry({ model_id: "b" })] },
+    { provider_id: "zeta", families: {}, curated: [entry({ model_id: "c" })] },
+  ]);
+
+  expect(flat.map((one) => one.model_id)).toEqual(["a", "b", "c"]);
 });
 
-it("says what each entry costs and what it is for", () => {
-  for (const model of EVERY_MODEL) {
-    expect(model.totalBytes).toBeGreaterThan(0);
-    expect(model.hint.trim()).not.toBe("");
-  }
+it("groups the offers under the heading this build has for each ability", () => {
+  const groups = groupsOf([
+    entry({ model_id: "a", capability: "point_suggest" }),
+    entry({ model_id: "b", capability: "text_detect" }),
+  ]);
+
+  expect(groups.map((one) => one.key)).toEqual(["point_suggest", "text_detect"]);
+  expect(groups[0]!.label).toBe("Interactive segmentation (point prompts)");
 });
 
-it("names every entry once, so a lookup cannot be ambiguous", () => {
-  expect(CURATED_BY_ID.size).toBe(EVERY_MODEL.length);
+it("renders no heading over an ability nothing offers a model for", () => {
+  // A section of the dashboard that holds nothing is an invitation. A group in a
+  // select that holds nothing is a heading over an empty space, which is chrome
+  // rather than information.
+  const groups = groupsOf([entry({ capability: "point_suggest" })]);
+
+  expect(groups.map((one) => one.key)).toEqual(["point_suggest"]);
 });
 
-it("defaults to an entry the list actually holds", () => {
-  // `DEFAULT_MODEL` is resolved by id, so a rename that missed it would leave
-  // the form opening on `undefined` — a blank select and no revision.
-  expect(DEFAULT_MODEL).toBeDefined();
-  expect(EVERY_MODEL).toContain(DEFAULT_MODEL);
+it("shows an ability this build has never heard of under its own name", () => {
+  // The capability vocabulary is open, so a newer server or an installed driver
+  // may name one this build was not compiled against. Dropping it would hide a
+  // model the installation can actually run.
+  const groups = groupsOf([
+    entry({ model_id: "a", capability: "point_suggest" }),
+    entry({ model_id: "b", capability: "depth_estimate" }),
+  ]);
+
+  expect(groups.map((one) => one.key)).toEqual(["point_suggest", "depth_estimate"]);
+  expect(groups[1]!.label).toBe("depth_estimate");
 });
 
-it("keeps the custom sentinel out of the model ids it could collide with", () => {
-  expect(CURATED_BY_ID.has(CUSTOM_MODEL)).toBe(false);
+it("opens on the preferred model when the installation offers it", () => {
+  const chosen = defaultEntry([
+    entry({ model_id: "acme/other" }),
+    entry({ model_id: PREFERRED_MODEL_ID }),
+  ]);
+
+  expect(chosen?.model_id).toBe(PREFERRED_MODEL_ID);
 });
 
-it("treats the pair as the identity of a curated entry", () => {
-  expect(curatedEntry(DEFAULT_MODEL.modelId, DEFAULT_MODEL.revision)).toBe(DEFAULT_MODEL);
-  // The same model at another revision is a custom connection wearing a
-  // familiar name, and calling it the curated entry would misreport its weights.
-  expect(curatedEntry(DEFAULT_MODEL.modelId, "deadbeef")).toBeUndefined();
-  expect(curatedEntry("someone/else", DEFAULT_MODEL.revision)).toBeUndefined();
+it("falls back to the first point-prompt offer when the preferred one is absent", () => {
+  // The whole reason the default is a product decision here rather than a flag on
+  // the contract: an installation this repository never saw still opens on
+  // something a person can use, and no plugin decides what that is.
+  const chosen = defaultEntry([
+    entry({ model_id: "acme/detect", capability: "text_detect" }),
+    entry({ model_id: "acme/seg-tiny", capability: "point_suggest" }),
+    entry({ model_id: "acme/seg-large", capability: "point_suggest" }),
+  ]);
+
+  expect(chosen?.model_id).toBe("acme/seg-tiny");
 });
 
-it("offers half precision on CUDA and on every address of it", () => {
-  expect(precisionsFor("cpu")).toEqual(["fp32"]);
-  expect(precisionsFor("cuda")).toEqual(["fp16", "fp32"]);
-  // A second GPU is still a GPU. This is the kernel's `precisions_for`, and the
-  // two answer the same way or the form offers what the kernel refuses.
-  expect(precisionsFor("cuda:1")).toEqual(["fp16", "fp32"]);
-  // Metal has no float64 and an inconsistent bfloat16, so full precision is the
-  // only format that behaves the same on every Mac — and the kernel refuses the
-  // pairing at creation, which a form still offering it would walk straight into.
-  expect(precisionsFor("mps")).toEqual(["fp32"]);
+it("opens on nothing when no offer answers a point prompt", () => {
+  expect(defaultEntry([])).toBeUndefined();
+  expect(defaultEntry([entry({ capability: "text_detect" })])).toBeUndefined();
 });
 
-it("keeps a precision that survives a device change and replaces one that does not", () => {
-  expect(precisionOn("cuda", "fp32")).toBe("fp32");
-  expect(precisionOn("cpu", "fp32")).toBe("fp32");
-  expect(precisionOn("cpu", "fp16")).toBe("fp32");
-  // Moving a half-precision CUDA connection onto Metal cannot keep the setting.
-  expect(precisionOn("mps", "fp16")).toBe("fp32");
+it("treats the pair as the identity of an offer", () => {
+  const one = entry({ model_id: "acme/seg-small" });
+
+  expect(entryFor([one], "acme/seg-small", COMMIT)).toBe(one);
+  // The same model at another revision is a custom connection wearing a familiar
+  // name, and calling it the offered entry would misreport its weights.
+  expect(entryFor([one], "acme/seg-small", "deadbeef")).toBeUndefined();
 });
 
-it("offers the devices every machine can be asked about", () => {
-  // `cuda:N` is deliberately absent: how many GPUs this machine has is not
-  // something a static list can know, so it is typed by the kernel's pattern and
-  // shown by the form only when a row already carries one. `mps` needs no such
-  // escape, because a Mac has exactly one.
+it("answers the access requirement by model id alone", () => {
+  // An access gate belongs to the repository: pinning another commit of the same
+  // model exempts nobody from its terms, so a line that disappeared when the
+  // revision was edited would hide a requirement that still applies.
+  const gated = entry({
+    model_id: "acme/gated",
+    access_note: "Acme grants access by request.",
+    access_url: "https://example.invalid/acme/gated",
+  });
+
+  expect(accessFor([gated], "acme/gated")).toEqual({
+    note: "Acme grants access by request.",
+    href: "https://example.invalid/acme/gated",
+  });
+  expect(accessFor([gated], "acme/ungated")).toBeUndefined();
+});
+
+it("says nothing about access when only half of it was declared", () => {
+  // Either half alone is a requirement a form cannot finish stating before it
+  // offers the download, so it states none of it and the refusal answers.
+  const half = entry({ model_id: "acme/half", access_note: "Ask first." });
+
+  expect(accessFor([half], "acme/half")).toBeUndefined();
+});
+
+it("offers the devices the kernel names, in the order the form offers them", () => {
   expect([...DEVICES]).toEqual(["cpu", "cuda", "mps"]);
 });
 
-it("carries an access note on the one entry that cannot simply be downloaded", () => {
-  // The list is mostly checkpoints anybody can fetch, and one that is not. The
-  // note is the whole reason that entry may be curated at all: leaving it out
-  // would not spare anybody the terms, it would only mean the people who want it
-  // type the id in from somewhere else having read nothing.
-  const gated = EVERY_MODEL.filter((model) => model.access !== undefined);
-  expect(gated.map((model) => model.modelId)).toEqual(["facebook/sam3"]);
-  for (const model of gated) {
-    expect(model.access!.note.trim()).not.toBe("");
-    // The note says a requirement exists; the link is where it is cleared. A
-    // note with nowhere to go is the dead-end this pair exists to avoid.
-    expect(model.access!.href).toMatch(/^https:\/\/huggingface\.co\/.+/);
-  }
+it("offers half precision only where an adapter honours it", () => {
+  expect(precisionsFor("cuda")).toEqual(["fp16", "fp32"]);
+  expect(precisionsFor("cuda:1")).toEqual(["fp16", "fp32"]);
+  expect(precisionsFor("cpu")).toEqual(["fp32"]);
+  expect(precisionsFor("mps")).toEqual(["fp32"]);
 });
 
-it("keeps the gated entry off the default, so nobody meets a gate they did not choose", () => {
-  // Opening the form pre-fills a model. Pre-filling one that refuses its own
-  // download until somebody has been granted access would make the first
-  // experience of this screen a refusal.
-  expect(DEFAULT_MODEL.access).toBeUndefined();
+it("keeps a precision that survives a device change and moves one that does not", () => {
+  expect(precisionOn("cuda", "fp16")).toBe("fp16");
+  expect(precisionOn("cpu", "fp16")).toBe("fp32");
+  expect(precisionOn("cpu", "fp32")).toBe("fp32");
 });

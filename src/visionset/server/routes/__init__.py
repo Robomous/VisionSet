@@ -34,6 +34,7 @@ from visionset.server.routes import (
     ingest,
     jobs,
     projects,
+    providers,
     releases,
     schemas,
     sources,
@@ -68,6 +69,9 @@ ROUTERS: Final[tuple[APIRouter, ...]] = (
     # which the pipeline reads rather than produces.
     inference.router,
     inference.beside_connections,
+    # Beside the connections and not inside them: this says what the
+    # installation could run, which is true before any connection exists.
+    providers.router,
     # Last, and outside the pipeline order above on purpose: a background job is
     # not a stage of the data's life, it is how some of those stages run. Reading
     # it into the sequence would suggest a place it does not have.
@@ -92,6 +96,7 @@ __all__ = [
     "ingest",
     "jobs",
     "projects",
+    "providers",
     "releases",
     "schemas",
     "sources",
