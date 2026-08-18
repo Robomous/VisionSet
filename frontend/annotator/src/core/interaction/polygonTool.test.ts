@@ -309,6 +309,27 @@ describe("editing a closed polygon, one undo step each", () => {
     expect(world.store.document).toBe(before);
   });
 
+  it("drags a vertex inserted in the same session", () => {
+    const world = picked();
+    // The scene's polygon spans 300..400 × 300..380; [350, 300] is its top edge,
+    // and the inserted vertex lands at index 1 — the test above pins both facts.
+    world.dispatch(doubleClick([350, 300]));
+    expect(polygonOf(world.store.document, POLY_ID).points[1]).toEqual([350, 300]);
+
+    // Now grab that same vertex and move it. A press on a vertex resolves as
+    // `kind: "vertex"` and enters `moving-vertex`; the drag then rewrites that
+    // one point and nothing else.
+    world.send(down([350, 300]), move([350, 260]), up([350, 260]));
+
+    const points = polygonOf(world.store.document, POLY_ID).points;
+    expect(points.length).toBe(5);
+    expect(points[1]).toEqual([350, 260]);
+    // The neighbours are untouched: a drag that moved the wrong index would
+    // otherwise satisfy the assertion above by accident.
+    expect(points[0]).toEqual([300, 300]);
+    expect(points[2]).toEqual([400, 300]);
+  });
+
   it("deletes a vertex and commits once", () => {
     const world = picked();
     const before = world.store.document;
