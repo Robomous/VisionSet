@@ -1153,3 +1153,13 @@ class InferenceOutOfMemory(VisionSetError):
     command does: the kernel does not know what ran where, only that something
     outside it could not fit.
     """
+
+
+class SchemaHasNoDetectableClass(VisionSetError):
+    """The pinned schema declares no class a detection could be written as.
+
+    A text-prompt model answers with boxes, so a schema whose every class is a
+    polygon, a polyline or a classification tag has nowhere for one to land. The
+    run is refused rather than started, because starting it would spend the
+    inference to write nothing and report success.
+    """

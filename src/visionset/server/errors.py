@@ -102,6 +102,7 @@ from visionset.kernel import (
     ReleaseTagTaken,
     SchemaChangeWouldOrphan,
     SchemaDraftNotFound,
+    SchemaHasNoDetectableClass,
     SchemaNotFound,
     SchemaVersionConflict,
     SourceNotFound,
@@ -280,6 +281,10 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     ConfirmationRequired: ErrorRule(409, "CONFIRMATION_REQUIRED"),
     DestructiveSchemaChange: ErrorRule(409, "DESTRUCTIVE_SCHEMA_CHANGE"),
     SchemaChangeWouldOrphan: ErrorRule(409, "SCHEMA_CHANGE_WOULD_ORPHAN"),
+    # The batch is well formed to pre-label; the pinned schema is what refuses —
+    # no class it declares is one a detection can be written as. The remedy is to
+    # pin a schema with a detectable class and resubmit, which is what 409 is for.
+    SchemaHasNoDetectableClass: ErrorRule(409, "SCHEMA_HAS_NO_DETECTABLE_CLASS"),
     # Not a 422: the request body is valid, and the defect is in state that was
     # written and stored long before — a NaN coordinate only surfaces when a
     # release tries to freeze it. The remedy is "fix the annotation and publish

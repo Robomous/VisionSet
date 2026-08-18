@@ -396,6 +396,33 @@ def connection_job_payload(connection_id: UUID) -> dict[str, JsonValue]:
     return {CONNECTION_JOB_KEY: str(connection_id)}
 
 
+PRE_LABEL_JOB_TYPE: Final = "annotation.pre_label"
+"""The background job that asks a text-prompt model to label a batch's untouched assets."""
+
+BATCH_JOB_KEY: Final = "batch_id"
+"""Which batch a background job is about, inside its payload."""
+
+PRE_LABEL_CONFIDENCE_KEY: Final = "minimum_confidence"
+"""The floor a run applies to what the model returns, inside its payload."""
+
+
+def pre_label_job_payload(
+    batch_id: UUID, connection_id: UUID, minimum_confidence: float
+) -> dict[str, JsonValue]:
+    """The payload a pre-labeling job carries. Built here, read here.
+
+    Three facts and no more: which batch, which connection answers, and the floor
+    the run applies. Everything else the handler needs — the phrases, the asset
+    set — is derived on the other side from the batch itself, because a payload
+    that carried them would be a copy of state that can move underneath it.
+    """
+    return {
+        BATCH_JOB_KEY: str(batch_id),
+        CONNECTION_JOB_KEY: str(connection_id),
+        PRE_LABEL_CONFIDENCE_KEY: minimum_confidence,
+    }
+
+
 class ConnectionJob(BaseModel):
     """Background work against one connection, read off its job row.
 

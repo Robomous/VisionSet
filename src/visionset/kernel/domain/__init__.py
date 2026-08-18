@@ -14,6 +14,7 @@ from visionset.kernel.domain.batch import (
     CORRECTABLE_STATES,
     DELETABLE_STATES,
     EDITABLE_STATES,
+    PRE_LABELABLE_STATES,
     PROMOTABLE_STATES,
     REPINNABLE_STATES,
     Batch,
@@ -66,6 +67,7 @@ from visionset.kernel.domain.geometry import (
     PolylineGeometry,
 )
 from visionset.kernel.domain.inference import (
+    BATCH_JOB_KEY,
     CHECKABLE_STATES,
     COMMIT_PATTERN,
     CONNECTION_JOB_KEY,
@@ -77,6 +79,8 @@ from visionset.kernel.domain.inference import (
     INTEGRITY_CHECK_JOB_TYPE,
     MPS,
     OFFERED_DEVICES,
+    PRE_LABEL_CONFIDENCE_KEY,
+    PRE_LABEL_JOB_TYPE,
     WEIGHT_DOWNLOAD_JOB_TYPE,
     WEIGHT_HOLDING_TYPES,
     ConnectionJob,
@@ -91,6 +95,7 @@ from visionset.kernel.domain.inference import (
     Precision,
     WeightDownload,
     connection_job_payload,
+    pre_label_job_payload,
     precisions_for,
 )
 from visionset.kernel.domain.ingest import (
@@ -255,7 +260,11 @@ __all__ = [
     "WEIGHT_HOLDING_TYPES",
     "WEIGHT_DOWNLOAD_JOB_TYPE",
     "INTEGRITY_CHECK_JOB_TYPE",
+    "PRE_LABEL_JOB_TYPE",
+    "BATCH_JOB_KEY",
     "CONNECTION_JOB_KEY",
+    "PRE_LABEL_CONFIDENCE_KEY",
+    "PRE_LABELABLE_STATES",
     "CPU",
     "CUDA",
     "MPS",
@@ -264,6 +273,7 @@ __all__ = [
     "OFFERED_DEVICES",
     "precisions_for",
     "connection_job_payload",
+    "pre_label_job_payload",
     "ASSET_MOVES",
     "ASSET_PROGRESS_TRANSITIONS",
     "BACKGROUND_JOB_TRANSITIONS",

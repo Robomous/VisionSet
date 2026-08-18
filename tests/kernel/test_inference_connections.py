@@ -13,6 +13,7 @@ Three things are asserted here that nothing else in the suite can see:
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -26,13 +27,17 @@ from visionset.kernel import (
 from visionset.kernel.adapters import _mappers as m
 from visionset.kernel.adapters import _tables as t
 from visionset.kernel.domain import (
+    BATCH_JOB_KEY,
+    CONNECTION_JOB_KEY,
     CPU,
     CUDA,
     MPS,
+    PRE_LABEL_CONFIDENCE_KEY,
     ConnectionSetupState,
     ConnectionType,
     InferenceConnection,
     Precision,
+    pre_label_job_payload,
     precisions_for,
 )
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
@@ -574,3 +579,13 @@ def test_editing_back_and_downloading_again_restores_the_family(
     redownloaded = connections.record_weights_ready(made.id, model_family="sam2")
     assert redownloaded.setup_state is ConnectionSetupState.READY
     assert redownloaded.model_family == "sam2"
+
+
+def test_a_pre_label_payload_round_trips_its_three_facts() -> None:
+    batch_id, connection_id = uuid4(), uuid4()
+
+    payload = pre_label_job_payload(batch_id, connection_id, 0.35)
+
+    assert payload[BATCH_JOB_KEY] == str(batch_id)
+    assert payload[CONNECTION_JOB_KEY] == str(connection_id)
+    assert payload[PRE_LABEL_CONFIDENCE_KEY] == 0.35
