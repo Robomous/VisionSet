@@ -1361,24 +1361,14 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
   await test.step("edit the connection, and watch the row answer for it", async () => {
     /*
-     * **The keys this form sends have never been judged by a server that has to
-     * accept them.** `ConnectionUpdate` forbids fields it does not declare and
-     * declares no `connection_type`, while the dialog serialises every field it
-     * holds on every save — so the two are one 422 apart, and the only thing
-     * between them is a body function that was split in two. A stub cannot
-     * referee that: it is written by whoever wrote the body.
-     *
-     * Two edits, because the branch this exercises has two directions and each
-     * is invisible to the other's half. Pointing a connection at a different
-     * revision undoes its setup, since the files on disk are the *previous*
-     * reference's; a rename does not, even though it arrives carrying the same
-     * model reference, because the kernel compares rather than asking whether a
-     * field was supplied. A step that did only one of them would pass while the
-     * other was broken.
-     *
-     * Last in the walk, and nothing is put back. No later step reads this
-     * connection, and re-downloading to restore it would assert nothing that
-     * the setup step above has not already asserted.
+     * A stub cannot referee this body, because it is written by whoever wrote
+     * the body — only a real server, checking the request against
+     * `ConnectionUpdate`, can catch a field the dialog serialises but the
+     * schema forbids. Two edits, because the kernel compares the model
+     * reference rather than asking whether it was supplied: a rename carries
+     * that reference too, so only a real PATCH tells apart the repin that must
+     * undo setup from the rename that must not. Last in the walk and nothing
+     * is put back, since no later step reads this connection.
      */
     // The export dialog is still up, and deliberately: it holds the outcome so
     // the badge can announce it once the poll has stopped, which means it closes
@@ -1426,9 +1416,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("the whole walk produced a clean console", async () => {
-    // Last, so it covers everything above rather than one screen: eleven
-    // navigations, a reload, two viewport changes and a download, and the browser
-    // should have had nothing to say about any of it.
+    // Last, so it covers everything above rather than one screen — every
+    // navigation, reload, viewport change and download the walk performs — and
+    // the browser should have had nothing to say about any of it.
     //
     // **Stated rather than implied: headless chromium does not request
     // `/favicon.ico` on its own**, so this assertion cannot reproduce the original
