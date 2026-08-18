@@ -371,8 +371,10 @@ if is_uv_add "$@" && lock="$(nearest_lock)"; then
   # has to rather than to nothing.
   if cmp -s "$snapshot/baseline.lock" "$lock"; then
     restore_state "$snapshot"
-    rm -rf "$snapshot"
+    # Clear the trap before removing the snapshot, so an interruption does not
+    # restore files out of a directory that is already gone.
     trap - EXIT
+    rm -rf "$snapshot"
     echo "cooldown: pass 1 did not write $lock; applying the cool-down to the whole resolution instead" >&2
   else
     # Packages the add brings in that the lockfile did not have. One it already
