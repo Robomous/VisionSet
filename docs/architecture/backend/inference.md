@@ -63,7 +63,8 @@ filters on the declaration would stop offering it.
 
 The vocabulary itself is the kernel's (`ModelCapability`) and the mapping is not:
 what a tool can ask for is a domain word, while which `model_type` values this
-build serves is a fact about an optional runtime that the kernel has no view of.
+installation serves is a fact about the drivers it has installed, which the kernel
+has no view of.
 
 ## The family is recorded, not only resolved
 

@@ -701,7 +701,7 @@ workspace, compared without regard to case, so `local` and `Local` cannot name t
 | `UNSUPPORTED_PROMPT` | 422 | The model does not answer that way of asking |
 | `PROMPT_POINT_OUT_OF_BOUNDS` | 422 | A suggest point falls outside the asset; the message names the coordinate and the size |
 | `LOCAL_INFERENCE_UNAVAILABLE` | 500 | The `local-inference` extra is not installed; the message carries the command |
-| `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | This build has no adapter for that kind of connection |
+| `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | Nothing installed here runs that connection - an `http` one, which no adapter speaks to yet, or a model family no installed driver serves. The message names the families that are served |
 | `INFERENCE_OUT_OF_MEMORY` | 500 | The device ran out of memory loading or running the model; the message names the device and what to do about it |
 
 The last three are 5xx because they are conditions of the *machine* rather than of the request:
