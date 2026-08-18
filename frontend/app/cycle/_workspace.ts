@@ -8,7 +8,7 @@
  * invitation, which is gated on the workspace holding no projects at all.
  * Without this, a retry could never reach whatever failed: it died on that
  * assertion, three steps in, naming a screen that had nothing to do with the
- * failure — and the trace, screenshot and video a person opens are the retry's.
+ * failure — and the trace and screenshot a person opens are the retry's.
  *
  * Deleting through the API rather than the filesystem is what makes it possible
  * at all. The server owns the workspace for as long as it runs, and `webServer`
@@ -19,6 +19,11 @@
  * Content blobs survive both, deliberately — they are shared and the delete
  * route never removes them — so a repeated walk re-ingests the same three
  * fixture images into a new dataset rather than into a new store.
+ *
+ * Paths here are origin-relative on purpose. This suite's `baseURL` ends in
+ * `/app/`, because the bundle is mounted under a prefix while the API owns the
+ * root — and a leading-slash path resolves against that base's *origin*, so
+ * `/projects` reaches the API where `/app/projects` would not.
  */
 import { expect, type APIRequestContext } from "@playwright/test";
 
@@ -36,6 +41,11 @@ async function listing(
   const response = await request.get(path, { headers });
   expect(response.ok(), `GET ${path} answered ${response.status()}`).toBe(true);
   const page = (await response.json()) as Listing;
+  // A cast is not a check. A 200 whose body carries no `items` — a route
+  // reshaped under this helper, which is the case running on every attempt
+  // exists to catch — would otherwise throw a bare TypeError on the next line,
+  // before any message could name the route it came from.
+  expect(Array.isArray(page.items), `GET ${path} answered without an items array`).toBe(true);
   /*
    * One read is the whole collection, and that is asserted rather than assumed.
    * A reset that quietly cleared only the first page would put this suite back

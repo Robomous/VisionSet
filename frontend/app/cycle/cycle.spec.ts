@@ -543,6 +543,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // Born not set up, like every local connection, and made ready by the same
     // action — the lifecycle here is the real one, not a shortcut written for a
     // suite. What is different is only that there is nothing to fetch.
+
     // Read inside the row rather than off the screen. Both ids live inside a
     // connection's own row, so an unscoped read is sound only while the
     // workspace holds exactly one — and Playwright's strict mode then refuses
@@ -564,7 +565,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * decided, a violation names the count.
      *
      * The type badge is what is counted because it is unconditional inside a
-     * row, while the status badge and the download button are not.
+     * row, while the download button appears only before setup.
      */
     await expect(page.getByTestId("connection-type")).toHaveCount(1);
   });
