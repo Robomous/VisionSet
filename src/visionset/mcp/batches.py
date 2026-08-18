@@ -290,7 +290,10 @@ def pre_label_batch(
 
     **Only assets nothing has touched.** An asset that is already annotated,
     skipped, awaiting review or accepted is passed over, and what is written
-    lands at `review_pending`, never at `annotated` — nobody judged it.
+    lands at `review_pending`, never at `annotated` — nobody judged it. An
+    asset somebody starts working while this call is still running is passed
+    over the same way rather than failing the whole call; `assets_skipped`
+    in the result says how many.
 
     **The batch's pinned schema is the prompt.** The model is asked for each
     class the schema declares that a box can be written as, so every answer maps
@@ -316,7 +319,7 @@ def pre_label_batch(
         "assets_labeled": outcome.assets_labeled,
         "annotations_written": outcome.annotations_written,
         "model_ref": outcome.model_ref,
-        "stopped_early": outcome.stopped_early,
+        "assets_skipped": outcome.assets_skipped,
     }
 
 

@@ -518,7 +518,8 @@ def test_pre_labeling_blocks_and_returns_what_it_wrote(
     assert outcome["assets_labeled"] == 2
     assert outcome["annotations_written"] == 2
     assert outcome["model_ref"] == "acme/detector@abc123"
-    assert outcome["stopped_early"] is False
+    assert outcome["assets_skipped"] == 0
+    assert "stopped_early" not in outcome
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["review_pending"] == 2
 
 
