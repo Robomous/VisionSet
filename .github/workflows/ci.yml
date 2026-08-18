@@ -893,9 +893,21 @@ jobs:
       # VISIONSET_REQUIRE_FFMPEG=1 for the reason the `python` job sets it: without
       # it a missing binary skips the suite, and a silently skipped video test looks
       # exactly like a passing one — which is precisely the failure being guarded.
+      #
+      # `--user` on both bind-mounting steps, and it is the same argument the compose
+      # file makes: a container writing into a mounted tree as root leaves files
+      # behind that their owner cannot remove. A runner is thrown away, so what is at
+      # stake here is not cleanup but agreement — this is the one place the image is
+      # exercised the way the stack runs it, and an image that only works as root
+      # would pass a gate that never tried anything else. A runner checks out as its
+      # own uid rather than 1000, so the flag also proves the image does not depend
+      # on the id it was built for. HOME with it, because the home directory the
+      # image creates belongs to that other id.
       - name: The image can decode video
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
             -v "$PWD:/workspace" \
             -e VISIONSET_REQUIRE_FFMPEG=1 \
             visionset-api-dev:ci \
@@ -915,6 +927,8 @@ jobs:
       - name: The image can see its own distribution metadata
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
             -v "$PWD:/workspace" \
             visionset-api-dev:ci \
             pytest tests/packaging/test_installed_metadata.py \

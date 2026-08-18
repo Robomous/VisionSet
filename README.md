@@ -194,6 +194,21 @@ directory for the files, one workspace holding both — the shape MLflow's defau
 only shape VisionSet has. Put it elsewhere with `VISIONSET_DATA=/path docker compose …`; it is a
 bind mount, so `down -v` does not take your data with it.
 
+The containers run as you rather than as root, so everything they write there — and every
+`__pycache__` and generated page elsewhere in the checkout — belongs to the account that started
+them, and a later `pnpm -r build` or `git worktree remove` is not blocked by a file it cannot
+touch. That is the uid the stack finds at 1000, which is the first account on a Linux
+workstation. If yours is another number, tell it once and rebuild:
+
+```bash
+printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env
+docker compose -f docker/compose.yaml up --build
+```
+
+On macOS and Windows the defaults are already right — Docker Desktop translates ownership itself.
+Under rootless Docker, set both to `0`: there the daemon maps the container's root onto you
+already.
+
 Dev only — the release artifact is always the pip package.
 
 Common checks: `uv run pytest`, `uv run lint-imports`, `uv run mypy src/visionset/kernel`,

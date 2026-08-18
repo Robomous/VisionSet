@@ -49,8 +49,19 @@ src/visionset/_static/*
 !src/visionset/_static/README.md
 !src/visionset/_static/.gitkeep
 
-# Workspace media (v1 committed 929 MB of fixture images — never again)
-**/workspace-data/
+# Workspace media (v1 committed 929 MB of fixture images — never again). The
+# directory itself is tracked, through an empty file, and only its contents are
+# ignored — because the compose stack bind-mounts it and Docker creates a missing
+# bind-mount source as root, before any container starts and before any entry
+# script could get ahead of it. A checkout that already carries the directory is
+# one the daemon never has to invent, so the stack's own storage stays writable by
+# whoever cloned.
+**/workspace-data/*
+!workspace-data/.gitkeep
+
+# Compose reads `docker/.env` for the uid the dev stack runs as — a host fact,
+# never a repository one. Unanchored so it holds wherever such a file lands.
+.env
 
 # Editors / OS
 .DS_Store

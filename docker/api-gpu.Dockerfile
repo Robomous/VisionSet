@@ -106,4 +106,23 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system --break-system-packages --no-deps -e .
 
+# The identity the container runs as, character for character what
+# docker/api.Dockerfile ends with, for the same reasons it states — including why
+# ownership is the last thing this file does.
+#
+# `-o` earns itself here more visibly than anywhere else: this base is Ubuntu, and
+# Ubuntu ships a user named `ubuntu` at uid 1000. A developer whose host uid is the
+# usual 1000 collides with it on the very first build, and `-o` is what turns that
+# from a build failure into a second name for one id.
+ARG VISIONSET_UID=1000
+ARG VISIONSET_GID=1000
+RUN groupadd -o -g "${VISIONSET_GID}" visionset \
+    && useradd -o -u "${VISIONSET_UID}" -g "${VISIONSET_GID}" \
+         -m -d /home/visionset -s /bin/sh visionset \
+    && chown -R "${VISIONSET_UID}:${VISIONSET_GID}" /workspace
+
+ENV HOME=/home/visionset
+
+USER visionset
+
 CMD ["sh", "/workspace/docker/api-dev.sh"]

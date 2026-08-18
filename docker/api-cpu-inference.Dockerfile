@@ -148,4 +148,23 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --no-deps -e .
 
+# The identity the container runs as, character for character what
+# docker/api.Dockerfile ends with — which is the rule this whole file follows, and
+# the reason it is repeated rather than shared. That file carries the reasoning:
+# why it is last, why /opt/venv stays root-owned, and why `-o`.
+#
+# Last is also what keeps this file's two build-time assertions honest. Both read
+# and import from /opt/venv as root, against an environment nothing has modified,
+# before any of this runs.
+ARG VISIONSET_UID=1000
+ARG VISIONSET_GID=1000
+RUN groupadd -o -g "${VISIONSET_GID}" visionset \
+    && useradd -o -u "${VISIONSET_UID}" -g "${VISIONSET_GID}" \
+         -m -d /home/visionset -s /bin/sh visionset \
+    && chown -R "${VISIONSET_UID}:${VISIONSET_GID}" /workspace
+
+ENV HOME=/home/visionset
+
+USER visionset
+
 CMD ["sh", "/workspace/docker/api-dev.sh"]

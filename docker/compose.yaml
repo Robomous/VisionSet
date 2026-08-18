@@ -135,6 +135,48 @@
 #   docker compose -f docker/compose.yaml up
 #
 # `docker/api-dev.sh` creates a fresh workspace and mints a token on next boot.
+#
+# **Who writes all of that, and every other file this stack leaves on the host.**
+# The three built services run as the person who ran `docker compose`, not as root.
+# They have to: each mounts part of the checkout read-write, and a root process in
+# a container writes root-owned files into it — the workspace above, a
+# `__pycache__` beside every module uvicorn imports, the documentation projection
+# the docs service generates. What follows is not a permissions error at the point
+# it appears. `pnpm -r build` dies on EACCES, `bash scripts/check.sh docs` fails
+# three stages and the middle one names documents nobody edited, and
+# `git worktree remove` gives up partway through, after it has already deleted most
+# of the tree and dropped the registration.
+#
+# It defaults to 1000:1000 — the first account on a Linux workstation, and so
+# almost everybody — which is why the command at the top of this file still needs
+# nothing set up. When 1000 is not yours, say so once and Compose reads it from
+# `docker/.env`, the directory this file lives in, whichever directory you run
+# from:
+#
+#   printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env
+#
+# Changing either value needs `--build`, exactly as switching inference modes does
+# and for the same reason: the identity is baked into each image as well as
+# selected at run time, and Compose reuses whatever image it already has. Getting
+# it wrong is loud — the app container dies on its first write into a `dist/` it
+# does not own — rather than a stack that quietly stops reloading.
+#
+# `workspace-data/` is tracked as an empty directory for this arrangement's sake.
+# Docker creates a missing bind-mount source itself, as root, before any container
+# starts and therefore before any entry script could get ahead of it — so a
+# checkout that already carries the directory is one the daemon never invents.
+# `docker/api-dev.sh` still checks, and refuses with the command that fixes it, for
+# the cases a tracked directory cannot cover: a VISIONSET_DATA pointing somewhere
+# new, and a directory left root-owned by a stack that ran before any of this.
+#
+# Two hosts where the default is wrong. Under **rootless Docker** the daemon
+# already maps container-root onto you, so files are correctly owned as they are;
+# pinning a uid there maps it through the subuid range onto a host identity nobody
+# can chown back, so set both variables to 0 and get that behaviour back through
+# the same knob. `docker info --format '{{.SecurityOptions}}'` naming `rootless` is
+# the check. On **macOS and Windows** the file-sharing layer translates ownership
+# on its own: the defaults are already right there and changing them only forces a
+# rebuild.
 
 # Named, rather than inherited from the directory. Compose derives a project name
 # from the compose file's parent directory, which here is `docker` — a name any
@@ -150,7 +192,52 @@ services:
     build:
       context: ..
       dockerfile: docker/api.Dockerfile
+      # The identity the image bakes a user for, and below, the identity the
+      # container runs as. Both halves are here because each answers half of it:
+      # the build decides who owns what is *in* the image, the run decides who
+      # writes what lands *on the host*, and they have to name the same id or the
+      # container cannot write its own working directory.
+      args:
+        VISIONSET_UID: ${VISIONSET_UID:-1000}
+        VISIONSET_GID: ${VISIONSET_GID:-1000}
     working_dir: /workspace
+    # Run as the developer rather than as root. Every writable mount in this file
+    # is part of somebody's checkout, and a root process in a container writes
+    # root-owned files into it — a `__pycache__` beside every module uvicorn
+    # imports, the projection the docs service generates, the workspace under
+    # /data. The host then cannot rebuild over them or delete them without sudo,
+    # and none of the three failures that follow says so: `pnpm -r build` dies on
+    # EACCES, `check.sh docs` fails naming documents nobody edited, and
+    # `git worktree remove` gives up partway through, having already deleted most
+    # of the tree and dropped the registration.
+    #
+    # The default is the first account on a Linux workstation and therefore almost
+    # everybody, so the command at the top of this file still needs nothing set.
+    # When 1000 is not yours, say so once — Compose reads `docker/.env`, the
+    # directory this file lives in, from whichever directory you run:
+    #
+    #   printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env
+    #
+    # **Changing either value needs `--build`**, for the same reason switching
+    # inference modes does: the identity is baked into the image as well as
+    # selected here, and Compose reuses whatever image it already has under that
+    # name. Getting this one wrong is loud rather than quiet — the app container
+    # dies on its first write into a `dist/` it does not own.
+    #
+    # Not `${UID}`, which is the spelling that looks right and silently is not.
+    # Neither bash nor zsh exports UID, so Compose never receives it, `${UID}`
+    # interpolates to nothing, and the service runs as root while reading as
+    # configured. Exporting it is not available as a repair either: UID is readonly
+    # in both shells.
+    #
+    # **Under rootless Docker, set both to 0.** There the daemon already maps
+    # container-root onto the invoking user, so files are correctly owned exactly
+    # as they are, and pinning a uid instead maps it through the subuid range onto
+    # a host identity nobody can chown back. `docker info --format
+    # '{{.SecurityOptions}}'` naming `rootless` is the one-line check. On macOS and
+    # Windows the file-sharing layer translates ownership itself, so the defaults
+    # are already right and are best left alone.
+    user: "${VISIONSET_UID:-1000}:${VISIONSET_GID:-1000}"
     volumes:
       # What a running API reads, and nothing else — see the header for why the
       # whole checkout is no longer mounted here.
@@ -216,7 +303,18 @@ services:
     build:
       context: ..
       dockerfile: docker/app.Dockerfile
+      # The identity the image bakes a user for, and below, the identity the
+      # container runs as. Both halves are here because each answers half of it:
+      # the build decides who owns what is *in* the image, the run decides who
+      # writes what lands *on the host*, and they have to name the same id or the
+      # container cannot write its own working directory.
+      args:
+        VISIONSET_UID: ${VISIONSET_UID:-1000}
+        VISIONSET_GID: ${VISIONSET_GID:-1000}
     working_dir: /workspace
+    # As the developer, not root; see the api service for the whole reasoning and
+    # for what to do when your uid is not 1000.
+    user: "${VISIONSET_UID:-1000}:${VISIONSET_GID:-1000}"
     # Not for ordering — vite serves fine before the API answers, and the proxy
     # reconnects per request. It is so that `up app` alone still brings up the
     # thing the app is useless without.
@@ -298,7 +396,18 @@ services:
     build:
       context: ..
       dockerfile: docker/docs.Dockerfile
+      # The identity the image bakes a user for, and below, the identity the
+      # container runs as. Both halves are here because each answers half of it:
+      # the build decides who owns what is *in* the image, the run decides who
+      # writes what lands *on the host*, and they have to name the same id or the
+      # container cannot write its own working directory.
+      args:
+        VISIONSET_UID: ${VISIONSET_UID:-1000}
+        VISIONSET_GID: ${VISIONSET_GID:-1000}
     working_dir: /workspace/docs-site
+    # As the developer, not root; see the api service for the whole reasoning and
+    # for what to do when your uid is not 1000.
+    user: "${VISIONSET_UID:-1000}:${VISIONSET_GID:-1000}"
     # Nothing. The docs site reads no API and shares no storage — it is the one
     # service here that is useful with the rest of the stack switched off.
     volumes:

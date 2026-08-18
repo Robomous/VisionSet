@@ -92,6 +92,14 @@ to the plain file - keeps projects, connections and downloaded weights; only the
 and `--build` is not optional on any of those switches. That stack is for development and changes
 nothing about the wheel above.
 
+Every service in that stack runs as the account that started it rather than as root, so the
+weights either image downloads land in `workspace-data/` owned by you, the same as everything else
+the stack writes. Device access is unaffected by that on an ordinary single-GPU host, because the
+container toolkit exposes the NVIDIA devices to any user in the container. Where a host restricts
+them further - MIG, or a distribution that tightens `/dev/nvidia-caps` - `nvidia-smi` inside the
+container is what says so, and a `group_add:` for the owning group on the `api` service in
+`docker/compose.gpu.yaml` is the answer.
+
 `HF_TOKEN` is forwarded from whoever runs `docker compose`, so fetching weights that have to be
 asked for (below) works the same way inside the stack as outside it - export it in the shell you
 bring the stack up in. It is empty when you have none, which is what every ungated model already
