@@ -107,6 +107,11 @@ def create_schema_version(
     exist under an affected class it answers 409 `SCHEMA_CHANGE_WOULD_ORPHAN`
     instead, and **no flag overrides that one** — which is why a client branches
     on `code` and not on the status.
+
+    The third 409 is the one that *is* worth an immediate retry: two writers
+    racing for the same next version number is `SCHEMA_VERSION_CONFLICT`, and
+    resending the identical request re-reads the maximum and lands on the one
+    after it. No flag is involved, and none is needed.
     """
     classes = [label_class.to_domain() for label_class in body.classes]
     published = SchemaService(workspace).create_version(
@@ -232,9 +237,10 @@ def get_schema_draft(workspace: WorkspaceDep, project_id: UUID, kind: KindPath) 
     person. `curated` is the one a schema editor writes; `annotation` is the one
     that accumulates while somebody is labeling and needs a class.
 
-    404 means nobody has started one, which is the ordinary state of most
-    projects. It is deliberately not the same refusal as a project with no
-    published version, and the two carry different codes.
+    404 `SCHEMA_DRAFT_NOT_FOUND` means nobody has started one, which is the
+    ordinary state of most projects. It is deliberately not the same refusal as
+    an unknown project, which is 404 `PROJECT_NOT_FOUND`: the codes are what tell
+    "there is nothing written yet" from "there is no such project".
     """
     draft = SchemaDraftService(workspace).get(project_id, kind)
     if draft is None:
@@ -314,7 +320,9 @@ def publish_schema_draft(
     those; a version is not.
 
     409 `STALE_WRITE` means the draft moved since `revision` was read, and no
-    version was created.
+    version was created. 409 `SCHEMA_VERSION_CONFLICT` means something else
+    published while this call was deciding the next version number; that one is
+    worth resending unchanged, since the retry re-reads the maximum.
 
     The draft is gone afterwards even when nothing was written: publishing the
     contract already in force answers with the version already in force, and the
