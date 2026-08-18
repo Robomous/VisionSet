@@ -55,6 +55,11 @@
 # Overriding it
 # ---------------------------------------------------------------------------
 #
+# Neither of these is the first resort. A resolution refused because one package
+# was forced past the cutoff prints the version the cool-down vets and the command
+# that takes it, and that command keeps the cool-down on. The two exits below are
+# for taking a version the cool-down has not vetted at all.
+#
 # A cool-down nobody can escape is a cool-down people turn off. Two deliberate
 # exits, and both are meant to be visible in a diff or a transcript:
 #
