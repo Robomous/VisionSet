@@ -224,11 +224,7 @@ def _route(name: str) -> tuple[ModuleType, ast.FunctionDef]:
 #: change and its entry deleted with it, and this constant goes with the last one —
 #: an exemption left behind is a rule this file would no longer prove. Nothing may
 #: be added here.
-KNOWN_SHORT: Final[dict[str, frozenset[str]]] = {
-    "schemas::create_schema_version": frozenset({"SCHEMA_VERSION_CONFLICT"}),
-    "schemas::get_schema_draft": frozenset({"PROJECT_NOT_FOUND", "SCHEMA_DRAFT_NOT_FOUND"}),
-    "schemas::publish_schema_draft": frozenset({"SCHEMA_VERSION_CONFLICT"}),
-}
+KNOWN_SHORT: Final[dict[str, frozenset[str]]] = {}
 
 
 def shortfalls() -> dict[str, frozenset[str]]:
