@@ -122,24 +122,33 @@ import {
   SelectValue,
 } from "../primitives/Select";
 import type {
+  ClassCount,
   DraftLabelClassBody,
   LabelClassBody,
+  SchemaChangePreview,
   SchemaDiff,
   ServerSchemaDraft,
   SchemaVersion,
 } from "./queries";
 import {
   usePublishSchemaDraft,
+  usePreviewSchemaChange,
   useProjectStats,
   useSchemaComparison,
   useSchemaVersions,
 } from "./queries";
 
-/** The two 409s. Only the first has an override, and that is the whole rule. */
-const DESTRUCTIVE = "DESTRUCTIVE_SCHEMA_CHANGE";
+/** The terminal 409: annotations already use a class this change removes. */
 const WOULD_ORPHAN = "SCHEMA_CHANGE_WOULD_ORPHAN";
 /** The third, and the only one whose remedy is to throw your own copy away. */
 const STALE_DRAFT = "STALE_WRITE";
+
+type SchemaChangeFlow =
+  | { readonly kind: "idle" }
+  | { readonly kind: "checking-removal" }
+  | { readonly kind: "blockers"; readonly blockers: readonly ClassCount[] }
+  | { readonly kind: "destructive"; readonly preview: SchemaChangePreview }
+  | { readonly kind: "preview-error"; readonly error: unknown };
 
 /**
  * A draft of the next version, and the version it was drafted from.
@@ -291,13 +300,14 @@ export function SchemaEditor({
   onFlushDraft,
   onReloadDraft,
 }: SchemaEditorProps): JSX.Element {
-  const [confirming, setConfirming] = useState(false);
+  const [flow, setFlow] = useState<SchemaChangeFlow>({ kind: "idle" });
   const [selected, setSelected] = useState(0);
   const [filter, setFilter] = useState("");
-  const [removing, setRemoving] = useState<number | null>(null);
   // True only across the `await onFlushDraft()` inside `save`, so a second
   // click cannot start a second flush racing the first one's publish.
   const [flushing, setFlushing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const saveInFlight = useRef(false);
   // Which version the tab is showing. `null` is the active one — the editor —
   // and a number is a past version, read-only.
   //
@@ -308,6 +318,7 @@ export function SchemaEditor({
   // internals.
   const [viewing, setViewing] = useState<number | null>(null);
   const publish = usePublishSchemaDraft(projectId, "curated");
+  const preview = usePreviewSchemaChange(projectId);
   const history = useSchemaVersions(projectId);
   // Per-class annotation counts, for the list's secondary line and for the blast
   // radius a delete has to state. Shared query key with the Overview, so opening
@@ -371,6 +382,8 @@ export function SchemaEditor({
   const classes = showing.classes;
   const note = showing.note;
   const failure = publish.isError ? asApiError(publish.error) : null;
+  const publishBlockers = failure?.code === WOULD_ORPHAN ? orphanBlockers(failure.detail) : null;
+  const shownBlockers = flow.kind === "blockers" ? flow.blockers : publishBlockers;
   const draftFailure = draftSaveError == null ? null : asApiError(draftSaveError);
   /**
    * `STALE_WRITE`, whichever of the two calls surfaced it.
@@ -392,6 +405,7 @@ export function SchemaEditor({
         ? publish.error
         : null;
   const staleDraft = staleDraftError !== null;
+  const draftLocked = saving || preview.isPending || publish.isPending || flushing;
   /**
    * Whether saving would change anything — measured against **the version in
    * force**, not against the snapshot the draft was seeded from.
@@ -423,6 +437,7 @@ export function SchemaEditor({
 
   /** Every edit writes the whole draft, so `seed` and `basedOn` travel with it. */
   function edit(next: readonly LabelClassBody[]): void {
+    if (saveInFlight.current || preview.isPending) return;
     onDraftChange({ ...showing, classes: next });
   }
 
@@ -453,7 +468,18 @@ export function SchemaEditor({
   const countOf = (name: string): number =>
     counts.find((entry) => entry.label_class === name)?.annotations ?? 0;
 
+  function closeBlockers(): void {
+    setFlow({ kind: "idle" });
+    if (failure?.code === WOULD_ORPHAN) publish.reset();
+  }
+
+  function finishSave(): void {
+    saveInFlight.current = false;
+    setSaving(false);
+  }
+
   async function save(allowDestructive = false): Promise<void> {
+    if (saveInFlight.current || preview.isPending) return;
     if (!dirty) {
       // `DESIGN.md`: a button either answers or explains, never sits grey with
       // nothing to say. Nothing is sent — an identical version would be a new
@@ -472,6 +498,8 @@ export function SchemaEditor({
       toast("Every class needs a name");
       return;
     }
+    saveInFlight.current = true;
+    setSaving(true);
     // Publishing is now publishing the *draft*, and the draft on the server has
     // to be the one actually being shown here first. A held draft may still have
     // a debounced write pending, so it is flushed and its revision is what gets
@@ -484,6 +512,24 @@ export function SchemaEditor({
       // The flush failed — `STALE_WRITE` or otherwise — and is already recorded
       // on `draftSaveError` for the announcement below to render. Publishing
       // against no revision would only be a second, less legible failure.
+      finishSave();
+      return;
+    }
+    try {
+      const previewed = await preview.mutateAsync({ classes });
+      if (previewed.is_refused) {
+        setFlow({ kind: "blockers", blockers: previewed.blockers });
+        finishSave();
+        return;
+      }
+      if (previewed.diff.is_destructive && !allowDestructive) {
+        setFlow({ kind: "destructive", preview: previewed });
+        finishSave();
+        return;
+      }
+    } catch (error: unknown) {
+      setFlow({ kind: "preview-error", error });
+      finishSave();
       return;
     }
     publish.mutate(
@@ -492,9 +538,12 @@ export function SchemaEditor({
         ...(allowDestructive ? { allowDestructive: true } : {}),
       },
       {
+        onError: () => {
+          setFlow({ kind: "idle" });
+        },
         onSuccess: (publication) => {
           const created = publication.published;
-          setConfirming(false);
+          setFlow({ kind: "idle" });
           // What the publish did to the rest of the project, said once. An
           // additive version moves every open batch onto it (#381), and a screen
           // that answered only "saved" would leave somebody to discover that from
@@ -526,11 +575,13 @@ export function SchemaEditor({
             revision: null,
           });
         },
+        onSettled: finishSave,
       },
     );
   }
 
   function addClass(): void {
+    if (saveInFlight.current || preview.isPending) return;
     edit([...classes, { name: "", geometries: ["bbox"], color: null, attributes: [] }]);
     // Selected, and the filter cleared — a new class has an empty name, so any
     // filter at all would hide the row that was just created.
@@ -545,7 +596,23 @@ export function SchemaEditor({
     setSelected((chosen) =>
       Math.max(0, chosen > index ? chosen - 1 : Math.min(chosen, classes.length - 2)),
     );
-    setRemoving(null);
+  }
+
+  async function requestRemoveClass(index: number): Promise<void> {
+    if (saveInFlight.current || preview.isPending) return;
+    setFlow({ kind: "checking-removal" });
+    const candidate = classes.filter((_, position) => position !== index);
+    try {
+      const previewed = await preview.mutateAsync({ classes: candidate });
+      if (previewed.is_refused) {
+        setFlow({ kind: "blockers", blockers: previewed.blockers });
+        return;
+      }
+      setFlow({ kind: "idle" });
+      removeClass(index);
+    } catch (error: unknown) {
+      setFlow({ kind: "preview-error", error });
+    }
   }
 
   /** Arrow keys walk the list; Enter and Space are the button's own. */
@@ -594,10 +661,19 @@ export function SchemaEditor({
             placeholder="Why this version? (optional)"
             data-testid="version-note"
             className="w-56"
+            disabled={draftLocked}
             value={note}
-            onChange={(event) => onDraftChange({ ...showing, note: event.target.value })}
+            onChange={(event) => {
+              if (saveInFlight.current || preview.isPending) return;
+              onDraftChange({ ...showing, note: event.target.value });
+            }}
           />
-          <Button variant="secondary" data-testid="add-class" onClick={addClass}>
+          <Button
+            variant="secondary"
+            data-testid="add-class"
+            disabled={draftLocked}
+            onClick={addClass}
+          >
             <Plus className="size-4" aria-hidden="true" />
             Add class
           </Button>
@@ -605,17 +681,26 @@ export function SchemaEditor({
             variant="primary"
             data-testid="save-schema"
             // Never disabled for "nothing to save" — `save` answers that with a
-            // toast. Still disabled while the flush or the publish is in flight,
-            // which is a state the label itself explains — and which is what
-            // keeps a second click from racing the first one's own flush.
-            disabled={publish.isPending || flushing}
+            // toast. It is also disabled while a removal preview, flush, or
+            // publish is in flight, so none can race a draft-changing action.
+            disabled={draftLocked}
             onClick={() => void save()}
           >
-            {publish.isPending || flushing ? "Saving…" : "Save version"}
+            {saving || publish.isPending || flushing ? "Saving…" : "Save version"}
           </Button>
         </div>
         )}
       </div>
+
+      {flow.kind === "preview-error" && (
+        <Alert
+          variant="destructive"
+          title="Could not preview this change"
+          data-testid="schema-preview-error"
+        >
+          {refusalProse(flow.error)}
+        </Alert>
+      )}
 
       {/* One line of prose beside the ambient status line, in the same register
           as it: a version arriving underneath is news, not a failure and not a
@@ -658,7 +743,11 @@ export function SchemaEditor({
             size="sm"
             className="h-auto p-0 align-baseline text-meta"
             data-testid="schema-reload"
-            onClick={() => onDraftChange(freshFromActive(showing.revision))}
+            disabled={draftLocked}
+            onClick={() => {
+              if (saveInFlight.current || preview.isPending) return;
+              onDraftChange(freshFromActive(showing.revision));
+            }}
           >
             {held !== null ? <>Discard mine and load v{moved}</> : <>Load v{moved}</>}
           </Button>
@@ -675,7 +764,7 @@ export function SchemaEditor({
           Reached from either mutation — `staleDraftError` is whichever one
           actually carries the code — so `publish.reset()` runs alongside
           `onReloadDraft()` the same way `DestructiveDialog`'s Cancel and
-          `OrphanDialog`'s Close already reset it: without this, a `STALE_WRITE`
+          the blocker dialog's Close already reset it: without this, a `STALE_WRITE`
           that reached this banner via a *publish* would leave `publish.isError`
           true after the reload, and the banner would still be here to greet the
           freshly reloaded draft. */}
@@ -687,7 +776,9 @@ export function SchemaEditor({
             size="sm"
             className="h-auto p-0 align-baseline text-meta"
             data-testid="schema-reload-draft"
+            disabled={draftLocked}
             onClick={() => {
+              if (saveInFlight.current || preview.isPending) return;
               publish.reset();
               onReloadDraft();
             }}
@@ -716,11 +807,10 @@ export function SchemaEditor({
       />
 
       {failure !== null &&
-        failure.code !== DESTRUCTIVE &&
-        failure.code !== WOULD_ORPHAN &&
-        failure.code !== STALE_DRAFT && (
+        failure.code !== STALE_DRAFT &&
+        (failure.code !== WOULD_ORPHAN || shownBlockers === null) && (
           <Alert variant="destructive" title={failure.code} data-testid="schema-error">
-            {failure.message}
+            {refusalProse(publish.error)}
           </Alert>
         )}
 
@@ -803,36 +893,25 @@ export function SchemaEditor({
               index={selected}
               annotations={countOf(current.name)}
               onChange={(next) => edit(classes.map((c, i) => (i === selected ? next : c)))}
-              onRemove={() => setRemoving(selected)}
+              locked={draftLocked}
+              checking={flow.kind === "checking-removal"}
+              onRemove={() => void requestRemoveClass(selected)}
             />
           )}
         </div>
       )}
 
-      <RemoveClassDialog
-        declared={removing === null ? undefined : classes[removing]}
-        annotations={removing === null ? 0 : countOf(classes[removing]?.name ?? "")}
-        onCancel={() => setRemoving(null)}
-        onConfirm={() => removing !== null && removeClass(removing)}
-      />
+      <OrphanBlockersDialog blockers={shownBlockers} onClose={closeBlockers} />
 
       <DestructiveDialog
-        open={failure?.code === DESTRUCTIVE || confirming}
-        message={failure?.message ?? ""}
-        pending={publish.isPending}
+        preview={shownBlockers === null && flow.kind === "destructive" ? flow.preview : null}
+        pending={saving || preview.isPending || publish.isPending || flushing}
         onCancel={() => {
-          setConfirming(false);
-          publish.reset();
+          setFlow({ kind: "idle" });
         }}
         onConfirm={() => {
-          setConfirming(true);
           void save(true);
         }}
-      />
-      <OrphanDialog
-        open={failure?.code === WOULD_ORPHAN}
-        message={failure?.message ?? ""}
-        onClose={() => publish.reset()}
       />
     </section>
   );
@@ -1051,12 +1130,16 @@ function ClassDetail({
   declared,
   index,
   annotations,
+  locked,
+  checking,
   onChange,
   onRemove,
 }: {
   readonly declared: LabelClassBody;
   readonly index: number;
   readonly annotations: number;
+  readonly locked: boolean;
+  readonly checking: boolean;
   readonly onChange: (next: LabelClassBody) => void;
   readonly onRemove: () => void;
 }): JSX.Element {
@@ -1088,12 +1171,13 @@ function ClassDetail({
           </span>
           <Button
             variant="ghost"
-            size="icon"
-            aria-label={`Remove class ${index + 1}`}
+            size={checking ? "sm" : "icon"}
+            aria-label={checking ? "Checking class removal" : `Remove class ${index + 1}`}
             data-testid={`remove-class-${index}`}
+            disabled={locked}
             onClick={onRemove}
           >
-            <Trash2 className="size-4" aria-hidden="true" />
+            {checking ? "Checking…" : <Trash2 className="size-4" aria-hidden="true" />}
           </Button>
         </div>
       </CardHeader>
@@ -1103,6 +1187,7 @@ function ClassDetail({
           slot={String(index)}
           swatch={swatch}
           hotkey={index < 9 ? index + 1 : null}
+          disabled={locked}
           onChange={onChange}
         />
       </CardContent>
@@ -1110,47 +1195,30 @@ function ClassDetail({
   );
 }
 
-/**
- * Removing a class, with what it costs stated rather than gestured at.
- *
- * A class carrying annotations cannot be removed at all — the kernel answers
- * `SCHEMA_CHANGE_WOULD_ORPHAN` on save, and that refusal has **no override**. So
- * this dialog is not asking permission for something that will then work: it is
- * saying, before a version is composed that cannot be published, that this is
- * where it will fail.
- *
- * A class nobody has used yet removes cleanly, and the dialog says that instead.
- * Same control, two honest sentences, and the count is what tells them apart.
- */
-function RemoveClassDialog({
-  declared,
-  annotations,
-  onCancel,
-  onConfirm,
+function OrphanBlockersDialog({
+  blockers,
+  onClose,
 }: {
-  readonly declared: LabelClassBody | undefined;
-  readonly annotations: number;
-  readonly onCancel: () => void;
-  readonly onConfirm: () => void;
-}): JSX.Element | null {
-  if (declared === undefined) return null;
-  const named = declared.name === "" ? "this class" : `“${declared.name}”`;
-
+  readonly blockers: readonly ClassCount[] | null;
+  readonly onClose: () => void;
+}): JSX.Element {
   return (
-    <Dialog open onOpenChange={(next) => !next && onCancel()}>
-      <DialogContent data-testid="remove-class-dialog">
-        <DialogTitle>Remove {declared.name === "" ? "class" : declared.name}?</DialogTitle>
-        <DialogDescription data-testid="remove-class-blast-radius">
-          {annotations === 0
-            ? `Nothing has been labeled ${named} yet, so removing it from the draft costs nothing. Saving publishes the next version without it.`
-            : `${formatCount(annotations)} ${annotations === 1 ? "annotation" : "annotations"} already use ${named}. Saving a version without it is refused outright — SCHEMA_CHANGE_WOULD_ORPHAN has no override — so this removal cannot be published until those annotations are gone.`}
+    <Dialog open={blockers !== null} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent data-testid="orphan-dialog">
+        <DialogTitle>Annotations already use these classes</DialogTitle>
+        {blockers?.map((blocker) => (
+          <DialogDescription key={blocker.label_class}>
+            {blocker.label_class}: {formatCount(blocker.annotations)}{" "}
+            {blocker.annotations === 1 ? "annotation" : "annotations"} across{" "}
+            {formatCount(blocker.assets)} {blocker.assets === 1 ? "asset" : "assets"}.
+          </DialogDescription>
+        ))}
+        <DialogDescription>
+          There is no override for this one. Keep the class or remove the annotations first.
         </DialogDescription>
         <DialogFooter>
-          <Button variant="secondary" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button variant="destructive" data-testid="remove-class-confirm" onClick={onConfirm}>
-            Remove from draft
+          <Button variant="secondary" data-testid="orphan-close" onClick={onClose}>
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1158,25 +1226,50 @@ function RemoveClassDialog({
   );
 }
 
-/** Retryable: the change narrows the contract and the caller may say so. */
+function isClassCount(value: unknown): value is ClassCount {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate["label_class"] === "string" &&
+    typeof candidate["annotations"] === "number" &&
+    typeof candidate["assets"] === "number"
+  );
+}
+
+function orphanBlockers(detail: Record<string, unknown> | null): readonly ClassCount[] | null {
+  const blockers = detail?.["blockers"];
+  if (!Array.isArray(blockers) || !blockers.every(isClassCount)) return null;
+  return blockers;
+}
+
+function describeDestructiveClasses(classes: readonly string[]): string {
+  const named = classes.map((labelClass) => `“${labelClass}”`);
+  if (named.length === 0) return "the affected classes";
+  if (named.length === 1) return named[0];
+  if (named.length === 2) return `${named[0]} and ${named[1]}`;
+  return `${named.slice(0, -1).join(", ")}, and ${named.at(-1) ?? "another class"}`;
+}
+
+/** Retryable: a publishable preview says the change narrows the contract. */
 function DestructiveDialog({
-  open,
-  message,
+  preview,
   pending,
   onCancel,
   onConfirm,
 }: {
-  readonly open: boolean;
-  readonly message: string;
+  readonly preview: SchemaChangePreview | null;
   readonly pending: boolean;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }): JSX.Element {
+  const destructiveClasses = preview?.diff.destructive_classes ?? [];
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onCancel()}>
+    <Dialog open={preview !== null} onOpenChange={(next) => !next && onCancel()}>
       <DialogContent data-testid="destructive-dialog">
         <DialogTitle>This narrows the schema</DialogTitle>
-        <DialogDescription>{message}</DialogDescription>
+        <DialogDescription>
+          This change narrows the schema for {describeDestructiveClasses(destructiveClasses)}.
+        </DialogDescription>
         <DialogDescription>
           Existing annotations are not touched. Saving anyway publishes the new version and leaves
           earlier ones exactly as they are — a version is immutable.
@@ -1198,40 +1291,3 @@ function DestructiveDialog({
     </Dialog>
   );
 }
-
-/**
- * Not retryable, and the missing button is the point.
- *
- * `SchemaChangeWouldOrphan` has **no override** and is deliberately not a subclass
- * of `DestructiveSchemaChange`, so a caller catching the base and retrying with the
- * flag would loop. A dialog offering "Save anyway" here would be that loop with a
- * person in it.
- */
-function OrphanDialog({
-  open,
-  message,
-  onClose,
-}: {
-  readonly open: boolean;
-  readonly message: string;
-  readonly onClose: () => void;
-}): JSX.Element {
-  return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="orphan-dialog">
-        <DialogTitle>Annotations already use these classes</DialogTitle>
-        <DialogDescription>{message}</DialogDescription>
-        <DialogDescription>
-          There is no override for this one. Delete or relabel the annotations first, or keep the
-          class and change something else.
-        </DialogDescription>
-        <DialogFooter>
-          <Button variant="secondary" data-testid="orphan-close" onClick={onClose}>
-            Close
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
