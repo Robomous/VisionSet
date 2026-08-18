@@ -41,10 +41,18 @@ route's 404-when-the-file-is-gone is prose this file cannot check.
 
 from __future__ import annotations
 
+import ast
+import importlib
 import inspect
 import re
+from collections.abc import Iterator
+from pathlib import Path
+from types import ModuleType
 from typing import Final
 
+from fastapi import APIRouter
+
+from visionset.server import routes as routes_package
 from visionset.server.errors import ERROR_RULES
 
 #: ``code -> status`` and ``class name -> code``, both from the one table, so a
@@ -102,6 +110,114 @@ def missing_codes(doc: str, reachable: frozenset[str]) -> frozenset[str]:
     return frozenset(at_stake - named_codes(doc))
 
 
+_HTTP_METHODS: Final[frozenset[str]] = frozenset({"get", "post", "put", "patch", "delete"})
+
+
+def route_functions() -> Iterator[tuple[ModuleType, ast.FunctionDef]]:
+    """Every published route, as its imported module and its parsed definition.
+
+    Both halves are needed and neither substitutes for the other: the module is
+    what resolves a name to the object the route really calls, and the tree is
+    what says which calls the body makes.
+    """
+    directory = Path(routes_package.__file__).parent
+    for path in sorted(directory.glob("*.py")):
+        if path.stem == "__init__":
+            continue
+        module = importlib.import_module(f"{routes_package.__name__}.{path.stem}")
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and _is_route(node, module):
+                yield module, node
+
+
+def _is_route(node: ast.FunctionDef, module: ModuleType) -> bool:
+    """Decorated with a verb on something that is really an ``APIRouter``."""
+    for decorator in node.decorator_list:
+        func = decorator.func if isinstance(decorator, ast.Call) else decorator
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr in _HTTP_METHODS
+            and isinstance(func.value, ast.Name)
+            and isinstance(getattr(module, func.value.id, None), APIRouter)
+        ):
+            return True
+    return False
+
+
+def reachable_codes(
+    module: ModuleType, node: ast.FunctionDef
+) -> tuple[frozenset[str], tuple[str, ...]]:
+    """The codes a route can answer, and what declared each of them.
+
+    The sources are returned rather than discarded because a route that reached
+    nothing is the case this gate has to refuse: an empty tuple means the check
+    proved nothing about it, which is not the same as proving it complete.
+    """
+    classes: set[str] = set()
+    sources: list[str] = []
+    for call in (child for child in ast.walk(node) if isinstance(child, ast.Call)):
+        target, label = _target_of(call.func, module, node)
+        if target is None:
+            continue
+        declared = declared_raises(target)
+        if declared is None:
+            continue
+        classes |= set(declared)
+        sources.append(label)
+    for statement in (child for child in ast.walk(node) if isinstance(child, ast.Raise)):
+        raised = statement.exc
+        if (
+            isinstance(raised, ast.Call)
+            and isinstance(raised.func, ast.Name)
+            and raised.func.id in CODE_BY_CLASS
+        ):
+            classes.add(raised.func.id)
+            sources.append(f"raise {raised.func.id}")
+    codes = frozenset(CODE_BY_CLASS[name] for name in classes if name in CODE_BY_CLASS)
+    return codes, tuple(sources)
+
+
+def _target_of(
+    func: ast.expr, module: ModuleType, route: ast.FunctionDef
+) -> tuple[object | None, str]:
+    """The object a call names, resolved against the route module's namespace."""
+    if isinstance(func, ast.Name):
+        return getattr(module, func.id, None), func.id
+    if not isinstance(func, ast.Attribute):
+        return None, ""
+    base = func.value
+    if isinstance(base, ast.Call) and isinstance(base.func, ast.Name):
+        owner = getattr(module, base.func.id, None)
+        label = f"{base.func.id}().{func.attr}"
+        return (getattr(owner, func.attr, None) if owner is not None else None), label
+    if isinstance(base, ast.Name):
+        constructor = _constructed_by(route, base.id)
+        owner = getattr(module, constructor, None) if constructor is not None else None
+        label = f"{base.id}.{func.attr}"
+        return (getattr(owner, func.attr, None) if owner is not None else None), label
+    return None, ""
+
+
+def _constructed_by(route: ast.FunctionDef, variable: str) -> str | None:
+    """The class a local was built from — ``ingest = IngestService(workspace)``."""
+    for node in ast.walk(route):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        if not isinstance(node.value.func, ast.Name):
+            continue
+        if any(isinstance(target, ast.Name) and target.id == variable for target in node.targets):
+            return node.value.func.id
+    return None
+
+
+def _route(name: str) -> tuple[ModuleType, ast.FunctionDef]:
+    for module, node in route_functions():
+        if node.name == name:
+            return module, node
+    raise AssertionError(f"no route function named {name!r}")
+
+
 def test_declared_raises_reads_a_block_and_stops_at_the_next_section() -> None:
     def documented() -> None:
         """One line.
@@ -154,3 +270,33 @@ def test_missing_codes_does_not_check_the_status_printed_beside_a_code() -> None
     # while `ERROR_RULES` calls it a 404. Naming the code is what this asks for.
     doc = "422 `ASSET_NOT_IN_JOB`."
     assert missing_codes(doc, frozenset({"ASSET_NOT_IN_JOB"})) == frozenset()
+
+
+def test_route_functions_finds_the_published_routes() -> None:
+    names = {node.name for _, node in route_functions()}
+    assert "suggest_region" in names
+    assert "publish_schema_draft" in names
+    # A module-level helper is not a route, however many errors it raises.
+    assert "_require" not in names
+
+
+def test_reachable_codes_resolves_a_re_exported_service_function() -> None:
+    # `suggest` is imported into the route module from `visionset.inference`,
+    # not from the module that defines it: resolution has to follow the name the
+    # route actually uses, which is what `getattr` on the module does.
+    codes, sources = reachable_codes(*_route("suggest_region"))
+    assert "LOCAL_INFERENCE_UNAVAILABLE" in codes
+    assert "UNSUPPORTED_PROMPT" in codes
+    assert "suggest" in sources
+
+
+def test_reachable_codes_resolves_a_service_method_through_a_local() -> None:
+    # `ingest = IngestService(workspace)` then `ingest.asset(...)`.
+    codes, _sources = reachable_codes(*_route("get_asset_thumbnail"))
+    assert "ASSET_NOT_FOUND" in codes
+    assert "THUMBNAIL_NOT_CACHED" in codes
+
+
+def test_reachable_codes_counts_an_error_raised_in_the_route_itself() -> None:
+    codes, _sources = reachable_codes(*_route("get_schema_draft"))
+    assert "SCHEMA_DRAFT_NOT_FOUND" in codes
