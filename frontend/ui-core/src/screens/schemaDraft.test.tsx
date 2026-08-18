@@ -135,6 +135,16 @@ beforeEach(() => {
       if (/\/releases$/.test(path)) return respond({ status: 200, body: { items: [], total: 0 } });
       if (/\/dataset$/.test(path)) return respond({ status: 200, body: DATASET });
     }
+    if (request.method === "POST" && /\/schema\/preview$/.test(path)) {
+      return respond({
+        status: 200,
+        body: {
+          diff: { changes: [], destructive_classes: [], is_destructive: false },
+          blockers: [],
+          is_refused: false,
+        },
+      });
+    }
     if (request.method === "PUT") {
       const draftProject = draftProjectId(path);
       if (draftProject !== null) {

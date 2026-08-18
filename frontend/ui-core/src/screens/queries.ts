@@ -70,6 +70,7 @@ import {
   checkListSources,
   checkCreateCorrectionBatch,
   checkPreLabelBatch,
+  checkPreviewSchemaChange,
   checkPromoteBatch,
   checkPublishRelease,
   checkPublishSchemaDraft,
@@ -94,6 +95,7 @@ export type SchemaVersion = components["schemas"]["SchemaVersionOut"];
 export type SchemaVersionPage = components["schemas"]["SchemaVersionPage"];
 export type SchemaDiff = components["schemas"]["SchemaDiffOut"];
 export type SchemaChange = components["schemas"]["SchemaChangeOut"];
+export type SchemaChangePreview = components["schemas"]["SchemaChangePreviewOut"];
 export type SchemaProvenance = components["schemas"]["SchemaProvenance"];
 export type LabelClassBody = components["schemas"]["LabelClassBody"];
 export type AttributeBody = components["schemas"]["AttributeBody"];
@@ -354,6 +356,20 @@ export function useSchemaComparison(
           },
         }),
         checkCompareSchemaVersions,
+      ),
+  });
+}
+
+export function usePreviewSchemaChange(projectId: string) {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: async ({ classes }: { readonly classes: readonly LabelClassBody[] }) =>
+      unwrap(
+        await client.POST("/projects/{project_id}/schema/preview", {
+          params: { path: { project_id: projectId } },
+          body: { classes: [...classes] },
+        }),
+        checkPreviewSchemaChange,
       ),
   });
 }

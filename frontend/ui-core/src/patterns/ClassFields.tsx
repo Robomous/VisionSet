@@ -80,6 +80,8 @@ export interface ClassFieldsProps {
   readonly swatch: string;
   /** The digit the annotator would bind, or `null` past the ninth class. */
   readonly hotkey: number | null;
+  /** Lock every field while the caller is persisting this exact value. */
+  readonly disabled?: boolean;
   readonly onChange: (next: LabelClassBody) => void;
 }
 
@@ -88,6 +90,7 @@ export function ClassFields({
   slot,
   swatch,
   hotkey,
+  disabled = false,
   onChange,
 }: ClassFieldsProps): JSX.Element {
   return (
@@ -98,6 +101,7 @@ export function ClassFields({
           <Input
             id={`class-name-${slot}`}
             data-testid={`class-name-${slot}`}
+            disabled={disabled}
             value={declared.name}
             onChange={(event) => onChange({ ...declared, name: event.target.value })}
           />
@@ -145,6 +149,7 @@ export function ClassFields({
                           type="checkbox"
                           className="accent-primary"
                           data-testid={`class-geometry-${slot}-${geometry}`}
+                          disabled={disabled}
                           checked={checked}
                           onChange={(event) => {
                             const next = event.target.checked
@@ -193,6 +198,7 @@ export function ClassFields({
             data-testid={`class-color-${slot}`}
             type="color"
             className="h-9 w-12 rounded-md border border-input bg-card p-1"
+            disabled={disabled}
             value={hexOf(swatch)}
             onChange={(event) => onChange({ ...declared, color: event.target.value })}
           />
@@ -203,6 +209,7 @@ export function ClassFields({
             variant="ghost"
             size="sm"
             data-testid={`clear-color-${slot}`}
+            disabled={disabled}
             onClick={() => onChange({ ...declared, color: null })}
           >
             Derive
@@ -225,6 +232,7 @@ export function ClassFields({
       <Attributes
         attributes={declared.attributes ?? []}
         classIndex={slot}
+        disabled={disabled}
         onChange={(attributes) => onChange({ ...declared, attributes })}
       />
     </div>
@@ -258,10 +266,12 @@ export function swatchOf(declared: LabelClassBody, index: number): string {
 function Attributes({
   attributes,
   classIndex,
+  disabled,
   onChange,
 }: {
   readonly attributes: readonly AttributeBody[];
   readonly classIndex: string;
+  readonly disabled: boolean;
   readonly onChange: (next: AttributeBody[]) => void;
 }): JSX.Element {
   return (
@@ -272,6 +282,7 @@ function Attributes({
           variant="ghost"
           size="sm"
           data-testid={`add-attribute-${classIndex}`}
+          disabled={disabled}
           onClick={() =>
             onChange([...attributes, { name: "", kind: "string", required: false, default: null }])
           }
@@ -294,6 +305,7 @@ function Attributes({
               <Input
                 id={`attr-name-${classIndex}-${index}`}
                 data-testid={`attr-name-${classIndex}-${index}`}
+                disabled={disabled}
                 value={attribute.name}
                 onChange={(event) =>
                   onChange(replace(attributes, index, { ...attribute, name: event.target.value }))
@@ -305,6 +317,7 @@ function Attributes({
                 Kind
               </Label>
               <Select
+                disabled={disabled}
                 value={attribute.kind}
                 onValueChange={(kind) =>
                   // The default is dropped on a kind change rather than coerced: a
@@ -345,6 +358,7 @@ function Attributes({
               <Input
                 id={`attr-options-${classIndex}-${index}`}
                 data-testid={`attr-options-${classIndex}-${index}`}
+                disabled={disabled}
                 value={
                   attribute.kind === "select"
                     ? (attribute.options ?? []).join(", ")
@@ -372,6 +386,7 @@ function Attributes({
                   type="checkbox"
                   className="accent-primary"
                   data-testid={`attr-required-${classIndex}-${index}`}
+                  disabled={disabled}
                   checked={attribute.required ?? false}
                   onChange={(event) =>
                     onChange(
@@ -386,6 +401,7 @@ function Attributes({
                 size="icon"
                 aria-label={`Remove attribute ${index + 1}`}
                 data-testid={`remove-attribute-${classIndex}-${index}`}
+                disabled={disabled}
                 onClick={() => onChange(attributes.filter((_, i) => i !== index))}
               >
                 <Trash2 className="size-4" aria-hidden="true" />

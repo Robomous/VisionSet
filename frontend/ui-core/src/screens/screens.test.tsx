@@ -17,13 +17,18 @@ import { QueryClient } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
+import { useState, type JSX, type ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
 import { classColor, hexColor } from "../palette";
 import { writeToken } from "../data/session";
 import { ProjectScreen } from "./ProjectScreen";
 import { ProjectsScreen } from "./ProjectsScreen";
+import {
+  usePreviewSchemaChange,
+  type LabelClassBody,
+  type SchemaChangePreview,
+} from "./queries";
 import { batchActions } from "../testing/wire.fixtures.js";
 import type { components as capComponents } from "../generated/api.js";
 
@@ -34,7 +39,8 @@ const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 
 /** One route table, matched in order. A miss is a loud 500 rather than a hang. */
-type Handler = (request: Request) => { status: number; body: unknown } | undefined;
+type HandlerAnswer = { status: number; body: unknown } | undefined;
+type Handler = (request: Request) => HandlerAnswer | Promise<HandlerAnswer>;
 
 let handlers: Handler[] = [];
 const sent: Request[] = [];
@@ -83,7 +89,7 @@ beforeEach(() => {
     sent.push(request);
     if (request.method !== "GET") bodies.set(request, await request.clone().text());
     for (const handler of handlers) {
-      const answer = handler(request);
+      const answer = await handler(request);
       if (answer !== undefined) {
         return Promise.resolve(
           new Response(answer.status === 204 ? null : JSON.stringify(answer.body), {
@@ -120,6 +126,15 @@ beforeEach(() => {
       };
       curatedDrafts.set(draftProject, saved);
       return Promise.resolve(jsonResponse(200, saved));
+    }
+    if (path.endsWith("/schema/preview") && request.method === "POST") {
+      return Promise.resolve(
+        jsonResponse(200, {
+          diff: { changes: [], destructive_classes: [], is_destructive: false },
+          blockers: [],
+          is_refused: false,
+        }),
+      );
     }
     return Promise.resolve(
       new Response(JSON.stringify({ code: "NO_STUB", message: `${request.method} ${request.url}` }), {
@@ -158,6 +173,35 @@ const CLASSES = [
   { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
   { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
 ];
+
+function PreviewSchemaChangeProbe({
+  projectId,
+  classes,
+}: {
+  readonly projectId: string;
+  readonly classes: readonly LabelClassBody[];
+}): JSX.Element {
+  const preview = usePreviewSchemaChange(projectId);
+  const [result, setResult] = useState<SchemaChangePreview | null>(null);
+
+  return (
+    <div>
+      <button
+        data-testid="preview-schema-change"
+        onClick={() => {
+          void preview.mutateAsync({ classes }).then(setResult);
+        }}
+      >
+        preview
+      </button>
+      {result === null ? null : (
+        <p data-testid="preview-result">
+          {`${result.diff.destructive_classes.join(",")}:${result.blockers[0]?.annotations}:${result.blockers[0]?.assets}:${result.is_refused}`}
+        </p>
+      )}
+    </div>
+  );
+}
 
 describe("the project list", () => {
   it("lists projects and opens one through the callback, never a router", async () => {
@@ -269,12 +313,6 @@ describe("the schema editor", () => {
     });
   }
 
-  /**
-   * Select a class and remove it from the draft, through the confirmation.
-   *
-   * Three steps rather than one: only the *selected* class has a
-   * detail panel, and removal states its blast radius before it happens.
-   */
   /** Open one class's detail panel. Only the selected class has one. */
   async function selectClass(index: number): Promise<void> {
     await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[index]);
@@ -283,8 +321,46 @@ describe("the schema editor", () => {
   async function removeClass(index: number): Promise<void> {
     await selectClass(index);
     await userEvent.click(screen.getByTestId(`remove-class-${index}`));
-    await userEvent.click(await screen.findByTestId("remove-class-confirm"));
+    await waitFor(() =>
+      expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(
+        CLASSES.length - 1,
+      ),
+    );
   }
+
+  it("previews a candidate without lane and reads its orphan blockers", async () => {
+    const candidate: readonly LabelClassBody[] = [
+      { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
+    ];
+    on("POST", /\/schema\/preview$/, {
+      status: 200,
+      body: {
+        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+        blockers: [{ label_class: "lane", annotations: 12, assets: 3 }],
+        is_refused: true,
+      },
+    });
+
+    render(mount(<PreviewSchemaChangeProbe projectId={PROJECT} classes={candidate} />));
+    await userEvent.click(screen.getByTestId("preview-schema-change"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-result").textContent).toBe("lane:12:3:true"),
+    );
+    const request = sent.find(
+      (sentRequest) =>
+        sentRequest.method === "POST" && new URL(sentRequest.url).pathname.endsWith("/schema/preview"),
+    );
+    if (request === undefined) throw new Error("Expected a schema preview request");
+    expect(JSON.parse(bodies.get(request) ?? "")).toEqual({ classes: candidate });
+    expect(
+      sent.some(
+        (sentRequest) =>
+          sentRequest.method === "POST" &&
+          new URL(sentRequest.url).pathname.endsWith("/schema/drafts/curated/publish"),
+      ),
+    ).toBe(false);
+  });
 
   it("treats a schema-less project as an empty draft, not as an error", async () => {
     on("GET", /^\/projects\/[^/]+$/, {
@@ -337,19 +413,89 @@ describe("the schema editor", () => {
     expect(screen.getByTestId("schema-status").textContent).toContain("unsaved changes");
     await userEvent.click(screen.getByTestId("save-schema"));
 
-    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
-    const request = sent.find((r) => r.method === "POST");
+    await waitFor(() =>
+      expect(
+        sent.some(
+          (request) =>
+            request.method === "POST" &&
+            new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
+        ),
+      ).toBe(true),
+    );
+    const request = sent.find(
+      (request) =>
+        request.method === "POST" &&
+        new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
+    );
+    expect(request).toBeDefined();
     // The plain save carries no gate — `allow_destructive` is only ever sent
     // after the API has said it is needed.
     expect(new URL(request?.url ?? "").searchParams.get("allow_destructive")).toBeNull();
   });
 
-  it("offers an override for a destructive change, and retries with the flag", async () => {
+  it("locks draft mutations until a deferred publish settles", async () => {
     projectWithSchema();
-    let attempts = 0;
+    let resolvePublish: ((answer: Exclude<HandlerAnswer, undefined>) => void) | undefined;
     handlers.push((request) => {
-      if (request.method !== "POST") return undefined;
-      attempts += 1;
+      if (
+        request.method !== "POST" ||
+        !new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish")
+      ) {
+        return undefined;
+      }
+      return new Promise((resolve) => {
+        resolvePublish = resolve;
+      });
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
+    await userEvent.click(screen.getByTestId("save-schema"));
+    await waitFor(() => expect(resolvePublish).toBeDefined());
+
+    const className = screen.getByTestId("class-name-2");
+    expect(className).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("version-note")).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("add-class")).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("remove-class-2")).toHaveProperty("disabled", true);
+    await userEvent.type(className, "-newer");
+    expect(className).toHaveProperty("value", "pedestrian");
+
+    if (resolvePublish === undefined) throw new Error("Expected the deferred publish request");
+    resolvePublish({
+      status: 201,
+      body: {
+        published: {
+          project_id: PROJECT,
+          version: 4,
+          classes: [...CLASSES, { name: "pedestrian", geometries: ["bbox"], color: null, attributes: [] }],
+        },
+        advanced_batches: [],
+      },
+    });
+    await waitFor(() => expect(screen.getByTestId("save-schema")).toHaveProperty("disabled", false));
+    expect(screen.getByTestId("class-name-2")).toHaveProperty("value", "pedestrian");
+  });
+
+  it("previews a publishable narrowing before one flagged publish", async () => {
+    projectWithSchema();
+    on("POST", /schema\/preview$/, {
+      status: 200,
+      body: {
+        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+        blockers: [],
+        is_refused: false,
+      },
+    });
+    handlers.push((request) => {
+      if (
+        request.method !== "POST" ||
+        !new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish")
+      ) {
+        return undefined;
+      }
       const allowed = new URL(request.url).searchParams.get("allow_destructive") === "true";
       return allowed
         ? {
@@ -363,7 +509,7 @@ describe("the schema editor", () => {
             status: 409,
             body: {
               code: "DESTRUCTIVE_SCHEMA_CHANGE",
-              message: "Removing “lane” narrows the contract.",
+              message: "internal wording must not appear",
             },
           };
     });
@@ -374,23 +520,124 @@ describe("the schema editor", () => {
     await userEvent.click(screen.getByTestId("save-schema"));
 
     const dialog = await screen.findByTestId("destructive-dialog");
-    expect(dialog.textContent).toContain("narrows the contract");
-
-    await userEvent.click(screen.getByTestId("allow-destructive"));
-    await waitFor(() => expect(attempts).toBe(2));
+    expect(dialog.textContent).toContain("lane");
+    expect(dialog.textContent).not.toContain("internal wording must not appear");
     expect(
-      new URL(sent.filter((r) => r.method === "POST")[1].url).searchParams.get("allow_destructive"),
-    ).toBe("true");
+      sent.some(
+        (request) =>
+          request.method === "POST" &&
+          new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
+      ),
+    ).toBe(false);
+
+    const allow = screen.getByTestId("allow-destructive");
+    await waitFor(() => expect(allow).toHaveProperty("disabled", false));
+    await userEvent.click(allow);
+    await waitFor(() =>
+      expect(
+        sent.filter(
+          (request) =>
+            request.method === "POST" &&
+            new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
+        ),
+      ).toHaveLength(1),
+    );
+    const publishRequest = sent.find(
+      (request) =>
+        request.method === "POST" &&
+        new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
+    );
+    expect(new URL(publishRequest?.url ?? "").searchParams.get("allow_destructive")).toBe("true");
   });
 
-  it("offers no override for an orphaning change, because there is none", async () => {
+  it("prevents repeated confirmation while its second preview is pending", async () => {
     projectWithSchema();
-    on("POST", /schema\/drafts\/curated\/publish$/, {
-      status: 409,
+    let previews = 0;
+    let resolveSecondPreview: ((answer: Exclude<HandlerAnswer, undefined>) => void) | undefined;
+    handlers.push((request) => {
+      if (request.method !== "POST" || !new URL(request.url).pathname.endsWith("/schema/preview")) {
+        return undefined;
+      }
+      previews += 1;
+      if (previews === 3) {
+        return new Promise((resolve) => {
+          resolveSecondPreview = resolve;
+        });
+      }
+      return {
+        status: 200,
+        body: {
+          diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+          blockers: [],
+          is_refused: false,
+        },
+      };
+    });
+    on("POST", /schema\/drafts\/curated\/publish(?:\?.*)?$/, {
+      status: 201,
       body: {
-        code: "SCHEMA_CHANGE_WOULD_ORPHAN",
-        message: "1,204 annotations use “lane”.",
+        published: { project_id: PROJECT, version: 4, classes: [] },
+        advanced_batches: [],
       },
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await removeClass(1);
+    await userEvent.click(screen.getByTestId("save-schema"));
+    const allow = await screen.findByTestId("allow-destructive");
+    await waitFor(() => expect(allow).toHaveProperty("disabled", false));
+    await userEvent.click(allow);
+    await waitFor(() => expect(resolveSecondPreview).toBeDefined());
+
+    expect(allow).toHaveProperty("disabled", true);
+    await userEvent.click(allow);
+
+    if (resolveSecondPreview === undefined) throw new Error("Expected the deferred second preview");
+    resolveSecondPreview({
+      status: 200,
+      body: {
+        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+        blockers: [],
+        is_refused: false,
+      },
+    });
+    await waitFor(() =>
+      expect(
+        sent.filter(
+          (request) =>
+            request.method === "POST" &&
+            new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
+        ),
+      ).toHaveLength(1),
+    );
+  });
+
+  it("opens the terminal blocker dialog when the save-time preview refuses", async () => {
+    projectWithSchema();
+    let previews = 0;
+    handlers.push((request) => {
+      if (request.method !== "POST" || !new URL(request.url).pathname.endsWith("/schema/preview")) {
+        return undefined;
+      }
+      previews += 1;
+      return previews === 1
+        ? {
+            status: 200,
+            body: {
+              diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+              blockers: [],
+              is_refused: false,
+            },
+          }
+        : {
+            status: 200,
+            body: {
+              diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+              blockers: [{ label_class: "lane", annotations: 12, assets: 3 }],
+              is_refused: true,
+            },
+          };
     });
 
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
@@ -399,14 +646,105 @@ describe("the schema editor", () => {
     await userEvent.click(screen.getByTestId("save-schema"));
 
     const dialog = await screen.findByTestId("orphan-dialog");
-    expect(dialog.textContent).toContain("1,204 annotations");
+    expect(dialog.textContent).toContain("12 annotations");
+    expect(dialog.textContent).toContain("3 assets");
     // The missing button *is* the assertion. `SchemaChangeWouldOrphan` has no
     // override and is deliberately not a subclass of `DestructiveSchemaChange`, so
     // a "Save anyway" here would be an infinite loop with a person in it.
     expect(screen.queryByTestId("allow-destructive")).toBeNull();
     expect(screen.queryByTestId("destructive-dialog")).toBeNull();
     expect(within(dialog).getByTestId("orphan-close")).not.toBeNull();
+    expect(
+      sent.some(
+        (request) =>
+          request.method === "POST" &&
+          new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
+      ),
+    ).toBe(false);
   });
+
+  it("uses typed publish-time orphan blockers when the preview becomes stale", async () => {
+    projectWithSchema();
+    on("POST", /schema\/preview$/, {
+      status: 200,
+      body: {
+        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+        blockers: [],
+        is_refused: false,
+      },
+    });
+    on("POST", /schema\/drafts\/curated\/publish(?:\?.*)?$/, {
+      status: 409,
+      body: {
+        code: "SCHEMA_CHANGE_WOULD_ORPHAN",
+        message: "internal wording must not appear",
+        detail: { blockers: [{ label_class: "lane", annotations: 12, assets: 3 }] },
+      },
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await removeClass(1);
+    await userEvent.click(screen.getByTestId("save-schema"));
+    const allow = await screen.findByTestId("allow-destructive");
+    await waitFor(() => expect(allow).toHaveProperty("disabled", false));
+    await userEvent.click(allow);
+    await waitFor(() =>
+      expect(
+        sent.filter(
+          (request) =>
+            request.method === "POST" &&
+            new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
+        ),
+      ).toHaveLength(1),
+    );
+
+    const dialog = await screen.findByTestId("orphan-dialog");
+    expect(dialog.textContent).toContain("lane: 12 annotations across 3 assets");
+    expect(dialog.textContent).not.toContain("internal wording must not appear");
+    expect(screen.queryByTestId("allow-destructive")).toBeNull();
+    expect(screen.queryByTestId("destructive-dialog")).toBeNull();
+  });
+
+  it.each([
+    { shape: "absent", detail: undefined },
+    { shape: "malformed", detail: { blockers: [{ label_class: "lane" }] } },
+  ])(
+    "clears destructive confirmation and renders prose for an orphan refusal with $shape detail",
+    async ({ detail }) => {
+      projectWithSchema();
+      on("POST", /schema\/preview$/, {
+        status: 200,
+        body: {
+          diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+          blockers: [],
+          is_refused: false,
+        },
+      });
+      on("POST", /schema\/drafts\/curated\/publish(?:\?.*)?$/, {
+        status: 409,
+        body: {
+          code: "SCHEMA_CHANGE_WOULD_ORPHAN",
+          message: "internal wording must not appear",
+          detail,
+        },
+      });
+
+      render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+      await screen.findByTestId("schema-editor");
+      await removeClass(1);
+      await userEvent.click(screen.getByTestId("save-schema"));
+      await userEvent.click(await screen.findByTestId("allow-destructive"));
+
+      const error = await screen.findByTestId("schema-error");
+      expect(error.textContent).toContain(
+        "Annotations already exist under a class this change removes.",
+      );
+      expect(error.textContent).not.toContain("internal wording must not appear");
+      expect(screen.queryByTestId("allow-destructive")).toBeNull();
+      expect(screen.queryByTestId("destructive-dialog")).toBeNull();
+    },
+  );
 
   it("offers only the geometries an annotation can carry", async () => {
     projectWithSchema();
@@ -1063,30 +1401,109 @@ describe("the schema editor's two panels", () => {
     expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(51);
   });
 
-  it("states the blast radius when the class being removed carries annotations", async () => {
-    withClasses(MANY);
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
-    await screen.findByTestId("class-list");
-
-    await userEvent.click(screen.getByTestId("remove-class-0"));
-
-    const said = (await screen.findByTestId("remove-class-blast-radius")).textContent ?? "";
-    expect(said).toContain((4372).toLocaleString(undefined));
-    // And that this removal cannot be published at all, which is the fact that
-    // matters: the orphan refusal has no override.
-    expect(said).toContain("no override");
-  });
-
-  it("says a removal costs nothing when nobody has used the class", async () => {
-    withClasses(MANY);
+  it("keeps an orphaning removal terminal and leaves the draft unchanged", async () => {
+    withClasses(CLASSES);
+    on("POST", /\/schema\/preview$/, {
+      status: 200,
+      body: {
+        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+        blockers: [{ label_class: "lane", annotations: 12, assets: 3 }],
+        is_refused: true,
+      },
+    });
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("class-list");
 
     await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
     await userEvent.click(screen.getByTestId("remove-class-1"));
 
-    const said = (await screen.findByTestId("remove-class-blast-radius")).textContent ?? "";
-    expect(said).toContain("costs nothing");
+    expect((await screen.findByTestId("orphan-dialog")).textContent).toContain("12 annotations");
+    expect(screen.getByTestId("orphan-dialog").textContent).toContain("3 assets");
+    expect(screen.queryByTestId("remove-class-confirm")).toBeNull();
+    expect(screen.queryByTestId("allow-destructive")).toBeNull();
+    expect(screen.getByTestId("class-name-1")).toHaveProperty("value", "lane");
+  });
+
+  it("removes a clear candidate from the local draft without publishing", async () => {
+    withClasses(CLASSES);
+    on("POST", /\/schema\/preview$/, {
+      status: 200,
+      body: {
+        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+        blockers: [],
+        is_refused: false,
+      },
+    });
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-list");
+
+    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
+    await userEvent.click(screen.getByTestId("remove-class-1"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(1),
+    );
+    expect(screen.queryByTestId("orphan-dialog")).toBeNull();
+    expect(sent.some((request) => new URL(request.url).pathname.endsWith("/publish"))).toBe(false);
+  });
+
+  it("shows shared preview failure prose and leaves the draft unchanged", async () => {
+    withClasses(CLASSES);
+    on("POST", /\/schema\/preview$/, {
+      status: 503,
+      body: { code: "NETWORK_ERROR", message: "unreachable" },
+    });
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-list");
+
+    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
+    await userEvent.click(screen.getByTestId("remove-class-1"));
+
+    const error = await screen.findByTestId("schema-preview-error");
+    expect(error.textContent).toContain("The server could not be reached");
+    expect(error.textContent).not.toContain("unreachable");
+    expect(screen.getByTestId("class-name-1")).toHaveProperty("value", "lane");
+    expect(screen.queryByTestId("orphan-dialog")).toBeNull();
+  });
+
+  it("does not apply field edits while a removal preview is pending", async () => {
+    withClasses(CLASSES);
+    let resolvePreview: ((answer: Exclude<HandlerAnswer, undefined>) => void) | undefined;
+    handlers.push((request) => {
+      if (
+        request.method !== "POST" ||
+        !new URL(request.url).pathname.endsWith("/schema/preview")
+      ) {
+        return undefined;
+      }
+      return new Promise((resolve) => {
+        resolvePreview = resolve;
+      });
+    });
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-list");
+
+    await userEvent.click(screen.getByTestId("remove-class-0"));
+    await waitFor(() => expect(screen.getByTestId("remove-class-0")).toHaveProperty("disabled", true));
+    expect(screen.getByTestId("remove-class-0").textContent).toContain("Checking…");
+
+    await userEvent.type(screen.getByTestId("class-name-0"), "-edited");
+    expect(screen.getByTestId("class-name-0")).toHaveProperty("value", "vehicle");
+
+    if (resolvePreview === undefined) throw new Error("Expected the deferred preview request");
+    resolvePreview({
+      status: 200,
+      body: {
+        diff: { changes: [], destructive_classes: ["vehicle"], is_destructive: true },
+        blockers: [],
+        is_refused: false,
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(1),
+    );
+    expect(screen.getByTestId("class-name-0")).toHaveProperty("value", "lane");
   });
 
   it("shows each class's annotation count in its panel header", async () => {
@@ -1111,7 +1528,9 @@ describe("the schema editor's two panels", () => {
 
     await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[2]);
     await userEvent.click(screen.getByTestId("remove-class-2"));
-    await userEvent.click(await screen.findByTestId("remove-class-confirm"));
+    await waitFor(() =>
+      expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(2),
+    );
 
     expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(2);
     expect(screen.queryByTestId("class-name-1")).not.toBeNull();
