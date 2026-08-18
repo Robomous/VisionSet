@@ -218,15 +218,6 @@ def _route(name: str) -> tuple[ModuleType, ast.FunctionDef]:
     raise AssertionError(f"no route function named {name!r}")
 
 
-#: Routes whose published enumeration is short today, and by what.
-#:
-#: Every entry is a defect in a published contract. Each is corrected in this same
-#: change and its entry deleted with it, and this constant goes with the last one —
-#: an exemption left behind is a rule this file would no longer prove. Nothing may
-#: be added here.
-KNOWN_SHORT: Final[dict[str, frozenset[str]]] = {}
-
-
 def shortfalls() -> dict[str, frozenset[str]]:
     """Every route whose docstring names a status and enumerates it short."""
     found: dict[str, frozenset[str]] = {}
@@ -238,7 +229,7 @@ def shortfalls() -> dict[str, frozenset[str]]:
 
 
 def test_no_documented_status_is_enumerated_short() -> None:
-    assert shortfalls() == KNOWN_SHORT, (
+    assert shortfalls() == {}, (
         "a published docstring names a status and not every refusal it can answer "
         "at that status; name the missing codes, or stop naming the status"
     )
