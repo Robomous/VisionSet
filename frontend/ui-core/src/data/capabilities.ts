@@ -65,6 +65,10 @@ export const BATCH_ACTION = {
   repin: "repin",
   promote: "promote",
   createCorrection: "create_correction",
+  // Declared together with the route, the MCP tool and the control that honours
+  // it — the same condition `delete` names below — so it lands here only once
+  // `PreLabelButton` exists to read it.
+  preLabel: "pre_label",
   editMembership: "edit_membership",
   // `delete` is declared together with the route, the MCP tool and the two
   // controls that honour it, which is the condition any action is added under.

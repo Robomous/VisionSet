@@ -69,6 +69,7 @@ import {
   checkListSchemaVersions,
   checkListSources,
   checkCreateCorrectionBatch,
+  checkPreLabelBatch,
   checkPromoteBatch,
   checkPublishRelease,
   checkPublishSchemaDraft,
@@ -1049,6 +1050,43 @@ export function useFinishBatch(batchId: string) {
       void queries.invalidateQueries({ queryKey: batchKeys.jobs(batchId) });
       void queries.invalidateQueries({ queryKey: ["batches"] });
       void queries.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+/** What launching a run needs: which model, and how sure it has to be. */
+export interface PreLabelInput {
+  readonly connectionId: string;
+  readonly minimumConfidence: number;
+}
+
+/**
+ * Ask a model to label this batch's untouched assets — the `pre_label` action.
+ *
+ * Answers 202 with the background job to poll; nothing has landed yet. The
+ * batch and its assets are invalidated here because a launch is itself a fact —
+ * asking twice while one run is already in flight joins it rather than starting
+ * a second — and invalidated again once `PreLabelDialog` sees that job succeed,
+ * which is the moment the counts this route promised actually changed.
+ */
+export function usePreLabelBatch(batchId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: PreLabelInput): Promise<BackgroundJob> =>
+      unwrap(
+        await client.POST("/batches/{batch_id}/pre-label", {
+          params: { path: { batch_id: batchId } },
+          body: {
+            connection_id: input.connectionId,
+            minimum_confidence: input.minimumConfidence,
+          },
+        }),
+        checkPreLabelBatch,
+      ),
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
+      void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
     },
   });
 }

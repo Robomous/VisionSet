@@ -62,6 +62,7 @@ import { parentLabel } from "../patterns/parentLabel";
 import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
 import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
 import { BatchOverflowMenu } from "./DeleteBatch";
+import { PreLabelButton } from "./PreLabelDialog";
 import { PromoteButton } from "./PromoteButton";
 import {
   ASSET_ACTION,
@@ -755,6 +756,14 @@ function BatchHeader({
               {!editable ? "View frames" : waiting ? "Start annotating" : "Open annotator"}
             </Button>
           )}
+          {/*
+            Offloading the first pass to a model, before anybody opens the
+            annotator at all — the surface `text_detect` was declared for and had
+            nowhere to run. Capability-gated on `pre_label`, which the kernel
+            declares from the batch's state alone (`in_annotation`), so this
+            control needs nothing beyond the batch itself.
+          */}
+          {batch !== undefined && <PreLabelButton batch={batch} />}
           {/*
             The closing move, on the screen the work is done from. Living only on
             the batch table one tab away is how a person settles forty-eight frames

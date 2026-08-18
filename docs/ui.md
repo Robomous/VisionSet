@@ -724,6 +724,34 @@ and a dialog that said "3 jobs" on one screen and nothing on the other would be 
 dialogs. From the gallery it navigates to the Batches tab, replacing history: the
 screen's whole subject has stopped existing.
 
+#### Pre-labeling: the surface `text_detect` was declared for
+
+Gated on `pre_label` in the batch's own `allowed_actions`, never on the batch's state read
+locally - the same rule every control on this screen follows. It is the reason the
+capability stopped being an orphan: a connection could declare `text_detect` from the day the
+Inference dashboard shipped a section for it, and nothing in the app ever asked one until this
+control existed to.
+
+The model select is narrowed to connections whose `capabilities` include `text_detect`, read
+off the wire rather than guessed from a name or a model id, on `inferenceQueries.ts`'s standing
+rule. The confidence field defaults to `0.35` and is labelled **prompt affinity**, deliberately
+never "confidence" or "accuracy": a text-prompt model scores how well a region matches the words
+it was asked for, a point-prompt model's suggest tool scores mask quality against a click, and
+the two run on different scales - 37-78% observed for the first, 68-98% for the second - so a
+bare percentage next to a shape would not say which one it was on. The dialog states how many
+of the batch's assets are untouched, because that is what the run will actually consider - an
+asset already annotated, skipped, awaiting review or accepted is passed over, and a label that
+lands enters at `review_pending`, never `annotated`, so an annotator reviews a draft rather than
+inheriting an unreviewed guess as their own work.
+
+The route answers `202` with a background job, on the export and weight-download routes'
+contract, and the dialog polls it exactly as `ExportDialog` polls an export: nothing here waits
+for the run to finish, but nothing closes over an outcome unseen either. Every refusal the route
+can produce reaches the dialog as prose - a batch that stopped being `in_annotation` under the
+press, a connection whose model answers places rather than words, a pinned schema with no class
+a detection can be written as, and a local runtime that is not installed, whose message carries
+the exact `pip install` to run.
+
 ### The ingest flow, and the order the domain forces
 
 The issue asks for an fps parameter "with original-fps display from the probe".

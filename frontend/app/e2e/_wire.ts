@@ -31,7 +31,7 @@ type Progress = "unannotated" | "annotated" | "skipped" | "review_pending" | "ac
 const BATCH_ACTIONS: Record<BatchState, readonly string[]> = {
   draft: ["approve", "edit_membership", "delete"],
   approved: ["start", "repin", "delete"],
-  in_annotation: ["complete", "repin", "delete"],
+  in_annotation: ["complete", "repin", "pre_label", "delete"],
   completed: ["promote", "create_correction"],
 };
 

@@ -83,6 +83,21 @@ it("keeps a connection that has not said what it answers", () => {
   expect(waiting!.connections.map((row) => row.name)).toEqual(["fresh"]);
 });
 
+it("no longer says nothing asks a text-prompt model, now that pre-labeling does", () => {
+  // The orphan copy this section carried until a batch's gallery could ask one:
+  // it named the surface as still being designed, and the dead-control `describe`
+  // kind that follows from having nothing to invite a connection for.
+  const [, detect] = sectionsOf([]);
+  expect(detect!.key).toBe("text_detect");
+  expect(detect!.purpose).not.toContain("Nothing in the app asks");
+  expect(detect!.purpose).toContain("schema becomes the prompt");
+  expect(detect!.empty.kind).toBe("invite");
+  if (detect!.empty.kind === "invite") {
+    expect(detect!.empty.cta).toBe("Add a text-prompt connection");
+    expect(detect!.empty.body).toContain("before anybody opens it");
+  }
+});
+
 it("raises neither derived section until something is in it", () => {
   expect(sectionsOf([connection("sam", ["point_suggest"])]).map((one) => one.key)).toEqual([
     "point_suggest",
