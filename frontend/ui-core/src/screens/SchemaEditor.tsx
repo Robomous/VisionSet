@@ -1295,9 +1295,8 @@ function DestructiveDialog({
           {describeDestructiveClasses(destructiveClasses)}.
         </DialogDescription>
         <DialogDescription>
-          No annotations use what this removes — that is why it can be published at all. Publishing
-          creates a new version; the versions before it keep everything they already declared,
-          because a version is immutable.
+          No existing annotation becomes invalid — that is why this can be published at all.
+          Publishing adds a new version; earlier versions keep what they declared.
         </DialogDescription>
         <DialogFooter>
           <Button variant="secondary" onClick={onCancel}>

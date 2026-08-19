@@ -20,7 +20,7 @@
  *
  * There is no pre-export validation route, so consent here is attempt-shaped:
  * attempt, read `LOSSY_EXPORT_NOT_CONSENTED` off the 409, ask, retry with the flag.
- * The schema editor no longer has this shape — it previews first — and the
+ * The schema editor does not have this shape — it previews first — and the
  * difference is exactly the routed preview that export lacks.
  * `FormatOut.lossy` is what makes the question predictable — it is declared by the
  * *format*, because a bbox-only format loses a polygon whether or not today's

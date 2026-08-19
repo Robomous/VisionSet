@@ -526,7 +526,7 @@ describe("the schema editor", () => {
     // it costs. `blockers` is empty on every preview that reaches this dialog,
     // so the zero is measured rather than assumed.
     expect(dialog.textContent).toContain("1 class narrows");
-    expect(dialog.textContent).toContain("No annotations use what this removes");
+    expect(dialog.textContent).toContain("No existing annotation becomes invalid");
     // The removed promise. It described what happens to annotations *after* the
     // publish, which the kernel has not decided, so the dialog stops claiming it.
     expect(dialog.textContent).not.toContain("Existing annotations are not touched");
@@ -590,7 +590,7 @@ describe("the schema editor", () => {
     expect(dialog.textContent).toContain("2 classes narrow");
     expect(dialog.textContent).toContain("lane");
     expect(dialog.textContent).toContain("sign");
-    expect(dialog.textContent).toContain("No annotations use what this removes");
+    expect(dialog.textContent).toContain("No existing annotation becomes invalid");
   });
 
   it("prevents repeated confirmation while its second preview is pending", async () => {
