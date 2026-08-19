@@ -120,6 +120,7 @@ page groups them by what they are for.
 | `remove_batch_assets` | Take assets out of a draft. Deletes nothing. |
 | `approve_batch` | Freeze it, pin the schema, cut it into jobs. |
 | `start_batch` | Open it for annotation. |
+| `pre_label_plan` | Which classes a run would ask about, and which it would leave out. |
 | `pre_label_batch` | Ask a model to label every untouched asset. Blocks until it is done. |
 | `repin_batch` | Move its schema pin onto the current active version. |
 | `list_batch_assets` | What is in it, paged, with each asset's job and progress. |

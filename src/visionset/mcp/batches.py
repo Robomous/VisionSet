@@ -46,7 +46,13 @@ from uuid import UUID
 from pydantic import Field
 
 from visionset import wire
-from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, pre_label
+from visionset.inference import (
+    DEFAULT_MINIMUM_CONFIDENCE,
+    PreLabelPlan,
+    pre_label,
+    prompt_plan,
+    require_detectable_schema,
+)
 from visionset.kernel.domain import BySize, Partition
 from visionset.kernel.services import (
     BatchService,
@@ -96,6 +102,26 @@ def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any
             pre_labeled=batches.latest_pre_label_job(batch.id),
         ),
         "jobs": [wire.job(j, batch_id=batch.id, batch_state=batch.state) for j in jobs],
+    }
+
+
+def _plan_payload(plan: PreLabelPlan) -> dict[str, Any]:
+    """The prompt and everything left out of it, in the field names the API uses.
+
+    One spelling, read by the tool that answers the plan on its own and by the
+    run that reports the plan it ran under. Two spellings of one shape is how an
+    agent comes to see `excluded_classes` under one tool and something else
+    under the other.
+
+    The schema version is not here: the tool that resolves a schema names it,
+    and a run's outcome carries none to name.
+    """
+    return {
+        "asked_classes": list(plan.asked),
+        "excluded_classes": [
+            {"name": one.name, "reasons": [reason.value for reason in one.reasons]}
+            for one in plan.excluded
+        ],
     }
 
 
@@ -265,6 +291,37 @@ def start_batch(batch_id: BatchRef) -> dict[str, Any]:
     with opened_workspace() as workspace:
         started = BatchService(workspace).start(identifier(batch_id, what="batch_id"))
         return _batch_payload(workspace, started.id)
+
+
+def pre_label_plan(batch_id: BatchRef) -> dict[str, Any]:
+    """Which classes a pre-labeling run over this batch would ask a model about.
+
+    Call this before `pre_label_batch`. That call blocks for minutes and this one
+    is a single read, and what it answers decides whether the wait is worth it.
+
+    **A run does not ask about every class the schema declares.** It asks about
+    the ones a bare box prediction can be written as, and `asked_classes` is that
+    list — it is the prompt itself, in the schema's own spelling.
+
+    **`excluded_classes` names the rest, each with every reason it is left out.**
+    `no_bbox_geometry` means the class admits no box, so a detection has no shape
+    to land as. `required_attribute` means the class demands an attribute value,
+    and a model's answer carries none. Both can hold against one class, which is
+    why `reasons` is a list: a class told only that it admits no box, then given
+    one, would stay absent from the next run's prompt with nothing saying why.
+
+    Every class the pinned schema declares appears in exactly one of the two
+    lists. A schema with nothing askable at all is refused here rather than
+    answered with an empty prompt, exactly as `pre_label_batch` refuses it — as
+    is a batch that is not `in_annotation`.
+
+    No connection is involved: the prompt is a property of the pinned schema
+    alone, so this answers the same lists whichever model is about to be asked.
+    """
+    with opened_workspace() as workspace:
+        batch = BatchService(workspace).require_pre_labelable(identifier(batch_id, what="batch_id"))
+        schema = require_detectable_schema(workspace, batch)
+        return {"schema_version": schema.version, **_plan_payload(prompt_plan(schema))}
 
 
 def pre_label_batch(

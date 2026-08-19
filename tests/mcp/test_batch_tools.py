@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -524,6 +525,85 @@ def test_pre_labeling_blocks_and_returns_what_it_wrote(
         "regions_out_of_bounds": 0,
     }
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
+
+
+#: A schema a run can only partly ask for: one class a box can be written as,
+#: one that admits no box, and one failing both tests at once. The partial case
+#: is the one the plan exists for — the total one is already refused.
+MIXED_CLASSES: list[dict[str, Any]] = [
+    {"name": "sign", "geometries": ["bbox"]},
+    {"name": "centerline", "geometries": ["polyline"]},
+    {
+        "name": "crossing",
+        "geometries": ["polygon"],
+        "attributes": [{"name": "painted", "kind": "boolean", "required": True}],
+    },
+]
+
+
+def test_the_plan_names_the_prompt_and_every_class_left_out_of_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Both halves, in the schema's own order, and both reasons where both hold.
+
+    `crossing` carries two: an agent told only that it admits no box would add
+    one and watch the class stay absent from the next run's prompt.
+    """
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2, classes=MIXED_CLASSES)
+
+    plan = payload(call("pre_label_plan", batch_id=batch_id))
+
+    assert plan == {
+        "schema_version": 1,
+        "asked_classes": ["sign"],
+        "excluded_classes": [
+            {"name": "centerline", "reasons": ["no_bbox_geometry"]},
+            {"name": "crossing", "reasons": ["no_bbox_geometry", "required_attribute"]},
+        ],
+    }
+
+
+def test_the_plan_needs_no_connection_and_runs_no_model(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The prompt is a property of the pinned schema alone.
+
+    Asked with no connection configured at all, which is what makes this the
+    call an agent can afford before committing minutes of inference.
+    """
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
+
+    plan = payload(call("pre_label_plan", batch_id=batch_id))
+
+    assert plan["asked_classes"] == ["sign"]
+    assert plan["excluded_classes"] == []
+    assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 0
+
+
+def test_the_plan_refuses_a_schema_with_no_box_class(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Refused rather than answered with an empty prompt.
+
+    Pre-labeling this batch is impossible rather than merely unproductive, and
+    the run refuses with the same sentence — so an agent gets one answer from
+    both tools instead of an empty list from one and a refusal from the other.
+    """
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2, classes=[CENTERLINE])
+
+    refusal = error(call("pre_label_plan", batch_id=batch_id))
+
+    assert refusal["message"]
+
+
+def test_the_plan_refuses_a_batch_that_is_not_being_annotated(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id = ingested(monkeypatch, tmp_path, count=2)
+
+    refusal = error(call("pre_label_plan", batch_id=batch_id))
+
+    assert refusal["message"]
 
 
 def test_a_batch_that_is_not_being_annotated_is_refused_and_writes_nothing(
