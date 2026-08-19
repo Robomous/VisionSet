@@ -37,7 +37,12 @@ from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption, resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.cli.inference import ConnectionArgument, _resolve
-from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, pre_label
+from visionset.inference import (
+    DEFAULT_MINIMUM_CONFIDENCE,
+    PreLabelExclusionReason,
+    PreLabelPlan,
+    pre_label,
+)
 from visionset.kernel.domain import AssetProgress, BySize, Partition
 from visionset.kernel.services import (
     BatchService,
@@ -188,6 +193,32 @@ def batch_start(
     _echo(started.id, started.state.value, json_out, wire.batch(started, counts, promoted=promoted))
 
 
+#: How each reason a class is left out of the prompt reads at a terminal.
+#: Short, because they are joined inside a parenthesis beside the class name.
+_EXCLUSION_PROSE: Final = {
+    PreLabelExclusionReason.NO_BBOX_GEOMETRY: "no box",
+    PreLabelExclusionReason.REQUIRED_ATTRIBUTE: "requires an attribute a prediction cannot supply",
+}
+
+
+def _announce(plan: PreLabelPlan) -> None:
+    """Say what the run is about to ask for, and what it is leaving out.
+
+    Printed before the first forward pass because that is when it is still
+    actionable: a run that asks for two of a schema's five classes labels
+    nothing under the other three, and afterwards there is only the silence to
+    explain.
+    """
+    note(f"Asking for {len(plan.asked)} class(es): {', '.join(plan.asked)}.")
+    if not plan.excluded:
+        return
+    left_out = "; ".join(
+        f"{one.name} ({', '.join(_EXCLUSION_PROSE[reason] for reason in one.reasons)})"
+        for one in plan.excluded
+    )
+    note(f"Not asking for {len(plan.excluded)} class(es): {left_out}.")
+
+
 @batch_app.command("pre-label")
 def batch_pre_label(
     batch: BatchArgument,
@@ -215,6 +246,7 @@ def batch_pre_label(
             batch_id=batch,
             connection_id=_resolve(connections, connection),
             minimum_confidence=minimum_confidence,
+            on_plan=_announce,
             on_progress=lambda done, total: note(f"Pre-labeling {done}/{total} asset(s)."),
         )
     if json_out:

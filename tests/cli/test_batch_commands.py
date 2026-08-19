@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from uuid import uuid4
 
@@ -12,14 +13,17 @@ from tests.cli._flow import (
     jobs_of,
     ok,
     payload,
+    project,
     run,
     runner,
     started_batch,
+    stills,
     workspace,
 )
 
+from visionset.cli import batches as batch_commands
 from visionset.cli.main import app
-from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE
+from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, PreLabelExclusionReason
 from visionset.inference import prelabel as prelabel_module
 from visionset.kernel.domain import AssetPrediction, BboxGeometry, PredictedRegion
 from visionset.kernel.services import (
@@ -250,6 +254,79 @@ def test_pre_label_by_connection_id_writes_every_untouched_asset(
     assert "Pre-labeled 6 asset(s), wrote 6 annotation(s)." in result.stderr
     assert predicting.minimum_confidences == [DEFAULT_MINIMUM_CONFIDENCE] * 6
     assert payload(root, "batch", "list", "-p", name)["items"][0]["progress"]["pre_labeled"] == 6
+
+
+def _mixed_schema_batch(root: Path, tmp_path: Path) -> str:
+    """A started batch whose pinned schema a run can only partly ask for.
+
+    Two classes a box can be written as, one that admits no box, and one failing
+    both tests at once — the ordinary partial case, which the default
+    ``SCHEMA_DOCUMENT`` (wholly askable) cannot show.
+    """
+    document = {
+        "classes": [
+            {"name": "sign", "geometries": ["bbox"]},
+            {"name": "lane", "geometries": ["polygon"]},
+            {
+                "name": "crossing",
+                "geometries": ["polygon"],
+                "attributes": [{"name": "painted", "kind": "boolean", "required": True}],
+            },
+            {"name": "post", "geometries": ["bbox"]},
+        ]
+    }
+    path = tmp_path / "mixed-schema.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    project(root, "crossings")
+    ok(root, "schema", "apply", str(path), "--project", "crossings")
+    batch = ok(
+        root, "ingest", str(stills(tmp_path)), "--project", "crossings", "--batch-name", "stills"
+    )
+    ok(root, "batch", "approve", batch)
+    ok(root, "batch", "start", batch)
+    return batch
+
+
+def test_every_reason_a_class_is_left_out_has_a_sentence() -> None:
+    """A reason with no wording would print an empty pair of parentheses.
+
+    The terminal has no build-time exhaustiveness check the way the browser's
+    `Record` does, so the vocabulary and its prose are compared here instead.
+    """
+    assert set(batch_commands._EXCLUSION_PROSE) == set(PreLabelExclusionReason)
+
+
+def test_pre_label_says_which_classes_it_asks_for(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    """The prompt, before the first forward pass rather than after the silence."""
+    _, batch = started_batch(root, tmp_path)
+
+    result = run(root, "batch", "pre-label", batch, _connection(root))
+
+    assert result.exit_code == 0, result.output
+    assert "Asking for 1 class(es): sign." in result.stderr
+    assert "Not asking for" not in result.stderr
+
+
+def test_pre_label_names_every_class_it_leaves_out_and_why(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    """A class absent from the prompt is visibly absent, with the reason beside it.
+
+    `crossing` carries both reasons: told only that it admits no box, somebody
+    adds one and watches it stay absent from the next run.
+    """
+    batch = _mixed_schema_batch(root, tmp_path)
+
+    result = run(root, "batch", "pre-label", batch, _connection(root))
+
+    assert result.exit_code == 0, result.output
+    assert "Asking for 2 class(es): sign, post." in result.stderr
+    assert (
+        "Not asking for 2 class(es): lane (no box); "
+        "crossing (no box, requires an attribute a prediction cannot supply)." in result.stderr
+    )
 
 
 def test_pre_label_json_emits_the_complete_outcome(
