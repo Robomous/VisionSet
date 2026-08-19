@@ -506,6 +506,20 @@ def _connection() -> str:
     return str(created["id"])
 
 
+#: A schema a run can only partly ask for: one class a box can be written as,
+#: one that admits no box, and one failing both tests at once. The partial case
+#: is the one the plan exists for — the total one is already refused.
+MIXED_CLASSES: list[dict[str, Any]] = [
+    {"name": "sign", "geometries": ["bbox"]},
+    {"name": "centerline", "geometries": ["polyline"]},
+    {
+        "name": "crossing",
+        "geometries": ["polygon"],
+        "attributes": [{"name": "painted", "kind": "boolean", "required": True}],
+    },
+]
+
+
 def test_pre_labeling_blocks_and_returns_what_it_wrote(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -523,7 +537,7 @@ def test_pre_labeling_blocks_and_returns_what_it_wrote(
         "assets_skipped": 0,
         "regions_discarded": 0,
         "regions_out_of_bounds": 0,
-        "prompt": {"asked_classes": ["sign"], "excluded_classes": []},
+        "plan": {"schema_version": 1, "asked_classes": ["sign"], "excluded_classes": []},
     }
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
 
@@ -545,40 +559,11 @@ def test_a_run_that_labeled_nothing_says_what_it_asked_about(
     outcome = payload(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
 
     assert outcome["assets_labeled"] == 0
-    assert outcome["prompt"]["asked_classes"] == ["sign"]
-    assert outcome["prompt"]["excluded_classes"] == [
+    assert outcome["plan"]["asked_classes"] == ["sign"]
+    assert outcome["plan"]["excluded_classes"] == [
         {"name": "centerline", "reasons": ["no_bbox_geometry"]},
         {"name": "crossing", "reasons": ["no_bbox_geometry", "required_attribute"]},
     ]
-
-
-def test_a_refused_run_reports_no_prompt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """The positive path above is what makes this absence mean anything.
-
-    A schema with nothing askable never reaches the announcement, so no result
-    is produced at all rather than one carrying an empty prompt.
-    """
-    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2, classes=[CENTERLINE])
-    connection_id = _connection()
-    _predicting(monkeypatch, label="sign")
-
-    refusal = error(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
-
-    assert refusal["message"]
-
-
-#: A schema a run can only partly ask for: one class a box can be written as,
-#: one that admits no box, and one failing both tests at once. The partial case
-#: is the one the plan exists for — the total one is already refused.
-MIXED_CLASSES: list[dict[str, Any]] = [
-    {"name": "sign", "geometries": ["bbox"]},
-    {"name": "centerline", "geometries": ["polyline"]},
-    {
-        "name": "crossing",
-        "geometries": ["polygon"],
-        "attributes": [{"name": "painted", "kind": "boolean", "required": True}],
-    },
-]
 
 
 def test_the_plan_names_the_prompt_and_every_class_left_out_of_it(
@@ -591,7 +576,7 @@ def test_the_plan_names_the_prompt_and_every_class_left_out_of_it(
     """
     _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2, classes=MIXED_CLASSES)
 
-    plan = payload(call("pre_label_plan", batch_id=batch_id))
+    plan = payload(call("get_pre_label_plan", batch_id=batch_id))
 
     assert plan == {
         "schema_version": 1,
@@ -613,7 +598,7 @@ def test_the_plan_needs_no_connection_and_runs_no_model(
     """
     _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
 
-    plan = payload(call("pre_label_plan", batch_id=batch_id))
+    plan = payload(call("get_pre_label_plan", batch_id=batch_id))
 
     assert plan["asked_classes"] == ["sign"]
     assert plan["excluded_classes"] == []
@@ -631,9 +616,9 @@ def test_the_plan_refuses_a_schema_with_no_box_class(
     """
     _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2, classes=[CENTERLINE])
 
-    refusal = error(call("pre_label_plan", batch_id=batch_id))
+    refusal = error(call("get_pre_label_plan", batch_id=batch_id))
 
-    assert refusal["message"]
+    assert "no class that a box can be written as" in refusal["message"]
 
 
 def test_the_plan_refuses_a_batch_that_is_not_being_annotated(
@@ -641,7 +626,7 @@ def test_the_plan_refuses_a_batch_that_is_not_being_annotated(
 ) -> None:
     _, batch_id = ingested(monkeypatch, tmp_path, count=2)
 
-    refusal = error(call("pre_label_plan", batch_id=batch_id))
+    refusal = error(call("get_pre_label_plan", batch_id=batch_id))
 
     assert refusal["message"]
 
@@ -680,7 +665,9 @@ def test_a_schema_with_no_box_class_is_refused_and_writes_nothing(
 
     refusal = error(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
 
-    assert refusal["message"]
+    # The same sentence the plan tool refuses with, which is what makes one
+    # answer out of two tools a property a reader can check rather than a claim.
+    assert "no class that a box can be written as" in refusal["message"]
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["review_pending"] == 0
 
 

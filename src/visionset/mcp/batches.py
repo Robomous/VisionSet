@@ -105,26 +105,6 @@ def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any
     }
 
 
-def _plan_payload(plan: PreLabelPlan) -> dict[str, Any]:
-    """The prompt and everything left out of it, in the field names the API uses.
-
-    One spelling, read by the tool that answers the plan on its own and by the
-    run that reports the plan it ran under. Two spellings of one shape is how an
-    agent comes to see `excluded_classes` under one tool and something else
-    under the other.
-
-    The schema version is not here: the tool that resolves a schema names it,
-    and a run's outcome carries none to name.
-    """
-    return {
-        "asked_classes": list(plan.asked),
-        "excluded_classes": [
-            {"name": one.name, "reasons": [reason.value for reason in one.reasons]}
-            for one in plan.excluded
-        ],
-    }
-
-
 def create_batch(
     project: ProjectRef,
     name: Annotated[str, Field(description="What to call the batch.")],
@@ -293,7 +273,7 @@ def start_batch(batch_id: BatchRef) -> dict[str, Any]:
         return _batch_payload(workspace, started.id)
 
 
-def pre_label_plan(batch_id: BatchRef) -> dict[str, Any]:
+def get_pre_label_plan(batch_id: BatchRef) -> dict[str, Any]:
     """Which classes a pre-labeling run over this batch would ask a model about.
 
     Call this before `pre_label_batch`. That call blocks for minutes and this one
@@ -311,9 +291,10 @@ def pre_label_plan(batch_id: BatchRef) -> dict[str, Any]:
     one, would stay absent from the next run's prompt with nothing saying why.
 
     Every class the pinned schema declares appears in exactly one of the two
-    lists. A schema with nothing askable at all is refused here rather than
-    answered with an empty prompt, exactly as `pre_label_batch` refuses it — as
-    is a batch that is not `in_annotation`.
+    lists, and `schema_version` is the pin both were derived from — a re-pin
+    changes both. A schema with nothing askable at all is refused here rather
+    than answered with an empty prompt, exactly as `pre_label_batch` refuses
+    it — as is a batch that is not `in_annotation`.
 
     No connection is involved: the prompt is a property of the pinned schema
     alone, so this answers the same lists whichever model is about to be asked.
@@ -321,7 +302,7 @@ def pre_label_plan(batch_id: BatchRef) -> dict[str, Any]:
     with opened_workspace() as workspace:
         batch = BatchService(workspace).require_pre_labelable(identifier(batch_id, what="batch_id"))
         schema = require_detectable_schema(workspace, batch)
-        return {"schema_version": schema.version, **_plan_payload(prompt_plan(schema))}
+        return wire.pre_label_plan(prompt_plan(schema))
 
 
 def pre_label_batch(
@@ -385,13 +366,13 @@ def pre_label_batch(
     or whose box classes each require an attribute a prediction cannot supply —
     has nowhere for a detection to land and is refused before anything runs.
 
-    `prompt` in the result names both halves: `asked_classes` is what this run
+    `plan` in the result names both halves: `asked_classes` is what this run
     actually asked about, and `excluded_classes` names every class of the pinned
     schema it could not, each with every reason. Read it whenever
     `assets_labeled` is lower than expected — a run that asked about two of a
     schema's five classes labels nothing under the other three, and the counters
-    alone cannot say so. `pre_label_plan` answers the same thing without running
-    anything.
+    alone cannot say so. `get_pre_label_plan` answers the same thing without
+    running anything.
 
     Also refused before anything runs: a batch that is not `in_annotation`, a
     connection whose model answers places rather than words, and a deployment
@@ -418,7 +399,7 @@ def pre_label_batch(
         "assets_skipped": outcome.assets_skipped,
         "regions_discarded": outcome.regions_discarded,
         "regions_out_of_bounds": outcome.regions_out_of_bounds,
-        "prompt": _plan_payload(seen[0]),
+        "plan": wire.pre_label_plan(seen[0]),
     }
 
 

@@ -39,7 +39,7 @@ SHIPPED = {
     "get_batch",
     "approve_batch",
     "start_batch",
-    "pre_label_plan",
+    "get_pre_label_plan",
     "pre_label_batch",
     "repin_batch",
     "complete_batch",
