@@ -368,7 +368,8 @@ def pre_label_batch(
 
     `plan` in the result names both halves: `asked_classes` is what this run
     actually asked about, and `excluded_classes` names every class of the pinned
-    schema it could not, each with every reason. Read it whenever
+    schema it could not, each with every reason. `schema_version` is the pin
+    both were derived from. Read it whenever
     `assets_labeled` is lower than expected — a run that asked about two of a
     schema's five classes labels nothing under the other three, and the counters
     alone cannot say so. `get_pre_label_plan` answers the same thing without
