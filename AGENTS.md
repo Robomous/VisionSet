@@ -14,7 +14,8 @@ creates **flat per-skill symlinks** so each skill is directly discoverable by ev
 ```
 
 The flat layout is required because agents discover skills one level deep. The script also links
-`CLAUDE.md → AGENTS.md`, so this file is the only instruction source to maintain.
+`CLAUDE.md → AGENTS.md` when no `CLAUDE.md` exists, so this file is the only instruction source
+to maintain; an existing `CLAUDE.md` — a developer's own file — is left untouched.
 
 **Setup:** `bash scripts/setup_agents.sh` once after cloning (Git Bash/WSL on Windows). Safe to
 re-run; re-run it after adding or removing a skill.
@@ -91,34 +92,42 @@ While iterating, run only what the change touches — the file's own suite, the 
 a named test. Running the whole corpus every few edits is what makes the loop slow, and it is not
 what catches defects.
 
-Every command below is a **subset** of the gate. The third column says what each one does not see,
-because a row that stays silent about its own blind spot reads as the check.
+Every command below is a **subset** of what CI runs. The third column says what each one does
+not see, because a row that stays silent about its own blind spot reads as the check.
 
 | Check | Command | Does not cover |
 | --- | --- | --- |
 | Python tests | `uv run pytest tests/<dir>` for the area you touched | Everything outside the paths you name |
 | Import contracts | `uv run lint-imports` | — |
-| Kernel type-safety | `uv run mypy src/visionset/kernel` | The kernel only. The gate runs `mypy src/visionset` — well over twice as many files; server, CLI, MCP and formats are outside this command |
+| Kernel type-safety | `uv run mypy src/visionset/kernel` | The kernel only. CI runs `mypy src/visionset` — well over twice as many files; server, CLI, MCP and formats are outside this command |
 | Lint / format | `uv run ruff check .` / `uv run ruff format .` | — |
 | Frontend | `pnpm -r build && pnpm -r test && pnpm -r lint` | **No browser at all.** Both Playwright suites sit outside it, so anything only chromium can see passes here |
 | OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) | — |
 
-### The gate
+### CI is the exhaustive gate
 
-**`bash scripts/check.sh` is the gate, and CI runs the same checks on every pull request.**
-Locally it runs **once** — immediately before opening a pull request, so a CI failure does not
-burn a three-strike round-trip — or when you are explicitly asked for one. Not every few changes.
+**Local checks are targeted; GitHub Actions runs the exhaustive matrix on every pull request.**
+Choose the smallest set of checks that gives real feedback on the change, and do not run the
+whole repository's suites merely because a commit, push, or pull request is about to happen —
+that is CI's job.
 
-**After a push, read what CI answered.** A narrow local run plus an unread CI result is not a
-checked change, and a check you have not read is a check that failed.
+**After a push, read what CI answered.** A targeted local run plus an unread CI result is not a
+checked change, and a check you have not read is a check that failed. Investigate failures, fix
+the ones the branch caused, and never report completion while a required check is red or unread.
 
-Two kinds of change earn the full gate however small the diff: anything touching **state, gating or
-progress**, where the real-server cycle run has repeatedly been the only detector, and any change to
-**the shape of a published wire model**, where a new required field turns every hand-built browser
-stub into a runtime failure that only chromium observes. Both are invisible to every command in the
-table above.
+**High-risk changes escalate to broader *relevant* checks, not to everything.** A change touching
+**state, gating or progress** includes the real-server cycle scenario, which has repeatedly been
+the only detector for that surface; a change to **the shape of a published wire model** includes
+the generation/contract drift checks and the browser specs whose hand-built stubs the new shape
+breaks. Pick the checks the risk actually points at.
 
-Report failures verbatim. Never claim a check passed without running it.
+`bash scripts/check.sh` remains the comprehensive local run for the moments a developer
+deliberately chooses its cost — reproducing a CI failure, debugging an integration problem,
+validating a high-risk change locally. It is never a routine step before a commit, push, or
+pull request.
+
+Report failures verbatim. Never claim a check passed without running it. A completion report
+names the targeted checks that ran and leaves the exhaustive verdict to the pull request's CI.
 
 ## Rules
 
@@ -154,7 +163,8 @@ Report failures verbatim. Never claim a check passed without running it.
   the responsible developer signs, because authorship is accountability. The sole exception is a
   service bot acting autonomously by design (Dependabot, a CI bot), which signs as itself.
 - **NEVER** create commits on your own — only when explicitly asked.
-- Every commit leaves the checks above green.
+- A commit is accompanied by the targeted checks relevant to it; CI proves the rest on the
+  pull request, and must be green before a human merges.
 
 ### Files
 

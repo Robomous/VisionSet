@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# The canonical way to run VisionSet's checks. Humans and agents use this one.
+# Comprehensive local validation, on demand. CI runs the exhaustive matrix on
+# every pull request; this script exists for the moments a developer deliberately
+# wants the whole thing locally — reproducing a CI failure, debugging an
+# integration problem, validating a high-risk change. It is not a routine step
+# before a commit, push, or pull request.
 #
 # It exists because `uv run pytest -q | tail -20` reports exit 0 while the suite
 # fails — a pipeline's status is the last command's — and that once hid a real
@@ -51,7 +55,7 @@ cd "$root"
 # the pipefail above still applies inside whatever the step runs.
 declare -a failed=()
 # One `<seconds> <name>` line per step, printed as a table at the end. The cost
-# of the full gate is now minutes rather than seconds, so it is worth seeing
+# of the full run is minutes rather than seconds, so it is worth seeing
 # where they go — both to choose `--fast` knowingly and to notice the day a step
 # quietly doubles.
 declare -a timings=()
