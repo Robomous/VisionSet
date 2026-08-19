@@ -37,6 +37,16 @@ ATTRIBUTE_GATED = {
 #: Nothing here admits `bbox`, so a schema of only this has nowhere for a
 #: detection to land.
 POLYGON_ONLY = {"name": "lane", "geometries": ["polygon"]}
+#: A box class failing both tests at once: no `bbox` among its geometries *and*
+#: an attribute it demands. Neither reason alone is the whole answer for it.
+DOUBLY_EXCLUDED = {
+    "name": "crossing",
+    "geometries": ["polygon"],
+    "attributes": [{"name": "painted", "kind": "boolean", "required": True}],
+}
+#: The ordinary schema — some classes a box can be written as, some not. The
+#: partial case the plan exists for, since the total one is already refused.
+MIXED = [DETECTABLE, POLYGON_ONLY, DOUBLY_EXCLUDED, {"name": "post", "geometries": ["bbox"]}]
 
 FETCHED_BYTES = 4_000_000_000
 
@@ -188,6 +198,14 @@ def attribute_gated_batch(
     """Every class admits `bbox`, but each one also demands an attribute — the
     second reason `detectable_classes` excludes a class, proved on its own."""
     return _open_batch(client, runner, tmp_path, monkeypatch, classes=[ATTRIBUTE_GATED])
+
+
+@pytest.fixture()
+def mixed_batch(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> OpenBatch:
+    """A schema a run can partly ask for — two classes in, two left out."""
+    return _open_batch(client, runner, tmp_path, monkeypatch, classes=MIXED)
 
 
 @pytest.fixture()
@@ -348,6 +366,80 @@ def test_a_batch_that_is_not_being_annotated_is_refused_and_queues_nothing(
     assert body["code"] == "BATCH_NOT_IN_ANNOTATION"
     assert body["message"]
     assert _pre_label_job_count(client) == 0
+
+
+# --- the plan a launch would run -------------------------------------------------
+
+
+def test_the_plan_names_the_prompt_and_every_class_left_out_of_it(
+    client: TestClient, mixed_batch: OpenBatch
+) -> None:
+    """Both lists, in the schema's own order, and both reasons where both hold.
+
+    `crossing` carries two: told only that it admits no box, somebody adds one
+    and watches it stay absent.
+    """
+    response = client.get(f"/batches/{mixed_batch.id}/pre-label")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["schema_version"] == 1
+    assert body["asked_classes"] == ["sign", "post"]
+    assert body["excluded_classes"] == [
+        {"name": "lane", "reasons": ["no_bbox_geometry"]},
+        {"name": "crossing", "reasons": ["no_bbox_geometry", "required_attribute"]},
+    ]
+
+
+def test_the_plan_needs_no_connection_to_answer(client: TestClient, mixed_batch: OpenBatch) -> None:
+    """The prompt is a property of the schema alone.
+
+    Read as a plain GET with nothing about a model in it — which is what lets a
+    dialog show the classes before anybody has chosen what to run.
+    """
+    asked = client.get(f"/batches/{mixed_batch.id}/pre-label").json()["asked_classes"]
+
+    assert asked == ["sign", "post"]
+    assert _pre_label_job_count(client) == 0
+
+
+def test_a_wholly_askable_schema_leaves_nothing_out(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = client.get(f"/batches/{in_annotation_batch.id}/pre-label")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["excluded_classes"] == []
+
+
+def test_the_plan_refuses_a_schema_with_no_box_class(
+    client: TestClient, polygon_only_batch: OpenBatch
+) -> None:
+    """Refused rather than answered with an empty prompt.
+
+    Pre-labeling this batch is impossible, not merely unproductive, and the
+    launch says so with this same code — so the dialog can stop before the press
+    rather than after it.
+    """
+    response = client.get(f"/batches/{polygon_only_batch.id}/pre-label")
+
+    assert response.status_code == 409
+    body = response.json()
+    assert body["code"] == "SCHEMA_HAS_NO_DETECTABLE_CLASS"
+    assert body["message"]
+
+
+def test_the_plan_refuses_a_batch_that_is_not_being_annotated(
+    client: TestClient, draft_batch: OpenBatch
+) -> None:
+    response = client.get(f"/batches/{draft_batch.id}/pre-label")
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "BATCH_NOT_IN_ANNOTATION"
+
+
+def test_the_plan_of_an_unknown_batch_is_not_found(client: TestClient) -> None:
+    assert client.get(f"/batches/{uuid4()}/pre-label").status_code == 404
 
 
 def test_a_point_prompt_connection_is_refused_before_a_job_exists(

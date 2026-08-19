@@ -45,7 +45,12 @@ from uuid import UUID, uuid4
 from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, capabilities_of
+from visionset.inference import (
+    DEFAULT_MINIMUM_CONFIDENCE,
+    PreLabelExclusionReason,
+    PreLabelPlan,
+    capabilities_of,
+)
 from visionset.kernel.domain import (
     DEFAULT_DETAIL,
     ActivityEntry,
@@ -980,6 +985,59 @@ class PreLabelRunOut(BaseModel):
             assets_labeled=run.assets_labeled,
             regions_discarded=run.regions_discarded,
             regions_out_of_bounds=run.regions_out_of_bounds,
+        )
+
+
+class PreLabelExclusionOut(BaseModel):
+    """A class in a batch's pinned schema that a pre-labeling run will not ask for.
+
+    Both reasons are properties of the class as the schema declares it, so the
+    remedy is a schema edit: give the class `bbox` among its geometries, or drop
+    the `required` flag from the attribute a prediction cannot supply.
+
+    `reasons` can carry both at once, and every reason that holds is listed —
+    a class told only that it admits no box, then given one, would otherwise
+    stay silently absent from the next run's prompt.
+    """
+
+    #: The class name, exactly as the pinned schema declares it.
+    name: str
+    #: Every reason this class is not askable, in a stable order: geometry
+    #: first, then attributes.
+    reasons: list[PreLabelExclusionReason]
+
+
+class PreLabelPlanOut(BaseModel):
+    """The words a pre-labeling run over this batch would ask a model for.
+
+    A run's prompt is the batch's pinned schema, narrowed to the classes a bare
+    box prediction can be written as. That narrowing is invisible in the run's
+    result — a schema whose `vehicle` class requires a `color` attribute yields
+    no vehicles and no explanation — so it is published here, before a run
+    starts, with the left-out classes named beside the asked-for ones.
+
+    Every class the pinned schema declares appears in exactly one of the two
+    lists, both in the schema's own declaration order. A batch whose schema has
+    no askable class at all is refused rather than answered with an empty
+    `asked_classes`: pre-labeling it is impossible, not merely unproductive.
+    """
+
+    #: The pinned version these lists were derived from. A re-pin changes both.
+    schema_version: int
+    #: The prompt itself — the classes a run will ask the model about.
+    asked_classes: list[str]
+    #: The rest, each with why. Empty when the whole schema is askable.
+    excluded_classes: list[PreLabelExclusionOut]
+
+    @classmethod
+    def of(cls, plan: PreLabelPlan) -> Self:
+        return cls(
+            schema_version=plan.schema_version,
+            asked_classes=list(plan.asked),
+            excluded_classes=[
+                PreLabelExclusionOut(name=one.name, reasons=list(one.reasons))
+                for one in plan.excluded
+            ],
         )
 
 

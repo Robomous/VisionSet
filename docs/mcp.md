@@ -120,6 +120,7 @@ page groups them by what they are for.
 | `remove_batch_assets` | Take assets out of a draft. Deletes nothing. |
 | `approve_batch` | Freeze it, pin the schema, cut it into jobs. |
 | `start_batch` | Open it for annotation. |
+| `get_pre_label_plan` | Which classes a run would ask about, and which it would leave out. |
 | `pre_label_batch` | Ask a model to label every untouched asset. Blocks until it is done. |
 | `repin_batch` | Move its schema pin onto the current active version. |
 | `list_batch_assets` | What is in it, paged, with each asset's job and progress. |
@@ -307,7 +308,10 @@ the assets it fully entered, one commit per asset, so calling it again resumes w
 still untouched.
 
 `pre_label_batch` reports unmappable model labels as `regions_discarded` and mapped regions
-without overlap with a measured asset as `regions_out_of_bounds`.
+without overlap with a measured asset as `regions_out_of_bounds`, and the prompt it ran under
+as `plan` — `asked_classes` beside `excluded_classes`, so a run that labeled nothing says
+which classes it never asked about rather than leaving that to a second call.
+`get_pre_label_plan` answers the same thing before the wait.
 
 There is therefore no ingest polling, and no `resume_ingest`. If a call is cut off part way, call
 `ingest` again - registration is idempotent on `(kind, path, extraction_fps)` and content

@@ -41,12 +41,14 @@ from visionset.kernel.domain import (
     AssetProgress,
     Batch,
     GeometryType,
+    LabelClass,
     PredictionRequest,
     PredictionTarget,
     TextPrompt,
     media_type_of,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
+from visionset.kernel.domain.vocabulary import OpenVocabulary
 from visionset.kernel.errors import (
     AssetNotWritable,
     SchemaHasNoDetectableClass,
@@ -129,26 +131,93 @@ def no_detectable_class_message(schema_version: int) -> str:
     )
 
 
+class PreLabelExclusionReason(OpenVocabulary):
+    """Why a schema's class is not among the words a run asks for.
+
+    Open because it travels as a list a client renders member by member rather
+    than switches on: a release that finds a third way a class cannot hold a
+    detection must not cost an older client the whole plan, and the class it
+    names is visibly left out whether or not that client can word the reason.
+    """
+
+    #: The class does not admit ``bbox``, so a detection has no shape to land as.
+    NO_BBOX_GEOMETRY = "no_bbox_geometry"
+    #: The class declares a required attribute. A model's answer carries no
+    #: attribute values, so a bare prediction has nothing to satisfy it with.
+    REQUIRED_ATTRIBUTE = "required_attribute"
+
+
+@dataclass(frozen=True, slots=True)
+class PreLabelExcludedClass:
+    """One class a run will not ask for, and every reason it will not.
+
+    ``reasons`` is a sequence rather than a single value because both can hold
+    at once, and a caller told only the first would add ``bbox`` to a class and
+    watch it stay silently absent.
+    """
+
+    name: str
+    reasons: tuple[PreLabelExclusionReason, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PreLabelPlan:
+    """What a run over this schema would ask for, and what it would leave out.
+
+    The two halves are derived together so they cannot disagree: every class the
+    schema declares appears in exactly one of them, and the version they came
+    from travels with them so a surface reporting the plan need not resolve the
+    pin a second time.
+    """
+
+    #: The schema version both halves were derived from. A re-pin changes both.
+    schema_version: int
+    #: The prompt, in the schema's own declaration order.
+    asked: tuple[str, ...]
+    #: The rest, each with why — empty when the whole schema is askable.
+    excluded: tuple[PreLabelExcludedClass, ...]
+
+
+def _exclusions(label_class: LabelClass) -> tuple[PreLabelExclusionReason, ...]:
+    """Every reason a bare prediction could not be written as this class."""
+    reasons: list[PreLabelExclusionReason] = []
+    if GeometryType.BBOX not in label_class.geometries:
+        reasons.append(PreLabelExclusionReason.NO_BBOX_GEOMETRY)
+    if any(attribute.required for attribute in label_class.attributes):
+        reasons.append(PreLabelExclusionReason.REQUIRED_ATTRIBUTE)
+    return tuple(reasons)
+
+
+def prompt_plan(schema: AnnotationSchema) -> PreLabelPlan:
+    """Split a schema into the classes a run asks for and the ones it cannot.
+
+    The prompt on its own is not enough to work from: both exclusions are
+    invisible in the result of a run, so somebody whose ``vehicle`` class
+    requires a ``color`` finds no vehicles labeled and nothing saying why. Naming
+    the left-out classes beside the asked-for ones puts the reason where the
+    absence is, and it is derived here so every surface says the same thing.
+    """
+    asked: list[str] = []
+    excluded: list[PreLabelExcludedClass] = []
+    for label_class in schema.classes:
+        reasons = _exclusions(label_class)
+        if reasons:
+            excluded.append(PreLabelExcludedClass(name=label_class.name, reasons=reasons))
+        else:
+            asked.append(label_class.name)
+    return PreLabelPlan(schema_version=schema.version, asked=tuple(asked), excluded=tuple(excluded))
+
+
 def detectable_classes(schema: AnnotationSchema) -> tuple[str, ...]:
     """The class names a box can be written as, which are also the prompt.
 
     Public because the route asks it to refuse before enqueueing anything, and a
     second implementation of "which classes can hold a detection" is how a
-    request that was accepted comes to fail inside a worker.
-
-    A class is excluded for either of two reasons: it does not admit ``bbox``,
-    or it declares a required attribute. A model's answer carries no attribute
-    values, so a class demanding one is not a class a bare prediction could ever
-    satisfy — excluding it here is what keeps that fact from surfacing as a
-    write that fails deep inside a run instead of as a batch this function never
-    offered.
+    request that was accepted comes to fail inside a worker. It reads
+    :func:`prompt_plan` for the same reason: the list a dialog shows and the
+    list a run prompts with are one derivation, never two.
     """
-    return tuple(
-        label_class.name
-        for label_class in schema.classes
-        if GeometryType.BBOX in label_class.geometries
-        and not any(attribute.required for attribute in label_class.attributes)
-    )
+    return prompt_plan(schema).asked
 
 
 def require_detectable_schema(workspace: WorkspaceService, batch: Batch) -> AnnotationSchema:
@@ -184,6 +253,7 @@ def pre_label(
     batch_id: UUID,
     connection_id: UUID,
     minimum_confidence: float = DEFAULT_MINIMUM_CONFIDENCE,
+    on_plan: Callable[[PreLabelPlan], None] | None = None,
     on_progress: Callable[[int, int], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
     pool: ProviderPool | None = None,
@@ -210,6 +280,10 @@ def pre_label(
     passed over before the atomic write. ``PreLabelOutcome.regions_out_of_bounds``
     says how many; unmeasured assets remain eligible.
 
+    ``on_plan`` is handed the prompt and the classes left out of it, once, after
+    every refusal has passed and before the first forward pass — what a surface
+    needs to say which classes a run will and will not ask for.
+
     Raises:
         InferenceConnectionNotFound: no such connection.
         InferenceConnectionNotSetUp: a local connection whose weights are absent.
@@ -233,7 +307,13 @@ def pre_label(
     batches = BatchService(workspace)
     batch = batches.require_pre_labelable(batch_id)
     schema = require_detectable_schema(workspace, batch)
-    phrases = detectable_classes(schema)
+    # Announced from inside the run rather than derived by the caller, so the
+    # plan a surface reports is the one this run is about to prompt with and the
+    # order the refusals above arrive in is left alone.
+    plan = prompt_plan(schema)
+    if on_plan is not None:
+        on_plan(plan)
+    phrases = plan.asked
     class_by_answer = _class_by_answer(phrases)
 
     jobs = batches.jobs(batch_id)

@@ -750,6 +750,17 @@ asset already pre-labeled, annotated, skipped, awaiting review or accepted is pa
 label that lands enters at `pre_labeled`, never `annotated`, so an annotator corrects a machine's
 guess rather than inheriting it silently as their own work.
 
+**The prompt is named, and so is everything left out of it.** A count of assets says nothing about
+which classes a run will look for, so a schema whose `vehicle` requires an attribute completes a
+run, labels no vehicles, and reads exactly like a run that should have labeled something. The
+dialog reads `GET /batches/{id}/pre-label` when it opens and shows both halves: the classes it
+asks for, and beside them each class it does not, with the reason - no box, or an attribute a
+prediction cannot supply. The lists come off the wire rather than being derived from the pinned
+schema in the browser, because the same narrowing decides what the run really prompts with. They
+are shown again under a settled run's summary, which is where a run that labeled nothing is
+actually read. A schema with no askable class at all refuses this read, and the dialog renders
+that refusal and leaves `Start` dead rather than waiting for the press to produce it.
+
 The route answers `202` with a background job, on the export and weight-download routes'
 contract, and the dialog polls it exactly as `ExportDialog` polls an export: nothing here waits
 for the run to finish, but nothing closes over an outcome unseen either. Every refusal the route

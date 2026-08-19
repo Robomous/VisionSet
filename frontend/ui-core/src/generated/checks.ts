@@ -231,6 +231,15 @@ export const checkJobOut: Check<Schemas["JobOut"]> =
 export const checkJobPage: Check<Schemas["JobPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkJobOut)], "total": [true, isInteger] } as const);
 
+export const checkPreLabelExclusionReason: Check<Schemas["PreLabelExclusionReason"]> =
+  /*#__PURE__*/ openOneOf(["no_bbox_geometry", "required_attribute"] as const);
+
+export const checkPreLabelExclusionOut: Check<Schemas["PreLabelExclusionOut"]> =
+  /*#__PURE__*/ object({ "name": [true, isString], "reasons": [true, arrayOf(checkPreLabelExclusionReason)] } as const);
+
+export const checkPreLabelPlanOut: Check<Schemas["PreLabelPlanOut"]> =
+  /*#__PURE__*/ object({ "asked_classes": [true, arrayOf(isString)], "excluded_classes": [true, arrayOf(checkPreLabelExclusionOut)], "schema_version": [true, isInteger] } as const);
+
 export const checkProjectOut: Check<Schemas["ProjectOut"]> =
   /*#__PURE__*/ object({ "description": [true, either([isString, isNull] as const)], "id": [true, isString], "name": [true, isString] } as const);
 
@@ -412,6 +421,7 @@ export const checkListSchemaVersions = checkSchemaVersionPage;
 export const checkListSources = checkSourcePage;
 export const checkNextPendingAssets = checkAssetPage;
 export const checkPreLabelBatch = checkBackgroundJobOut;
+export const checkPreLabelPlan = checkPreLabelPlanOut;
 export const checkPreviewSchemaChange = checkSchemaChangePreviewOut;
 export const checkPromoteBatch = checkAssetPage;
 export const checkPublishRelease = checkReleaseOut;

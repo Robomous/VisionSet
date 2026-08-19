@@ -10,7 +10,15 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from visionset.inference.prelabel import DEFAULT_MINIMUM_CONFIDENCE, detectable_classes, pre_label
+from visionset.inference.prelabel import (
+    DEFAULT_MINIMUM_CONFIDENCE,
+    PreLabelExcludedClass,
+    PreLabelExclusionReason,
+    PreLabelPlan,
+    detectable_classes,
+    pre_label,
+    prompt_plan,
+)
 from visionset.kernel import BatchNotInAnnotation, SchemaHasNoDetectableClass, UnsupportedPrompt
 from visionset.kernel.domain import (
     Annotation,
@@ -537,6 +545,106 @@ def test_the_filter_excludes_a_class_a_prediction_cannot_satisfy() -> None:
     """
     schema = AnnotationSchema(project_id=uuid4(), version=1, classes=(SIGN, POST, LANE))
     assert detectable_classes(schema) == ("post",)
+
+
+def test_the_plan_names_every_left_out_class_with_its_reason() -> None:
+    """The two halves are one derivation, so a class lands in exactly one.
+
+    ``SIGN`` is excluded for its required attribute alone — it admits bbox —
+    and ``LANE`` for its geometry alone, which is what makes the two reasons
+    distinguishable rather than a single "not askable" verdict.
+    """
+    schema = AnnotationSchema(project_id=uuid4(), version=1, classes=(SIGN, POST, LANE))
+
+    plan = prompt_plan(schema)
+
+    assert plan.asked == ("post",)
+    assert plan.excluded == (
+        PreLabelExcludedClass(name="sign", reasons=(PreLabelExclusionReason.REQUIRED_ATTRIBUTE,)),
+        PreLabelExcludedClass(name="lane", reasons=(PreLabelExclusionReason.NO_BBOX_GEOMETRY,)),
+    )
+
+
+def test_a_class_failing_both_tests_reports_both_reasons() -> None:
+    """One reason would read as the whole answer.
+
+    Told only that ``crossing`` admits no box, somebody adds bbox to it and
+    watches it stay silently absent — which is the exact shape of the confusion
+    the plan exists to end.
+    """
+    crossing = LabelClass(
+        name="crossing",
+        geometries=(GeometryType.POLYGON,),
+        attributes=(Attribute(name="painted", kind="boolean", required=True),),
+    )
+    schema = AnnotationSchema(project_id=uuid4(), version=1, classes=(POST, crossing))
+
+    plan = prompt_plan(schema)
+
+    assert plan.asked == ("post",)
+    assert plan.excluded == (
+        PreLabelExcludedClass(
+            name="crossing",
+            reasons=(
+                PreLabelExclusionReason.NO_BBOX_GEOMETRY,
+                PreLabelExclusionReason.REQUIRED_ATTRIBUTE,
+            ),
+        ),
+    )
+
+
+def test_the_prompt_is_the_plan_and_not_a_second_derivation() -> None:
+    """``detectable_classes`` reads the plan, so the two cannot disagree."""
+    schema = AnnotationSchema(
+        project_id=uuid4(), version=1, classes=(SIGN, POST, LANE, *VEHICLE_CLASSES)
+    )
+
+    assert detectable_classes(schema) == prompt_plan(schema).asked
+
+
+def test_a_run_announces_the_plan_it_is_about_to_prompt_with(
+    prelabel_fixture: Fixture,
+) -> None:
+    """What a terminal prints before the first forward pass.
+
+    Announced once, after the refusals and before any model runs, and carrying
+    the same phrases the provider is then asked for — a plan derived beside the
+    run rather than inside it could differ from what the run does.
+    """
+    seen: list[object] = []
+
+    pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        on_plan=seen.append,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert len(seen) == 1
+    plan = seen[0]
+    assert isinstance(plan, PreLabelPlan)
+    assert plan.asked == prelabel_fixture.pool.last_prompt.phrases
+
+
+def test_a_refused_run_announces_no_plan(polygon_only_fixture: Fixture) -> None:
+    """The positive path above is what makes this absence mean anything.
+
+    A schema with nothing askable never reaches the announcement, so a surface
+    cannot print a prompt for a run that will not happen.
+    """
+    seen: list[object] = []
+
+    with pytest.raises(SchemaHasNoDetectableClass):
+        pre_label(
+            polygon_only_fixture.workspace,
+            batch_id=polygon_only_fixture.batch.id,
+            connection_id=polygon_only_fixture.connection.id,
+            on_plan=seen.append,
+            pool=polygon_only_fixture.pool,
+        )
+
+    assert seen == []
 
 
 def test_a_bbox_class_with_a_required_attribute_is_refused_before_anything_loads(

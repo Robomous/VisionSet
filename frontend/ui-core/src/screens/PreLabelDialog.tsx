@@ -23,6 +23,17 @@
  * count shown here, is an upper bound on what a run will touch rather than an
  * exact one — which is why the string below says "up to".
  *
+ * ## The prompt is named, not described
+ *
+ * A run asks only for the classes a bare box prediction can be written as, and
+ * a count of assets says nothing about that — so a schema whose `vehicle`
+ * requires a `color` completes a run, labels no vehicles, and offers no reason.
+ * `usePreLabelPlan` fetches both halves and `PromptClasses` shows them, which is
+ * why a left-out class is visibly left out with its reason beside it. The lists
+ * are read off the wire rather than derived from the pinned schema here: the
+ * same narrowing decides what the run really prompts with, and a second copy of
+ * it in the browser is how a dialog comes to name a class no run asks about.
+ *
  * ## The job is a background one, and this dialog watches it — even one it did
  * not launch
  *
@@ -80,12 +91,16 @@ import {
   SelectValue,
 } from "../primitives/Select";
 import type { BadgeTone, Segment } from "./batchState";
+import type { KnownMembers } from "../generated/api";
 import {
   batchKeys,
   useBackgroundJob,
   usePreLabelBatch,
+  usePreLabelPlan,
   type Batch,
   type BackgroundJob,
+  type PreLabelExclusion,
+  type PreLabelPlan,
   type PreLabelRun,
 } from "./queries";
 
@@ -271,6 +286,63 @@ function DoneSummary({
 }
 
 /**
+ * How each reason a class is left out reads.
+ *
+ * A `Record` over the vocabulary's *known* members, on `inferenceCatalog.ts`'s
+ * rule: a reason added to the kernel fails this build until its wording exists,
+ * rather than rendering an empty pair of parentheses.
+ */
+const EXCLUSION_PROSE: Record<KnownMembers["PreLabelExclusionReason"], string> = {
+  no_bbox_geometry: "no box",
+  required_attribute: "requires an attribute a prediction cannot supply",
+};
+
+/**
+ * "vehicle (requires an attribute a prediction cannot supply)" — every reason
+ * this build can word.
+ *
+ * The vocabulary is open, so a newer server may name a reason this build has
+ * never compiled against. That one is dropped rather than printed raw, and a
+ * class whose every reason is unknown is still named: *which* class is missing
+ * from the prompt is the part that cannot be silently lost.
+ */
+function excludedProse(excluded: PreLabelExclusion): string {
+  const said = excluded.reasons
+    .map((one) => EXCLUSION_PROSE[one as KnownMembers["PreLabelExclusionReason"]])
+    .filter((one) => one !== undefined);
+  return said.length === 0 ? excluded.name : `${excluded.name} (${said.join(", ")})`;
+}
+
+/**
+ * The prompt, named — and beside it every class of this schema that is not in it.
+ *
+ * The count above says how many assets a run may touch and nothing about what it
+ * will look for, so a run that legitimately labels nothing reads exactly like a
+ * run that should have labeled something. Naming both halves answers that: a
+ * class missing from the prompt is visibly missing, and the reason sits next to
+ * it rather than in a schema the reader would have to go and reason about.
+ *
+ * Renders nothing at all while the read is in flight or has refused. A refusal
+ * here is `SCHEMA_HAS_NO_DETECTABLE_CLASS` — nothing in this schema is askable —
+ * and the dialog says that once, beside the dead press, rather than twice.
+ */
+function PromptClasses({ plan }: { readonly plan: PreLabelPlan | null }): JSX.Element | null {
+  if (plan === null) return null;
+  return (
+    <div className="flex flex-col gap-1" data-testid="prelabel-classes">
+      <p className="text-meta text-muted-foreground" data-testid="prelabel-asked-classes">
+        Asks for {plan.asked_classes.join(", ")}.
+      </p>
+      {plan.excluded_classes.length > 0 && (
+        <p className="text-meta text-muted-foreground" data-testid="prelabel-excluded-classes">
+          Not asked for: {plan.excluded_classes.map(excludedProse).join("; ")}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * `Start`, disabled, with `Edit these frames` beside it where there is
  * something to edit. The shared shape for every mode that has nothing left
  * to launch — `configure`, `stopped` and `failed` all reach it the same way;
@@ -358,6 +430,9 @@ function PreLabelDialog({
     () => remembered !== null && isSettled(remembered.state),
   );
   const preLabel = usePreLabelBatch(batch?.id ?? "");
+  // Read while the dialog is open and not before: the prompt is a property of
+  // the pinned schema, so a gallery that never opens this never asks for it.
+  const plan = usePreLabelPlan(batch?.id, batch?.schema_version, batch !== null);
   // The job this session launched if there is one, otherwise the batch's own
   // remembered run — watched by its id so a run still genuinely in flight,
   // started elsewhere, keeps polling here rather than sitting frozen.
@@ -392,7 +467,11 @@ function PreLabelDialog({
   // `Start`'s own twins — `Continue`, `Run again`, `Try again` — share this: a
   // launch with no untouched asset left is a guaranteed no-op, whichever mode
   // offers it.
-  const launchDisabled = running || active === undefined || !validConfidence || blocked;
+  // `plan.isError` is `SCHEMA_HAS_NO_DETECTABLE_CLASS` — the launch refuses on
+  // the same read, so pressing Start could only reproduce the refusal already
+  // on screen.
+  const launchDisabled =
+    running || active === undefined || !validConfidence || blocked || plan.isError;
   // The primitive the effect is actually a function of, not the object that
   // carries it — a `useBatch` refetch elsewhere on the page can mint a new
   // `Batch` with the same id, and that identity churn must not matter here.
@@ -436,11 +515,9 @@ function PreLabelDialog({
       <DialogContent data-testid="pre-label-dialog">
         <DialogTitle>Pre-label {batch?.name}</DialogTitle>
         <DialogDescription>
-          Asks the model for every class this batch&rsquo;s schema admits as a box on its
-          own — never a polygon, polyline or tag, and never one that requires an attribute a
-          prediction cannot supply — over every asset nothing has touched yet. What it finds
-          lands <strong>pre-labeled and editable</strong>, never as somebody&rsquo;s own
-          annotation.
+          Asks the model about every asset nothing has touched yet, under the classes named
+          below. What it finds lands <strong>pre-labeled and editable</strong>, never as
+          somebody&rsquo;s own annotation.
         </DialogDescription>
 
         <div className="flex flex-col gap-3">
@@ -495,6 +572,8 @@ function PreLabelDialog({
                 </FieldHint>
               </div>
 
+              <PromptClasses plan={plan.data ?? null} />
+
               <p className="text-meta text-muted-foreground" data-testid="prelabel-count">
                 {untouchedSummary(untouched, total)}
               </p>
@@ -526,7 +605,13 @@ function PreLabelDialog({
           )}
 
           {mode === "done" && view !== null && (
-            <DoneSummary view={view} result={launched?.result ?? null} />
+            <>
+              <DoneSummary view={view} result={launched?.result ?? null} />
+              {/* Again here, because this is where a run that labeled nothing is
+                  read: the classes it never asked about are the answer, and the
+                  dialog that named them before the run has long been closed. */}
+              <PromptClasses plan={plan.data ?? null} />
+            </>
           )}
 
           {mode === "stopped" && view !== null && (
@@ -553,6 +638,10 @@ function PreLabelDialog({
 
           {blocked && mode !== "running" && (
             <Alert data-testid="prelabel-blocked-reason">{blockedReason(view)}</Alert>
+          )}
+
+          {plan.isError && (
+            <FieldError data-testid="prelabel-plan-error">{refusalProse(plan.error)}</FieldError>
           )}
 
           {preLabel.isError && (
