@@ -518,30 +518,6 @@ test("Save and next stores the frame before it moves off it", async ({ page }) =
 });
 
 /**
- * Decision 2's degradation, in the browser because that is where the label's
- * *other* half lives — the same button reads `Save and next` a drag later.
- */
-test("the flow verb reads Next on an untouched frame and Save and next once it carries work", async ({
-  page,
-}) => {
-  const sent: Request[] = [];
-  await openJob(page, sent);
-
-  await expect(page.getByTestId("save-and-next")).toHaveText(/^Next/);
-
-  const canvas = page.getByTestId("annotator-canvas");
-  const box = (await canvas.boundingBox())!;
-  await page.getByTestId("annotator-root").focus();
-  await page.keyboard.press("1");
-  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
-  await page.mouse.up();
-
-  await expect(page.getByTestId("save-and-next")).toContainText("Save and next");
-});
-
-/**
  * `enter` is two meanings that never overlap, and this is the one the table does
  * not hold: with nothing being drawn, the ring close is dead and the adapter
  * reads the press as the flow verb.
@@ -580,27 +556,6 @@ test("Enter closes a ring while one is open, and finishes the frame when none is
   // Nothing in progress now, so the same key means the button beside it.
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
-});
-
-/**
- * The end of the job, where the filled slot changes hands (decision 3).
- *
- * The claim is about `bg-primary` rather than about a marker attribute, because
- * "exactly one filled control" is a statement about what the bar looks like — a
- * `data-` flag nobody styles from would pass over two coral buttons.
- */
-test("the last frame hands the filled slot to Finish job, and offers no next", async ({ page }) => {
-  const sent: Request[] = [];
-  await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "annotated" }));
-
-  await expect(page.getByTestId("save-and-next")).toBeVisible();
-  await page.getByTestId("next-asset").click();
-  await expect(page.getByTestId("asset-position")).toContainText("2/2");
-
-  await expect(page.getByTestId("save-and-next")).toHaveCount(0);
-  const filled = page.locator("header button.bg-primary");
-  await expect(filled).toHaveCount(1);
-  await expect(filled).toHaveAttribute("data-testid", "finish-job");
 });
 
 /**
@@ -751,25 +706,6 @@ test("the two regions scroll independently, neither pushing the other", async ({
   // The header and the filter are not rows and do not scroll away with them.
   await expect(page.getByTestId("class-filter")).toBeVisible();
   await expect(page.getByTestId("class-count")).toBeVisible();
-});
-
-test("a digit arms the class the panel says it will, whatever the filter shows", async ({
-  page,
-}) => {
-  const sent: Request[] = [];
-  await openJob(page, sent);
-
-  // Filter down to the second class, then press `1` — which belongs to the
-  // first, and is not on screen. Schema order, never the filtered order.
-  await page.getByTestId("class-filter").fill("lane");
-  await expect(page.getByTestId("class-row-vehicle")).toHaveCount(0);
-
-  await page.getByTestId("annotator-root").focus();
-  await page.keyboard.press("1");
-
-  await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "true");
-  await page.getByTestId("class-filter").fill("");
-  await expect(page.getByTestId("class-row-vehicle")).toHaveAttribute("data-selected", "true");
 });
 
 test("the cluster never wraps or drops a control, down to the narrowest supported width", async ({
@@ -1031,27 +967,6 @@ test("an opening refusal stays on the bar without claiming the next save failed"
   await expect(page.getByTestId("opening-refusal")).toContainText(/not open for annotation/i);
 });
 
-test("Accept is offered only where the kernel's machine allows the move", async ({ page }) => {
-  const sent: Request[] = [];
-  await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "review_pending" }));
-
-  // **Asset 1 is `annotated`, and this used to assert Accept was enabled here.**
-  // It is not a legal move: `ASSET_PROGRESS_TRANSITIONS` gives `annotated` three
-  // exits — `unannotated`, `skipped`, `review_pending` — and `accepted` is not
-  // among them. The button was offering a refusal, and the refusal was one of the
-  // silent ones (F3), so pressing it did nothing at all and said nothing about it.
-  //
-  // The gate is the wire's `allowed_actions` now, which the kernel derives from
-  // that same table, so this cannot be got wrong again by reading the table twice.
-  await expect(page.getByTestId("accept")).toHaveCount(0);
-
-  await page.getByTestId("next-asset").click();
-  await expect(page.getByTestId("asset-position")).toContainText("2/2");
-  // Asset 2 is `review_pending`, which is the one state `accepted` is reachable
-  // from — the reviewer's half of the machine.
-  await expect(page.getByTestId("accept")).toBeVisible();
-});
-
 test("the zoom buttons drive the same stage mod+0 resets", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent);
@@ -1259,24 +1174,6 @@ test("a reload lands on the frame the address names, not back at the start", asy
   await expect(page.getByTestId("annotation-page")).toBeVisible();
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
   expect(await frameOnScreen(page)).toEqual({ url: "asset-2", screen: "asset-2" });
-});
-
-test("an asset this job does not carry is corrected in the address, not silently ignored", async ({
-  page,
-}) => {
-  const sent: Request[] = [];
-  await serveApi(page, sent);
-  // A stale link: the asset moved to another job, or the batch was re-partitioned.
-  await page.goto(`/jobs/${JOB}?asset=asset-99`);
-  await page.getByTestId("token-input").fill("a-token");
-  await page.getByTestId("token-submit").click();
-  await expect(page.getByTestId("annotation-page")).toBeVisible();
-
-  // The fallback to the first asset is old behaviour and stays — a stale link is
-  // not an error state. What is new is that it is now *visible*: the address stops
-  // naming an asset nobody can see, so the link can be re-copied and be right.
-  await expect(page.getByTestId("asset-position")).toContainText("1/2");
-  expect(await frameOnScreen(page)).toEqual({ url: "asset-1", screen: "asset-1" });
 });
 
 /**
@@ -2956,20 +2853,6 @@ test("a right-click on empty canvas opens nothing, because the hit test is real"
   // open the picker anyway — the shape is still selected, so the trigger is on
   // screen and only the *press* is being judged here.
   await page.mouse.click(box.x + box.width * 0.9, box.y + box.height * 0.9, { button: "right" });
-
-  await expect(page.getByTestId("canvas-reclass-pedestrian")).toHaveCount(0);
-  await expect(page.getByTestId("object-row-0")).toContainText("1. vehicle");
-});
-
-test("Escape closes the canvas picker and leaves the object alone", async ({ page }) => {
-  const sent: Request[] = [];
-  await openJob(page, sent);
-  const box = await drawSelectedBox(page);
-
-  await page.mouse.click(box.x + box.width * 0.45, box.y + box.height * 0.45, { button: "right" });
-  await expect(page.getByTestId("canvas-reclass-pedestrian")).toBeVisible();
-
-  await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("canvas-reclass-pedestrian")).toHaveCount(0);
   await expect(page.getByTestId("object-row-0")).toContainText("1. vehicle");

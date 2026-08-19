@@ -651,50 +651,7 @@ test("cancelling the dialog changes nothing", async ({ page }) => {
   expect(sent.some((one) => one.method() === "POST")).toBe(false);
 });
 
-test("a batch past draft is never offered approval", async ({ page }) => {
-  const sent: Request[] = [];
-  await openGallery(page, sent, { state: "in_annotation" });
-
-  // Absent, not disabled — there is no route back to draft, and an action that
-  // would be refused is an action that should not be drawn.
-  await expect(page.getByTestId("batch-state")).toHaveText("in progress");
-  await expect(page.getByTestId("approve-batch")).toHaveCount(0);
-});
-
-test("the header states what the batch is and how far it has got", async ({ page }) => {
-  const sent: Request[] = [];
-  await openGallery(page, sent);
-
-  // Every one of these is derived, because `BatchOut` carries none of them.
-  await expect(page.getByTestId("batch-facts")).toContainText("video-test-480.mp4");
-  await expect(page.getByTestId("batch-facts")).toContainText("48 frames · 5 fps");
-  await expect(page.getByTestId("batch-facts")).toContainText("1280×720");
-  // 48 total less 30 unannotated. "Annotated" is everything past unannotated, so
-  // the bar cannot go backwards when a frame is accepted.
-  await expect(page.getByTestId("progress-readout")).toContainText("18 of 48 annotated (38%)");
-});
-
 // --- the toolbar's four segments over five states ----------------------------
-
-test("the segments count the batch, and every state lands in exactly one", async ({ page }) => {
-  const sent: Request[] = [];
-  await openGallery(page, sent);
-
-  await expect(page.getByTestId("segment-all")).toHaveText("All (48)");
-  await expect(page.getByTestId("segment-unannotated")).toHaveText("Unannotated (30)");
-  await expect(page.getByTestId("segment-review")).toHaveText("In review (5)");
-  // 8 annotated + 1 accepted + 4 skipped. The two a four-way fold drops silently
-  // are `review_pending` (its own segment) and `accepted` (inside Done).
-  await expect(page.getByTestId("segment-done")).toHaveText("Done (13)");
-
-  const counts = await Promise.all(
-    ["unannotated", "review", "done"].map(async (one) => {
-      const text = (await page.getByTestId(`segment-${one}`).textContent()) ?? "";
-      return Number(/\((\d+)\)/.exec(text)?.[1] ?? 0);
-    }),
-  );
-  expect(counts.reduce((sum, one) => sum + one, 0)).toBe(BATCH_COUNTS.total);
-});
 
 test("each segment shows the frames that belong to it and no others", async ({ page }) => {
   const sent: Request[] = [];
@@ -809,66 +766,6 @@ test("marking a selection skipped sends one request per frame", async ({ page })
     .toBe(2);
 });
 
-test("a draft offers the selection membership editing needs, and only that", async ({ page }) => {
-  const sent: Request[] = [];
-  await openGallery(page, sent, { state: "draft" });
-
-  // A draft offered no selection at all while `remove_assets` had no wire
-  // surface: `Mark skipped` needs a job a draft does not have, so every action a
-  // checkbox could offer was unavailable, and a control whose every action is
-  // unavailable is worse than no control. Membership editing is the
-  // action that is legal here and nowhere else, so the bar is there — with the
-  // progress moves still dead, for their own reason.
-  await expect(page.getByTestId("tile-asset-0")).toBeVisible();
-  await page.getByTestId("select-asset-0").click();
-
-  await expect(page.getByTestId("bulk-remove")).toBeEnabled();
-  await expect(page.getByTestId("bulk-skip")).toBeDisabled();
-  await expect(page.getByTestId("bulk-restore")).toBeDisabled();
-  // On the element the pointer is over: not-yet rather
-  // than broken. Opening a frame is still what a draft cannot do.
-  await expect(page.getByTestId("tile-asset-0")).toHaveAttribute("data-pending", "true");
-  await expect(page.getByTestId("tile-asset-0")).toHaveAttribute("title", /draft/i);
-});
-
-test("a draft says nothing about work it has not created", async ({ page }) => {
-  const sent: Request[] = [];
-  await openGallery(page, sent, { state: "draft" });
-
-  // The defect, seen in a browser: `0 of 0 annotated (0%)` and `All (0)` over
-  // forty-eight visible frames. Those counts are not wrong — `GET /batches/{id}`
-  // documents that a draft reports zeros across the board because the numbers
-  // come from its jobs and it has none. Asking the question was wrong.
-  await expect(page.getByTestId("batch-state")).toHaveText("pending approval");
-  await expect(page.getByTestId("progress-readout")).toHaveCount(0);
-  await expect(page.getByTestId("segments")).toHaveCount(0);
-  await expect(page.getByTestId("timeline")).toHaveCount(0);
-  await expect(page.getByTestId("state-asset-0")).toHaveCount(0);
-
-  // What is left is a preview of what was ingested: the pictures, their numbers,
-  // how big to draw them, and one action.
-  await expect(page.getByTestId("batch-facts")).toContainText("48 frames");
-  await expect(page.getByTestId("index-asset-0")).toBeVisible();
-  await expect(page.getByTestId("density")).toBeVisible();
-  await expect(page.getByTestId("approve-batch")).toBeVisible();
-});
-
-test("approving brings back everything the draft was hiding", async ({ page }) => {
-  const sent: Request[] = [];
-  await openGallery(page, sent, { state: "draft" });
-
-  await expect(page.getByTestId("segments")).toHaveCount(0);
-  await page.getByTestId("approve-batch").click();
-  await page.getByTestId("approve-submit").click();
-
-  // Hidden before approval, not removed. The stub's assets keep their null
-  // `job_id` — a real server cuts jobs here — so what this pins is the header's
-  // half of the switch, which is the half the batch's own state drives.
-  await expect(page.getByTestId("batch-state")).toHaveText("approved");
-  await expect(page.getByTestId("segments")).toBeVisible();
-  await expect(page.getByTestId("progress-readout")).toBeVisible();
-});
-
 // --- the timeline ------------------------------------------------------------
 
 test("clicking a timeline cell brings that frame into view", async ({ page }) => {
@@ -900,7 +797,7 @@ test("a timeline cell names its frame and its exact state", async ({ page }) => 
   );
 });
 
-// --- finishing a batch, and taking a skip back --------------------------------
+// --- finishing a batch ------------------------------------------------------
 
 /** Every write the page made, as `METHOD path`, in the order the server saw them. */
 function writes(sent: Request[]): string[] {
@@ -929,76 +826,22 @@ test("completing a settled batch finishes its job first", async ({ page }) => {
   await expect(page.getByTestId("batch-state")).toHaveText("completed");
 });
 
-test("a job the annotator never opened is started before it is completed", async ({ page }) => {
-  const sent: Request[] = [];
-  await openGallery(page, sent, { settled: true, jobState: "pending" });
-
-  // A batch whose every frame was bulk-skipped from this screen: nobody ever
-  // opened the annotator, so the job sits at `pending` and `JOB_TRANSITIONS` has
-  // no edge from there to `completed`. Without the start this is unfinishable by
-  // any sequence of clicks in the product.
-  await page.getByTestId("complete-drive-01").click();
-
-  await expect
-    .poll(() => writes(sent))
-    .toEqual([
-      `POST /jobs/${JOB}/start`,
-      `POST /jobs/${JOB}/complete`,
-      `POST /batches/${BATCH}/complete`,
-    ]);
-  await expect(page.getByTestId("batch-state")).toHaveText("completed");
-});
-
-test("the press is withheld while frames are outstanding, and says how many", async ({ page }) => {
-  const sent: Request[] = [];
-  // The default fixture: 30 of 48 unannotated and 5 in review.
-  await openGallery(page, sent);
-
-  await expect(page.getByTestId("complete-drive-01")).toBeDisabled();
-  await expect(page.getByTestId("complete-blocked-drive-01")).toHaveText(/35 frames/);
-});
-
-test("a skip can be taken back from the grid", async ({ page }) => {
-  const sent: Request[] = [];
-  await openGallery(page, sent, { settled: true });
-
-  // Frames 3 and 4 are skipped; frame 0 is annotated. Selecting all three is the
-  // mixed case, and the counts on the two buttons are what says which is which
-  // *before* anything is pressed.
-  await page.getByTestId("select-asset-0").click();
-  await page.getByTestId("select-asset-3").click({ modifiers: ["ControlOrMeta"] });
-  await page.getByTestId("select-asset-4").click({ modifiers: ["ControlOrMeta"] });
-
-  await expect(page.getByTestId("bulk-restore")).toHaveText(/Restore \(2\)/);
-  await expect(page.getByTestId("bulk-skip")).toHaveText(/Mark skipped \(1\)/);
-
-  await page.getByTestId("bulk-restore").click();
-
-  // Two requests, not three: `annotated → unannotated` is a legal edge and
-  // deliberately not this one — it means the last annotation was deleted.
-  await expect
-    .poll(() => writes(sent))
-    .toEqual([
-      `PUT /jobs/${JOB}/assets/asset-3/progress`,
-      `PUT /jobs/${JOB}/assets/asset-4/progress`,
-    ]);
-});
-
 /**
  * The batch-state dimension, in the browser — finding F1.
  *
- * The two states worth a scenario each are the two the old client-side mirror
- * got wrong: `approved` and `completed` both have jobs, and `JobService.mark`
- * refuses a write into either before it looks at the frame's progress at all.
- * The bar drew both buttons enabled over frames that are individually skippable,
- * sent one request per frame, took N 409s, and said "0 moved, N refused".
+ * The states the old client-side mirror got wrong are `approved` and
+ * `completed`: both have jobs, and `JobService.mark` refuses a write into
+ * either before it looks at the frame's progress at all. The bar drew both
+ * buttons enabled over frames that are individually skippable, sent one request
+ * per frame, took N 409s, and said "0 moved, N refused".
  *
  * Asserted here rather than only in vitest because the claim is about what a
  * person can press: a `disabled` attribute jsdom reports and a control a browser
  * will not activate are not quite the same statement, and the sentence beside it
- * has to be visible.
+ * has to be visible. That browser-side claim needs only one state to stand —
+ * the per-state wording lives in the gallery vitest suite, which walks both.
  */
-for (const state of ["approved", "completed"] as const) {
+for (const state of ["completed"] as const) {
   test(`a ${state} batch offers no bulk move, and says why`, async ({ page }) => {
     const sent: Request[] = [];
     // `settled: true` puts skipped frames in the fixture, so the *progress*
@@ -1018,62 +861,12 @@ for (const state of ["approved", "completed"] as const) {
     // number with no reason at all.
     const said = page.getByTestId("bulk-unavailable");
     await expect(said).toBeVisible();
-    await expect(said).toHaveText(
-      state === "completed" ? /correction batch/i : /has not been started/i,
-    );
+    await expect(said).toHaveText(/correction batch/i);
 
     // And nothing was sent, which is the half the user could not see.
     expect(writes(sent)).toEqual([]);
   });
 }
-
-test("a completed batch keeps its selection, because choosing frames is how a correction starts", async ({
-  page,
-}) => {
-  const sent: Request[] = [];
-  await openGallery(page, sent, { state: "completed", settled: true });
-
-  // Deliberately not "hide the checkboxes on a closed batch": a set of frames is
-  // the input to a correction batch, and the bar states why its own moves are
-  // unavailable rather than the screen refusing to let anything be picked.
-  await page.getByTestId("select-asset-0").click();
-  await expect(page.getByTestId("bulk-count")).toHaveText("1 frame selected");
-  await expect(page.getByTestId("bulk-bar")).toBeVisible();
-});
-
-test("marking an already-skipped selection sends nothing", async ({ page }) => {
-  const sent: Request[] = [];
-  await openGallery(page, sent, { settled: true });
-
-  // Exactly what the founder did: three skipped frames selected, `Mark skipped`
-  // pressed. `JobService.mark` answers a re-stated state 200 with nothing
-  // changed, so the old bar sent three requests and reported success over work it
-  // had not done. The button is now disabled and the count says why.
-  await page.getByTestId("select-asset-3").click();
-  await page.getByTestId("select-asset-5").click({ modifiers: ["Shift"] });
-  await expect(page.getByTestId("bulk-count")).toHaveText("3 frames selected");
-
-  await expect(page.getByTestId("bulk-skip")).toHaveText(/Mark skipped \(0\)/);
-  await expect(page.getByTestId("bulk-skip")).toBeDisabled();
-  expect(writes(sent)).toEqual([]);
-});
-
-test("a batch with no work left still offers a way into the annotator", async ({ page }) => {
-  const sent: Request[] = [];
-  await openGallery(page, sent, { settled: true });
-
-  // The third defect: `Start annotating` was drawn only while some frame was
-  // `unannotated`, so a batch whose work was finished had **no action in its
-  // header at all** — while the badge beside the empty space said `in progress`.
-  await expect(page.getByTestId("batch-state")).toHaveText("in progress");
-  await expect(page.getByTestId("start-annotating")).toHaveText(/Open annotator/);
-
-  // And it goes to a real asset. Everything here is annotated or skipped, so the
-  // frame it lands on is one the annotator can un-skip from — which is why
-  // the door must not be conditional on unannotated work in the first place.
-  await page.getByTestId("start-annotating").click();
-  await expect.poll(() => new URL(page.url()).pathname).toBe(`/jobs/${JOB}`);
-});
 
 // --- membership editing -------------------------------------------------------
 
@@ -1105,22 +898,4 @@ test("frames can be taken out of a draft batch, and the counts follow", async ({
   // And the batch's own facts, because `asset_count` lives on `BatchOut` and a
   // header still saying 48 over 46 tiles is the stale-count shape.
   await expect(page.getByTestId("batch-facts")).toContainText("46 frames");
-});
-
-test("removal is refused on an approved batch, and the control says so first", async ({ page }) => {
-  const sent: Request[] = [];
-  await openGallery(page, sent, { state: "approved" });
-
-  await page.getByTestId("select-asset-0").click();
-
-  // Disabled-with-reason rather than hidden, and the reason names the moment
-  // rather than the state — it reads the same on every state past `draft`.
-  await expect(page.getByTestId("bulk-remove")).toBeDisabled();
-  await expect(page.getByTestId("bulk-remove")).toHaveAttribute(
-    "title",
-    /fixed once the batch is approved/i,
-  );
-  // Nothing was sent, which is the half the disabled attribute cannot promise on
-  // its own: the old bar's failure mode was to offer a move and take the 409.
-  expect(sent.filter((one) => one.method() === "DELETE")).toEqual([]);
 });

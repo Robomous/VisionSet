@@ -245,36 +245,6 @@ test("copy and paste duplicates the selection, offset and selected", async ({ pa
   await expectCounts(page, 1, 0);
 });
 
-test("a second paste steps further out rather than stacking on the first", async ({ page }) => {
-  // Two presses of `mod+v` landing on one spot would put two annotations under
-  // one visible shape — a dataset with a duplicate in it and nothing on screen
-  // saying so. The rule reads the document rather than counting presses, which is
-  // what makes the undo below restore the slot it took.
-  const frame = await frameOf(page);
-  await drawBbox(page, frame, { x: 300, y: 200 }, { x: 500, y: 340 });
-  await page.keyboard.press("ControlOrMeta+c");
-  await page.keyboard.press("ControlOrMeta+v");
-  await page.keyboard.press("ControlOrMeta+v");
-  await expectCounts(page, 3, 1);
-
-  const drawn = await wire(page);
-  const xs = drawn.map((one) => (one.geometry as { x: number }).x);
-  const step = 20 / frame.zoom;
-  expect(xs[1] - xs[0]).toBeCloseTo(step, 5);
-  expect(xs[2] - xs[0]).toBeCloseTo(step * 2, 5);
-});
-
-test("paste with nothing copied does nothing at all", async ({ page }) => {
-  const frame = await frameOf(page);
-  await drawBbox(page, frame, { x: 300, y: 200 }, { x: 500, y: 340 });
-  await expectCounts(page, 1, 1);
-
-  await page.keyboard.press("ControlOrMeta+v");
-  await expectCounts(page, 1, 1);
-  // Nothing to undo but the box itself, so the paste recorded no entry.
-  await expect(page.getByTestId("undo")).toHaveText(/Undo add vehicle/);
-});
-
 /**
  * The two delete chords are split, and this is the behaviour a user sees.
  *

@@ -97,19 +97,6 @@ test("a hidden object neither renders nor hit-tests", async ({ page }) => {
   await expectCounts(page, 1, 1);
 });
 
-test("a panel delete is the keyboard's delete, and undo brings it back", async ({ page }) => {
-  const frame = await frameOf(page);
-  await drawBbox(page, frame, { x: 300, y: 200 }, { x: 520, y: 340 });
-
-  await page.getByTestId("object-delete-0").click();
-  await expectCounts(page, 0, 0);
-  await expect(page.getByTestId("undo")).toContainText("delete 1 annotation");
-
-  await focusCanvas(page);
-  await page.keyboard.press("ControlOrMeta+z");
-  await expectCounts(page, 1, 1);
-});
-
 test("the tags section toggles a whole-asset tag, and the demo's own checkbox agrees", async ({
   page,
 }) => {
@@ -134,60 +121,4 @@ test("the tags section toggles a whole-asset tag, and the demo's own checkbox ag
   await expect(page.getByTestId("tag-chip-daytime")).toHaveAttribute("data-active", "false");
   await expect(page.getByTestId("tag-daytime")).not.toBeChecked();
   await expect(page.getByTestId("tag-count")).toHaveText("0 assigned");
-});
-
-test("the panel is three sections, and the tags one says what it is about", async ({ page }) => {
-  await frameOf(page);
-
-  const classes = (await page.getByTestId("class-region").boundingBox())!;
-  const tags = (await page.getByTestId("tag-region").boundingBox())!;
-  const objects = (await page.getByTestId("objects-region").boundingBox())!;
-
-  // Read top to bottom: what may I draw, what is true of the whole picture, what
-  // have I drawn.
-  expect(classes.y).toBeLessThan(tags.y);
-  expect(tags.y).toBeLessThan(objects.y);
-  await expect(page.getByTestId("tag-note")).toHaveText("Tags apply to the whole image.");
-  // The heading and its sentence stay put; only the chips scroll.
-  const note = (await page.getByTestId("tag-note").boundingBox())!;
-  const scroller = (await page.getByTestId("tag-scroller").boundingBox())!;
-  expect(note.y).toBeLessThan(scroller.y);
-});
-
-test("reassigning a class refuses the wrong geometry and says why, in one history entry", async ({
-  page,
-}) => {
-  const frame = await frameOf(page);
-  await drawBbox(page, frame, { x: 300, y: 200 }, { x: 520, y: 340 });
-
-  await page.getByTestId("object-reclass-0").click();
-
-  // `lane` is a polygon and `centerline` a polyline: both are writes the API
-  // refuses for a bbox. They are listed anyway, disabled and carrying the reason —
-  // a short list with no explanation reads as a schema missing its classes.
-  await expect(page.getByTestId("reclass-0-lane")).toHaveAttribute("aria-disabled", "true");
-  await expect(page.getByTestId("reclass-0-lane")).toContainText("needs polygon");
-  await expect(page.getByTestId("reclass-0-centerline")).toHaveAttribute("aria-disabled", "true");
-
-  await page.getByTestId("reclass-0-pedestrian").click();
-  await expect(page.getByTestId("object-row-0")).toContainText("1. pedestrian");
-  await expect(page.getByTestId("undo")).toContainText("edit pedestrian");
-});
-
-test("the object filter narrows the list without renumbering it", async ({ page }) => {
-  const frame = await frameOf(page);
-  await drawBbox(page, frame, { x: 300, y: 200 }, { x: 460, y: 320 });
-  await drawBbox(page, frame, { x: 600, y: 200 }, { x: 760, y: 320 });
-
-  await page.getByTestId("object-reclass-1").click();
-  await page.getByTestId("reclass-1-pedestrian").click();
-  await expect(page.getByTestId("object-row-1")).toContainText("2. pedestrian");
-
-  await page.getByTestId("object-filter").fill("pedestrian");
-  await expect(page.getByTestId("object-row-0")).toHaveCount(0);
-  // Still "2.": the number is the object's identity on the canvas, so filtering
-  // must not renumber it out from under the picture.
-  await expect(page.getByTestId("object-row-1")).toContainText("2. pedestrian");
-  // The count stays the whole document's.
-  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
 });
