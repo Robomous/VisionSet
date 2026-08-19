@@ -135,29 +135,31 @@ design, and nothing here re-imposes one on them.
 
 ## Checks that must stay green
 
-**`bash scripts/check.sh` is the gate** (or `pnpm check` — the same script). It is the
-canonical invocation for humans and agents alike: it collects *every* failure rather than
-stopping at the first, carries `set -euo pipefail`, and prints a per-step timing table, and
-CI runs it on every pull request.
+**Local checks are targeted; CI is the exhaustive gate.** While developing, run only the
+checks pertinent to the change — the file's own suite, the module's suite, a named test,
+the touched package's lint — and let GitHub Actions run the complete matrix on the pull
+request. Then read what CI answered: a check nobody read is a check that failed, and a
+pull request has sat red on the annotator chromium suite across several pushes for exactly
+that reason while every narrow signal was green.
 
-**Locally it runs once, not continuously.** While iterating, run only the tests pertinent to
-the change — the file's own suite, the module's suite, or a named test — and take a group
-with `bash scripts/check.sh python`, `frontend`, `generated` or `browser`. The full pass
-belongs immediately before you open a pull request, so that a CI failure does not cost a
-round-trip, or to a moment somebody asks for one. Then read what CI answered: a check nobody
-read is a check that failed, and a pull request has sat red on the annotator chromium suite
-across several pushes for exactly that reason while every narrow signal was green.
+**`bash scripts/check.sh`** (or `pnpm check` — the same script) is the comprehensive local
+run for the moments you deliberately want the whole thing on your own machine: reproducing
+a CI failure, debugging an integration problem, validating a high-risk change before
+pushing it. It collects *every* failure rather than stopping at the first, carries
+`set -euo pipefail`, and prints a per-step timing table. Take a group with
+`bash scripts/check.sh python`, `frontend`, `generated` or `browser`; it is not a required
+step before a commit, push, or pull request.
 
-**It runs the browser suites, and that is the default.** Until #314 it ran no browser at
-all while calling itself canonical — and during the 2026-08 remediation run the
-real-server cycle suite was three separate times the *only* one to catch a regression
-(#306, #308, #309), one of which shipped on a green run of this script and went red in CI.
-It has since been four: the auto-labeling walk added for #609 found, on its first run, a
-runtime gate in the download route that no unit test could reach, because the gate is in
-the route rather than in anything a service test drives.
-`bash scripts/check.sh --fast` skips them for the inner loop; it says so in a banner rather
-than quietly, because "All checks passed" has always meant "all the checks this invocation
-ran".
+**A high-risk change escalates to the relevant suites, not to everything.** The real-server
+cycle suite has repeatedly been the only check to catch a state/gating/progress regression —
+a stale capability declaration, a label flip standing in for feedback, a progress counter
+running backwards, a runtime gate living in a route no service test drives — so a change on
+that surface includes `bash scripts/check.sh browser` (or the specific spec) locally rather
+than waiting for CI to say it. A change to a published wire model's shape includes the
+generation/drift checks and the browser specs whose hand-built stubs it breaks.
+`bash scripts/check.sh --fast` runs everything but the browser suites and says so in a
+banner rather than quietly, because "All checks passed" has always meant "all the checks
+this invocation ran".
 
 **The last line on stdout says what the run covered**, so "all the checks this invocation
 ran" is something a reader can check rather than infer:
@@ -434,7 +436,8 @@ the vehicle the product is designed around, and a pre-release is invisible to a 
 
 Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`,
 `docs:`, `test:` … with optional scope, e.g. `feat(kernel): …`). Keep commits as logical
-increments; every commit should leave the checks above green.
+increments; run the checks pertinent to each commit, and let the pull request's CI prove
+the rest.
 
 **Commits are authored by the contributor.** Coding agents used during development are not
 credited as authors or co-authors: no `Co-Authored-By` trailer naming one, no "generated with"
