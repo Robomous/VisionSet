@@ -58,7 +58,7 @@ hatches are in CONTRIBUTING.md.
 
 ## Checks
 
-The check policy — pertinent tests while iterating, the gate once before the PR — is in
+The check policy — targeted checks while developing, CI as the exhaustive gate — is in
 AGENTS.md `## Checks`, commands included. What is specific to Python work:
 
 - If you touched FastAPI routes or response models, re-export `openapi.json`

@@ -90,8 +90,8 @@ Never hand-edit a `version` field. The repo-root `VERSION` file is the source of
 ## Before you say it works
 
 While iterating, run the package you touched — `pnpm --filter @visionset/<pkg> test`, and `lint`
-on the same filter. The exhaustive run belongs to the gate — AGENTS.md `## Checks`. Two blind
-spots worth naming:
+on the same filter. The exhaustive run belongs to CI — AGENTS.md `## Checks`. Two blind spots
+worth naming, because they say when to escalate to a browser suite:
 
 - **None of the workspace commands runs a browser.** Both Playwright suites sit outside them, so
   a change only chromium can observe passes everything above.

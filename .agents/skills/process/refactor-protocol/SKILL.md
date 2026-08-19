@@ -40,10 +40,9 @@ state, before adopting, rebasing, or pruning anything.
 
 ## Testing requirements
 
-The test-execution policy — pertinent tests while iterating, `bash scripts/check.sh` once before
-the PR, CI as the exhaustive gate, reading what CI answered as part of pushing, and the two
-change categories that always earn the full gate — lives in **AGENTS.md, `## Checks`**. On top of
-it:
+The test-execution policy — targeted checks while developing, CI as the exhaustive gate,
+reading what CI answered as part of pushing, and how high-risk changes escalate to broader
+*relevant* checks — lives in **AGENTS.md, `## Checks`**. On top of it:
 
 - **Layout, virtualization, and observer behavior are asserted in real chromium (Playwright),
   never jsdom** — a never-attached ResizeObserver passes green in jsdom forever.
@@ -87,11 +86,11 @@ it:
 ## PR & CI
 
 **Merging is never part of the task.** Every pull request is merged by a human, after review,
-with every required check green. The flow: implementation → pre-PR gate → completion report → a
-pull request per the tier below → human review → manual merge.
+with every required check green. The flow: implementation → targeted checks → completion report
+→ a pull request per the tier below → CI read → human review → manual merge.
 
 **Tier A — no UI-affecting surface**: open the pull request at completion. **Tier B —
-UI-affecting**: stop after the gate; report, open nothing, and wait for explicit instruction —
+UI-affecting**: stop at completion; report, open nothing, and wait for explicit instruction —
 the branch stays on its worktree for visual evaluation first. A change is UI-affecting if it
 touches anything under `frontend/`, `src/visionset/_static/` or the bundling path, changes wire
 shapes or `allowed_actions` or server behavior the UI renders, or changes user-visible behavior
