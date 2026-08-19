@@ -1,73 +1,44 @@
 #!/usr/bin/env bash
 # The canonical way to run VisionSet's checks. Humans and agents use this one.
 #
-# **Why this exists.** Two background invocations of
-# `uv run pytest -q | tail -20` once reported exit 0 while the suite was failing: a
-# pipeline's status is the *last* command's, so `tail` succeeding at printing
-# lines masked pytest failing at running them, and hid a real broken test
-# through two full task cycles. `set -euo pipefail` below makes that impossible
-# here, and `docs`/`CONTRIBUTING.md` point everything at this script so nobody
-# has to remember the rule at the call site.
-#
-# It is a script rather than a Makefile because this repository has never had
-# `make`, and `scripts/build_dist.sh` and `scripts/cycle_server.sh` are the
-# established shape for "several commands whose order or failure handling
-# matters".
+# It exists because `uv run pytest -q | tail -20` reports exit 0 while the suite
+# fails — a pipeline's status is the last command's — and that once hid a real
+# broken test through two full task cycles. `set -euo pipefail` below makes that
+# impossible here, so nobody has to remember the rule at the call site.
 #
 # Usage:
 #   bash scripts/check.sh                 # python, frontend, generated, browser
 #   bash scripts/check.sh --fast          # the same minus the browser suites
-#   bash scripts/check.sh browser         # one group
-#   bash scripts/check.sh python frontend # several
+#   bash scripts/check.sh browser         # one group (or several, space-separated)
 #   bash scripts/check.sh docs            # the documentation site (opt-in)
 #   pnpm check                            # the same thing, from the other half
 #
-# **`docs` is the one group the default run does not include**, and the verdict
-# line says so (`skipped=docs`). It builds the Astro site over `docs/`, needs its
-# own pnpm install, and reaches nothing the suites above cover — so it belongs to a
-# change that touches `docs/` or `docs-site/`, not to every Python one. CI runs it
-# on every pull request either way, in the `docs site` job.
+# `docs` is the one group the default run does not include, and the verdict line
+# says so (`skipped=docs`): it needs its own pnpm install and reaches nothing the
+# other suites cover, so it belongs to a change that touches `docs/` or
+# `docs-site/`. CI runs it on every pull request either way.
 #
-# **The three suites, because there are three and two of them are easy to leave
-# invisible here.** A script that runs no browser at all while calling itself the
-# canonical "before you say it works" invocation is worse than no script:
+# The browser group is two suites and neither is a luxury: frontend/app's e2e
+# (stubbed API, CI job `annotator e2e (chromium)`) and the whole cycle against a
+# real server and a real kernel (CI job `browser cycle (chromium)`). The cycle
+# suite has repeatedly been the only check to catch a regression — including one
+# that shipped on a green run of this script back when it ran no browser at all.
 #
-#   python | frontend | generated   pytest, vitest, ruff, mypy, import-linter,
-#                                   eslint, and the four drift gates
-#   browser, part 1                 frontend/app's e2e — the annotator's
-#                                   scenarios and the app's, all stubbed
-#                                   (CI job: `annotator e2e (chromium)`)
-#   browser, part 2                 the whole cycle against a **real server and
-#                                   a real kernel**, from a pasted token to a
-#                                   downloaded export
-#                                   (CI job: `browser cycle (chromium)`)
-#
-# That second browser suite is not a luxury. It has been three separate times the
-# *only* suite to catch a regression: a job's stale capability declaration, a
-# promote button whose only feedback was its own label, and a progress counter
-# that ran backwards when a frame was accepted. One of those shipped on a green
-# run of this script and went red in CI.
-#
-# **`CI=1` is set here, for the Playwright steps, and it is load-bearing.**
+# `CI=1` is set here for the Playwright steps, and it is load-bearing:
 # `playwright.config.ts` sets `reuseExistingServer: !process.env.CI`, so without
-# it a stale vite server left on this worktree's e2e port answers instead of the
-# build under test — which produces failures in unrelated scenarios that read as
-# genuine code bugs. The lesson lived in a skill and in three people's memories;
-# it lives in the script instead. (Which port that is depends on the worktree:
-# `frontend/app/e2e-ports.ts` derives it, and each run prints it.)
+# it a stale vite server on this worktree's derived e2e port answers instead of
+# the build under test, and the failures read as genuine code bugs.
 #
-# **Caveat that no exit code will tell you: several gates read `git ls-files`,
-# which is the index rather than the working tree.** A new file you have not
-# `git add`ed is invisible to them, so it passes here and fails in CI. Stage
-# first, then run.
+# Caveat no exit code will tell you: several gates read `git ls-files` — the
+# index, not the working tree — so a new file you have not `git add`ed passes
+# here and fails in CI. Stage first, then run.
 #
-# Groups deliberately *not* here, because each costs minutes or needs an
-# install, and CI is where they belong: the wheel build, the 30-minute flow, the
-# format smoke tests (ultralytics brings torch), and Playwright's bench config —
-# `annotator bench (chromium, manual)` is `workflow_dispatch`-only and must stay
-# out of any default, here and in the branch ruleset alike.
-# `CONTRIBUTING.md`'s table stays the full list; this is everything a pull
-# request's own required checks will run.
+# Deliberately not here, because each costs minutes or needs an install and CI
+# is where they belong: the wheel build, the 30-minute flow, the format smoke
+# tests, and the bench config (`workflow_dispatch`-only; keep it out of any
+# default, here and in the branch ruleset alike). `CONTRIBUTING.md`'s table
+# stays the full list.
+
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -102,18 +73,14 @@ step() {
 }
 
 run_python() {
-  # No `-q` here: `pyproject.toml` already sets it in `addopts`, verbosity is a
-  # counter, and a second one stacks to `-qq` — which drops the test count and the
-  # summary line, leaving the exit code as the only signal on a log that ends
-  # mid-progress and reads as truncated. The count is what makes a run auditable.
+  # No `-q`: `pyproject.toml` already sets it in `addopts`, verbosity is a
+  # counter, and a second one stacks to `-qq` — dropping the count and summary
+  # line that make a run auditable.
   #
-  # `-n auto` distributes across the machine's cores. The suite is 3200 tests at a
-  # 63 ms mean — no fat tail to cut, so the only way it gets faster is by running
-  # more than one at a time. It is `auto` rather than a fixed number because a
-  # number chosen for a twenty-core desktop would *slow* the gate on a four-core
-  # laptop, and this is the command a contributor runs on whatever they have.
-  # CI's `python` job invokes pytest directly and is untouched: how many workers a
-  # GitHub runner should use is a separate question from how many this machine has.
+  # `-n auto` distributes across this machine's cores; the suite has no fat tail
+  # to cut, so parallelism is the only thing that makes it faster. `auto` rather
+  # than a number, because a number chosen for a twenty-core desktop would slow
+  # the gate on a four-core laptop. CI's `python` job passes `-n auto` too.
   step "python tests" uv run pytest -n auto
   step "ruff (lint)" uv run ruff check .
   step "ruff (format)" uv run ruff format --check .
@@ -135,23 +102,13 @@ require_node_modules() {
   fi
 }
 
-# **`.nvmrc` is the single source of truth for the Node version**, read here and by
-# every `actions/setup-node` in `.github/workflows/` through `node-version-file`.
-# Before it existed the version was eight copies of the literal `24` in CI and
-# nothing at all anywhere a developer's machine could see, so the gate's answer
-# depended on whatever `node` happened to be on PATH.
-#
-# It is checked because the failure it produces does not look like a version
-# problem. Node 26 declares `localStorage` on the global object and leaves it
-# `undefined` while `--localstorage-file` is absent, so jsdom's never arrives and
-# eight `ui-core` tests across two files fail with a `TypeError` on storage they
-# never touched — which reads as a broken change rather than as a wrong
-# interpreter. Tracked as #607; `sessionStorage` is unaffected, which is why the
-# credential's tests pass under both.
-#
-# The major is all that is compared. `.nvmrc` names one because that is what CI
-# installs and what a patch release must not invalidate; taking the major of both
-# sides means a future `.nvmrc` naming a full version still works here.
+# `.nvmrc` is the single source of truth for the Node version, read here and by
+# every `actions/setup-node` through `node-version-file`. It is checked because
+# the failure a wrong major produces does not look like a version problem: a
+# newer Node declares `localStorage` as a global `undefined`, jsdom's never
+# arrives, and `ui-core` tests fail with a `TypeError` on storage they never
+# touched. Only the major is compared, so a future `.nvmrc` naming a full
+# version still works here.
 require_node_version() {
   local want found found_major
   # Named rather than left to `set -e`, which would abort on `sed`'s own error and
@@ -204,28 +161,17 @@ run_generated() {
   # `tests/server/test_wire_fixtures.py`, so the `python` group already runs it.
 }
 
-# Both suites are invoked from `frontend/app`, in a subshell so the `cd` cannot
-# leak into a later group, and both build what they need themselves: each
-# config's `webServer.command` compiles `@visionset/annotator` and
-# `@visionset/ui-core` first, because `frontend/app` resolves them through their
-# `dist/` and an unbuilt change is invisible in a browser rather than a compile
-# error. So `check.sh browser` on its own is a complete run, not a half of one.
-#
-# No `require_playwright_browsers` to match `require_node_modules`: Playwright's
-# own error already names the install command as the remedy, and a check that
-# restates a message which is already good is a second place to keep current.
-#
-# `pnpm exec`, never `npx`. pnpm is the only Node package manager this repository
-# uses — the rule the `nodejs-setup` skill states and these two lines were the
-# last exception to. It is not only tidiness: `npx` will *fetch and run* a package
-# that is not installed, which is a resolution nothing here reviewed, no lockfile
-# names and no cool-down applies to. `pnpm exec` runs what the workspace already
-# has and fails if it is not there, which is the answer this script wants anyway.
-# `VISIONSET_PW_WORKERS` is separate from `CI` on purpose. `CI=1` is set here because
-# `reuseExistingServer: !CI` depends on it, and it used to carry a second meaning as
-# well — the worker count — so a local run of 250 tests inherited a number sized for a
-# two-core GitHub runner. Ten is for the machine a developer is sitting at; Actions sets
-# nothing and keeps the count its runners were measured at.
+# Both suites run from `frontend/app` in a subshell (the `cd` cannot leak), and
+# both build what they need themselves — each config's `webServer.command`
+# compiles the workspace packages first, so `check.sh browser` alone is a
+# complete run. No `require_playwright_browsers` check: Playwright's own error
+# already names the remedy, and a check restating a good message is a second
+# place to keep current. `pnpm exec`, never `npx` — `npx` fetches and runs what
+# no lockfile names and no cool-down covers.
+# `VISIONSET_PW_WORKERS` is separate from `CI` on purpose: `CI=1` exists for
+# `reuseExistingServer`, and letting it also mean the worker count once handed a
+# local run a number sized for a two-core runner. Ten is for a developer's
+# machine; CI sets its own.
 browser_e2e() {
   ( cd "$root/frontend/app" && CI=1 VISIONSET_PW_WORKERS=10 pnpm exec playwright test )
 }
@@ -240,16 +186,9 @@ run_browser() {
   step "browser cycle, real server (chromium)" browser_cycle
 }
 
-# The documentation site. **Not in the default set**, and that is the trade this
-# group exists to make explicit: it costs about ten seconds and reaches nothing any
-# other suite covers, so it belongs to a change that touches `docs/` or `docs-site/`
-# rather than to every Python one. The `docs site` CI job runs it on every pull
-# request regardless, which is where the safety net actually is.
-#
-# It is a separate pnpm install, in a separate workspace root — see
-# `docs-site/pnpm-workspace.yaml` for why the documentation site is not a member of
-# the frontend workspace. `require_node_modules` above therefore says nothing about
-# it, and this has to check for itself.
+# The documentation site — not in the default set (see the header). It is a
+# separate workspace root with its own install, so `require_node_modules` says
+# nothing about it and this has to check for itself.
 require_docs_site_modules() {
   if [[ ! -d docs-site/node_modules ]]; then
     echo "error: docs-site/node_modules is missing — run 'pnpm --dir docs-site install' first" >&2
@@ -261,16 +200,11 @@ docs_build() {
   ( cd "$root/docs-site" && pnpm build )
 }
 
-# **After the build, never before it**, and the reason is the whole shape of this
-# architecture: `docs-site/src/content/docs/` is generated and git-ignored, so on a
-# clean checkout there is nothing to be current *with* and a `sync:check` first
-# would report all forty-two pages stale on every fresh clone.
-#
-# Run here it asserts the property that is actually worth asserting: the projection
-# the build just produced is byte-for-byte what a fresh projection produces. That is
-# determinism — the rule `scripts/generate_client.mjs` states, arriving from the
-# other direction — and it is what would catch a transform that grew a timestamp, a
-# version, or an ordering that depends on the filesystem.
+# After the build, never before it: `docs-site/src/content/docs/` is generated
+# and git-ignored, so a `sync:check` first would report every page stale on a
+# fresh clone. Run here it asserts determinism — the projection just produced is
+# byte-for-byte what a fresh one produces, which catches a transform that grew a
+# timestamp or a filesystem-dependent ordering.
 docs_projection_is_deterministic() {
   ( cd "$root/docs-site" && pnpm sync:check )
 }
@@ -302,23 +236,12 @@ declare -a ALL_GROUPS=(python frontend generated browser docs)
 # length-checked for the same reason, and this way there is nothing to forget.
 ran=""
 
-# The last line on **stdout**, on every exit path.
-#
-# `require_node_modules` aborts correctly and says so — on stderr, with nothing at
-# all on stdout. So a caller that captures stdout (an agent, a CI step, a
-# `$(…)`) sees a partial run and a full one as the same thing: some green pytest
-# output, and then silence. The exit code is right, and nobody reads an exit code
-# out of a transcript. It is the same false-calm failure this file's own header
-# warns about for `| tail`, arriving from the other direction.
-#
-# Printed from a `trap … EXIT`, which is what makes it unconditional: there is no
-# way out of this script — a failed step, an unknown group, a missing
-# `node_modules` three groups in — that can skip it.
-#
-# Three outcomes, because "did not run" and "ran and was wrong" are different
-# news: PASSED, FAILED (a step reported a problem), INCOMPLETE (the script left
-# before the group loop finished — nothing was found wrong with the tree, the
-# checks simply did not happen).
+# The last line on stdout, on every exit path — aborts announce themselves on
+# stderr only, so a caller capturing stdout would otherwise see a partial run
+# and a full one as the same thing. Printed from a `trap … EXIT` so no way out
+# of this script can skip it. Three outcomes, because "did not run" and "ran and
+# was wrong" are different news: PASSED, FAILED (a step reported a problem),
+# INCOMPLETE (the run left early; the checks simply did not happen).
 summary() {
   local status=$?
   local outcome skipped=""
@@ -339,19 +262,10 @@ summary() {
   echo
   printf 'check.sh: %s  ran=%s  skipped=%s\n' "$outcome" "${ran:-none}" "${skipped:-none}"
 
-  # The banner, **after** the line it qualifies — it exists to say what
-  # "PASSED" did not cover, so it has to be what is still on screen once that
-  # line has scrolled into the backlog. Keyed on what *ran*, not on what was
-  # asked for, which is what this comment always claimed and now is: a run that
-  # requested `browser` and died in `frontend` skipped it just as completely as
-  # `--fast` did. ASCII rather than box drawing, so it survives every terminal
-  # it lands in.
-  #
-  # Nothing at all having run is the one case it stays quiet for. A usage error
-  # or a missing prerequisite is not a partial run somebody might mistake for a
-  # complete one, and the INCOMPLETE line above has already said so — twelve
-  # lines about the browser suites in front of `unknown group 'nope'` buries the
-  # answer under the wrong warning.
+  # The banner comes after the line it qualifies (it must be what is still on
+  # screen), is keyed on what *ran* rather than what was asked for, and stays
+  # quiet when nothing ran at all — a usage error is not a partial run somebody
+  # might mistake for a complete one. ASCII so it survives every terminal.
   if [[ -z $ran ]]; then return; fi
   case ",$ran," in
     *",browser,"*) return ;;

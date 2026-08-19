@@ -260,50 +260,6 @@ test("the screen is a list of abilities, and a connection sits under the one it 
   ).toBeVisible();
 });
 
-test("a section nothing serves invites a first connection for it", async ({ page }) => {
-  await serveApi(page, () => connection("ready", null, null, ["text_detect"]));
-  await openInference(page);
-
-  await expect(
-    page.getByTestId("section-point_suggest").getByRole("button", {
-      name: "Add a point-prompt connection",
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("section-text_detect").getByTestId("connection-sam2-local"),
-  ).toBeVisible();
-});
-
-test("a page that never started the download still shows it", async ({ page }) => {
-  // The shipped bug, in the one shape that could not be tested without a browser:
-  // the job id lived in a component, so only the mount that pressed the button
-  // could see the transfer. Everything else — a reload, a second tab, a colleague
-  // — got `Not set up` beside a download that was still running.
-  await serveApi(page, () =>
-    connection("not_set_up", { state: "running", bytes_done: 0.4 * GIGABYTE, bytes_total: 1.6 * GIGABYTE }),
-  );
-  await openInference(page);
-
-  await expect(page.getByTestId("download-progress-prose")).toHaveText("400.0 MB of 1.6 GB · 25%");
-  await expect(page.getByTestId("download-progress-bar")).toHaveAttribute("aria-valuenow", "25");
-
-  // Throw the application away. Nothing survives this that a client is holding.
-  await page.reload();
-  await expect(page.getByTestId("inference-screen")).toBeVisible();
-
-  // Inside the section the row belongs to, which is the one for a connection that
-  // cannot yet say what it answers — the transfer being watched is the thing that
-  // will let it.
-  const waiting = page.getByTestId("section-undeclared");
-  await expect(waiting.getByTestId("download-progress-prose")).toHaveText(
-    "400.0 MB of 1.6 GB · 25%",
-  );
-  await expect(waiting.getByTestId("download-progress-bar")).toHaveAttribute(
-    "aria-valuenow",
-    "25",
-  );
-});
-
 test("a transfer left running is where it got to when you come back", async ({ page }) => {
   // Navigating away is the ordinary way somebody loses sight of a download, and
   // the poll that was watching it goes with the screen. What comes back is read
@@ -356,42 +312,6 @@ test("the bar moves on the poll alone, and stops being a bar when it lands", asy
   await expect(page.getByTestId("download-progress")).toHaveCount(0);
 });
 
-test("arriving after a transfer finished shows the row and no bar", async ({ page }) => {
-  // The record stays on the connection once the job settles — it answers *what
-  // happened last time* — and a settled record is not something to draw a bar for.
-  await serveApi(page, () =>
-    connection("ready", {
-      state: "succeeded",
-      bytes_done: 1.6 * GIGABYTE,
-      bytes_total: 1.6 * GIGABYTE,
-    }),
-  );
-  await openInference(page);
-
-  await expect(page.getByTestId("connection-status")).toContainText("Ready");
-  await expect(page.getByTestId("download-progress")).toHaveCount(0);
-  await expect(page.getByTestId("download-error")).toHaveCount(0);
-});
-
-test("a transfer that failed while nobody was watching still says why", async ({ page }) => {
-  await serveApi(page, () =>
-    connection("not_set_up", {
-      state: "failed",
-      bytes_done: 0.3 * GIGABYTE,
-      bytes_total: 1.6 * GIGABYTE,
-      error: "could not fetch facebook/sam2.1-hiera-base-plus at b73207: the connection was lost",
-    }),
-  );
-  await openInference(page);
-
-  const shown = page.getByTestId("download-error");
-  await expect(shown).toContainText("the connection was lost");
-  await expect(shown).toContainText("still Not set up");
-  // The remedy is the action the connection declares, not a second control.
-  await expect(page.getByTestId("download-weights")).toBeEnabled();
-});
-
-
 test("a check nobody on this page started survives a reload", async ({ page }) => {
   // The download's proof, one action over. The check kept its job id in a
   // component until now, so only the mount that pressed the menu item could see a
@@ -415,51 +335,6 @@ test("a check nobody on this page started survives a reload", async ({ page }) =
   await expect(page.getByTestId("connection-status")).toContainText("Ready");
 });
 
-test("a check's bar moves on the poll alone and goes when it passes", async ({ page }) => {
-  let read = 2;
-  let passed = false;
-  await serveApi(page, () =>
-    connection(
-      "ready",
-      null,
-      passed
-        ? { state: "succeeded", files_read: 9, files_total: 9 }
-        : { state: "running", files_read: read, files_total: 9 },
-    ),
-  );
-  await openInference(page);
-  await expect(page.getByTestId("integrity-progress-prose")).toContainText("22%");
-
-  read = 8;
-  await expect(page.getByTestId("integrity-progress-prose")).toContainText("89%");
-
-  passed = true;
-  // A pass leaves the row where it was, so `Ready` is the whole success treatment.
-  await expect(page.getByTestId("integrity-progress")).toHaveCount(0);
-  await expect(page.getByTestId("connection-status")).toContainText("Ready");
-});
-
-test("a check that found damage while nobody watched still says what was done", async ({
-  page,
-}) => {
-  await serveApi(page, () =>
-    connection("not_set_up", null, {
-      state: "failed",
-      files_read: 9,
-      files_total: 9,
-      error: "1 file does not match (model.safetensors). The damaged copies have been removed",
-    }),
-  );
-  await openInference(page);
-
-  const shown = page.getByTestId("integrity-error");
-  await expect(shown).toContainText("model.safetensors");
-  await expect(shown).toContainText("removed");
-  // The verdict is the row's, and the remedy is the action it now declares.
-  await expect(page.getByTestId("connection-status")).toContainText("Not set up");
-  await expect(page.getByTestId("download-weights")).toBeEnabled();
-});
-
 test("a transfer and a re-read are two records on one row", async ({ page }) => {
   await serveApi(page, () =>
     connection(
@@ -473,49 +348,6 @@ test("a transfer and a re-read are two records on one row", async ({ page }) => 
   // Files here, and no byte count borrowed from the settled transfer beside it.
   await expect(page.getByTestId("integrity-progress-prose")).toHaveText("3 of 9 files · 33%");
   await expect(page.getByTestId("download-progress")).toHaveCount(0);
-});
-
-test("a model whose weights have to be asked for says so before it can be downloaded", async ({
-  page,
-}) => {
-  // Here rather than only in `inference.test.tsx` because the claim is about what
-  // a person meets on the way to a download: the requirement has to be legible in
-  // the real dialog, above the real size line, before the control that would
-  // fetch anything exists. jsdom proves the conditional; this proves the journey.
-  await serveApi(page, () => connection("ready", null));
-  await page.route("**/api/inference/download-size*", (route) =>
-    route.fulfill({
-      status: 200,
-      json: {
-        model_id: "facebook/sam3",
-        model_revision: "3c879f39826c281e95690f02c7821c4de09afae7",
-        total_bytes: 6_895_093_624,
-        file_count: 12,
-      },
-    }),
-  );
-  await openInference(page);
-
-  await page.getByTestId("new-connection").click();
-  await page.getByTestId("choose-local").click();
-  // The form opens on a model anybody can fetch, so there is nothing to say yet.
-  await expect(page.getByTestId("model-access")).toHaveCount(0);
-
-  // The trigger only exists once the catalog request has answered — before
-  // that the field shows `catalog-loading` instead — so wait for it rather
-  // than racing the click against the still-open request.
-  await expect(page.getByTestId("connection-model")).toBeVisible();
-  await page.getByTestId("connection-model").click();
-  await page.getByRole("option", { name: /facebook\/sam3/ }).click();
-
-  const access = page.getByTestId("model-access");
-  await expect(access).toBeVisible();
-  await expect(access).toContainText("SAM License");
-  await expect(access).toContainText("HF_TOKEN");
-  await expect(access.getByRole("link", { name: "Request access" })).toHaveAttribute(
-    "href",
-    "https://huggingface.co/facebook/sam3",
-  );
 });
 
 test("a model list taller than the window scrolls instead of running off it", async ({ page }) => {

@@ -56,26 +56,17 @@ of what a sync is for; CI uses `uv sync --locked` so it cannot happen there. The
 what gets *into* uv.lock, and the lockfile governs everything after. Full rules and the escape
 hatches are in CONTRIBUTING.md.
 
-## Checks that must stay green
+## Checks
 
-| Check | Command |
-| --- | --- |
-| Tests | `uv run pytest` |
-| Import contracts (architecture) | `uv run lint-imports` |
-| Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` |
-| Lint | `uv run ruff check .` |
-| Format | `uv run ruff format .` |
-| OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
+The check policy — pertinent tests while iterating, the gate once before the PR — is in
+AGENTS.md `## Checks`, commands included. What is specific to Python work:
 
-Run at minimum `ruff check`, `ruff format`, `pytest`, and `lint-imports` after any Python
-change. If you touched the kernel, add `mypy`. If you touched FastAPI routes or response
-models, re-export `openapi.json` — it is a committed contract, a stale one is a bug.
-
-**Never pass `-q` to pytest.** `pyproject.toml` already sets `addopts = "-q"`, and verbosity is a
-counter, so a second one stacks to `-qq` — which drops the test count and the summary line and
-leaves the exit code as the only signal, on a log that ends mid-progress and reads as truncated.
-Plain `uv run pytest` already prints the count; where a wrapper you cannot edit has added a `-q`,
-one `-v` cancels it.
+- If you touched FastAPI routes or response models, re-export `openapi.json`
+  (`uv run python scripts/export_openapi.py`) and commit the diff — it is a committed contract,
+  and a stale one is a bug.
+- **Never pass `-q` to pytest.** `pyproject.toml` already sets `addopts = "-q"`, and verbosity
+  is a counter: a second one stacks to `-qq`, which drops the count and summary line and leaves
+  a log that reads as truncated. Where a wrapper you cannot edit adds one, `-v` cancels it.
 
 ## Formatting and lint
 

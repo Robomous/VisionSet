@@ -15,10 +15,9 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, WebFetch, WebSearch, Task
 
 ## Dev-only, by design
 
-`docker/compose.yaml` exists to run the stack locally. It is **never** the release artifact —
-VisionSet ships as `pip install visionset`. Do not add production concerns (multi-stage release
-images, registries, orchestration manifests) to it, and never make the Python package depend on
-Docker being present.
+`docker/compose.yaml` runs the stack locally. It is **never** the release artifact — VisionSet
+ships as `pip install visionset`. No production concerns (release images, registries,
+orchestration), and the Python package never depends on Docker being present.
 
 ## Start services
 
@@ -26,10 +25,8 @@ Docker being present.
 docker compose -f docker/compose.yaml up --remove-orphans
 ```
 
-The app is at **http://localhost:8080**. That is the only address anyone needs, and it needs no
-token — the server signs the browser in itself (`VISIONSET_UI_SESSION: always`).
-
-Default services:
+The app is at **http://localhost:8080** — the only address anyone needs, no token: the server
+signs the browser in itself (`VISIONSET_UI_SESSION: always`).
 
 | Service | What | Port |
 | --- | --- | --- |
@@ -37,304 +34,135 @@ Default services:
 | `api` | `docker/api-dev.sh` — creates the workspace on first boot, then uvicorn `--reload` | 8000 |
 | `app` | `docker/app-dev.sh` — builds annotator + ui-core, watches both, then vite | 5173 |
 
-All three publish on **127.0.0.1 only**, because the API signs in whoever asks. 8000 and 5173 are
-debugging doors, not the front one.
+All three publish on **127.0.0.1 only**, because the API signs in whoever asks.
 
-Optional profiles (off unless requested):
-
-```bash
-docker compose -f docker/compose.yaml --profile postgres up
-docker compose -f docker/compose.yaml --profile minio up      # console on 9001
-```
-
-If `postgres` exits 1 before printing a single server line, and the message names
-`pg_ctlcluster` and a major-version directory, the volume was written by an older major
-version. Postgres 18 keeps its cluster under `/var/lib/postgresql/18/` and will not adopt
-one left by 16. `docker volume rm visionset_postgres-data` clears it; nothing reads this
-service, so there is nothing in there to keep.
+Optional profiles (off unless requested): `--profile postgres`, `--profile minio` (console on
+9001). A `postgres` that exits 1 naming `pg_ctlcluster` and a major-version directory found a
+volume written by an older major; `docker volume rm visionset_postgres-data` clears it — nothing
+reads this service.
 
 ## The three ways to run it
 
-The stack has three permanent, mutually compatible configurations. They differ in one
-thing — which api image is built — and the difference is visible in exactly one
-feature, the suggestion a click asks a model for:
+Three permanent, mutually compatible configurations, differing only in which api image is built
+— visible in exactly one feature, the model suggestion a click asks for:
 
 ```bash
-docker compose -f docker/compose.yaml up                                                # 1. base
-docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up --build             # 2. GPU inference
-docker compose -f docker/compose.yaml -f docker/compose.cpu-inference.yaml up --build   # 3. CPU inference
+docker compose -f docker/compose.yaml up                                                # base
+docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up --build             # GPU
+docker compose -f docker/compose.yaml -f docker/compose.cpu-inference.yaml up --build   # CPU inference
 ```
 
 | | api image | A suggestion | Needs on the host |
 | --- | --- | --- | --- |
 | **base** | `docker/api.Dockerfile` | refused, naming the install command | Docker |
-| **GPU** | `docker/api-gpu.Dockerfile` | milliseconds | Docker, an NVIDIA card, the Container Toolkit |
+| **GPU** | `docker/api-gpu.Dockerfile` | milliseconds | Docker, NVIDIA card, Container Toolkit |
 | **CPU inference** | `docker/api-cpu-inference.Dockerfile` | seconds | Docker |
 
-**Which to use.** The base stack does everything VisionSet does except propose a shape
-from a click: its image does not carry the `local-inference` runtime, so a suggestion is
-refused with the command that would install it. That refusal is correct there and is
-worth keeping intact — it is the behaviour every base install has. Reach for the **GPU**
-stack when the suggestion loop is what you are working on and you want it to feel
-instant. Reach for **CPU inference** when the host has no NVIDIA card, or has one that is
-not usable today, and you want to try or demonstrate the flow anyway: same models, same
-code path, seconds per click instead of milliseconds.
+The base refusal is correct behavior — it is what every base install answers. All three mount
+the same `workspace-data/`, so switching costs nothing but a build. **`--build` on every switch,
+in both directions**: without it Compose reuses whichever image it has under that name, and the
+stack behaves like the mode you just left. A hand-installed package inside a running container is
+not a fourth mode — the next `build` erases it.
 
-**They are compatible, and switching between them costs nothing but a build.** All three
-mount the same `workspace-data/`, so projects, connections and already-downloaded weights
-are still there afterwards. Only the api image changes; no state is converted and nothing
-is re-fetched.
+**Override files, not profiles, and the distinction matters for the next optional thing:**
+`profiles:` selects whole services and cannot amend one that is already present (an `api-gpu`
+beside `api` collides on 127.0.0.1:8000); a second `-f` merges properties into an existing
+service. `postgres`/`minio` are profiles because they are genuinely extra services.
 
-**`--build` on every switch, in both directions, between any two of the three.** Each
-mode is a different api image built from a different Dockerfile, and without `--build`
-Compose reuses whichever image it already has under that name. The symptom is a stack
-behaving like the mode you just left: suggestions refused in a mode that has the runtime,
-or a device reservation held over an image that cannot use it.
+### Inference-image traps
 
-**A hand-installed package inside a running container is not a fourth mode.** Installing
-torch with `pip` in a live `api` container appears to work and does not survive: the next
-`build` replaces the image and the install is gone, with no trace of why. These two
-overlay files are the durable path — and see the dual-Python trap below, which is the
-other half of why the hand-typed version so often does not work even before the rebuild.
-
-### Why an override file rather than a profile
-
-A second `-f`, not `--profile gpu` or `--profile inference`, and the distinction is worth
-holding on to when adding the next optional thing. **`profiles:` selects whole services**
-— a profiled service joins the run or is absent from it. It cannot amend a service that is
-already present, so the nearest profile-shaped attempt (an `api-gpu` beside `api`) starts
-*both* and they collide on 127.0.0.1:8000. `postgres` and `minio` are profiles because
-they are genuinely extra services; a GPU, or a runtime inside an image, is a property of a
-service that already exists, and merging a second file is Compose's mechanism for that.
-
-### What each inference image does, and the traps in them
-
-- **The GPU stack needs the NVIDIA Container Toolkit on the host** — that is what teaches
-  Docker the `nvidia` device driver and injects the driver libraries and `nvidia-smi` into
-  the container. Install it from
-  [NVIDIA's instructions](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html);
-  the steps are per-distribution and are not worth a stale copy here.
-  `docker info --format '{{json .Runtimes}}'` naming an `nvidia` runtime is the check.
-  Without it, `up` fails at container creation with `could not select device driver
-  "nvidia" with capabilities: [[gpu]]` — and the other two configurations still work.
-- **A GPU stack that worked yesterday and today dies at container creation with
-  `failed to fulfil mount request: open /usr/lib/x86_64-linux-gnu/libnvidia-*.so.<version>:
-  no such file or directory` is a host whose NVIDIA driver was updated under it.** The
-  toolkit is still injecting the file list it discovered before the update, and some of
-  those files are gone. `nvidia-smi` on the host answers perfectly while this is true, so
-  it is not the check that catches it. Reboot the host. Nothing in this stack is involved,
-  nothing here fixes it, and the other two configurations are unaffected.
-- **The GPU image starts from `pytorch/pytorch`, and does not install torch from the
-  lockfile.** Installing the `local-inference` extra from `uv.lock` means ~4 GB of
-  `nvidia-*` wheels resolved and unpacked on every cache miss; the pinned base
-  already contains them, and its `torch==2.13.0` on cu13 is the version uv.lock
-  resolves to anyway. Two consequences: the three remaining packages are requested by
-  the floors written in `pyproject.toml`'s extra rather than read from the lock, **so
-  those floors have to stay in step with it**; and the image has no venv, because uv
-  does not count a venv's inherited system site-packages as installed and would
-  reinstall torch and every CUDA wheel beside it.
-- **The CPU-inference image is `docker/api.Dockerfile` with one install step added**, on
-  the same trixie base, so it inherits the same venv at `/opt/venv` and the same ffmpeg
-  7.1. The five packages come from `https://download.pytorch.org/whl/cpu` at the versions
-  `uv.lock` resolves — that index publishes torch built without CUDA, ~250 MB instead of
-  ~2 GB — and **those pins have to stay in step with the lock**, exactly as the GPU
-  image's floors do.
-- **The dual-Python trap, which is why that install names an interpreter.** Both api
-  images built on the trixie base hold two interpreters: `/usr/local/bin/python`, the base
-  image's own, and `/opt/venv/bin/python`, which is what PATH resolves and therefore the
-  only one that ever serves a request — `docker/api-dev.sh` boots the server with `exec
-  uvicorn`, whose shebang is `#!/opt/venv/bin/python`. An install landing in `/usr/local`
-  succeeds loudly and changes nothing the server can see. Both natural spellings land
-  there: `uv pip install --system` means that interpreter by definition, and the venv has
-  no `pip` of its own, so a hand-typed `pip install` in a running container resolves to
-  `/usr/local/bin/pip` while `python` on the next line is still the venv's and still
-  cannot see the result. `docker/api-cpu-inference.Dockerfile` reads the interpreter out
-  of uvicorn's shebang and fails the build if it is not the one it installs into; when
-  checking by hand, `python -c "import sys, torch; print(sys.executable, …)"` is the
-  spelling that cannot lie to you.
-
-Verify inside the running container — the interpreter first, because it is the one that
-answers:
-
-```bash
-# CPU inference: the server's own python, and a version ending in +cpu
-docker compose -f docker/compose.yaml -f docker/compose.cpu-inference.yaml exec api \
-  python -c "import sys, torch; print(sys.executable, torch.__version__)"
-
-# GPU: the card, then the runtime that can reach it
-docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml exec api nvidia-smi
-docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml exec api \
-  python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
-```
-
-Dev only, like the rest of this file. Nothing here reaches the wheel: the release
-artifact is `pip install "visionset[local-inference]"` and it involves no Docker.
+- **GPU needs the NVIDIA Container Toolkit** — `docker info --format '{{json .Runtimes}}'`
+  naming `nvidia` is the check; without it `up` fails at container creation on
+  `could not select device driver "nvidia"`.
+- **A GPU stack that dies at creation on `failed to fulfil mount request: open
+  /usr/lib/.../libnvidia-*.so.<version>`** is a host whose NVIDIA driver updated underneath the
+  toolkit's cached file list. Host `nvidia-smi` still answers fine. Reboot the host; nothing in
+  this stack is involved.
+- **The GPU image starts from `pytorch/pytorch` and does not install torch from the lockfile**
+  (the base already carries the ~4 GB of CUDA wheels at the version uv.lock resolves). The
+  remaining packages come from the floors in `pyproject.toml`'s extra, **which must stay in step
+  with the lock** — and the image has no venv, since uv would not count inherited system
+  site-packages and would reinstall everything.
+- **The CPU-inference image** is `api.Dockerfile` plus one install from
+  `https://download.pytorch.org/whl/cpu` at the versions `uv.lock` resolves (torch without CUDA,
+  ~250 MB) — **those pins stay in step with the lock too**.
+- **The dual-Python trap.** Both api images hold two interpreters; only `/opt/venv/bin/python`
+  ever serves a request (uvicorn's shebang). `uv pip install --system` and a hand-typed
+  `pip install` both land in `/usr/local` — loudly successful, invisible to the server. Checking
+  by hand, `python -c "import sys, torch; print(sys.executable, torch.__version__)"` inside the
+  container is the spelling that cannot lie (CPU inference prints a version ending `+cpu`; GPU:
+  `nvidia-smi`, then `torch.cuda.is_available()`).
 
 ## What is mounted, and what reloads
 
-**Only what a running service reads is mounted.** The checkout as a whole is not; a path missing
-from this table does not exist inside these containers, and adding one is a line in
-`docker/compose.yaml`.
+**Only what a running service reads is mounted.** A path missing from this table does not exist
+inside these containers.
 
 | Service | Mounts |
 | --- | --- |
-| `api` | `../src` → `/workspace/src`, `../docker` → `/workspace/docker` (ro), `${VISIONSET_DATA:-../workspace-data}` → `/data` |
+| `api` | `../src` → `/workspace/src`, `../docker` (ro), `${VISIONSET_DATA:-../workspace-data}` → `/data` |
 | `app` | `../frontend/{annotator,ui-core,app}/src`, `../frontend/app/public`, `../docker` (ro) |
-| `docs` | `../docs` (ro), `../docs-site/src` → `/workspace/docs-site/src`, `../docs-site/public` (ro), `../docker` (ro) |
-| `nginx` | `./nginx.conf` → `/etc/nginx/nginx.conf` (ro) |
+| `docs` | `../docs` (ro), `../docs-site/src`, `../docs-site/public` (ro), `../docker` (ro) |
+| `nginx` | `./nginx.conf` (ro) |
 
-Everything else the containers show under `/workspace` — `pyproject.toml`, `uv.lock`, `VERSION`,
-`pnpm-lock.yaml`, every `package.json`, the tsconfigs, `vite.config.ts`, `index.html`, and **every
-`node_modules/`** — is the **image's own copy**, put there at build time and not connected to the
-host. Editing one of those on the host changes nothing until a `build`.
+Everything else under `/workspace` — manifests, lockfiles, tsconfigs, **every `node_modules/`**
+— is the image's own copy; editing it on the host changes nothing until a `build`. The `app`
+service mounts **source directories, never package roots**, which is load-bearing: mounting a
+package root would bury the image's `node_modules`, and the named-volume workaround that
+preceded this seeded once and went stale on every later build.
 
-**The `app` service mounts source directories, never package roots, and that is load-bearing.**
-pnpm puts a `node_modules/` inside every workspace package, so mounting `../frontend` buries all
-three installs. That used to be patched with a named volume per package — the wrong tool, because
-Docker seeds a named volume only when it is **new**, so the first `up` filled them and every later
-`build` was invisible. Mounting `src/` means no `node_modules` comes from the host or from a
-volume at all, so a `build` reaches every installed thing. See the gotchas.
-
-**Every layer of source reloads in a running stack.** No restart, no rebuild:
-
-| Edit under | Reaches the browser by |
-| --- | --- |
-| `src/visionset/` | uvicorn `--reload`, scoped to `/workspace/src` |
-| `frontend/app/src/` | vite HMR |
-| `frontend/ui-core/src/` | `tsc --watch` rewrites `dist/`, vite picks it up |
-| `frontend/annotator/src/` | the same, its own watcher |
-
-The two watchers are `pnpm --filter … --parallel run build --watch` in `docker/app-dev.sh`,
-started after a blocking one-shot build — the one-shot is what guarantees `dist/` exists before
-vite resolves either package, since a watcher's first pass is asynchronous and vite would
-otherwise sometimes lose the race with `Failed to resolve entry for package`. Their output is
-prefixed `frontend/annotator build:` and `frontend/ui-core build:` in `logs app`.
-
-**The residual cases that still need a restart or a rebuild**, all of them changes to how a
-container is *built* rather than to what it runs:
-
-| Changed | Needed |
-| --- | --- |
-| a dependency, either language | `build` |
-| a `package.json`, a tsconfig, `vite.config.ts`, `index.html` | `build` — baked into the app image |
-| `api.Dockerfile` / `app.Dockerfile` | `build` |
-| `docker/nginx.conf` | `up --force-recreate nginx` — read once at start |
-| `api-dev.sh` / `app-dev.sh` | `restart api` / `restart app` — read once at start |
+Every layer of source reloads in a running stack (no restart, no rebuild): `src/visionset/` via
+uvicorn `--reload`; `frontend/app/src/` via vite HMR; `frontend/{ui-core,annotator}/src/` via
+`tsc --watch` rewriting `dist/` (a blocking one-shot build runs first so vite never races an
+empty `dist/`). What still needs action: a dependency or manifest/tsconfig change → `build`;
+`docker/nginx.conf` → `up --force-recreate nginx`; `api-dev.sh`/`app-dev.sh` → `restart`.
 
 ## After starting
 
-1. Read the logs and confirm there are no errors.
-2. If there is an error, stop the services and investigate before continuing.
-3. Summarize the error — do not report the stack as "up" while a service is crash-looping.
+Read the logs and confirm there are no errors; if a service is crash-looping, stop and
+investigate — never report the stack as "up" while it is.
 
 ## Common commands
 
 ```bash
 docker compose -f docker/compose.yaml up -d --remove-orphans   # background
-docker compose -f docker/compose.yaml down                     # stop
-docker compose -f docker/compose.yaml down -v                  # stop + drop volumes
-docker compose -f docker/compose.yaml logs -f                  # all logs
-docker compose -f docker/compose.yaml logs -f api              # one service
+docker compose -f docker/compose.yaml down                     # stop  (-v drops volumes)
+docker compose -f docker/compose.yaml logs -f api              # one service's logs
 docker compose -f docker/compose.yaml up --build api           # rebuild one service
 docker compose -f docker/compose.yaml restart app              # after editing an entry script
 ```
 
-No `uv run` inside the container: the venv is already on `PATH`, and `uv run` would re-check the
-environment on every call — the work the image build exists to have already done.
+No `uv run` inside the container — the venv is already on PATH.
 
-**`docker compose exec api pytest` no longer runs anything, and says so quietly.** `tests/` is not
-one of the things a running API reads, so it is not mounted; pytest finds no `testpaths`, collects
-nothing and exits **5**, which scrolls past looking like a pass. Run the suite on the host —
-`bash scripts/check.sh python` — or, to run it *inside the image*, mount the tree explicitly, which
-is exactly what CI's `dev image` job does:
-
-```bash
-docker run --rm -v "$PWD:/workspace" -w /workspace visionset-api \
-  pytest tests/kernel/test_video_processor.py -q
-```
+**`docker compose exec api pytest` runs nothing and exits 5**, which scrolls past looking like a
+pass: `tests/` is not mounted. Run the suite on the host, or mount the tree explicitly
+(`docker run --rm -v "$PWD:/workspace" -w /workspace visionset-api pytest …`), which is what
+CI's dev-image job does.
 
 ## Gotchas
 
-- **Nothing installs at run time.** Every Python and npm package is installed at *build* time by
-  `docker/api.Dockerfile` and `docker/app.Dockerfile`; both entrypoints deliberately contain no
-  `pnpm install` and no `uv sync`. If one ever grows an install, the build has stopped doing its
-  job. A slow first `up` is a build, not a hang.
-- **After changing a dependency in either language, plain `build` is enough.** No service keeps an
-  installed thing in a volume, and no `node_modules` is mounted from anywhere.
-
-  This is worth knowing because it was false twice, and the failure it produced reads as a broken
-  checkout rather than a stale mount: **a compiler error naming a package that is plainly in
-  `package.json`**, killing the `app` container at exit 2 and leaving nginx with no upstream and
-  `localhost:8080` serving 502. It happened with `error TS2688: Cannot find type definition file
-  for 'node'` (`@types/node`) and again with `error TS2307: Cannot find module
-  'lucide-react'` (after a minor version bump of it). Both times the cause was the same: the
-  per-package `node_modules` volumes still held symlinks into a virtual-store path — literally
-  `../../../node_modules/.pnpm/lucide-react@1.28.0_react@19.2.8/…` — that the rebuilt image no
-  longer had. `down -v` was the remedy; mounting `src/` instead of the package roots removed the
-  cause.
-
-  **CI structurally cannot catch this class**, which is why it kept reaching developers: every job
-  installs `--frozen-lockfile` into an empty tree, so a stale install is a state CI never has. A
-  host checkout has the same exposure by a different route — run `pnpm install` after pulling a
-  dependency change.
-
-  One-time cleanup on a machine that ran the old stack, since compose no longer declares them:
-
-  ```bash
-  docker volume rm visionset_app-annotator-modules visionset_app-ui-core-modules \
-                   visionset_app-app-modules
-  ```
-- **`frontend/{annotator,ui-core}/dist` is built inside the container**, not into the checkout —
-  the two `tsc --watch` builds write nowhere on the host. A `dist/` in your checkout came from a
-  host-side `pnpm -r build`, and the two no longer interfere.
-- **The built services run as you, not as root**, and that is what keeps the checkout usable
-  after the stack has been up. Each of them mounts part of it read-write, and a root process in a
-  container leaves root-owned files behind — the workspace, a `__pycache__` beside every module
-  uvicorn imports, the documentation projection — none of which announces itself as a permissions
-  problem. What it looks like instead is a host `pnpm -r build` dying on
-  `error TS5033: … EACCES`, `check.sh docs` failing three stages while naming documents nobody
-  edited, and `git worktree remove` refusing halfway through, after it has already deleted most of
-  the tree and dropped the registration.
-
-  The identity is `VISIONSET_UID`/`VISIONSET_GID`, default 1000, and it is both baked into every
-  image and selected at run time — so **changing it needs `--build`**, the same rule switching
-  inference modes has. Not `${UID}`: no shell exports it, so Compose never sees it, and the
-  service would run as root while reading as configured.
-
-  ```bash
-  printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env   # only if 1000 is not yours
-  ```
-
-  Two hosts want something else. Under **rootless Docker** set both to `0` — the daemon already
-  maps container-root onto you, and pinning a uid there lands on a host identity nobody can chown
-  back; `docker info --format '{{.SecurityOptions}}'` naming `rootless` is the check. On **macOS
-  and Windows** leave the defaults, because the file-sharing layer already translates ownership.
-
-  One-time cleanup on a machine that ran the stack before this was true, in every worktree — all
-  of it is derived and git-ignored, so deleting is cleaner than chowning, and a container is root
-  already so no `sudo` is needed:
-
-  ```bash
-  docker run --rm -v "$PWD:/w" alpine:3 sh -c '
-    rm -rf /w/.pnpm-store /w/docs-site/src/content
-    find /w/src -type d -name __pycache__ -prune -exec rm -rf {} +'
-  find . ! -user "$(id -u)" -not -path './.git/*'   # must print nothing
-  ```
-- **`workspace-data/` is tracked as an empty directory**, and that is load-bearing rather than
-  tidiness. Docker creates a missing bind-mount source itself, as root, before any container
-  starts — so a checkout that already carries the directory is one the daemon never invents. For
-  the cases that cannot cover, a `VISIONSET_DATA` pointing somewhere new or a directory left over
-  from an older stack, `docker/api-dev.sh` refuses at boot and prints the command that fixes it
-  rather than letting `visionset init` produce a traceback.
-- The api venv is baked into the image at `/opt/venv`, deliberately outside `/workspace`, so the
-  host `.venv` neither clobbers it nor is clobbered by it — and the host `.venv` is not mounted at
-  all any more.
-- `api` reaches the *code* through `PYTHONPATH=/workspace/src` and its *metadata* through an
-  editable install whose `.dist-info` lives in `/opt/venv`. Both are needed and they are
-  different things: the first is what `--reload` makes meaningful, the second is what makes
-  `GET /formats` list exporters and `/health` report the real version rather than the `0.0.0`
-  sentinel. `curl localhost:8080/api/health` is the one-second check that the second half is
-  intact.
+- **Nothing installs at run time** — both entrypoints deliberately contain no `pnpm install` and
+  no `uv sync`; a slow first `up` is a build, not a hang. After a dependency change, plain
+  `build` is enough. A compiler error naming a package that is plainly in `package.json`
+  (`TS2688` on `@types/node`, `TS2307` on a bumped package) is a stale install, not a broken
+  checkout — `down -v` clears it. CI structurally cannot catch this class (every job installs
+  into an empty tree), and a host checkout has the same exposure: run `pnpm install` after
+  pulling a dependency change.
+- **The built services run as you, not as root** — identity `VISIONSET_UID`/`VISIONSET_GID`,
+  default 1000, baked into every image, so **changing it needs `--build`**. Not `${UID}`: no
+  shell exports it, so the service would run as root while reading as configured. If 1000 is not
+  yours: `printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env`.
+  Under rootless Docker set both to `0`; on macOS/Windows leave the defaults. Root-owned files a
+  root container leaves behind surface later as `pnpm -r build` dying on `EACCES`,
+  `check.sh docs` failing on documents nobody edited, or `git worktree remove` refusing halfway
+  through.
+- **`workspace-data/` is tracked as an empty directory**, load-bearing: Docker creates a missing
+  bind-mount source itself, as root, before any container starts. For the cases that cannot
+  cover, `docker/api-dev.sh` refuses at boot and prints the fix.
+- The api venv is baked at `/opt/venv`, outside `/workspace`, so the host `.venv` and the image
+  never clobber each other. `api` reaches *code* through `PYTHONPATH=/workspace/src` and
+  *metadata* through an editable install in `/opt/venv` — both needed: the first makes
+  `--reload` meaningful, the second makes `GET /formats` list exporters and `/health` report a
+  real version. `curl localhost:8080/api/health` is the one-second check.
 - Compose is not required for development: `uv run uvicorn ...` and
-  `pnpm --filter @visionset/app dev` on the host work fine and are still faster — the mounts poll
-  for changes rather than being told about them.
+  `pnpm --filter @visionset/app dev` on the host are still faster.
