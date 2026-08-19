@@ -385,10 +385,22 @@ def pre_label_batch(
     or whose box classes each require an attribute a prediction cannot supply —
     has nowhere for a detection to land and is refused before anything runs.
 
+    `prompt` in the result names both halves: `asked_classes` is what this run
+    actually asked about, and `excluded_classes` names every class of the pinned
+    schema it could not, each with every reason. Read it whenever
+    `assets_labeled` is lower than expected — a run that asked about two of a
+    schema's five classes labels nothing under the other three, and the counters
+    alone cannot say so. `pre_label_plan` answers the same thing without running
+    anything.
+
     Also refused before anything runs: a batch that is not `in_annotation`, a
     connection whose model answers places rather than words, and a deployment
     without the local runtime — with the install command in the message.
     """
+    # Captured from the run rather than derived beside it: a plan read from the
+    # schema separately could differ from the one the run prompted with, and
+    # that it is the same list is the whole reason for reporting it.
+    seen: list[PreLabelPlan] = []
     with opened_workspace() as workspace:
         resolved_connection = resolve_connection(workspace, connection)
         outcome = pre_label(
@@ -396,6 +408,7 @@ def pre_label_batch(
             batch_id=identifier(batch_id, what="batch_id"),
             connection_id=resolved_connection.id,
             minimum_confidence=minimum_confidence,
+            on_plan=seen.append,
         )
     return {
         "assets_considered": outcome.assets_considered,
@@ -405,6 +418,7 @@ def pre_label_batch(
         "assets_skipped": outcome.assets_skipped,
         "regions_discarded": outcome.regions_discarded,
         "regions_out_of_bounds": outcome.regions_out_of_bounds,
+        "prompt": _plan_payload(seen[0]),
     }
 
 

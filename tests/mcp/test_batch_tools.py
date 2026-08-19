@@ -523,8 +523,48 @@ def test_pre_labeling_blocks_and_returns_what_it_wrote(
         "assets_skipped": 0,
         "regions_discarded": 0,
         "regions_out_of_bounds": 0,
+        "prompt": {"asked_classes": ["sign"], "excluded_classes": []},
     }
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
+
+
+def test_a_run_that_labeled_nothing_says_what_it_asked_about(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The counters alone are the silence this key exists to end.
+
+    The model answers `centerline`, which the prompt never asked for, so every
+    region is discarded and nothing is labeled. An agent reading only
+    `assets_labeled: 0` cannot tell that from a model that found nothing; the
+    prompt beside it is what makes the two distinguishable without a second call.
+    """
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2, classes=MIXED_CLASSES)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="centerline")
+
+    outcome = payload(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
+
+    assert outcome["assets_labeled"] == 0
+    assert outcome["prompt"]["asked_classes"] == ["sign"]
+    assert outcome["prompt"]["excluded_classes"] == [
+        {"name": "centerline", "reasons": ["no_bbox_geometry"]},
+        {"name": "crossing", "reasons": ["no_bbox_geometry", "required_attribute"]},
+    ]
+
+
+def test_a_refused_run_reports_no_prompt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The positive path above is what makes this absence mean anything.
+
+    A schema with nothing askable never reaches the announcement, so no result
+    is produced at all rather than one carrying an empty prompt.
+    """
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2, classes=[CENTERLINE])
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+
+    refusal = error(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
+
+    assert refusal["message"]
 
 
 #: A schema a run can only partly ask for: one class a box can be written as,

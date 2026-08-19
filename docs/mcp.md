@@ -308,7 +308,10 @@ the assets it fully entered, one commit per asset, so calling it again resumes w
 still untouched.
 
 `pre_label_batch` reports unmappable model labels as `regions_discarded` and mapped regions
-without overlap with a measured asset as `regions_out_of_bounds`.
+without overlap with a measured asset as `regions_out_of_bounds`, and the prompt it ran under
+as `prompt` — `asked_classes` beside `excluded_classes`, so a run that labeled nothing says
+which classes it never asked about rather than leaving that to a second call. `pre_label_plan`
+answers the same thing before the wait.
 
 There is therefore no ingest polling, and no `resume_ingest`. If a call is cut off part way, call
 `ingest` again - registration is idempotent on `(kind, path, extraction_fps)` and content
