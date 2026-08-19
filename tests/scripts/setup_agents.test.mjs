@@ -5,14 +5,18 @@
  * AGENTS.md symlink. A CLAUDE.md that is not the generated symlink is a
  * developer's own file — possibly carrying local configuration — and a
  * setup script that converts it by force turns "run this once after
- * cloning" into data loss. These tests run the real script in a throwaway
- * repository layout and hold it to: create the symlink only where nothing
- * exists, be idempotent over its own output, and leave everything else
- * exactly as found.
+ * cloning" into data loss. Preserving it while exiting 0 is the quieter
+ * half of the same failure: a caller reads "setup succeeded" while Claude
+ * is still reading a divergent file. These tests run the real script in a
+ * throwaway repository layout and hold it to: create the symlink only
+ * where nothing exists, be idempotent over its own output, and on any
+ * conflict leave the object exactly as found, perform no setup at all,
+ * and exit non-zero.
  */
 import assert from "node:assert/strict";
 import {
   copyFileSync,
+  existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -77,7 +81,8 @@ test("a missing CLAUDE.md becomes the AGENTS.md symlink, beside the skill links"
 test("a second run over its own output is a quiet success", () => {
   const root = makeRepo();
   try {
-    run(root);
+    const first = run(root);
+    assert.equal(first.status, 0, first.stderr);
     const again = run(root);
     assert.equal(again.status, 0, again.stderr);
     assert.equal(readlinkSync(path.join(root, "CLAUDE.md")), "AGENTS.md");
@@ -87,32 +92,56 @@ test("a second run over its own output is a quiet success", () => {
   }
 });
 
-test("an existing regular CLAUDE.md survives byte-for-byte, and the run says so", () => {
+test("an existing regular CLAUDE.md survives byte-for-byte, and the run fails", () => {
   const root = makeRepo();
   try {
     const claude = path.join(root, "CLAUDE.md");
     const theirs = "# my local instructions\ndo not lose this\n";
     writeFileSync(claude, theirs);
     const result = run(root);
-    assert.equal(result.status, 0, result.stderr);
+    assert.notEqual(result.status, 0, "a preserved conflict must not read as success");
     assert.ok(lstatSync(claude).isFile(), "still a regular file, not a symlink");
     assert.equal(readFileSync(claude, "utf8"), theirs);
+    assert.match(result.stderr, /ERROR/);
     assert.match(result.stderr, /left untouched/);
+    assert.doesNotMatch(result.stdout, /Done\./, "no success message after a conflict");
+    assert.ok(!existsSync(path.join(root, ".claude")), "conflict aborts before any setup");
+    assert.ok(!existsSync(path.join(root, ".cursor")), "conflict aborts before any setup");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("a symlink to some other target is preserved, and the notice names it", () => {
+test("a directory named CLAUDE.md is preserved whole, and the run fails", () => {
+  const root = makeRepo();
+  try {
+    const claude = path.join(root, "CLAUDE.md");
+    mkdirSync(claude);
+    writeFileSync(path.join(claude, "inner.md"), "contents\n");
+    const result = run(root);
+    assert.notEqual(result.status, 0, "a preserved conflict must not read as success");
+    assert.ok(lstatSync(claude).isDirectory(), "still a directory");
+    assert.equal(readFileSync(path.join(claude, "inner.md"), "utf8"), "contents\n");
+    assert.match(result.stderr, /ERROR/);
+    assert.match(result.stderr, /directory/);
+    assert.doesNotMatch(result.stdout, /Done\./, "no success message after a conflict");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a symlink to some other target is preserved, and the error names both targets", () => {
   const root = makeRepo();
   try {
     writeFileSync(path.join(root, "NOTES.md"), "something else\n");
     symlinkSync("NOTES.md", path.join(root, "CLAUDE.md"));
     const result = run(root);
-    assert.equal(result.status, 0, result.stderr);
+    assert.notEqual(result.status, 0, "a preserved conflict must not read as success");
     assert.equal(readlinkSync(path.join(root, "CLAUDE.md")), "NOTES.md");
+    assert.match(result.stderr, /ERROR/);
     assert.match(result.stderr, /NOTES\.md/);
-    assert.match(result.stderr, /left untouched/);
+    assert.match(result.stderr, /AGENTS\.md/);
+    assert.doesNotMatch(result.stdout, /Done\./, "no success message after a conflict");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

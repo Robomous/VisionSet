@@ -11,13 +11,40 @@
 #   bash scripts/setup_agents.sh
 #
 # Safe to re-run — skill symlinks are replaced, dangling ones are pruned, and anything
-# that is not a symlink this script created is never touched: an existing CLAUDE.md,
-# whatever it is, is left exactly as found. On Windows, run it from Git Bash or WSL.
+# that is not a symlink this script created is never touched: a CLAUDE.md that is not
+# the managed symlink is left exactly as found and the script exits non-zero before
+# creating anything, so a conflict can never read as a completed setup. On Windows,
+# run it from Git Bash or WSL.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AGENTS_DIR="$REPO_ROOT/.agents/skills"
+
+# CLAUDE.md is Claude Code's entry point; AGENTS.md is the canonical text. A symlink
+# means there is exactly one instruction file to maintain — but only a missing
+# CLAUDE.md gets one. Anything already there is a developer's own state, possibly
+# carrying local configuration, so a conflict aborts the whole run *before* any
+# skill symlink is created or pruned: a caller must never read a preserved conflict
+# as a completed setup.
+claude_md="$REPO_ROOT/CLAUDE.md"
+if [ -L "$claude_md" ]; then
+  target="$(readlink "$claude_md")"
+  if [ "$target" != "AGENTS.md" ]; then
+    echo "ERROR: CLAUDE.md is a symlink to '$target', not the managed AGENTS.md symlink." >&2
+    echo "       It was left untouched, and no setup was performed." >&2
+    echo "       To adopt the canonical text: rm CLAUDE.md && ln -s AGENTS.md CLAUDE.md," >&2
+    echo "       then rerun scripts/setup_agents.sh." >&2
+    exit 1
+  fi
+elif [ -e "$claude_md" ]; then
+  kind="file"
+  [ -d "$claude_md" ] && kind="directory"
+  echo "ERROR: CLAUDE.md already exists as a $kind and is not the managed AGENTS.md symlink." >&2
+  echo "       It was left untouched, and no setup was performed." >&2
+  echo "       Move or remove it manually, then rerun scripts/setup_agents.sh." >&2
+  exit 1
+fi
 
 # Ensure destination is a plain directory (remove an older single-symlink layout if present).
 ensure_dir() {
@@ -83,22 +110,8 @@ done
 prune_dangling "$REPO_ROOT/.claude/skills"
 prune_dangling "$REPO_ROOT/.cursor/skills"
 
-# CLAUDE.md is Claude Code's entry point; AGENTS.md is the canonical text. A symlink
-# means there is exactly one instruction file to maintain — but only a missing
-# CLAUDE.md gets one. Anything already there is a developer's own state, possibly
-# carrying local configuration, and a setup script has no business deleting it.
-claude_md="$REPO_ROOT/CLAUDE.md"
 if [ -L "$claude_md" ]; then
-  target="$(readlink "$claude_md")"
-  if [ "$target" = "AGENTS.md" ]; then
-    echo "  CLAUDE.md -> AGENTS.md already in place"
-  else
-    echo "  NOTE: CLAUDE.md is a symlink to '$target', not AGENTS.md — left untouched." >&2
-    echo "        To adopt the canonical text: rm CLAUDE.md && ln -s AGENTS.md CLAUDE.md" >&2
-  fi
-elif [ -e "$claude_md" ]; then
-  echo "  NOTE: CLAUDE.md already exists — left untouched." >&2
-  echo "        To adopt the canonical text: move yours aside, then ln -s AGENTS.md CLAUDE.md" >&2
+  echo "  CLAUDE.md -> AGENTS.md already in place"
 else
   ln -s "AGENTS.md" "$claude_md"
   echo "  linked: CLAUDE.md -> AGENTS.md"
