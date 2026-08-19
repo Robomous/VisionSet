@@ -56,31 +56,17 @@ of what a sync is for; CI uses `uv sync --locked` so it cannot happen there. The
 what gets *into* uv.lock, and the lockfile governs everything after. Full rules and the escape
 hatches are in CONTRIBUTING.md.
 
-## Checks that must stay green
+## Checks
 
-| Check | Command |
-| --- | --- |
-| Tests | `uv run pytest tests/<dir>` while iterating; plain `uv run pytest` belongs to the gate |
-| Import contracts (architecture) | `uv run lint-imports` |
-| Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` |
-| Lint | `uv run ruff check .` |
-| Format | `uv run ruff format .` |
-| OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
+The check policy — pertinent tests while iterating, the gate once before the PR — is in
+AGENTS.md `## Checks`, commands included. What is specific to Python work:
 
-While iterating, run the tests for the area you touched — `uv run pytest tests/<dir>`, or a
-named test — together with `ruff check`, `ruff format` and `lint-imports`, which are fast enough
-to run whole. If you touched the kernel, add `mypy`, and note that `mypy src/visionset/kernel`
-reads the kernel alone while the gate reads `src/visionset` entire. If you touched FastAPI routes
-or response models, re-export `openapi.json` — it is a committed contract, a stale one is a bug.
-
-The full `uv run pytest` belongs to `bash scripts/check.sh`, which runs once before a pull request
-is opened; CI runs it on every one.
-
-**Never pass `-q` to pytest.** `pyproject.toml` already sets `addopts = "-q"`, and verbosity is a
-counter, so a second one stacks to `-qq` — which drops the test count and the summary line and
-leaves the exit code as the only signal, on a log that ends mid-progress and reads as truncated.
-Plain `uv run pytest` already prints the count; where a wrapper you cannot edit has added a `-q`,
-one `-v` cancels it.
+- If you touched FastAPI routes or response models, re-export `openapi.json`
+  (`uv run python scripts/export_openapi.py`) and commit the diff — it is a committed contract,
+  and a stale one is a bug.
+- **Never pass `-q` to pytest.** `pyproject.toml` already sets `addopts = "-q"`, and verbosity
+  is a counter: a second one stacks to `-qq`, which drops the count and summary line and leaves
+  a log that reads as truncated. Where a wrapper you cannot edit adds one, `-v` cancels it.
 
 ## Formatting and lint
 

@@ -33,24 +33,31 @@ src/visionset/
 Every surface (UI, CLI, MCP, REST) is a **thin client of the same SDK**. If a behavior exists
 in only one of them, it is in the wrong place.
 
-## Two rules the machine enforces
+## The rules the machine enforces
 
-1. **Kernel purity** — `visionset.kernel` must never import `visionset.server`,
-   `visionset.cli`, `visionset.mcp`, `visionset.formats`, nor `fastapi` / `typer` / `mcp` /
-   `uvicorn`. Enforced by import-linter contracts in `pyproject.toml` **and** a fresh-process
-   test under `tests/architecture/`.
+Four import-linter contracts in `pyproject.toml`, plus a fresh-process test under
+`tests/architecture/`:
+
+1. **Kernel purity** — `visionset.kernel` never imports `visionset.server`, `visionset.cli`,
+   `visionset.mcp`, `visionset.formats`, `visionset.wire`, `visionset.jobs`,
+   `visionset.inference`, nor `fastapi` / `typer` / `mcp` / `uvicorn`. The kernel decides what
+   exists; publication shapes, background handlers and the inference composition root all sit on
+   the other side of that line.
 2. **Delivery clients are siblings** — `server`, `cli`, and `mcp` never import each other.
    Shared logic moves down into the kernel, never sideways.
-3. **Job handlers are below the surfaces** — `visionset.jobs` never imports `server`, `cli`,
-   `mcp`, `fastapi`, `typer` or `uvicorn`. Load-bearing under `spawn`: a worker importing
-   `visionset.server` would re-execute its module-level `app = create_app()`.
+3. **Job handlers are below the surfaces** — `visionset.jobs` imports no delivery package.
+   Load-bearing under `spawn`: a worker importing `visionset.server` would re-execute its
+   module-level `app = create_app()`.
+4. **Inference is below the surfaces and below jobs** — `visionset.inference` imports no
+   delivery package and not `visionset.jobs` (the download handler imports it, so the reverse
+   would close a cycle and put the optional runtime on the worker's spawn path).
 
 ```bash
-uv run lint-imports        # both contracts
+uv run lint-imports        # all four contracts
 uv run pytest tests/architecture
 ```
 
-**If a change fights either boundary, the change is wrong — not the boundary.** Never relax a
+**If a change fights a boundary, the change is wrong — not the boundary.** Never relax a
 contract in `pyproject.toml` to make a build pass; restructure instead.
 
 ## Where does this code go?

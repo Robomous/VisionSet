@@ -160,40 +160,30 @@ than quietly, because "All checks passed" has always meant "all the checks this 
 ran".
 
 **The last line on stdout says what the run covered**, so "all the checks this invocation
-ran" is something a reader can check rather than infer (#336):
+ran" is something a reader can check rather than infer:
 
 ```
 check.sh: PASSED  ran=python,frontend,generated,browser  skipped=none
 ```
 
 `ran=` is what *completed* — never what was asked for — and the verdict is one of three:
-`PASSED`, `FAILED` (a step reported a problem) or `INCOMPLETE` (the run left early, so
-nothing was found wrong; the checks simply did not happen). It comes from a `trap … EXIT`,
-so a missing `node_modules` three groups in cannot skip it. That matters because the abort
-message goes to **stderr**: before this, a caller capturing stdout saw a partial run and a
-full one as the same thing — some green pytest output and then silence — which is the
-false-calm failure this file warns about for `| tail`, arriving from the other direction.
-`tests/scripts/check_stages.test.mjs` holds it, including that every group the script knows
-is still dispatched.
+`PASSED`, `FAILED` (a step reported a problem) or `INCOMPLETE` (the run left early; the
+checks simply did not happen). It comes from a `trap … EXIT`, so an abort three groups in
+cannot skip it — without that, a caller capturing stdout sees a partial run and a full one
+as the same thing. `tests/scripts/check_stages.test.mjs` holds it, including that every
+group the script knows is still dispatched.
 
 The script sets **`CI=1`** for the Playwright steps itself. It is load-bearing:
 `playwright.config.ts` sets `reuseExistingServer: !process.env.CI`, so without it a stale
 vite server left on this worktree's e2e port answers instead of the build under test, and
 the failures that follow read as genuine code bugs in unrelated scenarios.
 
-**The browser suites bind one port per worktree.** Several checkouts run their gates at
-once here — that is exactly what `refactor-protocol`'s worktree rule produces — and three
-fixed ports made those suites single-occupancy: the second run to reach the browser group
-found 5273 held and died with `Port 5273 is already in use`, which reads as a broken dev
-server rather than as contention (#346). So the number is derived from the worktree's own
-absolute path. `frontend/app/e2e-ports.ts` hashes that path into one of 2048 slots and
-gives each suite a port from a band of its own — **16384–18431** for the e2e suite,
-**18432–20479** for the cycle server, **20480–22527** for the benchmark. The **main
-checkout is exempt, and so is CI**, whose clone is a main checkout too: both keep 5273,
-8123 and 5373, so nothing about a single-checkout workflow changes. Every run prints the
-three numbers it resolved on stderr before it starts, and a port that is already taken is
-a refusal naming the worktree it came from rather than four words from vite. Override one
-suite with `VISIONSET_E2E_PORT`, `VISIONSET_CYCLE_PORT` or `VISIONSET_BENCH_PORT`.
+**The browser suites bind one port per worktree**, so several checkouts can run their
+gates at once. `frontend/app/e2e-ports.ts` hashes the worktree's absolute path into a band
+per suite — **16384–18431** e2e, **18432–20479** cycle, **20480–22527** bench — and every
+run prints the three numbers it resolved before it starts. The **main checkout and CI are
+exempt** and keep the fixed 5273, 8123 and 5373. Override one suite with
+`VISIONSET_E2E_PORT`, `VISIONSET_CYCLE_PORT` or `VISIONSET_BENCH_PORT`.
 
 **`VISIONSET_PW_WORKERS` sets how many workers the e2e suite runs.** `scripts/check.sh`
 sets it to 10, because the machine you are sitting at is not a two-core runner; unset, the
@@ -202,21 +192,13 @@ variable of its own rather than more meaning loaded onto `CI`, which the browser
 for `reuseExistingServer` and which used to decide the worker count as a side effect.
 Actions sets nothing, so CI keeps the count its runners were measured at.
 
-**`ui-core`'s vitest suite caps its own workers, and the cap is close to free.**
-`frontend/ui-core/vitest.config.ts` runs a quarter of the machine's logical cores rather
-than vitest's default of nearly one per core, because each worker carries a whole jsdom:
-the default measured 847% CPU on eight physical cores, and the tests that then missed
-vitest's 5000ms deadline were whichever ones held a core when the machine ran out rather
-than any that are slow (#555). Capped, the suite passed three runs in a row at load
-averages of 85 to 170, where the default failed four tests at 140. It costs almost no wall
-time — 41s and 42s at four workers against 37s and 44s at fifteen, alternating on an idle
-machine — because the suite is bounded by its slowest *file* rather than by how much CPU
-it can occupy: `screens/inference.test.tsx` alone is 23s of a 41s run. The suite's
-`testTimeout` is 15s for the reason three tests in that same file already set their own —
-`CONNECTION_POLL_MS` is 2000ms and proving a poll *stopped* costs one or two intervals of
-real sleep. There is no environment variable, unlike the e2e suite above: the count is
-derived, so there is no number for anybody to choose. CI is unaffected — a two-core runner
-derives below the floor of two.
+**`ui-core`'s vitest suite caps its own workers at a quarter of the logical cores**
+(`frontend/ui-core/vitest.config.ts`), because each worker carries a whole jsdom and an
+uncapped run on a loaded machine fails whichever tests lose the CPU rather than any that
+are slow. The cap costs almost no wall time — the suite is bounded by its slowest file,
+not by how much CPU it can occupy. `testTimeout` is 15s because proving a poll *stopped*
+costs one or two real `CONNECTION_POLL_MS` intervals. The count is derived; there is no
+variable to set, and a two-core runner derives the floor of two.
 
 One caveat no exit code will tell you: several gates read `git ls-files`, which is the
 **index** rather than the working tree. A new file you have not `git add`ed is invisible to

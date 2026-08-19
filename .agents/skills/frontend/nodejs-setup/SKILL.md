@@ -16,16 +16,11 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, WebFetch, WebSearch, Task
 
 ## Environment
 
-- **The Node major is pinned by `.nvmrc`**, which is the single source of truth — CI's
-  `actions/setup-node` steps read it through `node-version-file`, and `scripts/check.sh`
-  refuses to run any group that needs Node under a different major. With nvm on the host,
-  `nvm use` reads it; there is no version to type. The refusal exists because the failure
-  otherwise arrives disguised: Node 26 declares `localStorage` on the global object and
-  leaves it `undefined` unless `--localstorage-file` is passed, so jsdom's never arrives
-  and eight `ui-core` tests fail with a `TypeError` on storage they never touched. The
-  suite passing under 26 is tracked separately (#607) — the product code is not affected,
-  because every storage read there goes through a guard that already answers with the
-  default when the access throws.
+- **The Node major is pinned by `.nvmrc`**, the single source of truth — CI reads it through
+  `node-version-file`, `scripts/check.sh` refuses to run under a different major, and `nvm use`
+  reads it on the host. The refusal exists because the failure otherwise arrives disguised: a
+  newer Node declares `localStorage` on the global object as `undefined`, jsdom's never
+  arrives, and `ui-core` tests fail with a `TypeError` on storage they never touched.
 - **pnpm** only (never npm, never yarn, never `npx`). Pinned via `packageManager` in
   the root `package.json` — enable it with `corepack enable`. To run a binary the
   workspace already has, `pnpm exec <bin>`; `npx` would *fetch and run* one it does
@@ -78,18 +73,29 @@ pnpm add -w -D <pkg>                            # root tooling only
 Never hand-edit a `version` field. The repo-root `VERSION` file is the source of truth;
 `pnpm version:sync` converts it to npm semver (`0.1.0.dev0` → `0.1.0-dev.0`).
 
+## TypeScript and React conventions
+
+- The typed API client under `frontend/ui-core/src/generated/` is **generated from the repo-root
+  `openapi.json`** — never hand-edit it, never redeclare a server type by hand; regenerate
+  (`pnpm generate:client`).
+- Packages are ESM (`"type": "module"`) publishing `dist/` with declarations; public entry
+  points are exported from `src/index.ts`.
+- React 19 with the React Compiler: no manual memoization (`useMemo`/`useCallback` for
+  performance), no `forwardRef` (ref is a prop), named imports only — the compiler and eslint
+  enforce these. `react-hooks/exhaustive-deps` is an `error` in `frontend/annotator`.
+- Annotation behavior (hit-testing, geometry, undo/redo, interaction state) belongs in
+  `@visionset/annotator` core, never in a component — if deleting React would delete the logic,
+  the logic is in the wrong package. See the `annotator-core` skill for the boundary.
+
 ## Before you say it works
 
 While iterating, run the package you touched — `pnpm --filter @visionset/<pkg> test`, and `lint`
-on the same filter. Before the pull request, `pnpm -r build && pnpm -r test && pnpm -r lint` from
-the root. Report failures verbatim.
+on the same filter. The exhaustive run belongs to the gate — AGENTS.md `## Checks`. Two blind
+spots worth naming:
 
-**None of those runs a browser.** Both Playwright suites sit outside every command above, so a
-change that only chromium can observe passes all of them. `bash scripts/check.sh` is the gate, and
-CI runs it on every pull request.
-
-**A green build is not a green typecheck.** Each package builds through
-`tsconfig.build.json`, which *excludes test files*, while `lint` runs the full
-`tsconfig.json` over everything. So `pnpm -r build` can pass while a type error sits in a test
-or a test helper — which is where fixtures live, and fixtures are what a new required wire field
-breaks. Run `lint` before calling TypeScript green.
+- **None of the workspace commands runs a browser.** Both Playwright suites sit outside them, so
+  a change only chromium can observe passes everything above.
+- **A green build is not a green typecheck.** Packages build through `tsconfig.build.json`,
+  which *excludes test files*, while `lint` runs the full `tsconfig.json`. `pnpm -r build` can
+  pass while a type error sits in a test helper — where fixtures live, and fixtures are what a
+  new required wire field breaks. Run `lint` before calling TypeScript green.
