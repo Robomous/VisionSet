@@ -165,9 +165,13 @@ class PreLabelPlan:
     """What a run over this schema would ask for, and what it would leave out.
 
     The two halves are derived together so they cannot disagree: every class the
-    schema declares appears in exactly one of them.
+    schema declares appears in exactly one of them, and the version they came
+    from travels with them so a surface reporting the plan need not resolve the
+    pin a second time.
     """
 
+    #: The schema version both halves were derived from. A re-pin changes both.
+    schema_version: int
     #: The prompt, in the schema's own declaration order.
     asked: tuple[str, ...]
     #: The rest, each with why — empty when the whole schema is askable.
@@ -201,7 +205,7 @@ def prompt_plan(schema: AnnotationSchema) -> PreLabelPlan:
             excluded.append(PreLabelExcludedClass(name=label_class.name, reasons=reasons))
         else:
             asked.append(label_class.name)
-    return PreLabelPlan(asked=tuple(asked), excluded=tuple(excluded))
+    return PreLabelPlan(schema_version=schema.version, asked=tuple(asked), excluded=tuple(excluded))
 
 
 def detectable_classes(schema: AnnotationSchema) -> tuple[str, ...]:

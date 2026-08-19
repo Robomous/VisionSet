@@ -46,7 +46,13 @@ from uuid import UUID
 from pydantic import Field
 
 from visionset import wire
-from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, pre_label
+from visionset.inference import (
+    DEFAULT_MINIMUM_CONFIDENCE,
+    PreLabelPlan,
+    pre_label,
+    prompt_plan,
+    require_detectable_schema,
+)
 from visionset.kernel.domain import BySize, Partition
 from visionset.kernel.services import (
     BatchService,
@@ -267,6 +273,38 @@ def start_batch(batch_id: BatchRef) -> dict[str, Any]:
         return _batch_payload(workspace, started.id)
 
 
+def get_pre_label_plan(batch_id: BatchRef) -> dict[str, Any]:
+    """Which classes a pre-labeling run over this batch would ask a model about.
+
+    Call this before `pre_label_batch`. That call blocks for minutes and this one
+    is a single read, and what it answers decides whether the wait is worth it.
+
+    **A run does not ask about every class the schema declares.** It asks about
+    the ones a bare box prediction can be written as, and `asked_classes` is that
+    list — it is the prompt itself, in the schema's own spelling.
+
+    **`excluded_classes` names the rest, each with every reason it is left out.**
+    `no_bbox_geometry` means the class admits no box, so a detection has no shape
+    to land as. `required_attribute` means the class demands an attribute value,
+    and a model's answer carries none. Both can hold against one class, which is
+    why `reasons` is a list: a class told only that it admits no box, then given
+    one, would stay absent from the next run's prompt with nothing saying why.
+
+    Every class the pinned schema declares appears in exactly one of the two
+    lists, and `schema_version` is the pin both were derived from — a re-pin
+    changes both. A schema with nothing askable at all is refused here rather
+    than answered with an empty prompt, exactly as `pre_label_batch` refuses
+    it — as is a batch that is not `in_annotation`.
+
+    No connection is involved: the prompt is a property of the pinned schema
+    alone, so this answers the same lists whichever model is about to be asked.
+    """
+    with opened_workspace() as workspace:
+        batch = BatchService(workspace).require_pre_labelable(identifier(batch_id, what="batch_id"))
+        schema = require_detectable_schema(workspace, batch)
+        return wire.pre_label_plan(prompt_plan(schema))
+
+
 def pre_label_batch(
     batch_id: BatchRef,
     connection: ConnectionRef,
@@ -328,10 +366,23 @@ def pre_label_batch(
     or whose box classes each require an attribute a prediction cannot supply —
     has nowhere for a detection to land and is refused before anything runs.
 
+    `plan` in the result names both halves: `asked_classes` is what this run
+    actually asked about, and `excluded_classes` names every class of the pinned
+    schema it could not, each with every reason. `schema_version` is the pin
+    both were derived from. Read it whenever
+    `assets_labeled` is lower than expected — a run that asked about two of a
+    schema's five classes labels nothing under the other three, and the counters
+    alone cannot say so. `get_pre_label_plan` answers the same thing without
+    running anything.
+
     Also refused before anything runs: a batch that is not `in_annotation`, a
     connection whose model answers places rather than words, and a deployment
     without the local runtime — with the install command in the message.
     """
+    # Captured from the run rather than derived beside it: a plan read from the
+    # schema separately could differ from the one the run prompted with, and
+    # that it is the same list is the whole reason for reporting it.
+    seen: list[PreLabelPlan] = []
     with opened_workspace() as workspace:
         resolved_connection = resolve_connection(workspace, connection)
         outcome = pre_label(
@@ -339,6 +390,7 @@ def pre_label_batch(
             batch_id=identifier(batch_id, what="batch_id"),
             connection_id=resolved_connection.id,
             minimum_confidence=minimum_confidence,
+            on_plan=seen.append,
         )
     return {
         "assets_considered": outcome.assets_considered,
@@ -348,6 +400,7 @@ def pre_label_batch(
         "assets_skipped": outcome.assets_skipped,
         "regions_discarded": outcome.regions_discarded,
         "regions_out_of_bounds": outcome.regions_out_of_bounds,
+        "plan": wire.pre_label_plan(seen[0]),
     }
 
 

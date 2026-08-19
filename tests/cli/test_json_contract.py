@@ -60,8 +60,27 @@ from tests.fixtures.samples import (
 
 from visionset import wire
 from visionset.formats._dummy import DummyExporter
+from visionset.inference import PreLabelExcludedClass, PreLabelExclusionReason, PreLabelPlan
 from visionset.kernel.domain import AssetProgress, BackgroundJobState, PreLabelRun
 from visionset.server import models
+
+#: A plan with both halves populated and one class carrying both reasons at
+#: once, so neither list nor either reason goes unprojected. It is derived from
+#: a schema rather than stored, which is why it is built here rather than in the
+#: domain samples.
+PRE_LABEL_PLAN = PreLabelPlan(
+    schema_version=SCHEMA_VERSION.version,
+    asked=("sign",),
+    excluded=(
+        PreLabelExcludedClass(
+            name="crossing",
+            reasons=(
+                PreLabelExclusionReason.NO_BBOX_GEOMETRY,
+                PreLabelExclusionReason.REQUIRED_ATTRIBUTE,
+            ),
+        ),
+    ),
+)
 
 # One row per pair: a label, the projected payload, and the wire model it must
 # agree with. Built eagerly — every projection runs at import, so a leaf that
@@ -166,6 +185,7 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
         wire.class_compatibility(EXPORT_COMPATIBILITY.classes[0]),
         models.ClassCompatibilityOut,
     ),
+    ("pre_label_plan", wire.pre_label_plan(PRE_LABEL_PLAN), models.PreLabelPlanOut),
 ]
 
 IDS = [label for label, _, _ in PAIRS]

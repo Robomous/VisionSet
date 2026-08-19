@@ -1030,9 +1030,9 @@ class PreLabelPlanOut(BaseModel):
     excluded_classes: list[PreLabelExclusionOut]
 
     @classmethod
-    def of(cls, schema_version: int, plan: PreLabelPlan) -> Self:
+    def of(cls, plan: PreLabelPlan) -> Self:
         return cls(
-            schema_version=schema_version,
+            schema_version=plan.schema_version,
             asked_classes=list(plan.asked),
             excluded_classes=[
                 PreLabelExclusionOut(name=one.name, reasons=list(one.reasons))

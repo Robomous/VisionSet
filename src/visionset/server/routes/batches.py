@@ -329,7 +329,7 @@ def pre_label_plan(workspace: WorkspaceDep, batch_id: UUID) -> PreLabelPlanOut:
     """
     batch = BatchService(workspace).require_pre_labelable(batch_id)
     schema = require_detectable_schema(workspace, batch)
-    return PreLabelPlanOut.of(schema.version, prompt_plan(schema))
+    return PreLabelPlanOut.of(prompt_plan(schema))
 
 
 @router.post(
