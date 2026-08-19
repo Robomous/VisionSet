@@ -70,6 +70,7 @@ import {
   checkListSources,
   checkCreateCorrectionBatch,
   checkPreLabelBatch,
+  checkPreLabelPlan,
   checkPreviewSchemaChange,
   checkPromoteBatch,
   checkPublishRelease,
@@ -630,6 +631,8 @@ export type IngestFailure = components["schemas"]["IngestFailureOut"];
 export type Batch = components["schemas"]["BatchOut"];
 export type BatchPage = components["schemas"]["BatchPage"];
 export type PreLabelRun = components["schemas"]["PreLabelRunOut"];
+export type PreLabelPlan = components["schemas"]["PreLabelPlanOut"];
+export type PreLabelExclusion = components["schemas"]["PreLabelExclusionOut"];
 
 export const ingestKeys = {
   sources: (projectId: string) => ["projects", projectId, "sources"] as const,
@@ -829,6 +832,11 @@ export const batchKeys = {
   batch: (batchId: string) => ["batches", batchId] as const,
   assets: (batchId: string) => ["batches", batchId, "assets"] as const,
   jobs: (batchId: string) => ["batches", batchId, "jobs"] as const,
+  // The pinned version is part of the key because the plan is a function of it
+  // and of nothing else: a re-pin must not leave a dialog naming the classes of
+  // a schema this batch no longer carries.
+  preLabelPlan: (batchId: string, schemaVersion: number | null) =>
+    ["batches", batchId, "pre-label-plan", schemaVersion] as const,
 };
 
 /** One request's worth. `docs/api.md`: paging bounds the response, not the read. */
@@ -1105,6 +1113,37 @@ export function usePreLabelBatch(batchId: string) {
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
     },
+  });
+}
+
+/**
+ * The classes a pre-labeling run would ask for, and the ones it would not.
+ *
+ * Served rather than derived here, though every input is on the wire: the same
+ * narrowing decides what a run actually prompts with, and a browser-side copy of
+ * it is how a dialog comes to name a class the run never asks about. `unwrap`
+ * surfaces `SCHEMA_HAS_NO_DETECTABLE_CLASS` as a refusal like any other — the
+ * dialog renders its prose and stops offering the launch.
+ *
+ * Read only while a dialog is open, and keyed by the pinned version so a re-pin
+ * asks again instead of answering from the previous schema's classes.
+ */
+export function usePreLabelPlan(
+  batchId: string | undefined,
+  schemaVersion: number | null | undefined,
+  enabled: boolean,
+): UseQueryResult<PreLabelPlan, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: batchKeys.preLabelPlan(batchId ?? "none", schemaVersion ?? null),
+    enabled: enabled && batchId !== undefined,
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/batches/{batch_id}/pre-label", {
+          params: { path: { batch_id: batchId ?? "" } },
+        }),
+        checkPreLabelPlan,
+      ),
   });
 }
 
