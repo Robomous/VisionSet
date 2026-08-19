@@ -385,7 +385,30 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Pre Label Plan
+         * @description The classes a pre-labeling run over this batch would ask a model for.
+         *
+         *     A run's prompt is the batch's pinned schema narrowed to the classes a bare
+         *     box prediction can be written as, and that narrowing is invisible once the
+         *     run has finished: a schema whose `vehicle` class requires an attribute
+         *     yields no vehicles and says nothing about why. Read this before launching to
+         *     say which classes are in the prompt and which are not, with the reason
+         *     beside each one.
+         *
+         *     Derived, never stored, and free of the connection the launch needs — the
+         *     prompt is a property of the schema alone, so this answers the same lists
+         *     whichever model is about to be asked.
+         *
+         *     A batch that no run could touch is refused rather than answered with empty
+         *     lists, on the same terms the launch itself uses: an unknown batch is 404
+         *     `BATCH_NOT_FOUND`, a batch that is not `in_annotation` is 409
+         *     `BATCH_NOT_IN_ANNOTATION`, and a pinned schema with no class a box can be
+         *     written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`. A batch open for
+         *     annotation but pinning no schema version is a broken invariant and answers
+         *     500 `WORKSPACE_CORRUPT`.
+         */
+        get: operations["pre_label_plan"];
         put?: never;
         /**
          * Pre Label Batch
@@ -3937,6 +3960,58 @@ export interface components {
             type: "polyline";
         };
         /**
+         * PreLabelExclusionOut
+         * @description A class in a batch's pinned schema that a pre-labeling run will not ask for.
+         *
+         *     Both reasons are properties of the class as the schema declares it, so the
+         *     remedy is a schema edit: give the class `bbox` among its geometries, or drop
+         *     the `required` flag from the attribute a prediction cannot supply.
+         *
+         *     `reasons` can carry both at once, and every reason that holds is listed —
+         *     a class told only that it admits no box, then given one, would otherwise
+         *     stay silently absent from the next run's prompt.
+         */
+        PreLabelExclusionOut: {
+            /** Name */
+            name: string;
+            /** Reasons */
+            reasons: components["schemas"]["PreLabelExclusionReason"][];
+        };
+        /**
+         * PreLabelExclusionReason
+         * @description Why a schema's class is not among the words a run asks for.
+         *
+         *     Open because it travels as a list a client renders member by member rather
+         *     than switches on: a release that finds a third way a class cannot hold a
+         *     detection must not cost an older client the whole plan, and the class it
+         *     names is visibly left out whether or not that client can word the reason.
+         * @enum {string}
+         */
+        PreLabelExclusionReason: "no_bbox_geometry" | "required_attribute" | (string & {});
+        /**
+         * PreLabelPlanOut
+         * @description The words a pre-labeling run over this batch would ask a model for.
+         *
+         *     A run's prompt is the batch's pinned schema, narrowed to the classes a bare
+         *     box prediction can be written as. That narrowing is invisible in the run's
+         *     result — a schema whose `vehicle` class requires a `color` attribute yields
+         *     no vehicles and no explanation — so it is published here, before a run
+         *     starts, with the left-out classes named beside the asked-for ones.
+         *
+         *     Every class the pinned schema declares appears in exactly one of the two
+         *     lists, both in the schema's own declaration order. A batch whose schema has
+         *     no askable class at all is refused rather than answered with an empty
+         *     `asked_classes`: pre-labeling it is impossible, not merely unproductive.
+         */
+        PreLabelPlanOut: {
+            /** Asked Classes */
+            asked_classes: string[];
+            /** Excluded Classes */
+            excluded_classes: components["schemas"]["PreLabelExclusionOut"][];
+            /** Schema Version */
+            schema_version: number;
+        };
+        /**
          * PreLabelRequest
          * @description Which model should pre-label this batch, and how sure it has to be.
          */
@@ -5637,6 +5712,82 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pre_label_plan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreLabelPlanOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10821,5 +10972,6 @@ export interface KnownMembers {
   ConnectionAction: "download_weights" | "check_integrity" | "update" | "delete";
   JobAction: "start" | "complete";
   ModelCapability: "point_suggest" | "text_detect";
+  PreLabelExclusionReason: "no_bbox_geometry" | "required_attribute";
   SuggestParameter: "detail";
 }
