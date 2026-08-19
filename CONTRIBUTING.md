@@ -280,10 +280,13 @@ If a change fights either boundary, the change is wrong — not the boundary.
 
 Any change to `@visionset/app` or `@visionset/ui-core` is governed by
 [`DESIGN.md`](DESIGN.md) at the repository root — **read it before building or changing a
-screen**, not after. It owns the tokens, the type scale, the navigation rules, the tab
-shapes, the annotation workspace, and (since #206) the rules for project-level data
-surfaces: what a header carries, how numbers are formatted, and why a disabled button with
-no explanation is forbidden.
+screen**, not after. It owns the visual foundations: colour semantics, typography roles,
+spacing, radius, materials, motion, action hierarchy, and accessibility. The product's own
+UI rules live beside it: [`docs/ui/product-principles.md`](docs/ui/product-principles.md)
+(what a screen must show and offer — headers, numbers, why a disabled button with no
+explanation is forbidden), [`docs/ui/navigation.md`](docs/ui/navigation.md) (breadcrumbs,
+the rail, URL state), and [`docs/ui/annotator.md`](docs/ui/annotator.md) (the annotation
+workspace).
 
 It is prose over running code, not decoration. `frontend/ui-core/src/styles.css` carries the
 tokens and `tokens.ts` mirrors them, gated against each other in both directions by
