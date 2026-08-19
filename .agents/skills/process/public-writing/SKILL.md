@@ -75,13 +75,13 @@ issue number — inside a sentence, a quotation, or a denial. "Nothing here clos
 
 ## Paragraphs, not notation — and voice
 
-Write the way `DESIGN.md` writes: complete sentences that explain reasoning. Telegraphic
-fragments, bare citation chains and stacked parentheticals cost the reader more than they save
-the writer. Structure still earns its place — a settled-options list stays a list, a comparison
-stays a table.
+Write complete sentences that explain reasoning, the way this repository's documentation
+writes. Telegraphic fragments, bare citation chains and stacked parentheticals cost the reader
+more than they save the writer. Structure still earns its place — a settled-options list stays
+a list, a comparison stays a table.
 
-`DESIGN.md`'s copy rules hold here too: **no exclamation marks, no "successfully", no "please"**
-— plus no filler acknowledgment, no restating the request before answering, no announcing a
+House style for public prose: **no exclamation marks, no "successfully", no "please"** — plus
+no filler acknowledgment, no restating the request before answering, no announcing a
 conclusion the text does not support.
 
 Before posting, reread the draft asking: does it name a company or product, and is the mention a

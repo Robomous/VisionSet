@@ -63,6 +63,9 @@ product.
 - [app.md](app.md) - the router shell.
 
 [`DESIGN.md`](../../../DESIGN.md) is the visual contract and the file to read
-before building any screen. [`docs/ui.md`](../../ui.md) covers how the browser
-client talks to the API. [`docs/annotations.md`](../../annotations.md) covers the
-annotator's own behaviour.
+before building any screen; the product's own UI rules are
+[`docs/ui/product-principles.md`](../../ui/product-principles.md),
+[`docs/ui/navigation.md`](../../ui/navigation.md) and
+[`docs/ui/annotator.md`](../../ui/annotator.md). [`docs/ui.md`](../../ui.md) covers
+how the browser client talks to the API. [`docs/annotations.md`](../../annotations.md)
+covers the annotator's own behaviour.
