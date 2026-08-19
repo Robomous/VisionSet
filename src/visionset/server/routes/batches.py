@@ -38,6 +38,7 @@ from visionset.inference import (
     STUB_MODEL_ID,
     capabilities_of,
     not_set_up_message,
+    prompt_plan,
     require_detectable_schema,
     unsupported_prompt_message,
 )
@@ -80,6 +81,7 @@ from visionset.server.models import (
     JobPage,
     LimitQuery,
     OffsetQuery,
+    PreLabelPlanOut,
     PreLabelRequest,
     window,
 )
@@ -300,6 +302,34 @@ def create_correction_batch(
         JobService(workspace).batch_progress(created.id),
         promoted=_promoted(workspace, created.project_id),
     )
+
+
+@router.get("/{batch_id}/pre-label", responses=documented(404, 409))
+def pre_label_plan(workspace: WorkspaceDep, batch_id: UUID) -> PreLabelPlanOut:
+    """The classes a pre-labeling run over this batch would ask a model for.
+
+    A run's prompt is the batch's pinned schema narrowed to the classes a bare
+    box prediction can be written as, and that narrowing is invisible once the
+    run has finished: a schema whose `vehicle` class requires an attribute
+    yields no vehicles and says nothing about why. Read this before launching to
+    say which classes are in the prompt and which are not, with the reason
+    beside each one.
+
+    Derived, never stored, and free of the connection the launch needs — the
+    prompt is a property of the schema alone, so this answers the same lists
+    whichever model is about to be asked.
+
+    A batch that no run could touch is refused rather than answered with empty
+    lists, on the same terms the launch itself uses: an unknown batch is 404
+    `BATCH_NOT_FOUND`, a batch that is not `in_annotation` is 409
+    `BATCH_NOT_IN_ANNOTATION`, and a pinned schema with no class a box can be
+    written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`. A batch open for
+    annotation but pinning no schema version is a broken invariant and answers
+    500 `WORKSPACE_CORRUPT`.
+    """
+    batch = BatchService(workspace).require_pre_labelable(batch_id)
+    schema = require_detectable_schema(workspace, batch)
+    return PreLabelPlanOut.of(schema.version, prompt_plan(schema))
 
 
 @router.post(
