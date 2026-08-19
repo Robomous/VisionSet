@@ -59,16 +59,19 @@
  * one is not — so a TypeScript copy would drift, and the drift would read as a
  * screen calling a change safe that the API then refuses.
  *
- * ## A preview exists, and it is advisory rather than authoritative
+ * ## The preview leads, and the publish still decides
  *
  * `compare` answers what two *published* versions did to each other. `POST
- * .../schema/preview` answers the harder question — what publishing *this*
- * draft would do — and is routed: `SchemaService.preview` is not the missing
- * method a comment here used to claim. Routing it does not remove the need for
- * the refusal surface below, though: a preview is advisory because nothing is
- * locked between it and a publish, so the two can disagree by the time Save is
- * actually pressed. The publish's own 409 stays the authoritative answer, and
- * making that refusal legible — not pre-empting it — is the editor's actual job.
+ * .../schema/preview` answers the harder question — what publishing *this* draft
+ * would do — and the editor calls it twice: before a class leaves the draft, and
+ * before a publish. That is what removes the round trip that was doomed before it
+ * was sent, and it is why a class already carrying labels is refused in one
+ * terminal dialog rather than after two confirmations that contradict it.
+ *
+ * It does not make the preview authoritative. Nothing is locked between a preview
+ * and the publish, so somebody can label a class in the gap; the publish's own 409
+ * is still the answer, and it renders through the same blocker view the preview
+ * feeds, so the two paths cannot drift apart.
  *
  * **Two 409s, and only one is retryable.** This is the exact case `docs/api.md`
  * exists for:
@@ -1250,7 +1253,26 @@ function describeDestructiveClasses(classes: readonly string[]): string {
   return `${named.slice(0, -1).join(", ")}, and ${named.at(-1) ?? "another class"}`;
 }
 
-/** Retryable: a publishable preview says the change narrows the contract. */
+/**
+ * Retryable: a publishable preview says the change narrows the contract.
+ *
+ * The counts are the point. A confirmation that asks "are you sure?" without
+ * saying what yes costs is a speed bump, and the two numbers worth saying are
+ * both already measured: how many classes narrow, and how many annotations are
+ * at risk. The second is always zero here — a preview carrying blockers is
+ * refused outright and never reaches this dialog — and a measured zero is the
+ * reason the publish is offered at all, so it is stated rather than implied.
+ *
+ * It says nothing about what becomes of annotations *after* the publish. An
+ * open batch pinned to the outgoing version can still write the removed class,
+ * and whether that is tolerated or forbidden is not something this dialog is
+ * entitled to answer.
+ *
+ * A shape removed from a class and the class itself removed are indistinguishable
+ * here: the wire's change record carries the class name but not the geometry, so
+ * the copy counts classes, which is true of both, rather than guessing which
+ * happened.
+ */
 function DestructiveDialog({
   preview,
   pending,
@@ -1268,11 +1290,13 @@ function DestructiveDialog({
       <DialogContent data-testid="destructive-dialog">
         <DialogTitle>This narrows the schema</DialogTitle>
         <DialogDescription>
-          This change narrows the schema for {describeDestructiveClasses(destructiveClasses)}.
+          <span className="tabular-nums">{formatCount(destructiveClasses.length)}</span>{" "}
+          {destructiveClasses.length === 1 ? "class narrows" : "classes narrow"}:{" "}
+          {describeDestructiveClasses(destructiveClasses)}.
         </DialogDescription>
         <DialogDescription>
-          Existing annotations are not touched. Saving anyway publishes the new version and leaves
-          earlier ones exactly as they are — a version is immutable.
+          No existing annotation becomes invalid — that is why this can be published at all.
+          Publishing adds a new version; earlier versions keep what they declared.
         </DialogDescription>
         <DialogFooter>
           <Button variant="secondary" onClick={onCancel}>
