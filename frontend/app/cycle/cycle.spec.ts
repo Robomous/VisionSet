@@ -142,22 +142,44 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   // missing icon does in a headless run.
   const consoleErrors: string[] = [];
   const badRequests: string[] = [];
-  // Every API call the *app* made that the API refused. The walk contains such
-  // calls by design — `GET /projects/{id}/schema` answers 404 for a project that
-  // has no schema yet, which is how the editor knows to open on an empty draft —
-  // and Chrome logs a console error for each. Collected so those can be told from
-  // a resource the *browser* went looking for on its own, which is the only kind
-  // nothing else would notice.
+  // Every API call the *app* made that the API refused, kept twice over because
+  // the two readers below need different keys. The walk contains refused calls by
+  // design — `GET /projects/{id}/schema` answers 404 for a project that has no
+  // schema yet, which is how the editor knows to open on an empty draft — and
+  // Chrome logs a console error for each, so the set exempts them from the console
+  // assertion and a resource the *browser* went looking for on its own still
+  // stands out. The set is keyed by URL because that is what a console message's
+  // location carries; the list is keyed by route and status because that is what a
+  // person can check, and it is pinned in the final step. Without the list the
+  // exemption is unbounded: any route, any status, silently tolerated.
   const apiRefusals = new Set<string>();
+  const refusedApiCalls: string[] = [];
   // Requests the *app* issued that the network stack reported as aborted.
   // Asserted rather than ignored — see the final step for why they are not
   // `badRequests` and what the one expected member of this list is.
   const abortedApiCalls: string[] = [];
+  // Whether the curated model's size could be read on *this* installation, taken
+  // from what the form actually rendered. The probe reaches a hub through the
+  // optional local-inference runtime, so it answers 500 on an installation
+  // without it and 200 on one with it — and both are the product working. Read
+  // rather than assumed, because the two inference CI jobs install differently
+  // and a developer's machine matches neither.
+  let curatedSizeRefused = false;
   page.on("response", (response) => {
     const kind = response.request().resourceType();
     if (response.status() < 400) return;
-    if (kind === "fetch" || kind === "xhr") apiRefusals.add(response.url());
-    else badRequests.push(`${response.status()} ${kind} ${response.url()}`);
+    if (kind === "fetch" || kind === "xhr") {
+      apiRefusals.add(response.url());
+      // The path without its query, which is the part that identifies the route.
+      // A download-size query carries a model id and a revision that move with
+      // the catalog, and pinning those would fail on a bumped revision rather
+      // than on a refusal.
+      refusedApiCalls.push(
+        `${response.request().method()} ${new URL(response.url()).pathname} ${response.status()}`,
+      );
+      return;
+    }
+    badRequests.push(`${response.status()} ${kind} ${response.url()}`);
   });
   page.on("console", (message) => {
     if (message.type() !== "error") return;
@@ -534,6 +556,19 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // The trigger only exists once the real `/inference/providers` read has
     // answered — wait for it rather than racing the click against that request.
     await expect(page.getByTestId("connection-model")).toBeVisible();
+
+    // Let the seeded model's size probe settle before moving off it. The form
+    // opens on the first curated model that answers a point prompt and prices it
+    // immediately; clicking through the select faster than that request resolves
+    // leaves the refusal landing at whatever point the dialog happens to unmount,
+    // which is the difference between a pinned list and a flaky one. Waiting is
+    // also what makes the answer readable — `size-known` and `size-unavailable`
+    // are the form's own two outcomes, and the final step expects a refusal from
+    // this route exactly when the second one is what rendered.
+    const sizeLine = page.getByTestId(/^size-(known|unavailable)$/);
+    await expect(sizeLine).toBeVisible();
+    curatedSizeRefused = (await sizeLine.getAttribute("data-testid")) === "size-unavailable";
+
     await page.getByTestId("connection-model").click();
     await page.getByRole("option", { name: /Custom model/ }).click();
     await page.getByTestId("connection-custom-model").fill(STUB_MODEL_ID);
@@ -1497,6 +1532,42 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     expect(abortedApiCalls).toEqual([
       expect.stringMatching(/^DELETE .*\/batches\/[0-9a-f-]+$/),
       expect.stringMatching(/^DELETE .*\/annotations$/),
+    ]);
+    /*
+     * **The refused API calls, pinned rather than merely tolerated.**
+     *
+     * Six 404s, all of them a screen asking for a document that does not exist
+     * yet: the schema editor opens on an empty draft precisely because
+     * `GET /projects/{id}/schema` and its two draft siblings answer 404 for a
+     * project nobody has given a schema. Each is asked twice, once as the editor
+     * mounts and once as it re-reads after a write. The project's id changes per
+     * run, so each is matched rather than compared.
+     *
+     * The seventh entry is conditional on the installation, and is the reason this
+     * list is worth pinning at all. `GET /inference/download-size` prices the
+     * curated model the connection form seeds itself with, and reading that price
+     * needs the optional local-inference runtime — so it answers 500 wherever the
+     * extra is absent, which is what `browser cycle (chromium)` installs, and 200
+     * wherever it is present. `curatedSizeRefused` carries what the form rendered,
+     * so the expectation follows the installation instead of guessing at it.
+     *
+     * Anything else — a route that starts refusing, a 404 that becomes a 500, a
+     * second refusal from a route allowed one — fails here with its method, its
+     * path and its status in the message. Before this list existed every one of
+     * them was added to a set, exempted from the console assertion, and never
+     * looked at again.
+     */
+    const schema = /^GET \/projects\/[0-9a-f-]+\/schema 404$/;
+    const curatedDraft = /^GET \/projects\/[0-9a-f-]+\/schema\/drafts\/curated 404$/;
+    const annotationDraft = /^GET \/projects\/[0-9a-f-]+\/schema\/drafts\/annotation 404$/;
+    expect(refusedApiCalls).toEqual([
+      expect.stringMatching(schema),
+      expect.stringMatching(curatedDraft),
+      expect.stringMatching(schema),
+      expect.stringMatching(curatedDraft),
+      ...(curatedSizeRefused ? ["GET /inference/download-size 500"] : []),
+      expect.stringMatching(annotationDraft),
+      expect.stringMatching(annotationDraft),
     ]);
     // And the icon is genuinely served under the mount, rather than absent and
     // unnoticed: `vite preview` would answer 200 with `index.html` here, which is
