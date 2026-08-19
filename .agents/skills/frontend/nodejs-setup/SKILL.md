@@ -80,7 +80,13 @@ Never hand-edit a `version` field. The repo-root `VERSION` file is the source of
 
 ## Before you say it works
 
-`pnpm -r build && pnpm -r test && pnpm -r lint` from the root. Report failures verbatim.
+While iterating, run the package you touched — `pnpm --filter @visionset/<pkg> test`, and `lint`
+on the same filter. Before the pull request, `pnpm -r build && pnpm -r test && pnpm -r lint` from
+the root. Report failures verbatim.
+
+**None of those runs a browser.** Both Playwright suites sit outside every command above, so a
+change that only chromium can observe passes all of them. `bash scripts/check.sh` is the gate, and
+CI runs it on every pull request.
 
 **A green build is not a green typecheck.** Each package builds through
 `tsconfig.build.json`, which *excludes test files*, while `lint` runs the full

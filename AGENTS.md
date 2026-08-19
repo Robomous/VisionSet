@@ -92,16 +92,40 @@ See `README.md` for the monorepo map and `CONTRIBUTING.md` for the full check li
 If a change fights either boundary, the change is wrong — not the boundary. Never relax a
 contract to make a build pass.
 
-## Checks before claiming done
+## Checks
 
-| Check | Command |
-| --- | --- |
-| Python tests | `uv run pytest` |
-| Import contracts | `uv run lint-imports` |
-| Kernel type-safety | `uv run mypy src/visionset/kernel` |
-| Lint / format | `uv run ruff check .` / `uv run ruff format .` |
-| Frontend | `pnpm -r build && pnpm -r test && pnpm -r lint` |
-| OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
+### The inner loop
+
+While iterating, run only what the change touches — the file's own suite, the module's suite, or
+a named test. Running the whole corpus every few edits is what makes the loop slow, and it is not
+what catches defects.
+
+Every command below is a **subset** of the gate. The third column says what each one does not see,
+because a row that stays silent about its own blind spot reads as the check.
+
+| Check | Command | Does not cover |
+| --- | --- | --- |
+| Python tests | `uv run pytest tests/<dir>` for the area you touched | Everything outside the paths you name |
+| Import contracts | `uv run lint-imports` | — |
+| Kernel type-safety | `uv run mypy src/visionset/kernel` | The kernel only. The gate runs `mypy src/visionset` — well over twice as many files; server, CLI, MCP and formats are outside this command |
+| Lint / format | `uv run ruff check .` / `uv run ruff format .` | — |
+| Frontend | `pnpm -r build && pnpm -r test && pnpm -r lint` | **No browser at all.** Both Playwright suites sit outside it, so anything only chromium can see passes here |
+| OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) | — |
+
+### The gate
+
+**`bash scripts/check.sh` is the gate, and CI runs it on every pull request.** Locally it runs
+**once** — immediately before opening a pull request, so a CI failure does not burn a three-strike
+round-trip — or when you are explicitly asked for one. Not every few changes.
+
+**After a push, read what CI answered.** A narrow local run plus an unread CI result is not a
+checked change, and a check you have not read is a check that failed.
+
+Two kinds of change earn the full gate however small the diff: anything touching **state, gating or
+progress**, where the real-server cycle run has repeatedly been the only detector, and any change to
+**the shape of a published wire model**, where a new required field turns every hand-built browser
+stub into a runtime failure that only chromium observes. Both are invisible to every command in the
+table above.
 
 Report failures verbatim. Never claim a check passed without running it.
 

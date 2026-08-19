@@ -135,10 +135,18 @@ design, and nothing here re-imposes one on them.
 
 ## Checks that must stay green
 
-**Run them with `bash scripts/check.sh`** (or `pnpm check` — the same script). It is the
+**`bash scripts/check.sh` is the gate** (or `pnpm check` — the same script). It is the
 canonical invocation for humans and agents alike: it collects *every* failure rather than
-stopping at the first, carries `set -euo pipefail`, and prints a per-step timing table.
-Take a subset with `bash scripts/check.sh python`, `frontend`, `generated` or `browser`.
+stopping at the first, carries `set -euo pipefail`, and prints a per-step timing table, and
+CI runs it on every pull request.
+
+**Locally it runs once, not continuously.** While iterating, run only the tests pertinent to
+the change — the file's own suite, the module's suite, or a named test — and take a group
+with `bash scripts/check.sh python`, `frontend`, `generated` or `browser`. The full pass
+belongs immediately before you open a pull request, so that a CI failure does not cost a
+round-trip, or to a moment somebody asks for one. Then read what CI answered: a check nobody
+read is a check that failed, and a pull request has sat red on the annotator chromium suite
+across several pushes for exactly that reason while every narrow signal was green.
 
 **It runs the browser suites, and that is the default.** Until #314 it ran no browser at
 all while calling itself canonical — and during the 2026-08 remediation run the
@@ -230,9 +238,9 @@ a deliberate manual run, because each costs minutes or needs its own install.
 | --- | --- | --- |
 | Python tests | `uv run pytest` (the script adds `-n auto`) | `python` |
 | Import contracts | `uv run lint-imports` | `python` |
-| Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` | `python` |
+| Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` — the kernel and nothing else; the script runs `uv run mypy src/visionset`, well over twice as many files | `python` |
 | Lint/format | `uv run ruff check .` / `uv run ruff format .` | `python` |
-| Frontend build + tests | `pnpm -r build && pnpm test` | `frontend` |
+| Frontend build + tests | `pnpm -r build && pnpm test` — **no browser at all**; anything only chromium can see passes here | `frontend` |
 | Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves `@visionset/annotator` through its `dist/`, so its typecheck has no declarations until the engine is built | `frontend` |
 | Annotator headless boundary | `pnpm --filter @visionset/annotator lint` | part of `frontend` (`pnpm -r lint`) |
 | Annotator end-to-end (chromium) | `pnpm --filter @visionset/app e2e` (needs `playwright install chromium` once) | `browser` |
