@@ -251,9 +251,8 @@ configuration's, so a single test or a single module runs the ordinary way with 
 output.
 
 `auto` rather than a fixed worker count, because a number picked for a twenty-core desktop
-would make the gate *slower* on a four-core laptop. CI's `python` job calls pytest
-directly and is deliberately untouched — what a GitHub runner should use is a separate
-question from what the machine in front of you has.
+would make the gate *slower* on a four-core laptop. CI's `python` job passes `-n auto` too,
+which resolves to its runner's own core count for the same reason.
 
 ## The two machine-enforced boundaries
 

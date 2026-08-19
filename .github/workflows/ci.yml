@@ -121,10 +121,10 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
 
-      - name: Mypy (strict kernel + full src)
-        run: |
-          uv run mypy src/visionset/kernel
-          uv run mypy src/visionset
+      # One invocation: the kernel's strict flags are per-module config in
+      # pyproject.toml, so `mypy src/visionset` already checks the kernel strictly.
+      - name: Mypy (strict kernel, full src)
+        run: uv run mypy src/visionset
 
       - name: Import contracts (import-linter)
         run: uv run lint-imports
@@ -132,8 +132,12 @@ jobs:
       - name: MCP tool reference drift gate
         run: uv run python scripts/export_mcp_tools.py --check
 
+      # `-n auto` resolves to the runner's core count. The suite has no expensive
+      # test to remove — ~63 ms mean, no fat tail — so parallelism is the only
+      # thing that makes this step faster, and it is ~90% of the run's critical
+      # path when serial.
       - name: Pytest
-        run: uv run pytest
+        run: uv run pytest -n auto
 
       # The smoke test above already calls into the example; this proves it also
       # runs as a script from a clean checkout, images and all.
@@ -310,8 +314,12 @@ jobs:
           pnpm --filter @visionset/annotator build
           pnpm --filter @visionset/ui-core build
 
+      # Four workers to match the runner's four cores; the config's own CI
+      # fallback is two, sized for a smaller runner generation.
       - name: Drive the demo
         run: pnpm --filter @visionset/app e2e
+        env:
+          VISIONSET_PW_WORKERS: "4"
 
       - uses: actions/upload-artifact@v7
         if: failure()
@@ -372,21 +380,8 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
-      # No `--with-deps`, deliberately. That flag is an `apt-get` hidden behind a
-      # browser installer, and apt is the entire reason this step has hung: the
-      # runner's mirrorlist puts a mirror first that stalls rather than fails, and
-      # one afternoon it turned a fifteen-second step into a fifty-minute one.
-      #
-      # The libraries it would install are already here. This image ships Google
-      # Chrome, Chromium, Edge and Firefox, and none of those could be installed
-      # without the shared libraries a Chromium build links — so `--with-deps` asks
-      # Ubuntu's archive for packages the machine already has. What Playwright does
-      # still need is its own pinned build, which comes from Playwright's CDN rather
-      # than from apt, and which is exactly what the cache above holds.
-      #
-      # If a library ever is genuinely absent, the browser fails to launch in the run
-      # below and says so. That is a loud failure at a named step, which is the kind
-      # worth having; the alternative was a silent stall with no output at all.
+      # No `--with-deps`, deliberately — the annotator e2e job's install step
+      # carries the full reasoning; it applies unchanged here.
       - name: Install chromium
         if: steps.browsers.outputs.cache-hit != 'true'
         run: pnpm --filter @visionset/app exec playwright install chromium
@@ -737,21 +732,8 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
-      # No `--with-deps`, deliberately. That flag is an `apt-get` hidden behind a
-      # browser installer, and apt is the entire reason this step has hung: the
-      # runner's mirrorlist puts a mirror first that stalls rather than fails, and
-      # one afternoon it turned a fifteen-second step into a fifty-minute one.
-      #
-      # The libraries it would install are already here. This image ships Google
-      # Chrome, Chromium, Edge and Firefox, and none of those could be installed
-      # without the shared libraries a Chromium build links — so `--with-deps` asks
-      # Ubuntu's archive for packages the machine already has. What Playwright does
-      # still need is its own pinned build, which comes from Playwright's CDN rather
-      # than from apt, and which is exactly what the cache above holds.
-      #
-      # If a library ever is genuinely absent, the browser fails to launch in the run
-      # below and says so. That is a loud failure at a named step, which is the kind
-      # worth having; the alternative was a silent stall with no output at all.
+      # No `--with-deps`, deliberately — the annotator e2e job's install step
+      # carries the full reasoning; it applies unchanged here.
       - name: Install chromium
         if: steps.browsers.outputs.cache-hit != 'true'
         run: pnpm --filter @visionset/app exec playwright install chromium
