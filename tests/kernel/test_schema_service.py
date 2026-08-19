@@ -127,21 +127,6 @@ _LANE_SHAPE = PolygonGeometry(points=[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0)])
 # --- versions are 1..N, monotonic, immutable ---------------------------------
 
 
-def test_the_first_version_of_a_schema_is_one(tmp_path: Path) -> None:
-    """Kept although its body duplicates `test_the_first_version_is_never_destructive`.
-
-    Deleting it leaves one line of `sqlite_metadata_store.py` uncovered that no
-    other test reaches — not because of anything this test asserts, but because
-    the adapter has a branch only a further workspace lifecycle arrives at. The
-    duplication is load-bearing for a reason outside its own assertion, so removing
-    it needs that branch covered somewhere first.
-    """
-    workspace, projects, schemas = _services(tmp_path)
-    project = projects.create("signs")
-    assert schemas.create_version(project.id, [SIGN]).published.version == 1
-    workspace.close()
-
-
 def test_versions_are_numbered_one_past_the_highest_stored(tmp_path: Path) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")

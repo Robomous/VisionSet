@@ -1247,7 +1247,7 @@ def _prediction(asset_id: UUID, **overrides: Any) -> Annotation:
     )
 
 
-def test_unreviewed_labels_land_pre_labeled(tmp_path: Path) -> None:
+def test_unreviewed_labels_land_pre_labeled_and_stay_editable(tmp_path: Path) -> None:
     """The labels and the move are one write, so neither can be seen alone."""
     fixture = Fixture(tmp_path)
     job = fixture.working()
@@ -1257,17 +1257,6 @@ def test_unreviewed_labels_land_pre_labeled(tmp_path: Path) -> None:
 
     assert stored.provenance == "model"
     assert stored.model_ref == "acme/detector@abc123"
-    assert fixture.progress_of(job, asset_id) is AssetProgress.PRE_LABELED
-    fixture.close()
-
-
-def test_unreviewed_labels_land_pre_labeled_and_stay_editable(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-    job = fixture.working()
-    asset_id = fixture.assets[0]
-
-    fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
-
     assert fixture.progress_of(job, asset_id) is AssetProgress.PRE_LABELED
     # The point of the whole change: a person can correct it with no move first.
     fixture.annotations.add(job.id, [_box(asset_id)])

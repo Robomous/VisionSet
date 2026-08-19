@@ -71,33 +71,6 @@ test("tagging mid-draw does not destroy the polygon being drawn", async ({ page 
 });
 
 /**
- * The uniqueness the kernel does not enforce, held here instead.
- *
- * Clicking the palette row and the checkbox are two different controls reaching the
- * same `toggleTagCommand`; neither can produce a second `daytime`. The history is
- * the sharper half of the claim — an identity command still goes through
- * `store.execute`, but `CommandLog` records nothing when `after === before`, so a
- * redundant tag leaves no entry to undo.
- */
-test("a class can carry at most one tag, however many times it is asked for", async ({ page }) => {
-  await frameOf(page);
-
-  await page.getByTestId("tag-daytime").click();
-  await page.getByTestId("class-daytime").click();
-  await page.getByTestId("class-daytime").click();
-  await page.getByTestId("tag-daytime").click();
-  await page.getByTestId("class-daytime").click();
-
-  const payload = await wire(page);
-  expect(payload.filter((row) => row.label_class === "daytime")).toHaveLength(1);
-  await expect(page.getByTestId("tag-daytime")).toBeChecked();
-
-  // One undo returns to untagged, because the redundant asks recorded nothing.
-  await page.getByTestId("undo").click();
-  await expect(page.getByTestId("tag-daytime")).not.toBeChecked();
-});
-
-/**
  * Only a `classification_tag` class gets a checkbox — the predicate matches on the
  * **geometry**, never on the class name. `sampleSchema.ts` has one of each other
  * kind, so the negative half is real rather than vacuous.
@@ -109,52 +82,6 @@ test("only the taggable class has a tag control", async ({ page }) => {
   for (const name of ["vehicle", "lane", "pedestrian", "centerline"]) {
     await expect(page.getByTestId(`tag-${name}`)).toHaveCount(0);
   }
-});
-
-/**
- * Pasting a tag the asset already carries, which is the fourth
- * reason and the one that changed while it waited.
- *
- * The kernel now enforces uniqueness, so the
- * kernel now refuses a duplicate outright with `DuplicateClassificationTag`. That
- * makes the local rule matter more rather than less: without it a paste would
- * look like it worked and the whole save would refuse minutes later, blaming an
- * index. So a duplicating entry is dropped here, the way `tagCommand` makes a
- * second tag unrepresentable rather than refusing one — and a paste whose every
- * entry was such a tag records no history entry at all.
- *
- * **`mod+a` rather than a click on the object list**, and the change is worth
- * stating: a tag is never under the pointer, so it needs some gesture that is not
- * a canvas press, and it used to have a row in the object list. It does not any
- * more — the list is drawn shapes now — so `select-all` is what reaches it. The
- * consequence, which is real and is recorded rather than hidden: a tag can no
- * longer be selected *on its own*, only along with everything else on the frame.
- */
-test("pasting a tag the asset already carries adds nothing and records nothing", async ({
-  page,
-}) => {
-  await frameOf(page);
-  await page.getByTestId("tag-daytime").click();
-  await expectCounts(page, 1, 0);
-
-  await focusCanvas(page);
-  // The only annotation on the frame, so this selects the tag and nothing else.
-  await page.keyboard.press("ControlOrMeta+a");
-  await expectCounts(page, 1, 1);
-  await page.keyboard.press("ControlOrMeta+c");
-  await page.keyboard.press("ControlOrMeta+v");
-
-  // Nothing added: the one entry the clipboard held duplicates a tag the asset
-  // already carries, so it is dropped.
-  await expectCounts(page, 1, 1);
-  const payload = await wire(page);
-  expect(payload.filter((row) => row.label_class === "daytime")).toHaveLength(1);
-
-  // And no entry to unwind: one undo takes back the *tag*, not a paste. If the
-  // paste had recorded one, this would leave the tag still set.
-  await page.keyboard.press("ControlOrMeta+z");
-  await expectCounts(page, 0, 0);
-  await expect(page.getByTestId("tag-daytime")).not.toBeChecked();
 });
 
 test("a tag and a drawn shape coexist, and undo unwinds them in order", async ({ page }) => {

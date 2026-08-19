@@ -31,8 +31,14 @@ test.beforeEach(async ({ page }) => {
   await page.goto(SHOWCASE);
 });
 
-/** What the strip shows is `toolFor`'s answer, and the schema decides the buttons. */
-test("the tool strip lists exactly the tools this schema can reach", async ({ page }) => {
+/**
+ * The strip's claims about `toolFor`, in one walk: the schema decides the
+ * buttons, a hotkey moves the strip because it reports the derived tool, and a
+ * press on the already-lit tool leaves the active class alone.
+ */
+test("the strip lists the schema's tools, follows the hotkeys, and never rewrites the class", async ({
+  page,
+}) => {
   await frameOf(page);
 
   await expect(page.getByTestId("tool-select")).toBeVisible();
@@ -47,12 +53,9 @@ test("the tool strip lists exactly the tools this schema can reach", async ({ pa
   await expect(page.getByTestId("tool-keypoints")).toHaveCount(0);
 
   await expect(page.getByTestId("tool-select")).toHaveAttribute("data-active", "true");
-});
 
-test("a hotkey moves the strip, because the strip reports the derived tool", async ({ page }) => {
-  await frameOf(page);
+  // A hotkey moves the strip, because the strip reports the derived tool.
   await focusCanvas(page);
-
   for (const [digit, active] of [
     ["1", "tool-bbox"],
     ["2", "tool-polygon"],
@@ -75,6 +78,19 @@ test("a hotkey moves the strip, because the strip reports the derived tool", asy
       );
     }
   }
+
+  // The consequence of putting a tool button over a store that has no tool: with
+  // a second bbox class held, the box button is already lit, and re-pointing the
+  // class at the *first* bbox class would silently change what the next shape is
+  // labelled. The tool did not move, so nothing moves.
+  await page.keyboard.press("4");
+  await expect(page.getByTestId("class-pedestrian")).toHaveAttribute("data-active", "true");
+  await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "true");
+
+  await page.getByTestId("tool-bbox").click();
+
+  await expect(page.getByTestId("class-pedestrian")).toHaveAttribute("data-active", "true");
+  await expect(page.getByTestId("class-vehicle")).toHaveAttribute("data-active", "false");
 });
 
 /** The strip draws, and it draws with the class the tool button stands for. */
@@ -89,26 +105,6 @@ test("the strip activates a tool by click and the canvas draws with it", async (
   await page.mouse.move(frame.at(650, 420).x, frame.at(650, 420).y, { steps: 8 });
   await page.mouse.up();
   await expectCounts(page, 1, 1);
-});
-
-/**
- * The consequence of putting a tool button over a store that has no tool: with a
- * second bbox class held, the box button is already lit, and re-pointing the class
- * at the *first* bbox class would silently change what the next shape is labelled.
- * The tool did not move, so nothing moves.
- */
-test("pressing the tool that is already active leaves the class alone", async ({ page }) => {
-  await frameOf(page);
-  await focusCanvas(page);
-
-  await page.keyboard.press("4");
-  await expect(page.getByTestId("class-pedestrian")).toHaveAttribute("data-active", "true");
-  await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "true");
-
-  await page.getByTestId("tool-bbox").click();
-
-  await expect(page.getByTestId("class-pedestrian")).toHaveAttribute("data-active", "true");
-  await expect(page.getByTestId("class-vehicle")).toHaveAttribute("data-active", "false");
 });
 
 /**
