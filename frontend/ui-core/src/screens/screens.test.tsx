@@ -522,6 +522,14 @@ describe("the schema editor", () => {
     const dialog = await screen.findByTestId("destructive-dialog");
     expect(dialog.textContent).toContain("lane");
     expect(dialog.textContent).not.toContain("internal wording must not appear");
+    // The blast radius, counted: DESIGN.md requires a confirmation to name what
+    // it costs. `blockers` is empty on every preview that reaches this dialog,
+    // so the zero is measured rather than assumed.
+    expect(dialog.textContent).toContain("1 class narrows");
+    expect(dialog.textContent).toContain("No existing annotation becomes invalid");
+    // The removed promise. It described what happens to annotations *after* the
+    // publish, which the kernel has not decided, so the dialog stops claiming it.
+    expect(dialog.textContent).not.toContain("Existing annotations are not touched");
     expect(
       sent.some(
         (request) =>
@@ -548,6 +556,41 @@ describe("the schema editor", () => {
         new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
     );
     expect(new URL(publishRequest?.url ?? "").searchParams.get("allow_destructive")).toBe("true");
+  });
+
+  it("counts every narrowing class in the confirmation", async () => {
+    projectWithSchema();
+    handlers.push((request) => {
+      if (request.method !== "POST" || !new URL(request.url).pathname.endsWith("/schema/preview")) {
+        return undefined;
+      }
+      return {
+        status: 200,
+        body: {
+          is_refused: false,
+          blockers: [],
+          diff: {
+            is_destructive: true,
+            destructive_classes: ["lane", "sign"],
+            changes: [
+              { kind: "destructive", label_class: "lane", attribute: null, detail: "class 'lane' removed" },
+              { kind: "destructive", label_class: "sign", attribute: null, detail: "class 'sign' removed" },
+            ],
+          },
+        },
+      };
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await removeClass(1);
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    const dialog = await screen.findByTestId("destructive-dialog");
+    expect(dialog.textContent).toContain("2 classes narrow");
+    expect(dialog.textContent).toContain("lane");
+    expect(dialog.textContent).toContain("sign");
+    expect(dialog.textContent).toContain("No existing annotation becomes invalid");
   });
 
   it("prevents repeated confirmation while its second preview is pending", async () => {
