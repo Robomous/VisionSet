@@ -142,16 +142,16 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   // missing icon does in a headless run.
   const consoleErrors: string[] = [];
   const badRequests: string[] = [];
-  // Every API call the *app* made that the API refused, kept twice over because
-  // the two readers below need different keys. The walk contains refused calls by
-  // design — `GET /projects/{id}/schema` answers 404 for a project that has no
-  // schema yet, which is how the editor knows to open on an empty draft — and
-  // Chrome logs a console error for each, so the set exempts them from the console
-  // assertion and a resource the *browser* went looking for on its own still
-  // stands out. The set is keyed by URL because that is what a console message's
-  // location carries; the list is keyed by route and status because that is what a
-  // person can check, and it is pinned in the final step. Without the list the
-  // exemption is unbounded: any route, any status, silently tolerated.
+  // Every API call the *app* made that the API refused, exempted from the
+  // console assertion because the walk contains refused calls by design —
+  // `GET /projects/{id}/schema` answers 404 for a project that has no schema
+  // yet, which is how the editor knows to open on an empty draft — and Chrome
+  // logs a console error for each; a resource the *browser* went looking for
+  // on its own still stands out. The set is keyed by URL because that is what
+  // a console message's location carries; the list is keyed by route and
+  // status because that is what a person can check, and it is pinned in the
+  // final step. Without the list the exemption is unbounded: any route, any
+  // status, silently tolerated.
   const apiRefusals = new Set<string>();
   const refusedApiCalls: string[] = [];
   // Requests the *app* issued that the network stack reported as aborted.
@@ -557,14 +557,24 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // answered — wait for it rather than racing the click against that request.
     await expect(page.getByTestId("connection-model")).toBeVisible();
 
-    // Let the seeded model's size probe settle before moving off it. The form
-    // opens on the first curated model that answers a point prompt and prices it
-    // immediately; clicking through the select faster than that request resolves
-    // leaves the refusal landing at whatever point the dialog happens to unmount,
-    // which is the difference between a pinned list and a flaky one. Waiting is
-    // also what makes the answer readable — `size-known` and `size-unavailable`
-    // are the form's own two outcomes, and the final step expects a refusal from
-    // this route exactly when the second one is what rendered.
+    // Whether the select lands on a curated model, or falls back to Custom
+    // model with an empty id, is a catalog fact `connection-model` being
+    // visible does not settle: `defaultEntry` seeds the first entry that
+    // answers a point prompt, but returns `undefined` when none does, and
+    // `DownloadSizeLine` renders nothing for an empty id — so the wait below
+    // would die on a bare, undiagnosable timeout on such an installation.
+    // Assert the seed landed on a curated model before waiting on the price
+    // probe only a curated model triggers.
+    await expect(page.getByTestId("connection-model")).not.toHaveText(/Custom model/);
+
+    // Let the seeded model's size probe settle before moving off it: clicking
+    // through the select faster than that request resolves leaves the
+    // refusal landing at whatever point the dialog happens to unmount, which
+    // is the difference between a pinned list and a flaky one. Waiting is
+    // also what makes the answer readable — `size-known` and
+    // `size-unavailable` are the form's own two outcomes, and the final step
+    // expects a refusal from this route exactly when the second one is what
+    // rendered.
     const sizeLine = page.getByTestId(/^size-(known|unavailable)$/);
     await expect(sizeLine).toBeVisible();
     curatedSizeRefused = (await sizeLine.getAttribute("data-testid")) === "size-unavailable";
@@ -1537,11 +1547,15 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * **The refused API calls, pinned rather than merely tolerated.**
      *
      * Six 404s, all of them a screen asking for a document that does not exist
-     * yet: the schema editor opens on an empty draft precisely because
-     * `GET /projects/{id}/schema` and its two draft siblings answer 404 for a
-     * project nobody has given a schema. Each is asked twice, once as the editor
-     * mounts and once as it re-reads after a write. The project's id changes per
-     * run, so each is matched rather than compared.
+     * yet: `GET /projects/{id}/schema` and its curated draft sibling are the
+     * schema editor's, opening on an empty draft for a project nobody has
+     * given a schema; the annotation draft pair belongs to the annotator's
+     * add-a-class dialog, gated on `addingClass` the same way. The walk asks
+     * each pair twice — a mount, then the remount or `page.reload()` that
+     * follows — because a saved draft is written straight into the cache
+     * rather than invalidated, so writing one never triggers a second read by
+     * itself. The project's id changes per run, so each is matched rather
+     * than compared.
      *
      * The seventh entry is conditional on the installation, and is the reason this
      * list is worth pinning at all. `GET /inference/download-size` prices the
