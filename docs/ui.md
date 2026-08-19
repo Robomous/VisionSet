@@ -221,8 +221,10 @@ one guards emitting an **incomplete copy of something that stays intact**. The
 kernel never catches the three together and neither does the UI: three dialogs,
 three questions.
 
-There is no pre-export validation route, so consent is the schema editor's shape:
-attempt → read `LOSSY_EXPORT_NOT_CONSENTED` off the 409 → ask → retry with the flag.
+There is no pre-export validation route, so consent here is attempt-shaped: attempt → read
+`LOSSY_EXPORT_NOT_CONSENTED` off the 409 → ask → retry with the flag. The schema editor no
+longer has this shape - it previews first - and the difference is exactly the routed preview
+that export lacks.
 `FormatOut.lossy` makes the question predictable in advance, because lossiness is
 declared by the **format** - a bbox-only format loses a polygon whether or not
 today's dataset holds one.
@@ -844,13 +846,20 @@ which is the lost update `STALE_WRITE` exists to prevent, and "Close" would leav
 editor showing a draft the server no longer recognises. Reloading is the only remedy that
 does not either lose work or leave the screen lying.
 
-`SchemaService.preview` **is** routed, at `POST .../schema/preview` - it answers both gates
-the publish itself would, `is_destructive` and `is_refused`, without writing anything. The
-editor does not call it: nothing is locked between a preview and a publish, so somebody
-could label a class in the gap and turn a preview that looked safe into a refusal, and a
-call the editor never makes cannot disagree with the publish that follows it. The publish's
-own 409 is what actually decides, and making that refusal legible - not pre-empting it - is
-the editor's whole job here, exactly as `SchemaEditor`'s own docstring states it.
+`SchemaService.preview` is routed at `POST .../schema/preview` - it answers both gates the
+publish itself would, `is_destructive` and `is_refused`, without writing anything - and
+**the editor calls it**, once before a class leaves the draft and once before a publish.
+Both narrowing questions are therefore asked before anything is sent. A class that already
+carries labels never reaches a publish request at all: it gets one terminal dialog naming
+the annotations and assets that block it, counted, and no button that starts a save the
+dialog knows will be refused. A class that carries none gets one confirmation, which names
+how many classes narrow and states that no annotations are at risk.
+
+That does not demote the 409. Nothing is locked between a preview and the publish, so
+somebody can label a class in the gap and turn a preview that looked safe into a refusal -
+which is why the publish's own refusal stays authoritative, and why it renders through the
+same blocker view the preview feeds rather than through a second presentation that could
+drift from it. The preview removes a doomed round trip; it does not decide.
 
 `compare` **is** routed since #231, and it answers the neighbouring question - what
 two *published* versions did to each other. The version navigator uses it, and never

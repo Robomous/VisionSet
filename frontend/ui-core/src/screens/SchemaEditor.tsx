@@ -59,16 +59,19 @@
  * one is not — so a TypeScript copy would drift, and the drift would read as a
  * screen calling a change safe that the API then refuses.
  *
- * ## A preview exists, and it is advisory rather than authoritative
+ * ## The preview leads, and the publish still decides
  *
  * `compare` answers what two *published* versions did to each other. `POST
- * .../schema/preview` answers the harder question — what publishing *this*
- * draft would do — and is routed: `SchemaService.preview` is not the missing
- * method a comment here used to claim. Routing it does not remove the need for
- * the refusal surface below, though: a preview is advisory because nothing is
- * locked between it and a publish, so the two can disagree by the time Save is
- * actually pressed. The publish's own 409 stays the authoritative answer, and
- * making that refusal legible — not pre-empting it — is the editor's actual job.
+ * .../schema/preview` answers the harder question — what publishing *this* draft
+ * would do — and the editor calls it twice: before a class leaves the draft, and
+ * before a publish. That is what removes the round trip that was doomed before it
+ * was sent, and it is why a class already carrying labels is refused in one
+ * terminal dialog rather than after two confirmations that contradict it.
+ *
+ * It does not make the preview authoritative. Nothing is locked between a preview
+ * and the publish, so somebody can label a class in the gap; the publish's own 409
+ * is still the answer, and it renders through the same blocker view the preview
+ * feeds, so the two paths cannot drift apart.
  *
  * **Two 409s, and only one is retryable.** This is the exact case `docs/api.md`
  * exists for:
