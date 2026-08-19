@@ -173,6 +173,26 @@ function preLabelRunOf(overrides: Record<string, unknown> = {}): Record<string, 
   };
 }
 
+/**
+ * A full `PreLabelPlanOut` — the classes a run would ask for, and the rest.
+ *
+ * Two left out for different reasons and one left out for both, because a
+ * single-reason default would let a dialog that only ever renders the first
+ * reason pass.
+ */
+function planOf(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schema_version: 3,
+    asked_classes: ["person", "car"],
+    excluded_classes: [
+      { name: "vehicle", reasons: ["required_attribute"] },
+      { name: "lane", reasons: ["no_bbox_geometry"] },
+      { name: "crossing", reasons: ["no_bbox_geometry", "required_attribute"] },
+    ],
+    ...overrides,
+  };
+}
+
 /** The exact prose the kernel writes for each refusal `pre-label` can answer. */
 const REFUSAL_MESSAGE: Record<string, string> = {
   SCHEMA_HAS_NO_DETECTABLE_CLASS:
@@ -193,6 +213,7 @@ interface Extra {
   readonly connections?: readonly Connection[];
   readonly counts?: { readonly unannotated: number; readonly total: number };
   readonly preLabel?: Answer;
+  readonly plan?: Answer;
 }
 
 function renderGallery(batchOverrides: Record<string, unknown> = {}, extra: Extra = {}): void {
@@ -213,6 +234,10 @@ function renderGallery(batchOverrides: Record<string, unknown> = {}, extra: Extr
     body: { items: connections, total: connections.length },
   });
   on("POST", /\/pre-label$/, extra.preLabel ?? { status: 202, body: backgroundJobOf() });
+  // Every test that opens this dialog reads the plan, so it is stubbed here
+  // rather than per test — and overridable, because the refusal is one of the
+  // things the dialog has to render.
+  on("GET", /\/pre-label$/, extra.plan ?? { status: 200, body: planOf() });
 
   render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
 }
@@ -254,6 +279,108 @@ it("says how many assets the run will touch", async () => {
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   expect(await screen.findByText(/412 of 500/)).not.toBeNull();
+});
+
+it("names the classes the run will ask for", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect((await screen.findByTestId("prelabel-asked-classes")).textContent).toBe(
+    "Asks for person, car.",
+  );
+});
+
+it("names every class it will not ask for, with the reason beside it", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  // `crossing` carries both reasons: told only that it admits no box, somebody
+  // adds one and watches it stay absent from the next run's prompt.
+  expect((await screen.findByTestId("prelabel-excluded-classes")).textContent).toBe(
+    "Not asked for: vehicle (requires an attribute a prediction cannot supply); " +
+      "lane (no box); crossing (no box, requires an attribute a prediction cannot supply).",
+  );
+});
+
+it("still names a class whose reason this build has never compiled against", async () => {
+  // The vocabulary is open, so a newer server may word a reason this build has
+  // no prose for. Which class is missing from the prompt must survive that —
+  // dropping the whole line would be the failure the plan exists to prevent.
+  renderGallery(
+    { allowed_actions: ["pre_label"] },
+    {
+      plan: {
+        status: 200,
+        body: planOf({
+          excluded_classes: [
+            { name: "vehicle", reasons: ["something_this_build_never_saw"] },
+            { name: "lane", reasons: ["no_bbox_geometry"] },
+          ],
+        }),
+      },
+    },
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect((await screen.findByTestId("prelabel-excluded-classes")).textContent).toBe(
+    "Not asked for: vehicle; lane (no box).",
+  );
+});
+
+it("says nothing about exclusions when the whole schema is askable", async () => {
+  renderGallery(
+    { allowed_actions: ["pre_label"] },
+    { plan: { status: 200, body: planOf({ excluded_classes: [] }) } },
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  await screen.findByTestId("prelabel-asked-classes");
+  expect(screen.queryByTestId("prelabel-excluded-classes")).toBeNull();
+});
+
+it("names the classes again beside a finished run's result", async () => {
+  on("GET", /\/background-jobs\//, {
+    status: 200,
+    body: backgroundJobOf({
+      state: "succeeded",
+      processed: 48,
+      total: 48,
+      result: {
+        assets_labeled: 0,
+        annotations_written: 0,
+        regions_discarded: 0,
+        assets_skipped: 0,
+        stopped_early: false,
+      },
+    }),
+  });
+  renderGallery({ allowed_actions: ["pre_label"] });
+
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await userEvent.click(await screen.findByRole("button", { name: /start/i }));
+
+  // A run that labeled nothing is exactly where the left-out classes are the
+  // answer, and the dialog that named them before the run is long closed.
+  await screen.findByRole("button", { name: /edit these frames/i });
+  expect((await screen.findByTestId("prelabel-excluded-classes")).textContent).toContain(
+    "vehicle (requires an attribute a prediction cannot supply)",
+  );
+});
+
+it("shows the plan's own refusal and will not offer a run behind it", async () => {
+  renderGallery(
+    { allowed_actions: ["pre_label"] },
+    { plan: refuses(409, "SCHEMA_HAS_NO_DETECTABLE_CLASS") },
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect(
+    (await screen.findByTestId("prelabel-plan-error")).textContent,
+  ).toMatch(/no class that a box can be written as/i);
+  expect(screen.queryByTestId("prelabel-classes")).toBeNull();
+  expect(
+    (screen.getByTestId("prelabel-submit") as HTMLButtonElement).disabled,
+  ).toBe(true);
 });
 
 it("shows the refusal rather than swallowing it", async () => {

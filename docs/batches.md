@@ -337,6 +337,19 @@ no overlap with a measured asset is discarded separately, and `regions_out_of_bo
 many; unmeasured assets remain eligible. A schema with no such class is refused up front; see
 [inference.md](inference.md#what-a-connection-can-be-asked-for).
 
+**A class is left out of the prompt for either of two reasons, and both are published.** It does
+not admit `bbox`, so a detection has no shape to land as; or it declares a required attribute,
+which a bare prediction carries no value for. Neither is visible in a run's outcome - a schema
+whose `vehicle` requires a `color` completes a run, labels no vehicles, and says nothing about
+why - so `GET /batches/{id}/pre-label` answers both halves before a run starts: `asked_classes`
+is the prompt, and `excluded_classes` names the rest with every reason that holds against each.
+Every class the pinned schema declares appears in exactly one of the two lists. It is derived
+from the schema alone and needs no connection, so a dialog can name the classes before anybody
+has chosen a model; a batch whose schema has no askable class at all is refused with the same
+`SCHEMA_HAS_NO_DETECTABLE_CLASS` the launch answers, rather than reported as an empty prompt. At
+a terminal `visionset batch pre-label` writes the same two lines to stderr before the first
+forward pass.
+
 **What lands enters at `pre_labeled`, never `annotated`.** Nobody judged it, so it arrives in its
 own editable state rather than claiming to be somebody's work - see
 [annotations.md](annotations.md#provenance-is-the-models-own-rule-not-the-services). It is not
