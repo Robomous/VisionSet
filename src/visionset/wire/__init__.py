@@ -57,8 +57,10 @@ from uuid import UUID
 # surfaces, it imports nothing from here, and what it owns is the fact this
 # module has no way to know — which model families this build can serve. The
 # alternative is spelling that mapping a second time, which is what every other
-# rule in this file exists to prevent.
-from visionset.inference import capabilities_of
+# rule in this file exists to prevent. ``PreLabelPlan`` arrives the same way:
+# the narrowing of a pinned schema to the classes a box can be written as is
+# derived there, and every surface publishes it.
+from visionset.inference import PreLabelPlan, capabilities_of
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
@@ -454,6 +456,25 @@ def pre_label_run(value: PreLabelRun) -> dict[str, Any]:
         "assets_labeled": value.assets_labeled,
         "regions_discarded": value.regions_discarded,
         "regions_out_of_bounds": value.regions_out_of_bounds,
+    }
+
+
+def pre_label_plan(value: PreLabelPlan) -> dict[str, Any]:
+    """The prompt a pre-labeling run asks under, and every class left out of it.
+
+    One spelling for the tool that answers the plan on its own and for the run
+    that reports the plan it ran under; two would be how an agent comes to see
+    ``excluded_classes`` under one and something else under the other.
+    ``schema_version`` is the pin both halves were derived from — a re-pin
+    changes both.
+    """
+    return {
+        "schema_version": value.schema_version,
+        "asked_classes": list(value.asked),
+        "excluded_classes": [
+            {"name": one.name, "reasons": [reason.value for reason in one.reasons]}
+            for one in value.excluded
+        ],
     }
 
 
