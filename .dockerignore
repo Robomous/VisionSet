@@ -9,7 +9,7 @@
 # put somebody's annotated assets into the daemon's tarball.
 
 # Dependency trees. Rebuilt inside the images, and platform-specific besides.
-node_modules/
+**/node_modules/
 .venv/
 .pnpm-store/
 
