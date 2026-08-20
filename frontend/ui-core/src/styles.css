@@ -79,8 +79,8 @@
    */
   --stage: oklch(0.94 0 0);
   /*
-   * Robomous coral. Identity only — the wordmark and the ingest progress
-   * fill, named in `DESIGN.md` — never a functional-UI colour. A third site
+   * Robomous coral. Identity only — the wordmark and its styleguide swatch,
+   * named in `DESIGN.md` — never a functional-UI colour. A third site
    * is a design decision, not a styling one.
    */
   --brand: oklch(0.653 0.178 32.3);
