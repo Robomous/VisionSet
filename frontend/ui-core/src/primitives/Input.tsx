@@ -25,11 +25,11 @@ import { cn } from "../lib/cn";
 // `card`, not `background`: a field is a surface you type into, and the page is a
 // faint grey, so `bg-background` would render every input as a slightly
 // dirty version of the page rather than as a thing sitting on it. Disabled takes
-// the same neutral skin `Button` does — `opacity-50` over a grey page is muddy.
+// Nova's uniform-opacity idiom, same as `Button`.
 const FIELD =
   "w-full rounded-md border border-input bg-card px-3 text-sm text-foreground " +
   "placeholder:text-muted-foreground disabled:cursor-not-allowed " +
-  "disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground";
+  "disabled:pointer-events-none disabled:opacity-50";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...props }, ref) {

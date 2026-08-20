@@ -433,7 +433,7 @@ describe("the single review action", () => {
  */
 function filled(): HTMLElement[] {
   // `classList.contains`, never `className.includes`: the substring form also
-  // matches `hover:bg-primary-hover`, which every filled *and* every hovered
+  // matches `hover:bg-primary/80`, which every filled *and* every hovered
   // control would answer to.
   return [...document.querySelectorAll<HTMLElement>("header button")].filter((button) =>
     button.classList.contains("bg-primary"),
@@ -730,7 +730,7 @@ describe("the forward-action pair", () => {
   /** Every `success`-filled control on the bar. `filled()`'s counterpart. */
   function successFilled(): HTMLElement[] {
     // `classList.contains`, for `filled()`'s reason: the substring form also
-    // matches `hover:bg-success-hover`.
+    // matches `hover:bg-success/90`.
     return [...document.querySelectorAll<HTMLElement>("header button")].filter((button) =>
       button.classList.contains("bg-success"),
     );

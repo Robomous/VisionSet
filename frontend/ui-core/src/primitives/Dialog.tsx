@@ -30,7 +30,7 @@ export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 export const DialogPortal = DialogPrimitive.Portal;
 
-const OVERLAY = "fixed inset-0 z-50 bg-sidebar-strong/50";
+const OVERLAY = "fixed inset-0 z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs";
 
 export const DialogOverlay = forwardRef<
   ElementRef<typeof DialogPrimitive.Overlay>,

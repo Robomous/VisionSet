@@ -85,7 +85,7 @@ export const SelectTrigger = forwardRef<
         // value that wrapped would centre with it.
         "flex min-h-9 w-full items-center justify-between gap-2 rounded-md border border-input " +
           "bg-card px-3 py-1 text-left text-sm text-foreground disabled:cursor-not-allowed " +
-          "disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground",
+          "disabled:pointer-events-none disabled:opacity-50",
         className,
       )}
       {...props}
@@ -108,7 +108,7 @@ export const SelectContent = forwardRef<
         ref={ref}
         position={position}
         className={cn(
-          "z-50 flex max-h-(--radix-select-content-available-height) min-w-32 flex-col " +
+          "dark z-50 flex max-h-(--radix-select-content-available-height) min-w-32 flex-col " +
             "overflow-hidden rounded-lg border border-border bg-popover " +
             "text-popover-foreground shadow-lg",
           className,

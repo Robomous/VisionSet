@@ -190,7 +190,7 @@ export function Combobox<T>({
           aria-haspopup="listbox"
           data-testid={`${testId}-trigger`}
           disabled={disabled}
-          className="flex h-8 max-w-64 items-center gap-2 rounded-md border border-input bg-card px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground"
+          className="flex h-8 max-w-64 items-center gap-2 rounded-md border border-input bg-card px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50"
           onClick={() => onOpenChange(true)}
         >
           {trigger}
@@ -224,7 +224,7 @@ export function Combobox<T>({
         role="listbox"
         aria-label={label}
         data-testid={`${testId}-list`}
-        className="absolute left-0 top-9 z-50 max-h-72 w-64 overflow-y-auto rounded-md border border-border bg-card p-1 shadow-lg"
+        className="dark absolute left-0 top-9 z-50 max-h-72 w-64 overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg"
       >
         {shown.map((item, index) => (
           <li
