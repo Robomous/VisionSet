@@ -37,6 +37,13 @@ ALLOWLIST: dict[str, int] = {
     # media guard it has nothing to do with, so the exemption is taken deliberately now rather
     # than under duress later. Same ceiling as the spec it is derived from.
     "frontend/ui-core/src/generated/api.ts": 512 * 1024,
+    # The frontend workspace's resolved dependency graph — the pnpm counterpart of uv.lock, and
+    # exempted on the same terms: text, machine-generated, and being large is the file's job. It
+    # lived under the default limit until the shadcn preset foundation brought its dependencies
+    # (the shadcn runtime, two font packages, an icon set) and pushed it to 219 KB, which is how
+    # a media guard came to refuse a lockfile. Bounded like the others, so it cannot balloon
+    # unnoticed.
+    "pnpm-lock.yaml": 1024 * 1024,
     # The documentation site's resolved dependency graph. `docs-site/` is its own pnpm workspace
     # root, so it keeps its own lockfile — see docs-site/pnpm-workspace.yaml for why. Same
     # exemption as uv.lock and for the same reason: text, machine-generated, and being large is
