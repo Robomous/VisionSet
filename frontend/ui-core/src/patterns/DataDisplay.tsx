@@ -296,7 +296,7 @@ export function ClassListRow({
     selected
       ? "border-l-primary bg-primary/10"
       : "border-l-transparent hover:bg-muted focus-visible:bg-muted",
-    refusal !== undefined && "cursor-not-allowed text-disabled-foreground",
+    refusal !== undefined && "cursor-not-allowed opacity-50",
     className,
   );
   const swatch = (

@@ -19,7 +19,7 @@ export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 
 const SURFACE =
-  "z-50 min-w-40 overflow-hidden rounded-lg border border-border bg-popover p-1 " +
+  "dark z-50 min-w-40 overflow-hidden rounded-lg border border-border bg-popover p-1 " +
   "text-popover-foreground shadow-lg";
 
 export const DropdownMenuContent = forwardRef<
@@ -83,7 +83,7 @@ export const TooltipContent = forwardRef<
         ref={ref}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 rounded-md bg-sidebar px-2 py-1 text-xs text-sidebar-foreground shadow-lg",
+          "dark z-50 rounded-md bg-popover px-2 py-1 text-xs text-popover-foreground shadow-lg",
           className,
         )}
         {...props}
