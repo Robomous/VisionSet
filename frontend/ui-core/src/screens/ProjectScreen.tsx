@@ -852,12 +852,12 @@ function ProjectHeader({
   return (
     <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
       <div className="flex min-w-0 flex-col gap-1.5">
-        <h1 className="text-page font-semibold tracking-tight" data-testid="project-title">
+        <h1 className="text-2xl font-semibold tracking-tight" data-testid="project-title">
           {project.name}
         </h1>
         {/* Nothing at all when there is no description — not a placeholder. */}
         {project.description !== null && project.description !== "" && (
-          <p className="text-body text-muted-foreground" data-testid="project-description">
+          <p className="text-sm text-muted-foreground" data-testid="project-description">
             {project.description}
           </p>
         )}
@@ -1010,7 +1010,7 @@ function AnnotateAction({
           >
             <div className="flex flex-col items-start">
               <span>{batch.name}</span>
-              <span className="text-meta text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {batch.progress.unannotated} to do ·{" "}
                 {batch.schema_version == null ? "—" : `v${batch.schema_version}`}
               </span>
@@ -1109,8 +1109,8 @@ function VersionHistory({ projectId }: { readonly projectId: string }): JSX.Elem
           once, scannable. That one is the *reader* — one version at a time, with
           what it changed against its predecessor. */}
       <header className="border-b border-border pb-4">
-        <h2 className="text-section font-semibold tracking-tight">Version history</h2>
-        <p className="text-meta text-muted-foreground">
+        <h2 className="text-base font-semibold tracking-tight">Version history</h2>
+        <p className="text-xs text-muted-foreground">
           Every schema version this project has declared. They are 1..N, never updated and
           never deleted — a restore is a new version with the old classes. Versions published
           while annotating are grouped; expand a group to read them one by one.

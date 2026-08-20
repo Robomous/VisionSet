@@ -259,13 +259,13 @@ function DoneSummary({
   return (
     <div className="flex flex-col gap-1" data-testid="prelabel-summary">
       {result !== null && (
-        <p className="text-body text-foreground">
+        <p className="text-sm text-foreground">
           Labeled {labeled} asset{labeled === 1 ? "" : "s"}, writing {written} region
           {written === 1 ? "" : "s"} for you to correct.
         </p>
       )}
       {discarded > 0 && (
-        <p className="text-meta text-muted-foreground" data-testid="prelabel-discarded">
+        <p className="text-xs text-muted-foreground" data-testid="prelabel-discarded">
           {discarded} model region{discarded === 1 ? " did" : "s did"} not match a requested class.
         </p>
       )}
@@ -273,13 +273,13 @@ function DoneSummary({
         <p>{`${outOfBounds} model region${outOfBounds === 1 ? " was" : "s were"} outside their asset and were skipped.`}</p>
       )}
       {skipped > 0 && (
-        <p className="text-meta text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Skipped {skipped} asset{skipped === 1 ? "" : "s"} that work had already started on
           while the run was under way.
         </p>
       )}
       {stoppedEarly && (
-        <p className="text-meta text-muted-foreground">The run stopped before reaching every asset.</p>
+        <p className="text-xs text-muted-foreground">The run stopped before reaching every asset.</p>
       )}
     </div>
   );
@@ -330,11 +330,11 @@ function PromptClasses({ plan }: { readonly plan: PreLabelPlan | null }): JSX.El
   if (plan === null) return null;
   return (
     <div className="flex flex-col gap-1" data-testid="prelabel-classes">
-      <p className="text-meta text-muted-foreground" data-testid="prelabel-asked-classes">
+      <p className="text-xs text-muted-foreground" data-testid="prelabel-asked-classes">
         Asks for {plan.asked_classes.join(", ")}.
       </p>
       {plan.excluded_classes.length > 0 && (
-        <p className="text-meta text-muted-foreground" data-testid="prelabel-excluded-classes">
+        <p className="text-xs text-muted-foreground" data-testid="prelabel-excluded-classes">
           Not asked for: {plan.excluded_classes.map(excludedProse).join("; ")}.
         </p>
       )}
@@ -529,7 +529,7 @@ function PreLabelDialog({
                   // An explanation with no control beats a control that does nothing —
                   // `SuggestPanel`'s standing rule, applied here: there is nowhere to
                   // route "add one" from this dialog without a new nav entry.
-                  <p className="text-meta text-muted-foreground" data-testid="prelabel-no-connections">
+                  <p className="text-xs text-muted-foreground" data-testid="prelabel-no-connections">
                     No connection answers text prompts yet — add one from Inference first.
                   </p>
                 ) : (
@@ -574,7 +574,7 @@ function PreLabelDialog({
 
               <PromptClasses plan={plan.data ?? null} />
 
-              <p className="text-meta text-muted-foreground" data-testid="prelabel-count">
+              <p className="text-xs text-muted-foreground" data-testid="prelabel-count">
                 {untouchedSummary(untouched, total)}
               </p>
             </>
@@ -583,13 +583,13 @@ function PreLabelDialog({
           {mode === "configure" && blocked && active !== undefined && (
             // Model and threshold are context here, not choices: nothing is
             // about to run, so one line replaces the two live fields above.
-            <p className="text-meta text-muted-foreground" data-testid="prelabel-config-summary">
+            <p className="text-xs text-muted-foreground" data-testid="prelabel-config-summary">
               {active.name} · minimum prompt affinity {confidence}
             </p>
           )}
 
           {view !== null && (
-            <p className="flex items-center gap-2 text-meta text-muted-foreground">
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <Badge
                 variant={JOB_STATE_VARIANT[view.state] ?? "neutral"}
                 data-testid="prelabel-job-state"
@@ -615,7 +615,7 @@ function PreLabelDialog({
           )}
 
           {mode === "stopped" && view !== null && (
-            <p className="text-body text-foreground" data-testid="prelabel-stopped-summary">
+            <p className="text-sm text-foreground" data-testid="prelabel-stopped-summary">
               {stoppedSummary(view, untouched)}
             </p>
           )}
@@ -623,7 +623,7 @@ function PreLabelDialog({
           {mode === "failed" && view !== null && (
             <>
               {failedProgress(view) !== null && (
-                <p className="text-body text-foreground" data-testid="prelabel-failed-progress">
+                <p className="text-sm text-foreground" data-testid="prelabel-failed-progress">
                   {failedProgress(view)}
                 </p>
               )}

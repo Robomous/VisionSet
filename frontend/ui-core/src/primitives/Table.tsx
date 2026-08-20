@@ -20,7 +20,7 @@ export const Table = forwardRef<HTMLTableElement, HTMLAttributes<HTMLTableElemen
 ) {
   return (
     <div className="w-full overflow-x-auto rounded-xl border border-border">
-      <table ref={ref} className={cn("w-full caption-bottom text-body", className)} {...props} />
+      <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
     </div>
   );
 });
@@ -54,7 +54,7 @@ export const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLT
     return (
       <th
         ref={ref}
-        className={cn("px-3 py-2 text-left text-meta font-medium text-muted-foreground", className)}
+        className={cn("px-3 py-2 text-left text-xs font-medium text-muted-foreground", className)}
         {...props}
       />
     );
@@ -77,7 +77,7 @@ export function TableEmpty({
 }): JSX.Element {
   return (
     <tr>
-      <td colSpan={colSpan} className="px-3 py-8 text-center text-body text-muted-foreground">
+      <td colSpan={colSpan} className="px-3 py-8 text-center text-sm text-muted-foreground">
         {children}
       </td>
     </tr>

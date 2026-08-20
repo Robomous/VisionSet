@@ -112,7 +112,7 @@ export function BatchOverflowMenu({
             <span className="flex flex-col items-start gap-0.5">
               <span>Delete batch</span>
               {reason !== null && (
-                <span className="text-meta text-muted-foreground" data-testid={`delete-withheld-${batch.name}`}>
+                <span className="text-xs text-muted-foreground" data-testid={`delete-withheld-${batch.name}`}>
                   {reason}
                 </span>
               )}

@@ -129,8 +129,8 @@ export function HomeScreen({
     <div className="flex flex-col gap-6" data-testid="home">
       <header className="flex items-start justify-between gap-4 border-b border-border pb-4">
         <div>
-          <h1 className="text-page font-semibold text-foreground">Home</h1>
-          <p className="text-meta text-muted-foreground">
+          <h1 className="text-2xl font-semibold text-foreground">Home</h1>
+          <p className="text-xs text-muted-foreground">
             What is waiting, across every project in this workspace.
           </p>
         </div>
@@ -201,8 +201,8 @@ function FirstRun({ onCreate }: { readonly onCreate: () => void }): JSX.Element 
     <div className="mx-auto flex max-w-2xl flex-col items-center gap-6 py-16 text-center">
       <div className="flex flex-col items-center gap-2">
         <FolderGit2 className="size-8 text-muted-foreground" aria-hidden="true" />
-        <h1 className="text-page font-semibold text-foreground">Start your first project</h1>
-        <p className="text-meta text-muted-foreground">
+        <h1 className="text-2xl font-semibold text-foreground">Start your first project</h1>
+        <p className="text-xs text-muted-foreground">
           A project is where a schema, its batches and its dataset live.
         </p>
       </div>
@@ -240,7 +240,7 @@ function Stage({
         {icon}
       </span>
       <span className="font-medium text-foreground">{title}</span>
-      <span className="text-meta text-muted-foreground">{children}</span>
+      <span className="text-xs text-muted-foreground">{children}</span>
     </div>
   );
 }
@@ -291,7 +291,7 @@ function Resume({
       data-testid="home-resume"
       data-kind={resume.kind}
     >
-      <h2 className="text-meta font-medium text-muted-foreground">Continue where you left off</h2>
+      <h2 className="text-xs font-medium text-muted-foreground">Continue where you left off</h2>
       <div className="flex items-center gap-4">
         {resume.thumbnail_asset_id !== null && (
           <div className="size-16 shrink-0 overflow-hidden rounded-sm">
@@ -309,9 +309,9 @@ function Resume({
           </div>
         )}
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate text-meta text-muted-foreground">{resume.project_name}</span>
+          <span className="truncate text-xs text-muted-foreground">{resume.project_name}</span>
           <span className="truncate font-medium text-foreground">{resume.batch_name}</span>
-          <span className="text-meta tabular-nums text-muted-foreground">
+          <span className="text-xs tabular-nums text-muted-foreground">
             {/* Under `review` the labeling is finished, so how much of it is
                 labeled is not the number anybody is here for. */}
             {resume.kind === "review"
@@ -348,7 +348,7 @@ function Attention({
   if (items.length === 0) return null;
   return (
     <section className="flex flex-col gap-2" data-testid="home-attention">
-      <h2 className="text-meta font-medium text-muted-foreground">Needs your attention</h2>
+      <h2 className="text-xs font-medium text-muted-foreground">Needs your attention</h2>
       <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
         {items.map((item) => (
           <li key={`${item.kind}-${item.subject_id}`}>
@@ -375,7 +375,7 @@ function AttentionRow({
       <AttentionIcon kind={item.kind} />
       <span className="min-w-0 flex-1 truncate text-foreground">{attentionLine(item)}</span>
       {item.project_name !== null && (
-        <span className="shrink-0 text-meta text-muted-foreground">{item.project_name}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{item.project_name}</span>
       )}
       {item.kind === "job_failed" && <Badge variant="destructive">Failed</Badge>}
     </>
@@ -447,11 +447,11 @@ function Recent({
   return (
     <section className="flex flex-col gap-2" data-testid="home-recent">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-meta font-medium text-muted-foreground">Recent projects</h2>
+        <h2 className="text-xs font-medium text-muted-foreground">Recent projects</h2>
         {onOpenProjects !== undefined && (
           <button
             type="button"
-            className="flex items-center gap-1 text-meta text-muted-foreground hover:text-foreground"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
             data-testid="home-all-projects"
             onClick={onOpenProjects}
           >
@@ -471,7 +471,7 @@ function Recent({
               onClick={() => onOpenProject?.(project.project_id)}
             >
               <span className="min-w-0 flex-1 truncate text-foreground">{project.name}</span>
-              <span className="shrink-0 text-meta tabular-nums text-muted-foreground">
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                 {formatCount(project.asset_count)}{" "}
                 {project.asset_count === 1 ? "image" : "images"} ·{" "}
                 {formatPercent(project.annotated_fraction * 100)} annotated
@@ -489,7 +489,7 @@ function Activity({ entries }: { readonly entries: readonly ActivityEntry[] }): 
   if (entries.length === 0) return null;
   return (
     <section className="flex flex-col gap-2" data-testid="home-activity">
-      <h2 className="text-meta font-medium text-muted-foreground">Activity</h2>
+      <h2 className="text-xs font-medium text-muted-foreground">Activity</h2>
       <ul className="flex flex-col gap-2">
         {entries.map((entry) => (
           <li
@@ -498,8 +498,8 @@ function Activity({ entries }: { readonly entries: readonly ActivityEntry[] }): 
             data-testid="home-activity-row"
           >
             <ActivityIcon kind={entry.kind} />
-            <span className="min-w-0 flex-1 text-meta text-foreground">{activityLine(entry)}</span>
-            <span className="shrink-0 text-meta tabular-nums text-muted-foreground">
+            <span className="min-w-0 flex-1 text-xs text-foreground">{activityLine(entry)}</span>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
               {formatWhen(entry.occurred_at)}
             </span>
           </li>

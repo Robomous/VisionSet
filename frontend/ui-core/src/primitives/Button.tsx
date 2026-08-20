@@ -21,16 +21,14 @@ import { cn } from "../lib/cn";
 /**
  * The fill a disabled control wears.
  *
- * `opacity-50` was the old answer and it was the wrong one on a coral button: it
- * produced a *pale coral*, which reads as a weaker version of the brand rather
- * than as an unavailable control. An explicit neutral skin says the same thing in
- * one colour, and drops the border rather than tinting it — a faint outline
- * around a grey block is the shape of a button nobody can press.
+ * Nova's disabled idiom is uniform 50% opacity rather than a colour swap: the
+ * button dims as itself instead of putting on a separate neutral skin, so
+ * "unavailable" reads as the same control turned down rather than as a
+ * different, greyed-out component.
  *
  * `pointer-events-none` is what keeps every `hover:` above from firing here.
  */
-const DISABLED_FILLED =
-  "disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground";
+const DISABLED_FILLED = "disabled:pointer-events-none disabled:opacity-50";
 
 export const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium " +
@@ -39,7 +37,7 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: `bg-primary text-primary-foreground hover:bg-primary-hover ${DISABLED_FILLED}`,
+        primary: `bg-primary text-primary-foreground hover:bg-primary/80 ${DISABLED_FILLED}`,
         secondary: `border border-input bg-card text-foreground hover:bg-muted ${DISABLED_FILLED}`,
         /**
          * The second filled weight, and it has exactly one sanctioned caller:
@@ -53,19 +51,22 @@ export const buttonVariants = cva(
          * gesture sit side by side, which is a shape the rest of the product
          * does not have.
          */
-        success: `bg-success text-success-foreground hover:bg-success-hover ${DISABLED_FILLED}`,
+        success: `bg-success text-success-foreground hover:bg-success/90 ${DISABLED_FILLED}`,
         ghost:
           "text-muted-foreground hover:bg-muted hover:text-foreground " +
           // No fill: a ghost has none to grey out, and giving it one on the way
           // out would make it appear rather than recede.
-          "disabled:text-disabled-foreground",
-        destructive: `bg-destructive text-destructive-foreground hover:opacity-90 ${DISABLED_FILLED}`,
-        link: "text-foreground underline underline-offset-4 hover:text-primary disabled:text-disabled-foreground",
+          "disabled:opacity-50",
+        // Nova's soft destructive: a tinted background and ink rather than a
+        // solid fill, so the one variant that can end something does not read
+        // as loud as `primary`.
+        destructive: `bg-destructive/10 text-destructive hover:bg-destructive/20 ${DISABLED_FILLED}`,
+        link: "text-foreground underline underline-offset-4 hover:text-primary disabled:opacity-50",
       },
       size: {
-        sm: "h-8 px-3 text-meta",
-        md: "h-9 px-4 text-body",
-        lg: "h-10 px-6 text-body",
+        sm: "h-8 px-3 text-xs",
+        md: "h-9 px-4 text-sm",
+        lg: "h-10 px-6 text-sm",
         // 36px square — the tool strip's size, and `DESIGN.md`'s.
         icon: "size-9 p-0",
       },

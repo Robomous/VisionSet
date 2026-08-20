@@ -271,9 +271,9 @@ export function AnnotatorPanel({
           viewport instead. */}
       <div className="flex min-h-0 flex-1 flex-col gap-2" data-testid="objects-region">
       <div className="flex items-center justify-between px-1">
-        <span className="text-body font-medium">Annotations</span>
+        <span className="text-sm font-medium">Annotations</span>
         <div className="flex items-center gap-2">
-          <span className="text-meta text-muted-foreground" data-testid="object-count">
+          <span className="text-xs text-muted-foreground" data-testid="object-count">
             {drawn.length} object{drawn.length === 1 ? "" : "s"}
           </span>
           <Button
@@ -302,7 +302,7 @@ export function AnnotatorPanel({
       <div className="min-h-0 flex-1 overflow-y-auto" data-testid="objects-scroller">
         {rows.length === 0 ? (
           <p
-            className="px-1 py-4 text-center text-meta text-muted-foreground"
+            className="px-1 py-4 text-center text-xs text-muted-foreground"
             data-testid="objects-empty"
           >
             {drawn.length === 0 ? "Nothing drawn yet." : "No object matches that filter."}
@@ -387,15 +387,15 @@ function TagRegion({
   return (
     <div className="flex shrink-0 flex-col gap-2" data-testid="tag-region">
       <div className="flex items-center justify-between px-1">
-        <span className="text-body font-medium">Tags</span>
-        <span className="text-meta text-muted-foreground" data-testid="tag-count">
+        <span className="text-sm font-medium">Tags</span>
+        <span className="text-xs text-muted-foreground" data-testid="tag-count">
           {assigned} assigned
         </span>
       </div>
 
       {/* Everything else in this panel is about a thing on the picture. This is
           the one line saying these are not. */}
-      <p className="px-1 text-meta text-muted-foreground" data-testid="tag-note">
+      <p className="px-1 text-xs text-muted-foreground" data-testid="tag-note">
         Tags apply to the whole image.
       </p>
 
@@ -416,7 +416,7 @@ function TagRegion({
                 disabled={readOnly}
                 onClick={() => press(declared)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-meta",
+                  "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs",
                   on
                     ? "border-primary bg-primary/10 text-foreground"
                     : "border-border bg-card text-muted-foreground",
@@ -431,7 +431,7 @@ function TagRegion({
                 {on ? (
                   <Check className="size-3 text-primary" aria-hidden="true" />
                 ) : (
-                  <kbd className="rounded-sm border border-border px-1 font-mono text-meta">
+                  <kbd className="rounded-sm border border-border px-1 font-mono text-xs">
                     {hotkeyForClass(schema, declared.name) ?? "—"}
                   </kbd>
                 )}
@@ -486,7 +486,7 @@ function ModelMark({
           // The glyph is the sighted reading; the label is the claim in words,
           // because a sparkle is not self-describing.
           aria-label={`Model-produced by ${annotation.model_ref ?? "an unnamed model"}`}
-          className="flex shrink-0 items-center text-meta text-muted-foreground"
+          className="flex shrink-0 items-center text-xs text-muted-foreground"
         >
           <Sparkles className="size-3" aria-hidden="true" />
         </span>
@@ -558,7 +558,7 @@ function ObjectRow({
         type="button"
         data-testid={`object-select-${index}`}
         onClick={onSelect}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left text-meta"
+        className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs"
       >
         <span
           aria-hidden="true"

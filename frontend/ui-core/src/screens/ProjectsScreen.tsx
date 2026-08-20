@@ -56,8 +56,8 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
     <div className="flex flex-col gap-6" data-testid="projects-screen">
       <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
         <div>
-          <h1 className="text-page font-semibold tracking-tight">Projects</h1>
-          <p className="text-meta text-muted-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+          <p className="text-xs text-muted-foreground">
             A project owns a schema, its batches and one dataset.
           </p>
         </div>
@@ -108,7 +108,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
                     </Button>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {project.description ?? <span className="text-meta">—</span>}
+                    {project.description ?? <span className="text-xs">—</span>}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button

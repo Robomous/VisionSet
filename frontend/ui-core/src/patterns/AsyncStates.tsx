@@ -80,9 +80,9 @@ export function EmptyState({
       <span className="text-muted-foreground" aria-hidden="true">
         {icon ?? <Inbox className="size-8" />}
       </span>
-      <p className="text-section font-semibold">{title}</p>
+      <p className="text-base font-semibold font-heading">{title}</p>
       {description !== undefined && (
-        <p className="max-w-md text-body text-muted-foreground">{description}</p>
+        <p className="max-w-md text-sm text-muted-foreground">{description}</p>
       )}
       {action}
     </div>
@@ -133,7 +133,7 @@ export function ErrorState({
       className={className}
     >
       {meta.length > 0 && (
-        <p className="font-mono text-meta" data-testid="error-code">
+        <p className="font-mono text-xs" data-testid="error-code">
           {meta.join(" · ")}
         </p>
       )}

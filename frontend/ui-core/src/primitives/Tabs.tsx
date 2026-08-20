@@ -57,7 +57,7 @@ const LIST = "flex w-full items-center gap-1 border-b border-border";
 // distinction. A second signal on top of that reflows the row's metrics for nothing.
 const TRIGGER =
   "relative -mb-px inline-flex items-center justify-center gap-2 whitespace-nowrap " +
-  "rounded-t-md border-b-2 border-transparent px-3 py-2 text-body font-medium " +
+  "rounded-t-md border-b-2 border-transparent px-3 py-2 text-sm font-medium " +
   "text-muted-foreground transition-colors hover:bg-muted hover:text-foreground " +
   "focus-visible:bg-muted data-[state=active]:border-primary data-[state=active]:text-foreground " +
   "[&_svg]:pointer-events-none [&_svg]:shrink-0";

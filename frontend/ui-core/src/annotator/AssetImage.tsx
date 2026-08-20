@@ -87,7 +87,7 @@ export function AssetImage({ projectId, assetId, children }: AssetImageProps): J
         className="flex size-full flex-col items-center justify-center gap-2 text-muted-foreground"
       >
         <ImageOff className="size-6" aria-hidden="true" />
-        <span className="text-meta">The asset&rsquo;s content could not be loaded.</span>
+        <span className="text-xs">The asset&rsquo;s content could not be loaded.</span>
       </div>
     );
   }
