@@ -201,6 +201,11 @@ Nova's component-level focus treatment is stronger and more specific:
 in the `ring` token's colour, painted outside the control so it survives any fill. Focus
 is never colour-only and never removed; an element that can be focused shows it.
 
+The base layer also carries one transitional rule: `:focus-visible { @apply outline-2; }`,
+keeping every element's keyboard focus at a visible 2px until the primitives that don't
+yet carry Nova's own `ring-3` treatment (e.g. the tab bar) are migrated to it — remove it
+once every focusable primitive supplies its own Nova ring.
+
 ## Sidebar / Menu
 
 - **`menuColor: inverted`.** Every menu and popover subtree — dropdown content, select
