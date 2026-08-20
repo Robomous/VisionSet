@@ -1024,8 +1024,8 @@ runner is not the machine above.
 
 The demo page at `/` is the annotator's public showcase, and #50 is what made it one. It
 is the same page the behavioural contract drives - the shape did not move - restyled onto
-the repo-root `DESIGN.md` and given the two pieces of the annotation workspace that cost
-nothing to bring forward.
+the product's visual contract and given the two pieces of the annotation workspace that
+cost nothing to bring forward.
 
 ### What is on it
 
@@ -1077,7 +1077,7 @@ Zoom **controls** - a `−`/`+` pair driving the stage from outside - need an im
 handle the adapter still does not publish. They land with the top bar that has somewhere to
 put them (#56). Until then the readout reports and the wheel, the pinch and `mod+0` drive.
 
-### The one deliberate departure from `DESIGN.md`
+### The one deliberate departure from the visual contract
 
 **The canvas well is dark.** Everything around the image follows the contract exactly -
 white cards, `#d0d7de` borders, Robomous orange strictly as an accent, one type scale - but
@@ -1195,7 +1195,7 @@ direction. `mousedown` is where a browser moves focus, so that is where it is
 refused.
 
 The shortcut in each tooltip is the **digit** `hotkeyForClass` answers, not v1's
-`B`/`P` that `DESIGN.md` still draws: this build binds classes to the digit row
+`B`/`P`: this build binds classes to the digit row
 (#46), and printing a key that does nothing would be worse than printing none.
 
 
