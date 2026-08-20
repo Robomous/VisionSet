@@ -81,6 +81,25 @@ the tokens would acquire a second home.
 `tests/scripts/design_tokens.test.mjs` scans every tracked frontend file for a hex
 or a `var()` colour in a class string and fails the build on one.
 
+## Libraries
+
+The primitive and utility stack is an architecture decision recorded here, not a
+visual-design rule. The current choices:
+
+| Concern | Choice |
+| --- | --- |
+| UI primitives | Radix (+ shadcn-style composition with `cva` and `cn`) |
+| Icons | lucide-react |
+| Styling | Tailwind v4, CSS-first `@theme` - no `tailwind.config.js`, ever |
+| Toasts | sonner |
+| Component tests | vitest + jsdom + @testing-library/react |
+| Server state | TanStack Query v5 |
+
+Do not add a library for a covered concern without a documented reason. The intended
+direction - documented, not yet implemented - is to adopt shadcn-derived, project-owned
+primitives in this package while preserving its public APIs, implementing the
+foundations [`DESIGN.md`](../../../DESIGN.md) documents.
+
 ## Related
 
 [`DESIGN.md`](../../../DESIGN.md) is the contract this package implements.

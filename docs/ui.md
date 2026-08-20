@@ -433,7 +433,7 @@ the way to reach `annotated` from `skipped` is to un-skip and annotate, which is
 what the machine says. The zoom `−`/`%`/`+` and fit drive
 `AnnotatorCanvas`'s new `viewRef` handle, whose `fit` is the same implementation
 `mod+0` reaches, which is why that chord stays intercepted rather than forwarded.
-The version dropdown and Merge that `DESIGN.md` draws are **not on the bar**. The
+The version dropdown and Merge that the original reference design draws are **not on the bar**. The
 branch-and-merge model behind them was settled on 2026-08-10 as superseded by the
 batch, review and release model the product already has (cf. #127), and until
 2026-08-05 they rendered disabled to keep the bar the shape the design shows. That
@@ -908,7 +908,8 @@ with one version renders no navigator at all.
 
 **Which version is being read is component state, not the URL.** `?tab=` carries the
 tab because a tab is a destination; a version somebody is glancing at is a lens on
-the tab they are already in. `DESIGN.md`'s navigation rules state the test.
+the tab they are already in. The navigation rules
+([`docs/ui/navigation.md`](ui/navigation.md)) state the test.
 
 The description is written once, in a field beside Save, and there is nowhere to edit
 one afterwards - no route, because no service method, because a version is immutable.

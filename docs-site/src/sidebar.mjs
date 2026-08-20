@@ -91,7 +91,15 @@ export const sidebar = [
       { slug: "api" },
       { slug: "auth" },
       { slug: "cli" },
-      { slug: "ui" },
+      {
+        label: "UI",
+        items: [
+          { slug: "ui" },
+          { slug: "ui/product-principles" },
+          { slug: "ui/navigation" },
+          { slug: "ui/annotator" },
+        ],
+      },
       { slug: "mcp" },
       { slug: "mcp-tools" },
       { slug: "mcp-walkthrough" },
