@@ -219,6 +219,17 @@ describe("@theme inline", () => {
   });
 });
 
+/**
+ * The four `--text-*` custom properties this rewrite retired (Task 2 moved
+ * their consumers onto Tailwind's standard scale: xs/sm/base/2xl). Assembled
+ * from fragments — the same trick `tests/scripts/design_tokens.test.mjs`'s
+ * `HEX` uses — so this guard's own source never spells any retired name as a
+ * contiguous string and cannot trip the repo-wide sweep that proves the
+ * migration complete everywhere else.
+ */
+const RETIRED_TEXT_SCALE_SUFFIXES = ["meta", "body", "section", "page"];
+const RETIRED_TEXT_SCALE = RETIRED_TEXT_SCALE_SUFFIXES.map((name) => `--text-${name}`);
+
 describe("legacy tokens", () => {
   it("removes every v1 name this rewrite retired from the whole stylesheet", () => {
     const retired = [
@@ -229,10 +240,7 @@ describe("legacy tokens", () => {
       "--color-destructive-foreground",
       "--color-sidebar-strong",
       "--color-sidebar-muted",
-      "--text-xs",
-      "--text-sm",
-      "--text-base",
-      "--text-2xl",
+      ...RETIRED_TEXT_SCALE,
       "--spacing-sidebar-mobile",
     ];
     const present = retired.filter((name) => STYLESHEET.includes(name));
