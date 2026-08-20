@@ -1,24 +1,19 @@
 /**
  * @vitest-environment node
  *
- * The parity gate: `tokens.ts` and `styles.css` are one contract in two languages.
+ * The foundation gate: `styles.css` is the shadcn preset's exact generated
+ * output (`:root`, `.dark`, `@theme inline`, the base layer) plus VisionSet's
+ * four justified extensions (`stage`, `brand`, `success`, `warning`, each with
+ * its own `-foreground` where the preset's own status token has one) and the
+ * sidebar rail's two layout widths. `tokens.ts` is the TypeScript mirror a
+ * `<canvas>`/`<svg>` or a test reads a colour off of; this suite parses the
+ * stylesheet structurally and asserts the two agree, declaration for
+ * declaration, and that none of the tokens this rewrite retired have crept
+ * back in.
  *
- * Only the CSS runs — Tailwind generates every utility from the `@theme` block —
- * so the TypeScript is a mirror, and a mirror nobody checks is just a second
- * spelling waiting to drift. The assertion is **exact equality in both
- * directions**, which is the same shape as the repository's other parity gates:
- * the CLI's `--json` against the REST wire models, `ProgressCounts` against
- * `AssetProgress`, `_MEDIA_TYPES` against `ImageFormat`. Adding a token to one
- * file and not the other fails here rather than in a screen six weeks later.
- *
- * The CSS is parsed rather than imported: vitest's jsdom does not evaluate
- * `@theme` (it is Tailwind's, not the browser's), and a `getComputedStyle` read
- * would be testing jsdom.
- *
- * Hence the `node` environment above. Under jsdom, `import.meta.url` is an
- * `http://localhost/` URL — the page the document pretends to be — and
- * `fileURLToPath` rejects it with "The URL must be of scheme file". A test that
- * reads a file off disk should say so.
+ * The CSS is parsed rather than imported — same reason as before: vitest's
+ * jsdom does not evaluate `@theme`, and `import.meta.url` under jsdom is an
+ * `http://localhost/` URL that `fileURLToPath` rejects. Hence `node` above.
  */
 
 import { readFileSync } from "node:fs";
@@ -26,78 +21,263 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { COLOR, DESIGN_TOKENS, RADIUS, TEXT } from "./tokens";
+import { cssVar, DARK_THEME, EXTENSIONS, LIGHT_THEME, THEME } from "./tokens";
 
 const STYLESHEET = readFileSync(fileURLToPath(new URL("./styles.css", import.meta.url)), "utf8");
-
-/**
- * The declarations inside `@theme { … }`, and nothing else.
- *
- * Scoped deliberately: `@layer base` below it *reads* the same variables through
- * `var()`, and counting those as declarations would make every base rule look like
- * a token this module had failed to mirror.
- */
-function themeDeclarations(css: string): Map<string, string> {
-  const open = css.indexOf("@theme {");
-  expect(open, "styles.css has no @theme block").toBeGreaterThan(-1);
-  const body = css.slice(open + "@theme {".length, css.indexOf("\n}", open));
-  const declarations = new Map<string, string>();
-  // Multi-line values are real — the font stack is one — so the pattern runs to
-  // the semicolon rather than to the end of a line.
-  for (const match of body.matchAll(/(--[\w-]+):\s*([^;]+);/g)) {
-    declarations.set(match[1], normalize(match[2]));
-  }
-  return declarations;
-}
 
 /** Whitespace is presentation; a value that wraps is the same value. */
 function normalize(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-describe("the design tokens", () => {
-  const declared = themeDeclarations(STYLESHEET);
+/**
+ * The `{ … }` body belonging to the block whose header (e.g. `:root {` or
+ * `.dark {`) appears first in the file, matched by brace depth rather than by
+ * the next `\n}` so a nested `calc(...)` or `color-mix(...)` cannot fool it.
+ */
+function blockBody(css: string, header: string): string {
+  const headerAt = css.indexOf(header);
+  expect(headerAt, `styles.css has no ${JSON.stringify(header)} block`).toBeGreaterThan(-1);
+  const braceAt = css.indexOf("{", headerAt);
+  let depth = 1;
+  let i = braceAt + 1;
+  while (depth > 0 && i < css.length) {
+    if (css[i] === "{") depth++;
+    else if (css[i] === "}") depth--;
+    i++;
+  }
+  return css.slice(braceAt + 1, i - 1);
+}
 
-  it("declares every token the TypeScript mirror names", () => {
-    for (const [name, value] of Object.entries(DESIGN_TOKENS)) {
-      expect(declared.get(name), `styles.css is missing ${name}`).toBe(normalize(value));
+/** Every `--name: value;` declaration in a block, keyed WITH the leading `--`. */
+function rawDeclarations(block: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const match of block.matchAll(/(--[\w-]+):\s*([^;]+);/g)) {
+    map.set(match[1], normalize(match[2]));
+  }
+  return map;
+}
+
+/** The same, keyed WITHOUT the leading `--` — the shape `LIGHT_THEME` uses. */
+function declarations(block: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const [name, value] of rawDeclarations(block)) {
+    map.set(name.slice(2), value);
+  }
+  return map;
+}
+
+// The shadcn standard vocabulary, exactly as the CLI 4.18.0 scratch emitted
+// it — not derived from `tokens.ts`, so a mistake in the mirror cannot also
+// erase the thing it was supposed to mirror.
+const CHART_NAMES = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
+const SIDEBAR_NAMES = [
+  "sidebar",
+  "sidebar-foreground",
+  "sidebar-primary",
+  "sidebar-primary-foreground",
+  "sidebar-accent",
+  "sidebar-accent-foreground",
+  "sidebar-border",
+  "sidebar-ring",
+];
+const BASE_SEMANTIC_NAMES = [
+  "background",
+  "foreground",
+  "card",
+  "card-foreground",
+  "popover",
+  "popover-foreground",
+  "primary",
+  "primary-foreground",
+  "secondary",
+  "secondary-foreground",
+  "muted",
+  "muted-foreground",
+  "accent",
+  "accent-foreground",
+  "destructive",
+  "border",
+  "input",
+  "ring",
+];
+const SEMANTIC_NAMES = [...BASE_SEMANTIC_NAMES, ...CHART_NAMES, ...SIDEBAR_NAMES];
+
+// The four extensions the audit kept, spelled as their six variable names —
+// the same list `tokens.ts` exports as `EXTENSIONS`, checked for drift below
+// rather than assumed equal to it.
+const EXTENSION_NAMES = [
+  "stage",
+  "brand",
+  "success",
+  "success-foreground",
+  "warning",
+  "warning-foreground",
+];
+
+const ORANGE_CHART = {
+  "chart-1": "oklch(0.837 0.128 66.29)",
+  "chart-2": "oklch(0.705 0.213 47.604)",
+  "chart-3": "oklch(0.646 0.222 41.116)",
+  "chart-4": "oklch(0.553 0.195 38.402)",
+  "chart-5": "oklch(0.47 0.157 37.304)",
+} as const;
+
+describe("EXTENSIONS", () => {
+  it("names exactly the six extension variables, in the order tokens.ts declares them", () => {
+    expect(EXTENSIONS).toEqual(EXTENSION_NAMES);
+  });
+});
+
+describe(":root", () => {
+  const root = declarations(blockBody(STYLESHEET, ":root {"));
+
+  it("declares every standard shadcn semantic variable, the six extensions, and --radius, and nothing else", () => {
+    expect([...root.keys()].sort()).toEqual(
+      [...SEMANTIC_NAMES, ...EXTENSION_NAMES, "radius"].sort(),
+    );
+  });
+
+  it("matches LIGHT_THEME's value for every name it declares", () => {
+    for (const [name, value] of root) {
+      if (name === "radius") continue;
+      expect(LIGHT_THEME[name], `LIGHT_THEME is missing ${name}`).toBe(value);
     }
   });
 
-  it("names no token the TypeScript mirror is missing", () => {
-    expect([...declared.keys()].sort()).toEqual(Object.keys(DESIGN_TOKENS).sort());
+  it("names no variable LIGHT_THEME does not also carry", () => {
+    const lightKeys = Object.keys(LIGHT_THEME).sort();
+    const rootKeys = [...root.keys()].filter((name) => name !== "radius").sort();
+    expect(lightKeys).toEqual(rootKeys);
   });
 
-  it("carries the near-black action and the cool neutrals DESIGN.md records", () => {
-    // The four values a restyle would most plausibly get wrong, pinned by name so
-    // a diff that changes them has to change a test that says what they are.
-    expect(COLOR.primary).toBe("#1e2130");
-    expect(COLOR.foreground).toBe("#1b1d28");
-    expect(COLOR.border).toBe("#e7e8ec");
-    expect(COLOR.muted).toBe("#f3f4f6");
+  it("pins --radius to the preset's medium step, in both the CSS and THEME", () => {
+    expect(root.get("radius")).toBe("0.625rem");
+    expect(THEME.radius).toBe("0.625rem");
   });
 
-  it("keeps the brand out of the action colour, which is the point of #323", () => {
-    // The palette's whole argument: coral is not what a button is made of. If
-    // these ever converge, the neutral-first decision has been reverted by
-    // accident and every screen goes coral again at once.
-    expect(COLOR.brand).toBe("#e85d44");
-    expect(COLOR.primary).not.toBe(COLOR.brand);
+  it("pins the orange chart palette exactly", () => {
+    for (const [name, value] of Object.entries(ORANGE_CHART)) {
+      expect(root.get(name)).toBe(value);
+    }
+  });
+});
+
+describe(".dark", () => {
+  const dark = declarations(blockBody(STYLESHEET, ".dark {"));
+
+  it("declares every standard shadcn semantic variable and the six extensions, and nothing else (no --radius)", () => {
+    expect([...dark.keys()].sort()).toEqual([...SEMANTIC_NAMES, ...EXTENSION_NAMES].sort());
   });
 
-  it("derives the focus ring from the action colour, so the two cannot drift apart", () => {
-    // They are no longer one value — a solid near-black ring two pixels off a
-    // near-black button is a smudge — so the relationship is asserted instead of
-    // being structural. `#1e2130` is (30, 33, 48).
-    const channels = COLOR.primary
-      .slice(1)
-      .match(/../g)
-      ?.map((pair) => Number.parseInt(pair, 16));
-    expect(COLOR.ring).toBe(`rgba(${channels?.join(", ")}, 0.35)`);
+  it("matches DARK_THEME's value for every name it declares", () => {
+    for (const [name, value] of dark) {
+      expect(DARK_THEME[name], `DARK_THEME is missing ${name}`).toBe(value);
+    }
   });
 
-  it("keeps 14px as the body size the whole scale was measured against", () => {
-    expect(TEXT.body).toBe("0.875rem");
-    expect(RADIUS.md).toBe("8px");
+  it("names no variable DARK_THEME does not also carry", () => {
+    expect(Object.keys(DARK_THEME).sort()).toEqual([...dark.keys()].sort());
+  });
+
+  it("pins the orange chart palette exactly, unchanged from light", () => {
+    for (const [name, value] of Object.entries(ORANGE_CHART)) {
+      expect(dark.get(name)).toBe(value);
+    }
+  });
+});
+
+describe("@theme inline", () => {
+  const inline = rawDeclarations(blockBody(STYLESHEET, "@theme inline {"));
+
+  it("exposes --color-<name>: var(--<name>) for every semantic and extension name", () => {
+    for (const name of [...SEMANTIC_NAMES, ...EXTENSION_NAMES]) {
+      expect(inline.get(`--color-${name}`), `@theme inline is missing --color-${name}`).toBe(
+        `var(--${name})`,
+      );
+    }
+  });
+
+  it("declares the two font variables from THEME", () => {
+    expect(inline.get("--font-sans")).toBe(normalize(THEME.fontSans));
+    expect(inline.get("--font-heading")).toBe(normalize(THEME.fontHeading));
+  });
+
+  it("derives all seven radius steps from --radius, verbatim", () => {
+    expect(inline.get("--radius-sm")).toBe("calc(var(--radius) * 0.6)");
+    expect(inline.get("--radius-md")).toBe("calc(var(--radius) * 0.8)");
+    expect(inline.get("--radius-lg")).toBe("var(--radius)");
+    expect(inline.get("--radius-xl")).toBe("calc(var(--radius) * 1.4)");
+    expect(inline.get("--radius-2xl")).toBe("calc(var(--radius) * 1.8)");
+    expect(inline.get("--radius-3xl")).toBe("calc(var(--radius) * 2.2)");
+    expect(inline.get("--radius-4xl")).toBe("calc(var(--radius) * 2.6)");
+  });
+
+  it("carries the sidebar rail's two layout widths", () => {
+    expect(inline.get("--spacing-sidebar")).toBe("240px");
+    expect(inline.get("--spacing-sidebar-collapsed")).toBe("60px");
+  });
+});
+
+describe("legacy tokens", () => {
+  it("removes every v1 name this rewrite retired from the whole stylesheet", () => {
+    const retired = [
+      "--color-primary-hover",
+      "--color-disabled",
+      "--color-disabled-foreground",
+      "--color-success-hover",
+      "--color-destructive-foreground",
+      "--color-sidebar-strong",
+      "--color-sidebar-muted",
+      "--text-meta",
+      "--text-body",
+      "--text-section",
+      "--text-page",
+      "--spacing-sidebar-mobile",
+    ];
+    const present = retired.filter((name) => STYLESHEET.includes(name));
+    expect(present, `styles.css still names: ${present.join(", ")}`).toEqual([]);
+  });
+});
+
+describe("structure", () => {
+  it("declares the dark variant and the five imports, in order", () => {
+    const anchors = [
+      '@import "tailwindcss";',
+      '@import "tw-animate-css";',
+      '@import "shadcn/tailwind.css";',
+      '@import "@fontsource-variable/inter";',
+      '@import "@fontsource-variable/geist";',
+      "@custom-variant dark (&:is(.dark *));",
+    ];
+    let cursor = -1;
+    for (const anchor of anchors) {
+      const at = STYLESHEET.indexOf(anchor);
+      expect(at, `styles.css is missing ${JSON.stringify(anchor)}`).toBeGreaterThan(-1);
+      expect(at, `${JSON.stringify(anchor)} is out of order`).toBeGreaterThan(cursor);
+      cursor = at;
+    }
+  });
+
+  it("reaches its own package's classes: @source after the imports", () => {
+    const sourceAt = STYLESHEET.indexOf('@source ".";');
+    const lastImportAt = STYLESHEET.lastIndexOf("@import");
+    expect(sourceAt, "styles.css has no @source \".\";").toBeGreaterThan(-1);
+    expect(sourceAt).toBeGreaterThan(lastImportAt);
+  });
+
+  it("applies the base-layer ring/border rule shadcn ships", () => {
+    expect(/\*\s*\{\s*@apply border-border outline-ring\/50;\s*\}/.test(STYLESHEET)).toBe(true);
+  });
+
+  it("applies the heading font at the semantic-HTML level", () => {
+    expect(/h1,\s*h2,\s*h3,\s*h4\s*\{\s*@apply font-heading;\s*\}/.test(STYLESHEET)).toBe(true);
+  });
+});
+
+describe("cssVar", () => {
+  it("wraps a bare token name as a CSS var() reference", () => {
+    expect(cssVar("popover")).toBe("var(--popover)");
+    expect(cssVar("brand")).toBe("var(--brand)");
   });
 });
