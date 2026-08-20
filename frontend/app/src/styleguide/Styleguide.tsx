@@ -27,7 +27,6 @@ import {
   CardHeader,
   CardTitle,
   ClassListRow,
-  COLOR,
   DistributionBar,
   formatCount,
   formatPercent,
@@ -49,6 +48,7 @@ import {
   FieldHint,
   Input,
   Label,
+  LIGHT_THEME,
   LoadingState,
   Progress,
   Select,
@@ -518,9 +518,7 @@ function Swatch({ name, className }: { readonly name: string; readonly className
     <div className="flex flex-col gap-1">
       <div className={`size-16 rounded-md border border-border ${className}`} />
       <span className="text-meta text-muted-foreground">{name}</span>
-      <span className="font-mono text-meta text-muted-foreground">
-        {COLOR[name as keyof typeof COLOR]}
-      </span>
+      <span className="font-mono text-meta text-muted-foreground">{LIGHT_THEME[name]}</span>
     </div>
   );
 }

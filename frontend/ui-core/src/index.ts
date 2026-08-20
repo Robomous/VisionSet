@@ -33,7 +33,7 @@
  */
 
 // The design tokens, and their prose contract at the repository root.
-export { COLOR, DESIGN_TOKENS, FONT, RADIUS, SPACING, TEXT } from "./tokens.js";
+export { cssVar, DARK_THEME, EXTENSIONS, LIGHT_THEME, THEME } from "./tokens.js";
 
 // The class palette. Re-exported from the annotator, never respelled — see the
 // argument in `palette.ts`.
