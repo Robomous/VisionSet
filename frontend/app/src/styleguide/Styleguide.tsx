@@ -123,25 +123,67 @@ export function Styleguide(): JSX.Element {
 
         <Section
           title="Colour"
-          description="Intent, never a value. The interface is neutral; brand is two sites."
+          description="Intent, never a value. The shadcn preset's own vocabulary, plus VisionSet's four justified extensions. Every caption is LIGHT_THEME's value for that name."
         >
-          <div className="flex flex-wrap gap-3" data-testid="swatches">
-            <Swatch name="primary" className="bg-primary" />
-            <Swatch name="foreground" className="bg-foreground" />
-            <Swatch name="muted-foreground" className="bg-muted-foreground" />
-            <Swatch name="disabled-foreground" className="bg-disabled-foreground" />
-            <Swatch name="muted" className="bg-muted" />
-            <Swatch name="border" className="bg-border" />
-            <Swatch name="input" className="bg-input" />
-            <Swatch name="stage" className="bg-stage" />
-            <Swatch name="success" className="bg-success" />
-            <Swatch name="warning" className="bg-warning" />
-            <Swatch name="destructive" className="bg-destructive" />
-            <Swatch name="sidebar" className="bg-sidebar" />
-            {/* The brand, shown here because a styleguide is where a value is
-                inspected rather than used. Its two product sites are the rail's
-                wordmark and the progress fill. */}
-            <Swatch name="brand" className="bg-brand" />
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <h3 className="text-xs font-medium text-muted-foreground">Semantic</h3>
+              <div className="flex flex-wrap gap-3" data-testid="swatches">
+                <Swatch name="background" className="bg-background" />
+                <Swatch name="foreground" className="bg-foreground" />
+                <Swatch name="card" className="bg-card" />
+                <Swatch name="popover" className="bg-popover" />
+                <Swatch name="primary" className="bg-primary" />
+                <Swatch name="secondary" className="bg-secondary" />
+                <Swatch name="muted" className="bg-muted" />
+                <Swatch name="muted-foreground" className="bg-muted-foreground" />
+                <Swatch name="accent" className="bg-accent" />
+                <Swatch name="destructive" className="bg-destructive" />
+                <Swatch name="border" className="bg-border" />
+                <Swatch name="input" className="bg-input" />
+                <Swatch name="ring" className="bg-ring" />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <h3 className="text-xs font-medium text-muted-foreground">Chart palette</h3>
+              <div className="flex flex-wrap gap-3">
+                <Swatch name="chart-1" className="bg-chart-1" />
+                <Swatch name="chart-2" className="bg-chart-2" />
+                <Swatch name="chart-3" className="bg-chart-3" />
+                <Swatch name="chart-4" className="bg-chart-4" />
+                <Swatch name="chart-5" className="bg-chart-5" />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <h3 className="text-xs font-medium text-muted-foreground">Sidebar</h3>
+              <div className="flex flex-wrap gap-3">
+                <Swatch name="sidebar" className="bg-sidebar" />
+                <Swatch name="sidebar-foreground" className="bg-sidebar-foreground" />
+                <Swatch name="sidebar-primary" className="bg-sidebar-primary" />
+                <Swatch name="sidebar-primary-foreground" className="bg-sidebar-primary-foreground" />
+                <Swatch name="sidebar-accent" className="bg-sidebar-accent" />
+                <Swatch name="sidebar-accent-foreground" className="bg-sidebar-accent-foreground" />
+                <Swatch name="sidebar-border" className="bg-sidebar-border" />
+                <Swatch name="sidebar-ring" className="bg-sidebar-ring" />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <h3 className="text-xs font-medium text-muted-foreground">
+                VisionSet extensions
+              </h3>
+              <div className="flex flex-wrap gap-3">
+                <Swatch name="stage" className="bg-stage" />
+                {/* The brand, shown here because a styleguide is where a value is
+                    inspected rather than used. Its two product sites are the rail's
+                    wordmark and the progress fill. */}
+                <Swatch name="brand" className="bg-brand" />
+                <Swatch name="success" className="bg-success" />
+                <Swatch name="warning" className="bg-warning" />
+              </div>
+            </div>
           </div>
         </Section>
 
