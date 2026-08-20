@@ -51,7 +51,7 @@ import { asApiError } from "../data/errors";
 import { Alert, Badge } from "../primitives/Badge";
 import type { BadgeTone } from "./batchState";
 import { Button } from "../primitives/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "../primitives/Card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/Card";
 import {
   Dialog,
   DialogContent,
@@ -468,7 +468,7 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
 
   return (
     <Card data-testid={`release-${release.tag}`}>
-      <CardHeader className="flex-row items-center justify-between gap-2">
+      <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Tag className="size-4 text-muted-foreground" aria-hidden="true" />
           {release.tag}
@@ -479,9 +479,11 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
             </Badge>
           )}
         </CardTitle>
-        <span className="font-mono text-xs text-muted-foreground" title={release.manifest_hash}>
-          {release.manifest_hash.slice(0, 12)}
-        </span>
+        <CardAction>
+          <span className="font-mono text-xs text-muted-foreground" title={release.manifest_hash}>
+            {release.manifest_hash.slice(0, 12)}
+          </span>
+        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground">

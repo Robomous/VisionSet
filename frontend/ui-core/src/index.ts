@@ -46,6 +46,7 @@ export { cn } from "./lib/cn.js";
 export { Button, buttonVariants, type ButtonProps } from "./primitives/Button.js";
 export {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardFooter,
