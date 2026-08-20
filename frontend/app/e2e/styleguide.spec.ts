@@ -210,10 +210,12 @@ test("focus is visible on a tab that has no fill to draw it against", async ({ p
   // variant dropped. The variant adds the fill the ring encloses, which is
   // what "still clearly visible" means once the tab is otherwise bare.
   const outline = await rgbaOf(page, focused, "outline-color");
-  // Neutral — the ring token carries no hue — and partially transparent, which
-  // is what the base layer's `/50` opacity modifier promises: fully opaque
-  // would be a different rule, and fully transparent would be no ring at all.
-  expect(Math.max(...outline.slice(0, 3)) - Math.min(...outline.slice(0, 3))).toBeLessThan(6);
+  // The ring token's own grey — a canvas's RGB read-back is unpremultiplied,
+  // so the colour channels come back exact regardless of the alpha below.
+  expect(outline.slice(0, 3)).toEqual(RING);
+  // …at partial opacity, which is what the base layer's `/50` modifier
+  // promises: fully opaque would be a different rule, and fully transparent
+  // would be no ring at all.
   expect(outline[3]).toBeGreaterThan(64);
   expect(outline[3]).toBeLessThan(220);
   // 1px, not 2px: the base layer sets only `outline-color` (`outline-ring/50`)
