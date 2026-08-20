@@ -76,7 +76,7 @@ export function ZoomWidget({
       {/* The stage's own scale, capped by it — so the ceiling reads exactly
           `800%` and never an internal number the clamp already refused. */}
       <span
-        className="w-12 text-center font-mono text-meta text-muted-foreground"
+        className="w-12 text-center font-mono text-xs text-muted-foreground"
         data-testid="zoom-readout"
       >
         {zoom === null ? "—" : `${Math.round(zoom * 100)}%`}

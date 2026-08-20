@@ -207,8 +207,8 @@ export function InferenceScreen(): JSX.Element {
     <div className="flex flex-col gap-6" data-testid="inference-screen">
       <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
         <div>
-          <h1 className="text-page font-semibold tracking-tight">Inference</h1>
-          <p className="text-meta text-muted-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight">Inference</h1>
+          <p className="text-xs text-muted-foreground">
             Where a model may be asked to predict. Connections are shared by every project
             in this workspace.
           </p>
@@ -256,7 +256,7 @@ export function InferenceScreen(): JSX.Element {
                     onChange={(event) => setNeedle(event.target.value)}
                   />
                   {/* Never hides the count of what it filtered out (`DESIGN.md`). */}
-                  <span className="text-meta text-muted-foreground" data-testid="filter-count">
+                  <span className="text-xs text-muted-foreground" data-testid="filter-count">
                     {shown.length} of {page.items.length}
                   </span>
                 </div>
@@ -330,8 +330,8 @@ export function CapabilitySection({
       data-known={section.known}
     >
       <div className="flex flex-col gap-1">
-        <h2 className="text-section font-semibold tracking-tight">{section.title}</h2>
-        <p className="max-w-3xl text-meta text-muted-foreground">{section.purpose}</p>
+        <h2 className="text-base font-semibold tracking-tight">{section.title}</h2>
+        <p className="max-w-3xl text-xs text-muted-foreground">{section.purpose}</p>
       </div>
       {section.connections.length > 0 ? (
         <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
@@ -345,7 +345,7 @@ export function CapabilitySection({
           ))}
         </div>
       ) : filtering ? (
-        <p className="text-meta text-muted-foreground" data-testid="section-filtered-out">
+        <p className="text-xs text-muted-foreground" data-testid="section-filtered-out">
           Nothing here matches the filter.
         </p>
       ) : section.empty.kind === "invite" ? (
@@ -363,7 +363,7 @@ export function CapabilitySection({
           }
         />
       ) : (
-        <p className="text-meta text-muted-foreground" data-testid="section-nothing">
+        <p className="text-xs text-muted-foreground" data-testid="section-nothing">
           {section.empty.line}
         </p>
       )}
@@ -423,7 +423,7 @@ function ConnectionRow({
             </Badge>
           </div>
           {/* One line, the way a person reads them — the CLI's listing agrees. */}
-          <span className="break-all text-meta text-muted-foreground">
+          <span className="break-all text-xs text-muted-foreground">
             {connection.model_id} @ {connection.model_revision}
           </span>
         </div>
@@ -662,7 +662,7 @@ function RunProgress({
         Tabular figures, `DESIGN.md`'s Numbers rule: the number changes every two
         seconds and the words after it must not move under a reader's eye.
       */}
-      <span className="text-meta tabular-nums text-muted-foreground" data-testid={`${testId}-prose`}>
+      <span className="text-xs tabular-nums text-muted-foreground" data-testid={`${testId}-prose`}>
         {children}
       </span>
     </div>
@@ -1251,7 +1251,7 @@ function AccessLine({
   const access = accessFor(entries, modelId);
   if (access === undefined) return <></>;
   return (
-    <p className="text-meta text-muted-foreground" data-testid="model-access">
+    <p className="text-xs text-muted-foreground" data-testid="model-access">
       {access.note}{" "}
       <a
         className="underline underline-offset-2"
@@ -1289,7 +1289,7 @@ function DownloadSizeLine({
   if (modelId === "" || revision === "") return <></>;
   if (size.isPending) {
     return (
-      <p className="text-meta text-muted-foreground" data-testid="size-checking">
+      <p className="text-xs text-muted-foreground" data-testid="size-checking">
         Reading the download size…
       </p>
     );
@@ -1297,13 +1297,13 @@ function DownloadSizeLine({
   if (size.isError) {
     const failure = asApiError(size.error);
     return (
-      <p className="text-meta text-muted-foreground" data-testid="size-unavailable">
+      <p className="text-xs text-muted-foreground" data-testid="size-unavailable">
         <Badge variant="warning">{failure.code}</Badge> {failure.message}
       </p>
     );
   }
   return (
-    <p className="text-meta text-muted-foreground" data-testid="size-known">
+    <p className="text-xs text-muted-foreground" data-testid="size-known">
       Downloads {bytes(size.data.total_bytes)} across {size.data.file_count} files when you
       ask for it.
     </p>

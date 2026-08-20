@@ -16,7 +16,7 @@ import { forwardRef, type ComponentPropsWithoutRef, type ElementRef, type HTMLAt
 import { Toaster as SonnerToaster, toast } from "sonner";
 
 import { cn } from "../lib/cn";
-import { COLOR, RADIUS } from "../tokens";
+import { cssVar } from "../tokens";
 
 export const Progress = forwardRef<
   ElementRef<typeof ProgressPrimitive.Root>,
@@ -30,10 +30,10 @@ export const Progress = forwardRef<
       {...props}
     >
       <ProgressPrimitive.Indicator
-        // `brand`, and one of only two places it is allowed. A progress
-        // bar is the one piece of chrome a person watches rather than reads, so
-        // it is where the coral buys attention instead of spending it.
-        className="h-full w-full flex-1 bg-brand transition-transform"
+        // `primary`, not `brand`: the fill is a functional control — the thing
+        // a person watches to know work is happening — and brand is identity,
+        // never a functional colour.
+        className="h-full w-full flex-1 bg-primary transition-transform"
         // The width is data, so it is a style rather than a class: Tailwind cannot
         // generate a utility for a number it will not see until runtime, and a
         // `w-[${n}%]` string is the one arbitrary value that silently produces
@@ -69,10 +69,10 @@ export function Toaster(): JSX.Element {
       position="bottom-right"
       toastOptions={{
         style: {
-          background: COLOR.popover,
-          color: COLOR["popover-foreground"],
-          border: `1px solid ${COLOR.border}`,
-          borderRadius: RADIUS.lg,
+          background: cssVar("popover"),
+          color: cssVar("popover-foreground"),
+          border: `1px solid ${cssVar("border")}`,
+          borderRadius: "var(--radius-lg)",
         },
       }}
     />

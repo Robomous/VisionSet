@@ -133,7 +133,7 @@ export function PromoteButton({
       */}
       {summary === null && batch.promoted_asset_count > 0 && (
         <span
-          className="text-meta text-muted-foreground"
+          className="text-xs text-muted-foreground"
           data-testid={`promoted-count-${batch.name}`}
         >
           {batch.promoted_asset_count} of {batch.asset_count} in the dataset
@@ -141,7 +141,7 @@ export function PromoteButton({
       )}
 
       {summary !== null && (
-        <span className="text-meta text-muted-foreground" data-testid={`promoted-${batch.name}`}>
+        <span className="text-xs text-muted-foreground" data-testid={`promoted-${batch.name}`}>
           {summary}
         </span>
       )}

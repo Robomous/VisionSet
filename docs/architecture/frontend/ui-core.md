@@ -71,15 +71,27 @@ may forget - and the ones that forgot would be the ones that broke. That the
 `tests/scripts/checks_wiring.test.mjs`, because a type predicate is assignable
 whenever its asserted type is and `tsc` cannot see the mismatch.
 
-## The design system is the stylesheet
+## The design system is a shadcn preset
 
-`styles.css` carries the Tailwind v4 `@theme` block, so `bg-primary` in a
-component here and `bg-primary` in a screen mean the same colour by construction.
-There is no `tailwind.config.js` in this repository and there must not be one -
-the tokens would acquire a second home.
+`styles.css` is the shadcn preset `b3bXyyPdWj` (style `nova` on the Radix base,
+base colour `neutral`, chart palette `orange`, icons `tabler`, Inter body /
+Geist heading fonts, radius `medium`, menu `inverted`/`subtle`) - the CLI's own
+generated output, transcribed verbatim, plus four VisionSet extensions
+(`stage`, `brand`, `success`, `warning`) added through shadcn's own extension
+convention. `components.json` (`style: "radix-nova"`, `iconLibrary: "tabler"`,
+`menuColor: "inverted"`, `menuAccent: "subtle"`) is the decoded configuration
+those tools read. `tokens.ts` is the TypeScript mirror for a caller that
+cannot read CSS. Both themes - light and dark - are declared in full from the
+preset, so `bg-primary` in a component here and `bg-primary` in a screen mean
+the same colour by construction. There is no `tailwind.config.js` in this
+repository and there must not be one - the tokens would acquire a second home.
 
-`tests/scripts/design_tokens.test.mjs` scans every tracked frontend file for a hex
-or a `var()` colour in a class string and fails the build on one.
+Three gates hold this: `tokens.test.ts` asserts `styles.css` and `tokens.ts`
+agree, declaration for declaration, and that no retired token has returned;
+`tests/scripts/design_tokens.test.mjs` scans every tracked frontend file for a
+raw colour in a class string, refuses a second `tailwind.config.js`, and
+confines `brand` to its two identity sites; `tests/scripts/docs_links.test.mjs`
+keeps [`DESIGN.md`](../../../DESIGN.md)'s own cross-references honest.
 
 ## Libraries
 
@@ -88,17 +100,14 @@ visual-design rule. The current choices:
 
 | Concern | Choice |
 | --- | --- |
-| UI primitives | Radix (+ shadcn-style composition with `cva` and `cn`) |
-| Icons | lucide-react |
-| Styling | Tailwind v4, CSS-first `@theme` - no `tailwind.config.js`, ever |
+| UI primitives | Radix (+ shadcn-style composition with `cva` and `cn`) - the open-code shadcn maintenance model is the direction: a primitive is VisionSet-owned source in `frontend/ui-core/src/primitives/`, edited directly, not a package dependency upgraded blindly |
+| Icons | `@tabler/icons-react` is the target for new and touched components; `lucide-react` remains in components this rewrite did not touch, as migration debt |
+| Styling | Tailwind v4, CSS-first `@theme`, on the shadcn preset `b3bXyyPdWj` - no `tailwind.config.js`, ever |
 | Toasts | sonner |
 | Component tests | vitest + jsdom + @testing-library/react |
 | Server state | TanStack Query v5 |
 
-Do not add a library for a covered concern without a documented reason. The intended
-direction - documented, not yet implemented - is to adopt shadcn-derived, project-owned
-primitives in this package while preserving its public APIs, implementing the
-foundations [`DESIGN.md`](../../../DESIGN.md) documents.
+Do not add a library for a covered concern without a documented reason.
 
 ## Related
 

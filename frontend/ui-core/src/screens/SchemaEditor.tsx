@@ -639,7 +639,7 @@ export function SchemaEditor({
         {/* Versioning is ambient, not modal (`DESIGN.md`): one persistent line
             saying what saving would do, rather than a tooltip or a disabled
             button somebody has to press to find out. */}
-        <p className="text-meta text-muted-foreground" data-testid="schema-status">
+        <p className="text-xs text-muted-foreground" data-testid="schema-status">
           {past !== undefined
             ? `Version ${past.version} · read-only`
             : active === null
@@ -729,7 +729,7 @@ export function SchemaEditor({
           rather than "yours" at all, so that branch names the draft rather
           than the person. */}
       {past === undefined && moved !== null && (
-        <p className="text-meta text-muted-foreground" data-testid="schema-moved">
+        <p className="text-xs text-muted-foreground" data-testid="schema-moved">
           {held !== null ? (
             <>
               Version {moved} was published while you were editing. Your changes are
@@ -744,7 +744,7 @@ export function SchemaEditor({
           <Button
             variant="link"
             size="sm"
-            className="h-auto p-0 align-baseline text-meta"
+            className="h-auto p-0 align-baseline text-xs"
             data-testid="schema-reload"
             disabled={draftLocked}
             onClick={() => {
@@ -772,12 +772,12 @@ export function SchemaEditor({
           true after the reload, and the banner would still be here to greet the
           freshly reloaded draft. */}
       {past === undefined && staleDraft && (
-        <p className="text-meta text-muted-foreground" data-testid="schema-stale-draft">
+        <p className="text-xs text-muted-foreground" data-testid="schema-stale-draft">
           {refusalProse(staleDraftError)}{" "}
           <Button
             variant="link"
             size="sm"
-            className="h-auto p-0 align-baseline text-meta"
+            className="h-auto p-0 align-baseline text-xs"
             data-testid="schema-reload-draft"
             disabled={draftLocked}
             onClick={() => {
@@ -864,7 +864,7 @@ export function SchemaEditor({
               className="flex max-h-[28rem] flex-col overflow-y-auto rounded-lg border border-border"
             >
               {shown.length === 0 ? (
-                <p className="p-3 text-meta text-muted-foreground" data-testid="filter-empty">
+                <p className="p-3 text-xs text-muted-foreground" data-testid="filter-empty">
                   No class matches “{filter}”.
                 </p>
               ) : (
@@ -889,7 +889,7 @@ export function SchemaEditor({
           </div>
 
           {current === undefined ? (
-            <p className="text-body text-muted-foreground">Select a class to edit it.</p>
+            <p className="text-sm text-muted-foreground">Select a class to edit it.</p>
           ) : (
             <ClassDetail
               declared={current}
@@ -987,7 +987,7 @@ function VersionNavigator({
           </SelectContent>
         </Select>
         {entry?.created_at != null && (
-          <span className="text-meta text-muted-foreground" data-testid="version-created">
+          <span className="text-xs text-muted-foreground" data-testid="version-created">
             published {formatWhen(entry.created_at)}
           </span>
         )}
@@ -1000,14 +1000,14 @@ function VersionNavigator({
 
       {/* Written once at publish and never editable, so an empty one stays empty
           — saying so is more useful than an absent line somebody reads as a bug. */}
-      <p className="text-body text-muted-foreground" data-testid="version-description">
+      <p className="text-sm text-muted-foreground" data-testid="version-description">
         {entry?.description != null && entry.description !== ""
           ? entry.description
           : "No description was written for this version."}
       </p>
 
       {previous === null ? (
-        <p className="text-meta text-muted-foreground" data-testid="version-diff-none">
+        <p className="text-xs text-muted-foreground" data-testid="version-diff-none">
           Version 1 is the first contract, so there is nothing to compare it against.
         </p>
       ) : (
@@ -1042,21 +1042,21 @@ function VersionDiff({
 }): JSX.Element {
   if (failed) {
     return (
-      <p className="text-meta text-muted-foreground" data-testid="version-diff-error">
+      <p className="text-xs text-muted-foreground" data-testid="version-diff-error">
         Could not load what changed between v{from} and v{to}.
       </p>
     );
   }
   if (diff === undefined) {
     return (
-      <p className="text-meta text-muted-foreground" data-testid="version-diff-pending">
+      <p className="text-xs text-muted-foreground" data-testid="version-diff-pending">
         Comparing v{from} with v{to}…
       </p>
     );
   }
   if (diff.changes.length === 0) {
     return (
-      <p className="text-meta text-muted-foreground" data-testid="version-diff-empty">
+      <p className="text-xs text-muted-foreground" data-testid="version-diff-empty">
         Nothing changed between v{from} and v{to}.
       </p>
     );
@@ -1064,7 +1064,7 @@ function VersionDiff({
   return (
     <ul className="flex flex-col gap-1" data-testid="version-diff">
       {diff.changes.map((change, index) => (
-        <li key={index} className="flex items-start gap-2 text-meta">
+        <li key={index} className="flex items-start gap-2 text-xs">
           {/* The kernel's own words — they are accurate — sentence-cased for a
               badge. `detail` below stays verbatim; see the docstring. */}
           <Badge variant={change.kind === "destructive" ? "destructive" : "neutral"}>
@@ -1107,10 +1107,10 @@ function PastVersion({ declared }: { readonly declared: SchemaVersion }): JSX.El
             className="size-3 shrink-0 rounded-full"
             style={{ backgroundColor: swatchOf(entry, index) }}
           />
-          <span className="text-body font-medium">{entry.name}</span>
+          <span className="text-sm font-medium">{entry.name}</span>
           <Badge variant="outline">{formatGeometries(entry.geometries)}</Badge>
           {entry.attributes.length > 0 && (
-            <span className="text-meta text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {formatCount(entry.attributes.length)}{" "}
               {entry.attributes.length === 1 ? "attribute" : "attributes"}:{" "}
               {entry.attributes.map((attribute) => attribute.name).join(", ")}
@@ -1167,7 +1167,7 @@ function ClassDetail({
         </CardTitle>
         <div className="flex items-center gap-2">
           <span
-            className="text-meta tabular-nums text-muted-foreground"
+            className="text-xs tabular-nums text-muted-foreground"
             data-testid={`class-count-${index}`}
           >
             {formatCount(annotations)} {annotations === 1 ? "annotation" : "annotations"}

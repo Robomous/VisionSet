@@ -467,8 +467,8 @@ export function IngestScreen({
       />
 
       <header className="border-b border-border pb-4">
-        <h1 className="text-page font-semibold tracking-tight">Ingest</h1>
-        <p className="text-meta text-muted-foreground">
+        <h1 className="text-2xl font-semibold tracking-tight">Ingest</h1>
+        <p className="text-xs text-muted-foreground">
           A source is registered once; ingesting it again creates nothing new.
         </p>
       </header>
@@ -556,7 +556,7 @@ export function IngestScreen({
                     ) : (
                       <Images className="size-4 text-muted-foreground" aria-hidden="true" />
                     )}
-                    <span className="text-body font-medium" title={source.name}>
+                    <span className="text-sm font-medium" title={source.name}>
                       {sourceLabel(source.name)}
                     </span>
                     <Badge>{source.kind}</Badge>
@@ -564,7 +564,7 @@ export function IngestScreen({
 
                   {source.video !== null && source.video !== undefined && (
                     <dl
-                      className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg bg-muted p-4 text-body md:grid-cols-3"
+                      className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg bg-muted p-4 text-sm md:grid-cols-3"
                       data-testid="probe"
                     >
                       <Fact label="Native fps" value={source.video.fps.toFixed(2)} />
@@ -722,7 +722,7 @@ function Step({
       <div className="flex flex-col items-center">
         <span
           className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-full text-meta font-semibold",
+            "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
             checked
               ? "border border-border bg-muted text-foreground"
               : state === "active"
@@ -740,7 +740,7 @@ function Step({
         <div className="flex min-h-7 flex-wrap items-center gap-2">
           <h2
             className={cn(
-              state === "active" ? "text-section font-semibold" : "text-body font-medium",
+              state === "active" ? "text-base font-semibold" : "text-sm font-medium",
               state === "upcoming" && "text-muted-foreground",
             )}
           >
@@ -749,10 +749,10 @@ function Step({
           {aside}
         </div>
         {state === "upcoming" && hint !== undefined && (
-          <p className="text-meta text-muted-foreground">{hint}</p>
+          <p className="text-xs text-muted-foreground">{hint}</p>
         )}
         {state === "complete" && summary !== undefined && (
-          <p className="truncate text-body text-muted-foreground" data-testid={`${testId}-summary`}>
+          <p className="truncate text-sm text-muted-foreground" data-testid={`${testId}-summary`}>
             {summary}
           </p>
         )}
@@ -808,10 +808,10 @@ function SelectionPanel({
           )}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-body font-medium" data-testid="chosen">
+          <p className="truncate text-sm font-medium" data-testid="chosen">
             {files.length === 1 ? files[0].name : `${files.length} files`}
           </p>
-          <p className="text-meta text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {kind} · {formatBytes(totalBytes)}
             {clip !== null && ` · ${clip.durationSeconds.toFixed(1)} s`}
           </p>
@@ -820,7 +820,7 @@ function SelectionPanel({
               before a single byte uploads. Three, because the point is
               recognition, not inventory; the batch says the rest. */}
           {files.length > 1 && (
-            <p className="truncate text-meta text-muted-foreground" data-testid="selection-names">
+            <p className="truncate text-xs text-muted-foreground" data-testid="selection-names">
               {files
                 .slice(0, 3)
                 .map((file) => file.name)
@@ -874,7 +874,7 @@ function SelectionPanel({
                 value={fps}
                 onChange={(event) => onFps(event.target.value)}
               />
-              <span className="text-body text-muted-foreground">fps</span>
+              <span className="text-sm text-muted-foreground">fps</span>
             </div>
             <FieldHint>
               Part of what the source <em>is</em> — the same clip registered at another rate
@@ -883,7 +883,7 @@ function SelectionPanel({
           </div>
           {estimate !== null && (
             <p
-              className="text-body text-muted-foreground"
+              className="text-sm text-muted-foreground"
               data-testid="frames-estimate"
               title="The browser's own reading of the clip; the probe after registration is the authoritative one."
             >
@@ -923,7 +923,7 @@ function stem(fileName: string): string {
 function Fact({ label, value }: { readonly label: string; readonly value: string }): JSX.Element {
   return (
     <div>
-      <dt className="text-meta text-muted-foreground">{label}</dt>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="font-medium tabular-nums">{value}</dd>
     </div>
   );
@@ -946,11 +946,11 @@ function RunCard({
     <Card className="mt-2" data-testid="run-card">
       <CardContent className="flex flex-col gap-4 pt-4">
         {job === null ? (
-          <p className="text-body text-muted-foreground">Starting…</p>
+          <p className="text-sm text-muted-foreground">Starting…</p>
         ) : (
           <>
             <div className="flex flex-col gap-1">
-              <p className="text-meta text-muted-foreground" data-testid="run-progress">
+              <p className="text-xs text-muted-foreground" data-testid="run-progress">
                 {job.total === null || job.total === undefined
                   ? // A clip has no denominator until it is over: `VideoMetadata`
                     // carries no frame count, by design.
@@ -1065,7 +1065,7 @@ function Outcome({
 
   return (
     <div className="flex flex-col gap-3 border-t border-border pt-4" data-testid="run-outcome">
-      <p className="text-body">
+      <p className="text-sm">
         {batchId === null ? (
           // `enqueue` only stores an id it was handed, and one is handed only
           // when the launch targeted an existing draft. A run that died before
@@ -1160,7 +1160,7 @@ function Partials({
       <ul className="flex flex-col gap-2">
         {partials.map((failure, index) => (
           <li key={`${failure.name}-${index}`} data-testid={`partial-${index}`}>
-            <span className="font-mono text-meta" title={failure.name}>
+            <span className="font-mono text-xs" title={failure.name}>
               {basename(failure.name)}
             </span>{" "}
             — damaged source: {formatCount(failure.frames_produced ?? 0)} frame
@@ -1201,7 +1201,7 @@ function Failures({
 
   return (
     <div className="flex flex-col gap-2" data-testid="failures">
-      <p className="flex items-center gap-2 text-body">
+      <p className="flex items-center gap-2 text-sm">
         <AlertTriangle className="size-4 text-destructive" aria-hidden="true" />
         {/* The refused count, not `failures.length`: a partial belongs to the
             report above, and counting it here would say a file could not be read
@@ -1227,7 +1227,7 @@ function Failures({
         <TableBody>
           {[...corrupt, ...unsupported].map((failure, index) => (
             <TableRow key={`${failure.name}-${index}`} data-testid={`failure-${index}`}>
-              <TableCell className="font-mono text-meta" title={failure.name}>
+              <TableCell className="font-mono text-xs" title={failure.name}>
                 {basename(failure.name)}
               </TableCell>
               <TableCell>
@@ -1303,8 +1303,8 @@ function Dropzone({ onFiles }: { readonly onFiles: (files: readonly File[]) => v
       }`}
     >
       <Upload className="size-6 text-muted-foreground" aria-hidden="true" />
-      <p className="text-body">Drop images or a video here</p>
-      <p className="text-meta text-muted-foreground">
+      <p className="text-sm">Drop images or a video here</p>
+      <p className="text-xs text-muted-foreground">
         Nothing is filtered in the browser — the server reads every file and reports what it
         could not.
       </p>

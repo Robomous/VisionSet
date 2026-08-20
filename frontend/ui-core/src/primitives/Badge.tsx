@@ -21,7 +21,7 @@ import type { HTMLAttributes, JSX, ReactNode } from "react";
 import { cn } from "../lib/cn";
 
 export const badgeVariants = cva(
-  "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-meta font-medium",
+  "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-xs font-medium",
   {
     variants: {
       variant: {
@@ -64,7 +64,7 @@ export function Alert({
     <div
       role={variant === "destructive" ? "alert" : undefined}
       className={cn(
-        "rounded-lg border p-4 text-body",
+        "rounded-lg border p-4 text-sm",
         variant === "destructive"
           ? "border-destructive bg-destructive/5 text-destructive"
           : "border-border bg-muted text-foreground",

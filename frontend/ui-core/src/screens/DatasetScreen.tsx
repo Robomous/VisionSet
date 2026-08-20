@@ -119,8 +119,8 @@ export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
     <div className="flex flex-col gap-6" data-testid="dataset-screen">
       <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
         <div>
-          <h1 className="text-page font-semibold tracking-tight">Dataset</h1>
-          <p className="text-meta text-muted-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight">Dataset</h1>
+          <p className="text-xs text-muted-foreground">
             Every asset a completed batch has promoted.
           </p>
         </div>
@@ -155,7 +155,7 @@ export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
               </CardHeader>
               <CardContent>
                 {counts.classes.length === 0 ? (
-                  <p className="text-body text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     Nothing labelled yet. A class the schema declares but nobody used does
                     not appear here — which classes exist is the schema&rsquo;s answer.
                   </p>
@@ -191,7 +191,7 @@ export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
       <TrunkAssets projectId={projectId} datasetId={dataset.data?.id} />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-section font-semibold">Releases</h2>
+        <h2 className="text-base font-semibold">Releases</h2>
         <Async
           query={releases}
           loadingRows={2}
@@ -265,14 +265,14 @@ function TrunkAssets({
     <section className="flex flex-col gap-3" data-testid="trunk-assets">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="text-section font-semibold">Assets</h2>
-          <p className="text-meta text-muted-foreground">
+          <h2 className="text-base font-semibold">Assets</h2>
+          <p className="text-xs text-muted-foreground">
             Every asset a completed batch has promoted, in the order they were promoted.
           </p>
         </div>
         {total > TRUNK_PAGE_SIZE && (
           <div className="flex items-center gap-2" data-testid="trunk-paging">
-            <span className="text-meta tabular-nums text-muted-foreground">
+            <span className="text-xs tabular-nums text-muted-foreground">
               {offset + 1}&ndash;{Math.min(offset + TRUNK_PAGE_SIZE, total)} of {total}
             </span>
             <Button
@@ -328,7 +328,7 @@ function TrunkAssets({
                       className="size-12 rounded-md border border-border object-cover"
                     />
                   </TableCell>
-                  <TableCell className="font-mono text-meta">{assetLabel(asset)}</TableCell>
+                  <TableCell className="font-mono text-xs">{assetLabel(asset)}</TableCell>
                   {/* Null means *unknown*, not "never": rows written before the
                       column existed are legitimately unstamped, and rendering that
                       as a date would invent one. */}
@@ -454,8 +454,8 @@ function Stat({ label, value }: { readonly label: string; readonly value: number
   return (
     <Card>
       <CardContent className="pt-4">
-        <p className="text-meta text-muted-foreground">{label}</p>
-        <p className="text-page font-semibold tabular-nums">{value}</p>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-2xl font-semibold tabular-nums">{value}</p>
       </CardContent>
     </Card>
   );
@@ -479,12 +479,12 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
             </Badge>
           )}
         </CardTitle>
-        <span className="font-mono text-meta text-muted-foreground" title={release.manifest_hash}>
+        <span className="font-mono text-xs text-muted-foreground" title={release.manifest_hash}>
           {release.manifest_hash.slice(0, 12)}
         </span>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <p className="text-meta text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {release.asset_count} assets · {release.annotation_count} annotations · VisionSet{" "}
           {release.visionset_version} · {release.created_at.slice(0, 19).replace("T", " ")}
         </p>
@@ -589,7 +589,7 @@ function Verification({
   }
   if (report.ok) {
     return (
-      <p className="flex items-center gap-2 text-meta text-muted-foreground" data-testid={`verified-${tag}`}>
+      <p className="flex items-center gap-2 text-xs text-muted-foreground" data-testid={`verified-${tag}`}>
         <Check className="size-3.5" aria-hidden="true" />
         {report.checked} blobs re-read and re-hashed. Intact.
       </p>
@@ -674,7 +674,7 @@ function PublishDialog({
             <FieldHint>Unique per dataset, and case-sensitive.</FieldHint>
           </div>
 
-          <label className="flex items-center gap-2 text-body">
+          <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
               className="accent-primary"
@@ -689,7 +689,7 @@ function PublishDialog({
             <div className="grid grid-cols-4 gap-2">
               {(["train", "val", "test"] as const).map((fold) => (
                 <div key={fold} className="flex flex-col gap-1">
-                  <Label htmlFor={`fraction-${fold}`} className="text-meta">
+                  <Label htmlFor={`fraction-${fold}`} className="text-xs">
                     {fold}
                   </Label>
                   <Input
@@ -707,7 +707,7 @@ function PublishDialog({
                 </div>
               ))}
               <div className="flex flex-col gap-1">
-                <Label htmlFor="split-seed" className="text-meta">
+                <Label htmlFor="split-seed" className="text-xs">
                   seed
                 </Label>
                 <Input
@@ -718,7 +718,7 @@ function PublishDialog({
                   onChange={(event) => setSeed(event.target.value)}
                 />
               </div>
-              <p className="col-span-4 text-meta text-muted-foreground" data-testid="split-hint">
+              <p className="col-span-4 text-xs text-muted-foreground" data-testid="split-hint">
                 {balanced
                   ? "The split keys on each asset's content hash, so the same seed gives the same folds on every machine."
                   : `Fractions must sum to 1 — they sum to ${sum.toFixed(2)}.`}
@@ -928,7 +928,7 @@ function ExportDialog({
               on the badge rather than only in its colour, and the sentences
               below stay: a badge is the glance, prose is the answer. */}
           {shownState !== null && (
-            <p className="flex items-center gap-2 text-meta text-muted-foreground">
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <Badge variant={JOB_STATE_VARIANT[shownState] ?? "neutral"} data-testid="export-job-state">
                 {JOB_STATE_LABEL[shownState] ?? shownState}
               </Badge>
@@ -943,7 +943,7 @@ function ExportDialog({
           {needsConsent && (
             <Alert variant="destructive" title={LOSSY} data-testid="lossy-consent">
               <p>{failure?.message}</p>
-              <label className="mt-2 flex items-center gap-2 text-body">
+              <label className="mt-2 flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   className="accent-primary"

@@ -97,12 +97,15 @@ test("the scan finds a colour smuggled into a class, and nothing that merely loo
 });
 
 /**
- * `DESIGN.md` "Where the brand is": coral is used in exactly three places, and a
- * fourth is a design decision raised in review, not a diff. The document's own
- * check command couldn't hold the line alone — this is the same rule with a suite
- * behind it. Same bargain as `colouredClassesIn`: a pure function over one file's
- * text, so the gate is provable with fabricated input, and `COMMENT` keeps the
- * styles.css line that *states* the rule from counting as a usage of it.
+ * `DESIGN.md` "Where the brand is": coral is identity, not a functional-UI
+ * colour — the wordmark and the styleguide swatch that shows it off, nothing
+ * a person acts on. This is not a headcount: the gate does not exist to hold
+ * a count of sites, it exists so brand can never migrate onto a control (a
+ * button, a progress fill, anything with a function) instead of staying the
+ * one place it is allowed to just be seen. Same bargain as
+ * `colouredClassesIn`: a pure function over one file's text, so the gate is
+ * provable with fabricated input, and `COMMENT` keeps the styles.css line
+ * that *states* the rule from counting as a usage of it.
  */
 const BRAND_UTILITY = /\b(?:bg|text|border|ring|fill|stroke)-brand\b/;
 
@@ -158,17 +161,19 @@ test("no frontend source puts a colour inside a class name", () => {
 });
 
 /**
- * The three sites `DESIGN.md` records, and the whole allowance. Paths, not
- * counts, so the failure names what moved. Sorted so the assertion is stable
- * against `git ls-files` ordering.
+ * The whole allowance: identity, and nowhere else. The rail's wordmark and the
+ * styleguide swatch that puts the token on display for inspection — a
+ * component that renders the *value* rather than reaching for it as a colour.
+ * Paths, not a count, so a failure names what moved rather than reporting a
+ * number drifting. Sorted so the assertion is stable against `git ls-files`
+ * ordering.
  */
 const BRAND_SITES = [
   "frontend/app/src/shell/AppShell.tsx",
   "frontend/app/src/styleguide/Styleguide.tsx",
-  "frontend/ui-core/src/primitives/Feedback.tsx",
 ];
 
-test("the brand colour is used in exactly the three recorded places", () => {
+test("the brand colour paints identity only — the wordmark and its styleguide swatch", () => {
   const listed = spawnSync("git", ["ls-files", "-z", "frontend"], { cwd: REPO, encoding: "utf8" });
   assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
   const tracked = listed.stdout
@@ -182,9 +187,85 @@ test("the brand colour is used in exactly the three recorded places", () => {
   assert.deepEqual(
     usages.map((u) => u.file).sort(),
     BRAND_SITES,
-    "DESIGN.md 'Where the brand is': a new brand-coloured site is a design decision — " +
-      "raise it in review and update DESIGN.md and BRAND_SITES together, do not just widen this list:\n" +
+    "DESIGN.md 'Where the brand is': brand is identity, never a functional control — " +
+      "a new brand-coloured site is a design decision, not a widened list. Raise it in review " +
+      "and update DESIGN.md and BRAND_SITES together:\n" +
       usages.map((u) => `${u.file}:${u.at}: ${u.text}`).join("\n"),
+  );
+});
+
+/**
+ * The names Task 1's audit retired outright — no shadcn analogue, no
+ * VisionSet extension, no idiom left to fall back to. `tokens.test.ts`
+ * already guards this structurally, parsed against `styles.css`'s own
+ * `:root`/`.dark` blocks; this is the same guard by a different method, on
+ * purpose — a plain-text scan that keeps working even if that vitest suite
+ * is ever refactored or its parser changes shape. Same bargain as
+ * `colouredClassesIn`: a pure function, provable with fabricated input.
+ *
+ * Assembled from fragments — the trick this file's own `HEX` already uses —
+ * so none of these twelve names is a contiguous string anywhere in this
+ * file's own source, and a repo-wide sweep for one of them never mistakes
+ * this guard for a lingering usage.
+ */
+const dash = (...parts) => parts.join("-");
+const RETIRED_DECLARATIONS = [
+  dash("--color", "primary", "hover"),
+  dash("--color", "disabled"),
+  dash("--color", "disabled", "foreground"),
+  dash("--color", "success", "hover"),
+  dash("--color", "destructive", "foreground"),
+  dash("--color", "sidebar", "strong"),
+  dash("--color", "sidebar", "muted"),
+  dash("--text", "meta"),
+  dash("--text", "body"),
+  dash("--text", "section"),
+  dash("--text", "page"),
+  dash("--spacing", "sidebar", "mobile"),
+];
+
+/** Every retired name in `text` declared as a custom property, not merely mentioned. */
+export function retiredDeclarationsIn(text) {
+  return text
+    .split("\n")
+    .map((line, index) => ({ line, at: index + 1 }))
+    .filter(({ line }) => !COMMENT.test(line))
+    .flatMap(({ line, at }) =>
+      RETIRED_DECLARATIONS.filter((name) => line.includes(`${name}:`)).map((name) => `${at}: ${name}`),
+    );
+}
+
+test("the scan finds a retired declaration, and not a comment or a longer name that merely contains it", () => {
+  assert.deepEqual(retiredDeclarationsIn(`  ${dash("--color", "disabled")}: oklch(0.9 0 0);`), [
+    `1: ${dash("--color", "disabled")}`,
+  ]);
+  assert.deepEqual(retiredDeclarationsIn(`  ${dash("--text", "meta")}: 0.75rem;`), [
+    `1: ${dash("--text", "meta")}`,
+  ]);
+  // A comment recalling the retired name states history, not a declaration.
+  assert.deepEqual(
+    retiredDeclarationsIn(`  /* ${dash("--color", "primary", "hover")} no longer exists */`),
+    [],
+  );
+  // A name that merely starts with a retired one is a different declaration —
+  // disabled-foreground is its own retired entry, and its presence must not
+  // be double-counted as disabled's.
+  assert.deepEqual(retiredDeclarationsIn(`  ${dash("--color", "disabled", "foreground")}: red;`), [
+    `1: ${dash("--color", "disabled", "foreground")}`,
+  ]);
+  // A current, kept extension is not a retired one.
+  assert.deepEqual(retiredDeclarationsIn(`  --success-foreground: white;`), []);
+});
+
+test("the retired foundation vocabulary is absent from the stylesheet", () => {
+  const STYLES_PATH = "frontend/ui-core/src/styles.css";
+  const stylesheet = readFileSync(path.join(REPO, STYLES_PATH), "utf8");
+  const present = retiredDeclarationsIn(stylesheet);
+  assert.deepEqual(
+    present,
+    [],
+    "styles.css still declares a name Task 1's audit retired — " +
+      `it has no shadcn analogue and no VisionSet extension:\n${present.join("\n")}`,
   );
 });
 

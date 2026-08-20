@@ -84,8 +84,8 @@ export const SelectTrigger = forwardRef<
         // it. `text-left` because this is a <button>, which centres its text, and a
         // value that wrapped would centre with it.
         "flex min-h-9 w-full items-center justify-between gap-2 rounded-md border border-input " +
-          "bg-card px-3 py-1 text-left text-body text-foreground disabled:cursor-not-allowed " +
-          "disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground",
+          "bg-card px-3 py-1 text-left text-sm text-foreground disabled:cursor-not-allowed " +
+          "disabled:pointer-events-none disabled:opacity-50",
         className,
       )}
       {...props}
@@ -108,7 +108,7 @@ export const SelectContent = forwardRef<
         ref={ref}
         position={position}
         className={cn(
-          "z-50 flex max-h-(--radix-select-content-available-height) min-w-32 flex-col " +
+          "dark z-50 flex max-h-(--radix-select-content-available-height) min-w-32 flex-col " +
             "overflow-hidden rounded-lg border border-border bg-popover " +
             "text-popover-foreground shadow-lg",
           className,
@@ -152,7 +152,7 @@ export const SelectItem = forwardRef<
       ref={ref}
       className={cn(
         "relative flex cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 " +
-          "text-body outline-none data-[highlighted]:bg-muted data-[disabled]:opacity-50",
+          "text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:opacity-50",
         className,
       )}
       {...props}
@@ -165,7 +165,7 @@ export const SelectItem = forwardRef<
           // line rather than losing its end, because half a model id is not one.
           <span className="flex min-w-0 flex-col gap-0.5 break-words">
             <span className="font-medium text-foreground">{children}</span>
-            <span className="text-meta text-muted-foreground">{meta}</span>
+            <span className="text-xs text-muted-foreground">{meta}</span>
           </span>
         )}
       </SelectPrimitive.ItemText>
@@ -185,7 +185,7 @@ export const SelectLabel = forwardRef<
   return (
     <SelectPrimitive.Label
       ref={ref}
-      className={cn("px-2 py-1.5 text-meta text-muted-foreground", className)}
+      className={cn("px-2 py-1.5 text-xs text-muted-foreground", className)}
       {...props}
     />
   );

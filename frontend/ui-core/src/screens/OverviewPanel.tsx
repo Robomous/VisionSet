@@ -397,12 +397,12 @@ function FirstRun({
                 hierarchy. Only offered where ingesting is the road not taken —
                 a project that already has images has taken it. */}
             {first && onIngest !== undefined && (
-              <p className="text-meta text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Or{" "}
                 <Button
                   variant="link"
                   size="sm"
-                  className="h-auto p-0 text-meta"
+                  className="h-auto p-0 text-xs"
                   data-testid="first-run-alt"
                   onClick={onIngest}
                 >
@@ -460,9 +460,9 @@ function Distribution({
 
   return (
     <section className="flex flex-col gap-3" data-testid="overview-distribution">
-      <h2 className="text-section font-semibold">Class distribution</h2>
+      <h2 className="text-base font-semibold">Class distribution</h2>
       {ranked.length === 0 ? (
-        <p className="text-body text-muted-foreground" data-testid="distribution-none">
+        <p className="text-sm text-muted-foreground" data-testid="distribution-none">
           No annotations yet. Drawing the first one puts its class here.
         </p>
       ) : (
@@ -483,7 +483,7 @@ function Distribution({
           </div>
           {note !== null && (
             <p
-              className="flex items-center gap-1.5 text-meta text-amber-700"
+              className="flex items-center gap-1.5 text-xs text-amber-700"
               data-testid="imbalance-note"
             >
               <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
@@ -516,7 +516,7 @@ function Samples({
 
   return (
     <section className="flex flex-col gap-3" data-testid="overview-samples">
-      <h2 className="text-section font-semibold">Dataset samples</h2>
+      <h2 className="text-base font-semibold">Dataset samples</h2>
       {loading ? (
         <div className="grid grid-cols-3 gap-1.5">
           {Array.from({ length: SAMPLE_LIMIT }, (_, index) => (

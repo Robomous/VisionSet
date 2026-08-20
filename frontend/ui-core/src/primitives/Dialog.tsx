@@ -30,7 +30,7 @@ export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 export const DialogPortal = DialogPrimitive.Portal;
 
-const OVERLAY = "fixed inset-0 z-50 bg-sidebar-strong/50";
+const OVERLAY = "fixed inset-0 z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs";
 
 export const DialogOverlay = forwardRef<
   ElementRef<typeof DialogPrimitive.Overlay>,
@@ -74,7 +74,7 @@ export const DialogTitle = forwardRef<
   return (
     <DialogPrimitive.Title
       ref={ref}
-      className={cn("text-section font-semibold", className)}
+      className={cn("text-base font-semibold", className)}
       {...props}
     />
   );
@@ -87,7 +87,7 @@ export const DialogDescription = forwardRef<
   return (
     <DialogPrimitive.Description
       ref={ref}
-      className={cn("text-body text-muted-foreground", className)}
+      className={cn("text-sm text-muted-foreground", className)}
       {...props}
     />
   );
