@@ -16,7 +16,7 @@ import { forwardRef, type ComponentPropsWithoutRef, type ElementRef, type HTMLAt
 import { Toaster as SonnerToaster, toast } from "sonner";
 
 import { cn } from "../lib/cn";
-import { COLOR, RADIUS } from "../tokens";
+import { cssVar } from "../tokens";
 
 export const Progress = forwardRef<
   ElementRef<typeof ProgressPrimitive.Root>,
@@ -69,10 +69,10 @@ export function Toaster(): JSX.Element {
       position="bottom-right"
       toastOptions={{
         style: {
-          background: COLOR.popover,
-          color: COLOR["popover-foreground"],
-          border: `1px solid ${COLOR.border}`,
-          borderRadius: RADIUS.lg,
+          background: cssVar("popover"),
+          color: cssVar("popover-foreground"),
+          border: `1px solid ${cssVar("border")}`,
+          borderRadius: "var(--radius-lg)",
         },
       }}
     />

@@ -21,6 +21,16 @@
     "types": ["node"],
     "declaration": true,
     "outDir": "dist",
+    // The components.json aliases (`@/components`, `@/lib`, `@/primitives`,
+    // `@/hooks`), for typecheck only. `shadcn add` writes generated
+    // components under these paths; nothing under `src` uses them yet, and
+    // the emit-time resolution (a bundler alias, not just tsc's) is the
+    // component-migration phase's problem. No `baseUrl`: TypeScript 6 deprecates
+    // it (TS5101, on the way out in 7.0), and `paths` alone resolves relative to
+    // this file, which is the same effect.
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     // TypeScript 6 stopped inferring the common source directory when that
     // inference shapes the output layout (error TS5011). `src` is what 5.x
     // inferred; stating it changes nothing about `dist/` and is what the

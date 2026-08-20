@@ -1,185 +1,210 @@
 /*
  * @visionset/ui-core — the design system's stylesheet.
  *
- * This file *is* the contract: Tailwind v4 reads `@theme` and every utility the
- * package uses is generated from it, so `bg-primary` cannot mean anything other
- * than what is written below. `DESIGN.md` at the repository root is the prose half
- * and `src/tokens.ts` the TypeScript mirror; `tokens.test.ts` asserts this block
- * and that module agree declaration for declaration, in both directions.
+ * This is the shadcn preset `b3bXyyPdWj` (style `nova` on the Radix base,
+ * base colour `neutral`, chart palette `orange`, icons `tabler`, body font
+ * Inter, heading font Geist, radius medium, menu inverted/subtle) — the CLI's
+ * exact generated output, transcribed verbatim from a Docker scratch project
+ * built with `shadcn` 4.18.0. The preset is the source of truth for every
+ * name below except six: `stage`, `brand`, `success`/`success-foreground`
+ * and `warning`/`warning-foreground` are VisionSet's own, each justified in
+ * `DESIGN.md` and each following shadcn's own extension convention — a value
+ * in `:root`, a dark counterpart in `.dark`, exposure through `@theme
+ * inline`. `src/tokens.ts` is the TypeScript mirror of this file and
+ * `tokens.test.ts` asserts the two agree, declaration for declaration.
  *
  * A consuming app imports exactly this:
  *
  *     import "@visionset/ui-core/styles.css";
  *
- * and adds an `@source` for its own sources. Tailwind v4 is CSS-first: there is no
- * `tailwind.config.js` anywhere in this repository and there must not be one, or
- * the tokens acquire a second home.
+ * and adds an `@source` for its own sources. Tailwind v4 is CSS-first: there
+ * is no `tailwind.config.js` anywhere in this repository and there must not
+ * be one, or the tokens acquire a second home.
  */
 
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/geist";
 
 /*
- * The package's own components, so a class string that only ever appears inside
- * `ui-core` still produces CSS in the consumer's build. Relative to this file,
- * which is what `@source` takes.
+ * The package's own components, so a class string that only ever appears
+ * inside `ui-core` still produces CSS in the consumer's build. Relative to
+ * this file, which is what `@source` takes.
  */
 @source ".";
 
-@theme {
-  /*
-   * The primary action: a near-black with an indigo undertone.
-   *
-   * It is not the brand colour and is deliberately not read as one. An interface
-   * whose every button is brand-coloured spends the brand on "Cancel"; a
-   * near-black spends nothing, and leaves the eye free to find the one place
-   * colour actually means something.
-   */
-  --color-primary: #1e2130;
-  --color-primary-hover: #2a2d40;
-  --color-primary-foreground: #ffffff;
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.837 0.128 66.29);
+  --chart-2: oklch(0.705 0.213 47.604);
+  --chart-3: oklch(0.646 0.222 41.116);
+  --chart-4: oklch(0.553 0.195 38.402);
+  --chart-5: oklch(0.47 0.157 37.304);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 
   /*
-   * Robomous coral, and the whole reason the palette above is grey.
-   *
-   * It appears in exactly **two** places in the product — the wordmark in the
-   * rail, and the `Progress` primitive's fill, whatever is being measured — and
-   * `DESIGN.md` names both. That
-   * scarcity is the token's contract, not a coincidence of the current screens:
-   * a third `bg-brand` is a design decision, not a styling one, and belongs in a
-   * review rather than in a diff.
+   * The stage a picture sits on: the annotator's surround. Its own role —
+   * not `muted`'s subtle fill, not `card`'s surface — the neutral a
+   * photograph is judged against, kept distinguishable from `background` so
+   * an asset with white borders still shows where it ends.
    */
-  --color-brand: #e85d44;
-
+  --stage: oklch(0.94 0 0);
   /*
-   * Surfaces and ink, on one cool ramp.
-   *
-   * `background` is the page and `card` the thing sitting on it, which is why
-   * they are no longer the same white: a card with a hairline on a white page
-   * reads as a box drawn on nothing, and the same card on `#fafafb` reads as a
-   * surface. The ramp runs page → surface → subtle fill → hairline → input line.
+   * Robomous coral. Identity only — the wordmark and the ingest progress
+   * fill, named in `DESIGN.md` — never a functional-UI colour. A third site
+   * is a design decision, not a styling one.
    */
-  --color-background: #fafafb;
-  --color-foreground: #1b1d28;
-  --color-card: #ffffff;
-  --color-card-foreground: #1b1d28;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #1b1d28;
-  --color-muted: #f3f4f6;
-  --color-muted-foreground: #6b6e7e;
-
+  --brand: oklch(0.653 0.178 32.3);
   /*
-   * A disabled control.
-   *
-   * `disabled` carries the same value as `muted` today, and that is the point
-   * rather than an oversight: a disabled control is not a new colour, it is the
-   * absence of one. What marks it is the ink and the missing border, which is
-   * why the pair is named for its intent — a later change to the hover fill must
-   * not silently restyle every disabled button along with it.
-   *
-   * `DESIGN.md` principle 9 still stands: this is what a disabled control looks
-   * like when one is warranted (a mutation in flight), never a licence to render
-   * a bare grey button in place of an explanation.
+   * The batch-state family's one filled control (the annotation editor's
+   * `Save and stay`), a green analogue of the preset's own destructive
+   * treatment.
    */
-  --color-disabled: #f3f4f6;
-  --color-disabled-foreground: #a0a3b1;
+  --success: oklch(0.577 0.132 152);
+  --success-foreground: oklch(1 0 0);
+  --warning: oklch(0.646 0.13 80);
+  --warning-foreground: oklch(0.205 0 0);
+}
 
-  /*
-   * The stage a picture sits on: the surround around an asset in the
-   * annotator. A role of its own rather than `muted` or `card`, because it is
-   * neither a subtle fill nor a surface content sits *in* — it is the neutral a
-   * photograph is judged against, and it has to stay distinguishable from
-   * `background` so an asset with white borders still shows where it ends.
-   */
-  --color-stage: #e4e6ec;
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.837 0.128 66.29);
+  --chart-2: oklch(0.705 0.213 47.604);
+  --chart-3: oklch(0.646 0.222 41.116);
+  --chart-4: oklch(0.553 0.195 38.402);
+  --chart-5: oklch(0.47 0.157 37.304);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
 
-  /*
-   * Lines and focus.
-   *
-   * `input` is a step darker than `border` because a hairline that separates and
-   * a hairline that says "you can type here" are different claims, and the
-   * secondary button borrows the second one.
-   *
-   * The ring is the action colour at 35%, not the action colour: a solid
-   * near-black outline two pixels off a near-black button is a smudge. Its RGB
-   * channels are `--color-primary`'s, and `tokens.test.ts` asserts so, which is
-   * what keeps the two from drifting apart now that they are not one value.
-   */
-  --color-border: #e7e8ec;
-  --color-input: #dcdde4;
-  --color-ring: rgba(30, 33, 48, 0.35);
+  --stage: oklch(0.24 0 0);
+  --brand: oklch(0.653 0.178 32.3);
+  --success: oklch(0.696 0.17 152);
+  --success-foreground: oklch(0.205 0 0);
+  --warning: oklch(0.75 0.14 80);
+  --warning-foreground: oklch(0.205 0 0);
+}
 
-  /*
-   * Status, desaturated to sit on a near-monochrome page. Each is used as ink
-   * and as a 10%-alpha fill behind its own border, never as a saturated block —
-   * with one exception, the annotation editor's `Save and stay`, which is a
-   * filled `success` control. Its two companions exist for that fill and for
-   * nothing else: `success-foreground` is the ink on it, and `success-hover`
-   * lifts the fill by the same channel deltas `primary-hover` lifts `primary`
-   * (+12, +12, +16), so the two filled variants brighten by the same amount
-   * under a pointer instead of each inventing a feel.
-   */
-  --color-success: #2e7d5b;
-  --color-success-hover: #3a896b;
-  --color-success-foreground: #ffffff;
-  --color-warning: #b98217;
-  --color-destructive: #c93b3b;
-  --color-destructive-foreground: #ffffff;
+@theme inline {
+  --font-sans: 'Inter Variable', sans-serif;
+  --font-heading: 'Geist Variable', sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 
-  /*
-   * The dark rail — the same near-black as the primary action, so the
-   * rail and a filled button are recognisably one family rather than two darks.
-   */
-  --color-sidebar: #1e2130;
-  --color-sidebar-accent: #2a2d40;
-  --color-sidebar-strong: #161823;
-  --color-sidebar-muted: #8b8fa3;
-  --color-sidebar-foreground: #ffffff;
+  /* VisionSet's four extensions, exposed the same way as every preset colour. */
+  --color-stage: var(--stage);
+  --color-brand: var(--brand);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
 
-  /* Radius. `md` is the default — buttons, inputs, badges. */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-
-  /* The rail's three widths, which three components have to agree on. */
+  /* The rail's two widths — the AppShell, its collapse toggle and the
+     content offset have to agree on them or the layout jumps. */
   --spacing-sidebar: 240px;
   --spacing-sidebar-collapsed: 60px;
-  --spacing-sidebar-mobile: 280px;
-
-  /* One type scale. */
-  --text-meta: 0.75rem;
-  --text-body: 0.875rem;
-  --text-section: 1rem;
-  --text-page: 1.5rem;
-
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 @layer base {
-  /*
-   * 14px base and line-height 1.6, which is the rhythm every measurement in
-   * `DESIGN.md` was taken against.
-   */
-  html {
-    font-family: var(--font-sans);
+  * {
+    @apply border-border outline-ring/50;
   }
-
   body {
-    background-color: var(--color-background);
-    color: var(--color-foreground);
-    font-size: var(--text-body);
-    line-height: 1.6;
+    @apply bg-background text-foreground;
   }
-
-  /*
-   * Accessible by default, and not per component. Real `<button>`/`<a>` elements
-   * get a visible ring wherever they are, so a screen cannot forget one — and it
-   * is `:focus-visible`, so a pointer user never sees it.
-   */
-  :focus-visible {
-    outline: 2px solid var(--color-ring);
-    outline-offset: 2px;
+  html {
+    @apply font-sans;
+  }
+  /* The preset's heading font, applied at the semantic-HTML level so a
+     screen never has to remember `font-heading` on every <h1>. */
+  h1, h2, h3, h4 {
+    @apply font-heading;
   }
 }
