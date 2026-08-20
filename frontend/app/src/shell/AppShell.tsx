@@ -1,6 +1,16 @@
 /**
- * The application shell: a slim dark rail, and everything else belongs to the
- * routed page.
+ * The application shell: a slim rail on the standard sidebar tokens, and
+ * everything else belongs to the routed page.
+ *
+ * The rail is **not** inverted. The preset's `menuColor: inverted` reaches
+ * dropdown menus, tooltips and the dialog surfaces the popover tokens serve —
+ * `ui-core`'s `Menu.tsx`/`Dialog.tsx` wrap those in `dark` — but the sidebar
+ * has its own eight-variable family (`sidebar`/`sidebar-foreground`/
+ * `sidebar-accent`/`sidebar-border`/…) precisely so a rail can follow the
+ * page's theme instead of borrowing the menu treatment. In the light theme
+ * that means a **light** rail, not the near-black one this file used to draw:
+ * `--sidebar` resolves to `oklch(0.985 0 0)` there, a hair off `background`,
+ * distinguished by `border-sidebar-border` rather than by inverting.
  *
  * `DESIGN.md` is explicit about what is on it — logo, collapse toggle, Home,
  * Projects, Inference, and the account control at the bottom — and about what is
@@ -94,7 +104,7 @@ export function AppShell(): JSX.Element {
         aria-label="Main"
         data-testid="app-rail"
         data-collapsed={collapsed ? "true" : "false"}
-        className={`flex shrink-0 flex-col gap-1 bg-sidebar p-2 text-sidebar-foreground ${
+        className={`flex shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-2 text-sidebar-foreground ${
           collapsed ? "w-sidebar-collapsed" : "w-sidebar"
         }`}
       >
@@ -219,16 +229,17 @@ function RailLink({
       end={end ?? false}
       data-testid={testId}
       title={collapsed ? label : undefined}
-      // `bg-primary` would be the *same near-black as
-      // the rail itself* — an active item that vanishes into its own background.
-      // The rail carries its own contrast now: a lifted fill and white ink for
-      // active, `sidebar-muted` for the rest, so the distinction survives inside
-      // a dark surface instead of borrowing a colour meant for a bright one.
+      // The rail follows the standard sidebar tokens now, the same ones a
+      // consuming app's own theme would resolve: an active item is
+      // `sidebar-accent`/`sidebar-accent-foreground` — a pairing chosen to
+      // stay legible against `sidebar` in *either* theme, rather than a fixed
+      // light-on-dark contrast — and an inactive one is the rail's own
+      // foreground at reduced opacity, `sidebar-foreground/70`.
       className={({ isActive }) =>
         `flex items-center gap-2 rounded-md px-2 py-2 text-sm ${
           isActive
-            ? "bg-sidebar-accent font-medium text-sidebar-foreground"
-            : "text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         }`
       }
     >
@@ -258,10 +269,10 @@ function RailButton({
       aria-label={label}
       title={label}
       onClick={onClick}
-      // `sidebar-muted` like an inactive link: the collapse toggle and sign-out
-      // are chrome, and nothing on the rail is permanently at full contrast
-      // except the item you are on.
-      className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground ${
+      // `sidebar-foreground/70` like an inactive link: the collapse toggle and
+      // sign-out are chrome, and nothing on the rail is permanently at full
+      // contrast except the item you are on.
+      className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${
         wide === true ? "w-full" : ""
       }`}
     >
