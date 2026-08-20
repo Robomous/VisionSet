@@ -53,8 +53,8 @@ export const LIGHT_THEME: Readonly<Record<string, string>> = Object.freeze({
   // Distinguishable from `background` in both themes, so a white asset edge
   // still shows where it ends.
   stage: "oklch(0.94 0 0)",
-  // Robomous coral. Identity only (the wordmark and the ingest progress
-  // fill) — never a functional-UI colour.
+  // Robomous coral. Identity only — the wordmark and its styleguide swatch
+  // — never a functional-UI colour.
   brand: "oklch(0.653 0.178 32.3)",
   // The batch-state family's filled control, a green analogue of the
   // preset's own destructive treatment.

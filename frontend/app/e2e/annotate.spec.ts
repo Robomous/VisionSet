@@ -2164,38 +2164,65 @@ test("the hand takes the crosshair off the picture, and gives it back", async ({
 });
 
 /**
- * The surround must not be the rail's near-black navy.
+ * The surround is its own role — not `background`, not `muted`, and (before
+ * this foundation) not the rail's chrome either.
  *
- * A canvas pane at `bg-sidebar-strong` is the only dark surface in
- * the product outside the rail, so the page reads as a different application. It
- * also costs accuracy rather than only looks: a dark surround shifts the perceived
- * contrast and colour of the photograph inside it, on a tool whose whole job is
- * looking closely at pixels.
+ * That last comparison changed under the shadcn preset: the rail is `bg-sidebar`,
+ * and `sidebar` now *follows the theme* rather than staying a fixed dark chrome —
+ * in the light theme it is `oklch(0.985 0 0)`, a near-white a shade below
+ * `background`. So "the surround is not the rail" can no longer mean "the rail
+ * is dark"; what the contract (`docs/ui/annotator.md#the-stage`) still promises
+ * is that `stage` is its own distinguishable token, not a shade some other
+ * surface happens to produce. This asserts that directly, against the sidebar's
+ * *actual* current value rather than an assumption about its brightness.
  */
 
-/** `rgb(r, g, b)` as three numbers, so a colour can be reasoned about. */
-function channels(colour: string): readonly number[] {
-  return (colour.match(/\d+/g) ?? []).slice(0, 3).map(Number);
+/**
+ * A CSS colour, read back as the sRGB bytes it actually paints.
+ *
+ * Every token here is authored in `oklch()`, and Chromium's computed style
+ * reports an oklch()-authored colour as an `oklch(...)`/`oklab(...)` string,
+ * not `rgb(...)` — a digit-regex over that string would slice a decimal like
+ * `0.94` into `0` and `94` and reason about nonsense. A 1×1 canvas sidesteps
+ * the serialisation entirely: it is the browser's own conversion of *any*
+ * valid CSS colour into the four 0–255 bytes it actually paints.
+ */
+async function channelsOf(page: Page, colour: string): Promise<readonly number[]> {
+  return page.evaluate((value) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = value;
+    ctx.fillRect(0, 0, 1, 1);
+    return Array.from(ctx.getImageData(0, 0, 1, 1).data.slice(0, 3));
+  }, colour);
 }
 
-test("the canvas surround is a light neutral, not the rail's dark chrome", async ({ page }) => {
+test("the canvas surround is a light neutral, distinguishable from the sidebar as well as the page", async ({
+  page,
+}) => {
   const sent: Request[] = [];
   await openJob(page, sent);
 
-  const stage = await page
+  const stageColour = await page
     .getByTestId("canvas-stage")
     .evaluate((node) => getComputedStyle(node).backgroundColor);
-  const rail = await page
+  const sidebarColour = await page
     .getByTestId("app-rail")
     .evaluate((node) => getComputedStyle(node).backgroundColor);
 
+  const stage = await channelsOf(page, stageColour);
+  const sidebar = await channelsOf(page, sidebarColour);
+
   // Light: every channel well above the midpoint. `#111827` fails all three.
-  expect(channels(stage).every((value) => value > 200)).toBe(true);
+  expect(stage.every((value) => value > 200)).toBe(true);
   // Neutral: no channel dominates, so the picture is judged against grey.
-  expect(Math.max(...channels(stage)) - Math.min(...channels(stage))).toBeLessThan(24);
-  // …and it is emphatically not the rail's treatment, which stays dark.
-  expect(stage).not.toBe(rail);
-  expect(channels(rail).every((value) => value < 80)).toBe(true);
+  expect(Math.max(...stage) - Math.min(...stage)).toBeLessThan(24);
+  // …and it is a step below the sidebar's own near-white, not the same surface
+  // wearing two names. The rail no longer guarantees this by being dark; the
+  // preset's actual values (`stage` 0.94 vs `sidebar` 0.985) do.
+  expect(Math.min(...sidebar) - Math.min(...stage)).toBeGreaterThanOrEqual(8);
 });
 
 /**
@@ -2203,10 +2230,10 @@ test("the canvas surround is a light neutral, not the rail's dark chrome", async
  * passed this one, being obviously distinguishable from white.
  *
  * What it rejects is the tempting wrong fix: reaching for an existing surface
- * token. `background` and `card` are `#ffffff`, and `muted` is `#f6f8fa`, whose
- * closest channel is five short of white — so an asset with white borders would
- * bleed into its own surround. Measured against a minimum gap of ten, which
- * `muted` fails and `stage` (`#e1e6eb`, gap 20) clears.
+ * token. `background` and `card` are `oklch(1 0 0)` (pure white), and `muted`
+ * is `oklch(0.97 0 0)` — close enough to white that a white-bordered asset
+ * would bleed into its own surround. Measured against a minimum gap of ten
+ * (sRGB bytes), which `muted` fails and `stage` (`oklch(0.94 0 0)`) clears.
  */
 test("the surround is distinguishable from the page and from a white image edge", async ({
   page,
@@ -2214,15 +2241,17 @@ test("the surround is distinguishable from the page and from a white image edge"
   const sent: Request[] = [];
   await openJob(page, sent);
 
-  const [stage, body] = await Promise.all([
+  const [stageColour, bodyColour] = await Promise.all([
     page.getByTestId("canvas-stage").evaluate((node) => getComputedStyle(node).backgroundColor),
     page.evaluate(() => getComputedStyle(document.body).backgroundColor),
   ]);
 
   // The asset is drawn on white in this stub, and the page behind it is white
   // too. A surround equal to either would hide where the picture ends.
-  expect(stage).not.toBe(body);
-  const gap = Math.min(...channels(body).map((value, at) => value - channels(stage)[at]));
+  expect(stageColour).not.toBe(bodyColour);
+  const stage = await channelsOf(page, stageColour);
+  const body = await channelsOf(page, bodyColour);
+  const gap = Math.min(...body.map((value, at) => value - stage[at]));
   expect(gap).toBeGreaterThanOrEqual(10);
 });
 
