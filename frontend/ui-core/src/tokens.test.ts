@@ -278,6 +278,18 @@ describe("structure", () => {
     expect(/\*\s*\{\s*@apply border-border outline-ring\/50;\s*\}/.test(STYLESHEET)).toBe(true);
   });
 
+  /**
+   * Transitional: the `*` rule above only sets `outline-color`, and with the
+   * previous foundation's explicit 2px rule gone, an unstyled `:focus-visible`
+   * renders at the browser's native 1px — below the visible-focus floor.
+   * This rule keeps keyboard focus at 2px until the primitives adopt Nova's
+   * own `focus-visible:ring-3` treatment, at which point it — and this test —
+   * should be deleted.
+   */
+  it("keeps keyboard focus at a visible 2px until Nova's own rings land", () => {
+    expect(/:focus-visible\s*\{\s*@apply outline-2;\s*\}/.test(STYLESHEET)).toBe(true);
+  });
+
   it("applies the heading font at the semantic-HTML level", () => {
     expect(/h1,\s*h2,\s*h3,\s*h4\s*\{\s*@apply font-heading;\s*\}/.test(STYLESHEET)).toBe(true);
   });

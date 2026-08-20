@@ -218,14 +218,14 @@ test("focus is visible on a tab that has no fill to draw it against", async ({ p
   // would be no ring at all.
   expect(outline[3]).toBeGreaterThan(64);
   expect(outline[3]).toBeLessThan(220);
-  // 1px, not 2px: the base layer sets only `outline-color` (`outline-ring/50`)
-  // and leaves the width to the browser's native `:focus-visible` outline
-  // (`outline-style: auto`), which Chromium renders at 1px — there is no
-  // explicit width rule anywhere in this stylesheet. (`Tabs.tsx`'s own comment
-  // still says "2px", inherited from the previous foundation's explicit rule;
-  // that prose is stale and out of this task's scope, but the measured value
-  // here is the one the browser actually renders.)
-  await expect(focused).toHaveCSS("outline-width", "1px");
+  // 2px: `styles.css`'s base layer carries a transitional `:focus-visible {
+  // @apply outline-2; }` rule (`DESIGN.md`, *Borders and Focus*) precisely
+  // because the tab bar doesn't yet carry Nova's own `focus-visible:ring-3`
+  // treatment — without it, keyboard focus here would fall back to the
+  // browser's native 1px `outline-style: auto`, which is below the product's
+  // visible-focus floor. Delete this comment's premise (and the base-layer
+  // rule) together, once every focusable primitive supplies its own ring.
+  await expect(focused).toHaveCSS("outline-width", "2px");
   expect((await rgbaOf(page, focused, "background-color")).slice(0, 3)).toEqual(MUTED);
 });
 

@@ -196,6 +196,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* Until the primitives adopt Nova's own focus rings (ring-3 + outline-none),
+     the base layer keeps keyboard focus at a visible 2px. Nova components
+     override this with their own treatment; delete when the migration lands. */
+  :focus-visible {
+    @apply outline-2;
+  }
   body {
     @apply bg-background text-foreground;
   }
