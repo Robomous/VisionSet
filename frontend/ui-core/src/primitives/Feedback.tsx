@@ -30,10 +30,10 @@ export const Progress = forwardRef<
       {...props}
     >
       <ProgressPrimitive.Indicator
-        // `brand`, and one of only two places it is allowed. A progress
-        // bar is the one piece of chrome a person watches rather than reads, so
-        // it is where the coral buys attention instead of spending it.
-        className="h-full w-full flex-1 bg-brand transition-transform"
+        // `primary`, not `brand`: the fill is a functional control — the thing
+        // a person watches to know work is happening — and brand is identity,
+        // never a functional colour.
+        className="h-full w-full flex-1 bg-primary transition-transform"
         // The width is data, so it is a style rather than a class: Tailwind cannot
         // generate a utility for a number it will not see until runtime, and a
         // `w-[${n}%]` string is the one arbitrary value that silently produces
