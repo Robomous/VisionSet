@@ -78,12 +78,12 @@ export function BatchProgressBar({
     <div className="flex flex-col gap-1" {...rest}>
       <Progress aria-label="Annotation progress" value={share.percent} />
       {detailed ? (
-        <span className="text-meta text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {counts.annotated} annotated · {counts.skipped} skipped · {counts.accepted} accepted ·{" "}
           {counts.unannotated} to do
         </span>
       ) : (
-        <span className="text-meta text-muted-foreground" data-testid="progress-readout">
+        <span className="text-xs text-muted-foreground" data-testid="progress-readout">
           {share.done} of {share.total} annotated ({share.percent}%)
         </span>
       )}
@@ -158,7 +158,7 @@ export function CompleteBatchButton({
 
       {outstanding > 0 && (
         <span
-          className="text-meta text-muted-foreground"
+          className="text-xs text-muted-foreground"
           data-testid={`complete-blocked-${batch.name}`}
         >
           {outstanding} frame{outstanding === 1 ? "" : "s"} still to annotate or skip

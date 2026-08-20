@@ -32,13 +32,13 @@ export const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEleme
 
 export const CardTitle = forwardRef<HTMLHeadingElement, HTMLAttributes<HTMLHeadingElement>>(
   function CardTitle({ className, ...props }, ref) {
-    return <h3 ref={ref} className={cn("text-section font-semibold", className)} {...props} />;
+    return <h3 ref={ref} className={cn("text-base font-semibold", className)} {...props} />;
   },
 );
 
 export const CardDescription = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLParagraphElement>>(
   function CardDescription({ className, ...props }, ref) {
-    return <p ref={ref} className={cn("text-meta text-muted-foreground", className)} {...props} />;
+    return <p ref={ref} className={cn("text-xs text-muted-foreground", className)} {...props} />;
   },
 );
 

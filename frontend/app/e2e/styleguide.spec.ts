@@ -76,7 +76,7 @@ test("the base layer applies, so a screen inherits the scale without asking", as
 /**
  * The bug `cn.ts` documents, seen from the far end.
  *
- * `tailwind-merge` read `text-body` as a colour and dropped it, so every field in
+ * `tailwind-merge` read `text-sm` as a colour and dropped it, so every field in
  * the package rendered at the browser's default size instead of the contract's.
  * `cn.test.ts` pins the merge; this pins the pixels, because the two failures look
  * nothing alike from the outside.

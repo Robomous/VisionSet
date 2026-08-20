@@ -184,9 +184,9 @@ export function ClassRegion({
   return (
     <div className="flex shrink-0 flex-col gap-2" data-testid="class-region">
       <div className="flex items-center justify-between px-1">
-        <span className="text-body font-medium">Classes</span>
+        <span className="text-sm font-medium">Classes</span>
         <div className="flex items-center gap-2">
-          <span className="text-meta text-muted-foreground" data-testid="class-count">
+          <span className="text-xs text-muted-foreground" data-testid="class-count">
             {drawableClasses.length} class{drawableClasses.length === 1 ? "" : "es"}
           </span>
           {/* The same dialog the tool strip's `+` opens, with the same session
@@ -226,7 +226,7 @@ export function ClassRegion({
         // An invitation rather than an empty list: a project with no classes yet
         // cannot draw anything, and a list showing nothing explains none of that.
         <p
-          className="px-1 py-4 text-center text-meta text-muted-foreground"
+          className="px-1 py-4 text-center text-xs text-muted-foreground"
           data-testid="classes-empty"
         >
           No classes yet — add one to start drawing.
@@ -243,7 +243,7 @@ export function ClassRegion({
         >
           {shown.length === 0 && creatable === null ? (
             <p
-              className="px-1 py-4 text-center text-meta text-muted-foreground"
+              className="px-1 py-4 text-center text-xs text-muted-foreground"
               data-testid="classes-no-match"
             >
               No class matches that filter.
@@ -265,7 +265,7 @@ export function ClassRegion({
             <button
               type="button"
               data-testid="class-create"
-              className="flex h-9 w-full shrink-0 items-center gap-2 border-t border-border px-3 text-left text-body text-muted-foreground hover:bg-muted"
+              className="flex h-9 w-full shrink-0 items-center gap-2 border-t border-border px-3 text-left text-sm text-muted-foreground hover:bg-muted"
               onClick={() => onAddClass?.(creatable)}
             >
               <Plus className="size-3.5 shrink-0" aria-hidden="true" />

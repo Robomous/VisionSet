@@ -77,7 +77,7 @@ export function BatchesScreen({
         <div>
           {/* The tab is the heading. What is left is the sentence that
               explains where a batch comes from, which the tab cannot say. */}
-          <p className="text-meta text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             A batch is born from an ingest. Approving it pins the schema and cuts the jobs.
           </p>
         </div>

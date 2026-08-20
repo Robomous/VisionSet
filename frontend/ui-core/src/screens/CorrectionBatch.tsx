@@ -207,8 +207,8 @@ function CorrectionDialog({
           </div>
 
           <fieldset className="flex flex-col gap-1.5">
-            <legend className="text-meta font-medium">Which frames</legend>
-            <label className="flex items-center gap-2 text-meta">
+            <legend className="text-xs font-medium">Which frames</legend>
+            <label className="flex items-center gap-2 text-xs">
               <input
                 type="radio"
                 name="correction-scope"
@@ -224,7 +224,7 @@ function CorrectionDialog({
               nothing, which is not a choice.
             */}
             {canScopeToSelection && (
-              <label className="flex items-center gap-2 text-meta">
+              <label className="flex items-center gap-2 text-xs">
                 <input
                   type="radio"
                   name="correction-scope"
@@ -285,7 +285,7 @@ export function CorrectionOf({
 }): JSX.Element | null {
   if (parentName === undefined) return null;
   return (
-    <span className="flex items-center gap-1 text-meta text-muted-foreground" data-testid="correction-of">
+    <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid="correction-of">
       <GitBranch className="size-3.5 shrink-0" aria-hidden="true" />
       Correction of{" "}
       {onOpenParent === undefined ? (
@@ -293,7 +293,7 @@ export function CorrectionOf({
       ) : (
         <Button
           variant="link"
-          className="h-auto p-0 text-meta"
+          className="h-auto p-0 text-xs"
           data-testid="open-parent-batch"
           onClick={onOpenParent}
         >

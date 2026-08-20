@@ -519,7 +519,7 @@ export function GalleryScreen({
           >
             {shown.length === 0 ? (
               <p
-                className="py-8 text-center text-meta text-muted-foreground"
+                className="py-8 text-center text-xs text-muted-foreground"
                 data-testid="segment-empty"
               >
                 No frames are {SEGMENT_LABEL[segment].toLowerCase()}.
@@ -709,7 +709,7 @@ function BatchHeader({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-page font-semibold tracking-tight" data-testid="batch-title">
+            <h1 className="text-2xl font-semibold tracking-tight" data-testid="batch-title">
               {batch?.name ?? "Batch"}
             </h1>
             {batch !== undefined && (
@@ -722,7 +722,7 @@ function BatchHeader({
             )}
           </div>
           {facts.length > 0 && (
-            <p className="text-meta text-muted-foreground" data-testid="batch-facts">
+            <p className="text-xs text-muted-foreground" data-testid="batch-facts">
               {facts.join(" · ")}
             </p>
           )}
@@ -921,7 +921,7 @@ function JobRow({
   }
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <span className="text-meta text-muted-foreground">
+      <span className="text-xs text-muted-foreground">
         Job {ordinal} · {job.asset_count} frames · {job.state.replace("_", " ")}
       </span>
       {editing ? (
@@ -1036,8 +1036,8 @@ function Toolbar({
             onClick={() => onSegment(one)}
             className={
               segment === one
-                ? "rounded-sm bg-primary px-3 py-1 text-meta font-medium text-primary-foreground"
-                : "rounded-sm px-3 py-1 text-meta text-muted-foreground hover:text-foreground"
+                ? "rounded-sm bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
+                : "rounded-sm px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
             }
           >
             {SEGMENT_LABEL[one]} ({counts[one]})
@@ -1052,7 +1052,7 @@ function Toolbar({
         operable and announced correctly for free, which a div with a drag handler
         would have had to earn back.
       */}
-      <label className="flex items-center gap-2 text-meta text-muted-foreground">
+      <label className="flex items-center gap-2 text-xs text-muted-foreground">
         Thumbnail size
         <input
           type="range"
@@ -1100,7 +1100,7 @@ function Timeline({
 
   return (
     <div className="flex items-center gap-2" data-testid="timeline">
-      <span className="w-10 shrink-0 text-right font-mono text-meta text-muted-foreground">
+      <span className="w-10 shrink-0 text-right font-mono text-xs text-muted-foreground">
         {start === null || start === undefined ? "" : `${Math.round(start)}s`}
       </span>
       <div className="flex h-4 min-w-0 flex-1 gap-px overflow-hidden rounded-sm">
@@ -1115,7 +1115,7 @@ function Timeline({
           />
         ))}
       </div>
-      <span className="w-10 shrink-0 font-mono text-meta text-muted-foreground">
+      <span className="w-10 shrink-0 font-mono text-xs text-muted-foreground">
         {end === null || end === undefined ? "" : `${Math.round(end)}s`}
       </span>
     </div>
@@ -1207,7 +1207,7 @@ function Tile({
       */}
       <span
         data-testid={`index-${asset.id}`}
-        className="absolute left-1 top-1 rounded-sm bg-card/90 px-1 font-mono text-meta text-foreground"
+        className="absolute left-1 top-1 rounded-sm bg-card/90 px-1 font-mono text-xs text-foreground"
       >
         {label}
       </span>
@@ -1272,7 +1272,7 @@ function Tile({
                   ? `Open frame ${label} in the annotator`
                   : `View frame ${label}`
               }
-              className="text-meta text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
               {declares(asset, ASSET_ACTION.annotate) ? "Open" : "View"}
             </button>
@@ -1313,7 +1313,7 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
 
   return (
     <span
-      className="flex items-center gap-1 truncate text-meta text-muted-foreground"
+      className="flex items-center gap-1 truncate text-xs text-muted-foreground"
       data-testid={`state-${asset.id}`}
       data-tone={tone}
     >
@@ -1479,7 +1479,7 @@ function BulkBar({
       role="region"
       aria-label="Bulk actions"
     >
-      <span className="text-meta font-medium" data-testid="bulk-count">
+      <span className="text-xs font-medium" data-testid="bulk-count">
         {present.length} frame{present.length === 1 ? "" : "s"} selected
       </span>
 
@@ -1551,14 +1551,14 @@ function BulkBar({
         happen, which is `ui-capabilities`' third banned pattern.
       */}
       {remove.isSuccess && (
-        <span className="text-meta text-muted-foreground" data-testid="bulk-removed">
+        <span className="text-xs text-muted-foreground" data-testid="bulk-removed">
           {remove.data.changed.length === 0
             ? "Nothing to remove — those frames were not in this batch."
             : `Removed ${remove.data.changed.length} from the batch.`}
         </span>
       )}
       {remove.isError && (
-        <span className="text-meta text-destructive" data-testid="bulk-remove-error">
+        <span className="text-xs text-destructive" data-testid="bulk-remove-error">
           {refusalProse(remove.error)}
         </span>
       )}
@@ -1570,7 +1570,7 @@ function BulkBar({
         by code, because forty frames refused by one rule is one sentence.
       */}
       {bulk.isSuccess && bulk.data.refusals.length > 0 && (
-        <span className="text-meta text-destructive" data-testid="bulk-partial">
+        <span className="text-xs text-destructive" data-testid="bulk-partial">
           {bulk.data.moved} moved,{" "}
           {groupRefusals(bulk.data.refusals)
             .map((group) => `${group.count} refused: ${group.prose}`)
@@ -1578,7 +1578,7 @@ function BulkBar({
         </span>
       )}
       {bulk.isError && (
-        <span className="text-meta text-destructive" data-testid="bulk-error">
+        <span className="text-xs text-destructive" data-testid="bulk-error">
           {refusalProse(bulk.error)}
         </span>
       )}
@@ -1591,7 +1591,7 @@ function BulkBar({
         running them together is what made a closed batch read as a broken bar.
       */}
       {skippable.length === 0 && restorable.length === 0 && returnable.length === 0 && (
-        <span className="text-meta text-muted-foreground" data-testid="bulk-unavailable">
+        <span className="text-xs text-muted-foreground" data-testid="bulk-unavailable">
           {withheld ?? "Nothing here can be skipped, restored or returned to the annotator."}
           {/*
             The sentence says "corrections happen in a correction batch" and
@@ -1602,7 +1602,7 @@ function BulkBar({
           {withheld !== null && onCorrect !== undefined && (
             <Button
               variant="link"
-              className="ml-1 h-auto p-0 text-meta"
+              className="ml-1 h-auto p-0 text-xs"
               data-testid="bulk-create-correction"
               onClick={onCorrect}
             >

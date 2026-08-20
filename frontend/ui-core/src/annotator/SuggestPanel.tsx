@@ -499,7 +499,7 @@ function Discard({ onDiscard }: { readonly onDiscard: () => void }): JSX.Element
 /** `AnnotationPage`'s chord chip, at this card's scale. Visual only. */
 function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
   return (
-    <kbd className="ml-1 rounded-sm border border-border bg-muted px-1 font-mono text-meta text-muted-foreground">
+    <kbd className="ml-1 rounded-sm border border-border bg-muted px-1 font-mono text-xs text-muted-foreground">
       {children}
     </kbd>
   );

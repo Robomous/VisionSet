@@ -100,7 +100,7 @@ export function AppShell(): JSX.Element {
       >
         <div className="flex items-center justify-between gap-2 px-1 py-2">
           {!collapsed && (
-            <span className="truncate text-section font-semibold">
+            <span className="truncate text-base font-semibold">
               {/* The wordmark, and one of only two places `brand` is allowed. */}
               Robomous <span className="text-brand">VisionSet</span>
             </span>
@@ -225,7 +225,7 @@ function RailLink({
       // active, `sidebar-muted` for the rest, so the distinction survives inside
       // a dark surface instead of borrowing a colour meant for a bright one.
       className={({ isActive }) =>
-        `flex items-center gap-2 rounded-md px-2 py-2 text-body ${
+        `flex items-center gap-2 rounded-md px-2 py-2 text-sm ${
           isActive
             ? "bg-sidebar-accent font-medium text-sidebar-foreground"
             : "text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -261,7 +261,7 @@ function RailButton({
       // `sidebar-muted` like an inactive link: the collapse toggle and sign-out
       // are chrome, and nothing on the rail is permanently at full contrast
       // except the item you are on.
-      className={`flex items-center gap-2 rounded-md px-2 py-2 text-body text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground ${
+      className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground ${
         wide === true ? "w-full" : ""
       }`}
     >

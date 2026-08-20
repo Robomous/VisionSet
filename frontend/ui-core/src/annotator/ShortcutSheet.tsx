@@ -245,8 +245,8 @@ export function ShortcutSheet({ open, onOpenChange, registry }: ShortcutSheetPro
 
         {classes.length > 0 && (
           <>
-            <h3 className="mt-2 text-section font-semibold">Classes</h3>
-            <p className="text-meta text-muted-foreground">
+            <h3 className="mt-2 text-base font-semibold">Classes</h3>
+            <p className="text-xs text-muted-foreground">
               Digit N is row N of this batch&rsquo;s pinned schema, in the order it was
               authored. Classes past the ninth have no chord.
             </p>
@@ -254,8 +254,8 @@ export function ShortcutSheet({ open, onOpenChange, registry }: ShortcutSheetPro
           </>
         )}
 
-        <h3 className="mt-2 text-section font-semibold">Navigate</h3>
-        <p className="text-meta text-muted-foreground">
+        <h3 className="mt-2 text-base font-semibold">Navigate</h3>
+        <p className="text-xs text-muted-foreground">
           Nothing here is a chord, so none of it can come from the table above — a pointer
           gesture has no row to be read off. Both modifiers work on every platform; the label
           shows the one this machine presses.
@@ -264,8 +264,8 @@ export function ShortcutSheet({ open, onOpenChange, registry }: ShortcutSheetPro
         <Gestures testId="shortcut-zoom-rows" caption="Change the zoom" rows={zooming(mod)} />
         <Gestures testId="shortcut-touch-rows" caption="On a touchscreen" rows={touching()} />
 
-        <h3 className="mt-2 text-section font-semibold">Inside a text field</h3>
-        <p className="text-meta text-muted-foreground" data-testid="shortcut-text-fields">
+        <h3 className="mt-2 text-base font-semibold">Inside a text field</h3>
+        <p className="text-xs text-muted-foreground" data-testid="shortcut-text-fields">
           <kbd className="rounded-sm border border-border bg-muted px-1">{mod} + C</kbd> and{" "}
           <kbd className="rounded-sm border border-border bg-muted px-1">{mod} + V</kbd> copy and
           paste annotations on the canvas — and the clipboard survives moving to another frame, so
@@ -297,14 +297,14 @@ function Gestures({
 }): JSX.Element {
   return (
     <table className="w-full border-separate border-spacing-y-1" data-testid={testId}>
-      <caption className="text-left text-meta font-medium text-muted-foreground">
+      <caption className="text-left text-xs font-medium text-muted-foreground">
         {caption}
       </caption>
       <tbody>
         {rows.map((row) => (
           <tr key={row.gesture}>
-            <td className="w-48 align-top text-body">{row.gesture}</td>
-            <td className="text-body text-muted-foreground">{row.means}</td>
+            <td className="w-48 align-top text-sm">{row.gesture}</td>
+            <td className="text-sm text-muted-foreground">{row.means}</td>
           </tr>
         ))}
       </tbody>
@@ -327,11 +327,11 @@ function Rows({
         {rows.map((row) => (
           <tr key={row.chord} data-chord={row.chord}>
             <td className="w-32 align-top">
-              <kbd className="rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-meta">
+              <kbd className="rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">
                 {readable(row.chord, apple)}
               </kbd>
             </td>
-            <td className="text-body text-muted-foreground">
+            <td className="text-sm text-muted-foreground">
               {PHRASES[row.action.kind](row.action)}
             </td>
           </tr>

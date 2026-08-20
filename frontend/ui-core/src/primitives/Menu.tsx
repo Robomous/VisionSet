@@ -46,7 +46,7 @@ export const DropdownMenuItem = forwardRef<
     <DropdownMenuPrimitive.Item
       ref={ref}
       className={cn(
-        "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-body " +
+        "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm " +
           "outline-none data-[highlighted]:bg-muted data-[disabled]:opacity-50",
         destructive && "text-destructive",
         className,
@@ -83,7 +83,7 @@ export const TooltipContent = forwardRef<
         ref={ref}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 rounded-md bg-sidebar px-2 py-1 text-meta text-sidebar-foreground shadow-lg",
+          "z-50 rounded-md bg-sidebar px-2 py-1 text-xs text-sidebar-foreground shadow-lg",
           className,
         )}
         {...props}
