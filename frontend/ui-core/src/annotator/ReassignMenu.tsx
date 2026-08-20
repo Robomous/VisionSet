@@ -146,12 +146,12 @@ export function ReassignMenu({
             {current && <Check className="size-3.5 shrink-0" aria-label="current class" />}
             {ok ? (
               hotkey !== null && (
-                <kbd className="shrink-0 rounded-sm border border-border px-1 font-mono text-meta text-muted-foreground">
+                <kbd className="shrink-0 rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground">
                   {hotkey}
                 </kbd>
               )
             ) : (
-              <span className="shrink-0 text-meta text-muted-foreground">
+              <span className="shrink-0 text-xs text-muted-foreground">
                 {/* Named in full rather than "does not take a {geometry}": the
                     question somebody has is what this class *does* take, and a
                     refusal that only repeats what they already selected answers

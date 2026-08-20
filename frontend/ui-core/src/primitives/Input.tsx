@@ -27,7 +27,7 @@ import { cn } from "../lib/cn";
 // dirty version of the page rather than as a thing sitting on it. Disabled takes
 // the same neutral skin `Button` does — `opacity-50` over a grey page is muddy.
 const FIELD =
-  "w-full rounded-md border border-input bg-card px-3 text-body text-foreground " +
+  "w-full rounded-md border border-input bg-card px-3 text-sm text-foreground " +
   "placeholder:text-muted-foreground disabled:cursor-not-allowed " +
   "disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground";
 
@@ -51,7 +51,7 @@ export const Label = forwardRef<
     <LabelPrimitive.Root
       ref={ref}
       className={cn(
-        "text-body font-medium text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+        "text-sm font-medium text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
         className,
       )}
       {...props}
@@ -64,12 +64,12 @@ export function FieldHint({
   className,
   ...props
 }: HTMLAttributes<HTMLParagraphElement>): JSX.Element {
-  return <p className={cn("text-meta text-muted-foreground", className)} {...props} />;
+  return <p className={cn("text-xs text-muted-foreground", className)} {...props} />;
 }
 
 export function FieldError({
   className,
   ...props
 }: HTMLAttributes<HTMLParagraphElement>): JSX.Element {
-  return <p role="alert" className={cn("text-meta text-destructive", className)} {...props} />;
+  return <p role="alert" className={cn("text-xs text-destructive", className)} {...props} />;
 }

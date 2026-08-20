@@ -229,10 +229,10 @@ describe("legacy tokens", () => {
       "--color-destructive-foreground",
       "--color-sidebar-strong",
       "--color-sidebar-muted",
-      "--text-meta",
-      "--text-body",
-      "--text-section",
-      "--text-page",
+      "--text-xs",
+      "--text-sm",
+      "--text-base",
+      "--text-2xl",
       "--spacing-sidebar-mobile",
     ];
     const present = retired.filter((name) => STYLESHEET.includes(name));

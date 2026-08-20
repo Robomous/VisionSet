@@ -190,7 +190,7 @@ export function Combobox<T>({
           aria-haspopup="listbox"
           data-testid={`${testId}-trigger`}
           disabled={disabled}
-          className="flex h-8 max-w-64 items-center gap-2 rounded-md border border-input bg-card px-2 text-body text-foreground disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground"
+          className="flex h-8 max-w-64 items-center gap-2 rounded-md border border-input bg-card px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground"
           onClick={() => onOpenChange(true)}
         >
           {trigger}
@@ -235,7 +235,7 @@ export function Combobox<T>({
             data-testid={`${testId}-option-${itemKey(item)}`}
             data-active={index === active ? "true" : "false"}
             className={cn(
-              "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-body",
+              "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm",
               index === active && "bg-muted",
             )}
             // `mousedown`, not `click`: the outside-press dismissal also runs on
@@ -258,7 +258,7 @@ export function Combobox<T>({
             data-testid={extra.testId ?? `${testId}-footer`}
             data-active={shown.length === active ? "true" : "false"}
             className={cn(
-              "mt-1 flex cursor-pointer items-center gap-2 rounded border-t border-border px-2 py-1.5 text-body text-muted-foreground",
+              "mt-1 flex cursor-pointer items-center gap-2 rounded border-t border-border px-2 py-1.5 text-sm text-muted-foreground",
               shown.length === active && "bg-muted",
             )}
             onMouseDown={(event) => {
@@ -275,7 +275,7 @@ export function Combobox<T>({
           <li
             role="presentation"
             data-testid={`${testId}-empty`}
-            className="px-2 py-1.5 text-body text-muted-foreground"
+            className="px-2 py-1.5 text-sm text-muted-foreground"
           >
             {emptyLabel}
           </li>

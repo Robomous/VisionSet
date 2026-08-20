@@ -113,8 +113,8 @@ export function Styleguide(): JSX.Element {
     <TooltipProvider>
       <div className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-6">
         <header className="flex flex-col gap-1 border-b border-border pb-4">
-          <h1 className="text-page font-semibold tracking-tight">VisionSet design system</h1>
-          <p className="text-meta text-muted-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight">VisionSet design system</h1>
+          <p className="text-xs text-muted-foreground">
             Every primitive <code className="font-mono">@visionset/ui-core</code> exports, composed
             from token utilities only. The contract is <code className="font-mono">DESIGN.md</code>{" "}
             at the repository root.
@@ -146,10 +146,10 @@ export function Styleguide(): JSX.Element {
         </Section>
 
         <Section title="Typography" description="One scale. Reuse it; do not invent a size.">
-          <p className="text-page font-semibold tracking-tight">Page title — 1.5rem / 600</p>
-          <p className="text-section font-semibold">Section title — 1rem / 600</p>
-          <p className="text-body">Body — 0.875rem, line-height 1.6</p>
-          <p className="text-meta text-muted-foreground">Meta — 0.75rem, muted</p>
+          <p className="text-2xl font-semibold font-heading tracking-tight">Page title — 1.5rem / 600</p>
+          <p className="text-base font-semibold font-heading">Section title — 1rem / 600</p>
+          <p className="text-sm">Body — 0.875rem, line-height 1.6</p>
+          <p className="text-xs text-muted-foreground">Meta — 0.75rem, muted</p>
         </Section>
 
         <Section title="Buttons" description="Five variants, four sizes.">
@@ -197,7 +197,7 @@ export function Styleguide(): JSX.Element {
             {CLASSES.map((declared) => (
               <span
                 key={declared.name}
-                className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1 text-body"
+                className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1 text-sm"
               >
                 <span
                   aria-hidden="true"
@@ -209,7 +209,7 @@ export function Styleguide(): JSX.Element {
                   style={{ background: classColor(declared, declared.name) }}
                 />
                 {declared.name}
-                <span className="text-meta text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {formatGeometries(declared.geometries)}
                 </span>
               </span>
@@ -293,7 +293,7 @@ export function Styleguide(): JSX.Element {
             <Badge variant="destructive">failed</Badge>
           </div>
           <div className="max-w-md">
-            <p className="mb-1 text-meta text-muted-foreground">Ingest — 240 of 412</p>
+            <p className="mb-1 text-xs text-muted-foreground">Ingest — 240 of 412</p>
             <Progress value={58} aria-label="Ingest progress" />
           </div>
         </Section>
@@ -339,7 +339,7 @@ export function Styleguide(): JSX.Element {
                   <CardTitle>highway-survey</CardTitle>
                   <CardDescription>Created 2026-07-31 · schema v3</CardDescription>
                 </CardHeader>
-                <CardContent className="text-body text-muted-foreground">
+                <CardContent className="text-sm text-muted-foreground">
                   A card is a border and a 16px radius. The shadow is resting-only.
                 </CardContent>
               </Card>
@@ -505,8 +505,8 @@ function Section({
   return (
     <section className="flex flex-col gap-3">
       <div>
-        <h2 className="text-section font-semibold">{title}</h2>
-        <p className="text-meta text-muted-foreground">{description}</p>
+        <h2 className="text-base font-semibold">{title}</h2>
+        <p className="text-xs text-muted-foreground">{description}</p>
       </div>
       {children}
     </section>
@@ -517,8 +517,8 @@ function Swatch({ name, className }: { readonly name: string; readonly className
   return (
     <div className="flex flex-col gap-1">
       <div className={`size-16 rounded-md border border-border ${className}`} />
-      <span className="text-meta text-muted-foreground">{name}</span>
-      <span className="font-mono text-meta text-muted-foreground">{LIGHT_THEME[name]}</span>
+      <span className="text-xs text-muted-foreground">{name}</span>
+      <span className="font-mono text-xs text-muted-foreground">{LIGHT_THEME[name]}</span>
     </div>
   );
 }

@@ -83,7 +83,7 @@ export function Breadcrumb({ items }: BreadcrumbProps): JSX.Element | null {
       // pane and swallowing clicks to its right; `flex-nowrap` is the default and
       // is spelled out because "never wraps to two lines" is an acceptance
       // criterion rather than a preference.
-      className="-ml-1 flex w-fit min-w-0 flex-nowrap items-center gap-1.5 text-meta text-muted-foreground"
+      className="-ml-1 flex w-fit min-w-0 flex-nowrap items-center gap-1.5 text-xs text-muted-foreground"
     >
       {/* The collapsed presentation's arrow. It belongs to the row rather than to
           the crumb, because below `lg` there is exactly one crumb and the arrow is

@@ -127,7 +127,7 @@ export function ClassFields({
                 a click on a control whose whole job is to show it. */}
             {groupGeometries(GEOMETRIES).map((group) => (
               <div key={group.category} className="flex flex-col gap-1">
-                <span className="text-meta" data-testid={`geometry-category-${group.category}`}>
+                <span className="text-xs" data-testid={`geometry-category-${group.category}`}>
                   {group.category}
                 </span>
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -142,7 +142,7 @@ export function ClassFields({
                     return (
                       <label
                         key={geometry}
-                        className="flex items-center gap-2 text-meta"
+                        className="flex items-center gap-2 text-xs"
                         title={last ? "A class needs at least one geometry" : undefined}
                       >
                         <input
@@ -202,7 +202,7 @@ export function ClassFields({
             value={hexOf(swatch)}
             onChange={(event) => onChange({ ...declared, color: event.target.value })}
           />
-          <span className="text-meta text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {declared.color === null ? "Derived from name" : "Set on the class"}
           </span>
           <Button
@@ -220,7 +220,7 @@ export function ClassFields({
             editor is how somebody authoring an ontology knows what they are
             about to give their annotators. */}
         {hotkey !== null && (
-          <span className="flex items-center gap-1.5 text-meta text-muted-foreground">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             Hotkey
             <kbd className="rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono">
               {hotkey}
@@ -277,7 +277,7 @@ function Attributes({
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted p-3">
       <div className="flex items-center justify-between">
-        <span className="text-meta font-medium text-muted-foreground">Attributes</span>
+        <span className="text-xs font-medium text-muted-foreground">Attributes</span>
         <Button
           variant="ghost"
           size="sm"
@@ -292,14 +292,14 @@ function Attributes({
         </Button>
       </div>
       {attributes.length === 0 ? (
-        <p className="text-meta text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           None. An annotation carries only its class.
         </p>
       ) : (
         attributes.map((attribute, index) => (
           <div key={index} className="grid items-end gap-2 md:grid-cols-4">
             <div className="flex flex-col gap-1">
-              <Label htmlFor={`attr-name-${classIndex}-${index}`} className="text-meta">
+              <Label htmlFor={`attr-name-${classIndex}-${index}`} className="text-xs">
                 Name
               </Label>
               <Input
@@ -313,7 +313,7 @@ function Attributes({
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor={`attr-kind-${classIndex}-${index}`} className="text-meta">
+              <Label htmlFor={`attr-kind-${classIndex}-${index}`} className="text-xs">
                 Kind
               </Label>
               <Select
@@ -352,7 +352,7 @@ function Attributes({
               </Select>
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor={`attr-options-${classIndex}-${index}`} className="text-meta">
+              <Label htmlFor={`attr-options-${classIndex}-${index}`} className="text-xs">
                 {attribute.kind === "select" ? "Options (comma separated)" : "Default"}
               </Label>
               <Input
@@ -381,7 +381,7 @@ function Attributes({
               />
             </div>
             <div className="flex items-center justify-between gap-2 pb-1">
-              <label className="flex items-center gap-2 text-meta">
+              <label className="flex items-center gap-2 text-xs">
                 <input
                   type="checkbox"
                   className="accent-primary"

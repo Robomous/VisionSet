@@ -62,7 +62,7 @@ import type { JSX, ReactNode } from "react";
  * line.
  *
  * 448px also fits a full `owner/model@revision` reference on one line at
- * `text-meta`, which is the width the previous 320px could not manage.
+ * `text-xs`, which is the width the previous 320px could not manage.
  */
 const MAX_WIDTH = "max-w-md";
 
@@ -113,7 +113,7 @@ export function EditorNotice({
       data-tone={tone}
       role="status"
       {...(title === undefined ? {} : { title })}
-      className={`pointer-events-auto flex w-full gap-2 rounded-lg border p-3 text-meta shadow-lg ${
+      className={`pointer-events-auto flex w-full gap-2 rounded-lg border p-3 text-xs shadow-lg ${
         tone === "warn" ? "border-destructive/40 bg-destructive/5" : "border-border bg-card"
       }`}
     >

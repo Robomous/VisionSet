@@ -154,7 +154,7 @@ export function FrameGallery({
                 aria-pressed={active}
                 onClick={() => setSegment(one)}
                 className={
-                  "rounded-sm border px-2 py-1 text-meta transition-colors " +
+                  "rounded-sm border px-2 py-1 text-xs transition-colors " +
                   (active
                     ? "border-primary bg-primary/10 text-primary"
                     : "border-border bg-card text-muted-foreground hover:bg-muted")
@@ -185,7 +185,7 @@ export function FrameGallery({
             ))}
           />
           {shown.length === 0 && (
-            <p className="py-6 text-center text-meta text-muted-foreground" data-testid="frame-none">
+            <p className="py-6 text-center text-xs text-muted-foreground" data-testid="frame-none">
               No frames are {SEGMENT_LABEL[segment].toLowerCase()} in this job.
             </p>
           )}
@@ -247,7 +247,7 @@ function FrameTile({
         alt={label}
         className="size-full object-cover"
       />
-      <span className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-card/90 px-1 py-0.5 text-meta tabular-nums text-muted-foreground">
+      <span className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-card/90 px-1 py-0.5 text-xs tabular-nums text-muted-foreground">
         <span
           aria-hidden="true"
           className={`inline-block size-1.5 shrink-0 rounded-full border ${progressDotClass(asset.progress)}`}

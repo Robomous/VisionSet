@@ -362,7 +362,7 @@ function toDraft(classes: readonly LabelClassBody[]): DraftLabelClassBody[] {
  */
 function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
   return (
-    <kbd className="ml-1 rounded-sm border border-border bg-muted px-1 font-mono text-meta text-muted-foreground">
+    <kbd className="ml-1 rounded-sm border border-border bg-muted px-1 font-mono text-xs text-muted-foreground">
       {children}
     </kbd>
   );
@@ -1960,7 +1960,7 @@ function Workspace({
             side zone yields to the centre instead of pushing it off the middle.
           */}
           <span
-            className="truncate font-mono text-meta text-muted-foreground"
+            className="truncate font-mono text-xs text-muted-foreground"
             data-testid="asset-identity"
           >
             {asset.content_hash.slice(0, 8)}
@@ -1977,7 +1977,7 @@ function Workspace({
             is now on screen rather than in a tooltip: **status is never colour
             alone** (`DESIGN.md`), and prose is the strongest form of that.
           */}
-          <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-meta text-muted-foreground">
+          <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
             <AssetProgressDot progress={asset.progress ?? "unannotated"} />
             <span aria-hidden="true">·</span>
             <SaveState dirty={dirty} pending={save.isPending} />
@@ -2052,7 +2052,7 @@ function Workspace({
               makes `›` a target you can press twice without looking.
             */}
             <span
-              className="px-1 font-mono text-meta tabular-nums text-muted-foreground"
+              className="px-1 font-mono text-xs tabular-nums text-muted-foreground"
               data-testid="asset-position"
             >
               {assetIndex + 1}/{assetCount}
@@ -2357,7 +2357,7 @@ function Workspace({
           {/* `truncate`, not `shrink-0`: this is the readout the right zone gives
               way with, and an ellipsis is a graceful way to lose the tail of a
               sentence where clipping a button would be a control nobody can press. */}
-          <span className="truncate text-meta text-muted-foreground" data-testid="job-progress">
+          <span className="truncate text-xs text-muted-foreground" data-testid="job-progress">
             {counts === null
               ? "—"
               : `${Math.max(0, counts.total - counts.unannotated)} / ${counts.total} annotated`}
@@ -2500,7 +2500,7 @@ function Workspace({
       */}
       {readOnly && (!skipped || workflowBecause !== null) && (
         <p
-          className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-meta text-muted-foreground"
+          className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground"
           data-testid="readonly-banner"
         >
           <Eye className="size-3.5 shrink-0" aria-hidden="true" />
@@ -2528,7 +2528,7 @@ function Workspace({
             declares({ allowed_actions: batchActions }, BATCH_ACTION.createCorrection) && (
               <Button
                 variant="link"
-                className="h-auto p-0 text-meta"
+                className="h-auto p-0 text-xs"
                 data-testid="banner-create-correction"
                 onClick={onOpenGallery}
               >
@@ -2543,7 +2543,7 @@ function Workspace({
           read-only banner above speaks for that frame instead. */}
       {skipped && workflowBecause === null && (
         <p
-          className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-meta text-destructive"
+          className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive"
           data-testid="skipped-notice"
         >
           <SkipForward className="size-3.5 shrink-0" aria-hidden="true" />
@@ -2802,7 +2802,7 @@ function Workspace({
             )}
           </EditorNotices>
 
-          <span className="absolute bottom-2 left-2 rounded-full border border-border bg-muted px-2 py-0.5 text-meta text-muted-foreground" data-testid="object-total">
+          <span className="absolute bottom-2 left-2 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground" data-testid="object-total">
             {drawn} object{drawn === 1 ? "" : "s"}
           </span>
 
@@ -3004,7 +3004,7 @@ function PinBadge({
         data-testid="pinned-schema"
         aria-expanded={open}
         aria-label={`Schema v${pinned}, pinned by this batch`}
-        className="rounded-full border border-border px-2 py-0.5 font-mono text-meta text-muted-foreground hover:bg-muted hover:text-foreground"
+        className="rounded-full border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
         onClick={() => onOpenChange(!open)}
       >
         v{pinned}
@@ -3020,22 +3020,22 @@ function PinBadge({
           className="absolute left-0 top-8 z-50 flex w-80 flex-col gap-2 rounded-md border border-border bg-card p-3 shadow-lg"
           data-testid="pin-popover"
         >
-          <p className="text-body">
+          <p className="text-sm">
             This batch is judged against{" "}
             <span className="font-mono font-medium">v{pinned}</span>, the version it pinned when
             it was approved.
           </p>
 
           {activeFailed ? (
-            <p className="text-meta text-muted-foreground" data-testid="pin-active-error">
+            <p className="text-xs text-muted-foreground" data-testid="pin-active-error">
               Could not load the project’s current version.
             </p>
           ) : active === null ? (
-            <p className="text-meta text-muted-foreground" data-testid="pin-active-pending">
+            <p className="text-xs text-muted-foreground" data-testid="pin-active-pending">
               Checking the project’s current version…
             </p>
           ) : !behind ? (
-            <p className="text-meta text-muted-foreground" data-testid="pin-current">
+            <p className="text-xs text-muted-foreground" data-testid="pin-current">
               That is the project’s current version, so every class the project declares is
               available here.
             </p>
@@ -3048,7 +3048,7 @@ function PinBadge({
                   no longer open. Saying *what* rather than offering a remedy is
                   the honest shape — the remedy is a decision about this batch's
                   labels, which is what `repin` is for and is not a button here. */}
-              <p className="text-meta text-muted-foreground" data-testid="pin-behind">
+              <p className="text-xs text-muted-foreground" data-testid="pin-behind">
                 The project has moved on to{" "}
                 <span className="font-mono">v{active.version}</span>. A version that only adds
                 classes would have brought this batch with it, so something below narrowed the
@@ -3086,21 +3086,21 @@ function PinDiff({
 }): JSX.Element {
   if (failed) {
     return (
-      <p className="text-meta text-muted-foreground" data-testid="pin-diff-error">
+      <p className="text-xs text-muted-foreground" data-testid="pin-diff-error">
         Could not load what changed between v{from} and v{to}.
       </p>
     );
   }
   if (diff === undefined) {
     return (
-      <p className="text-meta text-muted-foreground" data-testid="pin-diff-pending">
+      <p className="text-xs text-muted-foreground" data-testid="pin-diff-pending">
         Comparing v{from} with v{to}…
       </p>
     );
   }
   if (diff.changes.length === 0) {
     return (
-      <p className="text-meta text-muted-foreground" data-testid="pin-diff-empty">
+      <p className="text-xs text-muted-foreground" data-testid="pin-diff-empty">
         Nothing changed between them.
       </p>
     );
@@ -3108,7 +3108,7 @@ function PinDiff({
   return (
     <ul className="flex list-disc flex-col gap-1 pl-4" data-testid="pin-diff">
       {diff.changes.map((change, index) => (
-        <li key={index} className="text-meta text-muted-foreground">
+        <li key={index} className="text-xs text-muted-foreground">
           {change.detail}
         </li>
       ))}
@@ -3176,7 +3176,7 @@ function SaveState({
 }): JSX.Element {
   if (pending) {
     return (
-      <span className="animate-pulse text-meta text-muted-foreground" data-testid="save-state">
+      <span className="animate-pulse text-xs text-muted-foreground" data-testid="save-state">
         Saving…
       </span>
     );
@@ -3193,7 +3193,7 @@ function SaveState({
     // and `DESIGN.md` carried as its one sanctioned exception. The token exists,
     // so the exception is retired rather than inherited. The tick still
     // carries the meaning on its own — state is never colour alone.
-    <span className="flex items-center gap-1 text-meta text-success" data-testid="save-state">
+    <span className="flex items-center gap-1 text-xs text-success" data-testid="save-state">
       <Check className="size-3.5" aria-hidden="true" />
       Saved
     </span>

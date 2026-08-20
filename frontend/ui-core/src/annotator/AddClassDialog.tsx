@@ -605,7 +605,7 @@ export function AddClassDialog({
                 <li
                   key={entry.name}
                   data-testid={`session-class-${entry.name}`}
-                  className="flex items-center gap-1.5 rounded-full border border-border bg-muted py-0.5 pl-2 pr-1 text-meta"
+                  className="flex items-center gap-1.5 rounded-full border border-border bg-muted py-0.5 pl-2 pr-1 text-xs"
                 >
                   <span
                     aria-hidden="true"
@@ -831,7 +831,7 @@ export function AddClassDialog({
               >
                 <Plus className="size-4" aria-hidden="true" />
                 Create and add another
-                <kbd className="ml-1 rounded border border-border px-1 font-mono text-meta text-muted-foreground">
+                <kbd className="ml-1 rounded border border-border px-1 font-mono text-xs text-muted-foreground">
                   ⌘↵
                 </kbd>
               </Button>

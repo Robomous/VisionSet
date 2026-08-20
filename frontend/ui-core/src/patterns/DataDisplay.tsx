@@ -73,9 +73,9 @@ export function StatCard({
 }: StatCardProps): JSX.Element {
   const body = (
     <>
-      <span className="text-meta text-muted-foreground">{label}</span>
-      <span className="text-page font-semibold tabular-nums text-foreground">{value}</span>
-      {context !== undefined && <span className="text-meta text-muted-foreground">{context}</span>}
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-2xl font-semibold tabular-nums text-foreground">{value}</span>
+      {context !== undefined && <span className="text-xs text-muted-foreground">{context}</span>}
     </>
   );
   const shell = "flex flex-col gap-1 rounded-lg bg-muted p-4";
@@ -140,7 +140,7 @@ export function DistributionBar({
 }: DistributionBarProps): JSX.Element {
   const share = max <= 0 ? 0 : Math.max(0, Math.min(1, count / max));
   return (
-    <div className={cn("flex items-center gap-2 text-body", className)}>
+    <div className={cn("flex items-center gap-2 text-sm", className)}>
       <span
         aria-hidden="true"
         className="size-2.5 shrink-0 rounded-sm"
@@ -341,7 +341,7 @@ export function ClassListRow({
             // line to itself.
             title={name}
             className={cn(
-              "min-w-0 grow truncate text-left text-body",
+              "min-w-0 grow truncate text-left text-sm",
               selected && "font-semibold",
             )}
           >
@@ -362,7 +362,7 @@ export function ClassListRow({
                 aria-label={shape.label}
                 title={shape.label}
                 className={cn(
-                  "flex shrink-0 items-center justify-center rounded-sm px-1.5 text-meta transition-colors",
+                  "flex shrink-0 items-center justify-center rounded-sm px-1.5 text-xs transition-colors",
                   "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
                   shape.active
                     ? "bg-primary text-primary-foreground"
@@ -377,7 +377,7 @@ export function ClassListRow({
         {/* Outside the wrapping block, so it stays on the first line rather than
             travelling down with the chips. */}
         {hotkey != null && (
-          <kbd className="shrink-0 rounded-sm border border-border px-1 font-mono text-meta text-muted-foreground">
+          <kbd className="shrink-0 rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground">
             {hotkey}
           </kbd>
         )}
@@ -411,7 +411,7 @@ export function ClassListRow({
             // this side now wins the space, but a name long enough to truncate
             // against a *short* shape list is still reachable by hovering.
             title={name}
-            className={cn("min-w-0 flex-1 truncate text-body", selected && "font-semibold")}
+            className={cn("min-w-0 flex-1 truncate text-sm", selected && "font-semibold")}
           >
             {name}
           </span>
@@ -422,14 +422,14 @@ export function ClassListRow({
               identity is the name; the shapes are metadata about it, and metadata
               is what gives way. This is the variant with no chips to wrap, so
               truncation is still how a long set ends. */}
-          <span className="min-w-0 shrink truncate text-meta text-muted-foreground">
+          <span className="min-w-0 shrink truncate text-xs text-muted-foreground">
             {geometry}
           </span>
           {/* Rendered only where the key works — `hotkeyForClass` answers null
               past the ninth class, and a chip on a row no digit reaches would be
               the same lie `ReassignMenu` refuses to tell one column over. */}
           {hotkey != null && (
-            <kbd className="shrink-0 rounded-sm border border-border px-1 font-mono text-meta text-muted-foreground">
+            <kbd className="shrink-0 rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground">
               {hotkey}
             </kbd>
           )}
@@ -437,11 +437,11 @@ export function ClassListRow({
       ) : (
         <span className="flex min-w-0 flex-col">
           <span
-            className={cn("truncate text-body", selected ? "font-semibold" : "text-foreground")}
+            className={cn("truncate text-sm", selected ? "font-semibold" : "text-foreground")}
           >
             {name}
           </span>
-          <span className="truncate text-meta text-muted-foreground">
+          <span className="truncate text-xs text-muted-foreground">
             {geometry} · <span className="tabular-nums">{formatCount(count)}</span>
           </span>
         </span>
@@ -491,7 +491,7 @@ export function ThumbnailGrid({
         (onOverflow === undefined ? (
           <div
             data-testid="thumbnail-overflow"
-            className="flex aspect-square items-center justify-center rounded-sm bg-muted text-body tabular-nums text-muted-foreground"
+            className="flex aspect-square items-center justify-center rounded-sm bg-muted text-sm tabular-nums text-muted-foreground"
           >
             +{formatCount(more)}
           </div>
@@ -501,7 +501,7 @@ export function ThumbnailGrid({
             data-testid="thumbnail-overflow"
             onClick={onOverflow}
             aria-label={overflowLabel}
-            className="flex aspect-square items-center justify-center rounded-sm bg-muted text-body tabular-nums text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
+            className="flex aspect-square items-center justify-center rounded-sm bg-muted text-sm tabular-nums text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
           >
             +{formatCount(more)}
           </button>
