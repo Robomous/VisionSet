@@ -193,7 +193,14 @@ test("the active tab wears the accent rule and an inactive one wears no chrome",
   await expect(shut).toHaveCSS("box-shadow", "none");
 
   await shut.click();
-  expect((await rgbaOf(page, shut, "border-bottom-color")).slice(0, 3)).toEqual(PRIMARY);
+  // `transition-colors` animates the new border in rather than snapping it, so
+  // a bare read-once-and-compare can catch the colour mid-transition — Chromium
+  // did, occasionally, in the gate. `expect.poll` retries `rgbaOf` the same way
+  // `toHaveCSS` retries its own read, so the assertion waits out the animation
+  // instead of racing it.
+  await expect.poll(async () => (await rgbaOf(page, shut, "border-bottom-color")).slice(0, 3)).toEqual(
+    PRIMARY,
+  );
   await expect(open).toHaveCSS("border-bottom-color", "rgba(0, 0, 0, 0)");
 });
 
