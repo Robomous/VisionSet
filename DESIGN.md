@@ -291,10 +291,9 @@ First-class, and part of every rule above rather than a section to satisfy after
 - **`destructive` stays semantically destructive** — the one token that is its own
   status, never repurposed for emphasis and never renamed.
 - **`prefers-reduced-motion`** is a standing rule: motion collapses to opacity changes or
-  nothing, with no loss of information. **Migration debt:** `styles.css` currently
-  defines no `prefers-reduced-motion` block — motion runs on `tw-animate-css`'s
-  durations (`duration-100` on menu/dialog transitions) unconditionally. The rule is kept
-  as contract; wiring it is outstanding work, not a dropped requirement.
+  nothing, with no loss of information. The base layer in `styles.css` enforces it: under
+  the media query, every animation and transition duration collapses to a single frame,
+  so no component needs to opt in individually.
 - **Never disable without explanation** stays exactly as the product principles state it
   — [`docs/ui/product-principles.md`](docs/ui/product-principles.md#principles) — this
   document only fixes disabled's *look* (`opacity-50`), not when a control may be one.
