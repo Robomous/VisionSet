@@ -812,8 +812,9 @@ each with its untouched count and checked by default when that count is above ze
 seen; the answer is one row per batch, and the dialog lists each as queued or as having joined a
 run already in flight, each name a link into its gallery. The batch stays the unit: the row in
 the table shows a **pre-labeling…** mark while that batch's own `pre_label_run` is live, and the
-gallery's dialog reads the same run afterwards. A refusal - a pin with no box class, naming the
-batch to leave out - renders as prose in the dialog, and no batch is launched.
+gallery's dialog reads the same run afterwards. A refusal - a pin with no class the model's
+shapes can be written as, naming the batch to leave out - renders as prose in the dialog, and no
+batch is launched.
 
 #### Reviewing a pre-labeled batch
 

@@ -52,8 +52,8 @@ from visionset.inference import (
     PreLabelPlan,
     planned,
     pre_label,
-    resident,
     select_pre_labelable,
+    served_for,
 )
 from visionset.kernel.domain import AssetProgress, AssetSort, BySize, Partition
 from visionset.kernel.services import (
@@ -484,7 +484,7 @@ def pre_label_project(
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)
         resolved_connection = resolve_connection(workspace, connection)
-        declared = resident().served(resolved_connection, workspace_root=workspace.root)
+        declared = served_for(workspace, resolved_connection.id)
         selected = select_pre_labelable(
             workspace,
             resolved.id,

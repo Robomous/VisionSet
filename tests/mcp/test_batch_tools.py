@@ -831,6 +831,7 @@ def test_pre_labeling_a_project_with_no_open_batch_is_refused(
 ) -> None:
     project, _batch = ingested(monkeypatch, tmp_path, count=2)
     connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
 
     refusal = error(call("pre_label_project", project=project, connection=connection_id))
 

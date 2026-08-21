@@ -514,17 +514,18 @@ def pre_label_project_batches(
     reports one total across batches, because nothing here is one run.
 
     **Refused whole, up front, and no refusal creates a row.** The connection
-    is checked first, as the single-batch launch checks it: not set up is 409
-    `INFERENCE_CONNECTION_NOT_SET_UP`, a model that answers places rather than
-    words is 422 `UNSUPPORTED_PROMPT`. Then the selection: an unknown project
-    is 404 `PROJECT_NOT_FOUND`; a named batch outside this project is 404
+    is checked first, as the single-batch launch checks it: an unknown
+    connection is 404 `INFERENCE_CONNECTION_NOT_FOUND`, one not set up yet is
+    409 `INFERENCE_CONNECTION_NOT_SET_UP`, and a model that answers places
+    rather than words is 422 `UNSUPPORTED_PROMPT`. Then the selection: an
+    unknown project is 404 `PROJECT_NOT_FOUND`; a named batch outside this project is 404
     `BATCH_NOT_FOUND`; a named batch not `in_annotation`, a project with no
     open batch at all, or an empty `batch_ids`, is 409 `BATCH_NOT_IN_ANNOTATION`;
     any selected batch whose pinned schema has no class the model's shapes can
     be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message
-    names the batch so the caller can leave it out by name and ask again. A partly launched project
-    would leave rows the caller was never told about, which is why the whole
-    request is refused instead.
+    names the batch so the caller can leave it out by name and ask again. A
+    partly launched project would leave rows the caller was never told about,
+    which is why the whole request is refused instead.
 
     What each run writes, passes over and counts is the single-batch launch's
     contract; read `POST /batches/{batch_id}/pre-label`.

@@ -97,6 +97,7 @@ from visionset.inference.prelabel import (
     prompt_plan,
     require_detectable_schema,
     select_pre_labelable,
+    served_for,
     shapes_prose,
     unsupported_prompt_message,
 )
@@ -229,6 +230,7 @@ __all__ = [
     "resident",
     "resolve",
     "select_pre_labelable",
+    "served_for",
     "suggest",
     "suppressed",
     "unsupported_prompt_message",

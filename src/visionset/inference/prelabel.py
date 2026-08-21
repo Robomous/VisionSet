@@ -31,7 +31,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Final
 from uuid import UUID
 
@@ -45,7 +44,6 @@ from visionset.kernel.domain import (
     AssetProgress,
     Batch,
     GeometryType,
-    InferenceConnection,
     LabelClass,
     ModelCapability,
     PredictionRequest,
@@ -346,11 +344,23 @@ def select_pre_labelable(
     return selected
 
 
-def _served_for(
-    pool: ProviderPool, connection: InferenceConnection, *, workspace_root: Path
+def served_for(
+    workspace: WorkspaceService, connection_id: UUID, *, pool: ProviderPool | None = None
 ) -> ServedFamily:
-    """The declaration behind the connection, refused unless it answers words."""
-    declared = pool.served(connection, workspace_root=workspace_root)
+    """What the connection's model is asked for and answers in, refused unless it answers words.
+
+    The one read a caller that must know the shapes before it runs anything
+    makes — the plan, and the project-wide launch deciding which batches it can
+    fan out over. Resolved, never built.
+
+    Raises:
+        InferenceConnectionNotFound: no such connection.
+        InferenceConnectionNotSetUp: a local connection whose weights are absent.
+        InferenceConnectionNotRunnable: nothing here runs that kind.
+        UnsupportedPrompt: that connection's model answers places, not words.
+    """
+    connection = InferenceConnectionService(workspace).get(connection_id)
+    declared = (pool or resident()).served(connection, workspace_root=workspace.root)
     if declared.capability is not ModelCapability.TEXT_DETECT:
         raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
     return declared
@@ -382,8 +392,7 @@ def planned(
         SchemaHasNoDetectableClass: the pinned schema holds no class a shape
             this model produces could be written as.
     """
-    connection = InferenceConnectionService(workspace).get(connection_id)
-    declared = _served_for(pool or resident(), connection, workspace_root=workspace.root)
+    declared = served_for(workspace, connection_id, pool=pool)
     batch = BatchService(workspace).require_pre_labelable(batch_id)
     schema = require_detectable_schema(workspace, batch, declared.produces)
     return prompt_plan(schema, declared.produces)
