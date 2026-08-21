@@ -41,7 +41,7 @@
 #   frontend/app/src/**     vite HMR
 #   frontend/ui-core/src/** tsc --watch → dist/ → vite  (docker/app-dev.sh)
 #   frontend/annotator/…    tsc --watch → dist/ → vite  (docker/app-dev.sh)
-#   docs/content/**        astro dev                   (docker/docs-dev.sh)
+#   docs/content/**         astro dev                   (docker/docs-dev.sh)
 #   docs/src/**             astro dev
 #
 # The `docs/content/**` row is a projection, not a plain watch:
