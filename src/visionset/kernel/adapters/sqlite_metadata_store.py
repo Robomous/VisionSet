@@ -16,7 +16,7 @@ place rather than a habit spread across several.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +27,7 @@ from sqlalchemy import (
     Connection,
     Engine,
     and_,
+    case,
     create_engine,
     delete,
     event,
@@ -50,6 +51,7 @@ from visionset.kernel.adapters._tables import META_TABLE, Base, MetaRow
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
 from visionset.kernel.domain import (
     AnnotationSchema,
+    AnnotationSummary,
     AnnotationTotals,
     AssetProgress,
     BackgroundJob,
@@ -677,6 +679,23 @@ class SqlUnitOfWork:
             .where(t.AssetRow.project_id == project_id)
         ).one()
         return AnnotationTotals(annotations=annotations, annotated_assets=annotated_assets)
+
+    def annotation_summary(self, batch_id: UUID) -> Mapping[UUID, AnnotationSummary]:
+        model_score = case(
+            (t.AnnotationRow.provenance == "model", t.AnnotationRow.confidence),
+            else_=None,
+        )
+        rows = self._session.execute(
+            select(t.AnnotationRow.asset_id, func.count(), func.min(model_score))
+            .select_from(t.AnnotationRow)
+            .join(t.BatchAssetRow, t.BatchAssetRow.asset_id == t.AnnotationRow.asset_id)
+            .where(t.BatchAssetRow.batch_id == batch_id)
+            .group_by(t.AnnotationRow.asset_id)
+        ).all()
+        return {
+            asset_id: AnnotationSummary(count=count, min_model_confidence=lowest)
+            for asset_id, count, lowest in rows
+        }
 
 
 class SqliteMetadataStore:

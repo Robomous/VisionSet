@@ -1028,3 +1028,72 @@ def test_annotation_totals_of_an_unknown_project_is_zero_rather_than_a_refusal(
         assert (totals.annotations, totals.annotated_assets) == (0, 0)
     finally:
         fixture.close()
+
+
+def _model_box(asset_id: UUID, job_id: UUID, confidence: float | None) -> Annotation:
+    return Annotation(
+        asset_id=asset_id,
+        label_class="sign",
+        schema_version=1,
+        geometry=BboxGeometry(x=0, y=0, width=4, height=4),
+        provenance="model",
+        model_ref="stub@1",
+        confidence=confidence,
+        job_id=job_id,
+    )
+
+
+def test_annotation_summary_counts_every_label_and_takes_the_model_minimum(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        assets = fixture.assets(project, 3)
+        batch, job = fixture.open_batch(project, "b", assets)
+        with fixture.workspace.unit_of_work() as uow:
+            uow.annotations.add(_model_box(assets[0], job, 0.9))
+            uow.annotations.add(_model_box(assets[0], job, 0.4))
+            # A person's label with a score does not enter the minimum.
+            uow.annotations.add(
+                Annotation(
+                    asset_id=assets[0],
+                    label_class="sign",
+                    schema_version=1,
+                    geometry=BboxGeometry(x=1, y=1, width=2, height=2),
+                    provenance="human",
+                    confidence=0.1,
+                    job_id=job,
+                )
+            )
+            uow.annotations.add(_model_box(assets[1], job, None))
+
+        with fixture.workspace.unit_of_work() as uow:
+            summary = uow.annotation_summary(batch)
+
+        assert summary[assets[0]].count == 3
+        assert summary[assets[0]].min_model_confidence == 0.4
+        assert summary[assets[1]].count == 1
+        assert summary[assets[1]].min_model_confidence is None
+        assert assets[2] not in summary
+    finally:
+        fixture.close()
+
+
+def test_annotation_summary_is_scoped_to_the_batch(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        here, there = fixture.assets(project, 2)
+        batch, job = fixture.open_batch(project, "b", [here])
+        other, other_job = fixture.open_batch(project, "c", [there])
+        with fixture.workspace.unit_of_work() as uow:
+            uow.annotations.add(_model_box(here, job, 0.5))
+            uow.annotations.add(_model_box(there, other_job, 0.2))
+
+        with fixture.workspace.unit_of_work() as uow:
+            assert set(uow.annotation_summary(batch)) == {here}
+            assert set(uow.annotation_summary(other)) == {there}
+            assert uow.annotation_summary(uuid4()) == {}
+    finally:
+        fixture.close()

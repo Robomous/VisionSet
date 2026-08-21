@@ -38,6 +38,20 @@ class AnnotationTotals(BaseModel):
     annotated_assets: int = Field(ge=0)
 
 
+class AnnotationSummary(BaseModel):
+    """One asset's labels in two numbers: how many, and the weakest the model wrote.
+
+    ``min_model_confidence`` reads only ``provenance="model"`` rows carrying a
+    score, because that is the number a reviewer orders by; a person's label is
+    already judged and must not pull a frame forward in the queue.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    count: int = Field(ge=0)
+    min_model_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
 class Annotation(BaseModel):
     """A single annotation on an Asset.
 
