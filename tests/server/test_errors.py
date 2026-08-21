@@ -30,12 +30,14 @@ from visionset.kernel import (
 )
 from visionset.kernel import errors as kernel_errors
 from visionset.server.errors import (
+    ERROR_RESPONSES,
     ERROR_RULES,
     OPAQUE_MESSAGE,
     RETRY_AFTER_SECONDS,
     UNMAPPED_CODE,
     ErrorBody,
     ErrorRule,
+    documented,
     error_response,
     install_error_handlers,
     rule_for,
@@ -520,3 +522,19 @@ def test_every_route_documents_the_universal_error_responses() -> None:
     for path, method, operation in operations(app.openapi()):
         declared = set(operation["responses"])
         assert {"422", "500", "503"} <= declared, f"{method.upper()} {path}"
+
+
+@pytest.mark.parametrize("status", [401, 422, 500, 503])
+def test_documented_refuses_a_status_no_route_owns(status: int) -> None:
+    """The companion to the test above, which cannot tell provenance apart.
+
+    That one proves every operation *declares* 422/500/503; it passes whether
+    the app supplied them or a route repeated them. Seven routes repeated 422
+    for as long as this file has existed, and nothing disagreed.
+    """
+    with pytest.raises(ValueError, match=str(status)):
+        documented(status)
+
+
+def test_documented_still_answers_the_statuses_a_route_does_own() -> None:
+    assert documented(404, 409) == {404: ERROR_RESPONSES[404], 409: ERROR_RESPONSES[409]}
