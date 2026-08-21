@@ -251,10 +251,17 @@ test("the active tab is lifted out of the trough and an inactive one wears no ch
   const list = bar.getByRole("tablist");
   expect((await rgbaOf(page, list, "background-color")).slice(0, 3)).toEqual(MUTED);
 
-  expect((await rgbaOf(page, open, "background-color")).slice(0, 3)).toEqual(BACKGROUND);
+  // Polled rather than read once, for the reason spelled out at the click below:
+  // `transition-all` is on this element and a colour caught mid-transition is a
+  // flake, not a failure.
+  await expect
+    .poll(async () => (await rgbaOf(page, open, "background-color")).slice(0, 3))
+    .toEqual(BACKGROUND);
   // `shadow-sm`, and it is the second half of "lifted": the fill alone would read
   // as a flat swap on a page whose own background is the same white.
-  expect(await open.evaluate((node) => getComputedStyle(node).boxShadow)).not.toBe("none");
+  await expect
+    .poll(async () => open.evaluate((node) => getComputedStyle(node).boxShadow))
+    .not.toBe("none");
 
   // The report's complaint, inverted into an assertion: no fill, no border, no
   // shadow. An inactive tab must not read as a button somebody has not pressed.
@@ -302,6 +309,14 @@ test("focus on a tab is Nova's own ring, not a stylesheet-wide floor", async ({ 
 
   // `focus-visible:ring-[3px] focus-visible:ring-ring/50` — a box-shadow, painted
   // *outside* the box, so it survives whichever fill is underneath it.
+  //
+  // Polled, and the poll is the spread assertion: `transition-all` animates the
+  // ring in from nothing, so a single read can land on a 1.4px ring on its way to
+  // 3px, and `RING_GEOMETRY` would not match a ring caught halfway there. Waiting
+  // for the layer to exist is waiting for the transition to finish.
+  await expect
+    .poll(async () => (await shadowLayersOf(focused)).some((one) => one.endsWith(RING_GEOMETRY)))
+    .toBe(true);
   const ring = await ringColourOf(page, focused);
   // The ring token's own grey — a canvas's RGB read-back is unpremultiplied,
   // so the colour channels come back exact regardless of the alpha below.
@@ -319,8 +334,12 @@ test("focus on a tab is Nova's own ring, not a stylesheet-wide floor", async ({ 
   expect((await rgbaOf(page, focused, "outline-color")).slice(0, 3)).toEqual(RING);
   // And the border joins in (`focus-visible:border-ring`), which is the same
   // three-part treatment `Button`, `Input` and `SelectTrigger` wear — one focus
-  // idiom, so a keyboard user reads the same thing everywhere.
-  expect((await rgbaOf(page, focused, "border-bottom-color")).slice(0, 3)).toEqual(RING);
+  // idiom, so a keyboard user reads the same thing everywhere. Polled because this
+  // one travels between two *different* hues — `border` to `ring` — so unlike the
+  // outline's alpha ramp, a mid-transition read here is a different colour.
+  await expect
+    .poll(async () => (await rgbaOf(page, focused, "border-bottom-color")).slice(0, 3))
+    .toEqual(RING);
 
   // Focus decorates the active tab rather than replacing it: the chip is still
   // lifted onto `background` underneath the ring.
