@@ -189,6 +189,7 @@ const READY_SAM = {
   device: "cuda",
   precision: "fp16",
   endpoint_url: null,
+  provider_id: "sam",
   setup_state: "ready",
   allowed_actions: [],
   capabilities: ["point_suggest"],

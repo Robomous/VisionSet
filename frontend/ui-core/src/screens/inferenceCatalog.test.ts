@@ -33,6 +33,7 @@ const COMMIT = "0".repeat(40);
 
 function entry(overrides: Partial<CuratedEntry> = {}): CuratedEntry {
   return {
+    provider_id: "acme",
     model_id: "acme/seg-small",
     model_revision: COMMIT,
     family: "acme_seg",

@@ -55,6 +55,7 @@ const PROVIDERS = {
       families: { "grounding-dino": "text_detect", "mm-grounding-dino": "text_detect" },
       curated: [
         {
+          provider_id: "grounding-dino",
           model_id: "IDEA-Research/grounding-dino-tiny",
           model_revision: "a2bb814dd30d776dcf7e30523b00659f4f141c71",
           family: "grounding-dino",
@@ -64,6 +65,7 @@ const PROVIDERS = {
           access_url: null,
         },
         {
+          provider_id: "grounding-dino",
           model_id: "IDEA-Research/grounding-dino-base",
           model_revision: "12bdfa3120f3e7ec7b434d90674b3396eccf88eb",
           family: "grounding-dino",
@@ -83,6 +85,7 @@ const PROVIDERS = {
       },
       curated: [
         {
+          provider_id: "sam",
           model_id: "facebook/sam2.1-hiera-tiny",
           model_revision: "de431c4043854a71d8101e17995dfe596bf101a5",
           family: "sam2_video",
@@ -92,6 +95,7 @@ const PROVIDERS = {
           access_url: null,
         },
         {
+          provider_id: "sam",
           model_id: "facebook/sam2.1-hiera-small",
           model_revision: "ee5bba1d82bb8749febdf90f45e84b687142ba03",
           family: "sam2_video",
@@ -101,6 +105,7 @@ const PROVIDERS = {
           access_url: null,
         },
         {
+          provider_id: "sam",
           model_id: "facebook/sam2.1-hiera-base-plus",
           model_revision: "b7320756a13354e7530a63935656d35b2f91a290",
           family: "sam2_video",
@@ -110,6 +115,7 @@ const PROVIDERS = {
           access_url: null,
         },
         {
+          provider_id: "sam",
           model_id: "facebook/sam2.1-hiera-large",
           model_revision: "665f8e2ad61cf5f53d65644ff27c8ee525124610",
           family: "sam2_video",
@@ -119,6 +125,7 @@ const PROVIDERS = {
           access_url: null,
         },
         {
+          provider_id: "sam",
           model_id: "facebook/sam3",
           model_revision: "3c879f39826c281e95690f02c7821c4de09afae7",
           family: "sam3_video",
@@ -180,6 +187,7 @@ function connection(
     device: "cuda",
     precision: "fp16",
     endpoint_url: null,
+    provider_id: "sam",
     setup_state: setup,
     allowed_actions: ["download_weights", "update", "delete"],
     capabilities,
@@ -416,6 +424,7 @@ test("a model the installation offers is chosen and becomes a connection", async
             families: { acme_widget: "point_suggest" },
             curated: [
               {
+                provider_id: "acme",
                 model_id: "acme/vision-widget",
                 model_revision: ACME_REVISION,
                 family: "acme_widget",
@@ -462,5 +471,9 @@ test("a model the installation offers is chosen and becomes a connection", async
   expect(created[0]).toMatchObject({
     model_id: "acme/vision-widget",
     model_revision: ACME_REVISION,
+    // The third value read off the wire, and the one nothing in this build could
+    // have supplied: `acme` is offered by no shipped driver, so the form can only
+    // be sending it back because the catalog said so a moment ago.
+    provider_id: "acme",
   });
 });

@@ -810,6 +810,10 @@ function ConnectionForm({
   // an offered model at another revision and the select must go on showing
   // "Custom" while it does.
   const [choice, setChoice] = useState<string>("");
+  // Which driver serves what is selected, carried from the catalog entry rather
+  // than derived: a form cannot know which installed driver offers a checkpoint,
+  // and the entry it just read says so.
+  const [providerId, setProviderId] = useState<string | null>(editing?.provider_id ?? null);
   // A device outside what a form offers — `cuda:1`, or a row from a build before
   // the vocabulary closed — is shown as it is rather than rewritten to the
   // nearest offered member behind somebody's back.
@@ -851,6 +855,7 @@ function ConnectionForm({
   const fallback = defaultEntry(entries);
   const fallbackId = fallback?.model_id;
   const fallbackRevision = fallback?.model_revision;
+  const fallbackProvider = fallback?.provider_id;
   const storedChoice =
     editing === undefined
       ? undefined
@@ -878,6 +883,11 @@ function ConnectionForm({
     setChoice(fallbackId);
     setModelId(fallbackId);
     setRevision(fallbackRevision);
+    // The default is seeded here rather than through `pickModel`, so the driver
+    // has to be recorded here too — a form that set it only in the handler would
+    // send none for the model it opened on, which is the commonest create there
+    // is.
+    setProviderId(fallbackProvider ?? null);
   }, [
     choice,
     modelId,
@@ -887,6 +897,7 @@ function ConnectionForm({
     storedChoice,
     fallbackId,
     fallbackRevision,
+    fallbackProvider,
   ]);
 
   /** Pick an offered entry — which sets both halves of the pair — or reveal the fields. */
@@ -895,9 +906,17 @@ function ConnectionForm({
     seededSentinel.current = false;
     setChoice(next);
     const entry = entries.find((one) => one.model_id === next);
-    if (entry === undefined) return;
+    if (entry === undefined) {
+      // The sentinel. The pair is left as it is, so a typed id survives opening
+      // the select and closing it again — but the driver is cleared, because it
+      // named whoever offered the entry being left behind and nothing offers
+      // what is about to be typed.
+      setProviderId(null);
+      return;
+    }
     setModelId(entry.model_id);
     setRevision(entry.model_revision);
+    setProviderId(entry.provider_id);
   }
 
   /**
@@ -935,6 +954,7 @@ function ConnectionForm({
       device: device.trim(),
       precision,
       endpointUrl: endpoint.trim(),
+      providerId,
     };
     // Only on success: a refusal leaves the dialog open with what was typed
     // still in it.

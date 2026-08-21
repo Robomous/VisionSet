@@ -235,6 +235,16 @@ export interface ConnectionInput {
   readonly device?: string | null;
   readonly precision?: Precision | null;
   readonly endpointUrl?: string | null;
+  /**
+   * Which installed driver serves this connection.
+   *
+   * Read off the catalog entry the form picked, never worked out here: which
+   * driver offers a checkpoint is the server's answer, and a client deriving it
+   * from a model id would be guessing about an installation it cannot see.
+   * `null` for a model typed by hand, which records none and resolves by the
+   * model type its config declares.
+   */
+  readonly providerId?: string | null;
 }
 
 /** Configure a connection. Nothing is downloaded and nothing is contacted. */
@@ -442,6 +452,11 @@ function bodyOf(input: ConnectionInput) {
     device: local ? (input.device ?? null) : null,
     precision: local ? (input.precision ?? null) : null,
     endpoint_url: local ? null : (input.endpointUrl ?? null),
+    // Travels on both bodies. On a create it records the driver; on an edit
+    // `null` means *leave this alone*, and the server clears a recorded driver
+    // by itself when the model reference moves — so switching a connection to a
+    // hand-typed model forgets its provider without the form asking.
+    provider_id: input.providerId ?? null,
   };
 }
 
