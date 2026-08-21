@@ -17,9 +17,12 @@ read as a removal plus an addition, which looks lossy until you remember that
 orphan every annotation under the old name. The kernel cannot see intent, and
 guessing at it would be guessing with someone's labels.
 
-This module is pure — two sequences in, a verdict out. It touches no ports and
-no ids, so ``SchemaService`` can gate on it, a delivery surface can preview with
-it, and neither has to reach for the other.
+This module is pure — no ports, no store, no workspace. The judging functions
+take two class lists and return a verdict; the report models beside them carry
+entities and ids a service has already read, because a caller told *this is
+refused* has to be able to reach what refused it. Nothing here reads them. So
+``SchemaService`` can gate on it, a delivery surface can preview with it, and
+neither has to reach for the other.
 """
 
 from __future__ import annotations

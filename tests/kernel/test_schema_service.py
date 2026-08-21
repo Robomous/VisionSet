@@ -595,7 +595,7 @@ def _one_doomed_polygon(
     return workspace, schemas, project.id, polygon_asset, first, correction
 
 
-def test_blockers_lists_only_the_assets_whose_own_shape_is_doomed(tmp_path: Path) -> None:
+def test_blocking_assets_lists_only_the_assets_whose_own_shape_is_doomed(tmp_path: Path) -> None:
     """The listing crosses the same grain the count does.
 
     A ``car`` losing its polygon is blocked by the polygon and not by the boxes
@@ -603,7 +603,7 @@ def test_blockers_lists_only_the_assets_whose_own_shape_is_doomed(tmp_path: Path
     """
     workspace, schemas, project_id, polygon_asset, _, _ = _one_doomed_polygon(tmp_path)
 
-    listed = schemas.blockers(project_id, [_CAR_BOX])
+    listed = schemas.blocking_assets(project_id, [_CAR_BOX])
 
     assert [one.asset.id for one in listed] == [polygon_asset.id]
     assert listed[0].label_classes == ("car",)
@@ -611,39 +611,41 @@ def test_blockers_lists_only_the_assets_whose_own_shape_is_doomed(tmp_path: Path
     workspace.close()
 
 
-def test_blockers_and_preview_agree_on_the_totals(tmp_path: Path) -> None:
+def test_blocking_assets_and_preview_agree_on_the_totals(tmp_path: Path) -> None:
     """The contract this whole capability exists for.
 
-    ``preview`` counts and ``blockers`` lists; two walks that agreed by
-    coincidence is the drift the typed report was introduced to end.
+    ``preview`` counts and ``blocking_assets`` lists; two reports that agreed
+    by coincidence is the drift the typed report was introduced to end.
     """
     workspace, schemas, project_id, _, _, _ = _one_doomed_polygon(tmp_path)
 
     previewed = schemas.preview(project_id, [_CAR_BOX])
-    listed = schemas.blockers(project_id, [_CAR_BOX])
+    listed = schemas.blocking_assets(project_id, [_CAR_BOX])
 
     assert sum(one.annotations for one in listed) == sum(
         count.annotations for count in previewed.blockers
     )
-    assert len(listed) == sum(count.assets for count in previewed.blockers)
+    # Not equality: ``ClassCount.assets`` is per class, so an asset carrying two
+    # blocking classes is one row here and two there.
+    assert len(listed) <= sum(count.assets for count in previewed.blockers)
     workspace.close()
 
 
-def test_blockers_names_the_batches_holding_each_asset(tmp_path: Path) -> None:
+def test_blocking_assets_names_the_batches_holding_each_asset(tmp_path: Path) -> None:
     """An asset is held by many batches, so the row carries all of them."""
     workspace, schemas, project_id, _, first, correction = _one_doomed_polygon(tmp_path)
 
-    listed = schemas.blockers(project_id, [_CAR_BOX])
+    listed = schemas.blocking_assets(project_id, [_CAR_BOX])
 
     assert set(listed[0].batches) == {first.id, correction.id}
     workspace.close()
 
 
-def test_blockers_is_empty_when_the_change_removes_nothing(tmp_path: Path) -> None:
-    """An additive change has no guard, so the walk never runs."""
+def test_blocking_assets_is_empty_when_the_change_removes_nothing(tmp_path: Path) -> None:
+    """An additive change guards nothing, so nothing can block it."""
     workspace, schemas, project_id, _, _, _ = _one_doomed_polygon(tmp_path)
 
-    assert schemas.blockers(project_id, [_CAR_BOTH, SIGN]) == ()
+    assert schemas.blocking_assets(project_id, [_CAR_BOTH, SIGN]) == ()
     workspace.close()
 
 
