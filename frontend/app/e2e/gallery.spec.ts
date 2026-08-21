@@ -118,7 +118,9 @@ function assets(
       // dropped: `asset_actions` returns `[]` for every frame of a batch that is
       // not `in_annotation`, whatever the frame's own progress is.
       allowed_actions: assetActions(jobId === null ? null : progress, { batchState }),
-      annotation_count: 0,
+      // Three boxes on the one card a test names ("3 boxes"); every other state
+      // carries none, which is what an unannotated or merely-reviewed frame is.
+      annotation_count: progress === "annotated" ? 3 : 0,
       min_confidence: null,
     })),
   };
@@ -360,7 +362,13 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
     if (path === `/batches/${BATCH}/assets`) {
       // `current`, not `state`: an approve during the test moves it, and the
       // frames' declarations move with the batch exactly as the server's would.
-      return route.fulfill({ json: assets(jobId, settledStates, current, removed) });
+      const page_ = assets(jobId, settledStates, current, removed);
+      // The segment toolbar is server-side now: `progress` repeats per state and
+      // narrows the page, exactly as `BatchService.asset_page` does.
+      const wanted = new URL(request.url()).searchParams.getAll("progress");
+      const items =
+        wanted.length === 0 ? page_.items : page_.items.filter((one) => wanted.includes(one.progress ?? ""));
+      return route.fulfill({ json: { total: items.length, items } satisfies Wire["BatchAssetPage"] });
     }
     if (path === `/sources/${SOURCE}`) {
       return route.fulfill({
