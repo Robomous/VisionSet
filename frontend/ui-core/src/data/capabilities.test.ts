@@ -188,6 +188,24 @@ describe("turning a refusal into a sentence", () => {
   it("survives something that is not an ApiError", () => {
     expect(refusalProse(new Error("boom"))).toBeTruthy();
   });
+
+  it("says what a missing thing was, without naming its id", () => {
+    const said = refusalProse(
+      refused("PROJECT_NOT_FOUND", "no project 3f2a-… in workspace 'demo'"),
+    );
+    expect(said).toBe("That project is no longer on record.");
+    expect(said).not.toContain("3f2a");
+    expect(said).not.toContain("demo");
+  });
+
+  it("keeps a remedy the kernel wrote, because no product sentence carries it", () => {
+    // The install command IS the remedy. An entry here would replace the only
+    // actionable thing the refusal says.
+    const said = refusalProse(
+      refused("LOCAL_INFERENCE_UNAVAILABLE", 'pip install "visionset[local-inference]"'),
+    );
+    expect(said).toContain("visionset[local-inference]");
+  });
 });
 
 describe("saying N refusals once", () => {
