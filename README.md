@@ -211,9 +211,11 @@ already.
 
 Dev only — the release artifact is always the pip package.
 
-Common checks: `uv run pytest`, `uv run lint-imports`, `uv run mypy src/visionset/kernel`,
-`pnpm -r build`, `pnpm test`. The full list — including the wheel build and the thirty-minute
-flow gate — is in [CONTRIBUTING.md](CONTRIBUTING.md).
+The inner loop while iterating: `uv run pytest <path>`, `uv run lint-imports`,
+`uv run mypy src/visionset/kernel` (the kernel only — CI checks all of `src/visionset`),
+`pnpm -r build`, `pnpm test` (no browser — the two Playwright suites sit outside it). Each is a
+subset of what CI runs on every pull request; the full list, with what each command does not
+cover, is in [CONTRIBUTING.md](CONTRIBUTING.md#checks-that-must-stay-green).
 
 ## Releases
 
