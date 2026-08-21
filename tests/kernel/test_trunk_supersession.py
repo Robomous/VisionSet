@@ -60,6 +60,7 @@ SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 
 UNANNOTATED = AssetProgress.UNANNOTATED
 ANNOTATED = AssetProgress.ANNOTATED
+PRE_LABELED = AssetProgress.PRE_LABELED
 SKIPPED = AssetProgress.SKIPPED
 
 ALL_TRAIN = SplitRecipe(train=1.0, val=0.0, test=0.0)
@@ -170,6 +171,17 @@ def test_an_asset_with_labels_starts_annotated_and_one_without_starts_unannotate
     assert initial_progress(has_annotations=False) is UNANNOTATED
 
 
+def test_an_asset_whose_every_label_is_a_models_starts_pre_labeled() -> None:
+    """Nobody judged those labels, so a new batch must not open them promotable."""
+    assert initial_progress(has_annotations=True, judged=False) is PRE_LABELED
+    assert initial_progress(has_annotations=False, judged=False) is UNANNOTATED
+
+
+def test_where_a_model_only_asset_starts_is_where_an_unjudged_first_label_would_land_it() -> None:
+    started = initial_progress(has_annotations=True, judged=False)
+    assert started is progress_after_annotating(UNANNOTATED, has_annotations=True, judged=False)
+
+
 def test_where_an_asset_starts_is_where_annotating_a_fresh_one_would_land_it() -> None:
     """The two rules must agree, or an asset's history would decide its progress.
 
@@ -187,9 +199,11 @@ def test_where_an_asset_starts_is_where_annotating_a_fresh_one_would_land_it() -
 
 def test_both_starting_states_are_ones_an_annotator_may_write_into() -> None:
     """Read against `WRITABLE_PROGRESS`, so seeding cannot open an unwritable asset."""
-    assert {initial_progress(has_annotations=True), initial_progress(has_annotations=False)} <= (
-        WRITABLE_PROGRESS
-    )
+    assert {
+        initial_progress(has_annotations=True),
+        initial_progress(has_annotations=False),
+        initial_progress(has_annotations=True, judged=False),
+    } <= WRITABLE_PROGRESS
 
 
 # --- seeding: a batch over labeled assets opens on those labels ---------------
