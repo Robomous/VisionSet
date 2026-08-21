@@ -13,7 +13,14 @@
 
 import { expect, test, type Page, type Request } from "@playwright/test";
 import { assetActions, batchActions, jobActions } from "./_wire";
-import { expectNothingToSave, expectProgress, openOverflow, saveNow, zoomWheel } from "./_frame";
+import {
+  closeOverflow,
+  expectNothingToSave,
+  expectProgress,
+  openOverflow,
+  saveNow,
+  zoomWheel,
+} from "./_frame";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -2628,7 +2635,7 @@ test("a frame goes out for review, comes back, and is accepted the second time",
   // send back, so the menu must not offer the reviewer's "no".
   await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await closeOverflow(page);
 
   await page.getByTestId("submit-for-review").click();
   // Settling advances, because the person is finished with this frame.
@@ -2641,7 +2648,7 @@ test("a frame goes out for review, comes back, and is accepted the second time",
   await expectProgress(page, "review_pending");
   await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toBeVisible();
-  await page.keyboard.press("Escape");
+  await closeOverflow(page);
   await expect(page.getByTestId("accept")).toBeVisible();
   await expect(page.getByTestId("submit-for-review")).toHaveCount(0);
   // `review_pending` is not in `WRITABLE_PROGRESS`, so the frame is read-only —
@@ -2670,7 +2677,7 @@ test("a frame goes out for review, comes back, and is accepted the second time",
   await expect(page.getByTestId("submit-for-review")).toHaveCount(0);
   await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await closeOverflow(page);
   await expect(page.getByTestId("readonly-banner")).toContainText(/correction batch/i);
 });
 
@@ -2685,7 +2692,7 @@ test("an unannotated frame is not offered to a reviewer at all", async ({ page }
   await expect(page.getByTestId("accept")).toHaveCount(0);
   await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await closeOverflow(page);
 });
 
 test("a refused review move says why, like every other one", async ({ page }) => {
