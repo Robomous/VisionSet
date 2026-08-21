@@ -138,6 +138,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     # WRITES, not READS: a check that finds damage purges the bad copies and
     # stands the connection back to not_set_up.
     (inference.check_connection_integrity, WRITES),
+    (inference.test_inference_connection, WRITES),
     (inference.update_inference_connection, WRITES),
 )
 """Every tool this server always offers, with what it does to the workspace.

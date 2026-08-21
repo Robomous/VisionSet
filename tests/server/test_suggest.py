@@ -491,13 +491,15 @@ def test_a_tested_http_connection_suggests_through_its_endpoint(
         asset = an_asset(client, runner, project, tmp_path)
 
         # Inside the fixture endpoint's lit rectangle, (2, 2) to (10, 10).
-        body = ask(
+        answer = ask(
             client,
             project=project,
             asset=asset,
             connection=connection,
             positive=[{"x": 5.0, "y": 5.0}],
-        ).json()
+        )
+        assert answer.status_code == 200, answer.text
+        body = answer.json()
 
     assert body["model_ref"] == "fake/remote@1"
     (region,) = body["regions"]

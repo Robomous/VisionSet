@@ -23,11 +23,10 @@ answer. Interrupting either is safe: a connection is only marked ready once
 every file is here, and a check writes nothing until every byte has been read.
 Re-running a cut-off download resumes the cache rather than starting over.
 
-**There is no ``test`` tool**, and it is absent rather than stubbed: nothing in
-this build can contact a configured endpoint (`provider_for` refuses every
-``http`` connection), and a declared action with nothing behind it is an offer
-the product cannot keep. It arrives with the HTTP endpoint contract (cf. #498),
-on every surface at once.
+**``test_inference_connection`` is one request, not a background run.** It asks
+the connection's endpoint what it answers and records the declared capability,
+which is what lets ``suggest`` and pre-labeling use the connection. Refused for
+a local connection, which has no endpoint to ask.
 
 **``delete_inference_connection`` is destructive posture, not cycle.** The
 kernel's delete takes no ``confirm`` — what is destroyed is a configuration
@@ -46,7 +45,7 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from visionset import wire
-from visionset.inference import check_integrity, download_size, fetch_weights
+from visionset.inference import ask_endpoint, check_integrity, download_size, fetch_weights
 from visionset.kernel import ConfirmationRequired
 from visionset.kernel.domain import ConnectionType, Precision
 from visionset.kernel.services import InferenceConnectionService
@@ -207,6 +206,24 @@ def check_connection_integrity(connection: ConnectionRef) -> dict[str, Any]:
         found = resolve_connection(workspace, connection)
         report = check_integrity(workspace, found.id)
     return report.counts()
+
+
+def test_inference_connection(connection: ConnectionRef) -> dict[str, Any]:
+    """Ask an http connection's endpoint what it answers, and record the answer.
+
+    One request to the endpoint, which answers this project's contract —
+    `{"model_ref": …, "capability": …}`. The declared capability becomes the
+    connection's `capabilities`, which is what lets `suggest` and pre-labeling
+    use it. Asking again re-asks and overwrites.
+
+    Refused for a local connection, which has no endpoint. An endpoint that
+    cannot be reached or answers outside the contract is a refusal naming it,
+    and nothing is recorded.
+    """
+    with opened_workspace() as workspace:
+        found = resolve_connection(workspace, connection)
+        answered = ask_endpoint(workspace, found.id)
+    return wire.connection(answered)
 
 
 def delete_inference_connection(

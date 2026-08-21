@@ -415,7 +415,7 @@ def pre_label_batch(
     # model that would load here, and an endpoint loads nothing here.
     if connection.connection_type is ConnectionType.LOCAL and connection.model_id != STUB_MODEL_ID:
         require_local_inference()
-    if connection.setup_state is not ConnectionSetupState.READY or connection.model_family is None:
+    if connection.setup_state is not ConnectionSetupState.READY or not connection.model_family:
         # Before the capability check: `model_family` is written only by a
         # completed weight download or a tested `http` endpoint, so a
         # connection that has not finished either yet reads no capabilities at

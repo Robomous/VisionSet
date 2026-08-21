@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.fixtures.endpoint import serving_endpoint
 from tests.fixtures.local_inference import without_the_extra
 from tests.mcp._flow import call, call_destructive, error, payload, workspace
 
@@ -320,3 +321,20 @@ def test_deleting_an_unknown_connection_is_a_refusal_with_or_without_confirm(
             call_destructive("delete_inference_connection", connection="ghost", confirm=confirm)
         )
         assert "ghost" in refusal["message"]
+
+
+# --- test_inference_connection --------------------------------------------------
+
+
+def test_test_inference_connection_records_what_the_endpoint_answers(root: Path) -> None:
+    with serving_endpoint(capability="point_suggest") as endpoint:
+        payload(call("create_inference_connection", **{**HTTP, "endpoint_url": endpoint.url}))
+        document = payload(call("test_inference_connection", connection="remote"))
+    assert document["capabilities"] == ["point_suggest"]
+    assert document["provider_id"] == "http"
+
+
+def test_test_inference_connection_refuses_a_local_connection(root: Path) -> None:
+    payload(call("create_inference_connection", **LOCAL))
+    refusal = error(call("test_inference_connection", connection="local-gd"))
+    assert "no endpoint" in refusal["message"]

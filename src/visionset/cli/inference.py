@@ -1,15 +1,15 @@
 # usage: from visionset.cli.inference import inference_app
 """``visionset inference`` — configuring where a model may be asked to predict.
 
-Eight commands, so a workspace can be made ready for auto-labeling without a
-browser. Seven are one call to ``InferenceConnectionService``; ``size`` is the
+Nine commands, so a workspace can be made ready for auto-labeling without a
+browser. Eight are one call to ``InferenceConnectionService``; ``size`` is the
 exception and says so — it is about a published model rather than about a
 configured row, so it opens no workspace at all. Three reach a network:
 ``download``, which fetches, ``size``, which reads a listing so that
 ``download`` can be an informed decision, and ``check-integrity``, which reads
-the digests a snapshot on disk is compared against. Contacting a configured
-endpoint is still absent: a command that cannot work is worse than one that is
-not there yet.
+the digests a snapshot on disk is compared against. ``test-endpoint`` is the
+fourth that reaches a network: it asks an http connection's endpoint what it
+answers.
 
 **``download`` and ``check-integrity`` block, and that is ``ingest``'s pattern
 rather than a shortcut.**
@@ -34,7 +34,7 @@ from visionset import wire
 from visionset.cli._errors import domain_errors
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.inference import check_integrity, download_size, fetch_weights
+from visionset.inference import ask_endpoint, check_integrity, download_size, fetch_weights
 from visionset.kernel.domain import ConnectionType, InferenceConnection, Precision
 from visionset.kernel.services import InferenceConnectionService
 
@@ -294,6 +294,37 @@ def inference_check_integrity(
         return
     note(f"{report.files_checked} files read, {report.bytes_read} bytes, all intact.")
     typer.echo(str(report.files_checked))
+
+
+@inference_app.command("test-endpoint")
+def inference_test_endpoint(
+    connection: ConnectionArgument,
+    json_out: JsonOption = False,
+    workspace: WorkspaceOption = None,
+) -> None:
+    """Ask an http connection's endpoint what it answers, and record the answer.
+
+    One request to the endpoint, which must answer this project's contract —
+    ``{"model_ref": …, "capability": …}``. The capability it declares is what
+    the suggest tool and pre-labeling then offer the connection for. Asking
+    again re-asks and overwrites.
+
+    Refused for a local connection, which has no endpoint. An endpoint that
+    cannot be reached or answers outside the contract is a sentence naming it
+    and exit 1, and nothing is recorded.
+    """
+    with opened_workspace(workspace) as service:
+        connections = InferenceConnectionService(service)
+        connection_id = _resolve(connections, connection)
+        answered = ask_endpoint(service, connection_id)
+        jobs = connections.connection_jobs()
+    if json_out:
+        document(
+            wire.connection(answered, jobs.downloads.get(answered.id), jobs.checks.get(answered.id))
+        )
+        return
+    note(f"{answered.name!r} answers {answered.model_family}.")
+    typer.echo(answered.model_family)
 
 
 @inference_app.command("delete")

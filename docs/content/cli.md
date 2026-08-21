@@ -49,6 +49,7 @@ visionset inference show|update|delete NAME_OR_ID
 visionset inference size MODEL_ID --revision REV         # no --workspace: it opens none
 visionset inference download NAME_OR_ID
 visionset inference check-integrity NAME_OR_ID
+visionset inference test-endpoint NAME_OR_ID                 # http only: asks the endpoint what it answers
 visionset server [--host] [--port] [--reload]            # no --json
 visionset mcp                                            # stdio; no --json
 ```
@@ -446,6 +447,10 @@ opens no workspace — it asks about a published model rather than a configured 
 `check-integrity` re-reads a `ready` connection's weights in full and compares each digest
 against the published one, which is the question `download` cannot answer: a file already in the
 cache is returned unread, so a truncated or rotted copy passes the completeness check for ever.
+
+`test-endpoint` asks an `http` connection's endpoint what it answers — one request to the URL the
+connection names — and records the declared capability on the row. It prints the capability;
+`--json` prints the connection. A local connection is refused: there is no endpoint to ask.
 
 Covered in full, including the two kinds, where the weights land and why deleting a connection
 never touches an annotation's provenance, in [inference.md](inference.md#at-a-terminal).
