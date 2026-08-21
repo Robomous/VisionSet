@@ -736,7 +736,6 @@ export function useSources(projectId: string): UseQueryResult<SourcePage, Error>
   });
 }
 
-/** How often the listing re-reads itself while a pre-labeling run is in flight. */
 const BATCH_POLL_MS = 2000;
 
 export function useBatches(projectId: string): UseQueryResult<BatchPage, Error> {
@@ -1206,7 +1205,6 @@ export function usePreLabelBatch(batchId: string) {
 }
 
 export type ProjectPreLabelOut = components["schemas"]["ProjectPreLabelOut"];
-export type ProjectPreLabelItem = components["schemas"]["ProjectPreLabelItemOut"];
 
 export interface ProjectPreLabelInput {
   readonly connectionId: string;

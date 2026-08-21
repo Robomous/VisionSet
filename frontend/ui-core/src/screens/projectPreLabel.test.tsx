@@ -8,7 +8,7 @@
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
@@ -212,11 +212,23 @@ it("checks every open batch with untouched assets by default and posts exactly t
 });
 
 it("cannot start with nothing checked", async () => {
-  stubBatches([batch(OPEN_EMPTY, "drive-02", "in_annotation", 0)]);
+  stubBatches([batch(OPEN, "drive-01", "in_annotation", 8)]);
   renderBatches();
   await userEvent.click(await screen.findByTestId("project-prelabel"));
   await screen.findByTestId("project-prelabel-dialog");
-  expect((screen.getByTestId("project-prelabel-start") as HTMLButtonElement).disabled).toBe(true);
+
+  const start = (): HTMLButtonElement =>
+    screen.getByTestId("project-prelabel-start") as HTMLButtonElement;
+  // Waited for rather than asserted straight away, so what follows cannot pass
+  // for the connection's reason: Start is dead while `useConnections` is still
+  // in flight, whatever is checked.
+  await waitFor(() => expect(start().disabled).toBe(false));
+
+  await userEvent.click(screen.getByTestId(`prelabel-pick-${OPEN}`));
+  expect(start().disabled).toBe(true);
+
+  await userEvent.click(screen.getByTestId(`prelabel-pick-${OPEN}`));
+  expect(start().disabled).toBe(false);
 });
 
 it("renders a refusal as prose", async () => {
