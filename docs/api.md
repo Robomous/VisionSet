@@ -209,9 +209,13 @@ An array cannot grow a field without breaking every client that parsed it. `tota
 route without moving the shape everything else already spoke. An empty collection is
 `{"items": [], "total": 0}` and a 200, never a 404.
 
-**Paging is on the two large collections and nowhere else** - `GET /batches/{id}/assets` and
-`GET /datasets/{id}/assets`, the batch that an ingest can fill with fifty thousand frames and
-the trunk that accumulates every batch a project ever completed. It bounds the *response*, not
+**Paging is on the asset listings and nowhere else** - `GET /projects/{id}/assets`,
+`GET /batches/{id}/assets`, `GET /datasets/{id}/assets` and
+`POST /projects/{id}/schema/blocking-assets`. What they have in common is that their size is a
+property of how many frames somebody ingested rather than of how many things somebody made: an
+ingest can fill a batch with fifty thousand, the trunk accumulates every batch a project ever
+completed, and the last of them is a *subset* of the first - the frames in the way of one
+narrowing, which is bounded by nothing but the project. It bounds the *response*, not
 the read. The kernel has no windowed read, so `limit` and `offset` slice a list that was fetched
 whole - worth doing, because a batch of fifty thousand frames must not be sent to a gallery in
 one body, but not a cheap query and not advertised as one. Every other collection is small by
