@@ -865,7 +865,7 @@ carries labels never reaches a publish request at all: it gets one terminal dial
 the annotations and assets that block it, counted, and no button that starts a save the
 dialog knows will be refused. A class that carries none gets one confirmation, which names
 how many classes narrow and states that nothing already labeled is invalidated.
-It now also names what the narrowing defers: a batch still open on the outgoing version keeps
+It also names what the narrowing defers: a batch still open on the outgoing version keeps
 writing the class that was dropped, and those labels block a release rather than this save.
 
 That does not demote the 409. Nothing is locked between a preview and the publish, so

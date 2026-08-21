@@ -528,7 +528,7 @@ describe("the schema editor", () => {
     expect(dialog.textContent).toContain("1 class narrows");
     expect(dialog.textContent).toContain("No existing annotation becomes invalid");
     // The removed promise. It said annotations are untouched, which answers the
-    // invariant by implication; the dialog now states the rule itself instead.
+    // invariant by implication; the dialog states the rule itself instead.
     expect(dialog.textContent).not.toContain("Existing annotations are not touched");
     expect(
       sent.some(
@@ -622,11 +622,10 @@ describe("the schema editor", () => {
     await userEvent.click(screen.getByTestId("save-schema"));
 
     const dialog = await screen.findByTestId("destructive-dialog");
-    // The cost the dialog could not name while the invariant was open. A batch
-    // still pinned to the outgoing version keeps writing the dropped class, and
-    // the bill arrives at the release rather than at this save.
+    // A batch still pinned to the outgoing version keeps writing the dropped
+    // class, and the bill arrives at the release rather than at this save.
     expect(dialog.textContent).toContain("still open on the current version");
-    expect(dialog.textContent).toContain("release");
+    expect(dialog.textContent).toContain("a release cannot be published");
     // Still no machine code, no UUID, no SDK keyword.
     expect(dialog.textContent).not.toContain("SCHEMA_CHANGE_WOULD_ORPHAN");
     expect(dialog.textContent).not.toContain("allow_destructive");
