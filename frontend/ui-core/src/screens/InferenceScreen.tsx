@@ -1195,10 +1195,7 @@ function ConnectionForm({
               </>
             )}
             {failure !== null && (
-              <FieldError data-testid="connection-error">
-                <Badge variant="destructive">{asApiError(failure).code}</Badge>{" "}
-                {asApiError(failure).message}
-              </FieldError>
+              <FieldError data-testid="connection-error">{refusalProse(failure)}</FieldError>
             )}
             <DialogFooter>
               <Button variant="secondary" onClick={onClose}>
@@ -1271,9 +1268,10 @@ function AccessLine({
  *
  * D1's "download size shown before confirming", and the one place a missing local
  * runtime becomes visible in this form. The refusal is rendered **as the server
- * wrote it** — `LOCAL_INFERENCE_UNAVAILABLE` is one of the four codes that opt
- * out of the opaque body precisely so the install command reaches a person, and a
- * sentence written here would throw it away.
+ * wrote it** — `LOCAL_INFERENCE_UNAVAILABLE` is one of the seven codes
+ * `server/errors.py` marks `expose_message`, opting out of the opaque body
+ * precisely so the install command reaches a person, and a sentence written
+ * here would throw it away.
  *
  * The form stays usable throughout (principle 9): not knowing the size does not
  * stop somebody configuring a connection, because creating one downloads nothing.
@@ -1295,10 +1293,9 @@ function DownloadSizeLine({
     );
   }
   if (size.isError) {
-    const failure = asApiError(size.error);
     return (
       <p className="text-xs text-muted-foreground" data-testid="size-unavailable">
-        <Badge variant="warning">{failure.code}</Badge> {failure.message}
+        {refusalProse(size.error)}
       </p>
     );
   }
@@ -1367,8 +1364,7 @@ function DeleteConnectionDialog({
         </DialogDescription>
         {remove.isError && (
           <FieldError data-testid="delete-connection-error">
-            <Badge variant="destructive">{asApiError(remove.error).code}</Badge>{" "}
-            {asApiError(remove.error).message}
+            {refusalProse(remove.error)}
           </FieldError>
         )}
         <DialogFooter>

@@ -28,8 +28,7 @@ import { FolderPlus, Trash2 } from "lucide-react";
 import { useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
-import { asApiError } from "../data/errors";
-import { Badge } from "../primitives/Badge";
+import { refusalProse } from "../data/refusals";
 import { Button } from "../primitives/Button";
 import {
   Dialog,
@@ -279,17 +278,11 @@ function DeleteProjectDialog({
 }
 
 /**
- * A refusal, rendered for a form.
+ * One refusal, as the sentence the field's alert announces.
  *
- * The code leads, because `docs/api.md`'s rule is that clients branch on it — and
- * because `PROJECT_NAME_TAKEN` is a sentence a person can act on where "409" is
- * not. `Badge` would be prettier; a field error is what a screen reader announces.
+ * The field error is what a screen reader announces. The identifier does not
+ * lead: a client branches on a code, a person cannot.
  */
-function refusal(cause: unknown): JSX.Element {
-  const failure = asApiError(cause);
-  return (
-    <>
-      <Badge variant="destructive">{failure.code}</Badge> {failure.message}
-    </>
-  );
+function refusal(cause: unknown): string {
+  return refusalProse(cause);
 }
