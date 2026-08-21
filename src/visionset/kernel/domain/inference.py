@@ -38,6 +38,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 from visionset.kernel.domain.job import BackgroundJob, BackgroundJobState
+from visionset.kernel.domain.schema import GeometryType
 from visionset.kernel.domain.vocabulary import OpenVocabulary
 
 
@@ -101,6 +102,22 @@ class ModelCapability(OpenVocabulary):
     POINT_SUGGEST = "point_suggest"
     #: Find everything these words name.
     TEXT_DETECT = "text_detect"
+
+
+class ServedFamily(BaseModel):
+    """What a driver declares about one family: what it takes, and the shapes it answers in.
+
+    Prompt kind and output geometry are independent axes — a model that takes
+    words may answer with boxes or with masks — and a declaration carrying only
+    the first left every consumer to assume the second. ``produces`` is declared
+    over ``GeometryType``, every name the domain can address, so a class is
+    askable when it admits any shape the model produces.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    capability: ModelCapability
+    produces: frozenset[GeometryType] = Field(min_length=1)
 
 
 class Precision(StrEnum):
