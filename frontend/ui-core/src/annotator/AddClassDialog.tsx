@@ -89,6 +89,7 @@ import { Plus, X } from "lucide-react";
 import { useEffect, useRef, useState, type JSX } from "react";
 
 import { asApiError } from "../data/errors";
+import { refusalProse } from "../data/refusals";
 import { classColor } from "../palette";
 import { Alert } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
@@ -729,8 +730,8 @@ export function AddClassDialog({
           )}
 
           {failure !== null && (
-            <Alert variant="destructive" title={failure.code} data-testid="add-class-error">
-              {failure.message}
+            <Alert variant="destructive" data-testid="add-class-error">
+              {refusalProse(error)}
               {/* The one refusal whose remedy is somewhere else. `repin` has no
                   flag for it on purpose: the pin did not move because somebody
                   narrowed the schema past it, and that is a decision, not a retry. */}

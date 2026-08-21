@@ -257,6 +257,7 @@ describe("the refusal it has to make legible", () => {
 
     const alert = screen.getByTestId("add-class-error");
     expect(alert.textContent).toContain("another writer created this schema version first");
+    expect(alert.textContent).not.toContain("SCHEMA_VERSION_CONFLICT");
   });
 
   it("names where to look when the re-pin was the step that refused", () => {
