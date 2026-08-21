@@ -653,6 +653,7 @@ def test_test_endpoint_json_is_the_connection_document(root: Path) -> None:
         ok(root, *_hosted_at(endpoint.url))
         document = payload(root, "inference", "test-endpoint", "remote")
     assert document["capabilities"] == ["point_suggest"]
+    assert "integrity_check" in document
 
 
 def test_test_endpoint_refuses_a_connection_with_no_endpoint(root: Path) -> None:

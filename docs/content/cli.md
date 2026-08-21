@@ -49,7 +49,7 @@ visionset inference show|update|delete NAME_OR_ID
 visionset inference size MODEL_ID --revision REV         # no --workspace: it opens none
 visionset inference download NAME_OR_ID
 visionset inference check-integrity NAME_OR_ID
-visionset inference test-endpoint NAME_OR_ID                 # http only: asks the endpoint what it answers
+visionset inference test-endpoint NAME_OR_ID             # http only: what it answers
 visionset server [--host] [--port] [--reload]            # no --json
 visionset mcp                                            # stdio; no --json
 ```

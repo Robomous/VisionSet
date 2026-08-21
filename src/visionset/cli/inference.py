@@ -4,12 +4,11 @@
 Nine commands, so a workspace can be made ready for auto-labeling without a
 browser. Eight are one call to ``InferenceConnectionService``; ``size`` is the
 exception and says so — it is about a published model rather than about a
-configured row, so it opens no workspace at all. Three reach a network:
-``download``, which fetches, ``size``, which reads a listing so that
-``download`` can be an informed decision, and ``check-integrity``, which reads
-the digests a snapshot on disk is compared against. ``test-endpoint`` is the
-fourth that reaches a network: it asks an http connection's endpoint what it
-answers.
+configured row, so it opens no workspace at all. Four reach a network:
+``download``, which fetches; ``size``, which reads a listing so that
+``download`` can be an informed decision; ``check-integrity``, which reads the
+digests a snapshot on disk is compared against; and ``test-endpoint``, which
+asks an http connection's endpoint what it answers.
 
 **``download`` and ``check-integrity`` block, and that is ``ingest``'s pattern
 rather than a shortcut.**
