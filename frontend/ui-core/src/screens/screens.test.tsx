@@ -822,10 +822,34 @@ describe("the schema editor", () => {
         "Annotations already exist under a class this change removes.",
       );
       expect(error.textContent).not.toContain("internal wording must not appear");
+      expect(error.textContent).not.toContain("SCHEMA_CHANGE_WOULD_ORPHAN");
       expect(screen.queryByTestId("allow-destructive")).toBeNull();
       expect(screen.queryByTestId("destructive-dialog")).toBeNull();
     },
   );
+
+  it("says an autosave failure in prose, not as a kernel identifier", async () => {
+    projectWithSchema();
+    on("PUT", /\/schema\/drafts\/curated$/, {
+      status: 409,
+      body: {
+        code: "DESTRUCTIVE_SCHEMA_CHANGE",
+        message: "internal wording must not appear",
+      },
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
+
+    const alert = await screen.findByTestId("schema-draft-error", {}, { timeout: 2000 });
+    expect(alert.textContent).toContain(
+      "This change removes part of the contract already in use.",
+    );
+    expect(alert.textContent).not.toContain("DESTRUCTIVE_SCHEMA_CHANGE");
+    expect(alert.textContent).not.toContain("internal wording must not appear");
+  });
 
   it("offers only the geometries an annotation can carry", async () => {
     projectWithSchema();

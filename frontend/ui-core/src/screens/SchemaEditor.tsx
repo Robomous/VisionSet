@@ -796,8 +796,8 @@ export function SchemaEditor({
           is, and typing is unaffected either way. Still rendered rather than
           swallowed, in the same register as a publish failure below. */}
       {draftFailure !== null && !staleDraft && (
-        <Alert variant="destructive" title={draftFailure.code} data-testid="schema-draft-error">
-          {draftFailure.message}
+        <Alert variant="destructive" title="Could not save this change" data-testid="schema-draft-error">
+          {refusalProse(draftSaveError)}
         </Alert>
       )}
 
@@ -812,7 +812,7 @@ export function SchemaEditor({
       {failure !== null &&
         failure.code !== STALE_DRAFT &&
         (failure.code !== WOULD_ORPHAN || shownBlockers === null) && (
-          <Alert variant="destructive" title={failure.code} data-testid="schema-error">
+          <Alert variant="destructive" title="Could not save this version" data-testid="schema-error">
             {refusalProse(publish.error)}
           </Alert>
         )}
