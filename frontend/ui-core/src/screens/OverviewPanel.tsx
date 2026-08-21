@@ -43,6 +43,8 @@
 import { ImageIcon, Tags, TriangleAlert, Upload } from "lucide-react";
 import type { JSX } from "react";
 
+import { asApiError } from "../data/errors";
+import { refusalProse } from "../data/refusals";
 import { classColor } from "../palette";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
@@ -98,7 +100,11 @@ export function OverviewPanel({
       // `ErrorState` renders a `role="alert"`, which is what a test finds it by
       // and what a screen reader announces it as. It takes no arbitrary props,
       // so there is no testid to add and none is needed.
-      <ErrorState message={stats.error.message} onRetry={() => void stats.refetch()} />
+      <ErrorState
+        message={refusalProse(stats.error)}
+        code={asApiError(stats.error).code}
+        onRetry={() => void stats.refetch()}
+      />
     );
   }
 

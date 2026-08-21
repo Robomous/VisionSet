@@ -34,7 +34,7 @@ import {
   type Capable,
 } from "./capabilities";
 import type { KnownMembers } from "../generated/api.js";
-import { groupRefusals, refusalProse, type Refusal } from "./refusals";
+import { groupRefusals, REFUSAL_PROSE, refusalProse, type Refusal } from "./refusals";
 import { ApiError } from "./errors";
 
 describe("reading a declaration", () => {
@@ -187,6 +187,39 @@ describe("turning a refusal into a sentence", () => {
 
   it("survives something that is not an ApiError", () => {
     expect(refusalProse(new Error("boom"))).toBeTruthy();
+  });
+
+  it("says what a missing thing was, without naming its id", () => {
+    const said = refusalProse(
+      refused("PROJECT_NOT_FOUND", "no project 3f2a-… in workspace 'demo'"),
+    );
+    expect(said).toBe("That project is no longer on record.");
+    expect(said).not.toContain("3f2a");
+    expect(said).not.toContain("demo");
+  });
+
+  it("keeps a remedy the kernel wrote, because no product sentence carries it", () => {
+    // The install command IS the remedy. An entry here would replace the only
+    // actionable thing the refusal says.
+    const said = refusalProse(
+      refused("LOCAL_INFERENCE_UNAVAILABLE", 'pip install "visionset[local-inference]"'),
+    );
+    expect(said).toContain("visionset[local-inference]");
+  });
+
+  it("withholds the codes whose message carries the remedy", () => {
+    // A sentence written here would be shorter and say less. The paragraph in
+    // refusals.ts explains each; this is what stops one being added anyway.
+    for (const code of [
+      "LOCAL_INFERENCE_UNAVAILABLE",
+      "INFERENCE_CONNECTION_NOT_RUNNABLE",
+      "INFERENCE_OUT_OF_MEMORY",
+      "UNSUPPORTED_PROMPT",
+      "INFERENCE_CONNECTION_NOT_CHECKABLE",
+      "DUPLICATE_CLASSIFICATION_TAG",
+    ]) {
+      expect(Object.keys(REFUSAL_PROSE)).not.toContain(code);
+    }
   });
 });
 

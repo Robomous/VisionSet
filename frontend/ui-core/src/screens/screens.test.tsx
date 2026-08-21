@@ -268,7 +268,7 @@ describe("the project list", () => {
     expect(screen.queryByTestId("create-project-dialog")).toBeNull();
   });
 
-  it("renders a refusal with its code, because that is what a client branches on", async () => {
+  it("renders a refusal as a sentence, not as the identifier a client branches on", async () => {
     on("GET", /^\/projects$/, { status: 200, body: { items: [], total: 0 } });
     on("POST", /^\/projects$/, {
       status: 409,
@@ -282,8 +282,8 @@ describe("the project list", () => {
     await userEvent.click(screen.getByTestId("create-submit"));
 
     const error = await screen.findByTestId("create-error");
-    expect(error.textContent).toContain("PROJECT_NAME_TAKEN");
-    expect(error.textContent).toContain("already exists");
+    expect(error.textContent).toContain("A project with that name already exists.");
+    expect(error.textContent).not.toContain("PROJECT_NAME_TAKEN");
     // The failure path is untouched: the dialog stays open with what was
     // typed still in it, and nothing navigates anywhere.
     expect(screen.queryByTestId("create-project-dialog")).not.toBeNull();

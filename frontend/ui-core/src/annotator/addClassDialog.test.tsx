@@ -256,7 +256,9 @@ describe("the refusal it has to make legible", () => {
     );
 
     const alert = screen.getByTestId("add-class-error");
-    expect(alert.textContent).toContain("another writer created this schema version first");
+    // The vocabulary's sentence for this code, not the server's message: the
+    // entry exists because the kernel's wording interpolates the project UUID.
+    expect(alert.textContent).toContain("Someone else published a version first");
     expect(alert.textContent).not.toContain("SCHEMA_VERSION_CONFLICT");
   });
 

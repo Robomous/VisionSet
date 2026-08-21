@@ -689,10 +689,10 @@ describe("curating the trunk", () => {
     await userEvent.click(await screen.findByTestId("remove-asset-submit"));
 
     const failure = await screen.findByTestId("remove-asset-error");
-    // The kernel's own sentence survives: `refusalProse` falls through to the
-    // server's `message` for a code with no entry, because discarding the one
-    // description the kernel wrote is worse than restating it badly.
-    expect(failure.textContent).toContain("No dataset with that id.");
+    // The vocabulary's sentence for this code, not the server's message: the
+    // kernel's wording interpolates the dataset's UUID, which is why the entry
+    // exists at all.
+    expect(failure.textContent).toContain("That dataset is no longer on record.");
     // And the dialog stays, so the person can read it and retry.
     expect(screen.queryByTestId("remove-asset-dialog")).not.toBeNull();
   });
