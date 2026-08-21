@@ -97,7 +97,7 @@ def list_background_jobs(workspace: WorkspaceDep, state: StateQuery = None) -> B
     No paging parameters. The collection is bounded by how much work a workspace
     has ever queued, which is the same order of magnitude as its ingest runs, and
     `limit`/`offset` join `total` without a breaking change on the day one has a
-    caller — the rule `docs/api.md` states for every collection here.
+    caller — the rule `docs/content/api.md` states for every collection here.
     """
     found = workspace.job_queue.list(states=state)
     return BackgroundJobPage(items=[BackgroundJobOut.of(job) for job in found], total=len(found))

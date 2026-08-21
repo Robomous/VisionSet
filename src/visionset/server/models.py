@@ -142,7 +142,7 @@ from visionset.kernel.ports import Exporter, Provider
 
 # A gate is a query parameter and never a body field, so a client that gets a 409
 # resubmits the *identical* request with one extra parameter — which is what
-# ``docs/api.md``'s retry table promises. The route passes it straight to the
+# ``docs/content/api.md``'s retry table promises. The route passes it straight to the
 # service: the refusal belongs to the kernel, and a pre-check here would be a
 # second copy of a rule that already has an owner.
 ConfirmQuery = Annotated[
@@ -181,7 +181,7 @@ class Page[T](BaseModel):
 # kernel has no windowed read, so ``window`` slices a full list and ``total`` is
 # the full count. That is worth doing anyway — a gallery must not be sent every
 # frame at once — but it is not a cheap query, and pretending otherwise is what
-# ``docs/api.md`` warned against. When the *read* starts to cost, ``window`` is
+# ``docs/content/api.md`` warned against. When the *read* starts to cost, ``window`` is
 # replaced by a port method and none of this moves.
 LimitQuery = Annotated[
     int | None,
@@ -489,7 +489,7 @@ class SchemaVersionOut(BaseModel):
     version: int
     classes: tuple[LabelClassBody, ...]
     # Both are null for a version published before they existed, and nothing
-    # backfills either — see ``docs/schemas.md``. Declared with defaults so the
+    # backfills either — see ``docs/content/schemas.md``. Declared with defaults so the
     # field is emitted as optional, which is what a client reading an old
     # workspace actually meets.
     description: str | None = None
@@ -654,7 +654,7 @@ class SchemaVersionCreate(BaseModel):
 # publish a kernel model under its kernel docstring — the module rule above. The
 # two rates are the reason this type exists at all: ``fps`` is what the file was
 # *shot* at and ``extraction_fps`` is what we chose to *cut* it at, and a client
-# that confuses them decomposes at the wrong rate. See ``docs/sources.md``.
+# that confuses them decomposes at the wrong rate. See ``docs/content/sources.md``.
 class VideoProvenanceOut(BaseModel):
     """What a clip turned out to be, and the rate it is decomposed at."""
 

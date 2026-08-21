@@ -17,7 +17,7 @@ invariant this module exists to keep, and it shapes three decisions:
 - **Deletion cascades metadata and stops there.** The blob store is never
   touched — see :meth:`ProjectService.delete`.
 
-Composition follows the rule in ``docs/workspaces.md``: this service takes an
+Composition follows the rule in ``docs/content/workspaces.md``: this service takes an
 open :class:`WorkspaceService` and nothing else, and reaches the ports through
 it. It never names an adapter.
 """

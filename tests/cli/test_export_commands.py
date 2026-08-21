@@ -400,7 +400,7 @@ def _labeled_release(root: Path, tmp_path: Path, tag: str = "v1.0") -> tuple[str
     """A release that actually holds labels, which the CLI alone cannot produce.
 
     ``visionset job mark --progress annotated`` records that somebody labeled an
-    asset while the CLI writes no labels — the wart ``docs/jobs.md`` states out
+    asset while the CLI writes no labels — the wart ``docs/content/jobs.md`` states out
     loud — so every release built purely through this surface carries
     ``annotation_count: 0``, and a report over it is compatible with *any* format
     however narrow. Writing one box through the kernel is what gives the

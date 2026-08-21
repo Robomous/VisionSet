@@ -252,7 +252,7 @@ function refName(ref) {
 /**
  * The 2xx answer of every operation, as the check it needs.
  *
- * Four kinds, and each is a decision recorded in `docs/api.md`: a `$ref` becomes that
+ * Four kinds, and each is a decision recorded in `docs/content/api.md`: a `$ref` becomes that
  * schema's check; a 204 becomes `checkNoContent`; an empty schema (`{}`, OpenAPI's "bytes,
  * and nothing more to say") becomes `checkBlob`, because every such operation here is read
  * with `parseAs: "blob"`; an inline schema is compiled in place.

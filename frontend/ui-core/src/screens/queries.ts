@@ -15,7 +15,7 @@
  *
  * A hook here does three things: build the key, call the generated client, and
  * `unwrap`. It does not transform, filter or default. That keeps the screens
- * reading the API's own shapes — `docs/api.md` promises `{items, total}` for every
+ * reading the API's own shapes — `docs/content/api.md` promises `{items, total}` for every
  * collection, and a hook that unwrapped it to a bare array would take `total` away
  * from the screen that needs it.
  */
@@ -179,7 +179,7 @@ export function useProject(projectId: string): UseQueryResult<Project, Error> {
  *
  * The sibling of `useDatasetStats`, and the two disagree on purpose: a dataset is
  * the curated trunk, so a project that has ingested a thousand images and
- * promoted none reads zero through that one. `docs/api.md` says which question
+ * promoted none reads zero through that one. `docs/content/api.md` says which question
  * each answers.
  */
 export function useProjectStats(projectId: string): UseQueryResult<ProjectStats, Error> {
@@ -251,7 +251,7 @@ export function useRenameProject(projectId: string) {
 /**
  * Delete, with the gate the API insists on.
  *
- * `?confirm=true` is a **query parameter and not a pre-check** — `docs/api.md`'s
+ * `?confirm=true` is a **query parameter and not a pre-check** — `docs/content/api.md`'s
  * rule is that a gated retry is the identical request plus one parameter, and that
  * no route pre-checks a gate. The dialog in front of this is the *user's*
  * confirmation; the parameter is the API's, and the two are not the same thing.
@@ -882,7 +882,7 @@ export const batchKeys = {
     ["batches", batchId, "pre-label-plan", schemaVersion] as const,
 };
 
-/** One request's worth. `docs/api.md`: paging bounds the response, not the read. */
+/** One request's worth. `docs/content/api.md`: paging bounds the response, not the read. */
 export const GALLERY_PAGE_SIZE = 100;
 
 export function useBatch(batchId: string): UseQueryResult<Batch, Error> {
@@ -1428,7 +1428,7 @@ export const datasetKeys = {
 };
 
 /**
- * One page of the trunk. `docs/api.md`: paging bounds the **response, not the
+ * One page of the trunk. `docs/content/api.md`: paging bounds the **response, not the
  * read**, so `total` is the whole trunk and a client pages until it has seen
  * that many rather than until the number moves.
  */

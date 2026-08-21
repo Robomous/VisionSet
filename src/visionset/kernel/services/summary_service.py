@@ -28,7 +28,7 @@ Three things shape it.
   insertion order. The models in ``domain/summary.py`` state which is which where
   a reader of them will find it.
 
-Composition follows ``docs/workspaces.md``: this service takes an open
+Composition follows ``docs/content/workspaces.md``: this service takes an open
 :class:`WorkspaceService` and nothing else, and never names an adapter.
 """
 

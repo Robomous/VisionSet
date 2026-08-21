@@ -20,7 +20,7 @@
  *
  * ## Paging and virtualization are still two problems
  *
- * `docs/api.md`: `limit`/`offset` bound the **response, not the read**, and this is
+ * `docs/content/api.md`: `limit`/`offset` bound the **response, not the read**, and this is
  * the one collection with them because a batch can hold fifty thousand frames. So
  * the network side stays `useInfiniteQuery` over that contract, with `total` fixed
  * at the whole batch, and the render side stays virtualized over **rows** — a row

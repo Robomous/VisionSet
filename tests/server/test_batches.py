@@ -509,7 +509,7 @@ def test_repinning_onto_the_pinned_version_is_a_no_op(
 def test_a_narrowing_repin_is_409_and_the_flag_is_the_retry(
     client: TestClient, project: str, ingested: str
 ) -> None:
-    """The same request plus one query parameter — the convention `docs/api.md` sets."""
+    """The same request plus one query parameter — the convention `docs/content/api.md` sets."""
     approved(client, ingested)
     new_version(client, project, SIGN, allow_destructive=True)
 

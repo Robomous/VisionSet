@@ -30,7 +30,7 @@ What this service does *not* do is name a dataset. ``Dataset.name`` mirrors its
 project's and moves with it; ``ProjectService`` owns both, and the 1:1 relation
 is created in the same transaction as the project.
 
-Composition follows the rule in ``docs/workspaces.md``: this service takes an
+Composition follows the rule in ``docs/content/workspaces.md``: this service takes an
 open :class:`WorkspaceService` and nothing else, and never names an adapter.
 """
 
@@ -200,7 +200,7 @@ class DatasetService:
 
         **What the trunk projects for an asset is that asset's whole current
         annotation set — one set per asset, never one per round** (audit G5,
-        settled 2026-08; ``docs/batches.md`` has the worked example). Promotion
+        settled 2026-08; ``docs/content/batches.md`` has the worked example). Promotion
         moves membership and nothing else, and the replacement semantics fall
         out of that rather than being implemented on top of it: a correction
         batch cut over a promoted asset opens on the labels that are already

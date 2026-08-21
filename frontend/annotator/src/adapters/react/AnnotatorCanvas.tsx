@@ -1074,7 +1074,7 @@ export function AnnotatorCanvas({
      * Pan, in both its spellings, and they differ only in the first line.
      *
      * A non-primary press has always panned and still does — unconditionally,
-     * because a conditional pan is unpredictable (`docs/annotations.md` argues
+     * because a conditional pan is unpredictable (`docs/content/annotations.md` argues
      * it at length: right-drag would pan on empty canvas and not over a vertex).
      * What joins it is the hand, which is what gives a trackpad, a pen and a
      * finger the gesture a second mouse button used to be required for.

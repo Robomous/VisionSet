@@ -4,7 +4,7 @@ Private on purpose: ``visionset.kernel.adapters`` exports only
 ``SqliteMetadataStore``, so no SQLAlchemy type ever reaches a domain or port
 signature. Rows are translated to and from domain models in ``_mappers``.
 
-Storage decisions, and why (see ``docs/persistence.md`` for the long form):
+Storage decisions, and why (see ``docs/content/persistence.md`` for the long form):
 
 - Collections that are *relations* get child tables — ``batch_asset`` and
   ``annotation_job_asset``. They are mutated one element at a time and queried

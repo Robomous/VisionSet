@@ -19,7 +19,7 @@ from tests.server._api import api_client
 
 # Above `testsrc`'s resolution floor: below roughly 96x72 its per-frame movement
 # falls under the scaler and consecutive frames come out byte-identical, which
-# ingest then deduplicates. See `docs/examples.md`.
+# ingest then deduplicates. See `docs/content/examples.md`.
 CLIP_SIZE = (160, 120)
 
 
@@ -217,7 +217,7 @@ def test_uploading_a_clip_registers_a_video_source(
 def test_a_clip_registered_at_two_rates_is_two_sources(
     client: TestClient, project: str, clip: Path
 ) -> None:
-    """The rate is part of what the source is — `docs/sources.md`."""
+    """The rate is part of what the source is — `docs/content/sources.md`."""
     slow = post_video(client, project, clip, extraction_fps=1)
     fast = post_video(client, project, clip, extraction_fps=5)
 

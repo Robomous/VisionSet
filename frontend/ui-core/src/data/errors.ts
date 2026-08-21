@@ -1,7 +1,7 @@
 /**
  * The API's one error body, on the client side of it.
  *
- * `docs/api.md` promises exactly one shape at every status — `{code, message,
+ * `docs/content/api.md` promises exactly one shape at every status — `{code, message,
  * detail?}` — and one rule about reading it: **branch on `code`, never on the
  * status.** The rule is not stylistic. `DESTRUCTIVE_SCHEMA_CHANGE` and
  * `SCHEMA_CHANGE_WOULD_ORPHAN` are both 409 and only the first is retryable with a
@@ -56,7 +56,7 @@ export class ApiError extends Error {
   /**
    * The incident id a 5xx carries instead of its message.
    *
-   * `docs/api.md`: a mapped 5xx is opaque by provenance — the real message and
+   * `docs/content/api.md`: a mapped 5xx is opaque by provenance — the real message and
    * traceback go to the server log and the client gets an id to quote. Reading it
    * off `detail` rather than off a top-level field is the contract's own shape.
    */

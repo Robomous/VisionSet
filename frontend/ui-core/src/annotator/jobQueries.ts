@@ -5,7 +5,7 @@
  *
  * A job knows its batch; a batch knows its project **and the schema version it
  * pinned at approval**; the schema is fetched *by that version*, never as the
- * project's active one. `docs/batches.md`: a batch pins the active version at
+ * project's active one. `docs/content/batches.md`: a batch pins the active version at
  * approval and it never moves, and a later `create_version` does not touch it. An
  * annotator judged against a newer schema would draw classes the API then refuses
  * — the refusal would be correct and the screen would look broken.
@@ -19,7 +19,7 @@
  *
  * The stable list is the batch's asset listing filtered to this job:
  * `BatchAssetOut` carries `job_id` and `progress`, which is exactly the pair a
- * navigator needs, and `docs/api.md` gives that collection the only paging
+ * navigator needs, and `docs/content/api.md` gives that collection the only paging
  * parameters in the API precisely because it can hold fifty thousand frames.
  * `next` is still useful — it is what "jump to the next unannotated" means — and
  * that is what it is used for.
@@ -251,7 +251,7 @@ export function useAssetAnnotations(
     queryKey: jobKeys.annotations(jobId, assetId ?? "none"),
     enabled: assetId !== undefined,
     queryFn: async () =>
-      // The envelope, unwrapped to its items: `docs/api.md` promises
+      // The envelope, unwrapped to its items: `docs/content/api.md` promises
       // `{items, total}` for every collection, and this one has no paging
       // parameters — one asset's annotations is not a collection that grows.
       unwrap(

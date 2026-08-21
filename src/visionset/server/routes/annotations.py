@@ -16,7 +16,7 @@ let happen.
 
 **Two error translations happen here**, and only these two. ``AssetNotInJob`` is
 a 404 when the asset id is a path segment and a 422 when it arrives inside a
-body — the case ``docs/api.md`` uses as its worked example of the escape hatch.
+body — the case ``docs/content/api.md`` uses as its worked example of the escape hatch.
 Everything else is raised by the kernel and rendered by the app's handlers.
 
 Handlers are ``def``, not ``async def``, for the reason ``projects.py`` gives.

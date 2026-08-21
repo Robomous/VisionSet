@@ -295,7 +295,7 @@ export function parseGeometry(value: unknown): Geometry {
     throw new WireFormatError(
       `geometry.type "${type}" is a declared GeometryType with no implementation — ` +
         `the kernel refuses it too (UNSUPPORTED_GEOMETRY). Carryable today: ` +
-        `${IMPLEMENTED_GEOMETRY_TYPES.join(", ")}. See docs/schemas.md.`,
+        `${IMPLEMENTED_GEOMETRY_TYPES.join(", ")}. See docs/content/schemas.md.`,
     );
   }
 

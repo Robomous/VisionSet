@@ -101,7 +101,7 @@ def test_an_unknown_job_is_404_naming_it(client: TestClient) -> None:
 
 
 def test_a_malformed_id_is_422_rather_than_404(client: TestClient) -> None:
-    """`docs/api.md`'s rule for every id on this surface."""
+    """`docs/content/api.md`'s rule for every id on this surface."""
     assert client.get("/background-jobs/not-a-uuid").status_code == 422
 
 
@@ -133,7 +133,7 @@ def test_listing_narrows_to_the_states_asked_for(
 
 
 def test_an_empty_listing_is_200_with_an_empty_envelope(client: TestClient) -> None:
-    """Never a 404 — `docs/api.md`'s rule for every collection."""
+    """Never a 404 — `docs/content/api.md`'s rule for every collection."""
     assert client.get("/background-jobs").json() == {"items": [], "total": 0}
 
 

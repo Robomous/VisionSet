@@ -14,7 +14,7 @@ class EventBus(Protocol):
     ``isinstance``. A topic string would put the same information somewhere the
     type checker cannot read it.
 
-    Two rules an implementation owes its callers, and ``docs/events.md`` says why
+    Two rules an implementation owes its callers, and ``docs/content/events.md`` says why
     each one is the way it is:
 
     - **A subscriber cannot break the emitter.** An exception out of a handler is

@@ -32,7 +32,7 @@ banner goes to stderr, which is where an MCP client collects a server's logs.
 
 **A client normally spawns this itself** rather than a person running it, with
 ``VISIONSET_WORKSPACE`` set in the server entry's own ``env`` — see
-``docs/mcp.md``. The flag is what makes the command usable by hand and testable.
+``docs/content/mcp.md``. The flag is what makes the command usable by hand and testable.
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ def mcp(
     `--allow-destructive` is passed. A `confirm` parameter is documented in the
     same listing an agent reads before choosing, so it is an instruction rather
     than a gate; leaving the tool out of the listing is the only version of that
-    gate a model cannot clear by itself. See `docs/mcp.md`.
+    gate a model cannot clear by itself. See `docs/content/mcp.md`.
     """
     with opened_workspace(workspace) as service:
         root = service.root

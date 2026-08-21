@@ -27,7 +27,7 @@ Five things shape this module:
   ``model_ref``, and ``confidence`` inside [0, 1], are validators on the model
   (``domain/annotation.py``). An ``Annotation`` that breaks either cannot be
   constructed, so it can never reach a service to be reported here. That is the
-  division ``docs/schemas.md`` draws: per-value validity is pydantic's, validity
+  division ``docs/content/schemas.md`` draws: per-value validity is pydantic's, validity
   that needs another object is the service's.
 - **Progress follows the annotations, for three of its states under ``add``,
   ``update`` and ``delete`` — and it gates them.** The first annotation on an
@@ -61,7 +61,7 @@ implied by the first: a job completing does not complete its batch, so the
 ordinary state of a finished job is inside an open one, and without its own gate
 its frames go on accepting labels.
 
-Composition follows the rule in ``docs/workspaces.md``: this service takes an
+Composition follows the rule in ``docs/content/workspaces.md``: this service takes an
 open :class:`WorkspaceService` and nothing else, and never names an adapter.
 """
 

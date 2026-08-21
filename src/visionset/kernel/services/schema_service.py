@@ -27,7 +27,7 @@ Four decisions shape this module:
   exist yet, and until it does the kernel will not leave labels pointing at a
   class the contract no longer describes.
 
-Composition follows the rule in ``docs/workspaces.md``: this service takes an
+Composition follows the rule in ``docs/content/workspaces.md``: this service takes an
 open :class:`WorkspaceService` and nothing else, and never names an adapter.
 """
 

@@ -221,7 +221,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # wrong is the *pairing the body asked for* — a correction of a batch may only
     # name assets that batch carried. Its sibling `AssetNotInJob` is a 404 because
     # it is usually reached through a path segment; this one only ever arrives in
-    # a list, which is a payload problem. The `docs/api.md` rule, applied.
+    # a list, which is a payload problem. The `docs/content/api.md` rule, applied.
     AssetNotInBatch: ErrorRule(422, "ASSET_NOT_IN_BATCH"),
     AssetNotInJob: ErrorRule(404, "ASSET_NOT_IN_JOB"),
     # Not a 409: a release is immutable, so its state will never change and
@@ -248,7 +248,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     WorkspaceNotEmpty: ErrorRule(409, "WORKSPACE_NOT_EMPTY"),
     # Retryable, but immediately rather than after a wait — a re-read lands on
     # N + 2 — so no Retry-After. Which codes are retryable is documented in
-    # docs/api.md; a `retryable` field on the public body would widen it for one case.
+    # docs/content/api.md; a `retryable` field on the public body would widen it for one case.
     SchemaVersionConflict: ErrorRule(409, "SCHEMA_VERSION_CONFLICT"),
     InvalidTransition: ErrorRule(409, "INVALID_TRANSITION"),
     # Retryable immediately, like SCHEMA_VERSION_CONFLICT above and for the same

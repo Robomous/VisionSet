@@ -4,7 +4,7 @@
  *
  * ## A release is the only truly immutable artifact, and the screen says so
  *
- * `docs/releases.md`: the manifest is a **pure function of content** — no
+ * `docs/content/releases.md`: the manifest is a **pure function of content** — no
  * timestamp, no tag, no release id inside the document — which is what makes two
  * publishes of an unchanged dataset byte-identical and share one blob. So the
  * timeline never offers an edit or a delete: there is no `ReleaseService.delete`,
@@ -235,7 +235,7 @@ export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
  *
  * ## Paged, because the trunk is the one collection that only grows
  *
- * Every completed batch a project ever promoted accumulates here. `docs/api.md`
+ * Every completed batch a project ever promoted accumulates here. `docs/content/api.md`
  * is explicit that `limit`/`offset` bound the **response, not the read**, so
  * `total` stays the size of the whole trunk and the control pages until it has
  * seen that many — never until the number stops moving.

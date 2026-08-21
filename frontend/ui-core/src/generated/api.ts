@@ -25,7 +25,7 @@ export interface paths {
          *     No paging parameters. The collection is bounded by how much work a workspace
          *     has ever queued, which is the same order of magnitude as its ingest runs, and
          *     `limit`/`offset` join `total` without a breaking change on the day one has a
-         *     caller — the rule `docs/api.md` states for every collection here.
+         *     caller — the rule `docs/content/api.md` states for every collection here.
          */
         get: operations["list_background_jobs"];
         put?: never;

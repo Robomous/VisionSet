@@ -27,7 +27,7 @@
  * the API publishes; `Geometry` has four variants, because that is what an
  * annotation can actually carry. Naming `mask` or `keypoints` is legal in a
  * schema and refused at the annotation, by the kernel (`UNSUPPORTED_GEOMETRY`)
- * and by `parseGeometry` here. See `docs/schemas.md`.
+ * and by `parseGeometry` here. See `docs/content/schemas.md`.
  *
  * A locally drawn annotation carries identity even though `AnnotationCreate` has
  * no `id` field: it mints a client-side uuid v4 into the ordinary `id`, and

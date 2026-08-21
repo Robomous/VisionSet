@@ -4,7 +4,7 @@
 Every handler is one call to ``ProjectService`` and one shaping step. A route
 never translates an error — it raises the kernel's and stops, and the handlers
 ``create_app()`` installed turn it into an ``ErrorBody`` with a stable code. See
-``docs/api.md``.
+``docs/content/api.md``.
 
 Handlers are ``def``, not ``async def``, and that is not a style choice: every
 kernel call underneath is a blocking SQLite call, so a coroutine here would run

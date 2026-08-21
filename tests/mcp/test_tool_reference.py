@@ -1,4 +1,4 @@
-"""`docs/mcp-tools.md` is generated, and this is what keeps it that way.
+"""`docs/content/mcp-tools.md` is generated, and this is what keeps it that way.
 
 The same argument `test_openapi_contract.py` makes about the committed spec:
 the CI step that regenerates and diffs is the gate, and duplicating it as a test

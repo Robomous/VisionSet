@@ -35,7 +35,7 @@ answer, and the index is the guarantee. A caller that loses the race sees a raw
 finds the winner's row and returns it. A caller that instead waits out the
 store's ``busy_timeout`` sees ``WorkspaceBusy``, and the remedy is the same.
 
-Composition follows the rule in ``docs/workspaces.md``: this service takes an
+Composition follows the rule in ``docs/content/workspaces.md``: this service takes an
 open ``WorkspaceService`` and nothing else, and reaches ``video_processor``
 through it. It never names an adapter.
 """

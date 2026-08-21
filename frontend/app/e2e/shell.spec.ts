@@ -27,7 +27,7 @@ import type { Wire } from "./_wire";
  *
  * Matched under **`/api/`**, which is where the app sends everything in
  * development — vite proxies that prefix so no CORS layer is needed in production
- * (`docs/ui.md`). Routing `**' + '/projects*` instead would also intercept the
+ * (`docs/content/ui.md`). Routing `**' + '/projects*` instead would also intercept the
  * *document* request for `/projects`, because `page.route` sees navigations too:
  * the browser would receive JSON where it asked for the application, and the
  * failure reads as "the shell disappeared".

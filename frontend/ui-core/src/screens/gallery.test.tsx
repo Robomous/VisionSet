@@ -10,7 +10,7 @@
  * client also caught a wrong tag *value* here at compile time (`single`, not
  * `single_job`), which is the argument for a generated contract in one line.
  *
- * **The gallery pages by `total`, not by "the last page was short".** `docs/api.md`
+ * **The gallery pages by `total`, not by "the last page was short".** `docs/content/api.md`
  * promises `total` is the size of the whole batch and does not move as you page,
  * and that an offset past the end is 200-with-empty-items rather than a 404. A
  * client that stopped on a short page would stop early the first time a page came
