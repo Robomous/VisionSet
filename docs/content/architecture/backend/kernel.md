@@ -64,8 +64,10 @@ Enforced twice, and the second one is the one that catches a lazy import:
 - [`tests/architecture/test_kernel_purity.py`](../../../../tests/architecture/test_kernel_purity.py)
  - imports the kernel in a fresh interpreter and inspects `sys.modules`.
 
-The kernel is also the one package `mypy` runs in strict mode over:
-`uv run mypy src/visionset/kernel`.
+The kernel is also the one package `mypy` checks in strict mode. The strict flags are
+per-module configuration, so `uv run mypy src/visionset` - what CI runs - applies them here
+and the ordinary ones everywhere else; `uv run mypy src/visionset/kernel` is the kernel-only
+subset for iterating, and sees nothing outside the kernel.
 
 ## Where the behaviour is written down
 
