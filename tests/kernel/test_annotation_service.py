@@ -38,6 +38,8 @@ from visionset.kernel.domain import (
     ASSET_PROGRESS_TRANSITIONS,
     Annotation,
     AnnotationJob,
+    AnnotationOperation,
+    AnnotationsWritten,
     Asset,
     AssetProgress,
     Attribute,
@@ -1392,6 +1394,8 @@ def test_a_replacing_write_supersedes_a_models_labels_and_stays_pre_labeled(tmp_
     job = fixture.working()
     asset_id = fixture.assets[0]
     (first,) = fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+    captured: list[AnnotationsWritten] = []
+    fixture.workspace.event_bus.subscribe(AnnotationsWritten, captured.append)
 
     (second,) = fixture.annotations.enter_unreviewed(
         job.id, [_prediction(asset_id, confidence=0.41)], replacing={asset_id}
@@ -1401,6 +1405,9 @@ def test_a_replacing_write_supersedes_a_models_labels_and_stays_pre_labeled(tmp_
     assert [a.id for a in remaining] == [second.id]
     assert first.id not in {a.id for a in remaining}
     assert fixture.progress_of(job, asset_id) is AssetProgress.PRE_LABELED
+    (event,) = captured
+    assert event.operation is AnnotationOperation.ADD
+    assert event.annotation_ids == (second.id,)
     fixture.close()
 
 
@@ -1412,10 +1419,16 @@ def test_a_replacing_write_that_lands_nothing_returns_the_frame_to_unannotated(
     fixture = Fixture(tmp_path)
     job = fixture.working()
     asset_id = fixture.assets[0]
-    fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+    (outgoing,) = fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+    captured: list[AnnotationsWritten] = []
+    fixture.workspace.event_bus.subscribe(AnnotationsWritten, captured.append)
 
     assert fixture.annotations.enter_unreviewed(job.id, [], replacing={asset_id}) == []
 
+    (event,) = captured
+    assert event.operation is AnnotationOperation.DELETE
+    assert event.asset_ids == (asset_id,)
+    assert event.annotation_ids == (outgoing.id,)
     assert fixture.annotations.for_asset(job.id, asset_id) == []
     assert fixture.progress_of(job, asset_id) is AssetProgress.UNANNOTATED
     fixture.close()
