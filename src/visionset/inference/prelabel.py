@@ -445,7 +445,15 @@ def pre_label(
         if in_bounds or replacing:
             # A replacing frame goes through the door even with nothing to land:
             # the stale labels have to go, and only the door may take them.
-            superseded = len(annotations_service.for_asset(job_id, asset_id)) if replacing else 0
+            superseded = (
+                sum(
+                    1
+                    for annotation in annotations_service.for_asset(job_id, asset_id)
+                    if annotation.provenance == "model"
+                )
+                if replacing
+                else 0
+            )
             try:
                 annotations_service.enter_unreviewed(
                     job_id, in_bounds, replacing={asset_id} if replacing else ()

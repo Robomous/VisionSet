@@ -1442,6 +1442,13 @@ def test_a_replacing_write_that_lands_nothing_returns_the_frame_to_unannotated(
             lambda f, job, a: f.jobs.mark(job.id, a, AssetProgress.ANNOTATED), id="confirmed"
         ),
         pytest.param(lambda f, job, a: f.jobs.mark(job.id, a, AssetProgress.SKIPPED), id="skipped"),
+        pytest.param(
+            lambda f, job, a: (
+                f.jobs.mark(job.id, a, AssetProgress.ANNOTATED),
+                f.jobs.mark(job.id, a, AssetProgress.REVIEW_PENDING),
+            ),
+            id="review_pending",
+        ),
     ],
 )
 def test_a_replacing_write_refuses_a_frame_a_person_took_over(

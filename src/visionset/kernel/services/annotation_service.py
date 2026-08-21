@@ -216,8 +216,9 @@ class AnnotationService:
         ``annotated`` carrying labels nobody has looked at.
 
         Two gates narrower than the other three. The asset must be
-        ``unannotated`` AND carry no annotations at all, so nothing a person
-        has touched is written over — even an asset that was labeled, skipped
+        ``unannotated`` AND carry no annotations at all — unless it is named in
+        ``replacing``, below — so nothing a person has touched in this batch
+        is written over, not even an asset that was labeled, skipped
         and restored, which reads ``unannotated`` again without erasing the
         boxes already on it. Every annotation must also carry model
         provenance, which is what keeps this from being a way around the
@@ -254,7 +255,7 @@ class AnnotationService:
             self._jobs.require_open_job(job)
             schema = self._pinned_schema(batch)
 
-            superseded = frozenset(replacing)
+            superseded = tuple(dict.fromkeys(replacing))
             for asset_id in superseded:
                 _require_unjudged(job, asset_id)
             outgoing = [
