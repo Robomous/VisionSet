@@ -21,7 +21,9 @@ from tests.server._api import api_client
 from tests.server._flow import batch_from_ingest, project_with_schema
 from tests.server._jobs import InlineDispatcher, ManualDispatcher
 
+from visionset.inference import PreLabelOutcome
 from visionset.inference import weights as weights_module
+from visionset.jobs import prelabel as prelabel_handler
 from visionset.kernel.domain import DownloadSize
 from visionset.server.routes import batches as batches_routes
 from visionset.server.routes import inference as inference_routes
@@ -325,6 +327,62 @@ def test_a_settled_run_is_readable_with_no_job_id_of_its_own(
     assert run["job_id"] == launched["id"]
     assert run["state"] == "failed"
     assert run["error"]
+    assert run["annotations_replaced"] is None
+
+
+def _faking_the_run(monkeypatch: pytest.MonkeyPatch, captured: dict[str, Any]) -> None:
+    """Stand in for `visionset.inference.pre_label` where the handler calls it, so a
+    launch settles `succeeded` with a known outcome and records what it was asked."""
+
+    def fake_pre_label(workspace: object, **kwargs: Any) -> PreLabelOutcome:
+        captured.update(kwargs)
+        return PreLabelOutcome(
+            assets_considered=2,
+            assets_labeled=2,
+            annotations_written=2,
+            model_ref="acme/detector@abc123",
+            annotations_replaced=2,
+        )
+
+    monkeypatch.setattr(prelabel_handler, "pre_label", fake_pre_label)
+
+
+def test_the_replace_flag_defaults_off_and_reaches_the_run_when_set(
+    client: TestClient, in_annotation_batch: OpenBatch, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, Any] = {}
+    _faking_the_run(monkeypatch, captured)
+
+    plain = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id},
+    )
+    assert plain.status_code == 202, plain.text
+    assert captured["replace_model_labels"] is False
+
+    flagged = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id, "replace_model_labels": True},
+    )
+    assert flagged.status_code == 202, flagged.text
+    assert flagged.json()["id"] != plain.json()["id"]
+    assert captured["replace_model_labels"] is True
+
+    run = client.get(f"/batches/{in_annotation_batch.id}").json()["pre_label_run"]
+    assert run["job_id"] == flagged.json()["id"]
+    assert run["state"] == "succeeded"
+    assert run["annotations_replaced"] == 2
+
+
+def test_an_unknown_request_field_is_still_refused(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id, "replace": True},
+    )
+    assert response.status_code == 422
+    assert _pre_label_job_count(client) == 0
 
 
 def test_the_project_listing_carries_the_run_too(
