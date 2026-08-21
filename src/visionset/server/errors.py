@@ -460,6 +460,15 @@ by every future route remembering.
 """
 
 
+_ROUTE_MAY_NOT_DECLARE: Final[dict[int, str]] = {
+    401: "protected_router()",
+    422: "UNIVERSAL_ERROR_RESPONSES",
+    500: "UNIVERSAL_ERROR_RESPONSES",
+    503: "UNIVERSAL_ERROR_RESPONSES",
+}
+"""Statuses a route already carries, and what puts each one there."""
+
+
 def documented(*statuses: int) -> dict[int | str, dict[str, Any]]:
     """The responses to declare on a route, for the statuses it can produce.
 
@@ -468,7 +477,18 @@ def documented(*statuses: int) -> dict[int | str, dict[str, Any]]:
     contract means some caller really can name a thing that is not there. 401
     arrives from ``protected_router()`` and 422/500/503 from the app, so neither
     belongs in a call to this.
+
+    Raises:
+        ValueError: a status something else already supplies was passed. Raised
+            here rather than asserted in a test because ``responses=`` is
+            evaluated while the route is being decorated: a violating route
+            cannot be imported, so app startup and every suite that touches the
+            server is the gate.
     """
+    for status in statuses:
+        source = _ROUTE_MAY_NOT_DECLARE.get(status)
+        if source is not None:
+            raise ValueError(f"{status} is already declared by {source}; drop it from documented()")
     return {status: ERROR_RESPONSES[status] for status in statuses}
 
 
