@@ -41,13 +41,12 @@
 #   frontend/app/src/**     vite HMR
 #   frontend/ui-core/src/** tsc --watch → dist/ → vite  (docker/app-dev.sh)
 #   frontend/annotator/…    tsc --watch → dist/ → vite  (docker/app-dev.sh)
-#   docs/**                 astro dev                   (docker/docs-dev.sh)
-#   docs-site/src/**        astro dev
+#   docs/content/**        astro dev                   (docker/docs-dev.sh)
+#   docs/src/**             astro dev
 #
-# The `docs/**` row is the one worth a second look, because Astro does not watch it
-# by default: it is a *sibling* of the docs site's project root. `docs-site/
-# integrations/docs-source.mjs` adds it to Vite's watcher and re-projects the one
-# file that changed into the content collection, which Astro is watching — so the
+# The `docs/content/**` row is a projection, not a plain watch:
+# `docs/integrations/docs-source.mjs` re-projects the one file that changed into the
+# content collection, which Astro is watching — so the
 # chain from keystroke to browser closes without a restart, the same as the others.
 #
 # The residual cases, all of them changes to how a container is *built* rather
@@ -63,7 +62,7 @@
 #
 # **Only what a running service reads is mounted** — the api gets `src/`, the app
 # gets the three `src/` directories plus its static `public/`, the docs site gets
-# `docs/` and its own `src/` and `public/`, and all three get `docker/` for their
+# `docs/content/` and its own `src/` and `public/`, and all three get `docker/` for their
 # entry script.
 # The whole checkout used to be mounted into the first two, which meant a polling
 # watcher walking `tests/`, `.git/`, the host `.venv/` and the Playwright report
@@ -392,7 +391,7 @@ services:
   docs:
     # Built, not pulled, for the reason `api` and `app` are: `pnpm install` belongs
     # to a build. See docker/docs.Dockerfile — and note the install it makes is
-    # `docs-site/`'s own, so nothing about Astro reaches the application image.
+    # `docs/`'s own, so nothing about Astro reaches the application image.
     build:
       context: ..
       dockerfile: docker/docs.Dockerfile
@@ -404,28 +403,29 @@ services:
       args:
         VISIONSET_UID: ${VISIONSET_UID:-1000}
         VISIONSET_GID: ${VISIONSET_GID:-1000}
-    working_dir: /workspace/docs-site
+    working_dir: /workspace/docs
     # As the developer, not root; see the api service for the whole reasoning and
     # for what to do when your uid is not 1000.
     user: "${VISIONSET_UID:-1000}:${VISIONSET_GID:-1000}"
     # Nothing. The docs site reads no API and shares no storage — it is the one
     # service here that is useful with the rest of the stack switched off.
     volumes:
-      # **The canonical documentation.** This is the mount that matters: `docs/` is
-      # the source of truth, the Astro integration projects it into the content
-      # collection on every change, and that projection is what reloads the browser.
-      # Read-only, because the site renders the documentation and never writes it.
-      - ../docs:/workspace/docs:ro
+      # **The canonical documentation.** This is the mount that matters:
+      # `docs/content/` is the source of truth, the Astro integration projects it
+      # into the content collection on every change, and that projection is what
+      # reloads the browser. Read-only, because the site renders the documentation
+      # and never writes it.
+      - ../docs/content:/workspace/docs/content:ro
       # The site's own source — its components, styles, sidebar and content config.
-      # `src/` rather than `docs-site/`, and for exactly the reason the app service
-      # gives at length: mounting the package root would bury the `node_modules/`
+      # `src/` rather than the whole of `docs/`, and for exactly the reason the app
+      # service gives at length: mounting the package root would bury the `node_modules/`
       # the image installed. It also keeps the generated `src/content/docs/` inside
       # the container, where it belongs.
       #
       # Consequence, stated: `src/content/` is *below* this mount, so the projection
       # is written to the host too. It is git-ignored, and it is the same directory
-      # a host-side `pnpm --dir docs-site dev` would write.
-      - ../docs-site/src:/workspace/docs-site/src
+      # `pnpm --dir docs dev` would write.
+      - ../docs/src:/workspace/docs/src
       # Astro's static directory — a directory rather than the one file in it, so
       # adding an asset needs no rebuild, exactly as the app service mounts its own
       # `public/`. It is not optional and its absence is not quiet: the site config
@@ -434,7 +434,7 @@ services:
       # tab with no icon, and a `getStaticPaths()` warning in this service's log on
       # every request. None of that is visible to `curl http://localhost:4321/`,
       # which is why it survived: the page itself is a perfectly good 200.
-      - ../docs-site/public:/workspace/docs-site/public:ro
+      - ../docs/public:/workspace/docs/public:ro
       # The entry script, read once at container start; read-only for the reason
       # the api service states.
       - ../docker:/workspace/docker:ro
@@ -443,7 +443,7 @@ services:
       # or Windows, and a watcher that receives none is silent rather than
       # broken-looking — the same reason, and the same setting, as the app service.
       # Astro's watcher is Vite's, which is chokidar, so this is the switch that
-      # makes an edit under `docs/` reach the browser.
+      # makes an edit under `docs/content/` reach the browser.
       CHOKIDAR_USEPOLLING: "true"
     command: sh /workspace/docker/docs-dev.sh
     ports:

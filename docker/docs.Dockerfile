@@ -1,15 +1,15 @@
-# The dev stack's documentation image: Astro + Starlight over `docs/`.
+# The dev stack's documentation image: Astro + Starlight over `docs/content/`.
 #
 # Dev only, and doubly so — the documentation's *deployment* artifact is the static
-# output of `pnpm --dir docs-site build`, which AWS Amplify builds from the
+# output of `pnpm --dir docs build`, which AWS Amplify builds from the
 # repository (see `amplify.yml`). This image exists so that a reader can edit
-# `docs/api.md` and watch the page change, with nothing installed on the host.
+# `docs/content/api.md` and watch the page change, with nothing installed on the host.
 #
 # It follows `docker/app.Dockerfile`'s shape: every npm package is resolved,
 # downloaded and linked here, so `docker compose up` starts a dev server instead of
 # installing first. Where it differs is the install's *scope*, and that is the whole
-# reason there are two images rather than one — `docs-site/` is its own pnpm
-# workspace root (see `docs-site/pnpm-workspace.yaml`), so Astro never enters the
+# reason there are two images rather than one — `docs/` is its own pnpm
+# workspace root (see `docs/pnpm-workspace.yaml`), so Astro never enters the
 # application's image and a documentation dependency cannot move it.
 FROM node:24-bookworm-slim
 
@@ -26,7 +26,7 @@ FROM node:24-bookworm-slim
 # world-readable makes the record independent of which uid reads it.
 #
 # This image depends on that record more completely than the application one
-# does. `docs-site/package.json` declares no `packageManager` field and the root
+# does. `docs/package.json` declares no `packageManager` field and the root
 # manifest is never copied in, so corepack has nothing to re-derive the version
 # from: the failure here is not a wrong pnpm, it is no pnpm at all.
 ENV COREPACK_HOME=/opt/corepack
@@ -37,13 +37,13 @@ RUN corepack enable && corepack prepare --activate \
     && rm -rf /tmp/packageManager \
     && chmod -R a+rX "$COREPACK_HOME"
 
-WORKDIR /workspace/docs-site
+WORKDIR /workspace/docs
 
 # The manifest, the lockfile and the workspace file, and nothing else yet — the
 # layer that has to survive an edit to a document. `pnpm-workspace.yaml` is required
 # here and not merely tidy: it is what makes this directory its own workspace root,
 # and it carries the three-day cool-down.
-COPY docs-site/package.json docs-site/pnpm-lock.yaml docs-site/pnpm-workspace.yaml ./
+COPY docs/package.json docs/pnpm-lock.yaml docs/pnpm-workspace.yaml ./
 
 # `--frozen-lockfile` so the build fails rather than silently resolving something
 # the lockfile does not name — the check CI runs, applied where the packages are
@@ -65,17 +65,17 @@ RUN --mount=type=cache,target=/pnpm-store \
 # The site's own build inputs: its config, its integrations, its scripts and its
 # components. These are baked in for the reason `docker/app.Dockerfile` states about
 # vite's config — they are read once, at start, and none of them changes in an
-# ordinary editing session. `docs/`, `docs-site/src` and `docs-site/public` — the
+# ordinary editing session. `docs/content`, `docs/src` and `docs/public` — the
 # three trees a person actually edits — arrive on bind mounts; see
 # `docker/compose.yaml`, which is also where the reason `public/` is a mount rather
 # than a `COPY` is written down.
 #
-# `src/content/docs/` is deliberately absent: it is generated from `docs/` at every
+# `src/content/docs/` is deliberately absent: it is generated from `content/` at every
 # start by the `docsSource()` integration, and copying a stale projection into the
 # image would be a second source of truth with a build date on it.
-COPY docs-site/astro.config.mjs docs-site/tsconfig.json ./
-COPY docs-site/scripts ./scripts
-COPY docs-site/integrations ./integrations
+COPY docs/astro.config.mjs docs/tsconfig.json ./
+COPY docs/scripts ./scripts
+COPY docs/integrations ./integrations
 
 # The identity the container runs as. docker/api.Dockerfile carries the reasoning
 # for all five images, including why ownership is the *last* thing it does and the
