@@ -26,9 +26,9 @@
  * context*: the kernel says what rule was broken, and the product says what the
  * person can do about it.
  *
- * ## Six codes are withheld on purpose
+ * ## Seven codes are withheld on purpose
  *
- * Five carry their remedy in the message itself, and each message says
+ * Six carry their remedy in the message itself, and each message says
  * something a static sentence here would have to drop:
  *
  * - `LOCAL_INFERENCE_UNAVAILABLE` ends in the install command for the
@@ -42,7 +42,10 @@
  * - `UNSUPPORTED_PROMPT` says what the model does answer — words or
  *   places — and which capability to ask for instead;
  * - `INFERENCE_CONNECTION_NOT_CHECKABLE` says which of two states the
- *   connection is in and names the download that fixes one of them.
+ *   connection is in and names the download that fixes one of them;
+ * - `INFERENCE_ENDPOINT_UNAVAILABLE` names the endpoint and what it did —
+ *   unreachable, a status, a body outside the contract — and no shorter
+ *   sentence keeps the URL;
  *
  * A sentence written here would be shorter and would say less, so these
  * fall through by decision rather than by omission.
@@ -143,7 +146,9 @@ export const REFUSAL_PROSE: Record<string, string> = {
   INFERENCE_CONNECTION_NAME_TAKEN: "A model connection with that name already exists.",
   INFERENCE_CONNECTION_NOT_DOWNLOADABLE:
     "This connection's model runs elsewhere, so there are no weights to fetch.",
-  INFERENCE_CONNECTION_NOT_SET_UP: "This connection is not ready — download its weights first.",
+  INFERENCE_CONNECTION_NOT_SET_UP:
+    "This connection is not set up yet — download its weights, or test its endpoint, first.",
+  INFERENCE_CONNECTION_NOT_TESTABLE: "Only an HTTP connection has an endpoint to test.",
 
   // Infrastructure the user can act on.
   WORKSPACE_BUSY: "The workspace is busy — try again in a moment.",

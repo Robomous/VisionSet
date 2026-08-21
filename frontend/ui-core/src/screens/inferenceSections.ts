@@ -39,9 +39,10 @@
  * That section is one heading over connections that are silent for **different
  * reasons**, which is why its prose is derived rather than fixed: the weights have
  * not been downloaded, or they are here and nothing came of them, or it is an
- * endpoint whose model this workspace never loads. See {@link reasonFor}. A single
- * sentence naming the commonest cause asserted it about all of them, and told
- * somebody whose download had finished that it had not.
+ * endpoint that has not been asked yet — an endpoint is asked, not read, and
+ * `test_endpoint` is how. See {@link reasonFor}. A single sentence naming the
+ * commonest cause asserted it about all of them, and told somebody whose
+ * download had finished that it had not.
  */
 
 import type { KnownMembers } from "../generated/api.js";
@@ -141,7 +142,7 @@ const UNDECLARED_BECAUSE: Readonly<Record<UndeclaredReason, string>> = {
   "nothing-came-of-them":
     "A connection whose weights are already here and still declares nothing either did not say which model it is, or names a family no installed driver serves.",
   endpoint:
-    "An endpoint keeps its answer to itself: this workspace never loads the model behind one.",
+    "Test the endpoint to ask what it answers; an endpoint that declared something this build does not serve stays here.",
 };
 
 const UNDECLARED_ORDER: readonly UndeclaredReason[] = [

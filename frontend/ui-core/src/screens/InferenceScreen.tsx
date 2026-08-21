@@ -34,10 +34,8 @@
  * The obvious third is `Unreachable`, and the wire has only two:
  * `setup_state` is deliberately **not** a reachability answer — whether an
  * endpoint responds has a fresh answer every time it is asked, so it belongs to a
- * test call and its result rather than to a stored row that would start lying the
- * moment the network moved. A test action ships with the HTTP endpoint contract;
- * until then there is no third value to render and no control that would produce
- * one.
+ * test call and its result — `test_endpoint`, in the row's menu — never to a
+ * stored row that would start lying the moment the network moved.
  *
  * ## What the form offers, and what it refuses to compute
  *
@@ -78,6 +76,9 @@
  * the first and claimed the second, which is the confusion this pair removes;
  * `docs/content/inference.md` carries the same two sentences, so the page and the
  * product cannot drift apart.
+ *
+ * `test_endpoint` is declared only for an `http` connection, in either state,
+ * and is the one action whose answer is the connection itself.
  *
  * A failed integrity check is the one refusal on this screen that has already
  * acted: the damaged files are purged and the connection is back to `Not set up`
@@ -129,6 +130,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plug,
+  Radio,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
@@ -145,6 +147,7 @@ import {
   useDownloadSize,
   useDownloadWeights,
   useProviders,
+  useTestEndpoint,
   useUpdateConnection,
   type Connection,
   type ConnectionType,
@@ -384,6 +387,7 @@ function ConnectionRow({
   const ready = connection.setup_state === "ready";
   const weights = useDownloadRun(connection);
   const integrity = useIntegrityRun(connection);
+  const probe = useTestEndpoint();
   // **One busy state for every control over this connection's files, not one per
   // kind.** All three below act on a single cache, so while either run is in
   // flight the others have nothing to offer: a second request of the same kind
@@ -449,6 +453,7 @@ function ConnectionRow({
             {(can.has("update") ||
               can.has("delete") ||
               can.has("check_integrity") ||
+              can.has("test_endpoint") ||
               (can.has("download_weights") && ready)) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -489,6 +494,16 @@ function ConnectionRow({
                     >
                       <ShieldCheck className="size-4" aria-hidden="true" />
                       {busy ? busyLabel : "Check files are undamaged"}
+                    </DropdownMenuItem>
+                  )}
+                  {can.has("test_endpoint") && (
+                    <DropdownMenuItem
+                      data-testid="action-test-endpoint"
+                      disabled={probe.isPending}
+                      onSelect={() => probe.mutate(connection.id)}
+                    >
+                      <Radio className="size-4" aria-hidden="true" />
+                      {probe.isPending ? "Asking the endpoint…" : "Test endpoint"}
                     </DropdownMenuItem>
                   )}
                   {can.has("update") && (
@@ -544,6 +559,9 @@ function ConnectionRow({
             ? "Nothing was removed and the connection is still Ready — a check that cannot reach the model's source is not an answer about the files here."
             : "The damaged copies have been removed and the connection is back to Not set up. Download weights again: with the bad files gone, it is a real transfer rather than a cache hit."}
         </FieldError>
+      )}
+      {probe.isError && (
+        <FieldError data-testid="test-endpoint-error">{refusalProse(probe.error)}</FieldError>
       )}
     </div>
   );

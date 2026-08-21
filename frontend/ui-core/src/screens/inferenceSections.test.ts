@@ -172,6 +172,7 @@ it("answers for an endpoint on its own terms", () => {
   expect(purpose).toContain("endpoint");
   expect(purpose).not.toContain("downloaded");
   expect(purpose).not.toContain("driver");
+  expect(purpose).toContain("Test the endpoint");
 });
 
 it("names every reason a mixed section actually holds, and only those", () => {
