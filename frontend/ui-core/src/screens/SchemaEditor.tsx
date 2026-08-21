@@ -224,6 +224,14 @@ export interface SchemaEditorProps {
    * one. Nothing is discarded before this is called.
    */
   readonly onReloadDraft: () => void;
+  /**
+   * Whether the frames-in-the-way section is on the page below this editor.
+   *
+   * The orphan refusal names it as where to look, and that section is offered
+   * only to a host that can open a batch — so the sentence is conditional on the
+   * same fact the section is, rather than promising a place that may not exist.
+   */
+  readonly framesListed?: boolean;
 }
 
 /**
@@ -393,6 +401,7 @@ export function SchemaEditor({
   draftSaveError,
   onFlushDraft,
   onReloadDraft,
+  framesListed = false,
 }: SchemaEditorProps): JSX.Element {
   const [flow, setFlow] = useState<SchemaChangeFlow>({ kind: "idle" });
   const [selected, setSelected] = useState(0);
@@ -945,7 +954,11 @@ export function SchemaEditor({
         </div>
       )}
 
-      <OrphanBlockersDialog blockers={shownBlockers} onClose={closeBlockers} />
+      <OrphanBlockersDialog
+        blockers={shownBlockers}
+        framesListed={framesListed}
+        onClose={closeBlockers}
+      />
 
       <DestructiveDialog
         preview={shownBlockers === null && flow.kind === "destructive" ? flow.preview : null}
@@ -1241,11 +1254,20 @@ function ClassDetail({
   );
 }
 
+/**
+ * The terminal refusal, and where the frames behind it are.
+ *
+ * `framesListed` is threaded rather than assumed: the section this points at is
+ * offered only to a host that can open a batch, and a dialog naming a section
+ * that is not on the page is worse than one naming nothing.
+ */
 function OrphanBlockersDialog({
   blockers,
+  framesListed,
   onClose,
 }: {
   readonly blockers: readonly ClassCount[] | null;
+  readonly framesListed: boolean;
   readonly onClose: () => void;
 }): JSX.Element {
   return (
@@ -1260,7 +1282,8 @@ function OrphanBlockersDialog({
           </DialogDescription>
         ))}
         <DialogDescription>
-          There is no override for this one. Keep the class or remove the annotations first.
+          There is no override for this one. Keep the class, or clear those labels first
+          {framesListed ? " — the frames carrying them are under “Frames in the way”, below the editor" : ""}.
         </DialogDescription>
         <DialogFooter>
           <Button variant="secondary" data-testid="orphan-close" onClick={onClose}>

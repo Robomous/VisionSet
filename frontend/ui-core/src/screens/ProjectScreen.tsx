@@ -1104,6 +1104,7 @@ function SchemaSection({
     <div className="flex flex-col gap-8">
       <SchemaEditor
         projectId={projectId}
+        framesListed={onOpenBatch !== undefined}
         active={schemaless ? null : (schema.data ?? null)}
         draft={draft}
         onDraftChange={onDraftChange}
