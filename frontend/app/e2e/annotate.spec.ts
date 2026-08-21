@@ -1715,6 +1715,13 @@ test("no drag lifts the picture, and the tool's own gesture survives the attempt
   await page.mouse.up();
   expect(await nativeDrags(page)).toBe(0);
   await page.keyboard.press("Escape");
+  // Waited for, not fired and forgotten. Nova's overlay animates out over
+  // `duration-100`, so Radix holds the gallery mounted for a beat after `Escape`
+  // and hands focus back to `open-gallery` when it finally goes — which, without
+  // this, lands *after* the `focus()` below and steals it, so the digit arms
+  // nothing and the drag draws nothing. Every other `Escape` in this file is
+  // already followed by the same kind of assertion; this one was the exception.
+  await expect(page.getByTestId("frame-gallery")).toHaveCount(0);
 
   // The interaction state came through the attempts untouched: the next
   // gesture is an ordinary draw and it lands.
