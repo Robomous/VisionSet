@@ -50,9 +50,10 @@
  * - a full error state (`ErrorState`) puts it in a secondary mono meta line,
  *   de-duplicated against the sentence;
  * - a bare `Alert` does not carry it at all;
- * - a visible `Badge` beside the raw message, which two sites still do —
- *   both on `InferenceScreen`, where the string comes from a background job
- *   carrying no wire code — is the fourth shape and is not yet settled.
+ * - a visible `Badge` beside the raw message is the fourth shape, not yet
+ *   settled — two `InferenceScreen` sites still do it. Each renders a
+ *   union: a real wire refusal from the mutation, or a settled background
+ *   job's error string, and it is the job half no code-keyed map can serve.
  *
  * A code as an `Alert` heading is the shape this map exists to end.
  */

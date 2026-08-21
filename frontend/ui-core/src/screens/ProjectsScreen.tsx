@@ -278,11 +278,11 @@ function DeleteProjectDialog({
 }
 
 /**
- * One refusal, rendered where a screen reader will announce it.
+ * One refusal, as the sentence the field's alert announces.
  *
- * A field error rather than a badge, which was always the right element. The
- * identifier no longer leads: a client branches on the code, a person cannot,
- * and the kernel's own sentence names the project and the workspace.
+ * A comment here once defended leading with the code, on two grounds; one
+ * held. The field error survives — it is what a screen reader announces. The
+ * identifier no longer leads: a client branches on a code, a person cannot.
  */
 function refusal(cause: unknown): string {
   return refusalProse(cause);
