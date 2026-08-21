@@ -9,7 +9,7 @@
  * live in CI, so the runtime is recorded rather than asserted: a wall-clock
  * assertion on a shared runner fails for reasons
  * nobody chose. So every row below is printed, written to `bench-results.json`
- * and copied into `docs/annotations.md`, and the only assertion is a floor —
+ * and copied into `docs/content/annotations.md`, and the only assertion is a floor —
  * `p95` under **33 ms**, half the frame rate — which no working build can fail
  * and no catastrophic regression can pass.
  *

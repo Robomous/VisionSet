@@ -34,7 +34,7 @@ There is also no ``confirm=``. That guard is for destroying data, and publishing
 destroys nothing — so this is not a third exemption from ``ConfirmationRequired``
 and that docstring stays as it is.
 
-Composition follows the rule in ``docs/workspaces.md``: this service takes an
+Composition follows the rule in ``docs/content/workspaces.md``: this service takes an
 open :class:`WorkspaceService` and nothing else, and never names an adapter.
 """
 

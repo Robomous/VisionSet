@@ -63,7 +63,7 @@
  * ## Version history is read-only because versions are read-only
  *
  * Nothing here disables an edit control on a past version — there are no edit
- * controls. `docs/schemas.md`: versions are 1..N, never updated and never deleted,
+ * controls. `docs/content/schemas.md`: versions are 1..N, never updated and never deleted,
  * and the models are frozen with tuple collections so immutability is in the type.
  * Selecting an old version shows what it declared; the editor always drafts from
  * the active one, because a "restore" is just a new version with the old classes

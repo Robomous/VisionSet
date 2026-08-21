@@ -60,7 +60,7 @@ from visionset.server.settings import job_settings
 #
 # With no ``VISIONSET_WORKSPACE`` set, a server started *below* a workspace serves
 # that workspace rather than answering 500 ``NOT_A_WORKSPACE``. See
-# ``docs/workspaces.md`` for the precedence and for why only that case walks.
+# ``docs/content/workspaces.md`` for the precedence and for why only that case walks.
 
 _logger: Final = logging.getLogger(__name__)
 
@@ -151,7 +151,7 @@ def get_workspace(request: Request) -> WorkspaceService:
     Yields the *service*, never a unit of work: a transaction committed in a
     dependency's teardown fails after the response has started, which turns a
     ``WorkspaceBusy`` into ``RuntimeError: response already started`` instead of
-    an ``ErrorBody``. See ``docs/api.md``.
+    an ``ErrorBody``. See ``docs/content/api.md``.
     """
     handle: WorkspaceHandle = request.app.state.workspace_handle
     return handle.get()

@@ -27,7 +27,7 @@ The lifecycle is one-way; ``BATCH_TRANSITIONS`` in ``domain/batch.py`` is the
 whole of what is legal, and this service consults that table rather than
 restating it.
 
-Composition follows the rule in ``docs/workspaces.md``: this service takes an
+Composition follows the rule in ``docs/content/workspaces.md``: this service takes an
 open :class:`WorkspaceService` and nothing else, and never names an adapter.
 """
 

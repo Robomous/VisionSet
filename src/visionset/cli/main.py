@@ -32,7 +32,7 @@ app = typer.Typer(
 # keeps it, because Typer preserves declaration order rather than sorting. It
 # keeps it *within each kind*: bare commands are listed before groups, so the
 # listing reads as two passes over the cycle rather than one. That is Typer's
-# own layout and not worth fighting; ``docs/cli.md``'s synopsis is where the
+# own layout and not worth fighting; ``docs/content/cli.md``'s synopsis is where the
 # cycle is shown in one sequence.
 #
 # Bare commands are registered here rather than decorated at their definition

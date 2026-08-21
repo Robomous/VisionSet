@@ -2,7 +2,7 @@
  * v1's `polyline-tool.spec.ts`, ported — the last of its four specs to become
  * portable.
  *
- * `docs/annotations.md`'s reconciliation table has carried this file as *"out of
+ * `docs/content/annotations.md`'s reconciliation table has carried this file as *"out of
  * scope for a different and narrower reason: it drives a drawing tool, and 0.1.0
  * has none"*. The tool exists now, so the reason is spent and the port
  * is this file.

@@ -4,7 +4,7 @@
  *
  * ## A version is immutable, so this edits a draft and publishes a new one
  *
- * `docs/schemas.md`: versions are 1..N, never updated and never deleted, and
+ * `docs/content/schemas.md`: versions are 1..N, never updated and never deleted, and
  * "active" is *derived* — the highest version, not a stored flag. So there is no
  * save-in-place to build. The editor holds a draft seeded from the active version,
  * and **Save publishes version N+1**. Past versions are read-only because they are
@@ -73,7 +73,7 @@
  * is still the answer, and it renders through the same blocker view the preview
  * feeds, so the two paths cannot drift apart.
  *
- * **Two 409s, and only one is retryable.** This is the exact case `docs/api.md`
+ * **Two 409s, and only one is retryable.** This is the exact case `docs/content/api.md`
  * exists for:
  *
  * | code | what it means | override |

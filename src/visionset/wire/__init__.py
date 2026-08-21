@@ -122,7 +122,7 @@ def page(items: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
     ``{"items": [...], "total": n}`` and never a bare array — an array cannot
     grow a field without breaking every client, which is the argument
-    ``docs/api.md`` already makes. ``total`` is how many matched, which for a CLI
+    ``docs/content/api.md`` already makes. ``total`` is how many matched, which for a CLI
     that does not page is always ``len(items)``; it is here so that the day a
     listing grows ``--limit``, the shape does not move.
     """

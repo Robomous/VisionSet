@@ -70,7 +70,7 @@ OCTET_STREAM: Final = "application/octet-stream"
 """What a pre-pipeline asset's bytes are, when nothing recorded a format.
 
 Inventing a media type would be worse than admitting there is none, which is the
-call ``docs/api.md`` already made for the download route.
+call ``docs/content/api.md`` already made for the download route.
 """
 
 

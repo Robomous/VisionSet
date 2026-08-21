@@ -104,7 +104,7 @@ def test_the_gated_listing_is_exactly_the_shipped_set_plus_the_destructive_one()
     # candidates evaluated one by one — but it reported an off-by-one where the
     # set reports *which* tool moved, and it went stale twice in one run while
     # the set beside it was already correct. What ships is still a decision to be
-    # argued in `docs/mcp.md`; this is how the decision is written down.
+    # argued in `docs/content/mcp.md`; this is how the decision is written down.
     assert set(tool_names(allow_destructive=True)) == SHIPPED | DESTRUCTIVE
     assert {tool.__name__ for tool, _hints in DESTRUCTIVE_TOOLS} == DESTRUCTIVE
 
@@ -201,7 +201,7 @@ def test_the_destructive_tools_keep_the_confirm_and_hint_agreement(
 
 
 def test_no_tool_administers_tokens() -> None:
-    # Argued in docs/auth.md: minting a credential is a
+    # Argued in docs/content/auth.md: minting a credential is a
     # privilege-escalation primitive pointed at the agent's own sandbox, and an
     # agent's "shown exactly once" is a transcript.
     assert not [name for name in tool_names() if "token" in name]

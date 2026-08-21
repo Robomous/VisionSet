@@ -24,7 +24,7 @@ def test_version_file_is_the_beta(declared_version: str) -> None:
     It was `0.0.1.dev0` through all five alpha tags, because those are git tags and
     nothing was being distributed. This is the version that goes to PyPI, where
     PEP 440 hides a pre-release from a plain `pip install` — which is what makes
-    publishing it safe rather than premature. See `docs/releasing.md`.
+    publishing it safe rather than premature. See `docs/content/releasing.md`.
 
     `0.0.1b2` is the beta corrected: `0.0.1b1` shipped with three defects a manual
     pass over the **wheel** found and a green suite could not, and a

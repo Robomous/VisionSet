@@ -76,7 +76,7 @@
  * index and can prove nothing is *missing*, and only a full re-read of every
  * byte can prove nothing is *damaged*. **Verify weights** was the old label for
  * the first and claimed the second, which is the confusion this pair removes;
- * `docs/inference.md` carries the same two sentences, so the page and the
+ * `docs/content/inference.md` carries the same two sentences, so the page and the
  * product cannot drift apart.
  *
  * A failed integrity check is the one refusal on this screen that has already
@@ -469,7 +469,7 @@ function ConnectionRow({
                     honest about one: a download against a set-up connection
                     reads an index and finds a file that is absent, and no
                     amount of it will find a file that is present and wrong.
-                    `docs/inference.md` carries the same two sentences.
+                    `docs/content/inference.md` carries the same two sentences.
                   */}
                   {can.has("download_weights") && ready && (
                     <DropdownMenuItem

@@ -255,7 +255,7 @@ def test_a_session_is_not_a_row_in_the_token_table(workspace: Path) -> None:
 
 
 def test_a_wrong_cookie_is_the_same_401_as_no_credential_at_all(workspace: Path) -> None:
-    """`docs/auth.md`'s no-oracle rule, extended to the second credential: the
+    """`docs/content/auth.md`'s no-oracle rule, extended to the second credential: the
     answer must not say which kind was rejected, or it says whether this server
     issues sessions at all."""
     with served(workspace) as client:

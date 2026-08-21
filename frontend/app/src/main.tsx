@@ -49,7 +49,7 @@ if (container === null) throw new Error("missing #root element");
  * Same origin in production: the bundle is at `/app` and the API at the root, so a
  * relative request already lands on it. In development vite owns the origin, and
  * `/api` is proxied — never CORS on the server, which would put a middleware in
- * front of every response in production too. `docs/ui.md` has the argument.
+ * front of every response in production too. `docs/content/ui.md` has the argument.
  */
 const API_BASE_URL = import.meta.env.DEV ? "/api" : "";
 

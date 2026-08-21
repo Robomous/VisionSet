@@ -104,7 +104,7 @@ export function TokenForm(): JSX.Element {
       const probe = createApiClient({ baseUrl, token: candidate });
       // The cheapest authenticated route in the contract. The answer is thrown
       // away — only its status is the question. There is deliberately no `limit`:
-      // `docs/api.md` gives paging parameters to exactly one collection, the batch
+      // `docs/content/api.md` gives paging parameters to exactly one collection, the batch
       // asset listing, and this one does not have them.
       // Checked like every other read, even though the answer is discarded: a server
       // that cannot answer `/projects` in the contract's shape is not one to sign into,

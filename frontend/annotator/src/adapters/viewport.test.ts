@@ -89,7 +89,7 @@ describe("the zoom is bounded, and a bad number resets the view", () => {
 
   it("caps at 8x, where one asset pixel is an eight-pixel block (#228)", () => {
     // Named rather than inferred: this is the ceiling the readout shows as 800%,
-    // the one a zoom-in control is disabled at, and the one `docs/annotations.md`
+    // the one a zoom-in control is disabled at, and the one `docs/content/annotations.md`
     // argues for. Anything past it is larger blocks of the same pixels.
     expect(MAX_ZOOM).toBe(8);
   });

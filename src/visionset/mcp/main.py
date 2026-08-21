@@ -8,7 +8,7 @@ decided here that the kernel has not already decided.
 the MCP tool it implied, and *evaluated* is not *implemented*: tool-selection
 accuracy degrades with count, so a tool ships only when an agent has a reason to
 reach for it that no neighbouring tool already covers. What folded, what was
-dropped and why is argued in ``docs/mcp.md`` and in each module's own docstring.
+dropped and why is argued in ``docs/content/mcp.md`` and in each module's own docstring.
 
 **Registration is this table, not a decorator at each definition site.** The CLI's
 rule, for the CLI's reason: ``@server.tool()`` inside ``projects.py`` would make

@@ -149,7 +149,7 @@ def test_a_one_point_polyline_is_a_malformed_request_not_a_domain_refusal(
     `min_length=2` lives on `PolylineGeometry`, which the tool takes directly, so
     the *input validator* rejects it and the result is `isError` carrying the
     field path — not the domain envelope an `add_annotations` refusal uses. That
-    is the documented split (`docs/mcp.md`): a malformed request and a refused one
+    is the documented split (`docs/content/mcp.md`): a malformed request and a refused one
     are different answers, and an agent branches on them differently. Pinned
     because the obvious expectation is the other one.
     """

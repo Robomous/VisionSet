@@ -21,7 +21,7 @@ written, so provenance survives the configuration it came from. That
 denormalisation is what lets this be an ordinary delete instead of a lifecycle:
 there is no row anywhere holding a key to this one.
 
-Composition follows ``docs/workspaces.md``: this service takes an open
+Composition follows ``docs/content/workspaces.md``: this service takes an open
 :class:`WorkspaceService` and nothing else, and reaches the ports through it.
 """
 

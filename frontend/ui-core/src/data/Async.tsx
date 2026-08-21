@@ -16,7 +16,7 @@
  * ## Emptiness is asked for, never guessed
  *
  * `isEmpty` defaults to the API's own list envelope — `{items, total}`, the shape
- * `docs/api.md` promises for every collection — and to nothing else. A component
+ * `docs/content/api.md` promises for every collection — and to nothing else. A component
  * that decided emptiness itself would have to guess for a scalar (is `0` empty?
  * is `false`?), and it would be wrong for `dataset_stats`, whose zero counts are a
  * real answer about a real dataset. Passing `empty` at all is opt-in; a screen
@@ -26,7 +26,7 @@
  *
  * The heading is the sentence `refusalProse` gives, because a kernel identifier
  * is not what a person should have to read first. The code still renders, on the
- * meta line beside the incident id: `docs/api.md` says a client branches on it,
+ * meta line beside the incident id: `docs/content/api.md` says a client branches on it,
  * and it is the half a person can act on — `PROJECT_NOT_FOUND` is a bad link,
  * `WORKSPACE_BUSY` is worth retrying, `INTERNAL_ERROR` is worth reporting with
  * the incident id beside it. The server's own message is a sentence whose wording

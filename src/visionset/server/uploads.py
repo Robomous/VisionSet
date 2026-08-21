@@ -22,7 +22,7 @@ that in one line and must not appear in this module.
 
 **Staged uploads are never deleted**, which is the posture blobs already have
 (`BlobStore` has no ``delete``). A workspace's disk grows with what was offered
-to it, not only with what was kept; ``docs/api.md`` says so out loud rather than
+to it, not only with what was kept; ``docs/content/api.md`` says so out loud rather than
 implying a cleanup nothing performs.
 """
 

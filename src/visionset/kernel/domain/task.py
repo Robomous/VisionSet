@@ -257,7 +257,7 @@ def initial_progress(*, has_annotations: bool) -> AssetProgress:
     the whole reason this is a function instead of a literal. Annotations hang
     off an ``asset_id`` and nothing else, so a **correction batch** over an
     already-labeled asset opens with the earlier round's boxes drawn on it (see
-    ``docs/batches.md``). Starting such an asset at ``unannotated`` would file it
+    ``docs/content/batches.md``). Starting such an asset at ``unannotated`` would file it
     under "nothing labeled here" while the annotator is displaying three boxes,
     which is a lie a gallery filter repeats.
 

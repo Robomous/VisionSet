@@ -20,7 +20,7 @@
  *
  * ## The schema is the batch's pinned version, never the project's active one
  *
- * `docs/batches.md`: approval pins the active version and it never moves. An
+ * `docs/content/batches.md`: approval pins the active version and it never moves. An
  * annotator judged against a newer schema would offer classes the API then
  * refuses, and the refusal would be correct while the screen looked broken.
  * `jobQueries.ts` walks job → batch → *that version*.

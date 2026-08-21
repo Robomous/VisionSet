@@ -127,7 +127,7 @@ export function BatchProgressBar({
  *
  * **The press is withheld while work is outstanding rather than offered and
  * refused.** `JobService.complete` will refuse an unsettled asset, and this screen
- * can already see the count: `docs/api.md`'s own rule is that a control whose
+ * can already see the count: `docs/content/api.md`'s own rule is that a control whose
  * every action is unavailable is worse than an absent one, and the number is more
  * use than the 409 would have been. The remaining refusals are real answers to a
  * race, and are said in words.

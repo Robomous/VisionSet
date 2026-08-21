@@ -726,7 +726,7 @@ describe("curating the trunk", () => {
 
     render(mount(<DatasetScreen projectId={PROJECT} />));
     await screen.findByTestId("trunk-paging");
-    // `total` is the whole trunk, not the page — `docs/api.md`: paging bounds
+    // `total` is the whole trunk, not the page — `docs/content/api.md`: paging bounds
     // the response, not the read.
     expect(screen.getByTestId("trunk-paging").textContent).toContain("of 60");
     expect(screen.getByTestId("trunk-previous")).toHaveProperty("disabled", true);

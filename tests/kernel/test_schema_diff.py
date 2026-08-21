@@ -1,4 +1,4 @@
-"""The change classifier: one case per row of the table in ``docs/schemas.md``.
+"""The change classifier: one case per row of the table in ``docs/content/schemas.md``.
 
 The question every row answers is the same one: does an annotation that was
 valid under ``previous`` stay valid under ``proposed``?

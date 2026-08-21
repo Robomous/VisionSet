@@ -4825,7 +4825,7 @@
   "paths": {
     "/background-jobs": {
       "get": {
-        "description": "Every job this workspace has run, newest first.\n\nNewest first because the caller is looking at what is happening now \u2014 the\nopposite order to the one the dispatcher claims in, which is oldest first.\n\nNo paging parameters. The collection is bounded by how much work a workspace\nhas ever queued, which is the same order of magnitude as its ingest runs, and\n`limit`/`offset` join `total` without a breaking change on the day one has a\ncaller \u2014 the rule `docs/api.md` states for every collection here.",
+        "description": "Every job this workspace has run, newest first.\n\nNewest first because the caller is looking at what is happening now \u2014 the\nopposite order to the one the dispatcher claims in, which is oldest first.\n\nNo paging parameters. The collection is bounded by how much work a workspace\nhas ever queued, which is the same order of magnitude as its ingest runs, and\n`limit`/`offset` join `total` without a breaking change on the day one has a\ncaller \u2014 the rule `docs/content/api.md` states for every collection here.",
         "operationId": "list_background_jobs",
         "parameters": [
           {

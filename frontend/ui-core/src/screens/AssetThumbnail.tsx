@@ -14,7 +14,7 @@
  * client and hand the result to the `<img>` as an object URL. That is what this
  * component is; everything else about it is bookkeeping for that one fact.
  *
- * The cost is smaller than it looks. `docs/api.md` gives the route
+ * The cost is smaller than it looks. `docs/content/api.md` gives the route
  * `Cache-Control: public, max-age=31536000, immutable` with the content hash as its
  * `ETag`, so the second request for a preview is served from the browser's own HTTP
  * cache — a `fetch` gets that as much as an `<img>` does.

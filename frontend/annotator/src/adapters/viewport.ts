@@ -89,7 +89,7 @@ export const MIN_ZOOM = 0.05;
  * clock not at all: the cost is the browser rasterising and compositing a scaled
  * stage — a 4K `<img>` and 660 SVG elements — which is not work this codebase
  * does, and is not work any render architecture available here avoids
- * (`docs/annotations.md`, "The ceiling is raster").
+ * (`docs/content/annotations.md`, "The ceiling is raster").
  *
  * So the cap is honest in both directions: it is the depth past which the image
  * has nothing left to show, and the depth past which the browser struggles to

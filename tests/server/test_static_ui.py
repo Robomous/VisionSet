@@ -159,7 +159,7 @@ def test_adding_the_bundle_did_not_turn_a_wrong_method_into_a_404(bundled: TestC
     """The guard against a catch-all mount.
 
     ``Mount("/")`` full-matches every path, so it wins over the partial match
-    that produces this 405. ``docs/api.md`` publishes 405 in its status table.
+    that produces this 405. ``docs/content/api.md`` publishes 405 in its status table.
     """
     response = bundled.post("/health")
     assert response.status_code == 405

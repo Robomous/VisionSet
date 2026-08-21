@@ -32,7 +32,7 @@ from visionset.kernel.errors import (
 
 #: Every uniqueness rule the store carries as a real index, and what makes each
 #: one recognizable in ``sqlite_master``. A service-level rule with nothing
-#: underneath it is a wish (``docs/persistence.md``), and these indexes are the
+#: underneath it is a wish (``docs/content/persistence.md``), and these indexes are the
 #: backstop — so the baseline creating all of them is asserted directly rather
 #: than left to whichever service happens to exercise one.
 _UNIQUENESS_INDEXES = {

@@ -1,7 +1,7 @@
 /**
  * Polling, for the two operations that finish on their own schedule.
  *
- * `docs/api.md`'s launch-and-poll contract: `POST /sources/{id}/ingest-jobs`
+ * `docs/content/api.md`'s launch-and-poll contract: `POST /sources/{id}/ingest-jobs`
  * answers **202 with a `Location`**, and the job row is the client's only view of
  * what happens after. The ingest screen is the caller; the batch table wants the
  * same shape while a promotion settles.

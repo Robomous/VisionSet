@@ -1032,7 +1032,7 @@ test("the zoom buttons drive the same stage mod+0 resets", async ({ page }) => {
  *
  * The ceiling is a decision rather than a bug: past 8x the picture has no more
  * information in it, and the browser's raster of a scaled stage is where the frame
- * budget goes (`docs/annotations.md`, "The ceiling is raster"). What a person must
+ * budget goes (`docs/content/annotations.md`, "The ceiling is raster"). What a person must
  * not meet is a control that accepts presses and does nothing — so the limit is
  * *stated* at both ends, the readout stops at the capped number, and deep zoom
  * shows real pixel blocks instead of interpolated blur.
@@ -2213,7 +2213,7 @@ test("the hand takes the crosshair off the picture, and gives it back", async ({
  * and `sidebar` now *follows the theme* rather than staying a fixed dark chrome —
  * in the light theme it is `oklch(0.985 0 0)`, a near-white a shade below
  * `background`. So "the surround is not the rail" can no longer mean "the rail
- * is dark"; what the contract (`docs/ui/annotator.md#the-stage`) still promises
+ * is dark"; what the contract (`docs/content/ui/annotator.md#the-stage`) still promises
  * is that `stage` is its own distinguishable token, not a shade some other
  * surface happens to produce. This asserts that directly, against the sidebar's
  * *actual* current value rather than an assumption about its brightness.

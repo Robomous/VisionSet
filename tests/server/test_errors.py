@@ -249,7 +249,7 @@ def _rules_by_name() -> dict[str, ErrorRule]:
 
 # --- the table, as the document publishes it ------------------------------
 
-# ``docs/api.md`` is where a client author reads the inventory, and until now
+# ``docs/content/api.md`` is where a client author reads the inventory, and until now
 # nothing held it to the code. It fell nineteen codes behind before anybody
 # noticed, and syncing it was never the fix: an ungated mirror is a second
 # spelling waiting to drift. These tests are the same exact-correspondence
@@ -257,7 +257,7 @@ def _rules_by_name() -> dict[str, ErrorRule]:
 # markdown as the other side — ``frontend/ui-core/src/tokens.test.ts`` is the
 # precedent for holding a *document* this way. cf. #524.
 
-DOCS = Path(__file__).resolve().parents[2] / "docs" / "api.md"
+DOCS = Path(__file__).resolve().parents[2] / "docs" / "content" / "api.md"
 
 # The five codes the document lists that ``ERROR_RULES`` does not hold. None of
 # them has a kernel class to map: FastAPI raises the first, Starlette's router
@@ -297,7 +297,7 @@ def _section(heading: str) -> str:
     text = DOCS.read_text(encoding="utf-8")
     marker = f"\n## {heading}\n"
     if marker not in text:
-        raise AssertionError(f"docs/api.md no longer has a '## {heading}' section")
+        raise AssertionError(f"docs/content/api.md no longer has a '## {heading}' section")
     return re.split(r"^## ", text.split(marker, 1)[1], maxsplit=1, flags=re.MULTILINE)[0]
 
 
@@ -317,7 +317,7 @@ def _documented_codes() -> set[tuple[str, int]]:
     # An empty parse would make the second test vacuous — a deleted or reshaped
     # table must be a failure, not a gate that quietly stops guarding anything.
     if not pairs:
-        raise AssertionError("the full table in docs/api.md parsed as no codes at all")
+        raise AssertionError("the full table in docs/content/api.md parsed as no codes at all")
     return pairs
 
 

@@ -21,7 +21,7 @@ was called. Every event dumps to JSON with no custom encoder, which is what make
 a webhook a subscriber rather than a rewrite.
 
 Which service emits which event, and the after-commit and at-most-once rules that
-govern the emission, are in ``docs/events.md`` — those are the bus's business, not
+govern the emission, are in ``docs/content/events.md`` — those are the bus's business, not
 the models'.
 """
 

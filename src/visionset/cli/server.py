@@ -60,7 +60,7 @@ away, and it is what a container passes.
 """
 
 DEFAULT_PORT: Final = 8000
-"""Matches ``docker/compose.yaml`` and the base URL used throughout ``docs/``."""
+"""Matches ``docker/compose.yaml`` and the base URL used throughout ``docs/content/``."""
 
 _WILDCARD_HOSTS: Final = frozenset({"0.0.0.0", "::", ""})
 """Bind addresses that are not somewhere to browse. See :func:`_browsable`."""

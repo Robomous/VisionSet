@@ -37,7 +37,7 @@ _COLUMNS: Final = ("NAME", "CREATED", "REVOKED")
 Kept as it is because a token has no id a person would ever type — ``revoke``
 takes the name — and moving the column would break scripts for no gain. The
 consequence is that ``awk '{print $1}'`` is not safe *here*, since a token name
-may hold internal whitespace; ``docs/cli.md`` says so where it states the
+may hold internal whitespace; ``docs/content/cli.md`` says so where it states the
 id-first rule for the flow listings.
 """
 
