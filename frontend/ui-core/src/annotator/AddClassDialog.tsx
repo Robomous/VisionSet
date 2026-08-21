@@ -515,7 +515,7 @@ export function AddClassDialog({
         // is centred with `-translate-y-1/2`, so content taller than the viewport
         // overflowed off both edges and took the footer with it. A class with a
         // few attributes reaches that. Spelled as `ShortcutSheet` spells it.
-        className="max-h-[85vh] max-w-2xl overflow-y-auto"
+        className="max-h-[85vh] sm:max-w-2xl overflow-y-auto"
         // ⌘Enter banks the class and clears the form — the chord for "and
         // another", so a session is typed without the hand leaving the keyboard.
         // On the content rather than on the name field, because the geometry
