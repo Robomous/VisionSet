@@ -280,9 +280,8 @@ function DeleteProjectDialog({
 /**
  * One refusal, as the sentence the field's alert announces.
  *
- * A comment here once defended leading with the code, on two grounds; one
- * held. The field error survives — it is what a screen reader announces. The
- * identifier no longer leads: a client branches on a code, a person cannot.
+ * The field error is what a screen reader announces. The identifier does not
+ * lead: a client branches on a code, a person cannot.
  */
 function refusal(cause: unknown): string {
   return refusalProse(cause);

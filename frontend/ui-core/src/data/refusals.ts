@@ -28,13 +28,24 @@
  *
  * ## Six codes are withheld on purpose
  *
- * `LOCAL_INFERENCE_UNAVAILABLE`, `INFERENCE_CONNECTION_NOT_RUNNABLE`,
- * `INFERENCE_OUT_OF_MEMORY`, `UNSUPPORTED_PROMPT` and
- * `INFERENCE_CONNECTION_NOT_CHECKABLE` carry their remedy in the message
- * itself — an install command, the model family nothing here can run, the
- * device that ran out of memory, which of two states the connection is in and
- * the download that fixes one of them. A sentence written here would be shorter
- * and would say less, so these fall through by decision rather than by omission.
+ * Five carry their remedy in the message itself, and each message says
+ * something a static sentence here would have to drop:
+ *
+ * - `LOCAL_INFERENCE_UNAVAILABLE` ends in the install command for the
+ *   missing extra;
+ * - `INFERENCE_CONNECTION_NOT_RUNNABLE` names what this build does run —
+ *   the adapter list to point the connection at, "use a local connection"
+ *   for an http one, or which of two providers claiming the same model
+ *   type to uninstall;
+ * - `INFERENCE_OUT_OF_MEMORY` says which memory ran out on which device,
+ *   and the remedy changes with that answer;
+ * - `UNSUPPORTED_PROMPT` says what the model does answer — words or
+ *   places — and which capability to ask for instead;
+ * - `INFERENCE_CONNECTION_NOT_CHECKABLE` says which of two states the
+ *   connection is in and names the download that fixes one of them.
+ *
+ * A sentence written here would be shorter and would say less, so these
+ * fall through by decision rather than by omission.
  *
  * `DUPLICATE_CLASSIFICATION_TAG` is withheld for a different reason: its
  * message mixes a leak (an asset id) with a fact (the class name), and a
@@ -50,6 +61,8 @@
  * - a full error state (`ErrorState`) puts it in a secondary mono meta line,
  *   de-duplicated against the sentence;
  * - a bare `Alert` does not carry it at all;
+ * - a `FieldError` is a bare `<p role="alert">` with no code slot at all —
+ *   the shape most of this file's consumers render;
  * - a visible `Badge` beside the raw message is the fourth shape, not yet
  *   settled — two `InferenceScreen` sites still do it. Each renders a
  *   union: a real wire refusal from the mutation, or a settled background
@@ -106,7 +119,7 @@ export const REFUSAL_PROSE: Record<string, string> = {
   DESTRUCTIVE_SCHEMA_CHANGE: "This change removes part of the contract already in use.",
   SCHEMA_CHANGE_WOULD_ORPHAN: "Annotations already exist under a class this change removes.",
   SCHEMA_DRAFT_NOT_FOUND: "There is no saved draft to publish.",
-  SCHEMA_VERSION_CONFLICT: "Someone else published a version first — publish again to take the next one.",
+  SCHEMA_VERSION_CONFLICT: "Someone else published a version first — try again to take the next one.",
 
   // Ingest.
   INGEST_JOB_NOT_FOUND: "That run is no longer on record.",
