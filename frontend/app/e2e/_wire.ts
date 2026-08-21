@@ -65,7 +65,7 @@ const JOB_ACTIONS: Record<Wire["AnnotationJobState"], readonly Wire["JobAction"]
 
 const ASSET_ACTIONS: Record<Wire["AssetProgress"], readonly Wire["AssetAction"][]> = {
   unannotated: ["annotate", "skip"],
-  pre_labeled: ["annotate", "skip"],
+  pre_labeled: ["annotate", "skip", "confirm"],
   annotated: ["annotate", "skip", "submit_for_review"],
   skipped: ["restore"],
   review_pending: ["accept", "return_to_annotator"],
