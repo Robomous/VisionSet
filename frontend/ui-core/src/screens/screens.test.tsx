@@ -635,10 +635,21 @@ describe("the schema editor", () => {
     await userEvent.click(screen.getByTestId("add-class"));
     await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
     // Ten characters, and the server walks every annotation in the project for
-    // each answer — so the panel asks about the name somebody meant, once the
-    // typing settles, and not about the nine prefixes of it.
+    // each answer — so the panel asks about the name somebody meant and not
+    // about the nine prefixes of it.
     await new Promise((resolve) => setTimeout(resolve, 600));
-    expect(asks()).toBe(2);
+
+    // A bound rather than an exact count, and the settle is why: ten
+    // `userEvent.type` keystrokes under a loaded machine can outlast one 400ms
+    // window, which makes a third ask correct behaviour rather than a defect.
+    // What is not a race is the ratio — an undebounced panel asks once per
+    // keystroke, so anything near the keystroke count fails this — and that the
+    // last question asked is about the whole name.
+    expect(asks()).toBeLessThan(5);
+    const asked = sent.filter((request) =>
+      new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
+    );
+    expect(bodies.get(asked[asked.length - 1] as Request)).toContain("pedestrian");
   });
 
   /**

@@ -923,7 +923,7 @@ string never reaches the version as itself.
 
 ### Frames in the way
 
-The third section of the Schema tab, below the editor and the navigator. A refused
+The third section of the Schema tab, below the editor and the version history. A refused
 publish states how many frames block it and then closes; those frames are still there
 afterwards, and this is where they can be reached. It reads the listing behind the
 preview's own counts (`POST .../schema/blocking-assets`,

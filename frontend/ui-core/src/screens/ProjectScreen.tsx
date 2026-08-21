@@ -1165,6 +1165,12 @@ const DRAFT_SETTLE_MS = 400;
  * follows changes per keystroke, and every intermediate one is a question nobody
  * asked. Identity is what settles, so a caller passing a derived array memoises
  * it — otherwise every render restarts the timer and nothing ever settles.
+ *
+ * **It holds the last value across anything short of a remount**, which is a bug
+ * wherever the value belongs to something the component can be re-rendered onto:
+ * a settled value from the previous subject is live until the next timer fires.
+ * A caller whose subject can change under it gives the component a `key` on that
+ * subject, so the identity change is a remount rather than a stale hold.
  */
 function useSettled<T>(value: T, ms: number): T {
   const [settled, setSettled] = useState(value);
@@ -1213,8 +1219,9 @@ function BlockingAssets({
       <header className="border-b border-border pb-4">
         <h2 className="text-base font-semibold tracking-tight">Frames in the way</h2>
         <p className="text-xs text-muted-foreground">
-          These frames carry labels the draft would drop. A version cannot be published while
-          they do — open one of the batches holding a frame to clear or relabel it.
+          These frames carry labels the draft would drop. This schema version cannot be
+          published while they do — open one of the batches holding a frame to clear or relabel
+          it.
         </p>
       </header>
       <Async
