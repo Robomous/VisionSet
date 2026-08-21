@@ -22,7 +22,9 @@ nothing.
 and its move to ``pre_labeled`` together, so a run that dies has either not
 touched an asset or fully entered it. That is also what makes a second run safe:
 it collects the untouched assets again, and the ones already entered are no longer
-among them.
+among them. Asked to replace, it also reaches the frames it entered before and
+supersedes them the same way, one frame per transaction, and nothing a person
+judged.
 """
 
 from __future__ import annotations
@@ -105,6 +107,9 @@ class PreLabelOutcome:
     #: Regions whose geometry has no overlap with a measured asset. Kept
     #: separate from unmappable labels because their class mapping succeeded.
     regions_out_of_bounds: int = 0
+    #: Model labels a replacing run superseded — rows that went so this run's
+    #: could land. Zero for a run that was not asked to replace.
+    annotations_replaced: int = 0
 
 
 def unsupported_prompt_message(connection_name: str) -> str:
@@ -309,6 +314,7 @@ def pre_label(
     batch_id: UUID,
     connection_id: UUID,
     minimum_confidence: float = DEFAULT_MINIMUM_CONFIDENCE,
+    replace_model_labels: bool = False,
     on_plan: Callable[[PreLabelPlan], None] | None = None,
     on_progress: Callable[[int, int], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
@@ -335,6 +341,14 @@ def pre_label(
     A region whose mapped geometry has no overlap with a measured asset is also
     passed over before the atomic write. ``PreLabelOutcome.regions_out_of_bounds``
     says how many; unmeasured assets remain eligible.
+
+    ``replace_model_labels`` widens the run from untouched frames to every frame
+    still ``pre_labeled`` — labels a model wrote and nobody has judged — and
+    supersedes those labels with this run's answer, one frame per transaction.
+    A frame a person edited, confirmed or skipped is never touched, flagged or
+    not. A frame the model now finds nothing on loses its stale labels and reads
+    untouched again; ``PreLabelOutcome.annotations_replaced`` says how many
+    labels went.
 
     ``on_plan`` is handed the prompt and the classes left out of it, once, after
     every refusal has passed and before the first forward pass — what a surface
@@ -373,14 +387,14 @@ def pre_label(
     class_by_answer = _class_by_answer(phrases)
 
     jobs = batches.jobs(batch_id)
-    targets = _untouched(workspace, jobs)
+    targets = _targets(workspace, jobs, replace_model_labels=replace_model_labels)
     total = len(targets)
     annotations_service = AnnotationService(workspace)
     ingest = IngestService(workspace)
 
-    considered = labeled = written = skipped = discarded = out_of_bounds = 0
+    considered = labeled = written = skipped = discarded = out_of_bounds = replaced = 0
     model_ref: str | None = None
-    for job_id, asset_id in targets:
+    for job_id, asset_id, replacing in targets:
         # Between assets, which is the only place stopping is honest: the last
         # asset is committed and the next has not been touched.
         if should_stop is not None and should_stop():
@@ -393,6 +407,7 @@ def pre_label(
                 assets_skipped=skipped,
                 regions_discarded=discarded,
                 regions_out_of_bounds=out_of_bounds,
+                annotations_replaced=replaced,
             )
 
         asset = ingest.asset(batch.project_id, asset_id)
@@ -409,6 +424,7 @@ def pre_label(
         )
         answer = next(iter(runner.predict(request)), None)
         considered += 1
+        in_bounds: list[Annotation] = []
         if answer is not None:
             model_ref = answer.model_ref
             proposed, unmapped = _annotations_from(
@@ -426,19 +442,26 @@ def pre_label(
                 )
             ]
             out_of_bounds += len(proposed) - len(in_bounds)
-            if in_bounds:
-                try:
-                    annotations_service.enter_unreviewed(job_id, in_bounds)
-                except AssetNotWritable:
-                    # The batch is `in_annotation`, so somebody working in it
-                    # while this run is in flight is the normal case, not a
-                    # race to report as a failure. Passing over an asset that
-                    # moved underneath is the same decision as never having
-                    # selected it — the run's own idempotency already makes
-                    # that call for a second run; this is the first run
-                    # discovering it needed to make the call too.
-                    skipped += 1
-                else:
+        if in_bounds or replacing:
+            # A replacing frame goes through the door even with nothing to land:
+            # the stale labels have to go, and only the door may take them.
+            superseded = len(annotations_service.for_asset(job_id, asset_id)) if replacing else 0
+            try:
+                annotations_service.enter_unreviewed(
+                    job_id, in_bounds, replacing={asset_id} if replacing else ()
+                )
+            except AssetNotWritable:
+                # The batch is `in_annotation`, so somebody working in it
+                # while this run is in flight is the normal case, not a
+                # race to report as a failure. Passing over an asset that
+                # moved underneath is the same decision as never having
+                # selected it — the run's own idempotency already makes
+                # that call for a second run; this is the first run
+                # discovering it needed to make the call too.
+                skipped += 1
+            else:
+                replaced += superseded
+                if in_bounds:
                     labeled += 1
                     written += len(in_bounds)
         if on_progress is not None:
@@ -452,13 +475,17 @@ def pre_label(
         assets_skipped=skipped,
         regions_discarded=discarded,
         regions_out_of_bounds=out_of_bounds,
+        annotations_replaced=replaced,
     )
 
 
-def _untouched(
-    workspace: WorkspaceService, jobs: Sequence[AnnotationJob]
-) -> tuple[tuple[UUID, UUID], ...]:
-    """Every ``(job, asset)`` nobody has worked, in a stable order.
+def _targets(
+    workspace: WorkspaceService,
+    jobs: Sequence[AnnotationJob],
+    *,
+    replace_model_labels: bool,
+) -> tuple[tuple[UUID, UUID, bool], ...]:
+    """Every ``(job, asset, replacing)`` this run will reach, in a stable order.
 
     Read off the jobs rather than off the batch's membership, because the write
     needs the job that carries the asset and a batch of any size is partitioned
@@ -470,18 +497,23 @@ def _untouched(
     also carries no annotations is what makes this filter the same rule
     ``enter_unreviewed`` enforces, so such an asset is passed over silently
     here rather than reaching the run as a refusal.
+
+    A ``pre_labeled`` asset is a target only when the run was asked to replace,
+    and is marked so: it goes through the door's replacing path, which is the
+    only path that may remove what an earlier run wrote.
     """
     candidates = [
-        (job.id, asset_id)
+        (job.id, asset_id, progress is AssetProgress.PRE_LABELED)
         for job in jobs
         for asset_id, progress in job.progress.items()
         if progress is AssetProgress.UNANNOTATED
+        or (replace_model_labels and progress is AssetProgress.PRE_LABELED)
     ]
     with workspace.unit_of_work() as uow:
         return tuple(
-            (job_id, asset_id)
-            for job_id, asset_id in candidates
-            if not uow.annotations.list(asset_id)
+            (job_id, asset_id, replacing)
+            for job_id, asset_id, replacing in candidates
+            if replacing or not uow.annotations.list(asset_id)
         )
 
 
