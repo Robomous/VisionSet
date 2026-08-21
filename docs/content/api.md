@@ -546,7 +546,7 @@ sentence. The real message and traceback go to the server log under the same id 
 greps one string, and a response body never becomes a channel for filesystem paths, SQL text, or
 a stack trace.
 
-Seven errors opt out and expose their real message, each because that message *is* the remedy:
+Eight errors opt out and expose their real message, each because that message *is* the remedy:
 
 | Code | Why the message is published |
 | --- | --- |
@@ -557,6 +557,7 @@ Seven errors opt out and expose their real message, each because that message *i
 | `LOCAL_INFERENCE_UNAVAILABLE` | Carries the `pip install` for the optional runtime, on the same licence `ffmpeg` gets. |
 | `INFERENCE_CONNECTION_NOT_RUNNABLE` | Says which of the two things nothing here can run - an `http` connection, or the model family this connection's config declares - and for the second it lists the families the installed drivers do serve. A fact about the installation rather than about the request, and one that changes when a driver is installed. |
 | `INFERENCE_OUT_OF_MEMORY` | Names which memory ran out - the device's or the machine's - and the ways off it, which are not the same ways: a full device can be answered by moving the connection to the CPU, and a full machine is only made worse by it. No generic sentence can carry that. |
+| `INFERENCE_ENDPOINT_UNAVAILABLE` | Names the endpoint an `http` connection points at and what it did - unreachable, timed out, a bad status, or a body outside the contract - which is the whole remedy: look at the endpoint, not at this connection or this machine. |
 
 A **mapped** 5xx keeps its own code (`WORKSPACE_CORRUPT`, `CONSTRAINT_VIOLATED`). An exception no
 rule covers - a bug - gets `INTERNAL_ERROR`. That difference is how the two are told apart in a
@@ -587,8 +588,9 @@ argument for branching on `code`.
 | **401** | `UNAUTHORIZED` — with a `WWW-Authenticate: Bearer` challenge |
 | **404** | `PROJECT_NOT_FOUND` · `SCHEMA_NOT_FOUND` · `SCHEMA_DRAFT_NOT_FOUND` · `BATCH_NOT_FOUND` · `JOB_NOT_FOUND` · `INGEST_JOB_NOT_FOUND` · `BACKGROUND_JOB_NOT_FOUND` · `ASSET_NOT_FOUND` · `SOURCE_NOT_FOUND` · `DATASET_NOT_FOUND` · `ANNOTATION_NOT_FOUND` · `RELEASE_NOT_FOUND` · `TOKEN_NOT_FOUND` · `INFERENCE_CONNECTION_NOT_FOUND` · `ASSET_NOT_IN_JOB` · `NO_SPLIT_RECIPE` · `EXPORT_FORMAT_NOT_FOUND` · `THUMBNAIL_NOT_CACHED` · `NOT_FOUND` (no such route) |
 | **405** | `METHOD_NOT_ALLOWED` |
-| **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `TOKEN_NAME_TAKEN` · `INFERENCE_CONNECTION_NAME_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `STALE_WRITE` · `BATCH_NOT_EDITABLE` · `BATCH_IMMUTABLE` · `BATCH_NOT_IN_ANNOTATION` · `ASSET_NOT_WRITABLE` · `JOB_FINISHED` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `SCHEMA_HAS_NO_DETECTABLE_CLASS` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` · `EXPORT_SOURCE_UNREADABLE` · `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` · `INFERENCE_CONNECTION_NOT_CHECKABLE` · `WEIGHTS_DAMAGED` · `INFERENCE_CONNECTION_NOT_SET_UP` |
+| **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `TOKEN_NAME_TAKEN` · `INFERENCE_CONNECTION_NAME_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `STALE_WRITE` · `BATCH_NOT_EDITABLE` · `BATCH_IMMUTABLE` · `BATCH_NOT_IN_ANNOTATION` · `ASSET_NOT_WRITABLE` · `JOB_FINISHED` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `SCHEMA_HAS_NO_DETECTABLE_CLASS` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` · `EXPORT_SOURCE_UNREADABLE` · `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` · `INFERENCE_CONNECTION_NOT_CHECKABLE` · `INFERENCE_CONNECTION_NOT_TESTABLE` · `WEIGHTS_DAMAGED` · `INFERENCE_CONNECTION_NOT_SET_UP` |
 | **422** | `VALIDATION_ERROR` · `ASSET_NOT_IN_BATCH` · `ANNOTATION_NOT_FROM_MODEL` · `INVALID_NAME` · `INFERENCE_CONNECTION_INVALID` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` · `DUPLICATE_CLASSIFICATION_TAG` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `UNKNOWN_JOB_TYPE` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` · `UNSUPPORTED_PROMPT` · `PROMPT_POINT_OUT_OF_BOUNDS` |
+| **502** | `INFERENCE_ENDPOINT_UNAVAILABLE` |
 | **503** | `WORKSPACE_BUSY` |
 | **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `MEDIA_TOOL_UNAVAILABLE` · `LOCAL_INFERENCE_UNAVAILABLE` · `INFERENCE_CONNECTION_NOT_RUNNABLE` · `INFERENCE_OUT_OF_MEMORY` · `INTERNAL_ERROR` |
 

@@ -9,9 +9,10 @@ code.
 **Nothing in this file runs a model or contacts a configured endpoint.** The two
 operations over a snapshot — the weight download and the integrity check — are
 both queued rather than performed, answering 202 and pointing at a background
-job, the contract the export route already uses. A reachability ``test`` is
-still absent rather than stubbed, so ``allowed_actions`` does not name it and no
-client is told about a control that does not exist yet.
+job, the contract the export route already uses. ``allowed_actions`` already
+names ``test_endpoint`` for a ready ``http`` connection — its service door is
+in the kernel — but no route here answers it yet; that is a later slice of
+this same effort.
 
 The one network call made here is ``download-size``, and it reads a file
 listing rather than files: the number has to be on screen *before* somebody

@@ -271,15 +271,15 @@ def test_an_unknown_connection_is_not_found(
 
 
 def test_a_connection_declares_what_this_slice_can_perform(client: TestClient) -> None:
-    """The declared set is exactly the routes that exist, per kind.
+    """The declared set is exactly the routes that exist, per kind — `test_endpoint`
+    is the one declared action still without a route in this slice.
 
     A fresh `local` connection has weights to fetch and says so; an `http` one
-    has none of its own and never will, in any state. `test` is the action this
-    resource will still grow, and it is not declared while nothing performs it —
-    a declaration obliges every conforming client to render a control.
+    has none of its own and never will, in any state, but does have an endpoint
+    to ask.
     """
     assert created(client, LOCAL)["allowed_actions"] == ["download_weights", "update", "delete"]
-    assert created(client, HTTP)["allowed_actions"] == ["update", "delete"]
+    assert created(client, HTTP)["allowed_actions"] == ["test_endpoint", "update", "delete"]
     # `check_integrity` is absent from both, and for two different reasons —
     # the local one has no snapshot yet and the HTTP one never will.
     # The `ready` half is `test_a_ready_connection_declares_the_integrity_check`.
@@ -294,6 +294,11 @@ def test_every_declared_action_is_one_the_api_performs(
     `tests/architecture/test_capability_reachability.py` is deliberately
     batches-only — it requires an MCP tool as well as a route, and MCP is a later
     slice for this resource — so the reachability half is proved here instead.
+
+    `test_endpoint` is excluded on purpose: it is declared in this slice, in
+    the same change as the service door it calls through, but the route that
+    reaches it is a later slice of this same effort — see
+    `test_a_connection_declares_what_this_slice_can_perform`.
     """
     made = created(client, body)
     routes = {
@@ -306,8 +311,9 @@ def test_every_declared_action_is_one_the_api_performs(
         ),
         "delete": lambda: client.delete(f"/inference/connections/{made['id']}"),
     }
-    assert set(made["allowed_actions"]) <= set(routes)
-    for action in made["allowed_actions"]:
+    reachable = [action for action in made["allowed_actions"] if action != "test_endpoint"]
+    assert set(reachable) <= set(routes)
+    for action in reachable:
         response = routes[action]()
         assert response.status_code in (200, 202, 204), (action, response.text)
 

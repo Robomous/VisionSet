@@ -77,6 +77,8 @@ from visionset.kernel import (
     InferenceConnectionNotFound,
     InferenceConnectionNotRunnable,
     InferenceConnectionNotSetUp,
+    InferenceConnectionNotTestable,
+    InferenceEndpointUnavailable,
     InferenceOutOfMemory,
     IngestJobNotFound,
     InvalidAnnotation,
@@ -318,6 +320,10 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # makes the identical request succeed. Folding it into NOT_DOWNLOADABLE would
     # give a client one code for two different next steps.
     InferenceConnectionNotCheckable: ErrorRule(409, "INFERENCE_CONNECTION_NOT_CHECKABLE"),
+    # The mirror of NOT_CHECKABLE: a `local` connection has no endpoint to ask,
+    # and no state change gives it one. Its own code because the remedy — use
+    # an http connection — is nothing NOT_CHECKABLE's reader would guess.
+    InferenceConnectionNotTestable: ErrorRule(409, "INFERENCE_CONNECTION_NOT_TESTABLE"),
     # Raised by the integrity job rather than by a request, and it has a rule
     # because every declared error does — the table is total by test. 409 is the
     # honest status if a synchronous surface ever raises it: the resource is in a
@@ -376,6 +382,16 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # kind of prompt or another connection, this wants the same request with a
     # different point — and a client cannot tell them apart from a shared 422.
     PromptPointOutOfBounds: ErrorRule(422, "PROMPT_POINT_OUT_OF_BOUNDS"),
+    # --- 502: the other end did not answer the contract ---------------------
+    # The first 502 in this table, and the only honest status for it: the
+    # request was fine and this program is fine; the upstream an `http`
+    # connection names did not answer, or answered outside the contract. Not a
+    # 503 — nothing here promises a wait will help — and not a 500, because
+    # nothing on this machine is wrong. Exposed because the message names the
+    # endpoint and what it did, which is the whole remedy.
+    InferenceEndpointUnavailable: ErrorRule(
+        502, "INFERENCE_ENDPOINT_UNAVAILABLE", expose_message=True
+    ),
     # --- 503: transient, and a wait genuinely helps ------------------------
     WorkspaceBusy: ErrorRule(
         503, "WORKSPACE_BUSY", retry_after=RETRY_AFTER_SECONDS, expose_message=True
@@ -437,6 +453,7 @@ ERROR_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
     409: {"model": ErrorBody, "description": "The resource's state refuses this request"},
     422: {"model": ErrorBody, "description": "The request payload is not processable"},
     500: {"model": ErrorBody, "description": "Unhandled server error, with an incident id"},
+    502: {"model": ErrorBody, "description": "An http connection's endpoint did not answer"},
     503: {"model": ErrorBody, "description": "The workspace is busy; retry after the header says"},
 }
 """Documented responses, keyed by status.

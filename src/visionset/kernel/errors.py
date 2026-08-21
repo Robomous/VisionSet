@@ -1091,14 +1091,29 @@ class InferenceConnectionNotCheckable(VisionSetError):
     """
 
 
-class InferenceConnectionNotSetUp(VisionSetError):
-    """A local connection was asked to predict before its weights arrived.
+class InferenceConnectionNotTestable(VisionSetError):
+    """This connection has no endpoint to ask.
 
-    Genuinely change-the-state-and-resubmit, which is what separates it from
-    ``InferenceConnectionNotRunnable`` below: the state to change is real, the
-    action that changes it is ``download_weights``, and the identical request
-    succeeds afterwards. The message names that action, because "not set up" on
-    its own tells an operator what they already knew.
+    ``InferenceConnectionNotCheckable``'s mirror image: that one refuses an
+    ``http`` connection because its files are elsewhere, this one refuses a
+    ``local`` connection because its model is here and there is no endpoint to
+    put a question to. The refusal ``CONNECTION_KINDS`` describes for
+    ``test_endpoint``, raised through ``connection_actions`` rather than beside
+    it, so the declaration a client rendered and the answer a caller gets come
+    from the same table.
+    """
+
+
+class InferenceConnectionNotSetUp(VisionSetError):
+    """A connection was asked to predict before it was set up.
+
+    A local one before its weights arrived; an http one before anything asked
+    its endpoint what it answers. Genuinely change-the-state-and-resubmit, which
+    is what separates it from ``InferenceConnectionNotRunnable`` below: the
+    state to change is real, the action that changes it is ``download_weights``
+    or ``test_endpoint``, and the identical request succeeds afterwards. The
+    message names that action, because "not set up" on its own tells an
+    operator what they already knew.
     """
 
 
@@ -1107,12 +1122,11 @@ class InferenceConnectionNotRunnable(VisionSetError):
 
     The ``MediaToolUnavailable`` reading, one layer up: this answers "what is
     missing from this software?" rather than "what is wrong with this
-    connection?". An ``http`` connection is perfectly well formed and perfectly
-    unusable here, because the adapter that would speak to an endpoint is a
-    later slice — and no amount of editing the row, waiting, or retrying changes
-    that. It is deliberately **not** a sibling of
-    ``InferenceConnectionNotSetUp``: one is a state a user can leave, the other
-    is a version of this program they do not have.
+    connection?". A model family no installed driver serves, a recorded driver
+    that is not installed or does not serve what the model declares — no amount
+    of editing the row, waiting, or retrying changes that. It is deliberately
+    **not** a sibling of ``InferenceConnectionNotSetUp``: one is a state a user
+    can leave, the other is a version of this program they do not have.
 
     The message carries what a reader can act on, which is the kind that was
     asked for and the fact that this build has no adapter for it.
@@ -1167,6 +1181,20 @@ class InferenceOutOfMemory(VisionSetError):
     ``visionset.inference``, for the reason ``LocalInferenceUnavailable``'s
     command does: the kernel does not know what ran where, only that something
     outside it could not fit.
+    """
+
+
+class InferenceEndpointUnavailable(VisionSetError):
+    """An ``http`` connection's endpoint did not answer the contract.
+
+    Unreachable, timed out, a status outside 2xx, or a body this build cannot
+    read as the contract — one class, because every reading has the same
+    remedy: look at the endpoint, not at this connection or this machine. The
+    message names the endpoint and what happened, and it is the whole story:
+    a surface has nothing to add to it. Not a sibling of
+    ``InferenceConnectionNotRunnable`` (this software *can* run it, the other
+    end did not answer) nor of ``LocalInferenceUnavailable`` (nothing is
+    missing from this installation).
     """
 
 

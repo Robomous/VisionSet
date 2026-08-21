@@ -58,6 +58,7 @@ from visionset.kernel.errors import (
     InferenceConnectionNotCheckable,
     InferenceConnectionNotDownloadable,
     InferenceConnectionNotFound,
+    InferenceConnectionNotTestable,
 )
 from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services.workspace_service import WorkspaceService
@@ -195,7 +196,9 @@ class InferenceConnectionService:
         from the caller, because it is a fact about what the kind needs: a
         ``local`` connection is born ``not_set_up`` because its weights are not
         here yet, and an ``http`` one is born ``ready`` because there is nothing
-        to set up locally at all. Whether that endpoint *answers* is a different
+        to set up locally at all. Whether it has *declared* what it answers is a
+        separate fact, carried by ``model_family`` and written by
+        ``test_endpoint``. Whether that endpoint *answers* is a different
         question with a fresh answer every time it is asked — see
         ``ConnectionSetupState``.
 
@@ -253,6 +256,10 @@ class InferenceConnectionService:
         previous reference's. Fetching the weights again is the remedy, and it is
         already among the actions such a connection offers. A field that arrives
         holding the value it already had is not a move.
+
+        Pointing an ``http`` connection at a different endpoint forgets what the
+        previous one declared, for the same reason; asking the new one is the
+        remedy and is already among its actions.
 
         The kind is deliberately not editable. Changing ``local`` to ``http``
         would empty every parameter the row carries and keep only its name, which
@@ -313,6 +320,11 @@ class InferenceConnectionService:
                         changes["provider_id"] = None
                     if current.connection_type in WEIGHT_HOLDING_TYPES:
                         changes["setup_state"] = ConnectionSetupState.NOT_SET_UP
+                # The endpoint is the http row's model: what the old one declared
+                # says nothing about the new one. The driver stays — it still
+                # speaks the contract, whoever is on the other end.
+                if "endpoint_url" in changes and changes["endpoint_url"] != current.endpoint_url:
+                    changes["model_family"] = None
                 # Rebuilt rather than mutated, so the cross-field rule runs on the
                 # result: ``model_copy`` does not validate, which is the whole
                 # reason ``Source`` had to turn on ``validate_assignment``.
@@ -399,6 +411,27 @@ class InferenceConnectionService:
         Raises:
             InferenceConnectionNotFound: no such connection in this workspace.
         """
+        return self._record_ready(connection_id, model_family=model_family, provider_id=provider_id)
+
+    def record_endpoint_answer(
+        self, connection_id: UUID, *, model_family: str, provider_id: str
+    ) -> InferenceConnection:
+        """Record what an ``http`` connection's endpoint said it answers.
+
+        ``record_weights_ready``'s twin for the kind with no weights: the family
+        is the capability the endpoint declared, recorded verbatim by the caller
+        that asked it, and the provider is the driver that asked. Idempotent the
+        same way — re-asking an endpoint that says the same thing is not an
+        edit. ``setup_state`` is already ``ready`` for this kind and stays so.
+
+        Raises:
+            InferenceConnectionNotFound: no such connection in this workspace.
+        """
+        return self._record_ready(connection_id, model_family=model_family, provider_id=provider_id)
+
+    def _record_ready(
+        self, connection_id: UUID, *, model_family: str | None, provider_id: str | None
+    ) -> InferenceConnection:
         with self._workspace.unit_of_work() as uow:
             current = self.require_connection(uow, connection_id)
             changes: dict[str, object] = {"setup_state": ConnectionSetupState.READY}
@@ -438,6 +471,29 @@ class InferenceConnectionService:
         ):
             return connection
         raise InferenceConnectionNotCheckable(_why_not_checkable(connection))
+
+    def require_endpoint_testable(self, connection_id: UUID) -> InferenceConnection:
+        """The connection, if it has an endpoint to ask.
+
+        ``require_checkable``'s construction, derived from ``connection_actions``
+        rather than from a second reading of the tables, so ``allowed_actions``
+        and this refusal cannot disagree about which kind may be asked.
+
+        Raises:
+            InferenceConnectionNotFound: no such connection in this workspace.
+            InferenceConnectionNotTestable: its model runs here; there is no
+                endpoint.
+        """
+        with self._workspace.unit_of_work() as uow:
+            connection = self.require_connection(uow, connection_id)
+        if ConnectionAction.TEST_ENDPOINT in connection_actions(
+            connection.setup_state, connection_type=connection.connection_type
+        ):
+            return connection
+        raise InferenceConnectionNotTestable(
+            f"connection {connection.name!r} is a {connection.connection_type.value} connection; "
+            "its model runs here, so there is no endpoint to ask"
+        )
 
     def record_weights_missing(self, connection_id: UUID) -> InferenceConnection:
         """Mark the weights gone. Called **after** they are, never before.

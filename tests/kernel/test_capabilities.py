@@ -41,6 +41,7 @@ from visionset.kernel import (
     BatchNotInAnnotation,
     InferenceConnectionNotCheckable,
     InferenceConnectionNotDownloadable,
+    InferenceConnectionNotTestable,
     InvalidTransition,
     JobFinished,
     JobNotComplete,
@@ -55,6 +56,7 @@ from visionset.kernel.domain import (
     CONNECTION_GATES,
     CONNECTION_KINDS,
     DELETABLE_STATES,
+    ENDPOINT_TYPES,
     EVERY_CONNECTION_TYPE,
     EVERY_SETUP_STATE,
     JOB_MOVES,
@@ -889,9 +891,13 @@ def _invoke_connection(
     def check_integrity() -> None:
         assert connections.require_checkable(connection_id).id == connection_id
 
+    def test_endpoint() -> None:
+        assert connections.require_endpoint_testable(connection_id).id == connection_id
+
     return {
         ConnectionAction.DOWNLOAD_WEIGHTS: download_weights,
         ConnectionAction.CHECK_INTEGRITY: check_integrity,
+        ConnectionAction.TEST_ENDPOINT: test_endpoint,
         ConnectionAction.UPDATE: update,
         ConnectionAction.DELETE: delete,
     }[action]
@@ -903,9 +909,9 @@ def _refuse_connection(
     """The same call for an action that is *not* declared, where one exists.
 
     The strong half of the capability claim — an undeclared action is refused —
-    and it is assertable for the two weight actions, because `update` and
-    `delete` are declared everywhere and so have no undeclared square to be
-    refused in.
+    and it is assertable for the two weight actions and the endpoint one,
+    because `update` and `delete` are declared everywhere and so have no
+    undeclared square to be refused in.
 
     `check_integrity` has the most undeclared squares of anything here:
     it is the first connection action narrow in *state* as well as in kind, so
@@ -926,6 +932,14 @@ def _refuse_connection(
                 connections.require_checkable(connection_id)
 
         return refused_check
+
+    if action is ConnectionAction.TEST_ENDPOINT:
+
+        def refused_test() -> None:
+            with pytest.raises(InferenceConnectionNotTestable):
+                connections.require_endpoint_testable(connection_id)
+
+        return refused_test
 
     return None
 
@@ -991,11 +1005,15 @@ def test_a_connections_declaration_is_read_from_the_kernels_own_gate() -> None:
     assert {ConnectionSetupState.READY} == CHECKABLE_STATES
 
     weight_actions = {ConnectionAction.DOWNLOAD_WEIGHTS, ConnectionAction.CHECK_INTEGRITY}
-    for action in set(ConnectionAction) - weight_actions:
+    endpoint_actions = {ConnectionAction.TEST_ENDPOINT}
+    for action in set(ConnectionAction) - weight_actions - endpoint_actions:
         assert CONNECTION_KINDS[action] is EVERY_CONNECTION_TYPE
     for action in weight_actions:
         assert CONNECTION_KINDS[action] is WEIGHT_HOLDING_TYPES
+    for action in endpoint_actions:
+        assert CONNECTION_KINDS[action] is ENDPOINT_TYPES
     assert {ConnectionType.LOCAL} == WEIGHT_HOLDING_TYPES
+    assert {ConnectionType.HTTP} == ENDPOINT_TYPES
 
     for kind in ConnectionType:
         for state in ConnectionSetupState:
@@ -1029,7 +1047,7 @@ def test_download_weights_is_declared_on_both_local_squares_and_no_others() -> N
 
 
 def test_the_actions_a_connection_cannot_yet_be_asked_for_are_not_declared() -> None:
-    """`test` is absent until something performs it.
+    """Nothing here is undeclared by accident.
 
     The rule stated as a test: a declared action obliges every client to
     offer it, so naming one before its surface exists makes the wire the source
@@ -1038,14 +1056,19 @@ def test_the_actions_a_connection_cannot_yet_be_asked_for_are_not_declared() -> 
     which is the condition a withdrawn member returns under, and the shape
     used to bring one back.
 
-    This fails the moment somebody adds the remaining name without the slice
-    behind it. `check_integrity` joined it deliberately, in the same
-    change as its route, its command, its job and its menu item — the set is
-    updated by hand precisely so that arriving here is a decision.
+    This fails the moment somebody adds a name without the slice behind it.
+    `check_integrity` joined deliberately, in the same change as its route,
+    its command, its job and its menu item. `test_endpoint` joined the same
+    way one action later, in the same change as the service door it calls
+    through (`require_endpoint_testable`, `record_endpoint_answer`) — the
+    route and the CLI/MCP surfaces that reach it are a later slice of this
+    same effort. The set is updated by hand precisely so that arriving here
+    is a decision.
     """
     assert {a.value for a in ConnectionAction} == {
         "download_weights",
         "check_integrity",
+        "test_endpoint",
         "update",
         "delete",
     }
