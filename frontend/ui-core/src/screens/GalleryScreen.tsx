@@ -878,7 +878,7 @@ function BatchHeader({
  */
 function JobsStrip({ batchId }: { readonly batchId: string }): JSX.Element | null {
   const jobs = useBatchJobs(batchId);
-  if (jobs.isError) return <FieldError>{jobs.error.message}</FieldError>;
+  if (jobs.isError) return <FieldError>{refusalProse(jobs.error)}</FieldError>;
   if (jobs.data === undefined || jobs.data.items.length === 0) return null;
   return (
     <section
@@ -973,7 +973,7 @@ function JobRow({
           <X className="size-4" aria-hidden="true" />
         </button>
       )}
-      {assign.isError && <FieldError>{assign.error.message}</FieldError>}
+      {assign.isError && <FieldError>{refusalProse(assign.error)}</FieldError>}
     </div>
   );
 }

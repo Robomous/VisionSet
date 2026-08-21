@@ -224,6 +224,22 @@ describe("the Overview panel", () => {
     expect(container.querySelectorAll(".grid").length).toBe(gridsWhileLoading);
   });
 
+  it("says a missing project in words, not as an identifier", async () => {
+    on("GET", /\/stats$/, {
+      status: 404,
+      body: {
+        code: "PROJECT_NOT_FOUND",
+        message: `project ${PROJECT} not found in workspace /tmp/ws`,
+      },
+    });
+    render(mount(<OverviewPanel projectId={PROJECT} />));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("That project is no longer on record.");
+    expect(alert.textContent).not.toContain(PROJECT);
+    expect(alert.textContent).not.toContain("workspace");
+  });
+
   it("shows the four counts, formatted", async () => {
     serve(statsOf());
     render(mount(<OverviewPanel projectId={PROJECT} />));

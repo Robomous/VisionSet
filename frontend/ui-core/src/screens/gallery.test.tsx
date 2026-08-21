@@ -1920,6 +1920,46 @@ describe("the jobs strip", () => {
     expect(strip.getByRole("button", { name: "Assign" })).toBeTruthy();
   });
 
+  it("says a missing batch in words when the jobs cannot be read", async () => {
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === `/batches/${BATCH}/jobs`)
+        return {
+          status: 404,
+          body: {
+            code: "BATCH_NOT_FOUND",
+            message: `batch ${BATCH} not found in workspace /tmp/ws`,
+          },
+        };
+      return undefined;
+    });
+    renderGallery();
+    const said = await screen.findByText("That batch is no longer on record.");
+    expect(said.textContent).not.toContain(BATCH);
+    expect(said.textContent).not.toContain("BATCH_NOT_FOUND");
+  });
+
+  it("says a missing job in words when assigning is refused", async () => {
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === `/batches/${BATCH}/jobs`)
+        return { status: 200, body: { items: [jobRow(null)], total: 1 } };
+      if (request.method === "PUT" && url.pathname === `/jobs/${JOB}/assignee`)
+        return {
+          status: 404,
+          body: { code: "JOB_NOT_FOUND", message: `job ${JOB} not found in workspace /tmp/ws` },
+        };
+      return undefined;
+    });
+    renderGallery();
+    const strip = within(await screen.findByTestId("jobs-strip"));
+    await userEvent.click(strip.getByRole("button", { name: /assign/i }));
+    await userEvent.keyboard("Dana Reyes{Enter}");
+    const said = await strip.findByText("That job is no longer on record.");
+    expect(said.textContent).not.toContain(JOB);
+    expect(said.textContent).not.toContain("JOB_NOT_FOUND");
+  });
+
   it("assigning sends the PUT and refetches the list", async () => {
     let assigned = false;
     handlers.push((request) => {

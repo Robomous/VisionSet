@@ -766,6 +766,27 @@ it("keeps the local form usable when the size cannot be read, and quotes the ref
   expect((screen.getByTestId("connection-submit") as HTMLButtonElement).disabled).toBe(false);
 });
 
+it("keeps the install command while dropping the code badge", async () => {
+  listing([]);
+  catalog();
+  on("GET", /^\/inference\/download-size$/, {
+    status: 500,
+    body: {
+      code: "LOCAL_INFERENCE_UNAVAILABLE",
+      message:
+        'running a model locally needs the local-inference extra. Install it with: pip install "visionset[local-inference]"',
+    },
+  });
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-local"));
+  const shown = await screen.findByTestId("size-unavailable");
+  // Withheld from REFUSAL_PROSE on purpose: the message carries its own remedy,
+  // and a mapped sentence would delete the one actionable thing it says.
+  expect(shown.textContent).toContain('pip install "visionset[local-inference]"');
+  expect(shown.textContent).not.toContain("LOCAL_INFERENCE_UNAVAILABLE");
+});
+
 it("asks for no size at all for an http connection", async () => {
   listing([]);
   catalog();
@@ -823,6 +844,30 @@ it("keeps what was typed when a create is refused", async () => {
   await userEvent.click(screen.getByTestId("connection-submit"));
   expect((await screen.findByTestId("connection-error")).textContent).toContain("That name is taken.");
   expect(value(screen.getByTestId("connection-name"))).toBe("remote");
+});
+
+it("says a taken connection name in words, not as an identifier", async () => {
+  listing([]);
+  catalog();
+  on("POST", /^\/inference\/connections$/, {
+    status: 409,
+    body: {
+      code: "INFERENCE_CONNECTION_NAME_TAKEN",
+      message: "inference connection 'remote' already exists in workspace /tmp/ws",
+    },
+  });
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-http"));
+  await userEvent.type(await screen.findByTestId("connection-name"), "remote");
+  await userEvent.type(screen.getByTestId("connection-custom-model"), "some/model");
+  await userEvent.type(screen.getByTestId("connection-revision"), "abc123");
+  await userEvent.type(screen.getByTestId("connection-endpoint"), "https://example.invalid");
+  await userEvent.click(screen.getByTestId("connection-submit"));
+  const shown = await screen.findByTestId("connection-error");
+  expect(shown.textContent).toContain("A model connection with that name already exists.");
+  expect(shown.textContent).not.toContain("INFERENCE_CONNECTION_NAME_TAKEN");
+  expect(shown.textContent).not.toContain("workspace");
 });
 
 it("has no credential field, because where a secret lives is still open", async () => {
@@ -1791,17 +1836,23 @@ it("states the blast radius of a delete accurately", async () => {
   expect(await screen.findByText("Annotations keep their model provenance; only this configuration is removed.")).not.toBeNull();
 });
 
-it("renders a refused delete rather than closing over it", async () => {
+it("renders a refused delete in words, not as an identifier", async () => {
   listing([connection()]);
   on("DELETE", /\/inference\/connections\//, {
     status: 404,
-    body: { code: "INFERENCE_CONNECTION_NOT_FOUND", message: "It is already gone." },
+    body: {
+      code: "INFERENCE_CONNECTION_NOT_FOUND",
+      message: "inference connection 99999999-9999-4999-8999-999999999999 not found in workspace /tmp/ws",
+    },
   });
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-delete"));
   await userEvent.click(await screen.findByTestId("delete-connection-submit"));
-  expect((await screen.findByTestId("delete-connection-error")).textContent).toContain("It is already gone.");
+  const shown = await screen.findByTestId("delete-connection-error");
+  expect(shown.textContent).toContain("That model connection is no longer on record.");
+  expect(shown.textContent).not.toContain("INFERENCE_CONNECTION_NOT_FOUND");
+  expect(shown.textContent).not.toContain("workspace");
 });
 
 // --- the number itself ----------------------------------------------------------

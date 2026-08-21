@@ -1195,10 +1195,7 @@ function ConnectionForm({
               </>
             )}
             {failure !== null && (
-              <FieldError data-testid="connection-error">
-                <Badge variant="destructive">{asApiError(failure).code}</Badge>{" "}
-                {asApiError(failure).message}
-              </FieldError>
+              <FieldError data-testid="connection-error">{refusalProse(failure)}</FieldError>
             )}
             <DialogFooter>
               <Button variant="secondary" onClick={onClose}>
@@ -1295,10 +1292,9 @@ function DownloadSizeLine({
     );
   }
   if (size.isError) {
-    const failure = asApiError(size.error);
     return (
       <p className="text-xs text-muted-foreground" data-testid="size-unavailable">
-        <Badge variant="warning">{failure.code}</Badge> {failure.message}
+        {refusalProse(size.error)}
       </p>
     );
   }
@@ -1367,8 +1363,7 @@ function DeleteConnectionDialog({
         </DialogDescription>
         {remove.isError && (
           <FieldError data-testid="delete-connection-error">
-            <Badge variant="destructive">{asApiError(remove.error).code}</Badge>{" "}
-            {asApiError(remove.error).message}
+            {refusalProse(remove.error)}
           </FieldError>
         )}
         <DialogFooter>
