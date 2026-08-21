@@ -241,7 +241,9 @@ about whichever case it had not been written for.
 One asset reads differently, and the rule still reads the asset: an asset whose every label is
 a model's — whatever an earlier batch made of them — opens `pre_labeled`, because a second batch
 must not be the thing that turns unreviewed predictions promotable. Provenance is the whole
-question here; what an earlier round's progress said about the frame is not read at all.
+question here; what an earlier round's progress said about the frame is not read at all. A frame
+confirmed in one batch therefore opens `pre_labeled` in a later one cut over it, and is
+confirmed again there.
 
 The honest consequence: `annotated` is in `SETTLED_PROGRESS`, so **a correction whose every
 asset seeded `annotated` can be completed with no edits at all**. That is the intended reading -
