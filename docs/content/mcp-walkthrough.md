@@ -278,7 +278,7 @@ opens for someone who knows the room has two sizes.
 So the default stays the preview. Flipping it to full resolution would make every browse, every
 triage pass and every look-before-skipping cost an original-sized image, to serve a case where
 agents already opt in unprompted. The mechanism is doing its job by making the choice available,
-which is a different claim from the one `docs/mcp.md` used to make, and the honest one.
+which is a different claim from the one `docs/content/mcp.md` used to make, and the honest one.
 
 ## `retry_with`: the un-retryable refusal was hit four times out of four, and nothing looped
 

@@ -59,7 +59,7 @@ a job type, which is why `UnknownJobType` is raised outside the kernel.
 
 ## Related
 
-[`docs/background-jobs.md`](../../background-jobs.md) is the executor itself: the
+[`docs/content/background-jobs.md`](../../background-jobs.md) is the executor itself: the
 `JobQueue` port, the SQLite queue, the dispatcher, and the handler contract. It is
-a different thing from [`docs/jobs.md`](../../jobs.md), which is *human* annotation
+a different thing from [`docs/content/jobs.md`](../../jobs.md), which is *human* annotation
 work.

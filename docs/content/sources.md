@@ -92,7 +92,7 @@ ffmpeg, because the fresh probe is what keeps the record honest.
 
 ### The gap this left, and how it was closed
 
-This rule shipped without a backstop, which `docs/persistence.md` calls a wish: two concurrent
+This rule shipped without a backstop, which `docs/content/persistence.md` calls a wish: two concurrent
 registrations of one folder could both pass the pre-check and both insert. It was tolerable only
 because nothing referenced a source, so a duplicate was inert - and [ingest](ingest.md) ended
 that, by giving `asset.source_id` a target and letting the winner of a race decide an asset's

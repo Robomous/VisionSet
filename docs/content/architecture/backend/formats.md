@@ -68,5 +68,5 @@ cannot be added and quietly skipped.
 
 ## Related
 
-[`docs/releases.md`](../../releases.md) covers the artifact being exported.
+[`docs/content/releases.md`](../../releases.md) covers the artifact being exported.
 `ReleaseService`'s own docstring covers the consent gate.

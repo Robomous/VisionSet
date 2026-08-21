@@ -2,8 +2,8 @@
 
 The UX contract for the one screen somebody sits in for an hour. The data flow behind it —
 queries, saving, review moves, the suggest tool's server side — is
-[`docs/ui.md`](../ui.md); the kernel's rules for the labels themselves are
-[`docs/annotations.md`](../annotations.md); the visual foundations are
+[`docs/content/ui.md`](../ui.md); the kernel's rules for the labels themselves are
+[`docs/content/annotations.md`](../annotations.md); the visual foundations are
 [`DESIGN.md`](../../../DESIGN.md). This page describes the workspace as the current
 implementation renders it, using the current implementation's token names.
 
@@ -269,7 +269,7 @@ one class, neither of which anybody watched happen. Cancelling with classes bank
 so closing loses exactly what was typed and nothing else. The save-then-publish-then-repin
 order, the `canRepin` preflight that says *before* the press when a completed batch will
 keep its version, and the refusal that names the Schema tab are all described in
-[`docs/ui.md`](../ui.md).
+[`docs/content/ui.md`](../ui.md).
 
 **Version history grouping.** The project's Schema tab ends in a ledger of every version,
 and the annotator publishes versions too, so consecutive versions whose `provenance` is
@@ -306,7 +306,7 @@ control that vanished and reappeared as they worked would be worse than one that
 itself.
 
 The geometries with no tool behind them, `aria-disabled` rather than `disabled`, and the
-suggest tool's whole flow are in [`docs/ui.md`](../ui.md).
+suggest tool's whole flow are in [`docs/content/ui.md`](../ui.md).
 
 ## The frame gallery
 

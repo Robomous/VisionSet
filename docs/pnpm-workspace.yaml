@@ -2,7 +2,7 @@
 #
 # pnpm resolves a workspace by walking up from the working directory to the nearest
 # `pnpm-workspace.yaml`. Without this one it would find the repository's, whose
-# `packages:` list is `frontend/*` — so `docs-site` would be a directory inside a
+# `packages:` list is `frontend/*` — so `docs` would be a directory inside a
 # workspace that does not claim it, which pnpm refuses to install from.
 #
 # Making it a member instead was the alternative, and it was rejected for what it

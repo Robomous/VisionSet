@@ -61,7 +61,7 @@ with what?*, and `RETRY_WITH` in
 
 ## Two generated artifacts
 
-- [`docs/mcp-tools.md`](../../mcp-tools.md) is written from the tool listing the
+- [`docs/content/mcp-tools.md`](../../mcp-tools.md) is written from the tool listing the
   server actually advertises, by `scripts/export_mcp_tools.py`. A hand-written
   reference would be a second copy of an interface an agent reads verbatim.
 - [`tests/architecture/test_capability_reachability.py`](../../../../tests/architecture/test_capability_reachability.py)
@@ -70,6 +70,6 @@ with what?*, and `RETRY_WITH` in
 
 ## Related
 
-[`docs/mcp.md`](../../mcp.md) is the surface itself - every tool and what it is
+[`docs/content/mcp.md`](../../mcp.md) is the surface itself - every tool and what it is
 for, the coordinate-frame rule, the three gate words, and the stated limits.
-[`docs/mcp-walkthrough.md`](../../mcp-walkthrough.md) is a session start to finish.
+[`docs/content/mcp-walkthrough.md`](../../mcp-walkthrough.md) is a session start to finish.

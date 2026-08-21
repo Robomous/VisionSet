@@ -89,7 +89,7 @@ a launch that answered "accepted" and only discovered in a worker that the job w
 `completed` would give nobody a way to tell a redo from a no-op.
 
 Nothing here decides *when* the second half runs. That is deliberately not the kernel's
-business: the API queues the work on the embedded executor (`docs/background-jobs.md`), the CLI
+business: the API queues the work on the embedded executor (`docs/content/background-jobs.md`), the CLI
 just calls `ingest`, and neither arrangement is visible in this module.
 
 **An ingest therefore has two rows**: the `ingest_job` this document is about, which is the

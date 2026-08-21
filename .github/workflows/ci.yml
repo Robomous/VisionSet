@@ -694,7 +694,7 @@ jobs:
   # deliberately serialized work — one worker, no retries, because a benchmark
   # sharing a runner with itself is not measuring anything.
   #
-  # The recorded baseline lives in `docs/annotations.md` and was taken on a
+  # The recorded baseline lives in `docs/content/annotations.md` and was taken on a
   # developer machine, which is what the acceptance criterion asks for. A run here
   # answers a different question — "did this change make it worse on the same
   # hardware as last time" — so compare a dispatch against a dispatch, never

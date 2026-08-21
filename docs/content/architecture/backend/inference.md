@@ -340,6 +340,6 @@ the test that holds it names the configs it was read from.
 [`providers.md`](providers.md) is what a driver declares, how it registers, the
 version pin it must carry, and the conformance suite it has to pass.
 
-[`docs/inference.md`](../../inference.md) is the surface: the connections, why
+[`docs/content/inference.md`](../../inference.md) is the surface: the connections, why
 nothing is downloaded on your behalf, the two kinds, why the revision is pinned,
 and where weights land.

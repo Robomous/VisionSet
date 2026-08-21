@@ -112,7 +112,7 @@ Do not add a library for a covered concern without a documented reason.
 ## Related
 
 [`DESIGN.md`](../../../../DESIGN.md) is the contract this package implements.
-[`docs/ui.md`](../../ui.md) covers the data shell. The
+[`docs/content/ui.md`](../../ui.md) covers the data shell. The
 [`ui-capabilities`](../../../../.agents/skills/frontend/ui-capabilities/SKILL.md)
 skill governs any state-gated control, and
 [`information-architecture`](../../../../.agents/skills/frontend/information-architecture/SKILL.md)

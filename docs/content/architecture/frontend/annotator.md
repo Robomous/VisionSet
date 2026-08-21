@@ -78,7 +78,7 @@ thing an embedder had to fight.
 
 ## Related
 
-[`docs/annotations.md`](../../annotations.md) covers the behaviour - the tools,
+[`docs/content/annotations.md`](../../annotations.md) covers the behaviour - the tools,
 the shortcut table, the ceiling on zoom. The
 [`annotator-core`](../../../../.agents/skills/frontend/annotator-core/SKILL.md) skill
 is the one to read before touching interaction, geometry or a render adapter.

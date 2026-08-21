@@ -46,6 +46,6 @@ traceback.
 
 ## Related
 
-[`docs/cli.md`](../../cli.md) is the command reference: the whole cycle as a
+[`docs/content/cli.md`](../../cli.md) is the command reference: the whole cycle as a
 script, what `--json` promises, why `--workspace` follows the subcommand, and what
 `visionset init` and `visionset server` each do.

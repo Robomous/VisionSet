@@ -4,7 +4,7 @@
  * `tests/scripts/docs_links.test.mjs` already holds every link in `content/` to a file
  * and a heading that exist. This is the other half, and neither covers it: that gate
  * reads the Markdown *before* `sync-docs.mjs` rewrites it, so a rewrite that turns a
- * good `../CONTRIBUTING.md` into a URL pointing nowhere passes it untouched. What is
+ * good `../../CONTRIBUTING.md` into a URL pointing nowhere passes it untouched. What is
  * checked here is what a reader actually clicks.
  *
  * It runs over `dist/`, after `astro build`, for the same reason: the mapping from

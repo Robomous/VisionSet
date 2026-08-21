@@ -5,7 +5,7 @@
 ```bash
 uv sync                        # Python 3.12+, installs the package editable + dev tools
 pnpm install                   # pnpm workspace under frontend/
-pnpm --dir docs install   # optional: the documentation site (its own workspace)
+pnpm --dir docs install        # optional: the documentation site (its own workspace)
 bash scripts/setup_agents.sh   # optional: expose .agents/skills/ to coding agents
 ```
 
@@ -310,9 +310,9 @@ automatically before every dev, build and preview — there is no sync step to r
 
 ```bash
 docker compose -f docker/compose.yaml up docs   # http://localhost:4321, nothing installed
-pnpm --dir docs install                    # or run it directly: its own workspace root
-pnpm --dir docs dev                        # http://localhost:4321
-pnpm --dir docs build                      # static output in docs/dist/
+pnpm --dir docs install                         # or run it directly: its own workspace root
+pnpm --dir docs dev                             # http://localhost:4321
+pnpm --dir docs build                           # static output in docs/dist/
 ```
 
 Either way, editing a file under `docs/content/` reloads the page.
