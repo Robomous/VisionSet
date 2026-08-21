@@ -22,6 +22,7 @@ landing them together is how that gets documented once instead of twice.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict
 from typing import Annotated, Final
 from uuid import UUID
@@ -81,6 +82,13 @@ def project_list(
         note(f"No projects in {root}.")
 
 
+def _progress_note(batch_name: str) -> Callable[[int, int], None]:
+    def report(done: int, total: int) -> None:
+        note(f"Pre-labeling {batch_name!r} {done}/{total} asset(s).")
+
+    return report
+
+
 @project_app.command("pre-label")
 def project_pre_label(
     project: Annotated[str, typer.Argument(help="The project, by name or by id.")],
@@ -125,9 +133,7 @@ def project_pre_label(
                 connection_id=connection_id,
                 minimum_confidence=minimum_confidence,
                 on_plan=announce_plan,
-                on_progress=lambda done, total, name=one.name: note(
-                    f"Pre-labeling {name!r} {done}/{total} asset(s)."
-                ),
+                on_progress=_progress_note(one.name),
             )
             outcomes.append((one, outcome))
     written = sum(outcome.annotations_written for _, outcome in outcomes)
