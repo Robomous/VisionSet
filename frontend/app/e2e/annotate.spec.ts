@@ -12,7 +12,7 @@
  */
 
 import { expect, test, type Page, type Request } from "@playwright/test";
-import { assetActions, batchActions, jobActions } from "./_wire";
+import { assetActions, batchActions, jobActions, type Wire } from "./_wire";
 import {
   closeOverflow,
   expectNothingToSave,
@@ -37,14 +37,14 @@ const SCHEMA = {
     // the shortcut-sheet scenario below counts.
     { name: "pedestrian", geometries: ["bbox"], color: "#22c55e", attributes: [] },
   ],
-};
+} satisfies Wire["SchemaVersionOut"];
 
 function asset(
   index: number,
-  progress: string,
-  batchState = "in_annotation",
-  jobState = "in_progress",
-): Record<string, unknown> {
+  progress: Wire["AssetProgress"],
+  batchState: Wire["BatchState"] = "in_annotation",
+  jobState: Wire["AnnotationJobState"] = "in_progress",
+): Wire["BatchAssetOut"] {
   return {
     id: `asset-${index}`,
     project_id: PROJECT,
@@ -86,7 +86,9 @@ const PIXEL = Buffer.from(
  * keeps answering the old value is exactly the state the defect looked like from
  * the user's side, and a static stub would reproduce the bug rather than the fix.
  */
-function progressStore(seed: Readonly<Record<string, string>>): Map<string, string> {
+function progressStore(
+  seed: Readonly<Record<string, Wire["AssetProgress"]>>,
+): Map<string, Wire["AssetProgress"]> {
   return new Map(Object.entries(seed));
 }
 
@@ -99,8 +101,8 @@ function progressStore(seed: Readonly<Record<string, string>>): Map<string, stri
  * the fix.
  */
 interface Lifecycle {
-  batch: string;
-  job: string;
+  batch: Wire["BatchState"];
+  job: Wire["AnnotationJobState"];
   /** When set, `POST /batches/{id}/start` refuses 409 with this code instead. */
   refuseBatchStart?: string;
   /**
@@ -150,19 +152,22 @@ interface SchemaSize {
   readonly classes?: number;
 }
 
-function schemaOfSize(size: SchemaSize | undefined): typeof SCHEMA {
+function schemaOfSize(size: SchemaSize | undefined): Wire["SchemaVersionOut"] {
   const want = size?.classes ?? SCHEMA.classes.length;
   if (want <= SCHEMA.classes.length) return SCHEMA;
   return {
     ...SCHEMA,
     classes: [
       ...SCHEMA.classes,
-      ...Array.from({ length: want - SCHEMA.classes.length }, (_unused, index) => ({
-        name: `filler-${index + 1}`,
-        geometries: ["bbox"],
-        color: "#94a3b8",
-        attributes: [],
-      })),
+      ...Array.from(
+        { length: want - SCHEMA.classes.length },
+        (_unused, index): Wire["SchemaVersionOut"]["classes"][number] => ({
+          name: `filler-${index + 1}`,
+          geometries: ["bbox"],
+          color: "#94a3b8",
+          attributes: [],
+        }),
+      ),
     ],
   };
 }
@@ -191,19 +196,22 @@ const READY_SAM = {
   integrity_check: null,
   created_at: "2026-08-08T00:00:00Z",
   updated_at: "2026-08-08T00:00:00Z",
-};
+} satisfies Wire["ConnectionOut"];
 
 async function serveApi(
   page: Page,
   sent: Request[],
-  progress: Map<string, string> = progressStore({ "asset-1": "unannotated", "asset-2": "annotated" }),
+  progress: Map<string, Wire["AssetProgress"]> = progressStore({
+    "asset-1": "unannotated",
+    "asset-2": "annotated",
+  }),
   lifecycle: Lifecycle = openedWorld(),
   size?: SchemaSize,
-  seeded: readonly Record<string, unknown>[] = [],
+  seeded: readonly Wire["AnnotationOut"][] = [],
   suggestible = false,
 ): Promise<void> {
-  const stored: Record<string, unknown>[] = [...seeded];
-  const batchBody = (): Record<string, unknown> => ({
+  const stored: Wire["AnnotationOut"][] = [...seeded];
+  const batchBody = (): Wire["BatchOut"] => ({
     id: BATCH,
     project_id: PROJECT,
     name: "drive-01",
@@ -224,7 +232,7 @@ async function serveApi(
       total: 2,
     },
   });
-  const jobBody = (): Record<string, unknown> => ({
+  const jobBody = (): Wire["JobOut"] => ({
     id: JOB,
     batch_id: BATCH,
     state: lifecycle.job,
@@ -291,7 +299,7 @@ async function serveApi(
             asset(2, progress.get("asset-2") ?? "annotated", lifecycle.batch, lifecycle.job),
           ],
           total: 2,
-        },
+        } satisfies Wire["BatchAssetPage"],
       });
     }
     if (path.endsWith("/annotations") && request.method() === "GET") {
@@ -303,7 +311,9 @@ async function serveApi(
       // Cross-frame paste is what walks that path.
       const assetId = path.split("/").at(-2) ?? "";
       const mine = stored.filter((one) => one.asset_id === assetId);
-      return route.fulfill({ json: { items: mine, total: mine.length } });
+      return route.fulfill({
+        json: { items: mine, total: mine.length } satisfies Wire["AnnotationPage"],
+      });
     }
     if (path.endsWith("/annotations") && request.method() !== "GET" && lifecycle.refuseSave !== undefined) {
       return route.fulfill({ status: 409, json: lifecycle.refuseSave });
@@ -313,7 +323,7 @@ async function serveApi(
       // refetches to learn them (`jobQueries.ts`). A stub that answered an empty
       // list would leave the page permanently dirty and "Saved" unreachable, which
       // says nothing about the product.
-      const body = JSON.parse(request.postData() ?? "[]") as Record<string, unknown>[];
+      const body = JSON.parse(request.postData() ?? "[]") as Wire["AnnotationCreate"][];
       body.forEach((one, at) =>
         stored.push({
           ...one,
@@ -329,7 +339,10 @@ async function serveApi(
         }),
       );
       const written = stored.filter((one) => one.asset_id === body[0]?.asset_id);
-      return route.fulfill({ status: 201, json: { items: written, total: written.length } });
+      return route.fulfill({
+        status: 201,
+        json: { items: written, total: written.length } satisfies Wire["AnnotationPage"],
+      });
     }
     if (path.endsWith("/progress") && request.method() === "GET") {
       // **Derived from the same map the PUTs move**, not a frozen literal. It
@@ -339,7 +352,8 @@ async function serveApi(
       // habit worth making impossible: a mock that answers something the
       // endpoint would never have sent is worse than no mock.
       const states = [...progress.values()];
-      const count = (of: string): number => states.filter((one) => one === of).length;
+      const count = (of: Wire["AssetProgress"]): number =>
+        states.filter((one) => one === of).length;
       return route.fulfill({
         json: {
           unannotated: count("unannotated"),
@@ -349,7 +363,7 @@ async function serveApi(
           review_pending: count("review_pending"),
           accepted: count("accepted"),
           total: states.length,
-        },
+        } satisfies Wire["ProgressCounts"],
       });
     }
     if (path.endsWith("/progress") && request.method() === "PUT") {
@@ -360,26 +374,35 @@ async function serveApi(
         });
       }
       const assetId = path.split("/").at(-2) ?? "";
-      const body = JSON.parse(request.postData() ?? "{}") as { progress?: string };
+      const body = JSON.parse(request.postData() ?? "{}") as {
+        progress?: Wire["AssetProgress"];
+      };
       if (body.progress !== undefined) progress.set(assetId, body.progress);
       // `AssetProgressOut`, not `{}`. The route answers where the asset now is, and a
       // stub that answered an empty object was describing a response the endpoint has
       // never sent.
       return route.fulfill({
         status: 200,
-        json: { asset_id: assetId, progress: progress.get(assetId) ?? "unannotated" },
+        json: {
+          asset_id: assetId,
+          progress: progress.get(assetId) ?? "unannotated",
+        } satisfies Wire["AssetProgressOut"],
       });
     }
     if (path.endsWith("/content") || path.endsWith("/thumbnail")) {
       return route.fulfill({ contentType: "image/png", body: PIXEL });
     }
-    if (path === "/projects") return route.fulfill({ json: { items: [], total: 0 } });
+    if (path === "/projects") {
+      return route.fulfill({ json: { items: [], total: 0 } satisfies Wire["ProjectPage"] });
+    }
     // The suggest tool's own read. Empty is the interesting answer
     // here: it is the state the panel's explanation exists for, and it is what a workspace
     // that has never been to the Inference section is in.
     if (path === "/inference/connections") {
       const items = suggestible ? [READY_SAM] : [];
-      return route.fulfill({ json: { items, total: items.length } });
+      return route.fulfill({
+        json: { items, total: items.length } satisfies Wire["ConnectionPage"],
+      });
     }
     if (path === "/inference/suggest" && request.method() === "POST") {
       // `SuggestionOut`, in full: the score rides on the answer, the shapes are
@@ -402,7 +425,7 @@ async function serveApi(
           // A box class, so the wire names no settings at all — which is how the
           // editor is told to render no adjustments section (#557).
           parameters: [],
-        },
+        } satisfies Wire["SuggestionOut"],
       });
     }
     return route.fulfill({ status: 500, json: { code: "NO_STUB", message: path } });
@@ -412,10 +435,10 @@ async function serveApi(
 async function openJob(
   page: Page,
   sent: Request[],
-  progress?: Map<string, string>,
+  progress?: Map<string, Wire["AssetProgress"]>,
   lifecycle?: Lifecycle,
   size?: SchemaSize,
-  seeded?: readonly Record<string, unknown>[],
+  seeded?: readonly Wire["AnnotationOut"][],
   suggestible?: boolean,
 ): Promise<void> {
   await serveApi(page, sent, progress, lifecycle, size, seeded, suggestible);
@@ -1359,7 +1382,7 @@ test("a completed batch's viewer renders no classes region, and the objects regi
 });
 
 /** A stored `vehicle` box on the given asset, in the wire mirror's exact shape. */
-function storedBox(assetId: string): Record<string, unknown> {
+function storedBox(assetId: string): Wire["AnnotationOut"] {
   return {
     id: "seeded-1",
     asset_id: assetId,
@@ -1442,7 +1465,7 @@ test("selecting on the canvas scrolls the object's row into view", async ({ page
   // page's 1280×720 `ASSET` in `_frame.ts`, a different fixture entirely) and
   // at least 20px from every edge and every neighbour.
   const seededCount = 20;
-  const seeded = Array.from({ length: seededCount }, (_, index) => ({
+  const seeded = Array.from({ length: seededCount }, (_, index): Wire["AnnotationOut"] => ({
     id: `seeded-${String(index + 1).padStart(2, "0")}`,
     asset_id: "asset-1",
     label_class: "vehicle",
@@ -3182,7 +3205,7 @@ test("a suggest request that is out says so on the panel and nowhere else", asyn
         ],
         applied: { detail: "balanced" },
         parameters: [],
-      },
+      } satisfies Wire["SuggestionOut"],
     });
   });
 
@@ -3221,7 +3244,20 @@ test("escape takes the wait back while the request is still out", async ({ page 
   });
   await page.route("**/inference/suggest", async (route) => {
     await held;
-    await route.fulfill({ status: 200, json: { model_ref: "m@1", region: null } });
+    // Never parsed — Escape aborts the request before this resolves, and the
+    // fulfil exists only to release the held route at teardown. A real
+    // `SuggestionOut` all the same: a stub that answers a document the endpoint
+    // never sends is one the next change to this test would believe.
+    await route.fulfill({
+      status: 200,
+      json: {
+        model_ref: "m@1",
+        confidence: 0.5,
+        regions: [],
+        applied: { detail: "balanced" },
+        parameters: [],
+      } satisfies Wire["SuggestionOut"],
+    });
   });
 
   await page.getByTestId("tool-suggest").click();
@@ -3270,7 +3306,7 @@ test("a box class is offered no adjustments at all", async ({ page }) => {
 const RING = Array.from({ length: 64 }, (_, index) => {
   const angle = (index / 64) * 2 * Math.PI;
   return [Math.round(160 + 90 * Math.cos(angle)), Math.round(160 + 90 * Math.sin(angle))];
-});
+}) satisfies [number, number][];
 
 /** A polygon answer over that ring, with `detail` declared as the one setting. */
 async function servePolygonSuggestion(page: Page): Promise<void> {
@@ -3282,7 +3318,7 @@ async function servePolygonSuggestion(page: Page): Promise<void> {
         regions: [{ geometry: { type: "polygon", points: RING }, contour: RING }],
         applied: { detail: "balanced" },
         parameters: ["detail"],
-      },
+      } satisfies Wire["SuggestionOut"],
     }),
   );
 }
