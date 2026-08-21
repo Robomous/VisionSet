@@ -27,16 +27,10 @@
  * is the unit the browser lays out, and virtualizing tiles inside a CSS grid means
  * reimplementing the grid.
  *
- * ## The counts on the cards are fetched, and that is a stated cost
+ * ## The counts come off the wire
  *
- * `BatchAssetOut` carries no annotation count, so "12 boxes" comes from
- * `GET /jobs/{id}/assets/{id}/annotations` per card. Two things keep it honest:
- * only rows the virtualizer has actually rendered ask, and only assets whose state
- * implies annotations exist (`mayHaveAnnotations`) — an `unannotated` frame has
- * none by definition, so an entire page of them sends nothing. The right fix is a
- * count on the wire; it was scoped out of this task deliberately, and the card
- * degrades to the state word while the request is in flight rather than showing a
- * zero it has not confirmed.
+ * `BatchAssetOut` carries `annotation_count` and `min_confidence`, so a card needs
+ * no request of its own.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
@@ -45,7 +39,7 @@ import { Check, Eye, PlayCircle, SkipForward, Trash2, Undo2, X } from "lucide-re
 
 import { Async } from "../data/Async";
 import { readStep, writePref } from "../data/prefs";
-import { useAssetAnnotations, type AssetProgress } from "../annotator/jobQueries";
+import type { AssetProgress } from "../annotator/jobQueries";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import {
@@ -79,12 +73,11 @@ import {
 } from "../data/capabilities";
 import { groupRefusals, refusalProse } from "../data/refusals";
 import {
+  affinityWord,
   BATCH_STATE_VARIANT,
   batchStateLabel,
   earliestArrival,
-  inSegment,
   hasJobs,
-  mayHaveAnnotations,
   progressCellClass,
   progressDot,
   progressDotClass,
@@ -92,6 +85,7 @@ import {
   progressTone,
   relativeAge,
   segmentCounts,
+  segmentProgress,
   SEGMENT_LABEL,
   SEGMENTS,
   type Segment,
@@ -107,6 +101,7 @@ import {
   useProject,
   useRemoveBatchAssets,
   useSource,
+  type AssetSort,
   type Batch,
   type BatchAsset,
   type Job,
@@ -223,9 +218,10 @@ export function GalleryScreen({
 }: GalleryScreenProps): JSX.Element {
   const project = useProject(projectId);
   const batch = useBatch(batchId);
-  const assets = useBatchAssets(batchId);
-
   const [segment, setSegment] = useState<Segment>("all");
+  const [sort, setSort] = useState<AssetSort>("membership");
+  const assets = useBatchAssets(batchId, { progress: segmentProgress(segment), sort });
+
   const [density, setDensity] = useState(() =>
     readStep(DENSITY_PREF, DENSITY_INDEXES, DEFAULT_DENSITY),
   );
@@ -245,13 +241,9 @@ export function GalleryScreen({
     [assets.data],
   );
   const total = assets.data?.pages[0]?.total ?? 0;
-  const shown = useMemo(
-    () => loaded.filter((asset) => inSegment(asset.progress, segment)),
-    [loaded, segment],
-  );
 
   const { columns, columnWidth, grid, attach } = useColumns(minColumn);
-  const rows = Math.ceil(shown.length / columns);
+  const rows = Math.ceil(loaded.length / columns);
   // **From the measured column, never from the minimum.** The grid is
   // `auto-fill` + `1fr`, so a tile is as wide as the leftover space makes it —
   // which at few columns is far wider than `minColumn`. Estimating a 4:3 tile's
@@ -311,16 +303,7 @@ export function GalleryScreen({
     // Within two rows of the end, and only when there is a page to get. The
     // guard on `isFetchingNextPage` is what stops a scroll that outruns the
     // network from queueing five identical requests.
-    //
-    // A filter makes the `rows === 0` clause necessary rather than defensive: if
-    // a segment matches nothing on the pages loaded so far there are no rows at
-    // all, so nothing would ever reach the end of the list and ask for the next
-    // page — the filter would read as empty when it is merely unloaded.
-    if (
-      (lastVisibleRow >= rows - 2 || rows === 0) &&
-      assets.hasNextPage &&
-      !assets.isFetchingNextPage
-    ) {
+    if (lastVisibleRow >= rows - 2 && assets.hasNextPage && !assets.isFetchingNextPage) {
       void assets.fetchNextPage();
     }
   }, [lastVisibleRow, rows, assets]);
@@ -349,7 +332,7 @@ export function GalleryScreen({
   const toggle = useCallback(
     (index: number, modifiers: Modifiers) => {
       setSelected((current) => {
-        const at = shown[index];
+        const at = loaded[index];
         if (at === undefined) return current;
         const next = new Set(current);
         if (modifiers.shift && anchor.current !== null) {
@@ -357,7 +340,7 @@ export function GalleryScreen({
           const from = bounds[0] ?? index;
           const to = bounds[1] ?? index;
           for (let cursor = from; cursor <= to; cursor += 1) {
-            const one = shown[cursor];
+            const one = loaded[cursor];
             if (one !== undefined) next.add(one.id);
           }
           return next;
@@ -376,7 +359,7 @@ export function GalleryScreen({
         return new Set([at.id]);
       });
     },
-    [shown],
+    [loaded],
   );
 
   // Before approval there are no jobs, so there is no progress to describe and
@@ -480,6 +463,8 @@ export function GalleryScreen({
         segment={segment}
         counts={counts}
         onSegment={setSegment}
+        sort={sort}
+        onSort={setSort}
         density={density}
         onDensity={chooseDensity}
         showSegments={showsProgress}
@@ -490,7 +475,7 @@ export function GalleryScreen({
           assets={loaded}
           highlighted={highlighted}
           onPick={(assetId) => {
-            const at = shown.findIndex((one) => one.id === assetId);
+            const at = loaded.findIndex((one) => one.id === assetId);
             if (at < 0) return;
             virtualizer.scrollToIndex(Math.floor(at / columns), { align: "center" });
             setHighlighted(assetId);
@@ -517,7 +502,7 @@ export function GalleryScreen({
             // `data-columns` against itself would assert nothing at all.
             data-min-column={minColumn}
           >
-            {shown.length === 0 ? (
+            {loaded.length === 0 ? (
               <p
                 className="py-8 text-center text-xs text-muted-foreground"
                 data-testid="segment-empty"
@@ -556,7 +541,7 @@ export function GalleryScreen({
                       gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
                     }}
                   >
-                    {shown
+                    {loaded
                       .slice(row.index * columns, row.index * columns + columns)
                       .map((asset, offset) => (
                         <Tile
@@ -992,6 +977,8 @@ function Toolbar({
   segment,
   counts,
   onSegment,
+  sort,
+  onSort,
   density,
   onDensity,
   showSegments,
@@ -999,6 +986,8 @@ function Toolbar({
   readonly segment: Segment;
   readonly counts: Record<Segment, number>;
   readonly onSegment: (next: Segment) => void;
+  readonly sort: AssetSort;
+  readonly onSort: (next: AssetSort) => void;
   readonly density: number;
   readonly onDensity: (step: number) => void;
   /**
@@ -1021,6 +1010,7 @@ function Toolbar({
       }
     >
       {showSegments && (
+      <>
       <div
         className="inline-flex rounded-md border border-border p-0.5"
         role="group"
@@ -1044,6 +1034,21 @@ function Toolbar({
           </button>
         ))}
       </div>
+
+      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+        Order
+        <select
+          data-testid="sort-order"
+          aria-label="Order frames"
+          value={sort}
+          onChange={(event) => onSort(event.target.value as AssetSort)}
+          className="rounded-sm border border-border bg-card px-2 py-1 text-xs text-foreground"
+        >
+          <option value="membership">Frame order</option>
+          <option value="confidence">Lowest prompt affinity first</option>
+        </select>
+      </label>
+      </>
       )}
 
       {/*
@@ -1293,29 +1298,29 @@ function Tile({
  * together: this is the only place in the product that can say an asset has been
  * *reviewed* rather than merely labelled.
  *
- * The count replaces the word `annotated` only once it has actually arrived. A
- * card reading `0 boxes` while its request was in flight would be stating
- * something it has not been told, and on an annotated asset it would be stating
- * something false.
+ * The count and the confidence come off `BatchAssetOut` directly, so the word is
+ * known on first render rather than arriving behind a second request.
  */
 function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
   const dot = progressDot(asset.progress);
   const tone = progressTone(asset.progress);
-  const counted = useAssetAnnotations(
-    asset.job_id ?? "",
-    asset.job_id !== null && mayHaveAnnotations(asset.progress) ? asset.id : undefined,
-  );
-  const count = counted.data?.length;
   const word =
-    asset.progress === "annotated" && count !== undefined
-      ? `${count} ${count === 1 ? "box" : "boxes"}`
-      : progressLabel(asset.progress);
+    asset.progress === "annotated"
+      ? `${asset.annotation_count} ${asset.annotation_count === 1 ? "box" : "boxes"}`
+      : asset.progress === "pre_labeled"
+        ? affinityWord(asset.annotation_count, asset.min_confidence)
+        : progressLabel(asset.progress);
+  const title =
+    asset.progress === "pre_labeled" && asset.min_confidence !== null
+      ? "Lowest prompt affinity among this frame's model labels"
+      : undefined;
 
   return (
     <span
       className="flex items-center gap-1 truncate text-xs text-muted-foreground"
       data-testid={`state-${asset.id}`}
       data-tone={tone}
+      {...(title === undefined ? {} : { title })}
     >
       <span
         aria-hidden="true"

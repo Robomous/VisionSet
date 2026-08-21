@@ -870,10 +870,19 @@ export type ProgressCounts = components["schemas"]["ProgressCounts"];
 export type Partition = components["schemas"]["BatchApprove"]["partition"];
 /** Re-exported from where the annotation page declares it, so this module has one name for it. */
 export type AssetProgress = components["schemas"]["AssetProgress"];
+export type AssetSort = components["schemas"]["AssetSort"];
+
+export interface AssetView {
+  readonly progress?: readonly AssetProgress[];
+  readonly sort: AssetSort;
+}
 
 export const batchKeys = {
   batch: (batchId: string) => ["batches", batchId] as const,
   assets: (batchId: string) => ["batches", batchId, "assets"] as const,
+  /** One window's identity: the segment and the order are part of what was asked. */
+  assetsView: (batchId: string, view: AssetView) =>
+    ["batches", batchId, "assets", view.progress ?? "all", view.sort] as const,
   jobs: (batchId: string) => ["batches", batchId, "jobs"] as const,
   // The pinned version is part of the key because the plan is a function of it
   // and of nothing else: a re-pin must not leave a dialog naming the classes of
@@ -920,17 +929,22 @@ export function useBatchJobs(batchId: string, enabled = true) {
  * "was the last page short"; and an offset past the end is 200 with an empty
  * `items`, never a 404, so overrunning is harmless.
  */
-export function useBatchAssets(batchId: string) {
+export function useBatchAssets(batchId: string, view: AssetView = { sort: "membership" }) {
   const client = useApiClient();
   return useInfiniteQuery({
-    queryKey: batchKeys.assets(batchId),
+    queryKey: batchKeys.assetsView(batchId, view),
     initialPageParam: 0,
     queryFn: async ({ pageParam }) =>
       unwrap(
         await client.GET("/batches/{batch_id}/assets", {
           params: {
             path: { batch_id: batchId },
-            query: { limit: GALLERY_PAGE_SIZE, offset: pageParam },
+            query: {
+              limit: GALLERY_PAGE_SIZE,
+              offset: pageParam,
+              ...(view.progress === undefined ? {} : { progress: [...view.progress] }),
+              sort: view.sort,
+            },
           },
         }),
         checkListBatchAssets,

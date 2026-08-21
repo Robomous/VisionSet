@@ -270,7 +270,9 @@ it("names what the confidence number measures", async () => {
   renderGallery({ allowed_actions: ["pre_label"] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
-  expect(await screen.findByText(/prompt affinity/i)).not.toBeNull();
+  // Not `/prompt affinity/i` alone: the gallery's own sort control names the same
+  // scale, so an unscoped match now finds two elements.
+  expect(await screen.findByText(/minimum prompt affinity/i)).not.toBeNull();
   const input = screen.getByTestId("prelabel-confidence") as HTMLInputElement;
   expect(input.value).toBe("0.35");
 });

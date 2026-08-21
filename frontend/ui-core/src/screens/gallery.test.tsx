@@ -341,7 +341,9 @@ describe("the gallery", () => {
     const states = ["unannotated", "annotated", "review_pending", "accepted", "skipped"];
     return {
       total: states.length,
-      items: states.map((progress, index) => asset(index, { progress, job_id: JOB })),
+      items: states.map((progress, index) =>
+        asset(index, { progress, job_id: JOB, annotation_count: progress === "annotated" ? 3 : 0 }),
+      ),
     };
   }
 
@@ -505,6 +507,86 @@ describe("the gallery", () => {
     expect(screen.getByTestId("segment-done").textContent).toContain("Done (13)");
   });
 
+  it("asks the server for the segment rather than filtering the loaded page", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({ state: "in_annotation", schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 3, unannotated: 2, pre_labeled: 1 } }),
+    });
+    on("GET", /\/assets$/, { status: 200, body: assets(3) });
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    await screen.findByTestId("segment-pre_labeled");
+
+    fireEvent.click(screen.getByTestId("segment-pre_labeled"));
+
+    await waitFor(() => {
+      const last = sent.filter((one) => new URL(one.url).pathname.endsWith("/assets")).at(-1);
+      if (last === undefined) throw new Error("no request");
+      expect(new URL(last.url).searchParams.getAll("progress")).toEqual(["pre_labeled"]);
+    });
+
+    fireEvent.click(screen.getByTestId("segment-done"));
+    await waitFor(() => {
+      const last = sent.filter((one) => new URL(one.url).pathname.endsWith("/assets")).at(-1);
+      if (last === undefined) throw new Error("no request");
+      expect(new URL(last.url).searchParams.getAll("progress")).toEqual([
+        "annotated", "skipped", "accepted",
+      ]);
+    });
+  });
+
+  it("orders the weakest model labels first on request, and names the scale", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({ state: "in_annotation", schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 2, pre_labeled: 2 } }),
+    });
+    on("GET", /\/assets$/, { status: 200, body: assets(2) });
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    const order = (await screen.findByTestId("sort-order")) as HTMLSelectElement;
+
+    expect(order.textContent).toMatch(/prompt affinity/i);
+    fireEvent.change(order, { target: { value: "confidence" } });
+
+    await waitFor(() => {
+      const last = sent.filter((one) => new URL(one.url).pathname.endsWith("/assets")).at(-1);
+      if (last === undefined) throw new Error("no request");
+      expect(new URL(last.url).searchParams.get("sort")).toBe("confidence");
+    });
+  });
+
+  it("shows a draft no sort control, because a draft has no scores", async () => {
+    on("GET", /\/assets$/, { status: 200, body: assets(2) });
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    await screen.findByTestId("tile-asset-0");
+    expect(screen.queryByTestId("sort-order")).toBeNull();
+  });
+
+  it("reads the object count off the wire and names the weakest affinity on a model-labeled card", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({ state: "in_annotation", schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 2, annotated: 1, pre_labeled: 1 } }),
+    });
+    on("GET", /\/assets$/, {
+      status: 200,
+      body: {
+        total: 2,
+        items: [
+          asset(0, { job_id: JOB, progress: "annotated", annotation_count: 3, min_confidence: null }),
+          asset(1, { job_id: JOB, progress: "pre_labeled", annotation_count: 2, min_confidence: 0.41 }),
+        ],
+      },
+    });
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+
+    expect((await screen.findByTestId("state-asset-0")).textContent).toBe("3 boxes");
+    const card = screen.getByTestId("state-asset-1");
+    expect(card.textContent).toBe("2 pre-labeled · ≥41% affinity");
+    expect(card.getAttribute("title")).toMatch(/lowest prompt affinity/i);
+    expect(sent.some((one) => new URL(one.url).pathname.endsWith("/annotations"))).toBe(false);
+  });
+
   /**
    * A draft shows less, and every omission is a documented zero rather than a
    * missing feature.
@@ -615,10 +697,6 @@ describe("the gallery", () => {
     // The gallery's dots were a monochrome ramp off `primary` while the
     // annotator's were semantic, so `accepted` was green on one screen and
     // near-black on the other. Both read `batchState.ts` now.
-    //
-    // Token *and* word on every row: the annotation count is what would replace
-    // the word on an `annotated` card, and it never arrives here because nothing
-    // stubs `/annotations`.
     on("GET", /\/batches\/[^/]+$/, {
       status: 200,
       body: batch({ state: "in_annotation", progress: { ...NO_PROGRESS, total: 5, annotated: 5 } }),
@@ -628,6 +706,10 @@ describe("the gallery", () => {
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
     await waitFor(() => expect(screen.queryByTestId("state-asset-1")).not.toBeNull());
 
+    // `word` is what the *timeline* names every state by — `progressLabel`,
+    // unchanged here. The card itself says something more specific on an
+    // `annotated` frame, its wire-carried count, so that one line asserts a
+    // second, narrower string.
     const expected = [
       { id: "asset-0", tone: "neutral", word: "unannotated", dot: "bg-transparent", cell: "bg-muted" },
       { id: "asset-1", tone: "success", word: "annotated", dot: "bg-success", cell: "bg-success" },
@@ -639,7 +721,7 @@ describe("the gallery", () => {
     for (const { id, tone, word, dot, cell } of expected) {
       const state = screen.getByTestId(`state-${id}`);
       expect(state.getAttribute("data-tone")).toBe(tone);
-      expect(state.textContent).toContain(word);
+      expect(state.textContent).toContain(id === "asset-1" ? "3 boxes" : word);
       // The drawn class, not only the declared tone: an attribute that agrees
       // with a map the dot no longer reads is a test of the map alone.
       expect(state.innerHTML).toContain(dot);
@@ -1284,10 +1366,10 @@ describe("the bulk bar", () => {
     await userEvent.click(screen.getByTestId("bulk-return"));
 
     await waitFor(() =>
-      expect(screen.getByTestId("state-asset-0").textContent).toContain("annotated"),
+      expect(screen.getByTestId("state-asset-0").textContent).toContain("0 boxes"),
     );
     // Its own count moves with it, read off the same refetched page.
-    expect(screen.getByTestId("state-asset-1").textContent).toContain("annotated");
+    expect(screen.getByTestId("state-asset-1").textContent).toContain("0 boxes");
   });
 
   /**

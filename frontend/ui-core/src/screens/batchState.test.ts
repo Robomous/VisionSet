@@ -19,7 +19,6 @@ import {
   outstandingWork,
   inSegment,
   hasJobs,
-  mayHaveAnnotations,
   progressCellClass,
   progressDot,
   progressDotClass,
@@ -177,18 +176,6 @@ describe("what a card says", () => {
 
   it("says `in review` rather than the wire's `review_pending`", () => {
     expect(progressLabel("review_pending")).toBe("in review");
-  });
-
-  it("asks for a count only where annotations could exist", () => {
-    // The count is one request per card, so the cheapest correct thing is not to
-    // ask about assets that certainly have none.
-    expect(mayHaveAnnotations("unannotated")).toBe(false);
-    expect(mayHaveAnnotations("skipped")).toBe(false);
-    expect(mayHaveAnnotations(null)).toBe(false);
-    expect(mayHaveAnnotations("pre_labeled")).toBe(true);
-    expect(mayHaveAnnotations("annotated")).toBe(true);
-    expect(mayHaveAnnotations("review_pending")).toBe(true);
-    expect(mayHaveAnnotations("accepted")).toBe(true);
   });
 });
 
