@@ -6,7 +6,7 @@ so `progress_after_annotating` cannot drift into a move the table forbids.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -1238,13 +1238,12 @@ def test_it_survives_a_round_trip_through_the_store(tmp_path: Path) -> None:
 
 def _prediction(asset_id: UUID, **overrides: Any) -> Annotation:
     """A valid ``sign`` a model produced: model provenance, ref and score."""
-    return _box(
-        asset_id,
-        provenance="model",
-        model_ref="acme/detector@abc123",
-        confidence=0.62,
-        **overrides,
-    )
+    fields: dict[str, Any] = {
+        "provenance": "model",
+        "model_ref": "acme/detector@abc123",
+        "confidence": 0.62,
+    }
+    return _box(asset_id, **{**fields, **overrides})
 
 
 def test_unreviewed_labels_land_pre_labeled_and_stay_editable(tmp_path: Path) -> None:
@@ -1385,4 +1384,149 @@ def test_an_asset_moved_underneath_the_call_is_refused_and_nothing_is_written(
         AnnotationService(fixture.workspace).enter_unreviewed(stale.id, [_prediction(asset_id)])
 
     assert fixture.annotations.for_asset(job.id, asset_id) == []
+    fixture.close()
+
+
+def test_a_replacing_write_supersedes_a_models_labels_and_stays_pre_labeled(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    (first,) = fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+
+    (second,) = fixture.annotations.enter_unreviewed(
+        job.id, [_prediction(asset_id, confidence=0.41)], replacing={asset_id}
+    )
+
+    remaining = fixture.annotations.for_asset(job.id, asset_id)
+    assert [a.id for a in remaining] == [second.id]
+    assert first.id not in {a.id for a in remaining}
+    assert fixture.progress_of(job, asset_id) is AssetProgress.PRE_LABELED
+    fixture.close()
+
+
+def test_a_replacing_write_that_lands_nothing_returns_the_frame_to_unannotated(
+    tmp_path: Path,
+) -> None:
+    """The model no longer finds anything here: the stale guess goes, and the
+    frame reads as untouched — which is what it now is."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+
+    assert fixture.annotations.enter_unreviewed(job.id, [], replacing={asset_id}) == []
+
+    assert fixture.annotations.for_asset(job.id, asset_id) == []
+    assert fixture.progress_of(job, asset_id) is AssetProgress.UNANNOTATED
+    fixture.close()
+
+
+@pytest.mark.parametrize(
+    "take_over",
+    [
+        pytest.param(lambda f, job, a: f.annotations.add(job.id, [_box(a)]), id="edited"),
+        pytest.param(
+            lambda f, job, a: f.jobs.mark(job.id, a, AssetProgress.ANNOTATED), id="confirmed"
+        ),
+        pytest.param(lambda f, job, a: f.jobs.mark(job.id, a, AssetProgress.SKIPPED), id="skipped"),
+    ],
+)
+def test_a_replacing_write_refuses_a_frame_a_person_took_over(
+    tmp_path: Path, take_over: Callable[[Fixture, AnnotationJob, UUID], object]
+) -> None:
+    """Confirming, editing and skipping are judgments; a model's re-run never undoes one."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+    take_over(fixture, job, asset_id)
+    before = fixture.annotations.for_asset(job.id, asset_id)
+
+    with pytest.raises(AssetNotWritable):
+        fixture.annotations.enter_unreviewed(
+            job.id, [_prediction(asset_id, confidence=0.41)], replacing={asset_id}
+        )
+    assert fixture.annotations.for_asset(job.id, asset_id) == before
+    fixture.close()
+
+
+def test_a_replacing_write_refuses_an_untouched_frame_nothing_was_written_on(
+    tmp_path: Path,
+) -> None:
+    """``replacing`` names frames a model already labeled; an untouched frame is
+    entered through the ordinary path, never through the replacing one."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+
+    with pytest.raises(AssetNotWritable):
+        fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)], replacing={asset_id})
+    fixture.close()
+
+
+def test_a_replacing_write_refuses_an_asset_outside_the_job(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    with pytest.raises(AssetNotInJob):
+        fixture.annotations.enter_unreviewed(job.id, [], replacing={uuid4()})
+    fixture.close()
+
+
+def test_a_replacing_write_still_admits_only_a_models_labels(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+
+    with pytest.raises(AnnotationNotFromModel):
+        fixture.annotations.enter_unreviewed(job.id, [_box(asset_id)], replacing={asset_id})
+    assert len(fixture.annotations.for_asset(job.id, asset_id)) == 1
+    fixture.close()
+
+
+def test_a_refusal_inside_a_replacing_write_leaves_the_old_labels_in_place(tmp_path: Path) -> None:
+    """Labels out and labels in are one transaction: a frame never holds half of two rounds."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    (old,) = fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+
+    with pytest.raises(InvalidAnnotation):
+        fixture.annotations.enter_unreviewed(
+            job.id,
+            [_prediction(asset_id), _prediction(asset_id, label_class="no-such-class")],
+            replacing={asset_id},
+        )
+
+    assert [a.id for a in fixture.annotations.for_asset(job.id, asset_id)] == [old.id]
+    assert fixture.progress_of(job, asset_id) is AssetProgress.PRE_LABELED
+    fixture.close()
+
+
+def test_a_replacing_write_and_a_fresh_entry_can_share_one_call(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    first, second = fixture.assets[0], fixture.assets[1]
+    fixture.annotations.enter_unreviewed(job.id, [_prediction(first)])
+
+    stored = fixture.annotations.enter_unreviewed(
+        job.id, [_prediction(first, confidence=0.5), _prediction(second)], replacing={first}
+    )
+
+    assert len(stored) == 2
+    assert fixture.progress_of(job, first) is AssetProgress.PRE_LABELED
+    assert fixture.progress_of(job, second) is AssetProgress.PRE_LABELED
+    fixture.close()
+
+
+def test_a_person_can_still_take_over_a_frame_a_model_replaced(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)])
+    fixture.annotations.enter_unreviewed(job.id, [_prediction(asset_id)], replacing={asset_id})
+
+    fixture.annotations.add(job.id, [_box(asset_id)])
+
+    assert fixture.progress_of(job, asset_id) is AssetProgress.ANNOTATED
     fixture.close()

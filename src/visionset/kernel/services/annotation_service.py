@@ -51,7 +51,10 @@ Five things shape this module:
   to ``pre_labeled`` in the same transaction. It is the only door unattended
   prediction uses — accepting a model's *suggestion* is still a person's hand,
   and still goes through ``add``, landing at ``annotated`` the same way any
-  other edit does.
+  other edit does. The same door supersedes its own earlier writes: a frame
+  still ``pre_labeled`` can have its model labels replaced, labels out and
+  labels in and progress in one transaction, and nothing a person touched is
+  ever named there.
 
 Both gates above the asset are ``JobService``'s, reused rather than restated:
 this service calls ``require_job``, ``require_open_batch`` and
@@ -67,7 +70,7 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Collection, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from uuid import UUID
@@ -198,7 +201,13 @@ class AnnotationService:
         self._announce(job.id, batch.id, AnnotationOperation.ADD, stored)
         return stored
 
-    def enter_unreviewed(self, job_id: UUID, annotations: Sequence[Annotation]) -> list[Annotation]:
+    def enter_unreviewed(
+        self,
+        job_id: UUID,
+        annotations: Sequence[Annotation],
+        *,
+        replacing: Collection[UUID] = (),
+    ) -> list[Annotation]:
         """Store a model's labels on untouched assets, unattended, atomically.
 
         The fourth write and the narrowest. Labels and the move to
@@ -218,13 +227,22 @@ class AnnotationService:
         An asset a model found nothing on is not passed here at all: "found
         nothing" and "reviewed and found empty" are different facts.
 
+        ``replacing`` names frames this door itself labeled earlier and
+        nobody has touched since — each must be ``pre_labeled`` — whose
+        ``provenance='model'`` rows go in the same transaction as the new
+        ones land; an empty ``annotations`` with a non-empty ``replacing`` is
+        a run that found nothing any more, and the frame returns to
+        ``unannotated``.
+
         Raises:
             JobNotFound: no such job in this workspace.
             BatchNotInAnnotation: the job's batch is not open for annotation.
             JobFinished: the job is already completed.
             AssetNotInJob: an annotation names an asset the job does not carry.
             AssetNotWritable: an asset is not ``unannotated``, or already
-                carries annotations from a skipped-and-restored round.
+                carries annotations from a skipped-and-restored round, or a
+                frame named in ``replacing`` is not ``pre_labeled`` —
+                somebody has taken it over.
             AnnotationNotFromModel: an annotation does not carry model provenance.
             InvalidAnnotation: an annotation does not satisfy the pinned version.
             StaleWrite: an asset moved between this call's read and its write.
@@ -236,23 +254,42 @@ class AnnotationService:
             self._jobs.require_open_job(job)
             schema = self._pinned_schema(batch)
 
+            superseded = frozenset(replacing)
+            for asset_id in superseded:
+                _require_unjudged(job, asset_id)
+            outgoing = [
+                stored
+                for asset_id in superseded
+                for stored in uow.annotations.list(asset_id)
+                if stored.provenance == "model"
+            ]
             proposed = [
                 annotation.model_copy(update={"schema_version": schema.version, "job_id": job.id})
                 for annotation in annotations
             ]
-            tagged = _tags_already_on(uow, {a.asset_id for a in proposed})
+            tagged = _tags_already_on(
+                uow, {a.asset_id for a in proposed}, ignoring={a.id for a in outgoing}
+            )
             for index, annotation in enumerate(proposed):
                 with _blaming(index):
                     _require_model_made(annotation)
-                    _require_untouched(uow, job, annotation.asset_id)
+                    if annotation.asset_id not in superseded:
+                        _require_untouched(uow, job, annotation.asset_id)
                     _validate(annotation, schema)
                     _require_geometry_on_asset(uow, annotation)
                     _require_untagged(tagged, annotation)
 
+            for old in outgoing:
+                uow.annotations.delete(old.id)
             stored = [uow.annotations.add(annotation) for annotation in proposed]
-            _refresh_progress(uow, job, (a.asset_id for a in proposed), judged=False)
+            _refresh_progress(
+                uow, job, (*superseded, *(a.asset_id for a in proposed)), judged=False
+            )
 
-        self._announce(job.id, batch.id, AnnotationOperation.ADD, stored)
+        if stored or not outgoing:
+            self._announce(job.id, batch.id, AnnotationOperation.ADD, stored)
+        else:
+            self._announce(job.id, batch.id, AnnotationOperation.DELETE, outgoing)
         return stored
 
     def update(self, job_id: UUID, annotations: Sequence[Annotation]) -> list[Annotation]:
@@ -391,9 +428,10 @@ class AnnotationService:
         that placement is the whole point: an announcement is about work that
         happened, and a subscriber that raises out here has nothing left to
         undo. They share one emitter rather than four that could drift, and
-        ``enter_unreviewed`` announces itself as ``ADD`` — new rows landed, the
-        same fact ``add`` announces — because :class:`AnnotationOperation` names
-        the shape of the write, not the progress it happened to leave behind.
+        ``enter_unreviewed`` announces ``ADD`` or ``DELETE`` depending on which
+        of its own two writes actually landed rows — because
+        :class:`AnnotationOperation` names the shape of the write, not the
+        progress it happened to leave behind.
 
         ``asset_ids`` is deduplicated and keeps the order the annotations came
         in — several boxes on one image are one asset touched, not several.
@@ -499,8 +537,9 @@ def _require_writable(job: AnnotationJob, asset_id: UUID) -> None:
     progress as the reason a *different* job's asset was refused.
 
     Only ``add``, ``update`` and ``delete`` call this — ``enter_unreviewed``
-    has its own, narrower check, ``_require_untouched`` below, because
-    ``unannotated`` is legal here but is the *only* thing legal there.
+    has its own, narrower checks, ``_require_untouched`` and
+    ``_require_unjudged`` below, because ``unannotated`` is legal here but is
+    the *only* thing legal there.
     :meth:`AnnotationService.for_asset` reads through ``_require_asset_in_job``
     alone, because reading back what a reviewer accepted is exactly what a
     reviewer does.
@@ -563,6 +602,22 @@ def _require_untouched(uow: UnitOfWork, job: AnnotationJob, asset_id: UUID) -> N
             f"asset {asset_id} in job {job.id} reads 'unannotated' but already carries "
             f"annotations from work that was skipped and then restored; a model's labels "
             f"only enter an asset nothing has touched, including its history"
+        )
+
+
+def _require_unjudged(job: AnnotationJob, asset_id: UUID) -> None:
+    """Refuse to supersede labels on a frame anybody has judged.
+
+    ``pre_labeled`` is the only progress where every label is a model's and no
+    person has touched the frame; a confirmed, edited or skipped frame records
+    a decision, and a re-run must not undo one.
+    """
+    _require_asset_in_job(job, asset_id)
+    progress = job.progress[asset_id]
+    if progress is not AssetProgress.PRE_LABELED:
+        raise AssetNotWritable(
+            f"asset {asset_id} in job {job.id} is {progress.value!r}, so somebody has judged "
+            f"it; a model's labels only replace labels nobody has judged"
         )
 
 
