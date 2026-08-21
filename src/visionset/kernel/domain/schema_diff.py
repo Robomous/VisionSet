@@ -17,6 +17,12 @@ read as a removal plus an addition, which looks lossy until you remember that
 orphan every annotation under the old name. The kernel cannot see intent, and
 guessing at it would be guessing with someone's labels.
 
+One rename is not a guess: ``car`` to ``Car``. A version cannot hold both — class
+names are unique within a version ignoring case — so a name that leaves as
+another casing arrives is a re-casing and nothing else. The verdict does not
+move (the labels still carry ``car``), but the change says what it is, so a
+surface can explain the cost instead of reporting a removal nobody made.
+
 This module is pure — no ports, no store, no workspace. The judging functions
 take two class lists and return a verdict; the report models beside them carry
 entities and ids a service has already read, because a caller told *this is
@@ -230,6 +236,7 @@ def _changes(
 ) -> Iterator[SchemaChange]:
     before = {label_class.name: label_class for label_class in previous}
     after = {label_class.name: label_class for label_class in proposed}
+    arrived = {name.casefold(): name for name in after if name not in before}
 
     for name, label_class in after.items():
         if name not in before:
@@ -242,12 +249,17 @@ def _changes(
             yield from _class_changes(before[name], label_class)
 
     for name in before:
-        if name not in after:
-            yield SchemaChange(
-                kind=ChangeKind.DESTRUCTIVE,
-                label_class=name,
-                detail=f"class {name!r} removed",
+        if name in after:
+            continue
+        recased = arrived.get(name.casefold())
+        detail = f"class {name!r} removed"
+        if recased is not None:
+            detail += (
+                f"; {recased!r} differs only in its casing, and annotations match their "
+                f"class by exact name, so a re-casing is a rename and orphans the labels "
+                f"under {name!r}"
             )
+        yield SchemaChange(kind=ChangeKind.DESTRUCTIVE, label_class=name, detail=detail)
 
 
 def _class_changes(before: LabelClass, after: LabelClass) -> Iterator[SchemaChange]:
