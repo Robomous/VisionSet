@@ -163,7 +163,7 @@ function isDirectory(repoRelative) {
 }
 
 /**
- * Where a `docs/`-relative document is served from.
+ * Where a `content/`-relative document is served from.
  *
  * `README.md` is a directory's index, which is what makes `content/README.md` the
  * site's home page and `architecture/README.md` the page `architecture/` links to.
@@ -211,7 +211,7 @@ export function rewriteTarget(target, fromDocsRelative) {
  * offsets into the whole document.
  *
  * **Offsets rather than a filtered copy of the text, because a link is not a
- * line-sized thing.** Two shapes in `docs/` prove it, and each broke a draft of
+ * line-sized thing.** Two shapes in `content/` prove it, and each broke a draft of
  * this function:
  *
  *   ``[`src/visionset/kernel/`](../../../src/visionset/kernel/)``
@@ -323,7 +323,7 @@ export function transform(source, docsRelative) {
   return `${frontmatter}${content}`;
 }
 
-/** Where a `docs/`-relative document is written inside the content collection. */
+/** Where a `content/`-relative document is written inside the content collection. */
 export function contentPathFor(docsRelative) {
   return docsRelative.replace(/(^|\/)README\.md$/, "$1index.md");
 }
