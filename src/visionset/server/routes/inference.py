@@ -92,7 +92,7 @@ def list_inference_connections(workspace: WorkspaceDep) -> ConnectionPage:
     return ConnectionPage(items=items, total=len(items))
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, responses=documented(409, 422))
+@router.post("", status_code=status.HTTP_201_CREATED, responses=documented(409))
 def create_inference_connection(workspace: WorkspaceDep, body: ConnectionCreate) -> ConnectionOut:
     """Configure a connection. Nothing is downloaded and nothing is contacted."""
     return ConnectionOut.of(
@@ -127,7 +127,7 @@ def get_inference_connection(workspace: WorkspaceDep, connection_id: UUID) -> Co
     )
 
 
-@router.patch("/{connection_id}", responses=documented(404, 409, 422))
+@router.patch("/{connection_id}", responses=documented(404, 409))
 def update_inference_connection(
     workspace: WorkspaceDep, connection_id: UUID, body: ConnectionUpdate
 ) -> ConnectionOut:
@@ -309,7 +309,7 @@ def check_connection_integrity(
     return BackgroundJobOut.of(job)
 
 
-@beside_connections.get("/download-size", responses=documented(422))
+@beside_connections.get("/download-size")
 def inference_download_size(model_id: str, model_revision: str) -> DownloadSizeOut:
     """How big fetching that model's weights would be, before anybody fetches them.
 
@@ -336,7 +336,7 @@ def inference_download_size(model_id: str, model_revision: str) -> DownloadSizeO
     return DownloadSizeOut.of(download_size(model_id, model_revision))
 
 
-@beside_connections.post("/suggest", responses=documented(404, 409, 422))
+@beside_connections.post("/suggest", responses=documented(404, 409))
 def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionOut:
     """Propose a shape for the thing under those points.
 
