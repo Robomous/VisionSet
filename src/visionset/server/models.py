@@ -1313,6 +1313,44 @@ class PreLabelRequest(BaseModel):
     minimum_confidence: float = Field(default=DEFAULT_MINIMUM_CONFIDENCE, ge=0.0, le=1.0)
 
 
+class ProjectPreLabelRequest(BaseModel):
+    """Which model should pre-label this project's open batches, and which batches.
+
+    `batch_ids` absent means every batch of the project that is open for
+    annotation; present means exactly those — a batch outside the project is
+    404, one not open is 409, and the request is refused whole, never partly
+    launched.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The inference connection that answers. Its model must declare
+    #: `text_detect`; a point-prompt connection is refused.
+    connection_id: UUID
+    #: The floor a prediction must clear to be written, in [0, 1] — prompt
+    #: affinity, the same scale `PreLabelRequest.minimum_confidence` names.
+    minimum_confidence: float = Field(default=DEFAULT_MINIMUM_CONFIDENCE, ge=0.0, le=1.0)
+    #: Exactly these batches, in this order. Absent: every open batch.
+    batch_ids: list[UUID] | None = None
+
+
+class ProjectPreLabelItemOut(BaseModel):
+    """One batch's row in a project-wide launch."""
+
+    batch_id: UUID
+    batch_name: str
+    #: The `annotation.pre_label` row to poll — `GET /background-jobs/{id}` —
+    #: the same row `BatchOut.pre_label_run` remembers.
+    job: BackgroundJobOut
+    #: True when the row existed before this request: a run already queued or
+    #: running for that batch was joined rather than started again.
+    joined: bool
+
+
+class ProjectPreLabelOut(Page[ProjectPreLabelItemOut]):
+    """Every batch the launch fanned out over, one row each, in selection order."""
+
+
 # --- jobs --------------------------------------------------------------------
 
 

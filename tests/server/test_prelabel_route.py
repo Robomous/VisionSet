@@ -16,6 +16,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from tests.fixtures.endpoint import serving_endpoint
+from tests.fixtures.media import write_image
 from tests.server._api import api_client
 from tests.server._flow import batch_from_ingest, project_with_schema
 from tests.server._jobs import InlineDispatcher, ManualDispatcher
@@ -601,3 +602,183 @@ def test_an_http_connection_nobody_asked_is_refused_with_the_action_that_asks(
     assert response.status_code == 409, response.text
     assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_SET_UP"
     assert "test_endpoint" in response.json()["message"]
+
+
+# --- the project-wide launch ---------------------------------------------------
+
+
+def _more_stills(
+    tmp_path: Path, *, count: int, first_seed: int
+) -> list[tuple[str, tuple[str, bytes, str]]]:
+    """Multipart parts whose bytes differ from ``image_parts``'s: a second ingest of the
+    same seeds would dedupe onto the first batch's assets."""
+    return [
+        (
+            "files",
+            (
+                f"more-{index}.png",
+                write_image(tmp_path / f"more-{index}.png", seed=first_seed + index).read_bytes(),
+                "image/png",
+            ),
+        )
+        for index in range(count)
+    ]
+
+
+def _another_open_batch(
+    client: TestClient,
+    runner: InlineDispatcher | ManualDispatcher,
+    tmp_path: Path,
+    project_id: str,
+    *,
+    first_seed: int = 100,
+) -> str:
+    source_id = client.post(
+        f"/projects/{project_id}/sources/images",
+        files=_more_stills(tmp_path, count=2, first_seed=first_seed),
+    ).json()["id"]
+    job = client.post(f"/sources/{source_id}/ingest-jobs").json()
+    runner.wait()
+    batch_id: str = client.get(f"/ingest-jobs/{job['id']}").json()["batch_id"]
+    assert client.post(f"/batches/{batch_id}/approve").status_code == 200
+    assert client.post(f"/batches/{batch_id}/start").status_code == 200
+    return batch_id
+
+
+def _launch(client: TestClient, project_id: str, connection_id: str, **extra: Any) -> Any:
+    return client.post(
+        f"/projects/{project_id}/batches/pre-label",
+        json={"connection_id": connection_id, "minimum_confidence": 0.35, **extra},
+    )
+
+
+def test_the_project_launch_fans_out_one_row_per_open_batch(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, in_annotation_batch: OpenBatch
+) -> None:
+    second = _another_open_batch(client, runner, tmp_path, in_annotation_batch.project_id)
+    before = _pre_label_job_count(client)
+
+    response = _launch(client, in_annotation_batch.project_id, in_annotation_batch.connection_id)
+
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["total"] == 2
+    assert [item["batch_id"] for item in body["items"]] == [in_annotation_batch.id, second]
+    assert all(item["job"]["type"] == "annotation.pre_label" for item in body["items"])
+    assert all(item["joined"] is False for item in body["items"])
+    assert {item["batch_name"] for item in body["items"]} == {
+        client.get(f"/batches/{in_annotation_batch.id}").json()["name"],
+        client.get(f"/batches/{second}").json()["name"],
+    }
+    assert _pre_label_job_count(client) == before + 2
+
+
+def test_a_named_selection_launches_only_those_batches(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, in_annotation_batch: OpenBatch
+) -> None:
+    second = _another_open_batch(client, runner, tmp_path, in_annotation_batch.project_id)
+
+    response = _launch(
+        client,
+        in_annotation_batch.project_id,
+        in_annotation_batch.connection_id,
+        batch_ids=[second],
+    )
+
+    assert response.status_code == 202, response.text
+    assert [item["batch_id"] for item in response.json()["items"]] == [second]
+
+
+def test_asking_again_joins_the_rows_already_in_flight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manual = ManualDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=manual) as client:
+        manual.bind(client.app.state.workspace_handle)
+        batch = _open_batch(client, manual, tmp_path, monkeypatch, classes=[DETECTABLE])
+        second = _another_open_batch(client, manual, tmp_path, batch.project_id)
+
+        first = _launch(client, batch.project_id, batch.connection_id).json()
+        again = _launch(client, batch.project_id, batch.connection_id).json()
+
+        assert [item["job"]["id"] for item in again["items"]] == [
+            item["job"]["id"] for item in first["items"]
+        ]
+        assert all(item["joined"] is True for item in again["items"])
+        assert second in {item["batch_id"] for item in again["items"]}
+
+
+def test_a_named_batch_of_another_project_is_404_and_creates_no_job(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, in_annotation_batch: OpenBatch
+) -> None:
+    other_project = project_with_schema(client, name="elsewhere", classes=[DETECTABLE])
+    other_batch = batch_from_ingest(client, runner, tmp_path / "elsewhere", other_project, images=2)
+    before = _pre_label_job_count(client)
+
+    response = _launch(
+        client,
+        in_annotation_batch.project_id,
+        in_annotation_batch.connection_id,
+        batch_ids=[other_batch],
+    )
+
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "BATCH_NOT_FOUND"
+    assert _pre_label_job_count(client) == before
+
+
+def test_a_named_draft_is_409_and_creates_no_job(
+    client: TestClient, draft_batch: OpenBatch
+) -> None:
+    before = _pre_label_job_count(client)
+
+    response = _launch(
+        client, draft_batch.project_id, draft_batch.connection_id, batch_ids=[draft_batch.id]
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "BATCH_NOT_IN_ANNOTATION"
+    assert _pre_label_job_count(client) == before
+
+
+def test_a_project_with_no_open_batch_is_409(client: TestClient, draft_batch: OpenBatch) -> None:
+    response = _launch(client, draft_batch.project_id, draft_batch.connection_id)
+
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "BATCH_NOT_IN_ANNOTATION"
+    assert "no batch open for annotation" in response.json()["message"]
+
+
+def test_one_undetectable_pin_refuses_the_whole_request_naming_the_batch(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, polygon_only_batch: OpenBatch
+) -> None:
+    """A project-wide request is refused whole, not partly launched: the row the
+    caller did not get is the one they cannot find out about afterwards."""
+    before = _pre_label_job_count(client)
+    lanes = client.get(f"/batches/{polygon_only_batch.id}").json()["name"]
+
+    response = _launch(client, polygon_only_batch.project_id, polygon_only_batch.connection_id)
+
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "SCHEMA_HAS_NO_DETECTABLE_CLASS"
+    assert f"batch {lanes!r}" in response.json()["message"]
+    assert _pre_label_job_count(client) == before
+
+
+def test_the_project_launch_shares_the_connection_gate(
+    client: TestClient, in_annotation_batch: OpenBatch, segmenter_connection: str
+) -> None:
+    response = _launch(client, in_annotation_batch.project_id, segmenter_connection)
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "UNSUPPORTED_PROMPT"
+
+
+def test_the_project_launch_refuses_an_unknown_field(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = _launch(
+        client, in_annotation_batch.project_id, in_annotation_batch.connection_id, batch_id="x"
+    )
+
+    assert response.status_code == 422, response.text

@@ -3600,6 +3600,95 @@
         "title": "ProjectPage",
         "type": "object"
       },
+      "ProjectPreLabelItemOut": {
+        "description": "One batch's row in a project-wide launch.",
+        "properties": {
+          "batch_id": {
+            "format": "uuid",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "batch_name": {
+            "title": "Batch Name",
+            "type": "string"
+          },
+          "job": {
+            "$ref": "#/components/schemas/BackgroundJobOut"
+          },
+          "joined": {
+            "title": "Joined",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "batch_id",
+          "batch_name",
+          "job",
+          "joined"
+        ],
+        "title": "ProjectPreLabelItemOut",
+        "type": "object"
+      },
+      "ProjectPreLabelOut": {
+        "description": "Every batch the launch fanned out over, one row each, in selection order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectPreLabelItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ProjectPreLabelOut",
+        "type": "object"
+      },
+      "ProjectPreLabelRequest": {
+        "additionalProperties": false,
+        "description": "Which model should pre-label this project's open batches, and which batches.\n\n`batch_ids` absent means every batch of the project that is open for\nannotation; present means exactly those \u2014 a batch outside the project is\n404, one not open is 409, and the request is refused whole, never partly\nlaunched.",
+        "properties": {
+          "batch_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Ids"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "minimum_confidence": {
+            "default": 0.35,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Minimum Confidence",
+            "type": "number"
+          }
+        },
+        "required": [
+          "connection_id"
+        ],
+        "title": "ProjectPreLabelRequest",
+        "type": "object"
+      },
       "ProjectRename": {
         "additionalProperties": false,
         "description": "The one field of a project that moves.",
@@ -11031,6 +11120,115 @@
           }
         ],
         "summary": "Create Batch",
+        "tags": [
+          "batches"
+        ]
+      }
+    },
+    "/projects/{project_id}/batches/pre-label": {
+      "post": {
+        "description": "Ask a model to label every untouched asset across this project's open batches.\n\n**One row per batch, and the batch stays the unit.** This launch fans out\nover the project's batches that are open for annotation \u2014 every one of\nthem, or exactly the `batch_ids` named \u2014 and for each one queues the same\n`annotation.pre_label` job `POST /batches/{batch_id}/pre-label` queues, or\njoins the one already queued or running for that batch (`joined`). Each\nrow is polled, cancelled and remembered per batch, exactly as a\nsingle-batch launch is: `GET /background-jobs/{id}` for progress counted\nin that batch's assets, `BatchOut.pre_label_run` afterwards. Nothing here\nreports one total across batches, because nothing here is one run.\n\n**Refused whole, up front, and no refusal creates a row.** The connection\nis checked first, as the single-batch launch checks it: not set up is 409\n`INFERENCE_CONNECTION_NOT_SET_UP`, a model that answers places rather than\nwords is 422 `UNSUPPORTED_PROMPT`. Then the selection: an unknown project\nis 404 `PROJECT_NOT_FOUND`; a named batch outside this project is 404\n`BATCH_NOT_FOUND`; a named batch not `in_annotation`, or a project with no\nopen batch at all, is 409 `BATCH_NOT_IN_ANNOTATION`; any selected batch\nwhose pinned schema has no class a box can be written as is 409\n`SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message names the batch so the\ncaller can leave it out by name and ask again. A partly launched project\nwould leave rows the caller was never told about, which is why the whole\nrequest is refused instead.\n\nWhat each run writes, passes over and counts is the single-batch launch's\ncontract; read `POST /batches/{batch_id}/pre-label`.",
+        "operationId": "pre_label_project_batches",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectPreLabelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectPreLabelOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pre Label Project Batches",
         "tags": [
           "batches"
         ]

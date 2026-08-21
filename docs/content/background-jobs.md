@@ -32,7 +32,7 @@ handling for one GIL.
 | `export.release` | `visionset/jobs/export.py` | `POST /releases/{id}/export` |
 | `inference.download_weights` | `visionset/jobs/weights.py` | `POST /inference/connections/{id}/download` |
 | `inference.check_integrity` | `visionset/jobs/integrity.py` | `POST /inference/connections/{id}/check-integrity` |
-| `annotation.pre_label` | `visionset/jobs/prelabel.py` | `POST /batches/{id}/pre-label` |
+| `annotation.pre_label` | `visionset/jobs/prelabel.py` | `POST /batches/{id}/pre-label`, `POST /projects/{id}/batches/pre-label` (one row per batch) |
 
 The last three are why the throttled progress below matters: a weight download is
 gigabytes, an integrity check reads every byte of them, and pre-labeling is one

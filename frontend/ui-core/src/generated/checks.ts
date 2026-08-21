@@ -252,6 +252,12 @@ export const checkProjectOut: Check<Schemas["ProjectOut"]> =
 export const checkProjectPage: Check<Schemas["ProjectPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkProjectOut)], "total": [true, isInteger] } as const);
 
+export const checkProjectPreLabelItemOut: Check<Schemas["ProjectPreLabelItemOut"]> =
+  /*#__PURE__*/ object({ "batch_id": [true, isString], "batch_name": [true, isString], "job": [true, checkBackgroundJobOut], "joined": [true, isBoolean] } as const);
+
+export const checkProjectPreLabelOut: Check<Schemas["ProjectPreLabelOut"]> =
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkProjectPreLabelItemOut)], "total": [true, isInteger] } as const);
+
 export const checkProjectStatsOut: Check<Schemas["ProjectStatsOut"]> =
   /*#__PURE__*/ object({ "annotated_asset_count": [true, isInteger], "annotated_pct": [true, isNumber], "annotation_count": [true, isInteger], "asset_count": [true, isInteger], "class_count": [true, isInteger], "classes": [true, arrayOf(checkClassCountOut)], "last_ingest_at": [false, either([isString, isNull] as const)], "project_id": [true, isString] } as const);
 
@@ -429,6 +435,7 @@ export const checkListSources = checkSourcePage;
 export const checkNextPendingAssets = checkAssetPage;
 export const checkPreLabelBatch = checkBackgroundJobOut;
 export const checkPreLabelPlan = checkPreLabelPlanOut;
+export const checkPreLabelProjectBatches = checkProjectPreLabelOut;
 export const checkPreviewSchemaChange = checkSchemaChangePreviewOut;
 export const checkPromoteBatch = checkAssetPage;
 export const checkPublishRelease = checkReleaseOut;

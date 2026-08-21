@@ -1894,6 +1894,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/batches/pre-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pre Label Project Batches
+         * @description Ask a model to label every untouched asset across this project's open batches.
+         *
+         *     **One row per batch, and the batch stays the unit.** This launch fans out
+         *     over the project's batches that are open for annotation — every one of
+         *     them, or exactly the `batch_ids` named — and for each one queues the same
+         *     `annotation.pre_label` job `POST /batches/{batch_id}/pre-label` queues, or
+         *     joins the one already queued or running for that batch (`joined`). Each
+         *     row is polled, cancelled and remembered per batch, exactly as a
+         *     single-batch launch is: `GET /background-jobs/{id}` for progress counted
+         *     in that batch's assets, `BatchOut.pre_label_run` afterwards. Nothing here
+         *     reports one total across batches, because nothing here is one run.
+         *
+         *     **Refused whole, up front, and no refusal creates a row.** The connection
+         *     is checked first, as the single-batch launch checks it: not set up is 409
+         *     `INFERENCE_CONNECTION_NOT_SET_UP`, a model that answers places rather than
+         *     words is 422 `UNSUPPORTED_PROMPT`. Then the selection: an unknown project
+         *     is 404 `PROJECT_NOT_FOUND`; a named batch outside this project is 404
+         *     `BATCH_NOT_FOUND`; a named batch not `in_annotation`, or a project with no
+         *     open batch at all, is 409 `BATCH_NOT_IN_ANNOTATION`; any selected batch
+         *     whose pinned schema has no class a box can be written as is 409
+         *     `SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message names the batch so the
+         *     caller can leave it out by name and ask again. A partly launched project
+         *     would leave rows the caller was never told about, which is why the whole
+         *     request is refused instead.
+         *
+         *     What each run writes, passes over and counts is the single-batch launch's
+         *     contract; read `POST /batches/{batch_id}/pre-label`.
+         */
+        post: operations["pre_label_project_batches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/dataset": {
         parameters: {
             query?: never;
@@ -4283,6 +4329,55 @@ export interface components {
             items: components["schemas"]["ProjectOut"][];
             /** Total */
             total: number;
+        };
+        /**
+         * ProjectPreLabelItemOut
+         * @description One batch's row in a project-wide launch.
+         */
+        ProjectPreLabelItemOut: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Name */
+            batch_name: string;
+            job: components["schemas"]["BackgroundJobOut"];
+            /** Joined */
+            joined: boolean;
+        };
+        /**
+         * ProjectPreLabelOut
+         * @description Every batch the launch fanned out over, one row each, in selection order.
+         */
+        ProjectPreLabelOut: {
+            /** Items */
+            items: components["schemas"]["ProjectPreLabelItemOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ProjectPreLabelRequest
+         * @description Which model should pre-label this project's open batches, and which batches.
+         *
+         *     `batch_ids` absent means every batch of the project that is open for
+         *     annotation; present means exactly those — a batch outside the project is
+         *     404, one not open is 409, and the request is refused whole, never partly
+         *     launched.
+         */
+        ProjectPreLabelRequest: {
+            /** Batch Ids */
+            batch_ids?: string[] | null;
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /**
+             * Minimum Confidence
+             * @default 0.35
+             */
+            minimum_confidence: number;
         };
         /**
          * ProjectRename
@@ -9454,6 +9549,86 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pre_label_project_batches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPreLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPreLabelOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
