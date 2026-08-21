@@ -69,14 +69,14 @@ test("the cutoff is that many days in the past, as an RFC 3339 instant", () => {
 });
 
 test("every pnpm workspace root states the same span, in the minutes pnpm wants", () => {
-  // **Two workspace roots, so two copies of the number.** `docs-site/` is its own
+  // **Two workspace roots, so two copies of the number.** `docs/` is its own
   // root (see its `pnpm-workspace.yaml` for why it is not a member of the frontend
   // workspace), and a nested root does *not* inherit the parent's settings — so the
   // cool-down had to be restated there, and a restatement is exactly the thing this
   // file exists to hold in place. Both are checked; adding a third root without its
   // own `minimumReleaseAge` is a red test rather than a package installed the day
   // it was published.
-  const roots = ["pnpm-workspace.yaml", "docs-site/pnpm-workspace.yaml"];
+  const roots = ["pnpm-workspace.yaml", "docs/pnpm-workspace.yaml"];
   for (const root of roots) {
     const line = read(root).match(/^minimumReleaseAge:\s*(\d+)\s*$/m);
     assert.ok(line, `${root} declares no minimumReleaseAge`);
@@ -99,7 +99,7 @@ test("every Dependabot ecosystem declares the same cool-down", () => {
   // pass by never looking at it.
   //
   // **`npm` twice is correct.** Dependabot reads one lockfile per entry, and there
-  // are two — the root pnpm workspace, and `docs-site/`, which is its own workspace
+  // are two — the root pnpm workspace, and `docs/`, which is its own workspace
   // root with its own lockfile. Collapsing them to one name here would let a second
   // lockfile lose its cool-down without anything noticing, which is the failure this
   // roster is for.
