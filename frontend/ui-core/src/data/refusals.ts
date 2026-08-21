@@ -87,12 +87,12 @@ export const REFUSAL_PROSE: Record<string, string> = {
   // the other person rather than the rule.
   STALE_WRITE: "Someone else changed this while you were working on it — reload to see it.",
 
-  // The per-asset family.
+  // The annotation-work family — a job, and the frames inside one.
   ASSET_NOT_WRITABLE: "This frame's labeling is settled — its labels cannot be changed here.",
   JOB_NOT_COMPLETE: "Some frames still need annotating or skipping.",
   ASSET_NOT_IN_JOB: "This frame is not part of this job.",
   ASSET_NOT_IN_BATCH: "That frame is not in the batch this one corrects.",
-  ASSET_NOT_FOUND: "Some of those frames are not in this project any more.",
+  ASSET_NOT_FOUND: "Some of those frames are not in this project.",
   ANNOTATION_NOT_FOUND: "That annotation is no longer on record.",
   ANNOTATION_GEOMETRY_OUT_OF_BOUNDS: "That shape falls outside the frame it is drawn on.",
   JOB_NOT_FOUND: "That job is no longer on record.",
@@ -104,7 +104,7 @@ export const REFUSAL_PROSE: Record<string, string> = {
   DESTRUCTIVE_SCHEMA_CHANGE: "This change removes part of the contract already in use.",
   SCHEMA_CHANGE_WOULD_ORPHAN: "Annotations already exist under a class this change removes.",
   SCHEMA_DRAFT_NOT_FOUND: "There is no saved draft to publish.",
-  SCHEMA_VERSION_CONFLICT: "Someone else published a version first — yours will be the next one.",
+  SCHEMA_VERSION_CONFLICT: "Someone else published a version first — publish again to take the next one.",
 
   // Ingest.
   INGEST_JOB_NOT_FOUND: "That run is no longer on record.",
