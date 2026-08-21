@@ -177,6 +177,52 @@ describe("publishing", () => {
     });
   });
 
+  it("names the classes the active schema no longer describes, and what to do", async () => {
+    baseline();
+    on("POST", /\/releases$/, {
+      status: 409,
+      body: {
+        code: "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA",
+        message: "cannot publish this release: its active schema no longer describes annotations in the dataset",
+        detail: {
+          blockers: [
+            { label_class: "lane", annotations: 12, assets: 3 },
+            { label_class: "sign", annotations: 1, assets: 1 },
+          ],
+        },
+      },
+    });
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId("publish-release"));
+    await userEvent.type(screen.getByTestId("release-tag"), "v2");
+    await userEvent.click(screen.getByTestId("publish-submit"));
+
+    const said = (await screen.findByTestId("publish-error")).textContent ?? "";
+    expect(said).toContain("active schema no longer describes");
+    expect(said).not.toContain("RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA");
+    const blockers = screen.getByTestId("publish-blockers").textContent ?? "";
+    expect(blockers).toContain("lane: 12 annotations across 3 assets");
+    expect(blockers).toContain("sign: 1 annotation across 1 asset");
+    expect(screen.getByTestId("publish-remedy").textContent).toContain("publish a schema version");
+  });
+
+  it("says only what happened when the refusal carries no blockers", async () => {
+    baseline();
+    on("POST", /\/releases$/, {
+      status: 409,
+      body: { code: "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA", message: "kernel wording" },
+    });
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId("publish-release"));
+    await userEvent.type(screen.getByTestId("release-tag"), "v2");
+    await userEvent.click(screen.getByTestId("publish-submit"));
+
+    expect((await screen.findByTestId("publish-error")).textContent).toContain("active schema no longer describes");
+    expect(screen.queryByTestId("publish-blockers")).toBeNull();
+  });
+
   it("refuses a split whose fractions do not sum to one, as the kernel does", async () => {
     baseline();
     render(mount(<DatasetScreen projectId={PROJECT} />));

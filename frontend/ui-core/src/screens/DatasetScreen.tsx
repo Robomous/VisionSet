@@ -60,7 +60,7 @@ import {
   DialogTitle,
 } from "../primitives/Dialog";
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
-import { refusalProse } from "../data/refusals";
+import { classBlockers, describeClassCount, refusalProse } from "../data/refusals";
 import {
   Select,
   SelectContent,
@@ -94,6 +94,8 @@ import {
 
 /** The 409 that means "say you meant it". Not `confirm`, and not destructive. */
 const LOSSY = "LOSSY_EXPORT_NOT_CONSENTED";
+/** The 409 that names classes: the active schema no longer describes some of the trunk. */
+const CONTENT_VIOLATES_SCHEMA = "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA";
 
 /*
  * There is no `onBack` any more, and no breadcrumb.
@@ -626,6 +628,9 @@ function PublishDialog({
   // `0.7 + 0.15 + 0.15 != 1.0` in binary floating point. Mirrored rather than
   // restated: a stricter check here would refuse a recipe the API accepts.
   const balanced = Math.abs(sum - 1) < 1e-9;
+  const failure = publish.isError ? asApiError(publish.error) : null;
+  const blockers =
+    failure?.code === CONTENT_VIOLATES_SCHEMA ? classBlockers(failure.detail) : null;
 
   function submit(event: FormEvent): void {
     event.preventDefault();
@@ -732,6 +737,19 @@ function PublishDialog({
             <FieldError data-testid="publish-error">
               {refusalProse(publish.error)}
             </FieldError>
+          )}
+          {blockers !== null && (
+            <div className="flex flex-col gap-1 text-sm" data-testid="publish-blockers">
+              <ul className="list-disc pl-5">
+                {blockers.map((blocker) => (
+                  <li key={blocker.label_class}>{describeClassCount(blocker)}</li>
+                ))}
+              </ul>
+              <p className="text-muted-foreground" data-testid="publish-remedy">
+                Correct those labels in a new batch, remove the frames from the dataset, or
+                publish a schema version that describes the classes again — then publish.
+              </p>
+            </div>
           )}
 
           <DialogFooter>

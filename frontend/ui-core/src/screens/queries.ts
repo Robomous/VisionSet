@@ -107,7 +107,7 @@ export type LabelClassBody = components["schemas"]["LabelClassBody"];
 export type AttributeBody = components["schemas"]["AttributeBody"];
 export type GeometryType = components["schemas"]["GeometryType"];
 export type ProjectStats = components["schemas"]["ProjectStatsOut"];
-export type ClassCount = components["schemas"]["ClassCountOut"];
+export type { ClassCount } from "../data/refusals";
 export type Asset = components["schemas"]["AssetOut"];
 export type AssetPage = components["schemas"]["AssetPage"];
 export type BlockingAsset = components["schemas"]["BlockingAssetOut"];
