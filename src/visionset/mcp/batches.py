@@ -391,12 +391,12 @@ def pre_label_batch(
 
     **A region that could not be written as the class it named is discarded,
     not fatal.** A label naming no phrase asked for, or a shape the class does
-    not admit, is passed over the same way. A text-prompted detector answers
-    with text decoded from spans over the prompt, not a choice from the
-    classes it was asked about, so a span crossing the boundary between two
-    phrases can answer with neither of them; a model declaring two shapes may
-    also answer in the one its class does not take. `regions_discarded` in the
-    result says how many.
+    not admit or the model never declared, is passed over the same way. A
+    text-prompted detector answers with text decoded from spans over the
+    prompt, not a choice from the classes it was asked about, so a span
+    crossing the boundary between two phrases can answer with neither of
+    them; a model declaring two shapes may also answer in the one its class
+    does not take. `regions_discarded` in the result says how many.
 
     **A mapped region with no overlap with a measured asset is discarded
     separately.** `regions_out_of_bounds` in the result says how many; an

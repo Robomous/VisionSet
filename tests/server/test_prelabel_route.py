@@ -156,14 +156,14 @@ def _open_batch(
     monkeypatch: pytest.MonkeyPatch,
     *,
     classes: list[dict[str, Any]],
+    family: str = "grounding-dino",
+    capability: str = "text_detect",
 ) -> OpenBatch:
     """A batch open for annotation, pinned to ``classes``, paired with a
     text-detect connection ready to answer it."""
     project_id = project_with_schema(client, classes=classes)
     batch_id = batch_from_ingest(client, runner, tmp_path, project_id, images=3)
-    connection_id = _connection(
-        client, runner, monkeypatch, family="grounding-dino", capability="text_detect"
-    )
+    connection_id = _connection(client, runner, monkeypatch, family=family, capability=capability)
     assert client.post(f"/batches/{batch_id}/approve").status_code == 200
     assert client.post(f"/batches/{batch_id}/start").status_code == 200
     return OpenBatch(project_id=project_id, id=batch_id, connection_id=connection_id)
@@ -467,6 +467,37 @@ def test_the_plan_needs_a_connection_and_names_what_it_writes(
     assert body["asked_classes"] == ["sign", "post"]
     assert body["produces"] == ["bbox"]
     assert _pre_label_job_count(client) == 0
+
+
+def test_the_plan_names_every_shape_a_multi_shape_model_produces(
+    client: TestClient,
+    runner: InlineDispatcher,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every other test in this file resolves through ``grounding-dino``, whose
+    ``produces`` is a single shape; a model declaring two proves the route
+    reports the whole set, not one it happens to have exercised so far."""
+    batch = _open_batch(
+        client,
+        runner,
+        tmp_path,
+        monkeypatch,
+        classes=[POLYGON_ONLY],
+        family="text_detect",
+        capability="text_detect",
+    )
+
+    response = client.get(
+        f"/batches/{batch.id}/pre-label",
+        params={"connection_id": batch.connection_id},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["produces"] == ["bbox", "polygon"]
+    assert body["asked_classes"] == [POLYGON_ONLY["name"]]
+    assert body["excluded_classes"] == []
 
 
 def test_the_plan_without_a_connection_is_a_validation_error(

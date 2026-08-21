@@ -86,7 +86,8 @@ def run(
     not fatal either.** A text-prompted detector answers with decoded text
     rather than a choice from the prompt's phrases, so a merged answer is
     dropped before it is ever written; so is a shape the named class does not
-    admit. ``regions_discarded`` in the result says how many.
+    admit or the model never declared. ``regions_discarded`` in the result
+    says how many.
 
     **A mapped region with no overlap with a measured asset is also discarded.**
     ``regions_out_of_bounds`` keeps that geometry refusal distinct from an

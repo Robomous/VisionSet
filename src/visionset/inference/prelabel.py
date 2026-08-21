@@ -103,10 +103,10 @@ class PreLabelOutcome:
     #: argument that makes a second run safe.
     assets_skipped: int = 0
     #: Regions that could not be written as the class they named — a label
-    #: naming no phrase asked for, or a shape the class does not admit.
-    #: Discarded before an annotation is built rather than written and refused,
-    #: so a run that drops a meaningful share of the model's output says so
-    #: instead of reporting a clean success.
+    #: naming no phrase asked for, or a shape the class does not admit or the
+    #: model never declared. Discarded before an annotation is built rather
+    #: than written and refused, so a run that drops a meaningful share of the
+    #: model's output says so instead of reporting a clean success.
     regions_discarded: int = 0
     #: Regions whose geometry has no overlap with a measured asset. Kept
     #: separate from unmappable labels because their class mapping succeeded.
@@ -142,7 +142,9 @@ def shapes_prose(produces: frozenset[GeometryType]) -> str:
         GeometryType.CUBOID_3D: "a 3D cuboid",
         GeometryType.POLYLINE_3D: "a 3D polyline",
     }
-    return " or ".join(names[shape] for shape in sorted(produces, key=lambda shape: shape.value))
+    return " or ".join(
+        names.get(shape, shape.value) for shape in sorted(produces, key=lambda shape: shape.value)
+    )
 
 
 def no_detectable_class_message(schema_version: int, produces: frozenset[GeometryType]) -> str:
@@ -414,10 +416,11 @@ def pre_label(
 
     A region that could not be written as the class it named is passed over
     the same way — a label naming no phrase asked for, or a shape the class does
-    not admit. A text-prompted detector answers with decoded text, not a choice
-    from the phrase list, and a merged answer is discarded rather than guessed
-    onto either half; a model declaring two shapes may answer in the one its
-    class does not take. ``PreLabelOutcome.regions_discarded`` says how many.
+    not admit or the model never declared. A text-prompted detector answers
+    with decoded text, not a choice from the phrase list, and a merged answer
+    is discarded rather than guessed onto either half; a model declaring two
+    shapes may answer in the one its class does not take.
+    ``PreLabelOutcome.regions_discarded`` says how many.
 
     A region whose mapped geometry has no overlap with a measured asset is also
     passed over before the atomic write. ``PreLabelOutcome.regions_out_of_bounds``
@@ -469,7 +472,10 @@ def pre_label(
         on_plan(plan)
     phrases = plan.asked
     class_by_answer = _class_by_answer(phrases)
-    admits = {label_class.name: frozenset(label_class.geometries) for label_class in schema.classes}
+    admits = {
+        label_class.name: frozenset(label_class.geometries) & declared.produces
+        for label_class in schema.classes
+    }
 
     jobs = batches.jobs(batch_id)
     targets = _targets(workspace, jobs, replace_model_labels=replace_model_labels)
@@ -640,10 +646,11 @@ def _annotations_from(
     writing it under either half of a merged answer would be inventing an
     attribution nobody can check.
 
-    A region whose shape the matched class does not admit is dropped the same
-    way. A model declaring both a box and a polygon may answer either for a
-    class that takes only one, and the class is what the annotation has to be
-    valid against.
+    A region whose shape the matched class does not admit, or the model never
+    declared, is dropped the same way. A model declaring both a box and a
+    polygon may answer either for a class that takes only one, and a model
+    that declares only one shape has nowhere to land a region of the other,
+    even for a class that would otherwise admit it.
 
     ``schema_version`` is supplied because ``Annotation`` requires one; the
     service stamps the pinned value over it, which is what keeps a caller from

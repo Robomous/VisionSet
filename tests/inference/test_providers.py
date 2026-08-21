@@ -416,3 +416,16 @@ def test_the_pool_answers_the_declaration_a_connection_resolves_to(
     declared = pool.served(connection, workspace_root=tmp_path)
     assert declared == HTTP_FAMILIES["text_detect"]
     assert pool.builds == 0
+
+
+def test_a_recorded_provider_resolving_to_no_family_is_refused_not_keyerror(
+    connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A recorded provider tolerates a family of ``""`` — ``driver_for``'s own
+    check only fires when family is truthy — so a ready connection whose
+    snapshot config went missing resolves to a family no driver declares, and
+    ``served`` must refuse it rather than index ``driver.families[""]``."""
+    no_extra_needed(monkeypatch, "")
+    connection = a_local(connections, provider_id="sam")
+    with pytest.raises(InferenceConnectionNotRunnable):
+        ProviderPool().served(connection, workspace_root=tmp_path)

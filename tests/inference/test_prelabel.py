@@ -1013,6 +1013,38 @@ def test_a_region_in_a_shape_its_class_does_not_admit_is_discarded(tmp_path: Pat
         fixture.close()
 
 
+def test_a_region_in_a_shape_the_model_never_declared_is_discarded(tmp_path: Path) -> None:
+    """The class admits both shapes, the model declares only one; the shape it
+    never declared is dropped before the atomic write and counted, exactly as
+    a shape the class does not admit is."""
+    fixture = Fixture(
+        tmp_path,
+        "undeclared",
+        classes=(CAR,),
+        produces=BOXES,
+        regions=(
+            _region("car"),
+            PredictedRegion(
+                label="car",
+                confidence=0.8,
+                geometry=PolygonGeometry(points=[(1.0, 1.0), (5.0, 1.0), (5.0, 5.0)]),
+            ),
+        ),
+    )
+    try:
+        outcome = pre_label(
+            fixture.workspace,
+            batch_id=fixture.batch.id,
+            connection_id=fixture.connection.id,
+            pool=fixture.pool,
+        )
+
+        assert outcome.annotations_written == 3
+        assert outcome.regions_discarded == 3
+    finally:
+        fixture.close()
+
+
 def test_planned_answers_the_plan_a_run_would_prompt_with(prelabel_fixture: Fixture) -> None:
     plan = planned(
         prelabel_fixture.workspace,

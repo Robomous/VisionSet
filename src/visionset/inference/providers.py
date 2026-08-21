@@ -136,9 +136,22 @@ class ProviderPool:
         Resolved, never built: a caller planning a run wants the shapes before it
         pays for a runner, and every refusal :func:`resolve` raises is raised here
         too, in the same order.
+
+        Raises:
+            InferenceConnectionNotSetUp: a local connection whose weights are not
+                here yet, or an http connection whose endpoint has not been asked.
+            InferenceConnectionNotRunnable: the recorded driver is not installed,
+                or does not serve what the model (or the endpoint) declares — including
+                a local connection whose snapshot config went missing after a
+                provider was recorded, which ``resolve`` tolerates but no driver
+                declares a family for.
+            LocalInferenceUnavailable: the optional runtime is not installed.
         """
         driver, family = resolve(connection, workspace_root=workspace_root)
-        return driver.families[family]
+        declared = driver.families.get(family)
+        if declared is None:
+            raise InferenceConnectionNotRunnable(_wrong_family_for(connection, driver, family))
+        return declared
 
     def clear(self) -> None:
         """Drop everything held. What a test does between cases."""

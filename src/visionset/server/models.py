@@ -1011,8 +1011,9 @@ class PreLabelRunOut(BaseModel):
     #: passed over, not labeled. `null` until the job settles with a result.
     assets_labeled: int | None
     #: Regions that could not be written as the class they named — a label the
-    #: prompt never asked for, or a shape the class does not admit — discarded
-    #: rather than written. `null` until the job settles with a result.
+    #: prompt never asked for, or a shape the class does not admit or the
+    #: model never declared — discarded rather than written. `null` until the
+    #: job settles with a result.
     regions_discarded: int | None
     #: Regions whose mapped geometry had no overlap with a measured asset,
     #: discarded rather than written. `null` until the job settles with a
