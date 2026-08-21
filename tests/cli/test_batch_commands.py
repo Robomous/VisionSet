@@ -124,6 +124,32 @@ def test_list_leads_with_the_id_and_names_the_state(root: Path, tmp_path: Path) 
     assert rows[1].split()[:5] == [batch, "stills", "draft", "-", "6"]
 
 
+def test_settled_counts_the_settled_states_and_not_everything_touched(
+    root: Path, tmp_path: Path
+) -> None:
+    """SETTLED is the kernel's ``SETTLED_PROGRESS``, not "anything but unannotated".
+
+    The column was ``sum(counts) - unannotated``, which promoted every state
+    somebody had merely reached. An asset awaiting review has outstanding work by
+    the kernel's own definition — it is what stops a job completing — and it was
+    reported as done.
+    """
+    name, batch = started_batch(root, tmp_path)
+    job = jobs_of(root, batch)[0]
+    ok(root, "job", "start", job)
+    listing = ok(root, "job", "next", job, "-n", "100").splitlines()[1:]
+    assets = [line.split()[0] for line in listing]
+    ok(root, "job", "mark", job, assets[0], "--progress", "annotated")
+    ok(root, "job", "mark", job, assets[1], "--progress", "annotated")
+    ok(root, "job", "mark", job, assets[1], "--progress", "review_pending")
+    ok(root, "job", "mark", job, assets[2], "--progress", "skipped")
+
+    row = ok(root, "batch", "list", "-p", name).splitlines()[1].split()
+    # One annotated and one skipped. The frame awaiting review is not settled,
+    # and neither are the three nobody has opened.
+    assert row[-1] == "2", row
+
+
 def test_a_draft_shows_no_pinned_schema(root: Path, tmp_path: Path) -> None:
     # Approval is what pins a version, and it never moves after — so a draft
     # showing one would be a claim nothing supports.
