@@ -34,6 +34,7 @@ from uuid import UUID
 
 from visionset.inference.providers import ProviderPool, resident
 from visionset.kernel.domain import (
+    PRE_LABELABLE_STATES,
     Annotation,
     AnnotationJob,
     AnnotationSchema,
@@ -51,6 +52,8 @@ from visionset.kernel.domain.geometry import geometry_intersects_asset
 from visionset.kernel.domain.vocabulary import OpenVocabulary
 from visionset.kernel.errors import (
     AssetNotWritable,
+    BatchNotFound,
+    BatchNotInAnnotation,
     SchemaHasNoDetectableClass,
     UnsupportedPrompt,
     WorkspaceCorrupt,
@@ -61,6 +64,7 @@ from visionset.kernel.services import (
     BatchService,
     InferenceConnectionService,
     IngestService,
+    ProjectService,
     SchemaService,
     WorkspaceService,
 )
@@ -245,6 +249,58 @@ def require_detectable_schema(workspace: WorkspaceService, batch: Batch) -> Anno
     if not detectable_classes(schema):
         raise SchemaHasNoDetectableClass(no_detectable_class_message(schema.version))
     return schema
+
+
+def select_pre_labelable(
+    workspace: WorkspaceService,
+    project_id: UUID,
+    batch_ids: Sequence[UUID] | None = None,
+) -> list[Batch]:
+    """The batches a project-wide run fans out over, or the refusal.
+
+    ``batch_ids`` absent means every batch of the project that is open for
+    annotation, in listing order; present means exactly those, in the order
+    given. Refusals are whole: a named batch outside the project, a named
+    batch not open, a project with no open batch, or any selected batch whose
+    pin no detection can be written as — each refused up front, naming the
+    batch, so a caller that got a list got one every surface can run as is.
+
+    Raises:
+        ProjectNotFound: no such project in this workspace.
+        BatchNotFound: a named batch is not in this project.
+        BatchNotInAnnotation: a named batch is not ``in_annotation``, the
+            project has no open batch at all, or ``batch_ids`` is an empty list.
+        WorkspaceCorrupt: an open batch pinned no schema version.
+        SchemaHasNoDetectableClass: a selected batch's pinned schema holds no
+            class a detection could be written as.
+    """
+    project = ProjectService(workspace).get(project_id)
+    if batch_ids is not None and not batch_ids:
+        raise BatchNotInAnnotation(
+            f"no batch named for project {project.name!r}; pass at least one batch id, "
+            "or omit batch_ids to run every batch open for annotation"
+        )
+    batches = BatchService(workspace)
+    if batch_ids is None:
+        selected = [one for one in batches.list(project_id) if one.state in PRE_LABELABLE_STATES]
+    else:
+        selected = []
+        for batch_id in dict.fromkeys(batch_ids):
+            batch = batches.get(batch_id)
+            if batch.project_id != project_id:
+                raise BatchNotFound(f"no batch {batch_id} in project {project.name!r}")
+            selected.append(batches.require_pre_labelable(batch_id))
+    if not selected:
+        raise BatchNotInAnnotation(
+            f"project {project.name!r} has no batch open for annotation; "
+            "approve and start one, then ask again"
+        )
+    for batch in selected:
+        try:
+            require_detectable_schema(workspace, batch)
+        except SchemaHasNoDetectableClass as refusal:
+            raise SchemaHasNoDetectableClass(f"batch {batch.name!r}: {refusal}") from refusal
+    return selected
 
 
 def pre_label(

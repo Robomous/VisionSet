@@ -23,6 +23,7 @@ visionset ingest PATH --project P [--fps N] [--batch-name NAME]
 visionset batch list --project P
 visionset batch approve BATCH_ID [--jobs-of N]
 visionset batch pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT]
+visionset project pre-label PROJECT CONNECTION [--batch BATCH_ID]... [--minimum-confidence FLOAT]
 visionset batch start|complete|promote BATCH_ID
 
 visionset job list --batch BATCH_ID
@@ -366,6 +367,14 @@ only the silence to explain. Progress and the summary are written to stderr; nor
 contains `annotations_written`. With `--json`, the
 command prints the complete outcome instead, including `regions_discarded` for unmappable model
 labels and `regions_out_of_bounds` for mapped regions without overlap with a measured asset.
+
+`project pre-label PROJECT CONNECTION [--batch BATCH_ID]... [--minimum-confidence FLOAT]` is the
+same run over every batch of the project that is open for annotation - or exactly the `--batch`
+ids given - one after another, each announced and reported by name on stderr, with the total
+`annotations_written` on stdout. The selection is refused whole before the first forward pass: a
+batch outside the project, a named batch that is not open, a project with no open batch, or a pin
+with no class a box can be written as (the message names the batch). With `--json`, `items` holds
+one outcome per batch and `annotations_written` the total.
 
 `--jobs-of N` is the `BySize` partition; with no flag the batch becomes one job. There is no
 `batch create` and no membership editing: a batch is born from an ingest. See

@@ -18,8 +18,15 @@ from visionset.inference.prelabel import (
     detectable_classes,
     pre_label,
     prompt_plan,
+    select_pre_labelable,
 )
-from visionset.kernel import BatchNotInAnnotation, SchemaHasNoDetectableClass, UnsupportedPrompt
+from visionset.kernel import (
+    BatchNotFound,
+    BatchNotInAnnotation,
+    ProjectNotFound,
+    SchemaHasNoDetectableClass,
+    UnsupportedPrompt,
+)
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
@@ -890,3 +897,103 @@ def test_stopping_after_an_off_frame_region_keeps_its_count(
     job = early_stop_off_frame_fixture.job()
     assert job.progress[early_stop_off_frame_fixture.assets[0]] is AssetProgress.PRE_LABELED
     assert job.progress[early_stop_off_frame_fixture.assets[1]] is AssetProgress.UNANNOTATED
+
+
+# --- selecting a project's batches -------------------------------------------
+
+
+def _second_open_batch(fixture: Fixture, name: str, *, seeds: range) -> UUID:
+    """Another batch of ``fixture.project``, approved and started, over fresh assets."""
+    assets = [fixture._asset(f"{name}-{seed}") for seed in seeds]
+    batch = fixture.batches.create(fixture.project.id, name, assets)
+    fixture.batches.approve(batch.id)
+    fixture.batches.start(batch.id)
+    return batch.id
+
+
+def test_the_default_selection_is_every_open_batch_in_listing_order(
+    prelabel_fixture: Fixture,
+) -> None:
+    second = _second_open_batch(prelabel_fixture, "second", seeds=range(10, 12))
+    draft = prelabel_fixture.batches.create(prelabel_fixture.project.id, "draft", [])
+
+    selected = select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id)
+
+    assert [one.id for one in selected] == [prelabel_fixture.batch.id, second]
+    assert draft.id not in {one.id for one in selected}
+
+
+def test_a_named_selection_keeps_its_order_and_collapses_duplicates(
+    prelabel_fixture: Fixture,
+) -> None:
+    second = _second_open_batch(prelabel_fixture, "second", seeds=range(10, 12))
+
+    selected = select_pre_labelable(
+        prelabel_fixture.workspace,
+        prelabel_fixture.project.id,
+        [second, prelabel_fixture.batch.id, second],
+    )
+
+    assert [one.id for one in selected] == [second, prelabel_fixture.batch.id]
+
+
+def _asset_for(fixture: Fixture, project_id: UUID, seed: str) -> UUID:
+    """An asset seeded like ``Fixture._asset``, but owned by a different project."""
+    content_hash = fixture.workspace.blob_store.put(BytesIO(seed.encode()))
+    with fixture.workspace.unit_of_work() as uow:
+        return uow.assets.add(
+            Asset(project_id=project_id, content_hash=content_hash, uri=f"/tmp/{seed}.png")
+        ).id
+
+
+def test_a_named_batch_of_another_project_is_not_found(prelabel_fixture: Fixture) -> None:
+    other = ProjectService(prelabel_fixture.workspace).create("other-project")
+    asset = _asset_for(prelabel_fixture, other.id, "other-0")
+    theirs = prelabel_fixture.batches.create(other.id, "theirs", [asset])
+
+    with pytest.raises(BatchNotFound, match="in project"):
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, [theirs.id])
+
+
+def test_a_named_batch_that_is_not_open_is_refused(prelabel_fixture: Fixture) -> None:
+    draft = prelabel_fixture.batches.create(prelabel_fixture.project.id, "draft", [])
+
+    with pytest.raises(BatchNotInAnnotation, match="draft"):
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, [draft.id])
+
+
+def test_a_project_with_no_open_batch_is_refused_by_name(prelabel_fixture: Fixture) -> None:
+    for job in prelabel_fixture.batches.jobs(prelabel_fixture.batch.id):
+        for asset_id in job.progress:
+            prelabel_fixture.jobs.mark(job.id, asset_id, AssetProgress.SKIPPED)
+        prelabel_fixture.jobs.complete(job.id)
+    prelabel_fixture.batches.complete(prelabel_fixture.batch.id)
+
+    with pytest.raises(BatchNotInAnnotation, match="has no batch open for annotation"):
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id)
+
+
+def test_an_explicitly_empty_selection_is_refused_by_its_own_sentence(
+    prelabel_fixture: Fixture,
+) -> None:
+    with pytest.raises(BatchNotInAnnotation, match="no batch named"):
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, [])
+
+
+def test_an_unknown_project_is_not_found(prelabel_fixture: Fixture) -> None:
+    with pytest.raises(ProjectNotFound):
+        select_pre_labelable(prelabel_fixture.workspace, uuid4())
+
+
+def test_a_selected_batch_with_no_detectable_class_is_refused_by_name(
+    prelabel_fixture: Fixture,
+) -> None:
+    """The refusal names the batch, because a project-wide request cannot otherwise
+    say which pin to exclude by name."""
+    prelabel_fixture.schemas.create_version(
+        prelabel_fixture.project.id, [LANE], allow_destructive=True
+    )
+    _second_open_batch(prelabel_fixture, "lanes", seeds=range(20, 22))
+
+    with pytest.raises(SchemaHasNoDetectableClass, match="batch 'lanes'"):
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id)

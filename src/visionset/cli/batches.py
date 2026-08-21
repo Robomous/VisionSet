@@ -201,7 +201,7 @@ _EXCLUSION_PROSE: Final = {
 }
 
 
-def _announce(plan: PreLabelPlan) -> None:
+def announce_plan(plan: PreLabelPlan) -> None:
     """Say what the run is about to ask for, and what it is leaving out.
 
     Printed before the first forward pass because that is when it is still
@@ -246,7 +246,7 @@ def batch_pre_label(
             batch_id=batch,
             connection_id=_resolve(connections, connection),
             minimum_confidence=minimum_confidence,
-            on_plan=_announce,
+            on_plan=announce_plan,
             on_progress=lambda done, total: note(f"Pre-labeling {done}/{total} asset(s)."),
         )
     if json_out:

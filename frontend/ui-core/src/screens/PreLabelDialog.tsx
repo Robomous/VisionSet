@@ -94,6 +94,7 @@ import type { BadgeTone, Segment } from "./batchState";
 import type { KnownMembers } from "../generated/api";
 import {
   batchKeys,
+  isLiveJobState,
   useBackgroundJob,
   usePreLabelBatch,
   usePreLabelPlan,
@@ -105,13 +106,9 @@ import {
 } from "./queries";
 
 /** The capability a candidate connection has to declare. Read off the wire, never guessed. */
-const TEXT_DETECT = "text_detect" as const;
+export const TEXT_DETECT = "text_detect" as const;
 
-const DEFAULT_CONFIDENCE = "0.35";
-
-function isLive(state: BackgroundJob["state"]): boolean {
-  return state === "queued" || state === "running";
-}
+export const DEFAULT_CONFIDENCE = "0.35";
 
 function isSettled(state: BackgroundJob["state"]): boolean {
   return state === "succeeded" || state === "failed" || state === "cancelled";
@@ -195,7 +192,7 @@ function viewFromRun(run: PreLabelRun): RunView {
 
 function modeOf(view: RunView | null): Mode {
   if (view === null) return "configure";
-  if (isLive(view.state)) return "running";
+  if (isLiveJobState(view.state)) return "running";
   if (view.state === "succeeded") return "done";
   if (view.state === "cancelled") return "stopped";
   return "failed";
@@ -369,6 +366,74 @@ function BlockedActions({
   );
 }
 
+export interface PreLabelSettingsProps {
+  readonly candidates: readonly Connection[];
+  readonly activeId: string;
+  readonly onConnectionChange: (id: string) => void;
+  readonly confidence: string;
+  readonly onConfidenceChange: (value: string) => void;
+  readonly disabled: boolean;
+}
+
+/** The model and affinity controls both launches share — one copy of the prose and the ids. */
+export function PreLabelSettings({
+  candidates,
+  activeId,
+  onConnectionChange,
+  confidence,
+  onConfidenceChange,
+  disabled,
+}: PreLabelSettingsProps): JSX.Element {
+  return (
+    <>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="prelabel-model">Model</Label>
+        {candidates.length === 0 ? (
+          // An explanation with no control beats a control that does nothing —
+          // `SuggestPanel`'s standing rule, applied here: there is nowhere to
+          // route "add one" from this dialog without a new nav entry.
+          <p className="text-xs text-muted-foreground" data-testid="prelabel-no-connections">
+            No connection answers text prompts yet — add one from Inference first.
+          </p>
+        ) : (
+          <Select value={activeId} onValueChange={onConnectionChange} disabled={disabled}>
+            <SelectTrigger id="prelabel-model" data-testid="prelabel-model">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {candidates.map((one) => (
+                <SelectItem key={one.id} value={one.id} meta={one.model_id}>
+                  {one.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="prelabel-confidence">Minimum prompt affinity</Label>
+        <Input
+          id="prelabel-confidence"
+          data-testid="prelabel-confidence"
+          type="number"
+          min="0"
+          max="1"
+          step="0.01"
+          value={confidence}
+          disabled={disabled}
+          onChange={(event) => onConfidenceChange(event.target.value)}
+        />
+        <FieldHint>
+          How well a region matches the words it was asked for — a different scale from a
+          point-prompt model&rsquo;s mask confidence, which is why the number needs a name of
+          its own rather than a bare percentage.
+        </FieldHint>
+      </div>
+    </>
+  );
+}
+
 export interface PreLabelButtonProps {
   readonly batch: Batch;
   readonly className?: string;
@@ -523,54 +588,14 @@ function PreLabelDialog({
         <div className="flex flex-col gap-3">
           {(mode === "configure" || mode === "running") && !blocked && (
             <>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="prelabel-model">Model</Label>
-                {candidates.length === 0 ? (
-                  // An explanation with no control beats a control that does nothing —
-                  // `SuggestPanel`'s standing rule, applied here: there is nowhere to
-                  // route "add one" from this dialog without a new nav entry.
-                  <p className="text-xs text-muted-foreground" data-testid="prelabel-no-connections">
-                    No connection answers text prompts yet — add one from Inference first.
-                  </p>
-                ) : (
-                  <Select
-                    value={active?.id ?? ""}
-                    onValueChange={setConnectionId}
-                    disabled={mode === "running"}
-                  >
-                    <SelectTrigger id="prelabel-model" data-testid="prelabel-model">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {candidates.map((one) => (
-                        <SelectItem key={one.id} value={one.id} meta={one.model_id}>
-                          {one.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="prelabel-confidence">Minimum prompt affinity</Label>
-                <Input
-                  id="prelabel-confidence"
-                  data-testid="prelabel-confidence"
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={confidence}
-                  disabled={mode === "running"}
-                  onChange={(event) => setConfidence(event.target.value)}
-                />
-                <FieldHint>
-                  How well a region matches the words it was asked for — a different scale from a
-                  point-prompt model&rsquo;s mask confidence, which is why the number needs a name
-                  of its own rather than a bare percentage.
-                </FieldHint>
-              </div>
+              <PreLabelSettings
+                candidates={candidates}
+                activeId={active?.id ?? ""}
+                onConnectionChange={setConnectionId}
+                confidence={confidence}
+                onConfidenceChange={setConfidence}
+                disabled={mode === "running"}
+              />
 
               <PromptClasses plan={plan.data ?? null} />
 

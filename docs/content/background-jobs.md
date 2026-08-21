@@ -32,22 +32,24 @@ handling for one GIL.
 | `export.release` | `visionset/jobs/export.py` | `POST /releases/{id}/export` |
 | `inference.download_weights` | `visionset/jobs/weights.py` | `POST /inference/connections/{id}/download` |
 | `inference.check_integrity` | `visionset/jobs/integrity.py` | `POST /inference/connections/{id}/check-integrity` |
-| `annotation.pre_label` | `visionset/jobs/prelabel.py` | `POST /batches/{id}/pre-label` |
+| `annotation.pre_label` | `visionset/jobs/prelabel.py` | `POST /batches/{id}/pre-label`, `POST /projects/{id}/batches/pre-label` (one row per batch) |
 
 The last three are why the throttled progress below matters: a weight download is
 gigabytes, an integrity check reads every byte of them, and pre-labeling is one
 forward pass per untouched asset, so all three report for minutes rather than
 seconds. `processed` and `total` are counted in **assets** for pre-labeling, where
-the other two count bytes and files. None of the three CLI equivalents queues:
-`visionset inference download`, `visionset inference check-integrity`, and
-`visionset batch pre-label` run their shared bodies inline because a terminal has no worker.
+the other two count bytes and files. None of the four CLI equivalents queues:
+`visionset inference download`, `visionset inference check-integrity`,
+`visionset batch pre-label`, and `visionset project pre-label` run their shared
+bodies inline because a terminal has no worker.
 
-They are also the only three launchers that **join a run instead of starting a
-second one**: asked for a kind this connection or this batch already has queued
+They are also the only four launchers that **join a run instead of starting a
+second one** — the project launch (`POST /projects/{id}/batches/pre-label`) joins
+per batch too: asked for a kind this connection or this batch already has queued
 or running, the route answers with that job. It is the route's own read of the
 queue rather than anything `enqueue` does, so every other launcher above queues a
 fresh job each time it is asked — and because nothing brackets the read and the
-enqueue, even these three coalesce the ordinary repetition rather than
+enqueue, even these four coalesce the ordinary repetition rather than
 guaranteeing uniqueness. `docs/content/inference.md` and `docs/content/batches.md` say what that
 buys and what it deliberately does not refuse.
 
