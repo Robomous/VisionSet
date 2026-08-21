@@ -35,7 +35,9 @@
  *   quotable, never rendered;
  * - a full error state (`ErrorState`) puts it in a secondary mono meta line,
  *   de-duplicated against the sentence;
- * - a dialog or banner (`Alert`) does not carry it at all.
+ * - a bare `Alert` does not carry it at all;
+ * - a visible `Badge` beside the raw message, which six sites still do, is
+ *   the fourth shape and is not yet settled.
  *
  * A code as an `Alert` heading is the shape this map exists to end.
  */

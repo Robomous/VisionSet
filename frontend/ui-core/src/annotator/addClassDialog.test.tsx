@@ -239,7 +239,7 @@ describe("what it submits", () => {
 });
 
 describe("the refusal it has to make legible", () => {
-  it("renders a refusal with its code, which is what a client branches on", () => {
+  it("renders a refusal as the server's sentence, not its code", () => {
     render(
       mount({
         // A real `ApiError`, not a shaped object: `asApiError` returns

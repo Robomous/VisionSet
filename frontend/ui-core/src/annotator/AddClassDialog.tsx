@@ -730,7 +730,7 @@ export function AddClassDialog({
           )}
 
           {failure !== null && (
-            <Alert variant="destructive" data-testid="add-class-error">
+            <Alert variant="destructive" title="Could not add this class" data-testid="add-class-error">
               {refusalProse(error)}
               {/* The one refusal whose remedy is somewhere else. `repin` has no
                   flag for it on purpose: the pin did not move because somebody
