@@ -39,9 +39,11 @@ class Endpoint:
         self.model_ref = model_ref
         self.describe_status = 200
         self.describe_body: Any = None  # None derives {model_ref, capability}
+        self.describe_location: str | None = None  # set with a 3xx status to redirect
         self.predict_status = 200
         self.predict_body: Any = None  # None derives one answer per target
         self.requests: list[dict[str, Any]] = []
+        self.truncate_body = False  # sends a short body under the declared Content-Length
         self.url = ""
 
 
@@ -92,13 +94,13 @@ def answers_for(endpoint: Endpoint, request: dict[str, Any]) -> dict[str, Any]:
 class _Handler(BaseHTTPRequestHandler):
     endpoint: Endpoint
 
-    def do_GET(self) -> None:  # noqa: N802 — the stdlib's spelling
+    def do_GET(self) -> None:  # the stdlib's spelling
         body = self.endpoint.describe_body
         if body is None:
             body = {"model_ref": self.endpoint.model_ref, "capability": self.endpoint.capability}
-        self._send(self.endpoint.describe_status, body)
+        self._send(self.endpoint.describe_status, body, location=self.endpoint.describe_location)
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
         request = json.loads(self.rfile.read(length))
         self.endpoint.requests.append(request)
@@ -107,14 +109,18 @@ class _Handler(BaseHTTPRequestHandler):
             body = answers_for(self.endpoint, request)
         self._send(self.endpoint.predict_status, body)
 
-    def _send(self, status: int, body: Any) -> None:
+    def _send(self, status: int, body: Any, *, location: str | None = None) -> None:
         payload = (
             body.encode("utf-8") if isinstance(body, str) else json.dumps(body).encode("utf-8")
         )
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
+        if location is not None:
+            self.send_header("Location", location)
         self.end_headers()
+        if self.endpoint.truncate_body:
+            payload = payload[:-5]
         self.wfile.write(payload)
 
     def log_message(self, *_: object) -> None:

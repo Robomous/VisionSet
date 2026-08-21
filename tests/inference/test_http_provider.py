@@ -60,7 +60,11 @@ def hosted(url: str, **overrides: object) -> InferenceConnection:
 
 
 def a_request(
-    tmp_path: Path, prompt: PointPrompt | TextPrompt, *, targets: int = 1
+    tmp_path: Path,
+    prompt: PointPrompt | TextPrompt,
+    *,
+    targets: int = 1,
+    minimum_confidence: float = 0.0,
 ) -> PredictionRequest:
     content = write_image(tmp_path / "t.png", size=(20, 16)).read_bytes()
     return PredictionRequest(
@@ -69,6 +73,7 @@ def a_request(
             for _ in range(targets)
         ),
         prompt=prompt,
+        minimum_confidence=minimum_confidence,
     )
 
 
@@ -141,6 +146,26 @@ def test_only_http_and_https_are_ever_opened() -> None:
         describe(hosted("file:///etc/hosts"))
 
 
+def test_a_redirect_to_a_foreign_scheme_is_refused_not_followed() -> None:
+    """A followed redirect would try to open the ftp URL and fail there
+    instead — "answered 302" is only true of the refusal, before anything
+    followed it."""
+    with serving_endpoint() as endpoint:
+        endpoint.describe_status = 302
+        endpoint.describe_location = "ftp://127.0.0.1/x"
+        with pytest.raises(InferenceEndpointUnavailable, match="answered 302") as refused:
+            describe(hosted(endpoint.url))
+    assert endpoint.url in str(refused.value)
+
+
+def test_a_body_shorter_than_its_declared_length_is_one_sentence_not_a_traceback() -> None:
+    with serving_endpoint() as endpoint:
+        endpoint.truncate_body = True
+        with pytest.raises(InferenceEndpointUnavailable) as refused:
+            describe(hosted(endpoint.url))
+    assert endpoint.url in str(refused.value)
+
+
 # --- predict ----------------------------------------------------------------
 
 
@@ -155,8 +180,20 @@ def test_a_text_prompt_comes_back_as_regions_in_the_domain_vocabulary(tmp_path: 
     assert answer.regions[0].label == "cat"
     assert isinstance(answer.regions[0].geometry, BboxGeometry)
     assert sent["prompt"] == {"kind": "text", "phrases": ["cat"]}
+    assert sent["minimum_confidence"] == 0.0
     assert base64.b64decode(sent["targets"][0]["content"]) == request.targets[0].content
     assert sent["targets"][0]["media_type"] == "image/png"
+
+
+def test_a_below_threshold_region_is_dropped_and_an_at_or_above_one_kept(tmp_path: Path) -> None:
+    """The fixture answers one region at confidence 0.8: a threshold above it
+    drops it, and a threshold at or below it keeps it."""
+    with serving_endpoint(capability="text_detect") as endpoint:
+        runner = RemoteDetector(hosted(endpoint.url))
+        (dropped,) = list(runner.predict(a_request(tmp_path, WORDS, minimum_confidence=0.85)))
+        (kept,) = list(runner.predict(a_request(tmp_path, WORDS, minimum_confidence=0.8)))
+    assert dropped.regions == ()
+    assert len(kept.regions) == 1
 
 
 def test_a_point_prompt_comes_back_as_a_mask_of_zeros_and_ones(tmp_path: Path) -> None:
@@ -171,6 +208,17 @@ def test_a_point_prompt_comes_back_as_a_mask_of_zeros_and_ones(tmp_path: Path) -
     # The fixture lights (2,2)-(10,10): a lit pixel is exactly 1, a dark one 0.
     assert rows[3][3] == 1 and rows[0][0] == 0
     assert rows[3].index(True) == 2, "the pipeline scans with index(True), so lit must be 1"
+
+
+def test_a_below_threshold_segment_is_dropped_and_an_at_or_above_one_kept(tmp_path: Path) -> None:
+    """The fixture answers one segment at score 0.9: a threshold above it drops
+    it, and a threshold at or below it keeps it."""
+    with serving_endpoint() as endpoint:
+        runner = RemoteSegmenter(hosted(endpoint.url))
+        (dropped,) = list(runner.segment(a_request(tmp_path, POINTS, minimum_confidence=0.95)))
+        (kept,) = list(runner.segment(a_request(tmp_path, POINTS, minimum_confidence=0.9)))
+    assert dropped.segments == ()
+    assert len(kept.segments) == 1
 
 
 def test_answers_are_yielded_in_target_order_whatever_order_they_arrived(tmp_path: Path) -> None:

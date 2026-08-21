@@ -17,11 +17,13 @@ declaration. So :data:`HTTP_FAMILIES` maps each capability name onto itself,
 and an endpoint declaring something this build does not know is refused when
 it is asked rather than recorded and then refused on every request.
 
-**The wrong prompt kind is refused here, before any request is made.** The
-family tells the runner what the endpoint takes, so a detector handed points
-refuses in the port's own vocabulary exactly as the local adapters do — a
-round trip to be told the same thing would be a sentence about the network
-wrapped around a sentence about the prompt.
+**The wrong prompt kind is refused here, before any request is made** (on the
+first iteration, as the local adapters do — ``predict`` and ``segment`` are
+generators, so nothing runs until the caller advances one). The family tells
+the runner what the endpoint takes, so a detector handed points refuses in
+the port's own vocabulary exactly as the local adapters do — a round trip to
+be told the same thing would be a sentence about the network wrapped around a
+sentence about the prompt.
 
 **Every failure is one class**, :class:`InferenceEndpointUnavailable`, because
 every reading — unreachable, a status, a body outside the contract — has the
@@ -35,12 +37,13 @@ be a second thing to break for one ``POST``.
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Final
+from typing import IO, Any, Final
 from urllib import error
 from urllib import request as urllib_request
 from uuid import UUID
@@ -133,6 +136,31 @@ def _url_of(connection: InferenceConnection) -> str:
     return url
 
 
+class _NoForeignRedirects(urllib_request.HTTPRedirectHandler):
+    """Refuses a redirect that leaves http(s).
+
+    The default handler follows one anywhere, including ``ftp://``, which is
+    not a scheme this driver ever promised to open. A refused redirect
+    surfaces as the 3xx status, through the ``HTTPError`` arm below.
+    """
+
+    def redirect_request(
+        self,
+        req: urllib_request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: http.client.HTTPMessage,
+        newurl: str,
+    ) -> urllib_request.Request | None:
+        if not newurl.startswith(("http://", "https://")):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER: Final = urllib_request.build_opener(_NoForeignRedirects)
+
+
 def _exchange(url: str, *, payload: dict[str, Any] | None, timeout: float) -> Any:
     """One round trip, as parsed JSON, or the sentence for why not."""
     data = None if payload is None else json.dumps(payload).encode("utf-8")
@@ -143,14 +171,17 @@ def _exchange(url: str, *, payload: dict[str, Any] | None, timeout: float) -> An
         url, data=data, headers=headers, method="GET" if data is None else "POST"
     )
     try:
-        with urllib_request.urlopen(asked, timeout=timeout) as response:
+        with _OPENER.open(asked, timeout=timeout) as response:
             raw = response.read()
     except error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", "replace").strip()[:200]
+        try:
+            detail = exc.read().decode("utf-8", "replace").strip()[:200]
+        except http.client.HTTPException:
+            detail = ""
         raise InferenceEndpointUnavailable(
             f"endpoint {url} answered {exc.code}" + (f": {detail}" if detail else "")
         ) from exc
-    except (error.URLError, TimeoutError, OSError) as exc:
+    except (error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
         reason = exc.reason if isinstance(exc, error.URLError) else exc
         raise InferenceEndpointUnavailable(
             f"endpoint {url} could not be reached: {reason}"
@@ -235,6 +266,15 @@ def _require_one_per_target(
         )
 
 
+def _not_the_targets_asked(url: str) -> InferenceEndpointUnavailable:
+    """The one sentence for an answer whose ids do not match what was asked —
+    raised from both the segmenter's per-item check and the shared reordering,
+    so there is one wording rather than two that could drift apart."""
+    return InferenceEndpointUnavailable(
+        f"endpoint {url} answered for targets it was not asked about, or missed some it was"
+    )
+
+
 def _in_target_order[A](
     url: str,
     targets: Sequence[PredictionTarget],
@@ -248,9 +288,7 @@ def _in_target_order[A](
         return
     by_id = {asset_id_of(one): one for one in parsed}
     if set(by_id) != set(expected):
-        raise InferenceEndpointUnavailable(
-            f"endpoint {url} answered for targets it was not asked about, or missed some it was"
-        )
+        raise _not_the_targets_asked(url)
     for asset_id in expected:
         yield by_id[asset_id]
 
@@ -281,6 +319,7 @@ class RemoteDetector(_Remote):
                     regions=tuple(
                         PredictedRegion(label=r.label, confidence=r.confidence, geometry=r.geometry)
                         for r in remote.regions
+                        if r.confidence >= request.minimum_confidence
                     ),
                 )
             )
@@ -310,10 +349,7 @@ class RemoteSegmenter(_Remote):
                 ) from exc
             size = sizes.get(remote.asset_id)
             if size is None:
-                raise InferenceEndpointUnavailable(
-                    f"endpoint {url} answered for targets it was not asked about, or missed "
-                    "some it was"
-                )
+                raise _not_the_targets_asked(url)
             parsed.append(
                 AssetSegmentation(
                     asset_id=remote.asset_id,
@@ -321,6 +357,7 @@ class RemoteSegmenter(_Remote):
                     segments=tuple(
                         SegmentedMask(mask=_rows_of(s.mask, url=url, size=size), score=s.score)
                         for s in remote.segments
+                        if s.score >= request.minimum_confidence
                     ),
                 )
             )
@@ -344,7 +381,7 @@ def _rows_of(encoded: str, *, url: str, size: tuple[int, int]) -> list[bytes]:
             lit = image.convert("L").point(lambda value: 1 if value else 0)
             width, height = lit.size
             flat = lit.tobytes()
-    except Exception as exc:  # noqa: BLE001 — anything Pillow or base64 raises is one answer
+    except Exception as exc:  # anything Pillow or base64 raises is one answer
         raise InferenceEndpointUnavailable(
             f"endpoint {url} answered a mask this build cannot decode; a mask is a base64 "
             f"PNG ({exc})"
