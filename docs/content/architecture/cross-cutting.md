@@ -121,5 +121,5 @@ a new batch, not a reopened one.
 The settled model - and it *is* settled, not to be re-litigated in an
 implementation task - is the
 [`batch-lifecycle`](../../../.agents/skills/domain/batch-lifecycle/SKILL.md) skill.
-[`docs/batches.md`](../batches.md) and [`docs/jobs.md`](../jobs.md) are the
+[`docs/content/batches.md`](../batches.md) and [`docs/content/jobs.md`](../jobs.md) are the
 behavioural pages.

@@ -115,10 +115,10 @@ export const sidebar = [
 ];
 
 /**
- * Every `docs/`-relative document this sidebar names, for the gate that holds the
+ * Every `content/`-relative document this sidebar names, for the gate that holds the
  * two to each other.
  *
- * The site root is `docs/README.md` and a `slug` of `x` is `docs/x.md` — except
+ * The site root is `content/README.md` and a `slug` of `x` is `content/x.md` — except
  * where `x` is a directory, whose page is its `README.md`. The caller knows which
  * of those exist, so this returns the slug and lets it decide.
  */

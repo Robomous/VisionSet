@@ -46,8 +46,8 @@
 #
 # The `docs/content/**` row is a projection, not a plain watch:
 # `docs/integrations/docs-source.mjs` re-projects the one file that changed into the
-# content collection, which Astro is watching — so the
-# chain from keystroke to browser closes without a restart, the same as the others.
+# content collection, which Astro is watching — so the chain from keystroke to browser
+# closes without a restart, the same as the others.
 #
 # The residual cases, all of them changes to how a container is *built* rather
 # than to what it runs, and each with the command it needs:
@@ -126,7 +126,7 @@
 # "start over" will not expect it: a workspace created by an older build outlives
 # every rebuild and every `down -v`, and a build whose schema has moved on since
 # then refuses to open it (`WORKSPACE_SCHEMA_MISMATCH`, naming the missing
-# column — see docs/persistence.md). There is no migration path while VisionSet
+# column — see docs/content/persistence.md). There is no migration path while VisionSet
 # is unreleased, so the answer is to delete it:
 #
 #   docker compose -f docker/compose.yaml down

@@ -68,6 +68,6 @@ loop.
 
 ## Related
 
-[`docs/api.md`](../../api.md) is the REST surface itself - the conventions, the
+[`docs/content/api.md`](../../api.md) is the REST surface itself - the conventions, the
 error body, what decides 404 / 409 / 422, and which codes are worth retrying.
-[`docs/auth.md`](../../auth.md) covers tokens and the one identical 401.
+[`docs/content/auth.md`](../../auth.md) covers tokens and the one identical 401.

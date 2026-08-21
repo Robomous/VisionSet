@@ -48,7 +48,7 @@ nothing was being distributed. This is the first version that is.
 
   Copy is a read and works in a read-only view — carrying a box out of a completed batch is how a
   correction starts; paste is refused there by the engine itself. In a text field both chords stay
-  the browser's. See `docs/annotations.md`.
+  the browser's. See `docs/content/annotations.md`.
 
 - **An embedded job system: work that outlives its request now has a queue, and it survives a
   restart** (#328). The whole background story was 77 lines — a one-worker `ThreadPoolExecutor`
@@ -68,7 +68,7 @@ nothing was being distributed. This is the first version that is.
   the export handler resolves a format plugin, which the kernel may not import. Two new
   import-linter contracts hold both directions; the second is load-bearing, since a worker that
   imported `visionset.server` would re-execute its module-level `app = create_app()` under
-  `spawn`. See `docs/background-jobs.md`.
+  `spawn`. See `docs/content/background-jobs.md`.
 
 - **`GET /background-jobs`, `/background-jobs/{id}`, `/background-jobs/{id}/cancel` and
   `/background-jobs/{id}/artifact`** (#328). The generic twin of `/ingest-jobs`. Not `/jobs`:

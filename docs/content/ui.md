@@ -479,7 +479,7 @@ object list is how a lane is selected, which is a real affordance rather than a 
 The sparkles button - hotkey `S` - arms the **suggest tool**: click the thing you
 want and a segmentation model proposes its shape, which you can then adjust
 before accepting. It runs through a model
-connection (`docs/inference.md`), and the server side of it is
+connection (`docs/content/inference.md`), and the server side of it is
 `POST /inference/suggest`.
 
 **It runs through a connection that can answer a click**, which is a narrower set
@@ -547,7 +547,7 @@ being adjusted. It is closed until you ask for it, because the default is right
 most of the time.
 
 One setting, and whether it appears is the server's answer rather than the
-editor's guess (`docs/inference.md`). **Detail** is a three-position slider -
+editor's guess (`docs/content/inference.md`). **Detail** is a three-position slider -
 coarse, balanced, fine - with a label beside it naming the step and what it costs,
 `Fine · 41 pts`. `[` and `]` move it without opening anything. Either way it costs
 no request at all: the answer carried the outline it was reduced from, and the
@@ -838,7 +838,7 @@ Three things decide the shape:
 
 ### The schema editor, and the three 409s
 
-The editor is where `docs/api.md`'s "branch on the code, never on the status" earns
+The editor is where `docs/content/api.md`'s "branch on the code, never on the status" earns
 its keep, because all three refusals it can meet are **409**, and each has its own
 remedy - branching on the status would tell none of them apart:
 
@@ -911,7 +911,7 @@ with one version renders no navigator at all.
 **Which version is being read is component state, not the URL.** `?tab=` carries the
 tab because a tab is a destination; a version somebody is glancing at is a lens on
 the tab they are already in. The navigation rules
-([`docs/ui/navigation.md`](ui/navigation.md)) state the test.
+([`docs/content/ui/navigation.md`](ui/navigation.md)) state the test.
 
 The description is written once, in a field beside Save, and there is nowhere to edit
 one afterwards - no route, because no service method, because a version is immutable.
@@ -1055,7 +1055,7 @@ drives `isError`, retries and the error surface. Because every call goes through
 
 The API emits [one error body](api.md) at every status: `{code, message, detail?}`.
 `unwrap` turns it into an `ApiError` whose **first** field is the code, because
-`docs/api.md`'s rule is that clients branch on the code and never on the status -
+`docs/content/api.md`'s rule is that clients branch on the code and never on the status -
 `DESTRUCTIVE_SCHEMA_CHANGE` and `SCHEMA_CHANGE_WOULD_ORPHAN` are both 409 and only
 the first is retryable with a flag.
 

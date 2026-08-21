@@ -225,5 +225,5 @@ the source looks wrong. `uv sync` fixes it and `uv run --no-sync` never will.
 
 [`inference.md`](inference.md) is the package that discovers these and turns a connection into a
 running model. [`formats.md`](formats.md) is the same mechanism for exporters, and the precedent
-this one follows. [`docs/inference.md`](../../inference.md) is the surface a user meets:
+this one follows. [`docs/content/inference.md`](../../inference.md) is the surface a user meets:
 connections, why nothing is downloaded on your behalf, and where weights land.

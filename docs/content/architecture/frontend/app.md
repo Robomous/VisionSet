@@ -66,7 +66,7 @@ their gates at the same time.
 
 ## Related
 
-[`docs/ui.md`](../../ui.md) covers the client's behaviour.
+[`docs/content/ui.md`](../../ui.md) covers the client's behaviour.
 [`information-architecture`](../../../../.agents/skills/frontend/information-architecture/SKILL.md)
 is the canonical sitemap, and it has to be updated in the same change as any route
 that moves.

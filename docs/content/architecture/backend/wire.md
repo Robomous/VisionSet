@@ -73,5 +73,5 @@ test rather than a shared type.
 
 ## Related
 
-[`docs/cli.md`](../../cli.md) documents what `--json` promises.
-[`docs/api.md`](../../api.md) documents the REST spelling of the same shapes.
+[`docs/content/cli.md`](../../cli.md) documents what `--json` promises.
+[`docs/content/api.md`](../../api.md) documents the REST spelling of the same shapes.

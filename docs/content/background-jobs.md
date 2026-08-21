@@ -3,7 +3,7 @@
 Work that outlives the request that asked for it: a queue, a dispatcher, and five
 handlers. Introduced by #328.
 
-`docs/jobs.md` describes an **annotation** job: a slice of a batch assigned
+`docs/content/jobs.md` describes an **annotation** job: a slice of a batch assigned
 to an annotator. Annotation jobs and background jobs share only a name. The API
 therefore uses `/background-jobs`, and the models use a `Background` prefix.
 
@@ -48,7 +48,7 @@ or running, the route answers with that job. It is the route's own read of the
 queue rather than anything `enqueue` does, so every other launcher above queues a
 fresh job each time it is asked — and because nothing brackets the read and the
 enqueue, even these three coalesce the ordinary repetition rather than
-guaranteeing uniqueness. `docs/inference.md` and `docs/batches.md` say what that
+guaranteeing uniqueness. `docs/content/inference.md` and `docs/content/batches.md` say what that
 buys and what it deliberately does not refuse.
 
 Verify, publish, promote and thumbnail backfill are still synchronous. They are
@@ -230,7 +230,7 @@ answered them.
 - **No artifact retention policy.** What a job leaves in `<workspace>/exports/`
   stays there until somebody deletes it - no TTL, no size cap, no sweeper, and no
   `DELETE` route. Deliberate: the disk is the user's, and it is the posture blobs
-  and staged uploads already have. `docs/releases.md` and `docs/workspaces.md`
+  and staged uploads already have. `docs/content/releases.md` and `docs/content/workspaces.md`
   argue it; a deployment that wants a policy owns one, over plain files.
 - **No `project_id` on the `job` table**, and no foreign key at all. See "The
   decisions, and why" above - scoping lives in the payload, and a key would

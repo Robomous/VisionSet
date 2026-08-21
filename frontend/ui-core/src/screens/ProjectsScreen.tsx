@@ -12,7 +12,7 @@
  * ## Delete asks twice, and the two questions are not the same question
  *
  * The dialog is the *user's* confirmation. `?confirm=true` is the *API's*, and
- * `docs/api.md` is explicit that no route pre-checks a gate — a gated retry is the
+ * `docs/content/api.md` is explicit that no route pre-checks a gate — a gated retry is the
  * identical request plus one parameter. Collapsing them would mean either a dialog
  * that does not send the gate (the API refuses, the user sees a mystery) or a gate
  * sent without a dialog (a click deletes a project). They are both here, and they

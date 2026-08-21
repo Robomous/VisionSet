@@ -2,7 +2,7 @@
   "name": "@visionset/docs-site",
   "private": true,
   "type": "module",
-  "description": "Astro + Starlight renderer for docs/. The documentation itself lives in docs/ and is the source of truth.",
+  "description": "Astro + Starlight renderer for docs/content/. The documentation itself lives in docs/content/ and is the source of truth.",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",

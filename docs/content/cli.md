@@ -481,7 +481,7 @@ Four private modules and one shared package carry everything a command needs:
 | `cli/_workspace.py` | `WorkspaceOption` and `opened_workspace()` |
 | `cli/_output.py` | `JsonOption`, the column formatter, `document()`, `note()` |
 | `cli/_resolve.py` | `ProjectOption`, and turning a name or a tag into the thing it names |
-| `visionset/wire/` | one hand-written projection per resource - **shared with the MCP surface**, which publishes the same shapes (see `docs/mcp.md`) |
+| `visionset/wire/` | one hand-written projection per resource - **shared with the MCP surface**, which publishes the same shapes (see `docs/content/mcp.md`) |
 
 A new command is a module beside them and one registration line in `cli/main.py` - groups by
 `add_typer`, bare commands by `app.command("name")(fn)`, which is where they are registered rather
