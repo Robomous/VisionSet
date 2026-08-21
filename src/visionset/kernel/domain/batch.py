@@ -23,6 +23,13 @@ class BatchState(StrEnum):
     COMPLETED = "completed"
 
 
+class AssetSort(StrEnum):
+    """How a batch's asset listing is ordered."""
+
+    MEMBERSHIP = "membership"
+    CONFIDENCE = "confidence"
+
+
 BATCH_TRANSITIONS: Final[Mapping[BatchState, frozenset[BatchState]]] = {
     BatchState.DRAFT: frozenset({BatchState.APPROVED}),
     BatchState.APPROVED: frozenset({BatchState.IN_ANNOTATION}),
