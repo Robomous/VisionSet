@@ -349,7 +349,7 @@ def discard_schema_draft(workspace: WorkspaceDep, project_id: UUID, kind: KindPa
 @router.post(
     "/drafts/{kind}/publish",
     status_code=status.HTTP_201_CREATED,
-    responses=documented(404, 409, 422),
+    responses=documented(404, 409),
 )
 def publish_schema_draft(
     workspace: WorkspaceDep,
