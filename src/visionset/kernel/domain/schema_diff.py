@@ -253,7 +253,7 @@ def _changes(
             continue
         recased = arrived.get(name.casefold())
         detail = f"class {name!r} removed"
-        if recased is not None:
+        if recased is not None and not any(_class_changes(before[name], after[recased])):
             detail += (
                 f"; {recased!r} differs only in its casing, and annotations match their "
                 f"class by exact name, so a re-casing is a rename and orphans the labels "
