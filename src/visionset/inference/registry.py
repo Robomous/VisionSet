@@ -194,6 +194,34 @@ def serving(providers: Mapping[str, Provider], family: str) -> Provider | None:
     return providers[claimants[0]]
 
 
+def recorded(providers: Mapping[str, Provider], provider_id: str) -> Provider:
+    """The driver a connection names, or why this installation has not got it.
+
+    Raised rather than returned as ``None``, which is where this parts company
+    with :func:`serving`: a family nothing serves needs the caller's connection
+    to write a useful sentence, while a *named* driver that is absent is already
+    the whole story — the row says who should run it and this installation does
+    not have them.
+
+    The missing-format treatment, and deliberately not a fallback to whoever
+    happens to serve the same family: that would run the connection through a
+    driver nobody chose, and quietly, which is the guessing the resolver exists
+    to refuse.
+
+    Raises:
+        InferenceConnectionNotRunnable: no installed driver calls itself that.
+    """
+    driver = providers.get(provider_id)
+    if driver is not None:
+        return driver
+    here = ", ".join(sorted(providers)) or "none at all"
+    raise InferenceConnectionNotRunnable(
+        f"this connection is served by provider {provider_id!r}, and no provider of that name "
+        f"is installed here; this installation has {here} — install the distribution that "
+        "provides it, or point the connection at a model one of these serves"
+    )
+
+
 _REGISTERED: list[Discovery] = []
 """The kept scan. A list because rebinding a module global from a function needs
 a ``global`` statement, and a one-slot list makes the mutation local and the

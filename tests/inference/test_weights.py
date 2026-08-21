@@ -14,7 +14,7 @@ job and the route; this file is the sequence itself.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -24,12 +24,20 @@ from tests.fixtures.local_inference import require_local_inference, without_the_
 
 from visionset.inference import cache_root, fetch_weights, with_families
 from visionset.inference import weights as weights_module
-from visionset.inference.weights import MODELS_DIRNAME, download
+from visionset.inference.registry import Discovery
+from visionset.inference.weights import (
+    MODELS_DIRNAME,
+    HuggingFaceWeights,
+    download,
+    weights_source_for,
+)
 from visionset.kernel.domain import (
     ConnectionSetupState,
     ConnectionType,
+    CuratedModel,
     DownloadSize,
     InferenceConnection,
+    ModelCapability,
 )
 from visionset.kernel.errors import (
     InferenceConnectionNotDownloadable,
@@ -53,7 +61,12 @@ def connections(workspace: WorkspaceService) -> InferenceConnectionService:
     return InferenceConnectionService(workspace)
 
 
-def a_local(connections: InferenceConnectionService, name: str = "local-gd") -> Any:
+def a_local(
+    connections: InferenceConnectionService,
+    name: str = "local-gd",
+    *,
+    provider_id: str | None = None,
+) -> Any:
     return connections.create(
         name,
         connection_type=ConnectionType.LOCAL,
@@ -61,6 +74,7 @@ def a_local(connections: InferenceConnectionService, name: str = "local-gd") -> 
         model_revision="abc123",
         device="cuda",
         precision="fp16",
+        provider_id=provider_id,
     )
 
 
@@ -370,6 +384,149 @@ def test_recording_an_unknown_connection_ready_is_not_found(
 ) -> None:
     with pytest.raises(InferenceConnectionNotFound):
         connections.record_weights_ready(uuid4())
+
+
+# --- whose weights they are ---------------------------------------------------
+#
+# A recorded provider is asked for its own `price`/`fetch`/`family_of` rather
+# than the hub module's: the shipped drivers implement those by delegating, and
+# until a connection could record one, nothing ever called them.
+
+
+POINT = ModelCapability.POINT_SUGGEST
+
+
+class _SourceDriver:
+    """A driver that is its own weights source, recording what the download asks."""
+
+    def __init__(self, provider_id: str = "acme", family: str = DOWNLOADED_FAMILY) -> None:
+        self.provider_id = provider_id
+        self.families: Mapping[str, ModelCapability] = {family: POINT}
+        self.curated: tuple[CuratedModel, ...] = ()
+        self._family = family
+        self.asked: list[str] = []
+
+    def build(self, connection: object, *, family: str, workspace_root: Path) -> object:
+        raise NotImplementedError
+
+    def price(self, model_id: str, model_revision: str) -> DownloadSize:
+        self.asked.append("price")
+        return DownloadSize(
+            model_id=model_id,
+            model_revision=model_revision,
+            total_bytes=FETCHED_BYTES,
+            file_count=1,
+        )
+
+    def family_of(self, connection: InferenceConnection, *, cache_dir: Path) -> str:
+        self.asked.append("family_of")
+        return self._family
+
+    def fetch(
+        self,
+        connection: InferenceConnection,
+        *,
+        into: Path,
+        on_bytes: Callable[[int], None] | None = None,
+    ) -> Path:
+        self.asked.append("fetch")
+        return into
+
+
+class _Hosted:
+    """A driver that declares no weights source: its model answers from elsewhere."""
+
+    def __init__(self, provider_id: str, families: Mapping[str, ModelCapability]) -> None:
+        self.provider_id = provider_id
+        self.families = families
+        self.curated: tuple[CuratedModel, ...] = ()
+
+    def build(self, connection: object, *, family: str, workspace_root: Path) -> object:
+        raise NotImplementedError
+
+
+def _installed(monkeypatch: pytest.MonkeyPatch, *drivers: Any) -> None:
+    """Pretend discovery found exactly these drivers."""
+    found = Discovery(providers={one.provider_id: one for one in drivers}, skipped=())
+    monkeypatch.setattr(weights_module, "registered", lambda: found)
+
+
+def test_a_download_asks_the_recorded_drivers_own_weights_source(
+    connections: InferenceConnectionService,
+    workspace: WorkspaceService,
+    fetched: list,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`price`, `fetch` and `family_of` are the driver's, not the hub module's.
+
+    The family is different on purpose from what the faked hub read would say,
+    so reaching the wrong source shows in the row and not only in the counters.
+    """
+    driver = _SourceDriver(family="acme-net")
+    _installed(monkeypatch, driver)
+    made = a_local(connections, provider_id="acme")
+
+    ready = fetch_weights(workspace, made.id)
+
+    assert driver.asked == ["price", "fetch", "family_of"]
+    assert ready.model_family == "acme-net"
+    assert fetched == []
+
+
+def test_a_connection_recording_no_provider_downloads_through_the_hub_as_before(
+    connections: InferenceConnectionService, workspace: WorkspaceService, fetched: list
+) -> None:
+    made = a_local(connections)
+    assert isinstance(weights_source_for(made), HuggingFaceWeights)
+
+    fetch_weights(workspace, made.id)
+    assert fetched == [("some/model@abc123", cache_root(workspace.root))]
+
+
+def test_a_download_records_the_driver_that_served_a_row_naming_none(
+    connections: InferenceConnectionService,
+    workspace: WorkspaceService,
+    fetched: list,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An observation rather than a guess: the download just used this driver,
+    and writing it down is how a row that predates the column acquires one."""
+    _installed(monkeypatch, _Hosted("acme", {DOWNLOADED_FAMILY: POINT}))
+    made = a_local(connections)
+    assert made.provider_id is None
+
+    assert fetch_weights(workspace, made.id).provider_id == "acme"
+    assert connections.get(made.id).provider_id == "acme"
+
+
+def test_a_download_leaves_an_already_recorded_provider_as_it_is(
+    connections: InferenceConnectionService,
+    workspace: WorkspaceService,
+    fetched: list,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """That recorded answer is what chose the source these files came from;
+    deriving over it would hand the row to whoever else claims the family."""
+    _installed(monkeypatch, _SourceDriver("acme"), _Hosted("zeta", {DOWNLOADED_FAMILY: POINT}))
+    made = a_local(connections, provider_id="acme")
+
+    assert fetch_weights(workspace, made.id).provider_id == "acme"
+    assert connections.get(made.id).provider_id == "acme"
+
+
+def test_a_recorded_provider_with_no_weights_source_is_refused(
+    connections: InferenceConnectionService,
+    workspace: WorkspaceService,
+    fetched: list,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hosted driver has nothing to fetch, and saying so beats fetching nothing."""
+    _installed(monkeypatch, _Hosted("hosted", {DOWNLOADED_FAMILY: POINT}))
+    made = a_local(connections, provider_id="hosted")
+
+    with pytest.raises(InferenceConnectionNotDownloadable, match="no weights of its own"):
+        fetch_weights(workspace, made.id)
+    assert fetched == []
 
 
 # --- the library boundary -----------------------------------------------------
@@ -744,6 +901,32 @@ def _set_up_without_looking(
     settled = connections.get(connection_id)
     assert settled.setup_state is ConnectionSetupState.READY
     assert settled.model_family is None
+
+
+def test_a_row_naming_a_missing_provider_does_not_break_the_listing(
+    connections: InferenceConnectionService,
+    workspace: WorkspaceService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One bad row costs that row and nothing else.
+
+    `with_families` runs over a whole listing, so the refusal the download path
+    raises for a missing driver is swallowed here: the orphan is returned as it
+    was, never asked for a config, and its neighbours still resolve.
+    """
+    _installed(monkeypatch)
+    orphan = a_local(connections, "orphan", provider_id="ghost")
+    connections.record_weights_ready(orphan.id)
+    plain = a_local(connections, "plain")
+    connections.record_weights_ready(plain.id)
+
+    resolver = _Resolver("sam2")
+    monkeypatch.setattr(weights_module, "family_of", resolver)
+    resolved = with_families(workspace, [connections.get(orphan.id), connections.get(plain.id)])
+
+    assert [one.model_family for one in resolved] == [None, "sam2"]
+    assert connections.get(orphan.id).model_family is None
+    assert resolver.calls == 1
 
 
 # --- how far it has got -------------------------------------------------------

@@ -61,6 +61,7 @@ from uuid import UUID
 from visionset.inference._extra import imported
 from visionset.inference.cache import BoundedCache
 from visionset.inference.families import family_of
+from visionset.inference.registry import recorded, registered, serving
 from visionset.inference.stub_provider import STUB_FAMILY, STUB_MODEL_ID
 from visionset.kernel.domain import (
     ConnectionSetupState,
@@ -68,7 +69,12 @@ from visionset.kernel.domain import (
     DownloadSize,
     InferenceConnection,
 )
-from visionset.kernel.errors import LocalInferenceUnavailable
+from visionset.kernel.errors import (
+    InferenceConnectionNotDownloadable,
+    LocalInferenceUnavailable,
+    VisionSetError,
+)
+from visionset.kernel.ports import WeightsSource
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
 
 _logger: Final = logging.getLogger(__name__)
@@ -106,6 +112,72 @@ slower than the poll would show the same number twice in a row.
 def cache_root(workspace_root: Path) -> Path:
     """This workspace's model cache. Not created here — the download creates it."""
     return workspace_root / MODELS_DIRNAME
+
+
+def weights_source_for(connection: InferenceConnection) -> WeightsSource:
+    """Where this connection's weights come from.
+
+    **The circle, broken.** Choosing a driver by family cannot work here: the
+    family is read from a config that arrives *with* the weights, so the fetch
+    that would produce it is the thing waiting on a driver to be chosen. A
+    recorded provider is knowable before any of that, which is the whole reason
+    it is recorded.
+
+    A connection that recorded none falls back to the hub, which is what the
+    module-level functions have always been. That keeps every row written before
+    the column existed downloading exactly as it did, and it is honest about the
+    limit: with no provider named, a source other than the default one is not
+    something this can work out.
+
+    Raises:
+        InferenceConnectionNotRunnable: the recorded provider is not installed.
+        InferenceConnectionNotDownloadable: it is installed and declares no
+            weights of its own.
+    """
+    if connection.provider_id is None:
+        return HuggingFaceWeights()
+    driver = recorded(registered().providers, connection.provider_id)
+    if not isinstance(driver, WeightsSource):
+        raise InferenceConnectionNotDownloadable(
+            f"connection {connection.name!r} is served by provider {driver.provider_id!r}, which "
+            "declares no weights of its own — it answers from somewhere this machine keeps no "
+            "files for, so there is nothing here to fetch"
+        )
+    return driver
+
+
+def _source_if_it_can_be_resolved(connection: InferenceConnection) -> WeightsSource | None:
+    """The same question asked where a refusal must not propagate.
+
+    :func:`with_families` runs over a whole listing, so a single row naming a
+    driver nobody installed has to cost that row and nothing else. A connection
+    whose provider is missing renders with coherent actions and does not break
+    the page it is on — the same treatment a missing format gets — and a raise
+    here would take every other connection down with it.
+
+    The download path deliberately does *not* use this: there, being unable to
+    name a source is the whole answer, and it must be said out loud rather than
+    turned into a connection that quietly learns nothing.
+    """
+    try:
+        return weights_source_for(connection)
+    except VisionSetError as exc:
+        _logger.info("no weights source for %s: %s", connection.name, exc)
+        return None
+
+
+def _provider_that_served(connection: InferenceConnection, family: str | None) -> str | None:
+    """Which driver this download actually resolved to, for a row that named none.
+
+    How a connection created before the column existed acquires one, and an
+    observation rather than a guess: the download just used this driver. A row
+    that already names one is left alone — that recorded answer is what chose
+    the source these files came from.
+    """
+    if connection.provider_id is not None or not family:
+        return None
+    driver = serving(registered().providers, family)
+    return None if driver is None else driver.provider_id
 
 
 def fetch_weights(
@@ -169,12 +241,13 @@ def fetch_weights(
         say("recording the connection as ready")
         return connections.record_weights_ready(connection.id, model_family=STUB_FAMILY)
 
-    total = _size_if_it_can_be_read(connection)
+    source = weights_source_for(connection)
+    total = _size_if_it_can_be_read(connection, source)
     # Immediately, so a row shows "0 of 1.4 GB" from the first poll rather than
     # looking queued for as long as the first sample takes.
     tell(0, total)
     say(f"fetching {connection.model_id} at {connection.model_revision}")
-    download(connection, into=cache, on_bytes=lambda done: tell(_at_most(done, total), total))
+    source.fetch(connection, into=cache, on_bytes=lambda done: tell(_at_most(done, total), total))
     # The transfer is over, so the honest reading is the whole of it. A sample
     # cannot say this: the last one landed up to an interval before the end, and
     # a snapshot sharing one blob between two files sits permanently under its
@@ -186,12 +259,16 @@ def fetch_weights(
     # here is what lets a client be told what this connection can be asked for
     # instead of finding out one refusal at a time — see ``families``.
     say("reading what kind of model arrived")
-    family = _family_if_it_can_be_read(connection, cache_dir=cache)
+    family = _family_if_it_can_be_read(connection, source, cache_dir=cache)
     say("recording the connection as ready")
-    return connections.record_weights_ready(connection.id, model_family=family)
+    return connections.record_weights_ready(
+        connection.id,
+        model_family=family,
+        provider_id=_provider_that_served(connection, family),
+    )
 
 
-def _size_if_it_can_be_read(connection: InferenceConnection) -> int | None:
+def _size_if_it_can_be_read(connection: InferenceConnection, source: WeightsSource) -> int | None:
     """What this revision weighs, or ``None`` where nothing here could find out.
 
     ``_family_if_it_can_be_read``'s shape, one step earlier in the sequence and
@@ -206,7 +283,7 @@ def _size_if_it_can_be_read(connection: InferenceConnection) -> int | None:
     way.
     """
     try:
-        return download_size(connection.model_id, connection.model_revision).total_bytes
+        return source.price(connection.model_id, connection.model_revision).total_bytes
     except LocalInferenceUnavailable:
         _logger.info("no published size for %s; the bar will be indeterminate", connection.name)
         return None
@@ -225,7 +302,9 @@ def _at_most(done: int, total: int | None) -> int:
     return done if total is None else min(done, total)
 
 
-def _family_if_it_can_be_read(connection: InferenceConnection, *, cache_dir: Path) -> str | None:
+def _family_if_it_can_be_read(
+    connection: InferenceConnection, source: WeightsSource, *, cache_dir: Path
+) -> str | None:
     """What the config declares, or ``None`` where nothing here could read it.
 
     **A download that worked must not be undone by a question about it.** The
@@ -241,7 +320,7 @@ def _family_if_it_can_be_read(connection: InferenceConnection, *, cache_dir: Pat
     machine can parse a config at all.
     """
     try:
-        return family_of(connection, cache_dir=cache_dir)
+        return source.family_of(connection, cache_dir=cache_dir)
     except LocalInferenceUnavailable:
         _logger.info("no runtime here to read %s's config", connection.name)
         return None
@@ -282,7 +361,11 @@ def with_families(
         if not _awaiting_a_family(connection):
             resolved.append(connection)
             continue
-        family = _family_if_it_can_be_read(connection, cache_dir=cache)
+        source = _source_if_it_can_be_resolved(connection)
+        if source is None:
+            resolved.append(connection)
+            continue
+        family = _family_if_it_can_be_read(connection, source, cache_dir=cache)
         if family is None:
             resolved.append(connection)
             continue
