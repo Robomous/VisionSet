@@ -22,7 +22,7 @@ visionset schema draft publish --project P [--kind K] [--revision N] [--allow-de
 visionset ingest PATH --project P [--fps N] [--batch-name NAME]
 visionset batch list --project P
 visionset batch approve BATCH_ID [--jobs-of N]
-visionset batch pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT]
+visionset batch pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels]
 visionset project pre-label PROJECT CONNECTION [--batch BATCH_ID]... [--minimum-confidence FLOAT]
 visionset batch start|complete|promote BATCH_ID
 
@@ -359,12 +359,14 @@ interrupted run. The batch id goes to stdout.
 `promote`. Each maps to the `BatchService` method of the same name, except `promote`, which is
 `DatasetService.promote` - it takes a *batch* id and derives the dataset, which is why it lives here.
 
-`pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT]` blocks and calls
+`pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels]` blocks and calls
 `visionset.inference.pre_label` inline because a terminal has no dispatcher. Before the first
 forward pass it names the classes it is about to ask for, and every class of the pinned schema it
 is leaving out with the reason - a class the prompt omits labels nothing, and afterwards there is
-only the silence to explain. Progress and the summary are written to stderr; normal stdout
-contains `annotations_written`. With `--json`, the
+only the silence to explain. `--replace-model-labels` widens the run to frames a previous run
+labeled and nobody has touched since, superseding those labels, and the summary then reads
+`, replaced K earlier model label(s)`. Progress and the summary are written to stderr; normal
+stdout contains `annotations_written`. With `--json`, the
 command prints the complete outcome instead, including `regions_discarded` for unmappable model
 labels and `regions_out_of_bounds` for mapped regions without overlap with a measured asset.
 

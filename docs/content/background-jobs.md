@@ -36,10 +36,11 @@ handling for one GIL.
 
 The last three are why the throttled progress below matters: a weight download is
 gigabytes, an integrity check reads every byte of them, and pre-labeling is one
-forward pass per untouched asset, so all three report for minutes rather than
-seconds. `processed` and `total` are counted in **assets** for pre-labeling, where
-the other two count bytes and files. None of the four CLI equivalents queues:
-`visionset inference download`, `visionset inference check-integrity`,
+forward pass per untouched asset - or, where its payload carries
+`replace_model_labels`, per pre-labeled one as well - so all three report for
+minutes rather than seconds. `processed` and `total` are counted in **assets**
+for pre-labeling, where the other two count bytes and files. None of the four CLI
+equivalents queues: `visionset inference download`, `visionset inference check-integrity`,
 `visionset batch pre-label`, and `visionset project pre-label` run their shared
 bodies inline because a terminal has no worker.
 
