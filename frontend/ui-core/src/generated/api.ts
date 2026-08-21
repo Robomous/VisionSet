@@ -229,16 +229,19 @@ export interface paths {
         };
         /**
          * List Batch Assets
-         * @description Everything in the batch, in membership order, with where each asset has got to.
+         * @description The batch's assets, with where each has got to and its labels in two numbers.
          *
-         *     The order is stored, so reading twice gives the same sequence and an ingest
-         *     into an existing batch appends rather than reshuffles. `total` is the size of
-         *     the whole batch and not of the page; an offset past the end is an empty list
-         *     and a 200, never a 404. The 404 belongs to the batch itself, which is
-         *     resolved first: an unknown one is `BATCH_NOT_FOUND`.
+         *     Membership order by default, so reading twice gives the same sequence and an
+         *     ingest into an existing batch appends rather than reshuffles; `sort=confidence`
+         *     puts the frame whose weakest model label scores lowest first, unscored frames
+         *     last, ties in membership order. `progress` narrows to the states named, and
+         *     `total` is the size of what matched — the whole batch when nothing narrows it.
+         *     An offset past the end is an empty list and a 200, never a 404. The 404 belongs
+         *     to the batch itself, which is resolved first: an unknown one is `BATCH_NOT_FOUND`.
          *
          *     `job_id` and `progress` are null while the batch is a draft, because a draft
-         *     has no jobs. Bytes are not here: an asset is named by its hashes, and
+         *     has no jobs — so a `progress` filter over a draft matches nothing. Bytes are
+         *     not here: an asset is named by its hashes, and
          *     `GET /projects/{project_id}/assets/{asset_id}/content` is what serves them.
          */
         get: operations["list_batch_assets"];
@@ -2846,6 +2849,12 @@ export interface components {
             progress: components["schemas"]["AssetProgress"];
         };
         /**
+         * AssetSort
+         * @description How a batch's asset listing is ordered.
+         * @enum {string}
+         */
+        AssetSort: "membership" | "confidence";
+        /**
          * AttentionItemOut
          * @description One thing in the workspace that is waiting on somebody.
          */
@@ -2981,10 +2990,17 @@ export interface components {
         /**
          * BatchAssetOut
          * @description One item of a batch, with the job that carries it and where it has got to.
+         *
+         *     `annotation_count` is every label on this asset. `min_confidence` is the lowest
+         *     confidence among the labels a model wrote, or `null` when none carries one; the
+         *     scale is the one the model that wrote them scores on — a text-prompt detector's
+         *     prompt affinity, a point-prompt segmenter's mask quality.
          */
         BatchAssetOut: {
             /** Allowed Actions */
             allowed_actions: components["schemas"]["AssetAction"][];
+            /** Annotation Count */
+            annotation_count: number;
             /** Content Hash */
             content_hash: string;
             format: components["schemas"]["ImageFormat"] | null;
@@ -3003,6 +3019,8 @@ export interface components {
             ingested_at: string | null;
             /** Job Id */
             job_id: string | null;
+            /** Min Confidence */
+            min_confidence: number | null;
             /**
              * Modality
              * @constant
@@ -5383,6 +5401,10 @@ export interface operations {
                 limit?: number | null;
                 /** @description How many items to skip. Counts from the start of the collection. */
                 offset?: number;
+                /** @description Keep only assets in these states. Repeat the parameter per state. */
+                progress?: components["schemas"]["AssetProgress"][] | null;
+                /** @description `membership` is stored order; `confidence` is lowest model confidence first, unscored last, ties in membership order. */
+                sort?: components["schemas"]["AssetSort"];
             };
             header?: never;
             path: {

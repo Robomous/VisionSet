@@ -66,6 +66,7 @@ from visionset.kernel.domain import (
     AnnotationJob,
     AnnotationJobState,
     AnnotationSchema,
+    AnnotationSummary,
     Asset,
     AssetProgress,
     Attribute,
@@ -385,6 +386,7 @@ def batch_asset(
     job_state: AnnotationJobState | None,
     progress: AssetProgress | None,
     batch_state: BatchState,
+    summary: AnnotationSummary,
 ) -> dict[str, Any]:
     """One asset seen from inside a batch: the asset, plus where the work stands.
 
@@ -407,6 +409,8 @@ def batch_asset(
         "allowed_actions": [
             a.value for a in asset_actions(progress, batch_state=batch_state, job_state=job_state)
         ],
+        "annotation_count": summary.count,
+        "min_confidence": summary.min_model_confidence,
     }
 
 

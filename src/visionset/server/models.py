@@ -59,9 +59,11 @@ from visionset.kernel.domain import (
     AnnotationJob,
     AnnotationJobState,
     AnnotationSchema,
+    AnnotationSummary,
     Asset,
     AssetAction,
     AssetProgress,
+    AssetSort,
     AttentionItem,
     AttentionKind,
     Attribute,
@@ -191,6 +193,20 @@ LimitQuery = Annotated[
 OffsetQuery = Annotated[
     int,
     Query(ge=0, description="How many items to skip. Counts from the start of the collection."),
+]
+
+ProgressQuery = Annotated[
+    list[AssetProgress] | None,
+    Query(description="Keep only assets in these states. Repeat the parameter per state."),
+]
+SortQuery = Annotated[
+    AssetSort,
+    Query(
+        description=(
+            "`membership` is stored order; `confidence` is lowest model confidence "
+            "first, unscored last, ties in membership order."
+        )
+    ),
 ]
 
 
@@ -1351,11 +1367,19 @@ class JobPage(Page[JobOut]):
 # there is published here too — the one place in this module where a widening
 # should propagate, because these are the same asset seen from inside a batch.
 class BatchAssetOut(AssetOut):
-    """One item of a batch, with the job that carries it and where it has got to."""
+    """One item of a batch, with the job that carries it and where it has got to.
+
+    `annotation_count` is every label on this asset. `min_confidence` is the lowest
+    confidence among the labels a model wrote, or `null` when none carries one; the
+    scale is the one the model that wrote them scores on — a text-prompt detector's
+    prompt affinity, a point-prompt segmenter's mask quality.
+    """
 
     job_id: UUID | None
     progress: AssetProgress | None
     allowed_actions: list[AssetAction]
+    annotation_count: int
+    min_confidence: float | None
 
     @classmethod
     def in_batch(
@@ -1366,6 +1390,7 @@ class BatchAssetOut(AssetOut):
         job_state: AnnotationJobState | None,
         progress: AssetProgress | None,
         batch_state: BatchState,
+        summary: AnnotationSummary,
     ) -> Self:
         # ``job_id``, ``job_state`` and ``progress`` are null together and exactly
         # while the batch is a draft, which is honest rather than lossy: a draft
@@ -1378,6 +1403,8 @@ class BatchAssetOut(AssetOut):
             job_id=job_id,
             progress=progress,
             allowed_actions=asset_actions(progress, batch_state=batch_state, job_state=job_state),
+            annotation_count=summary.count,
+            min_confidence=summary.min_model_confidence,
         )
 
 
