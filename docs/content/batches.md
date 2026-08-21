@@ -394,10 +394,9 @@ whole, up front, and no refusal creates a row: a named batch outside the project
 batch that is not open or a project with no open batch (409 `BATCH_NOT_IN_ANNOTATION`; an empty
 `batch_ids` names nothing and is refused the same way), or any selected batch whose pin holds no
 class a box can be written as (409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`, naming the batch, so it can
-be left out by name). Assets that
-sit in no batch are not reached: a model's labels are written through an open job, so the answer
-there is to cut a batch first. `visionset project pre-label` and the MCP tool `pre_label_project`
-run the same selection inline, one batch after another.
+be left out by name). Assets that sit in no batch are not reached: a model's labels are written
+through an open job, so the answer there is to cut a batch first. `visionset project pre-label`
+and the MCP tool `pre_label_project` run the same selection inline, one batch after another.
 
 ## What approval and completion announce
 
