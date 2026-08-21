@@ -58,8 +58,8 @@ from uuid import UUID
 # module has no way to know — which model families this build can serve. The
 # alternative is spelling that mapping a second time, which is what every other
 # rule in this file exists to prevent. ``PreLabelPlan`` arrives the same way:
-# the narrowing of a pinned schema to the classes a box can be written as is
-# derived there, and every surface publishes it.
+# the narrowing of a pinned schema to the classes a served model's shapes can
+# be written as is derived there, and every surface publishes it.
 from visionset.inference import PreLabelPlan, capabilities_of
 from visionset.kernel.domain import (
     Annotation,

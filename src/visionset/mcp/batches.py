@@ -50,9 +50,9 @@ from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
     PreLabelOutcome,
     PreLabelPlan,
+    planned,
     pre_label,
-    prompt_plan,
-    require_detectable_schema,
+    resident,
     select_pre_labelable,
 )
 from visionset.kernel.domain import AssetProgress, AssetSort, BySize, Partition
@@ -275,36 +275,40 @@ def start_batch(batch_id: BatchRef) -> dict[str, Any]:
         return _batch_payload(workspace, started.id)
 
 
-def get_pre_label_plan(batch_id: BatchRef) -> dict[str, Any]:
-    """Which classes a pre-labeling run over this batch would ask a model about.
+def get_pre_label_plan(batch_id: BatchRef, connection: ConnectionRef) -> dict[str, Any]:
+    """Which classes a pre-labeling run of that connection over this batch would ask about, \
+which it would leave out, and what shapes it would write.
 
     Call this before `pre_label_batch`. That call blocks for minutes and this one
     is a single read, and what it answers decides whether the wait is worth it.
 
     **A run does not ask about every class the schema declares.** It asks about
-    the ones a bare box prediction can be written as, and `asked_classes` is that
-    list — it is the prompt itself, in the schema's own spelling.
+    the ones the model's answer can be written as — a class admitting a shape the
+    model produces and demanding no attribute a prediction cannot supply — and
+    `asked_classes` is that list: the prompt itself, in the schema's own spelling.
+    `produces` is the shapes this connection's model answers in, so a schema of
+    polygon classes is askable of a model that answers polygons and refused for
+    one that answers boxes.
 
     **`excluded_classes` names the rest, each with every reason it is left out.**
-    `no_bbox_geometry` means the class admits no box, so a detection has no shape
-    to land as. `required_attribute` means the class demands an attribute value,
-    and a model's answer carries none. Both can hold against one class, which is
-    why `reasons` is a list: a class told only that it admits no box, then given
-    one, would stay absent from the next run's prompt with nothing saying why.
+    `no_producible_geometry` means the class admits no shape the model produces.
+    `required_attribute` means the class demands an attribute value, and a
+    model's answer carries none. Both can hold against one class, which is why
+    `reasons` is a list.
 
     Every class the pinned schema declares appears in exactly one of the two
     lists, and `schema_version` is the pin both were derived from — a re-pin
-    changes both. A schema with nothing askable at all is refused here rather
-    than answered with an empty prompt, exactly as `pre_label_batch` refuses
-    it — as is a batch that is not `in_annotation`.
-
-    No connection is involved: the prompt is a property of the pinned schema
-    alone, so this answers the same lists whichever model is about to be asked.
+    changes both. Refused on the same terms as `pre_label_batch`, in the same
+    order: a connection whose model answers places rather than words, a batch
+    that is not `in_annotation`, and a schema with nothing askable at all.
     """
     with opened_workspace() as workspace:
-        batch = BatchService(workspace).require_pre_labelable(identifier(batch_id, what="batch_id"))
-        schema = require_detectable_schema(workspace, batch)
-        return wire.pre_label_plan(prompt_plan(schema))
+        resolved = resolve_connection(workspace, connection)
+        return wire.pre_label_plan(
+            planned(
+                workspace, batch_id=identifier(batch_id, what="batch_id"), connection_id=resolved.id
+            )
+        )
 
 
 def _pre_label_outcome(outcome: PreLabelOutcome, plan: PreLabelPlan) -> dict[str, Any]:
@@ -385,31 +389,35 @@ def pre_label_batch(
     way rather than failing the whole call; `assets_skipped` in the result
     says how many.
 
-    **A region the model answered with a label that names no class asked for is
-    discarded, not fatal.** A text-prompted detector answers with text decoded
-    from spans over the prompt, not a choice from the classes it was asked
-    about, so a span crossing the boundary between two phrases can answer with
-    neither of them; `regions_discarded` in the result says how many.
+    **A region that could not be written as the class it named is discarded,
+    not fatal.** A label naming no phrase asked for, or a shape the class does
+    not admit, is passed over the same way. A text-prompted detector answers
+    with text decoded from spans over the prompt, not a choice from the
+    classes it was asked about, so a span crossing the boundary between two
+    phrases can answer with neither of them; a model declaring two shapes may
+    also answer in the one its class does not take. `regions_discarded` in the
+    result says how many.
 
     **A mapped region with no overlap with a measured asset is discarded
     separately.** `regions_out_of_bounds` in the result says how many; an
     asset without dimensions remains eligible.
 
     **The batch's pinned schema is the prompt.** The model is asked for each
-    class the schema declares that a box can be written as; an answer naming one
-    of those classes, matched case-insensitively, is written under the schema's
-    own spelling. A schema whose classes are all polygons, polylines or tags —
-    or whose box classes each require an attribute a prediction cannot supply —
-    has nowhere for a detection to land and is refused before anything runs.
+    class the schema declares that the model's shapes can be written as; an
+    answer naming one of those classes, matched case-insensitively, is written
+    under the schema's own spelling. A schema whose classes admit no shape the
+    model produces — or whose askable classes each require an attribute a
+    prediction cannot supply — has nowhere for a detection to land and is
+    refused before anything runs.
 
     `plan` in the result names both halves: `asked_classes` is what this run
     actually asked about, and `excluded_classes` names every class of the pinned
-    schema it could not, each with every reason. `schema_version` is the pin
-    both were derived from. Read it whenever
-    `assets_labeled` is lower than expected — a run that asked about two of a
-    schema's five classes labels nothing under the other three, and the counters
-    alone cannot say so. `get_pre_label_plan` answers the same thing without
-    running anything.
+    schema it could not, each with every reason; `produces` says what shape the
+    run wrote. `schema_version` is the pin both were derived from. Read it
+    whenever `assets_labeled` is lower than expected — a run that asked about
+    two of a schema's five classes labels nothing under the other three, and
+    the counters alone cannot say so. `get_pre_label_plan` answers the same
+    thing without running anything.
 
     Also refused before anything runs: a batch that is not `in_annotation`, a
     connection whose model answers places rather than words, and a deployment
@@ -463,8 +471,9 @@ def pre_label_project(
     Refused whole before anything runs, so a call that started has a selection
     every batch of which can run: a named batch outside the project, a named
     batch that is not open, an empty `batch_ids`, a project with no open
-    batch, or any selected batch whose pinned schema has no class a box can be
-    written as — the message names that batch so it can be left out by name.
+    batch, or any selected batch whose pinned schema has no class a shape the
+    model produces can be written as — the message names that batch so it can
+    be left out by name.
     Assets in no batch are not reached; cut a batch first (`create_batch`,
     `approve_batch`, `start_batch`).
 
@@ -475,9 +484,11 @@ def pre_label_project(
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)
         resolved_connection = resolve_connection(workspace, connection)
+        declared = resident().served(resolved_connection, workspace_root=workspace.root)
         selected = select_pre_labelable(
             workspace,
             resolved.id,
+            declared.produces,
             None if batch_ids is None else [identifier(one, what="batch_id") for one in batch_ids],
         )
         items: list[dict[str, Any]] = []

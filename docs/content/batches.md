@@ -337,7 +337,8 @@ batch is `in_annotation`, so that is the ordinary case rather than a race: the r
 keeps going, and the outcome's `assets_skipped` says how many.
 
 **The batch's pinned schema is the prompt.** The model is asked for each class the schema
-declares that a box can be written as - the same class names an annotator would use. A
+declares that the model's answer can be written as — a class admitting a shape the model
+produces - the same class names an annotator would use. A
 text-prompted detector answers with text decoded from spans over that prompt rather than a
 choice from the list, so an answer naming one of the classes, matched case-insensitively, is
 written under the schema's own spelling, and an answer naming none of them - a span that
@@ -347,16 +348,18 @@ no overlap with a measured asset is discarded separately, and `regions_out_of_bo
 many; unmeasured assets remain eligible. A schema with no such class is refused up front; see
 [inference.md](inference.md#what-a-connection-can-be-asked-for).
 
-**A class is left out of the prompt for either of two reasons, and both are published.** It does
-not admit `bbox`, so a detection has no shape to land as; or it declares a required attribute,
-which a bare prediction carries no value for. Neither is visible in the counters a run reports -
-a schema whose `vehicle` requires a `color` completes a run, labels no vehicles, and the counts
-say nothing about why - so `GET /batches/{id}/pre-label` answers both halves before a run starts:
-`asked_classes` is the prompt, and `excluded_classes` names the rest with every reason that holds
-against each. Every class the pinned schema declares appears in exactly one of the two lists. It
-is derived from the schema alone and needs no connection, so a dialog can name the classes before
-anybody has chosen a model; a batch whose schema has no askable class at all is refused with the
-same `SCHEMA_HAS_NO_DETECTABLE_CLASS` the launch answers, rather than reported as an empty prompt.
+**A class is left out of the prompt for either of two reasons, and both are published.** It admits
+no shape the model produces (`no_producible_geometry`); or it declares a required attribute, which
+a bare prediction carries no value for (`required_attribute`). Neither is visible in the counters a
+run reports - a schema whose `vehicle` requires a `color` completes a run, labels no vehicles, and
+the counts say nothing about why - so `GET /batches/{id}/pre-label` answers both halves before a
+run starts: `asked_classes` is the prompt, and `excluded_classes` names the rest with every reason
+that holds against each. Every class the pinned schema declares appears in exactly one of the two
+lists. It takes the connection (`?connection_id=`), because the prompt is a property of the schema
+**and** the model — a schema of polygon classes is askable of a segmenter and refused for a
+detector — and answers `produces`, the shapes the run will write; the dialog re-reads it when the
+model changes. A batch whose schema has no askable class at all is refused with the same
+`SCHEMA_HAS_NO_DETECTABLE_CLASS` the launch answers, rather than reported as an empty prompt.
 At a terminal `visionset batch pre-label` writes the same two lines to stderr before the first
 forward pass. The MCP tool `get_pre_label_plan` answers the same two halves, and there alone the
 plan also travels *in* the outcome: `pre_label_batch` blocks until the run is done and returns it
@@ -506,8 +509,8 @@ POST /batches/{id}/approve   { "partition": … }      → 200 BatchOut
 POST /batches/{id}/start                             → 200 BatchOut
 POST /batches/{id}/repin?allow_destructive=          → 200 BatchOut
 POST /batches/{id}/complete                          → 200 BatchOut
-GET  /batches/{id}/pre-label                         → 200 PreLabelPlanOut, the prompt and
-                                                        every class left out of it
+GET  /batches/{id}/pre-label?connection_id=          → 200 PreLabelPlanOut, the prompt, every
+                                                        class left out of it, and `produces`
 POST /batches/{id}/pre-label { "connection_id": …, "minimum_confidence": …,
                                "replace_model_labels": … }  → 202 BackgroundJobOut
 POST /batches/{id}/promote                           → 200 AssetPage, the assets that entered
