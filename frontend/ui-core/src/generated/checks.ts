@@ -190,7 +190,7 @@ export const checkActivityEntryOut: Check<Schemas["ActivityEntryOut"]> =
   /*#__PURE__*/ object({ "count": [true, either([isInteger, isNull] as const)], "kind": [true, checkActivityKind], "label": [true, either([isString, isNull] as const)], "occurred_at": [true, isString], "project_id": [true, isString], "project_name": [true, isString], "subject_id": [true, isString] } as const);
 
 export const checkAttentionKind: Check<Schemas["AttentionKind"]> =
-  /*#__PURE__*/ oneOf(["review_pending", "job_failed", "job_running"] as const);
+  /*#__PURE__*/ oneOf(["review_pending", "pre_labeled", "job_failed", "job_running"] as const);
 
 export const checkAttentionItemOut: Check<Schemas["AttentionItemOut"]> =
   /*#__PURE__*/ object({ "count": [true, either([isInteger, isNull] as const)], "detail": [true, either([isString, isNull] as const)], "kind": [true, checkAttentionKind], "label": [true, isString], "processed": [true, either([isInteger, isNull] as const)], "project_id": [true, either([isString, isNull] as const)], "project_name": [true, either([isString, isNull] as const)], "subject_id": [true, isString], "total": [true, either([isInteger, isNull] as const)] } as const);

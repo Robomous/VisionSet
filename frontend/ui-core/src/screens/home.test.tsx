@@ -353,6 +353,37 @@ it("lists what is waiting, and links only the row that has somewhere to go", asy
   expect(opened).toEqual([[PROJECT, BATCH]]);
 });
 
+it("names a model-labeled batch as waiting on an annotator, and links it to the gallery", async () => {
+  const opened: [string, string][] = [];
+  on("GET", /\/home$/, {
+    status: 200,
+    body: homeBody({
+      attention: [
+        {
+          kind: "pre_labeled",
+          subject_id: BATCH,
+          project_id: PROJECT,
+          project_name: "Highway pilot",
+          label: "Batch 3",
+          count: 48,
+          processed: null,
+          total: null,
+          detail: null,
+        },
+      ],
+    }),
+  });
+  render(mount(<HomeScreen onOpenBatch={(project, batch) => opened.push([project, batch])} />));
+
+  const row = await screen.findByTestId("home-attention-row");
+  expect(row.textContent).toContain("48 model-labeled frames waiting on an annotator");
+  expect(row.textContent).not.toContain("review");
+  expect(row.tagName).toBe("BUTTON");
+
+  await userEvent.click(row);
+  expect(opened).toEqual([[PROJECT, BATCH]]);
+});
+
 it("omits the activity feed rather than rendering an empty one", async () => {
   on("GET", /\/home$/, { status: 200, body: homeBody({ resume: resume(), activity: [] }) });
   render(mount(<HomeScreen onContinue={() => {}} />));

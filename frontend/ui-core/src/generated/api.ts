@@ -2930,7 +2930,7 @@ export interface components {
          *     is a plain ``str`` precisely because a log outlives the build that wrote it.
          * @enum {string}
          */
-        AttentionKind: "review_pending" | "job_failed" | "job_running";
+        AttentionKind: "review_pending" | "pre_labeled" | "job_failed" | "job_running";
         /**
          * AttributeBody
          * @description A typed attribute on a label class.

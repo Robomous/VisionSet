@@ -170,10 +170,14 @@ pointer, and pressing it goes to the screen that owns the thing.
   frame that does not exist would land somewhere empty. Which applies is decided by the
   kernel and carried on the response, because a judgment spelled once in the kernel and
   again in the browser is one that drifts.
-- **Attention rows** are one line each: a batch holding frames awaiting review, a failed
-  background job, a running background job. A review row links to its batch. A job row
-  links nowhere and says so by not being a link — no screen shows a background job, and
-  inventing a destination would be principle 4's dead button with a friendlier label.
+- **Attention rows** are one line each: a batch holding frames awaiting review, a batch
+  holding frames a model labeled and nobody has read, a failed background job, a running
+  background job. The two batch rows must not read the same — the first waits on a
+  *reviewer*, the second on an *annotator* — and a batch holding both gets both rows, since
+  one line cannot ask two people. Either batch row links to its gallery, where the
+  model-labeled segment and its bulk verbs are. A job row links nowhere and says so by not
+  being a link — no screen shows a background job, and inventing a destination would be
+  principle 4's dead button with a friendlier label.
 - **Activity** is a projection over timestamps that already exist, never an event log,
   capped at about eight and newest first. The copy must not overstate what a timestamp
   records: an ingest row reports *the last data that arrived*, not a run finishing, and a
