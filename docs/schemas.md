@@ -483,7 +483,7 @@ closes, and the frames it counted are still there to be dealt with afterwards. E
 every batch holding its frame — an annotation names no batch, so there is no single one to send
 anybody to. Both readings walk the project once, the same way, so the count and the rows never
 disagree. See
-[ui.md](ui.md#the-schema-editor-and-the-three-409s),
+[ui.md](ui.md#frames-in-the-way),
 [api.md](api.md#asking-before-you-are-refused) and
 [api.md](api.md#reaching-what-is-in-the-way).
 
