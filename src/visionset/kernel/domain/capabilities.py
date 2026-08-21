@@ -109,13 +109,14 @@ class AssetAction(OpenVocabulary):
 
     ``ANNOTATE`` is the odd one and the important one: it is not a progress move
     but the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the
-    batch gate together. The other five each name one edge of
+    batch gate together. The other six each name one edge of
     ``ASSET_PROGRESS_TRANSITIONS`` — see :data:`ASSET_MOVES`.
     """
 
     ANNOTATE = "annotate"
     SKIP = "skip"
     RESTORE = "restore"
+    CONFIRM = "confirm"
     SUBMIT_FOR_REVIEW = "submit_for_review"
     ACCEPT = "accept"
     RETURN_TO_ANNOTATOR = "return_to_annotator"
@@ -239,6 +240,7 @@ ASSET_MOVES: Final[Mapping[AssetAction, Move[AssetProgress]]] = {
         frozenset({AssetProgress.UNANNOTATED, AssetProgress.ANNOTATED, AssetProgress.PRE_LABELED}),
     ),
     AssetAction.RESTORE: Move(AssetProgress.UNANNOTATED, frozenset({AssetProgress.SKIPPED})),
+    AssetAction.CONFIRM: Move(AssetProgress.ANNOTATED, frozenset({AssetProgress.PRE_LABELED})),
     AssetAction.SUBMIT_FOR_REVIEW: Move(
         AssetProgress.REVIEW_PENDING, frozenset({AssetProgress.ANNOTATED})
     ),
@@ -247,7 +249,7 @@ ASSET_MOVES: Final[Mapping[AssetAction, Move[AssetProgress]]] = {
         AssetProgress.ANNOTATED, frozenset({AssetProgress.REVIEW_PENDING})
     ),
 }
-"""The five actions naming a progress edge somebody can click.
+"""The six actions naming a progress edge somebody can click.
 
 ``accept`` and ``return_to_annotator`` are the two halves of ``review_pending``,
 and the second is named for what it does rather than for the edge it rides: "back
@@ -257,6 +259,10 @@ to annotated" describes the table, "return to annotator" describes the act.
 labeling a frame whether it has never been touched, already carries a person's
 work, or still carries only a model's — the decision is the same act from all
 three.
+
+``confirm`` is a person keeping a model's labels as the frame's own: the same
+edge an edit rides, reached without the lie of a nudged box. Labels exist
+either way; the marker records judgment.
 """
 
 
@@ -272,7 +278,7 @@ UNNAMED_EDGES: Final[frozenset[tuple[AssetProgress, AssetProgress]]] = frozenset
 )
 """Legal progress edges that deliberately have no action name.
 
-Five moves, all of them *computed from* ``progress_after_annotating`` rather
+Five edges, all of them *computed from* ``progress_after_annotating`` rather
 than listed beside it. The first two are an annotation appearing or
 disappearing on its own — ``unannotated -> annotated`` when the first label
 lands, and back again when the last one goes. Nobody performs these:
@@ -286,9 +292,10 @@ and ``pre_labeled -> unannotated`` is that edit deleting the model's last
 label. Each is derived here for the reason the first two are: this set can
 only grow if the domain's own derivation rule does.
 
-Offering any of them as its own control would be offering to change a marker
-while its labels stay put, which is the one thing the progress machine exists to
-prevent.
+``pre_labeled -> annotated`` is the one edge with two ways to ride it — an edit,
+which lands here, and ``confirm``, which is named. The other four stay unnamed:
+offering one of them as a control would change a marker while its labels stay
+put, which is the one thing the progress machine exists to prevent.
 
 Named at all so that a *new* edge cannot quietly arrive with no capability:
 ``test_every_edge_is_named_by_an_action_or_deliberately_not`` requires every edge

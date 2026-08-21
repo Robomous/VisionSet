@@ -437,11 +437,12 @@
         "type": "object"
       },
       "AssetAction": {
-        "description": "What can be asked of one asset inside a batch.\n\n``ANNOTATE`` is the odd one and the important one: it is not a progress move\nbut the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the\nbatch gate together. The other five each name one edge of\n``ASSET_PROGRESS_TRANSITIONS`` \u2014 see :data:`ASSET_MOVES`.",
+        "description": "What can be asked of one asset inside a batch.\n\n``ANNOTATE`` is the odd one and the important one: it is not a progress move\nbut the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the\nbatch gate together. The other six each name one edge of\n``ASSET_PROGRESS_TRANSITIONS`` \u2014 see :data:`ASSET_MOVES`.",
         "enum": [
           "annotate",
           "skip",
           "restore",
+          "confirm",
           "submit_for_review",
           "accept",
           "return_to_annotator"

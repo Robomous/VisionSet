@@ -2767,11 +2767,11 @@ export interface components {
          *
          *     ``ANNOTATE`` is the odd one and the important one: it is not a progress move
          *     but the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the
-         *     batch gate together. The other five each name one edge of
+         *     batch gate together. The other six each name one edge of
          *     ``ASSET_PROGRESS_TRANSITIONS`` — see :data:`ASSET_MOVES`.
          * @enum {string}
          */
-        AssetAction: "annotate" | "skip" | "restore" | "submit_for_review" | "accept" | "return_to_annotator" | (string & {});
+        AssetAction: "annotate" | "skip" | "restore" | "confirm" | "submit_for_review" | "accept" | "return_to_annotator" | (string & {});
         /**
          * AssetOut
          * @description One ingested item.
@@ -11125,7 +11125,7 @@ export type OpenMember<A extends string> = A | (string & {});
 
 /** The members this build compiled against, per vocabulary the contract may grow. */
 export interface KnownMembers {
-  AssetAction: "annotate" | "skip" | "restore" | "submit_for_review" | "accept" | "return_to_annotator";
+  AssetAction: "annotate" | "skip" | "restore" | "confirm" | "submit_for_review" | "accept" | "return_to_annotator";
   BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "pre_label" | "edit_membership" | "delete";
   ConnectionAction: "download_weights" | "check_integrity" | "update" | "delete";
   JobAction: "start" | "complete";
