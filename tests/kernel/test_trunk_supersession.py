@@ -60,6 +60,7 @@ SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 
 UNANNOTATED = AssetProgress.UNANNOTATED
 ANNOTATED = AssetProgress.ANNOTATED
+PRE_LABELED = AssetProgress.PRE_LABELED
 SKIPPED = AssetProgress.SKIPPED
 
 ALL_TRAIN = SplitRecipe(train=1.0, val=0.0, test=0.0)
@@ -162,12 +163,35 @@ def _box(asset_id: UUID, label_class: str = "sign", *, x: float = 0.0) -> Annota
     )
 
 
+def _model_box(asset_id: UUID, *, x: float = 0.0) -> Annotation:
+    return Annotation(
+        asset_id=asset_id,
+        label_class="sign",
+        schema_version=1,
+        geometry=BboxGeometry(x=x, y=0.0, width=10.0, height=10.0),
+        provenance="model",
+        model_ref="acme/detector@abc123",
+        confidence=0.6,
+    )
+
+
 # --- the domain rule ----------------------------------------------------------
 
 
 def test_an_asset_with_labels_starts_annotated_and_one_without_starts_unannotated() -> None:
     assert initial_progress(has_annotations=True) is ANNOTATED
     assert initial_progress(has_annotations=False) is UNANNOTATED
+
+
+def test_an_asset_whose_every_label_is_a_models_starts_pre_labeled() -> None:
+    """Nobody judged those labels, so a new batch must not open them promotable."""
+    assert initial_progress(has_annotations=True, judged=False) is PRE_LABELED
+    assert initial_progress(has_annotations=False, judged=False) is UNANNOTATED
+
+
+def test_where_a_model_only_asset_starts_is_where_an_unjudged_first_label_would_land_it() -> None:
+    started = initial_progress(has_annotations=True, judged=False)
+    assert started is progress_after_annotating(UNANNOTATED, has_annotations=True, judged=False)
 
 
 def test_where_an_asset_starts_is_where_annotating_a_fresh_one_would_land_it() -> None:
@@ -187,9 +211,11 @@ def test_where_an_asset_starts_is_where_annotating_a_fresh_one_would_land_it() -
 
 def test_both_starting_states_are_ones_an_annotator_may_write_into() -> None:
     """Read against `WRITABLE_PROGRESS`, so seeding cannot open an unwritable asset."""
-    assert {initial_progress(has_annotations=True), initial_progress(has_annotations=False)} <= (
-        WRITABLE_PROGRESS
-    )
+    assert {
+        initial_progress(has_annotations=True),
+        initial_progress(has_annotations=False),
+        initial_progress(has_annotations=True, judged=False),
+    } <= WRITABLE_PROGRESS
 
 
 # --- seeding: a batch over labeled assets opens on those labels ---------------
@@ -253,6 +279,36 @@ def test_an_ordinary_batch_over_labeled_assets_is_seeded_the_same_way(
 
     assert fixture.batches.get(fixture.batch_of(plain_job)).parent_batch_id is None
     assert fixture.progress_of(plain_job, first) is ANNOTATED
+    fixture.close()
+
+
+def test_a_batch_cut_over_a_model_only_asset_opens_it_pre_labeled(tmp_path: Path) -> None:
+    """Nobody judged those labels, so being cut into a second batch must not
+    make them promotable — the rule still reads the asset, and the asset says
+    'a model wrote everything here'."""
+    fixture = Fixture(tmp_path)
+    first, _ = fixture.assets
+    first_job = fixture.open_batch("first", [first])
+    fixture.annotations.enter_unreviewed(first_job.id, [_model_box(first)])
+
+    second_job = fixture.open_batch("second", [first])
+
+    assert fixture.progress_of(second_job, first) is PRE_LABELED
+    fixture.close()
+
+
+def test_a_batch_cut_over_an_asset_with_any_human_label_opens_it_annotated(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    first, _ = fixture.assets
+    first_job = fixture.open_batch("first", [first])
+    fixture.annotations.enter_unreviewed(first_job.id, [_model_box(first)])
+    fixture.annotations.add(first_job.id, [_box(first, x=20)])
+
+    second_job = fixture.open_batch("second", [first])
+
+    assert fixture.progress_of(second_job, first) is ANNOTATED
     fixture.close()
 
 

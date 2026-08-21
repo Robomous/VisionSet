@@ -218,6 +218,13 @@ proves nothing - so it is not something to run because a list rendered. A broken
 manifest is reported on its own: the service stops with `checked: 0`, so every other
 number would be about a document that is not the one its hash names.
 
+**A release the active schema no longer describes is refused with its classes.** Publishing
+revalidates every trunk annotation against the active schema, and the 409
+`RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA` carries the per-class counts in `detail.blockers` — the
+same `ClassCount` shape the schema editor's orphan dialog reads. The publish dialog renders
+them under the sentence, one line per class, and says what to do: correct those labels in a
+new batch, remove the frames, or publish a version that describes the classes again.
+
 **The split's fractions are compared the kernel's way.** `0.7 + 0.15 + 0.15` is not
 `1.0` in binary floating point, and the kernel uses `math.isclose(abs_tol=1e-9)`; a
 stricter check in the browser would refuse a recipe the API accepts.
@@ -768,6 +775,21 @@ are shown again under a settled run's summary, which is where a run that labeled
 actually read. A schema with no askable class at all refuses this read, and the dialog renders
 that refusal and leaves `Start` dead rather than waiting for the press to produce it.
 
+**Replacing an earlier pass is a tick, off by default.** The live configuration - the model,
+the minimum prompt affinity, the prompt classes, and the count of what a run would consider -
+sits below whichever summary the mode wrote, in every mode with something left to reach:
+during a run too, with its fields and the tick disabled, and under a `done`, `stopped` or
+`failed` summary whenever the batch has an untouched asset left, whether or not anything here
+is pre-labeled. Where the batch holds
+pre-labeled frames, under it sits **Replace the model labels on N pre-labeled frame(s)**,
+unticked, saying that frames anyone has edited, confirmed or skipped in this batch are never
+touched and that this cannot be undone. Ticked, the count line adds that the run also replaces
+the model labels on those N frames, and the launch -
+`Start`, `Run again`, `Continue` or `Try again` - goes live. A batch with nothing untouched left
+and the box unticked has no run to launch at all, so the press is disabled and the notice names
+the tick as what would give the run something to do. A settled run's summary reports how many
+earlier model regions it replaced.
+
 The route answers `202` with a background job, on the export and weight-download routes'
 contract, and the dialog polls it exactly as `ExportDialog` polls an export: nothing here waits
 for the run to finish, but nothing closes over an outcome unseen either. Every refusal the route
@@ -775,6 +797,20 @@ can produce reaches the dialog as prose - a batch that stopped being `in_annotat
 press, a connection whose model answers places rather than words, a pinned schema with no class
 a detection can be written as, and a local runtime that is not installed, whose message carries
 the exact `pip install` to run.
+
+#### Pre-labeling every open batch from the Batches tab
+
+The tab's header offers **Pre-label** whenever some batch of the project declares `pre_label` in its
+own `allowed_actions` - read off the listing, never derived from state here - and is absent
+otherwise. The dialog takes the same model and prompt-affinity controls as the gallery's dialog
+(one component, one copy of the prose), then a checklist of the batches that declare the action,
+each with its untouched count and checked by default when that count is above zero. Start posts
+`POST /projects/{id}/batches/pre-label` with exactly the checked ids, so what runs is what was
+seen; the answer is one row per batch, and the dialog lists each as queued or as having joined a
+run already in flight, each name a link into its gallery. The batch stays the unit: the row in
+the table shows a **pre-labeling…** mark while that batch's own `pre_label_run` is live, and the
+gallery's dialog reads the same run afterwards. A refusal - a pin with no box class, naming the
+batch to leave out - renders as prose in the dialog, and no batch is launched.
 
 #### Reviewing a pre-labeled batch
 
@@ -790,9 +826,9 @@ The bulk bar adds two verbs over the selection. **Confirm labels** keeps a model
 the frames' own (`pre_labeled → annotated`, the `confirm` action); the annotator offers the
 same on an unedited model-labeled frame. **Discard model labels** deletes every label the
 model wrote on the selected frames through the existing all-or-nothing delete, after a
-dialog, and the frames return to `unannotated`; it cannot be undone, because a run does not
-repeat over a frame it has labeled (cf. #683). Per-class thresholds and a threshold filter are
-deliberately not here yet.
+dialog, and the frames return to `unannotated`. It cannot be undone; a replacing re-run from the
+Pre-label dialog is the way to redo the machine's pass over frames still `pre_labeled`. Per-class
+thresholds and a threshold filter are deliberately not here yet.
 
 ### The ingest flow, and the order the domain forces
 

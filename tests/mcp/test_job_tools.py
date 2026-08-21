@@ -40,10 +40,27 @@ def _seeded_correction(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple
     and settled without anybody having written into it. It is the only shape in
     which a `pending` job holds annotations, which makes it the fixture for every
     write that addresses one.
+
+    Human provenance, not `_annotate`'s: a model-only asset now seeds
+    `pre_labeled` rather than `annotated`, and this fixture is for the settled
+    case.
     """
     _, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=1)
     asset_id = payload(call("next_pending_assets", job_id=job_id, count=1))["items"][0]["id"]
-    _annotate(job_id, asset_id)
+    payload(
+        call(
+            "add_annotations",
+            job_id=job_id,
+            annotations=[
+                {
+                    "asset_id": asset_id,
+                    "label_class": "sign",
+                    "geometry": BBOX,
+                    "provenance": "human",
+                }
+            ],
+        )
+    )
     payload(call("complete_job", job_id=job_id))
     payload(call("complete_batch", batch_id=batch_id))
 

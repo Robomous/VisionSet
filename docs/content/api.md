@@ -71,7 +71,8 @@ DELETE /batches/{batch_id}                                ?confirm=true
 POST   /batches/{batch_id}/approve                        with a partition spec
 POST   /batches/{batch_id}/start
 GET    /batches/{batch_id}/pre-label                      the classes a run would ask for
-POST   /batches/{batch_id}/pre-label                      launch, poll the job
+POST   /batches/{batch_id}/pre-label                      launch; replace_model_labels redoes an earlier pass
+POST   /projects/{project_id}/batches/pre-label           launch over every open batch, or the named ones; one job per batch
 POST   /batches/{batch_id}/repin                          ?allow_destructive=
 POST   /batches/{batch_id}/complete
 POST   /batches/{batch_id}/corrections                    a new batch over a completed one

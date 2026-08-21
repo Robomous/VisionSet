@@ -132,6 +132,7 @@ def test_the_outcome_is_null_before_the_job_settles() -> None:
     assert run.assets_labeled is None
     assert run.regions_discarded is None
     assert run.regions_out_of_bounds is None
+    assert run.annotations_replaced is None
 
 
 def test_a_succeeded_run_carries_the_handlers_outcome() -> None:
@@ -150,6 +151,7 @@ def test_a_succeeded_run_carries_the_handlers_outcome() -> None:
             "assets_skipped": 1,
             "regions_discarded": 2,
             "regions_out_of_bounds": 1,
+            "annotations_replaced": 4,
         },
     )
 
@@ -159,6 +161,7 @@ def test_a_succeeded_run_carries_the_handlers_outcome() -> None:
     assert run.assets_labeled == 6
     assert run.regions_discarded == 2
     assert run.regions_out_of_bounds == 1
+    assert run.annotations_replaced == 4
 
 
 def test_a_pre_label_result_ignores_boolean_and_malformed_counts() -> None:
@@ -170,6 +173,7 @@ def test_a_pre_label_result_ignores_boolean_and_malformed_counts() -> None:
             "assets_labeled": True,
             "regions_discarded": "two",
             "regions_out_of_bounds": 1.0,
+            "annotations_replaced": True,
         },
     )
 
@@ -178,6 +182,7 @@ def test_a_pre_label_result_ignores_boolean_and_malformed_counts() -> None:
     assert run.assets_labeled is None
     assert run.regions_discarded is None
     assert run.regions_out_of_bounds is None
+    assert run.annotations_replaced is None
 
 
 def test_a_failed_run_keeps_the_sentence_and_has_no_outcome() -> None:

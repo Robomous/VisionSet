@@ -173,9 +173,10 @@ leaves the record intact. The gesture is in [ui.md](ui.md); what it proposes is 
 the only other way a `provenance="model"` annotation enters a workspace, and the two doors differ
 on both ends. `add` accepts an asset that is `unannotated`, `annotated` or `pre_labeled` and
 either provenance, and lands new labels at `annotated` - taking over a `pre_labeled` asset the
-same way it labels an untouched one; `enter_unreviewed` accepts only an `unannotated` asset and
-only `provenance="model"`, and lands its labels at `pre_labeled`, because nothing has judged what
-it wrote. The gesture behind it is a batch-level action, not a per-asset one - see
+same way it labels an untouched one; `enter_unreviewed` accepts only an `unannotated` asset — or,
+asked to replace, a `pre_labeled` one whose model labels it supersedes in the same transaction —
+and only `provenance="model"`, and lands its labels at `pre_labeled`, because nothing has judged
+what it wrote. The gesture behind it is a batch-level action, not a per-asset one - see
 [batches.md](batches.md).
 
 ## `delete` has no `confirm=`

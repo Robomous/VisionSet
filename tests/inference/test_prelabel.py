@@ -18,8 +18,15 @@ from visionset.inference.prelabel import (
     detectable_classes,
     pre_label,
     prompt_plan,
+    select_pre_labelable,
 )
-from visionset.kernel import BatchNotInAnnotation, SchemaHasNoDetectableClass, UnsupportedPrompt
+from visionset.kernel import (
+    BatchNotFound,
+    BatchNotInAnnotation,
+    ProjectNotFound,
+    SchemaHasNoDetectableClass,
+    UnsupportedPrompt,
+)
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
@@ -890,3 +897,265 @@ def test_stopping_after_an_off_frame_region_keeps_its_count(
     job = early_stop_off_frame_fixture.job()
     assert job.progress[early_stop_off_frame_fixture.assets[0]] is AssetProgress.PRE_LABELED
     assert job.progress[early_stop_off_frame_fixture.assets[1]] is AssetProgress.UNANNOTATED
+
+
+# --- selecting a project's batches -------------------------------------------
+
+
+def _second_open_batch(fixture: Fixture, name: str, *, seeds: range) -> UUID:
+    """Another batch of ``fixture.project``, approved and started, over fresh assets."""
+    assets = [fixture._asset(f"{name}-{seed}") for seed in seeds]
+    batch = fixture.batches.create(fixture.project.id, name, assets)
+    fixture.batches.approve(batch.id)
+    fixture.batches.start(batch.id)
+    return batch.id
+
+
+def test_the_default_selection_is_every_open_batch_in_listing_order(
+    prelabel_fixture: Fixture,
+) -> None:
+    second = _second_open_batch(prelabel_fixture, "second", seeds=range(10, 12))
+    draft = prelabel_fixture.batches.create(prelabel_fixture.project.id, "draft", [])
+
+    selected = select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id)
+
+    assert [one.id for one in selected] == [prelabel_fixture.batch.id, second]
+    assert draft.id not in {one.id for one in selected}
+
+
+def test_a_named_selection_keeps_its_order_and_collapses_duplicates(
+    prelabel_fixture: Fixture,
+) -> None:
+    second = _second_open_batch(prelabel_fixture, "second", seeds=range(10, 12))
+
+    selected = select_pre_labelable(
+        prelabel_fixture.workspace,
+        prelabel_fixture.project.id,
+        [second, prelabel_fixture.batch.id, second],
+    )
+
+    assert [one.id for one in selected] == [second, prelabel_fixture.batch.id]
+
+
+def _asset_for(fixture: Fixture, project_id: UUID, seed: str) -> UUID:
+    """An asset seeded like ``Fixture._asset``, but owned by a different project."""
+    content_hash = fixture.workspace.blob_store.put(BytesIO(seed.encode()))
+    with fixture.workspace.unit_of_work() as uow:
+        return uow.assets.add(
+            Asset(project_id=project_id, content_hash=content_hash, uri=f"/tmp/{seed}.png")
+        ).id
+
+
+def test_a_named_batch_of_another_project_is_not_found(prelabel_fixture: Fixture) -> None:
+    other = ProjectService(prelabel_fixture.workspace).create("other-project")
+    asset = _asset_for(prelabel_fixture, other.id, "other-0")
+    theirs = prelabel_fixture.batches.create(other.id, "theirs", [asset])
+
+    with pytest.raises(BatchNotFound, match="in project"):
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, [theirs.id])
+
+
+def test_a_named_batch_that_is_not_open_is_refused(prelabel_fixture: Fixture) -> None:
+    draft = prelabel_fixture.batches.create(prelabel_fixture.project.id, "draft", [])
+
+    with pytest.raises(BatchNotInAnnotation, match="draft"):
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, [draft.id])
+
+
+def test_a_project_with_no_open_batch_is_refused_by_name(prelabel_fixture: Fixture) -> None:
+    for job in prelabel_fixture.batches.jobs(prelabel_fixture.batch.id):
+        for asset_id in job.progress:
+            prelabel_fixture.jobs.mark(job.id, asset_id, AssetProgress.SKIPPED)
+        prelabel_fixture.jobs.complete(job.id)
+    prelabel_fixture.batches.complete(prelabel_fixture.batch.id)
+
+    with pytest.raises(BatchNotInAnnotation, match="has no batch open for annotation"):
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id)
+
+
+def test_an_explicitly_empty_selection_is_refused_by_its_own_sentence(
+    prelabel_fixture: Fixture,
+) -> None:
+    with pytest.raises(BatchNotInAnnotation, match="no batch named"):
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, [])
+
+
+def test_an_unknown_project_is_not_found(prelabel_fixture: Fixture) -> None:
+    with pytest.raises(ProjectNotFound):
+        select_pre_labelable(prelabel_fixture.workspace, uuid4())
+
+
+def test_a_selected_batch_with_no_detectable_class_is_refused_by_name(
+    prelabel_fixture: Fixture,
+) -> None:
+    """The refusal names the batch, because a project-wide request cannot otherwise
+    say which pin to exclude by name."""
+    prelabel_fixture.schemas.create_version(
+        prelabel_fixture.project.id, [LANE], allow_destructive=True
+    )
+    _second_open_batch(prelabel_fixture, "lanes", seeds=range(20, 22))
+
+    with pytest.raises(SchemaHasNoDetectableClass, match="batch 'lanes'"):
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id)
+
+
+def test_a_replacing_run_rewrites_every_pre_labeled_frame_and_counts_what_it_replaced(
+    prelabel_fixture: Fixture,
+) -> None:
+    first = pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+    before = {
+        a: [x.id for x in prelabel_fixture.annotations_on(a)] for a in prelabel_fixture.assets
+    }
+
+    again = pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        replace_model_labels=True,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert again.assets_considered == 3
+    assert again.assets_labeled == 3
+    assert again.annotations_written == first.annotations_written == 3
+    assert again.annotations_replaced == 3
+    job = prelabel_fixture.job()
+    for asset_id in prelabel_fixture.assets:
+        now = [x.id for x in prelabel_fixture.annotations_on(asset_id)]
+        assert len(now) == 1 and now != before[asset_id]
+        assert job.progress[asset_id] is AssetProgress.PRE_LABELED
+
+
+def test_a_replacing_run_leaves_a_persons_frame_alone(prelabel_fixture: Fixture) -> None:
+    """Confirmed means judged: `pre_labeled -> annotated` by `mark`, labels untouched."""
+    pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+    confirmed = prelabel_fixture.assets[0]
+    prelabel_fixture.mark(confirmed, AssetProgress.ANNOTATED)
+    kept = [x.id for x in prelabel_fixture.annotations_on(confirmed)]
+
+    again = pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        replace_model_labels=True,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert again.assets_considered == 2
+    assert again.annotations_replaced == 2
+    assert [x.id for x in prelabel_fixture.annotations_on(confirmed)] == kept
+    assert prelabel_fixture.job().progress[confirmed] is AssetProgress.ANNOTATED
+
+
+def test_a_replacing_run_also_enters_frames_still_untouched(prelabel_fixture: Fixture) -> None:
+    pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+    # Discard one frame's model labels by hand: back to untouched.
+    discarded = prelabel_fixture.assets[1]
+    ids = [x.id for x in prelabel_fixture.annotations_on(discarded)]
+    prelabel_fixture.annotations.delete(prelabel_fixture.job().id, ids)
+    assert prelabel_fixture.job().progress[discarded] is AssetProgress.UNANNOTATED
+
+    again = pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        replace_model_labels=True,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert again.assets_considered == 3
+    assert again.assets_labeled == 3
+    assert again.annotations_replaced == 2
+    assert prelabel_fixture.job().progress[discarded] is AssetProgress.PRE_LABELED
+
+
+def test_a_replacing_run_that_finds_nothing_now_returns_the_frame_to_unannotated(
+    prelabel_fixture: Fixture,
+) -> None:
+    pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+    prelabel_fixture.pool.regions = ()
+
+    again = pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        replace_model_labels=True,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert again.assets_considered == 3
+    assert again.assets_labeled == 0
+    assert again.annotations_written == 0
+    assert again.annotations_replaced == 3
+    for asset_id in prelabel_fixture.assets:
+        assert prelabel_fixture.annotations_on(asset_id) == []
+        assert prelabel_fixture.job().progress[asset_id] is AssetProgress.UNANNOTATED
+
+
+def test_a_pre_labeled_frame_taken_over_mid_run_is_skipped_by_a_replacing_run(
+    prelabel_fixture: Fixture,
+) -> None:
+    pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+    moved = prelabel_fixture.assets[1]
+
+    def confirm_it(asset_id: UUID) -> None:
+        if asset_id == moved:
+            prelabel_fixture.mark(asset_id, AssetProgress.ANNOTATED)
+
+    prelabel_fixture.pool.on_asset = confirm_it
+
+    again = pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        replace_model_labels=True,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert again.assets_skipped == 1
+    assert again.annotations_replaced == 2
+    assert prelabel_fixture.job().progress[moved] is AssetProgress.ANNOTATED
+
+
+def test_an_unflagged_second_run_still_never_touches_a_pre_labeled_frame(
+    prelabel_fixture: Fixture,
+) -> None:
+    pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+    again = pre_label(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+    assert again.assets_considered == 0
+    assert again.annotations_replaced == 0

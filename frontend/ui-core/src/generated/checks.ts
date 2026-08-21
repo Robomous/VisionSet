@@ -100,7 +100,7 @@ export const checkBatchState: Check<Schemas["BatchState"]> =
   /*#__PURE__*/ oneOf(["draft", "approved", "in_annotation", "completed"] as const);
 
 export const checkPreLabelRunOut: Check<Schemas["PreLabelRunOut"]> =
-  /*#__PURE__*/ object({ "assets_labeled": [true, either([isInteger, isNull] as const)], "assets_processed": [true, isInteger], "assets_total": [true, either([isInteger, isNull] as const)], "error": [true, either([isString, isNull] as const)], "job_id": [true, isString], "regions_discarded": [true, either([isInteger, isNull] as const)], "regions_out_of_bounds": [true, either([isInteger, isNull] as const)], "state": [true, checkBackgroundJobState], "stopped_early": [true, either([isBoolean, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "annotations_replaced": [true, either([isInteger, isNull] as const)], "assets_labeled": [true, either([isInteger, isNull] as const)], "assets_processed": [true, isInteger], "assets_total": [true, either([isInteger, isNull] as const)], "error": [true, either([isString, isNull] as const)], "job_id": [true, isString], "regions_discarded": [true, either([isInteger, isNull] as const)], "regions_out_of_bounds": [true, either([isInteger, isNull] as const)], "state": [true, checkBackgroundJobState], "stopped_early": [true, either([isBoolean, isNull] as const)] } as const);
 
 export const checkProgressCounts: Check<Schemas["ProgressCounts"]> =
   /*#__PURE__*/ object({ "accepted": [true, isInteger], "annotated": [true, isInteger], "pre_labeled": [true, isInteger], "review_pending": [true, isInteger], "skipped": [true, isInteger], "total": [true, isInteger], "unannotated": [true, isInteger] } as const);
@@ -251,6 +251,12 @@ export const checkProjectOut: Check<Schemas["ProjectOut"]> =
 
 export const checkProjectPage: Check<Schemas["ProjectPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkProjectOut)], "total": [true, isInteger] } as const);
+
+export const checkProjectPreLabelItemOut: Check<Schemas["ProjectPreLabelItemOut"]> =
+  /*#__PURE__*/ object({ "batch_id": [true, isString], "batch_name": [true, isString], "job": [true, checkBackgroundJobOut], "joined": [true, isBoolean] } as const);
+
+export const checkProjectPreLabelOut: Check<Schemas["ProjectPreLabelOut"]> =
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkProjectPreLabelItemOut)], "total": [true, isInteger] } as const);
 
 export const checkProjectStatsOut: Check<Schemas["ProjectStatsOut"]> =
   /*#__PURE__*/ object({ "annotated_asset_count": [true, isInteger], "annotated_pct": [true, isNumber], "annotation_count": [true, isInteger], "asset_count": [true, isInteger], "class_count": [true, isInteger], "classes": [true, arrayOf(checkClassCountOut)], "last_ingest_at": [false, either([isString, isNull] as const)], "project_id": [true, isString] } as const);
@@ -429,6 +435,7 @@ export const checkListSources = checkSourcePage;
 export const checkNextPendingAssets = checkAssetPage;
 export const checkPreLabelBatch = checkBackgroundJobOut;
 export const checkPreLabelPlan = checkPreLabelPlanOut;
+export const checkPreLabelProjectBatches = checkProjectPreLabelOut;
 export const checkPreviewSchemaChange = checkSchemaChangePreviewOut;
 export const checkPromoteBatch = checkAssetPage;
 export const checkPublishRelease = checkReleaseOut;

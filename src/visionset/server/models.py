@@ -985,8 +985,8 @@ class PreLabelRunOut(BaseModel):
     counted in the unit its own work is over.
 
     **The outcome, once the job has one.** `stopped_early`, `assets_labeled`,
-    `regions_discarded` and `regions_out_of_bounds` are the handler's own
-    account of what a settled run did.
+    `regions_discarded`, `regions_out_of_bounds` and `annotations_replaced` are
+    the handler's own account of what a settled run did.
     They are `null` while the job is still `queued` or `running`, and `null`
     where it ended `failed` before producing one — but a `cancelled` run still
     carries them: stopping partway is a coherent outcome for a handler whose
@@ -1018,6 +1018,9 @@ class PreLabelRunOut(BaseModel):
     #: discarded rather than written. `null` until the job settles with a
     #: result.
     regions_out_of_bounds: int | None
+    #: Model labels a replacing run superseded. `null` until the job settles
+    #: with a result.
+    annotations_replaced: int | None
 
     @classmethod
     def of(cls, run: PreLabelRun) -> Self:
@@ -1031,6 +1034,7 @@ class PreLabelRunOut(BaseModel):
             assets_labeled=run.assets_labeled,
             regions_discarded=run.regions_discarded,
             regions_out_of_bounds=run.regions_out_of_bounds,
+            annotations_replaced=run.annotations_replaced,
         )
 
 
@@ -1299,7 +1303,8 @@ class BatchApprove(BaseModel):
 
 
 class PreLabelRequest(BaseModel):
-    """Which model should pre-label this batch, and how sure it has to be."""
+    """Which model should pre-label this batch, how sure it has to be, and whether it
+    may replace its own earlier labels."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1311,6 +1316,50 @@ class PreLabelRequest(BaseModel):
     #: asked for — which is a different scale from a point-prompt model's mask
     #: quality, so a threshold tuned for one does not transfer to the other.
     minimum_confidence: float = Field(default=DEFAULT_MINIMUM_CONFIDENCE, ge=0.0, le=1.0)
+    #: Also rewrite the model labels on frames that are still `pre_labeled` —
+    #: labels a model wrote and nobody has edited, confirmed or skipped. Those
+    #: labels are superseded by this run's answer, one frame per transaction,
+    #: and a frame the model now finds nothing on returns to `unannotated`.
+    #: Frames anyone has touched in this batch are never affected. This cannot be undone.
+    replace_model_labels: bool = False
+
+
+class ProjectPreLabelRequest(BaseModel):
+    """Which model should pre-label this project's open batches, and which batches.
+
+    `batch_ids` absent means every batch of the project that is open for
+    annotation; present means exactly those — a batch outside the project is
+    404, one not open is 409, an empty list names nothing and is 409 too, and
+    the request is refused whole, never partly launched.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The inference connection that answers. Its model must declare
+    #: `text_detect`; a point-prompt connection is refused.
+    connection_id: UUID
+    #: The floor a prediction must clear to be written, in [0, 1] — prompt
+    #: affinity, the same scale `PreLabelRequest.minimum_confidence` names.
+    minimum_confidence: float = Field(default=DEFAULT_MINIMUM_CONFIDENCE, ge=0.0, le=1.0)
+    #: Exactly these batches, in this order. Absent: every open batch.
+    batch_ids: list[UUID] | None = None
+
+
+class ProjectPreLabelItemOut(BaseModel):
+    """One batch's row in a project-wide launch."""
+
+    batch_id: UUID
+    batch_name: str
+    #: The `annotation.pre_label` row to poll — `GET /background-jobs/{id}` —
+    #: the same row `BatchOut.pre_label_run` remembers.
+    job: BackgroundJobOut
+    #: True when the row existed before this request: a run already queued or
+    #: running for that batch was joined rather than started again.
+    joined: bool
+
+
+class ProjectPreLabelOut(Page[ProjectPreLabelItemOut]):
+    """Every batch the launch fanned out over, one row each, in selection order."""
 
 
 # --- jobs --------------------------------------------------------------------

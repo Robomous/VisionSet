@@ -57,7 +57,9 @@ holds. Five edges above are still consequences of a write, not of `mark`: writin
 annotation on an untouched asset moves it `unannotated → annotated`, and deleting its last one
 moves it back - the ordinary pair, made by `AnnotationService.add`, `update` and `delete`. A
 third, made only by `AnnotationService.enter_unreviewed`, moves an `unannotated` asset straight to
-`pre_labeled` when a model's labels land on it unattended. The other two are the same shape one
+`pre_labeled` when a model's labels land on it unattended. A replacing pre-label run writes onto
+a `pre_labeled` frame and leaves it `pre_labeled` — staying is not an edge — or, finding nothing,
+returns it to `unannotated` by the same deleting edge. The other two are the same shape one
 state over: a person's first edit on a `pre_labeled` frame takes it over, moving it to
 `annotated`, and deleting its last label returns it to `unannotated` - both made by the same
 `add`, `update` and `delete`, not a new door. All five commit in the same transaction as the

@@ -40,6 +40,7 @@ from visionset.inference import (
     not_set_up_message,
     prompt_plan,
     require_detectable_schema,
+    select_pre_labelable,
     unsupported_prompt_message,
     with_families,
 )
@@ -51,6 +52,7 @@ from visionset.kernel.domain import (
     BackgroundJobSpec,
     ConnectionSetupState,
     ConnectionType,
+    InferenceConnection,
     MembershipChange,
     ModelCapability,
 )
@@ -85,6 +87,9 @@ from visionset.server.models import (
     PreLabelPlanOut,
     PreLabelRequest,
     ProgressQuery,
+    ProjectPreLabelItemOut,
+    ProjectPreLabelOut,
+    ProjectPreLabelRequest,
     SortQuery,
 )
 
@@ -334,6 +339,36 @@ def pre_label_plan(workspace: WorkspaceDep, batch_id: UUID) -> PreLabelPlanOut:
     return PreLabelPlanOut.of(prompt_plan(schema))
 
 
+def _require_text_detect_connection(
+    workspace: WorkspaceDep, connection_id: UUID
+) -> InferenceConnection:
+    """The connection a pre-labeling launch may use, or the refusal — shared by the
+    batch launch and the project launch so the two cannot drift."""
+    connection = InferenceConnectionService(workspace).get(connection_id)
+    (connection,) = with_families(workspace, [connection])
+    # Before the job exists, on the download route's terms: a refusal a request
+    # can make is a refusal the request makes. Discovering a missing install
+    # inside a worker would put an install command on a failed row somebody has
+    # to go and find. Not for the stub, which needs neither the runtime nor the
+    # network, and not for an `http` connection either: the gate is about a
+    # model that would load here, and an endpoint loads nothing here.
+    if connection.connection_type is ConnectionType.LOCAL and connection.model_id != STUB_MODEL_ID:
+        require_local_inference()
+    if connection.setup_state is not ConnectionSetupState.READY or not connection.model_family:
+        # Before the capability check: `model_family` is written only by a
+        # completed weight download or a tested `http` endpoint, so a
+        # connection that has not finished either yet reads no capabilities at
+        # all. Answering `UNSUPPORTED_PROMPT` for that would claim the model
+        # answers places rather than words, which is false — nothing has said
+        # what it answers yet.
+        raise InferenceConnectionNotSetUp(not_set_up_message(connection))
+    # `capabilities` is derived from the model family rather than stored on the
+    # row, so it is asked for here the same way the connection wire model asks.
+    if ModelCapability.TEXT_DETECT not in capabilities_of(connection.model_family):
+        raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
+    return connection
+
+
 @router.post(
     "/{batch_id}/pre-label",
     status_code=status.HTTP_202_ACCEPTED,
@@ -358,11 +393,15 @@ def pre_label_batch(
     awaiting review or accepted is passed over, and so is an `unannotated` one
     that still carries annotations from an earlier round that was skipped and
     then restored: that sequence deletes no labels, so progress alone does not
-    prove an asset untouched. A run never writes over what a person did, and
-    never writes twice over what a model did — a second run extends an earlier
-    one onto whatever is still untouched rather than refreshing the labels it
-    left, so re-running with a lower confidence does not re-ask about a frame
-    already carrying a guess.
+    prove an asset untouched. A run never writes over what a person did in this
+    batch, and never writes twice over what a model did — a plain second run
+    extends an earlier one onto whatever is still untouched.
+    `replace_model_labels` widens it to every frame still `pre_labeled` and
+    supersedes those labels with this run's answer, one frame per transaction;
+    a frame anyone edited, confirmed or skipped in this batch is never touched,
+    and a frame the model now finds nothing on returns to `unannotated`. A
+    replacing request arriving while a run is in flight joins that run,
+    whichever flag it carries.
 
     **The batch's pinned schema is the prompt.** The model is asked for each class
     the schema declares that a box can be written as; an answer naming one of
@@ -407,28 +446,7 @@ def pre_label_batch(
     # The connection first, matching `pre_label`'s own order: what a build can
     # run is an answer about a setup somebody is part-way through, independent
     # of this batch's state, and a caller most needs it first.
-    connection = InferenceConnectionService(workspace).get(body.connection_id)
-    (connection,) = with_families(workspace, [connection])
-    # Before the job exists, on the download route's terms: a refusal a request
-    # can make is a refusal the request makes. Discovering a missing install
-    # inside a worker would put an install command on a failed row somebody has
-    # to go and find. Not for the stub, which needs neither the runtime nor the
-    # network, and not for an `http` connection either: the gate is about a
-    # model that would load here, and an endpoint loads nothing here.
-    if connection.connection_type is ConnectionType.LOCAL and connection.model_id != STUB_MODEL_ID:
-        require_local_inference()
-    if connection.setup_state is not ConnectionSetupState.READY or not connection.model_family:
-        # Before the capability check: `model_family` is written only by a
-        # completed weight download or a tested `http` endpoint, so a
-        # connection that has not finished either yet reads no capabilities at
-        # all. Answering `UNSUPPORTED_PROMPT` for that would claim the model
-        # answers places rather than words, which is false — nothing has said
-        # what it answers yet.
-        raise InferenceConnectionNotSetUp(not_set_up_message(connection))
-    # `capabilities` is derived from the model family rather than stored on the
-    # row, so it is asked for here the same way the connection wire model asks.
-    if ModelCapability.TEXT_DETECT not in capabilities_of(connection.model_family):
-        raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
+    _require_text_detect_connection(workspace, body.connection_id)
     batch = service.require_pre_labelable(batch_id)
     require_detectable_schema(workspace, batch)
 
@@ -436,7 +454,9 @@ def pre_label_batch(
     job = running or workspace.job_queue.enqueue(
         BackgroundJobSpec(
             type=pre_label_job_type,
-            payload=pre_label_payload_for(batch_id, body.connection_id, body.minimum_confidence),
+            payload=pre_label_payload_for(
+                batch_id, body.connection_id, body.minimum_confidence, body.replace_model_labels
+            ),
             idempotent=True,
         )
     )
@@ -445,6 +465,70 @@ def pre_label_batch(
     runner.wake()
     response.headers["Location"] = f"/background-jobs/{job.id}"
     return BackgroundJobOut.of(job)
+
+
+@project_router.post(
+    "/pre-label",
+    status_code=status.HTTP_202_ACCEPTED,
+    responses=documented(404, 409),
+)
+def pre_label_project_batches(
+    workspace: WorkspaceDep,
+    runner: RunnerDep,
+    project_id: UUID,
+    body: ProjectPreLabelRequest,
+) -> ProjectPreLabelOut:
+    """Ask a model to label every untouched asset across this project's open batches.
+
+    **One row per batch, and the batch stays the unit.** This launch fans out
+    over the project's batches that are open for annotation — every one of
+    them, or exactly the `batch_ids` named — and for each one queues the same
+    `annotation.pre_label` job `POST /batches/{batch_id}/pre-label` queues, or
+    joins the one already queued or running for that batch (`joined`). Each
+    row is polled, cancelled and remembered per batch, exactly as a
+    single-batch launch is: `GET /background-jobs/{id}` for progress counted
+    in that batch's assets, `BatchOut.pre_label_run` afterwards. Nothing here
+    reports one total across batches, because nothing here is one run.
+
+    **Refused whole, up front, and no refusal creates a row.** The connection
+    is checked first, as the single-batch launch checks it: not set up is 409
+    `INFERENCE_CONNECTION_NOT_SET_UP`, a model that answers places rather than
+    words is 422 `UNSUPPORTED_PROMPT`. Then the selection: an unknown project
+    is 404 `PROJECT_NOT_FOUND`; a named batch outside this project is 404
+    `BATCH_NOT_FOUND`; a named batch not `in_annotation`, a project with no
+    open batch at all, or an empty `batch_ids`, is 409 `BATCH_NOT_IN_ANNOTATION`;
+    any selected batch whose pinned schema has no class a box can be written as is 409
+    `SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message names the batch so the
+    caller can leave it out by name and ask again. A partly launched project
+    would leave rows the caller was never told about, which is why the whole
+    request is refused instead.
+
+    What each run writes, passes over and counts is the single-batch launch's
+    contract; read `POST /batches/{batch_id}/pre-label`.
+    """
+    connection = _require_text_detect_connection(workspace, body.connection_id)
+    selected = select_pre_labelable(workspace, project_id, body.batch_ids)
+    service = BatchService(workspace)
+    items: list[ProjectPreLabelItemOut] = []
+    for batch in selected:
+        running = service.live_job(batch.id, job_type=pre_label_job_type)
+        job = running or workspace.job_queue.enqueue(
+            BackgroundJobSpec(
+                type=pre_label_job_type,
+                payload=pre_label_payload_for(batch.id, connection.id, body.minimum_confidence),
+                idempotent=True,
+            )
+        )
+        items.append(
+            ProjectPreLabelItemOut(
+                batch_id=batch.id,
+                batch_name=batch.name,
+                job=BackgroundJobOut.of(job),
+                joined=running is not None,
+            )
+        )
+    runner.wake()
+    return ProjectPreLabelOut(items=items, total=len(items))
 
 
 @router.get("/{batch_id}/jobs", responses=documented(404))

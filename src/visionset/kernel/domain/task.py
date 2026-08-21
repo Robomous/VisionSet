@@ -233,23 +233,23 @@ def progress_after_annotating(
     crash would leave unreviewed labels looking reviewed.
 
     A person's first edit on a ``pre_labeled`` frame takes it over: that is a
-    consequence of editing it, not a button somebody presses. It is its own pair
-    of branches rather than folded into ``unannotated``'s, because ``judged`` has
-    nothing to decide once a model has already written here — there is no
-    unattended path *out* of ``pre_labeled``, only a person's.
+    consequence of editing it, not a button somebody presses. An unjudged write
+    onto a ``pre_labeled`` frame — a model superseding its own earlier labels —
+    leaves it exactly where it is, because nobody has judged anything yet; only a
+    person's write is a path *out* of ``pre_labeled``.
     """
     if current is AssetProgress.UNANNOTATED and has_annotations:
         return AssetProgress.ANNOTATED if judged else AssetProgress.PRE_LABELED
     if current is AssetProgress.ANNOTATED and not has_annotations:
         return AssetProgress.UNANNOTATED
     if current is AssetProgress.PRE_LABELED and has_annotations:
-        return AssetProgress.ANNOTATED
+        return AssetProgress.ANNOTATED if judged else None
     if current is AssetProgress.PRE_LABELED and not has_annotations:
         return AssetProgress.UNANNOTATED
     return None
 
 
-def initial_progress(*, has_annotations: bool) -> AssetProgress:
+def initial_progress(*, has_annotations: bool, judged: bool = True) -> AssetProgress:
     """Where an asset's progress starts when a job is cut over it.
 
     ``unannotated`` for the ordinary case, and ``annotated`` for an asset that
@@ -277,8 +277,16 @@ def initial_progress(*, has_annotations: bool) -> AssetProgress:
     reason: "what does this mean for progress" is a domain question, and the two
     have to agree — a fresh asset that has labels must start where an
     ``unannotated`` one carrying its first annotation would land.
+
+    ``judged`` says whether a person stands behind the labels already there. An
+    asset whose every label is a model's, unjudged, opens ``pre_labeled`` rather
+    than ``annotated`` — the same answer :func:`progress_after_annotating` gives
+    an unjudged first label — so a second batch cut over a pre-labeled one
+    cannot turn unreviewed predictions promotable by the act of being cut.
     """
-    return AssetProgress.ANNOTATED if has_annotations else AssetProgress.UNANNOTATED
+    if not has_annotations:
+        return AssetProgress.UNANNOTATED
+    return AssetProgress.ANNOTATED if judged else AssetProgress.PRE_LABELED
 
 
 class TaskGroup(BaseModel):

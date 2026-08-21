@@ -45,8 +45,9 @@ import { BATCH_STATE_VARIANT, batchStateLabel } from "./batchState";
 import { SchemaForeshadow } from "./SchemaForeshadow";
 import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
 import { BatchOverflowMenu } from "./DeleteBatch";
+import { ProjectPreLabelButton } from "./ProjectPreLabelDialog";
 import { PromoteButton } from "./PromoteButton";
-import { useBatchTransition, useBatches, type Batch } from "./queries";
+import { isLiveJobState, useBatchTransition, useBatches, type Batch } from "./queries";
 
 export interface BatchesScreenProps {
   readonly projectId: string;
@@ -81,6 +82,13 @@ export function BatchesScreen({
             A batch is born from an ingest. Approving it pins the schema and cuts the jobs.
           </p>
         </div>
+        {batches.data && (
+          <ProjectPreLabelButton
+            projectId={projectId}
+            batches={batches.data.items}
+            onOpenBatch={onOpenBatch}
+          />
+        )}
       </header>
 
       {/* Approval is where the schema gate refuses — this is the same
@@ -137,11 +145,18 @@ export function BatchesScreen({
                     </div>
                   </TableCell>
                   <TableCell>
-                    {/* The label the gallery header already uses, rather than the
-                        raw kernel identifier. */}
-                    <Badge variant={BATCH_STATE_VARIANT[batch.state] ?? "neutral"} data-testid={`state-${batch.name}`}>
-                      {batchStateLabel(batch.state)}
-                    </Badge>
+                    <div className="flex flex-col items-start gap-1">
+                      {/* The label the gallery header already uses, rather than the
+                          raw kernel identifier. */}
+                      <Badge variant={BATCH_STATE_VARIANT[batch.state] ?? "neutral"} data-testid={`state-${batch.name}`}>
+                        {batchStateLabel(batch.state)}
+                      </Badge>
+                      {batch.pre_label_run !== null && isLiveJobState(batch.pre_label_run.state) && (
+                        <Badge variant="accent" data-testid={`prelabel-live-${batch.id}`}>
+                          pre-labeling…
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>{batch.asset_count}</TableCell>
                   <TableCell className="text-muted-foreground">

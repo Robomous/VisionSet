@@ -7,6 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from tests.fixtures.media import write_images
 from tests.mcp._flow import (
     BBOX,
     CENTERLINE,
@@ -533,12 +534,36 @@ def test_pre_labeling_blocks_and_returns_what_it_wrote(
         "assets_considered": 2,
         "assets_labeled": 2,
         "annotations_written": 2,
+        "annotations_replaced": 0,
         "model_ref": "acme/detector@abc123",
         "assets_skipped": 0,
         "regions_discarded": 0,
         "regions_out_of_bounds": 0,
         "plan": {"schema_version": 1, "asked_classes": ["sign"], "excluded_classes": []},
     }
+    assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
+
+
+def test_a_replacing_run_rewrites_the_frames_the_first_run_labeled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+    call("pre_label_batch", batch_id=batch_id, connection=connection_id)
+
+    again = payload(
+        call(
+            "pre_label_batch",
+            batch_id=batch_id,
+            connection=connection_id,
+            replace_model_labels=True,
+        )
+    )
+
+    assert again["assets_considered"] == 2
+    assert again["annotations_written"] == 2
+    assert again["annotations_replaced"] == 2
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
 
 
@@ -722,3 +747,60 @@ def test_an_empty_progress_list_means_no_filter(
 ) -> None:
     _, batch_id, _ = open_batch(monkeypatch, tmp_path, count=2)
     assert payload(call("list_batch_assets", batch_id=batch_id, progress=[]))["total"] == 2
+
+
+# --- pre-labeling a project: the batch, fanned out ----------------------------
+
+
+def _another_open_batch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, project: str) -> str:
+    incoming = tmp_path / "more"
+    write_images(incoming, count=2, first_seed=100)
+    created = payload(call("ingest", project=project, path=str(incoming)))
+    batch_id = str(created["batch_id"])
+    payload(call("approve_batch", batch_id=batch_id))
+    payload(call("start_batch", batch_id=batch_id))
+    return batch_id
+
+
+def test_pre_labeling_a_project_runs_every_open_batch_and_reports_each(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project, first, _job = open_batch(monkeypatch, tmp_path, count=2)
+    second = _another_open_batch(monkeypatch, tmp_path, project)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+
+    outcome = payload(call("pre_label_project", project=project, connection=connection_id))
+
+    assert [item["batch_id"] for item in outcome["items"]] == [first, second]
+    assert all(item["annotations_written"] == 2 for item in outcome["items"])
+    assert all(item["plan"]["asked_classes"] == ["sign"] for item in outcome["items"])
+    assert outcome["annotations_written"] == 4
+    assert payload(call("get_batch", batch_id=second))["progress"]["pre_labeled"] == 2
+
+
+def test_pre_labeling_a_project_narrows_to_the_named_batches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project, first, _job = open_batch(monkeypatch, tmp_path, count=2)
+    second = _another_open_batch(monkeypatch, tmp_path, project)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+
+    outcome = payload(
+        call("pre_label_project", project=project, connection=connection_id, batch_ids=[second])
+    )
+
+    assert [item["batch_id"] for item in outcome["items"]] == [second]
+    assert payload(call("get_batch", batch_id=first))["progress"]["pre_labeled"] == 0
+
+
+def test_pre_labeling_a_project_with_no_open_batch_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project, _batch = ingested(monkeypatch, tmp_path, count=2)
+    connection_id = _connection()
+
+    refusal = error(call("pre_label_project", project=project, connection=connection_id))
+
+    assert "has no batch open for annotation" in refusal["message"]

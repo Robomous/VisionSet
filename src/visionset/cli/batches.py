@@ -201,7 +201,7 @@ _EXCLUSION_PROSE: Final = {
 }
 
 
-def _announce(plan: PreLabelPlan) -> None:
+def announce_plan(plan: PreLabelPlan) -> None:
     """Say what the run is about to ask for, and what it is leaving out.
 
     Printed before the first forward pass because that is when it is still
@@ -232,6 +232,15 @@ def batch_pre_label(
             help="The floor a prediction must clear to be written, in [0, 1].",
         ),
     ] = DEFAULT_MINIMUM_CONFIDENCE,
+    replace_model_labels: Annotated[
+        bool,
+        typer.Option(
+            "--replace-model-labels",
+            help="Also rewrite the model labels on frames still pre-labeled (nobody has "
+            "touched them). Frames anyone edited, confirmed or skipped in this batch are "
+            "never affected. Cannot be undone.",
+        ),
+    ] = False,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -246,15 +255,21 @@ def batch_pre_label(
             batch_id=batch,
             connection_id=_resolve(connections, connection),
             minimum_confidence=minimum_confidence,
-            on_plan=_announce,
+            replace_model_labels=replace_model_labels,
+            on_plan=announce_plan,
             on_progress=lambda done, total: note(f"Pre-labeling {done}/{total} asset(s)."),
         )
     if json_out:
         document(asdict(outcome))
         return
+    replaced = (
+        f", replaced {outcome.annotations_replaced} earlier model label(s)"
+        if outcome.annotations_replaced
+        else ""
+    )
     note(
         f"Pre-labeled {outcome.assets_labeled} asset(s), "
-        f"wrote {outcome.annotations_written} annotation(s)."
+        f"wrote {outcome.annotations_written} annotation(s){replaced}."
     )
     typer.echo(str(outcome.annotations_written))
 

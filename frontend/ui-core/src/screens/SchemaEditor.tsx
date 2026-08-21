@@ -101,7 +101,7 @@ import { useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
 import { asApiError } from "../data/errors";
-import { refusalProse } from "../data/refusals";
+import { classBlockers, describeClassCount, refusalProse } from "../data/refusals";
 import { Alert, Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/Card";
@@ -439,7 +439,7 @@ export function SchemaEditor({
   const classes = showing.classes;
   const note = showing.note;
   const failure = publish.isError ? asApiError(publish.error) : null;
-  const publishBlockers = failure?.code === WOULD_ORPHAN ? orphanBlockers(failure.detail) : null;
+  const publishBlockers = failure?.code === WOULD_ORPHAN ? classBlockers(failure.detail) : null;
   const shownBlockers = flow.kind === "blockers" ? flow.blockers : publishBlockers;
   const shownNarrowing = flow.kind === "blockers" ? flow.diff : null;
   const draftFailure = draftSaveError == null ? null : asApiError(draftSaveError);
@@ -1308,11 +1308,7 @@ function OrphanBlockersDialog({
         <DialogTitle>Annotations already use these classes</DialogTitle>
         <NarrowingChanges diff={diff} />
         {blockers?.map((blocker) => (
-          <DialogDescription key={blocker.label_class}>
-            {blocker.label_class}: {formatCount(blocker.annotations)}{" "}
-            {blocker.annotations === 1 ? "annotation" : "annotations"} across{" "}
-            {formatCount(blocker.assets)} {blocker.assets === 1 ? "asset" : "assets"}.
-          </DialogDescription>
+          <DialogDescription key={blocker.label_class}>{describeClassCount(blocker)}</DialogDescription>
         ))}
         <DialogDescription>
           There is no override for this one. Keep the class, or clear those labels first
@@ -1326,22 +1322,6 @@ function OrphanBlockersDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function isClassCount(value: unknown): value is ClassCount {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate["label_class"] === "string" &&
-    typeof candidate["annotations"] === "number" &&
-    typeof candidate["assets"] === "number"
-  );
-}
-
-function orphanBlockers(detail: Record<string, unknown> | null): readonly ClassCount[] | null {
-  const blockers = detail?.["blockers"];
-  if (!Array.isArray(blockers) || !blockers.every(isClassCount)) return null;
-  return blockers;
 }
 
 function describeDestructiveClasses(classes: readonly string[]): string {

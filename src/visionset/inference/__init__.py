@@ -95,6 +95,7 @@ from visionset.inference.prelabel import (
     pre_label,
     prompt_plan,
     require_detectable_schema,
+    select_pre_labelable,
     unsupported_prompt_message,
 )
 from visionset.inference.providers import ProviderPool, not_set_up_message, provider_for, resident
@@ -215,6 +216,7 @@ __all__ = [
     "require",
     "require_detectable_schema",
     "resident",
+    "select_pre_labelable",
     "suggest",
     "suppressed",
     "unsupported_prompt_message",

@@ -75,6 +75,7 @@ import {
   checkCreateCorrectionBatch,
   checkPreLabelBatch,
   checkPreLabelPlan,
+  checkPreLabelProjectBatches,
   checkPreviewSchemaChange,
   checkPromoteBatch,
   checkPublishRelease,
@@ -106,7 +107,7 @@ export type LabelClassBody = components["schemas"]["LabelClassBody"];
 export type AttributeBody = components["schemas"]["AttributeBody"];
 export type GeometryType = components["schemas"]["GeometryType"];
 export type ProjectStats = components["schemas"]["ProjectStatsOut"];
-export type ClassCount = components["schemas"]["ClassCountOut"];
+export type { ClassCount } from "../data/refusals";
 export type Asset = components["schemas"]["AssetOut"];
 export type AssetPage = components["schemas"]["AssetPage"];
 export type BlockingAsset = components["schemas"]["BlockingAssetOut"];
@@ -680,6 +681,17 @@ export type PreLabelRun = components["schemas"]["PreLabelRunOut"];
 export type PreLabelPlan = components["schemas"]["PreLabelPlanOut"];
 export type PreLabelExclusion = components["schemas"]["PreLabelExclusionOut"];
 
+/**
+ * Is this background job still going?
+ *
+ * Here rather than in a screen because both pre-labeling surfaces ask it — the
+ * gallery's dialog to pick its mode, the batch listing to decide whether to keep
+ * polling — and a screen importing a screen is a cycle.
+ */
+export function isLiveJobState(state: BackgroundJob["state"]): boolean {
+  return state === "queued" || state === "running";
+}
+
 export const ingestKeys = {
   sources: (projectId: string) => ["projects", projectId, "sources"] as const,
   source: (sourceId: string) => ["sources", sourceId] as const,
@@ -724,6 +736,8 @@ export function useSources(projectId: string): UseQueryResult<SourcePage, Error>
   });
 }
 
+const BATCH_POLL_MS = 2000;
+
 export function useBatches(projectId: string): UseQueryResult<BatchPage, Error> {
   const client = useApiClient();
   return useQuery({
@@ -735,6 +749,15 @@ export function useBatches(projectId: string): UseQueryResult<BatchPage, Error> 
         }),
         checkListBatches,
       ),
+    // A run launched from this tab moves the rows it labels, and nothing else
+    // here would ever ask again — `useConnections`' reasoning, over the one fact
+    // a batch row carries that changes without anybody pressing anything.
+    refetchInterval: (query) =>
+      query.state.data?.items.some(
+        (one) => one.pre_label_run !== null && isLiveJobState(one.pre_label_run.state),
+      )
+        ? BATCH_POLL_MS
+        : false,
   });
 }
 
@@ -1144,10 +1167,14 @@ export function useFinishBatch(batchId: string) {
   });
 }
 
-/** What launching a run needs: which model, and how sure it has to be. */
+/**
+ * What launching a run needs: which model, how sure it has to be, and whether it
+ * may rewrite the model labels an earlier run left on untouched frames.
+ */
 export interface PreLabelInput {
   readonly connectionId: string;
   readonly minimumConfidence: number;
+  readonly replaceModelLabels: boolean;
 }
 
 /**
@@ -1170,6 +1197,7 @@ export function usePreLabelBatch(batchId: string) {
           body: {
             connection_id: input.connectionId,
             minimum_confidence: input.minimumConfidence,
+            replace_model_labels: input.replaceModelLabels,
           },
         }),
         checkPreLabelBatch,
@@ -1177,6 +1205,46 @@ export function usePreLabelBatch(batchId: string) {
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
+    },
+  });
+}
+
+export type ProjectPreLabelOut = components["schemas"]["ProjectPreLabelOut"];
+
+export interface ProjectPreLabelInput {
+  readonly connectionId: string;
+  readonly minimumConfidence: number;
+  /** Exactly the batches the person saw checked — always sent, never left to the server's default. */
+  readonly batchIds: readonly string[];
+}
+
+/**
+ * Fan a pre-labeling launch out over a project's open batches — one
+ * `annotation.pre_label` row per batch, joined where one is already in flight.
+ * The batches listing is invalidated because each row is a fact the table
+ * shows (`pre_label_run`).
+ */
+export function usePreLabelProject(projectId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: ProjectPreLabelInput): Promise<ProjectPreLabelOut> =>
+      unwrap(
+        await client.POST("/projects/{project_id}/batches/pre-label", {
+          params: { path: { project_id: projectId } },
+          body: {
+            connection_id: input.connectionId,
+            minimum_confidence: input.minimumConfidence,
+            batch_ids: [...input.batchIds],
+          },
+        }),
+        checkPreLabelProjectBatches,
+      ),
+    onSuccess: (out) => {
+      void queries.invalidateQueries({ queryKey: ingestKeys.batches(projectId) });
+      for (const item of out.items) {
+        void queries.invalidateQueries({ queryKey: batchKeys.batch(item.batch_id) });
+      }
     },
   });
 }

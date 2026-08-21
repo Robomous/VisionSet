@@ -454,10 +454,14 @@ class BatchService:
         boxes already drawn on it, and filing such an asset under "nothing
         labeled here" would be a lie the gallery's filters repeat. Nothing here
         asks whether this batch is a correction — the rule reads the asset, not
-        the lineage. Its honest consequence is that a correction whose every
-        asset seeded this way is already *settled*, so it can be completed with
-        no edits at all; a correction is opt-in per asset, and the alternative
-        is to make a reviewer re-declare work nobody disputed.
+        the lineage. One exception reads the asset too: an asset whose every
+        label is a model's opens ``pre_labeled``, because nobody has judged
+        those labels and a second batch must not be the thing that makes them
+        promotable — its consequence is that such a frame is confirmed again in
+        the new batch. Its honest consequence is that a correction whose every
+        asset seeded ``annotated`` is already *settled*, so it can be completed
+        with no edits at all; a correction is opt-in per asset, and the
+        alternative is to make a reviewer re-declare work nobody disputed.
 
         Raises:
             BatchNotFound: no such batch in this workspace.
@@ -482,14 +486,17 @@ class BatchService:
                 batch.asset_ids, SingleJob() if partition is None else partition
             )
 
-            labeled = _already_labeled(uow, batch.asset_ids)
+            seeding = _seeding(uow, batch.asset_ids)
             group = uow.task_groups.add(TaskGroup(batch_id=batch.id, name=FIRST_ROUND))
             job_ids = [
                 uow.annotation_jobs.add(
                     AnnotationJob(
                         task_group_id=group.id,
                         progress={
-                            asset_id: initial_progress(has_annotations=asset_id in labeled)
+                            asset_id: initial_progress(
+                                has_annotations=asset_id in seeding,
+                                judged=not seeding.get(asset_id, False),
+                            )
                             for asset_id in segment
                         },
                     )
@@ -849,8 +856,8 @@ def _annotated_classes(
     }
 
 
-def _already_labeled(uow: UnitOfWork, asset_ids: Iterable[UUID]) -> set[UUID]:
-    """Which of these assets already carry at least one annotation.
+def _seeding(uow: UnitOfWork, asset_ids: Iterable[UUID]) -> dict[UUID, bool]:
+    """Which of these assets already carry labels, and whether every one is a model's.
 
     What :func:`initial_progress` is asked, for the whole batch at once rather
     than per asset inside the partition loop — the segments are a partition of
@@ -859,13 +866,15 @@ def _already_labeled(uow: UnitOfWork, asset_ids: Iterable[UUID]) -> set[UUID]:
 
     N + 1 walks, and the ``_annotated_classes`` note above applies verbatim: an
     Annotation's parent is its Asset and ``Repository.list`` takes one
-    ``parent_id``. This one is paid once per batch, at approval. When it starts
-    to cost, the fix is a method on the port, never a SQLAlchemy import here.
-
-    Only *whether*, never how many: the caller's question is a boolean and
-    counting would be a number nobody reads.
+    ``parent_id``. Paid once per batch, at approval. When it starts to cost, the
+    fix is a method on the port, never a SQLAlchemy import here.
     """
-    return {asset_id for asset_id in asset_ids if uow.annotations.list(asset_id)}
+    seeding: dict[UUID, bool] = {}
+    for asset_id in asset_ids:
+        labels = uow.annotations.list(asset_id)
+        if labels:
+            seeding[asset_id] = all(label.provenance == "model" for label in labels)
+    return seeding
 
 
 class PlacedAsset(BaseModel):

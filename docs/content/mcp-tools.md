@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-51 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+52 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -34,7 +34,8 @@ error envelope, and the three gate words.
 | `approve_batch` | `batch_id`, `jobs_of`? | Freeze a batch, pin the project's active schema, and cut it into jobs. |
 | `start_batch` | `batch_id` | Open an approved batch for annotation. |
 | `get_pre_label_plan` | `batch_id` | Which classes a pre-labeling run over this batch would ask a model about. |
-| `pre_label_batch` | `batch_id`, `connection`, `minimum_confidence`? | Ask a model to label every untouched asset in a batch. This blocks until it is done. |
+| `pre_label_batch` | `batch_id`, `connection`, `minimum_confidence`?, `replace_model_labels`? | Ask a model to label every untouched asset in a batch. This blocks until it is done. |
+| `pre_label_project` | `project`, `connection`, `minimum_confidence`?, `batch_ids`? | Ask a model to label untouched assets across a project's open batches. Blocks until done. |
 | `repin_batch` | `batch_id`, `allow_destructive`? | Move a batch's schema pin onto the project's *current* active version. |
 | `list_batch_assets` | `batch_id`, `limit`?, `offset`?, `progress`?, `sort`? | List a batch's assets, with the job, progress and label summary each carries. |
 | `create_batch` | `project`, `name`, `asset_ids`? | Start a draft batch over a chosen set of a project's assets. |
