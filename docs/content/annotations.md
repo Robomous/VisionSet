@@ -193,7 +193,7 @@ nothing here can touch it at all.
 | `unannotated` | yes, judged (`add`) | `annotated` |
 | `unannotated` | yes, unjudged (`enter_unreviewed`) | `pre_labeled` |
 | `annotated` | no | `unannotated` |
-| `pre_labeled` | yes, edited by a person (`add`/`update`) | `annotated` |
+| `pre_labeled` | yes, edited by a person (`add`/`update`) or confirmed (`confirm`) | `annotated` |
 | `pre_labeled` | no | `unannotated` |
 | anything else | either | *unchanged* |
 
