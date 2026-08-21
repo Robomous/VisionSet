@@ -41,6 +41,7 @@ from visionset.inference import (
     prompt_plan,
     require_detectable_schema,
     unsupported_prompt_message,
+    with_families,
 )
 from visionset.inference import require as require_local_inference
 from visionset.jobs.prelabel import JOB_TYPE as pre_label_job_type
@@ -49,6 +50,7 @@ from visionset.kernel.domain import (
     AssetSort,
     BackgroundJobSpec,
     ConnectionSetupState,
+    ConnectionType,
     MembershipChange,
     ModelCapability,
 )
@@ -381,11 +383,12 @@ def pre_label_batch(
     are about the request, and the caller can act on each. They are checked in
     this order, and it is the order `pre_label` itself checks in, so a request
     wrong about the connection and the batch both always names the connection:
-    a connection whose weights have not arrived is 409
-    `INFERENCE_CONNECTION_NOT_SET_UP`; a connection whose model answers places
-    rather than words is 422 `UNSUPPORTED_PROMPT`; a batch that is not
-    `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no
-    class a box can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+    a connection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` — its
+    weights not here, or its endpoint not yet asked what it answers; a
+    connection whose model answers places rather than words is 422
+    `UNSUPPORTED_PROMPT`; a batch that is not `in_annotation` is 409
+    `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class a box can be
+    written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
 
     Two failures are about this installation rather than about the request, and
     answer 500 carrying the message that says which: a machine without the
@@ -405,20 +408,23 @@ def pre_label_batch(
     # run is an answer about a setup somebody is part-way through, independent
     # of this batch's state, and a caller most needs it first.
     connection = InferenceConnectionService(workspace).get(body.connection_id)
+    (connection,) = with_families(workspace, [connection])
     # Before the job exists, on the download route's terms: a refusal a request
     # can make is a refusal the request makes. Discovering a missing install
     # inside a worker would put an install command on a failed row somebody has
-    # to go and find.
-    if connection.model_id != STUB_MODEL_ID:
+    # to go and find. Not for the stub, which needs neither the runtime nor the
+    # network, and not for an `http` connection either: the gate is about a
+    # model that would load here, and an endpoint loads nothing here.
+    if connection.connection_type is ConnectionType.LOCAL and connection.model_id != STUB_MODEL_ID:
         require_local_inference()
-    if connection.setup_state is not ConnectionSetupState.READY:
+    if connection.setup_state is not ConnectionSetupState.READY or not connection.model_family:
         # Before the capability check: `model_family` is written only by a
-        # completed weight download, so a connection that simply has not
-        # finished downloading yet reads no capabilities at all. Answering
-        # `UNSUPPORTED_PROMPT` for that would claim the model answers places
-        # rather than words, which is false — it answers words fine and has no
-        # weights yet.
-        raise InferenceConnectionNotSetUp(not_set_up_message(connection.name))
+        # completed weight download or a tested `http` endpoint, so a
+        # connection that has not finished either yet reads no capabilities at
+        # all. Answering `UNSUPPORTED_PROMPT` for that would claim the model
+        # answers places rather than words, which is false — nothing has said
+        # what it answers yet.
+        raise InferenceConnectionNotSetUp(not_set_up_message(connection))
     # `capabilities` is derived from the model family rather than stored on the
     # row, so it is asked for here the same way the connection wire model asks.
     if ModelCapability.TEXT_DETECT not in capabilities_of(connection.model_family):

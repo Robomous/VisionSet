@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-50 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+51 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -64,6 +64,7 @@ error envelope, and the three gate words.
 | `create_inference_connection` | `name`, `connection_type`, `model_id`, `model_revision`, `device`?, `precision`?, `endpoint_url`?, `provider_id`? | Configure a connection. Nothing is downloaded and nothing is contacted. |
 | `download_connection_weights` | `connection` | Fetch a local connection's weights. This is the only tool that downloads a model. |
 | `check_connection_integrity` | `connection` | Re-read a local connection's weights and prove they are undamaged. |
+| `test_inference_connection` | `connection` | Ask an http connection's endpoint what it answers, and record the answer. |
 | `update_inference_connection` | `connection`, `name`?, `model_id`?, `model_revision`?, `device`?, `precision`?, `endpoint_url`? | Edit a connection. Parameters you omit are left alone; the type cannot change. |
 
 ## Offered only with `--allow-destructive`

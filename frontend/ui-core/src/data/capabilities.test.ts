@@ -217,6 +217,7 @@ describe("turning a refusal into a sentence", () => {
       "INFERENCE_OUT_OF_MEMORY",
       "UNSUPPORTED_PROMPT",
       "INFERENCE_CONNECTION_NOT_CHECKABLE",
+      "INFERENCE_ENDPOINT_UNAVAILABLE",
       "DUPLICATE_CLASSIFICATION_TAG",
     ]) {
       expect(Object.keys(REFUSAL_PROSE)).not.toContain(code);

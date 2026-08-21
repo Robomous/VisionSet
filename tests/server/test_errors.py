@@ -74,6 +74,8 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "ExportSourceUnreadable": (409, "EXPORT_SOURCE_UNREADABLE"),
     "InferenceConnectionNotDownloadable": (409, "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"),
     "InferenceConnectionNotCheckable": (409, "INFERENCE_CONNECTION_NOT_CHECKABLE"),
+    "InferenceConnectionNotTestable": (409, "INFERENCE_CONNECTION_NOT_TESTABLE"),
+    "InferenceEndpointUnavailable": (502, "INFERENCE_ENDPOINT_UNAVAILABLE"),
     "WeightsDamaged": (409, "WEIGHTS_DAMAGED"),
     "InferenceConnectionNotSetUp": (409, "INFERENCE_CONNECTION_NOT_SET_UP"),
     "ThumbnailNotCached": (404, "THUMBNAIL_NOT_CACHED"),
@@ -226,6 +228,10 @@ def test_message_exposure_is_opt_in_and_only_for_5xx() -> None:
         # message names the device that filled up and the ways off it, which is
         # a remedy nobody can reconstruct from a generic 500.
         "InferenceOutOfMemory",
+        # The only 502 in the table, and exposed for the same reason as its
+        # neighbours: the message names the endpoint and what it did, which is
+        # the whole remedy.
+        "InferenceEndpointUnavailable",
     }
     assert all(rule.status >= 500 for rule in ERROR_RULES.values() if rule.expose_message)
 

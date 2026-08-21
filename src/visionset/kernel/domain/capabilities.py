@@ -123,9 +123,9 @@ class AssetAction(OpenVocabulary):
 
 
 # ``download_weights`` arrives here in the same change as the route, the command
-# and the job that perform it, per the rule above. ``test`` is still absent for
-# exactly that reason: the remote endpoint contract is a later slice, so naming it
-# now would make the wire the source of a control that cannot work.
+# and the job that perform it, per the rule above. ``test_endpoint`` arrives the
+# same way, in the same change as the route, the command and the tool that
+# perform it.
 #
 # It is declared **first**, which is a display decision. This is the only
 # connection action that moves the resource forward — it is what takes a local
@@ -151,6 +151,7 @@ class ConnectionAction(OpenVocabulary):
 
     DOWNLOAD_WEIGHTS = "download_weights"
     CHECK_INTEGRITY = "check_integrity"
+    TEST_ENDPOINT = "test_endpoint"
     UPDATE = "update"
     DELETE = "delete"
 
@@ -308,6 +309,7 @@ and this set can only grow if the domain's own derivation rule does.
 CONNECTION_GATES: Final[Mapping[ConnectionAction, frozenset[ConnectionSetupState]]] = {
     ConnectionAction.DOWNLOAD_WEIGHTS: EVERY_SETUP_STATE,
     ConnectionAction.CHECK_INTEGRITY: CHECKABLE_STATES,
+    ConnectionAction.TEST_ENDPOINT: EVERY_SETUP_STATE,
     ConnectionAction.UPDATE: EVERY_SETUP_STATE,
     ConnectionAction.DELETE: EVERY_SETUP_STATE,
 }
@@ -348,9 +350,16 @@ live in the service that writes them.
 """
 
 
+ENDPOINT_TYPES: Final = frozenset({ConnectionType.HTTP})
+"""The kinds that have an endpoint to ask — the complement of
+:data:`WEIGHT_HOLDING_TYPES` today, and named on its own so neither set has to
+be derived from the other."""
+
+
 CONNECTION_KINDS: Final[Mapping[ConnectionAction, frozenset[ConnectionType]]] = {
     ConnectionAction.DOWNLOAD_WEIGHTS: WEIGHT_HOLDING_TYPES,
     ConnectionAction.CHECK_INTEGRITY: WEIGHT_HOLDING_TYPES,
+    ConnectionAction.TEST_ENDPOINT: ENDPOINT_TYPES,
     ConnectionAction.UPDATE: EVERY_CONNECTION_TYPE,
     ConnectionAction.DELETE: EVERY_CONNECTION_TYPE,
 }
@@ -362,7 +371,9 @@ alone, and the reason it needs its own table rather than a widened one: an
 what it *is* and not about where it has got to. Folding that into
 :data:`CONNECTION_GATES` would mean inventing a setup state to carry it — a
 ``not_applicable`` that exists only so a table can be square, and that every
-reader of the row would then have to interpret.
+reader of the row would then have to interpret. ``test_endpoint`` is the same
+fact read the other way: only a kind with an endpoint can be asked what it
+answers.
 
 Two maps read by one function is also what keeps the failure honest.
 ``connection_actions`` requires **both**, so an action added to one table and

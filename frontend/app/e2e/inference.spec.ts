@@ -359,6 +359,33 @@ test("a transfer and a re-read are two records on one row", async ({ page }) => 
   await expect(page.getByTestId("download-progress")).toHaveCount(0);
 });
 
+test("an http connection is asked what it answers, and moves under it", async ({ page }) => {
+  let hosted: Wire["ConnectionOut"] = {
+    ...connection("ready", null, null, []),
+    id: "hosted-1",
+    name: "remote-seg",
+    connection_type: "http",
+    device: null,
+    precision: null,
+    endpoint_url: "https://models.example/predict",
+    provider_id: null,
+    allowed_actions: ["test_endpoint", "update", "delete"],
+  };
+  await serveApi(page, () => hosted);
+  await page.route("**/api/inference/connections/hosted-1/test-endpoint", (route) => {
+    hosted = { ...hosted, capabilities: ["point_suggest"], provider_id: "http" };
+    return route.fulfill({ status: 200, json: hosted });
+  });
+  await openInference(page);
+  const undeclared = page.getByTestId("section-undeclared");
+  await expect(undeclared.getByTestId("connection-remote-seg")).toBeVisible();
+  await page.getByTestId("actions-remote-seg").click();
+  await page.getByTestId("action-test-endpoint").click();
+  await expect(
+    page.getByTestId("section-point_suggest").getByTestId("connection-remote-seg"),
+  ).toBeVisible();
+});
+
 test("a model list taller than the window scrolls instead of running off it", async ({ page }) => {
   // Layout under a real viewport, so it cannot live in `inference.test.tsx`:
   // jsdom reports every height as zero and would pass against the implementation

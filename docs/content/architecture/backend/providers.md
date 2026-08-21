@@ -70,6 +70,15 @@ a refusal is a shape this repository has already paid for twice.
 and counting what arrived all stay above this line: a number reported by the thing it describes
 is not checkable.
 
+**The shipped hosted driver is `http`**
+([`inference/http_provider.py`](../../../../src/visionset/inference/http_provider.py)). It serves
+`point_suggest` and `text_detect` - its family names *are* the capability names, because the
+family an `http` connection records is the capability its endpoint declared, verbatim - declares no
+`WeightsSource`, and builds a runner that speaks the endpoint contract in
+[`docs/content/inference.md`](../../inference.md#serving-a-model-over-http-the-endpoint-contract).
+Resolution for an `http` connection reads the row and nothing else: the driver it recorded (this
+one, unless it names another) and the family `test_endpoint` wrote.
+
 ## Refusals come from one tree
 
 Every refusal a driver raises - from `build`, from a runner, from a `WeightsSource` - must derive
@@ -193,7 +202,9 @@ serves and is pinned to a commit; that declaring `WeightsSource` is all-or-nothi
 that declares it can price a checkpoint it offers; that what `build` returns satisfies the port
 its declared capability implies; that a runner refuses a prompt kind it does not take with a
 sentence naming what it does support; that every answer carries the `model_ref` that produced it;
-and that there is exactly one answer per target, in the order asked.
+that there is exactly one answer per target, in the order asked; and that a driver declaring no
+`WeightsSource` is built against a hosted connection and still answers once per target, in order -
+the suite runs its own contract-speaking endpoint for that.
 
 **Run it against your own driver by installing your driver, not by injecting a fake.** The suite
 derives its subjects from the entry-point group, so a real distribution is picked up

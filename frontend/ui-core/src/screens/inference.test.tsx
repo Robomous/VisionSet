@@ -1856,3 +1856,95 @@ it("says bytes the way a publisher quotes them", () => {
   expect(bytes(1_000)).toBe("1.0 kB");
   expect(bytes(1_200_000_000)).toBe("1.2 GB");
 });
+
+// --- asking an endpoint what it answers -----------------------------------------
+
+/** Everything an http connection declares before anybody asked its endpoint. */
+const HTTP_ACTIONS: Connection["allowed_actions"] = ["test_endpoint", "update", "delete"];
+
+function hosted(overrides: Partial<Connection> = {}): Connection {
+  return connection({
+    id: "hosted-1",
+    name: "remote-seg",
+    connection_type: "http",
+    device: null,
+    precision: null,
+    endpoint_url: "https://models.example/predict",
+    provider_id: null,
+    setup_state: "ready",
+    allowed_actions: HTTP_ACTIONS,
+    capabilities: [],
+    ...overrides,
+  });
+}
+
+it("offers Test endpoint exactly where the wire declares it", async () => {
+  listing([hosted(), connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-remote-seg"));
+  expect((await screen.findByTestId("action-test-endpoint")).textContent).toContain("Test endpoint");
+  await userEvent.keyboard("{Escape}");
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  expect(screen.queryByTestId("action-test-endpoint")).toBeNull();
+});
+
+it("sends the test to its own route and re-reads the list", async () => {
+  listing([hosted()]);
+  on("POST", /\/test-endpoint$/, {
+    status: 200,
+    body: hosted({ capabilities: ["point_suggest"], provider_id: "http" }),
+  });
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-remote-seg"));
+  await userEvent.click(await screen.findByTestId("action-test-endpoint"));
+  await waitFor(() =>
+    expect(sent.some((one) => one.method === "POST" && one.url.endsWith("/test-endpoint"))).toBe(true),
+  );
+  await waitFor(() =>
+    expect(sent.filter((one) => one.method === "GET" && one.url.includes("/inference/connections")).length).toBeGreaterThan(1),
+  );
+});
+
+it("says it is asking while the request is in flight, and stops once it lands", async () => {
+  // Radix closes the menu on `onSelect`, so the item's own "Asking the
+  // endpoint…" label is invisible unless the menu is reopened, and an
+  // unreachable host can hold this open for a real connect timeout. The row
+  // needs its own hint, released by hand the way `catalogOnCue` releases a
+  // slow catalog answer.
+  listing([hosted()]);
+  let release = (): void => undefined;
+  const served = new Promise<Answer>((settle) => {
+    release = () => settle({ status: 200, body: hosted({ capabilities: ["point_suggest"], provider_id: "http" }) });
+  });
+  handlers.push((request) =>
+    request.method === "POST" && /\/test-endpoint$/.test(new URL(request.url).pathname)
+      ? served
+      : undefined,
+  );
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-remote-seg"));
+  await userEvent.click(await screen.findByTestId("action-test-endpoint"));
+
+  const hint = await screen.findByTestId("test-endpoint-pending");
+  expect(hint.textContent).toContain("Asking the endpoint…");
+
+  release();
+  await waitFor(() => expect(screen.queryByTestId("test-endpoint-pending")).toBeNull());
+});
+
+it("renders an endpoint that did not answer as the server's sentence, not a code", async () => {
+  listing([hosted()]);
+  on("POST", /\/test-endpoint$/, {
+    status: 502,
+    body: {
+      code: "INFERENCE_ENDPOINT_UNAVAILABLE",
+      message: "endpoint https://models.example/predict could not be reached: connection refused",
+    },
+  });
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-remote-seg"));
+  await userEvent.click(await screen.findByTestId("action-test-endpoint"));
+  const notice = await screen.findByTestId("test-endpoint-error");
+  expect(notice.textContent).toContain("could not be reached");
+  expect(notice.textContent).not.toContain("INFERENCE_ENDPOINT_UNAVAILABLE");
+});

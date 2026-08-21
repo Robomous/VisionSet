@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from click.testing import Result
 from tests.cli._flow import ok, payload, run, runner, workspace
+from tests.fixtures.endpoint import closed_port, serving_endpoint
 from tests.fixtures.local_inference import without_the_extra
 
 from visionset.cli import inference as cli_inference
@@ -210,6 +211,7 @@ def test_show_declares_what_this_slice_can_perform(root: Path) -> None:
     ]
     ok(root, *HTTP)
     assert payload(root, "inference", "show", "remote")["allowed_actions"] == [
+        "test_endpoint",
         "update",
         "delete",
     ]
@@ -626,3 +628,44 @@ def test_a_terminal_can_watch_a_check_the_server_is_running(root: Path) -> None:
     }
     # Files, never bytes: the two runs count different things and say so.
     assert listed["download"] is None
+
+
+# --- test-endpoint --------------------------------------------------------------
+
+
+def _hosted_at(url: str) -> tuple[str, ...]:
+    """``HTTP`` with its `example.invalid` URL — the last element — replaced by a live one."""
+    return HTTP[:-1] + (url,)
+
+
+def test_test_endpoint_prints_what_the_endpoint_answers(root: Path) -> None:
+    """The capability on stdout, the sentence on stderr — ``size``'s shape."""
+    with serving_endpoint(capability="text_detect") as endpoint:
+        ok(root, *_hosted_at(endpoint.url))
+        assert ok(root, "inference", "test-endpoint", "remote").strip() == "text_detect"
+    document = payload(root, "inference", "show", "remote")
+    assert document["capabilities"] == ["text_detect"]
+    assert document["provider_id"] == "http"
+
+
+def test_test_endpoint_json_is_the_connection_document(root: Path) -> None:
+    with serving_endpoint(capability="point_suggest") as endpoint:
+        ok(root, *_hosted_at(endpoint.url))
+        document = payload(root, "inference", "test-endpoint", "remote")
+    assert document["capabilities"] == ["point_suggest"]
+    assert "integrity_check" in document
+
+
+def test_test_endpoint_refuses_a_connection_with_no_endpoint(root: Path) -> None:
+    ok(root, *LOCAL)
+    result = run(root, "inference", "test-endpoint", "local-gd")
+    assert result.exit_code == 1, result.output
+    assert "no endpoint" in result.stderr
+
+
+def test_test_endpoint_reports_an_unreachable_endpoint_as_a_sentence(root: Path) -> None:
+    url = closed_port()
+    ok(root, *_hosted_at(url))
+    result = run(root, "inference", "test-endpoint", "remote")
+    assert result.exit_code == 1, result.output
+    assert url in result.stderr

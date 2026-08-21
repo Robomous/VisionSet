@@ -6,16 +6,17 @@ A route never translates an error — it raises the kernel's and stops, and the
 handlers ``create_app()`` installed turn it into an ``ErrorBody`` with a stable
 code.
 
-**Nothing in this file runs a model or contacts a configured endpoint.** The two
-operations over a snapshot — the weight download and the integrity check — are
-both queued rather than performed, answering 202 and pointing at a background
-job, the contract the export route already uses. A reachability ``test`` is
-still absent rather than stubbed, so ``allowed_actions`` does not name it and no
-client is told about a control that does not exist yet.
+**Nothing in this file runs a model.** The two operations over a snapshot — the
+weight download and the integrity check — are both queued rather than
+performed, answering 202 and pointing at a background job, the contract the
+export route already uses.
 
-The one network call made here is ``download-size``, and it reads a file
-listing rather than files: the number has to be on screen *before* somebody
-agrees to a download, so it cannot be a by-product of one.
+Two routes make a network call of their own rather than queuing one:
+``download-size``, which reads a file listing rather than files — the number
+has to be on screen *before* somebody agrees to a download, so it cannot be a
+by-product of one — and ``test-endpoint``, which asks a connection's own
+endpoint what it answers and answers `200` with the connection: one small
+request, small enough to make and wait for.
 
 Handlers are ``def`` rather than ``async def``, on ``projects``' terms: every
 kernel call underneath is a blocking SQLite call, and a coroutine would run it on
@@ -26,7 +27,7 @@ from uuid import UUID
 
 from fastapi import Response, status
 
-from visionset.inference import STUB_MODEL_ID, download_size, suggest, with_families
+from visionset.inference import STUB_MODEL_ID, ask_endpoint, download_size, suggest, with_families
 from visionset.inference import require as require_local_inference
 from visionset.jobs.integrity import JOB_TYPE as integrity_job_type
 from visionset.jobs.integrity import payload_for as integrity_payload_for
@@ -311,6 +312,37 @@ def check_connection_integrity(
     return BackgroundJobOut.of(job)
 
 
+@router.post("/{connection_id}/test-endpoint", responses=documented(404, 409, 502))
+def test_connection_endpoint(workspace: WorkspaceDep, connection_id: UUID) -> ConnectionOut:
+    """Ask an `http` connection's endpoint what it answers, and record the answer.
+
+    The `test_endpoint` action. One `GET` to the connection's `endpoint_url`,
+    which answers `{"model_ref": …, "capability": …}` — this project's endpoint
+    contract. The declared capability becomes the connection's `capabilities`,
+    which is what lets the suggest tool and pre-labeling offer it. Asking again
+    re-asks and overwrites, so an endpoint that now serves a different model
+    declares that on its next test.
+
+    **Only for an `http` connection.** A local one has no endpoint to ask: 409
+    `INFERENCE_CONNECTION_NOT_TESTABLE`, the same answer `allowed_actions` gave.
+    An endpoint that cannot be reached, does not answer in time, answers outside
+    the contract, or declares a capability this build does not know is 502
+    `INFERENCE_ENDPOINT_UNAVAILABLE`; the message names the endpoint and what
+    happened, and nothing is recorded.
+
+    `200` with the connection rather than `202` with a job: one small request,
+    answered while you wait.
+    """
+    answered = ask_endpoint(workspace, connection_id)
+    service = InferenceConnectionService(workspace)
+    jobs = service.connection_jobs()
+    return ConnectionOut.of(
+        answered,
+        download=jobs.downloads.get(answered.id),
+        integrity_check=jobs.checks.get(answered.id),
+    )
+
+
 @beside_connections.get("/download-size")
 def inference_download_size(model_id: str, model_revision: str) -> DownloadSizeOut:
     """How big fetching that model's weights would be, before anybody fetches them.
@@ -338,7 +370,7 @@ def inference_download_size(model_id: str, model_revision: str) -> DownloadSizeO
     return DownloadSizeOut.of(download_size(model_id, model_revision))
 
 
-@beside_connections.post("/suggest", responses=documented(404, 409))
+@beside_connections.post("/suggest", responses=documented(404, 409, 502))
 def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionOut:
     """Propose a shape for the thing under those points.
 
@@ -405,7 +437,9 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
     or `INFERENCE_CONNECTION_NOT_FOUND`; a connection whose weights are not here
     yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` and names what to do; a
     connection whose model answers words rather than places is 422
-    `UNSUPPORTED_PROMPT`, as is a prompt point off the asset.
+    `UNSUPPORTED_PROMPT`, as is a prompt point off the asset; an `http`
+    connection whose endpoint does not answer the contract is 502
+    `INFERENCE_ENDPOINT_UNAVAILABLE`.
 
     Three failures are about this installation rather than about the request,
     and answer 500 carrying the message that says which: a connection of a kind

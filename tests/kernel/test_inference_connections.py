@@ -40,6 +40,7 @@ from visionset.kernel.domain import (
     pre_label_job_payload,
     precisions_for,
 )
+from visionset.kernel.errors import InferenceConnectionNotTestable
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
 
 LOCAL = dict(
@@ -687,3 +688,67 @@ def test_a_re_download_that_names_no_driver_leaves_the_recorded_one(
     rechecked = connections.record_weights_ready(made.id, model_family="sam2")
 
     assert rechecked.provider_id == "sam"
+
+
+# --- asking an endpoint what it answers ----------------------------------------
+
+
+def test_only_an_http_connection_can_be_asked_about_its_endpoint(connections) -> None:  # noqa: ANN001
+    hosted = connections.create(
+        "hosted",
+        connection_type=ConnectionType.HTTP,
+        model_id="some/model",
+        model_revision="v1",
+        endpoint_url="https://example.invalid/predict",
+    )
+    assert connections.require_endpoint_testable(hosted.id).id == hosted.id
+    local = connections.create(
+        "local",
+        connection_type=ConnectionType.LOCAL,
+        model_id="some/model",
+        model_revision="v1",
+        device="cpu",
+        precision="fp32",
+    )
+    with pytest.raises(InferenceConnectionNotTestable, match="no endpoint"):
+        connections.require_endpoint_testable(local.id)
+
+
+def test_an_endpoint_answer_is_recorded_as_family_and_driver(connections) -> None:  # noqa: ANN001
+    hosted = connections.create(
+        "hosted",
+        connection_type=ConnectionType.HTTP,
+        model_id="some/model",
+        model_revision="v1",
+        endpoint_url="https://example.invalid/predict",
+    )
+    answered = connections.record_endpoint_answer(
+        hosted.id, model_family="point_suggest", provider_id="http"
+    )
+    assert (answered.model_family, answered.provider_id) == ("point_suggest", "http")
+    assert answered.setup_state is ConnectionSetupState.READY
+    # Recording the same answer again is not an edit.
+    assert (
+        connections.record_endpoint_answer(
+            hosted.id, model_family="point_suggest", provider_id="http"
+        ).updated_at
+        == answered.updated_at
+    )
+
+
+def test_moving_the_endpoint_forgets_what_the_old_one_declared(connections) -> None:  # noqa: ANN001
+    hosted = connections.create(
+        "hosted",
+        connection_type=ConnectionType.HTTP,
+        model_id="some/model",
+        model_revision="v1",
+        endpoint_url="https://example.invalid/predict",
+    )
+    connections.record_endpoint_answer(hosted.id, model_family="point_suggest", provider_id="http")
+    renamed = connections.update(hosted.id, name="still-hosted")
+    assert renamed.model_family == "point_suggest", "a rename is not a move"
+    same = connections.update(hosted.id, endpoint_url="https://example.invalid/predict")
+    assert same.model_family == "point_suggest", "the value it already had is not a move"
+    moved = connections.update(hosted.id, endpoint_url="https://example.invalid/other")
+    assert moved.model_family is None
+    assert moved.provider_id == "http", "the driver still serves it; only the declaration is stale"

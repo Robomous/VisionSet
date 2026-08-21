@@ -20,6 +20,7 @@ from tests.fixtures.local_inference import require_local_inference
 
 from visionset.inference import families as families_module
 from visionset.inference.families import capabilities_of, family_of
+from visionset.inference.http_provider import HTTP_FAMILIES
 from visionset.inference.registry import capabilities, families_served, registered
 from visionset.inference.sam_provider import SAM_FAMILIES
 from visionset.inference.stub_provider import STUB_FAMILIES
@@ -28,8 +29,18 @@ from visionset.kernel.domain import ConnectionType, ModelCapability
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
 
 INSTALLED = registered().providers
-SEGMENTER_FAMILIES = frozenset(SAM_FAMILIES) | frozenset(STUB_FAMILIES)
-DETECTOR_FAMILIES = frozenset(DINO_FAMILIES)
+_HTTP_POINT_FAMILIES = frozenset(
+    family
+    for family, capability in HTTP_FAMILIES.items()
+    if capability is ModelCapability.POINT_SUGGEST
+)
+_HTTP_TEXT_FAMILIES = frozenset(
+    family
+    for family, capability in HTTP_FAMILIES.items()
+    if capability is ModelCapability.TEXT_DETECT
+)
+SEGMENTER_FAMILIES = frozenset(SAM_FAMILIES) | frozenset(STUB_FAMILIES) | _HTTP_POINT_FAMILIES
+DETECTOR_FAMILIES = frozenset(DINO_FAMILIES) | _HTTP_TEXT_FAMILIES
 SUPPORTED_FAMILIES = families_served(INSTALLED)
 """The three declarations, read back from what is installed.
 

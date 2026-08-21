@@ -67,6 +67,7 @@ import {
   checkListInferenceConnections,
   checkListProviders,
   checkSuggestRegion,
+  checkTestConnectionEndpoint,
   checkUpdateInferenceConnection,
 } from "../generated/checks";
 import type { components } from "../generated/api";
@@ -341,6 +342,29 @@ export function useCheckIntegrity() {
           params: { path: { connection_id: connectionId } },
         }),
         checkCheckConnectionIntegrity,
+      ),
+    onSuccess: () => queries.invalidateQueries({ queryKey: inferenceKeys.connections() }),
+  });
+}
+
+/**
+ * Ask an http connection's endpoint what it answers, and record the answer.
+ *
+ * Synchronous where the two above are jobs: one small request, answered with
+ * the connection itself. The list is invalidated on success because the answer
+ * changes `capabilities` — and with it which section of the screen the row
+ * belongs under and which tools will offer it.
+ */
+export function useTestEndpoint() {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (connectionId: string) =>
+      unwrap(
+        await client.POST("/inference/connections/{connection_id}/test-endpoint", {
+          params: { path: { connection_id: connectionId } },
+        }),
+        checkTestConnectionEndpoint,
       ),
     onSuccess: () => queries.invalidateQueries({ queryKey: inferenceKeys.connections() }),
   });

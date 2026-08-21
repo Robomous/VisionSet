@@ -29,6 +29,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from tests.fixtures.endpoint import serving_endpoint
 from tests.fixtures.local_inference import require_local_inference
 from tests.fixtures.media import write_image
 
@@ -58,7 +59,6 @@ from visionset.kernel.domain import (
     TextPrompt,
 )
 from visionset.kernel.errors import (
-    InferenceConnectionNotRunnable,
     InferenceConnectionNotSetUp,
     UnsupportedPrompt,
 )
@@ -220,6 +220,7 @@ def test_the_group_records_the_drivers_this_distribution_ships() -> None:
         "sam",
         "grounding-dino",
         "stub",
+        "http",
     }
 
 
@@ -575,30 +576,51 @@ def test_a_hosted_driver_is_discovered_and_declares_what_it_serves() -> None:
     assert families_served(found.providers) == frozenset({"acme_hosted"})
 
 
-def test_resolution_cannot_reach_a_hosted_driver_in_this_release() -> None:
-    """The end of the path, stated rather than left as a silence.
-
-    A hosted connection is refused before any driver is looked at, so a
-    discovered hosted driver has nothing that will route to it yet: the
-    connection would have to name the provider it belongs to, and
-    ``model_family`` is null on a hosted connection permanently because no
-    weights ever arrive to read a config from. That gap is tracked as its own
-    issue and is deliberately outside this suite; what conformance can say today
-    is that the refusal is honest about the reason.
+def test_resolution_reaches_a_recorded_hosted_driver(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The end of the path: a hosted connection that recorded its driver and
+    what the endpoint declared resolves to that driver, and is built for that
+    family — no weights, no config, no network.
     """
     hosted = Echo()
+    monkeypatch.setattr(
+        providers_module,
+        "registered",
+        lambda: Discovery(providers={hosted.provider_id: hosted}, skipped=()),
+    )
     remote = InferenceConnection(
         name="conformance-hosted",
         connection_type=ConnectionType.HTTP,
         model_id="acme/hosted",
         model_revision="abc123",
         endpoint_url="https://example.invalid/v1",
+        provider_id=hosted.provider_id,
+        model_family="acme_hosted",
     )
+    runner = providers_module.provider_for(remote, workspace_root=Path("/nonexistent"))
+    assert isinstance(runner, ModelProvider)
+    assert hosted.built == ["acme_hosted"]
 
-    with pytest.raises(InferenceConnectionNotRunnable, match="http connection"):
+
+def test_a_hosted_connection_nobody_asked_is_refused_before_any_driver_is_asked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hosted = Echo()
+    monkeypatch.setattr(
+        providers_module,
+        "registered",
+        lambda: Discovery(providers={hosted.provider_id: hosted}, skipped=()),
+    )
+    remote = InferenceConnection(
+        name="conformance-hosted",
+        connection_type=ConnectionType.HTTP,
+        model_id="acme/hosted",
+        model_revision="abc123",
+        endpoint_url="https://example.invalid/v1",
+        provider_id=hosted.provider_id,
+    )
+    with pytest.raises(InferenceConnectionNotSetUp, match="test_endpoint"):
         providers_module.provider_for(remote, workspace_root=Path("/nonexistent"))
-
-    assert hosted.built == [], "nothing routed to it, so it was never asked to build"
+    assert hosted.built == []
 
 
 def test_a_driver_that_offers_a_checkpoint_can_price_it() -> None:
@@ -709,17 +731,42 @@ OFFLINE = (*EXERCISED, Echo.provider_id, AcmeSeg.provider_id)
 plus the two drivers this suite brings with it."""
 
 
-def offline_runners(tmp_path: Path) -> Mapping[str, tuple[object, ModelCapability]]:
+@pytest.fixture(scope="module")
+def endpoint_url() -> Iterator[str]:
+    """One contract-speaking server for every offline case in this module."""
+    with serving_endpoint() as endpoint:
+        yield endpoint.url
+
+
+def a_hosted_connection(endpoint_url: str) -> InferenceConnection:
+    return InferenceConnection(
+        name="conformance-hosted",
+        connection_type=ConnectionType.HTTP,
+        model_id="acme/hosted",
+        model_revision="abc123",
+        endpoint_url=endpoint_url,
+    )
+
+
+def offline_runners(
+    tmp_path: Path, endpoint_url: str
+) -> Mapping[str, tuple[object, ModelCapability]]:
     """A freshly built runner per offline subject, with the capability it serves.
 
     Built per case rather than once: the fakes record what they were asked, and a
     shared instance would make one case's assertions depend on another's order.
+
+    A driver that declares no weights source is built against a hosted
+    connection pointed at the module's endpoint, because its runner answers
+    from there and nowhere else.
     """
-    connection = a_local_connection(ready=True)
+    local = a_local_connection(ready=True)
+    hosted = a_hosted_connection(endpoint_url)
     built: dict[str, tuple[object, ModelCapability]] = {}
     for provider_id in EXERCISED:
         driver = INSTALLED[provider_id]
         family, capability = sorted(driver.families.items())[0]
+        connection = local if isinstance(driver, WeightsSource) else hosted
         built[provider_id] = (
             driver.build(connection, family=family, workspace_root=tmp_path),
             capability,
@@ -727,7 +774,7 @@ def offline_runners(tmp_path: Path) -> Mapping[str, tuple[object, ModelCapabilit
     for fake in (Echo(), AcmeSeg()):
         family, capability = next(iter(fake.families.items()))
         built[fake.provider_id] = (
-            fake.build(connection, family=family, workspace_root=tmp_path),
+            fake.build(local, family=family, workspace_root=tmp_path),
             capability,
         )
     return built
@@ -743,7 +790,7 @@ def test_nothing_is_excused_that_is_not_installed() -> None:
     assert set(INSTALLED) >= NEEDS_WEIGHTS
 
 
-def test_every_installed_driver_is_exercised_or_excused(tmp_path: Path) -> None:
+def test_every_installed_driver_is_exercised_or_excused(tmp_path: Path, endpoint_url: str) -> None:
     """The partition, so a driver cannot fall between the two.
 
     Asserted through the runners actually built rather than through the name
@@ -751,15 +798,17 @@ def test_every_installed_driver_is_exercised_or_excused(tmp_path: Path) -> None:
     drifting apart.
     """
     assert set(EXERCISED) | NEEDS_WEIGHTS == set(INSTALLED)
-    assert set(offline_runners(tmp_path)) == set(OFFLINE)
+    assert set(offline_runners(tmp_path, endpoint_url)) == set(OFFLINE)
 
 
 @pytest.mark.parametrize("subject", OFFLINE)
-def test_every_answer_says_what_produced_it(subject: str, tmp_path: Path) -> None:
+def test_every_answer_says_what_produced_it(
+    subject: str, tmp_path: Path, endpoint_url: str
+) -> None:
     """A provenance with a footnote is not a provenance. The reference is on each
     answer rather than on the response, because answers arrive one at a time.
     """
-    runner, capability = offline_runners(tmp_path)[subject]
+    runner, capability = offline_runners(tmp_path, endpoint_url)[subject]
 
     answers = list(asking(runner)(a_request(tmp_path, prompt=PROMPTS[capability], targets=2)))
 
@@ -769,7 +818,9 @@ def test_every_answer_says_what_produced_it(subject: str, tmp_path: Path) -> Non
 
 
 @pytest.mark.parametrize("subject", OFFLINE)
-def test_exactly_one_answer_per_target_in_the_order_asked(subject: str, tmp_path: Path) -> None:
+def test_exactly_one_answer_per_target_in_the_order_asked(
+    subject: str, tmp_path: Path, endpoint_url: str
+) -> None:
     """Two targets, so a runner answering only the first is red here rather than
     coincidentally right — and the identities are compared rather than the count,
     so answering the first one twice fails too.
@@ -777,7 +828,7 @@ def test_exactly_one_answer_per_target_in_the_order_asked(subject: str, tmp_path
     An answer carrying nothing found still counts: a click on empty sky and an
     image nobody looked at are different facts, and only the second is a gap.
     """
-    runner, capability = offline_runners(tmp_path)[subject]
+    runner, capability = offline_runners(tmp_path, endpoint_url)[subject]
     request = a_request(tmp_path, prompt=PROMPTS[capability], targets=2)
 
     answers = list(asking(runner)(request))

@@ -15,6 +15,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.fixtures.endpoint import serving_endpoint
 from tests.server._api import api_client
 from tests.server._flow import batch_from_ingest, project_with_schema
 from tests.server._jobs import InlineDispatcher, ManualDispatcher
@@ -550,3 +551,53 @@ def test_a_confidence_outside_the_unit_interval_is_a_validation_error(
 
     assert response.status_code == 422
     assert _pre_label_job_count(client) == 0
+
+
+def test_an_http_connection_that_answers_words_is_not_gated_on_the_local_runtime(
+    client: TestClient, in_annotation_batch: OpenBatch, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The runtime gate is about a model that would load *here*; an endpoint loads nothing here."""
+
+    def _never() -> None:
+        raise AssertionError("the local runtime must not be demanded for an http connection")
+
+    monkeypatch.setattr(batches_routes, "require_local_inference", _never)
+    with serving_endpoint(capability="text_detect") as endpoint:
+        made = client.post(
+            "/inference/connections",
+            json={
+                "name": "remote-detector",
+                "connection_type": "http",
+                "model_id": "acme/detector",
+                "model_revision": "v1",
+                "endpoint_url": endpoint.url,
+            },
+        ).json()
+        client.post(f"/inference/connections/{made['id']}/test-endpoint")
+        response = client.post(
+            f"/batches/{in_annotation_batch.id}/pre-label",
+            json={"connection_id": made["id"]},
+        )
+    assert response.status_code == 202, response.text
+
+
+def test_an_http_connection_nobody_asked_is_refused_with_the_action_that_asks(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    made = client.post(
+        "/inference/connections",
+        json={
+            "name": "remote-detector",
+            "connection_type": "http",
+            "model_id": "acme/detector",
+            "model_revision": "v1",
+            "endpoint_url": "https://example.invalid/predict",
+        },
+    ).json()
+    response = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": made["id"]},
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_SET_UP"
+    assert "test_endpoint" in response.json()["message"]

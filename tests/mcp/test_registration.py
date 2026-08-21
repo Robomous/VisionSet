@@ -70,6 +70,7 @@ SHIPPED = {
     "create_inference_connection",
     "download_connection_weights",
     "check_connection_integrity",
+    "test_inference_connection",
     "update_inference_connection",
 }
 """Every tool this server offers by default.

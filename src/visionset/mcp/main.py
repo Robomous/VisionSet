@@ -130,7 +130,8 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     # After the cycle, not in it: connections are workspace configuration —
     # every project shares them — so they read as the appendix rather than as a
     # rung. Within the group, the order is the setup journey: see what is
-    # configured, price a download, configure, fetch, verify, edit.
+    # configured, price a download, configure, fetch, verify, ask the endpoint,
+    # edit.
     (inference.list_inference_connections, READS),
     (inference.model_download_size, READS),
     (inference.create_inference_connection, WRITES),
@@ -138,6 +139,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     # WRITES, not READS: a check that finds damage purges the bad copies and
     # stands the connection back to not_set_up.
     (inference.check_connection_integrity, WRITES),
+    (inference.test_inference_connection, WRITES),
     (inference.update_inference_connection, WRITES),
 )
 """Every tool this server always offers, with what it does to the workspace.

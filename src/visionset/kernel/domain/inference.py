@@ -763,6 +763,10 @@ class InferenceConnection(BaseModel):
     #: ``model_id``: what a family *means* is
     #: ``visionset.inference.families``' to say.
     #:
+    #: **For an ``http`` connection it is the capability the endpoint
+    #: declared**, recorded verbatim by ``test_endpoint`` — the same literal
+    #: read, from a different declaration.
+    #:
     #: **Three states, and the third is the useful one.** ``None`` is *nobody has
     #: looked*, which is where every row written before this column existed
     #: starts. ``""`` is *somebody looked and the config did not say* — the

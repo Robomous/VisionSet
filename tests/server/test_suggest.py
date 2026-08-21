@@ -22,6 +22,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.fixtures.endpoint import serving_endpoint
 from tests.fixtures.media import write_image
 from tests.server._api import api_client
 from tests.server._jobs import InlineDispatcher
@@ -87,7 +88,13 @@ def project(client: TestClient) -> str:
     return str(made.json()["id"])
 
 
-def a_connection(client: TestClient, *, kind: str = "local", ready: bool = True) -> str:
+def a_connection(
+    client: TestClient,
+    *,
+    kind: str = "local",
+    ready: bool = True,
+    endpoint_url: str | None = None,
+) -> str:
     body: dict[str, Any] = (
         {
             "name": f"c-{uuid4().hex[:6]}",
@@ -103,7 +110,7 @@ def a_connection(client: TestClient, *, kind: str = "local", ready: bool = True)
             "connection_type": "http",
             "model_id": "some/model",
             "model_revision": "v1",
-            "endpoint_url": "https://example.invalid/predict",
+            "endpoint_url": endpoint_url or "https://example.invalid/predict",
         }
     )
     made = client.post("/inference/connections", json=body).json()
@@ -253,12 +260,16 @@ def test_a_connection_without_weights_is_refused_with_what_to_do(
     assert "download_weights" in answer.json()["message"]
 
 
-def test_an_http_connection_says_this_build_cannot_run_it(client: TestClient, project: str) -> None:
-    """500 rather than 409: nothing about the connection's state would make it run."""
+def test_an_http_connection_nobody_asked_is_told_to_test_its_endpoint(
+    client: TestClient, project: str
+) -> None:
+    """409 rather than 500: a state change — asking the endpoint — makes the identical
+    request succeed."""
     connection = a_connection(client, kind="http")
     answer = ask(client, project=project, asset=str(uuid4()), connection=connection)
-    assert answer.status_code == 500
-    assert answer.json()["code"] == "INFERENCE_CONNECTION_NOT_RUNNABLE"
+    assert answer.status_code == 409
+    assert answer.json()["code"] == "INFERENCE_CONNECTION_NOT_SET_UP"
+    assert "test_endpoint" in answer.json()["message"]
 
 
 def test_the_connection_is_resolved_before_the_asset(client: TestClient, project: str) -> None:
@@ -466,6 +477,33 @@ def test_a_click_comes_back_as_a_polygon_with_its_confidence_and_model(
     (region,) = body["regions"]
     assert region["geometry"]["type"] == "polygon"
     assert region["geometry"]["points"] == [[2.0, 3.0], [12.0, 3.0], [12.0, 9.0], [2.0, 9.0]]
+
+
+def test_a_tested_http_connection_suggests_through_its_endpoint(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path
+) -> None:
+    """The one place the whole path — route, resolution, remote runner, mask
+    pipeline — is proven over a real HTTP round trip rather than a scripted pool."""
+    with serving_endpoint(capability="point_suggest") as endpoint:
+        connection = a_connection(client, kind="http", endpoint_url=endpoint.url)
+        tested = client.post(f"/inference/connections/{connection}/test-endpoint")
+        assert tested.status_code == 200, tested.text
+        asset = an_asset(client, runner, project, tmp_path)
+
+        # Inside the fixture endpoint's lit rectangle, (2, 2) to (10, 10).
+        answer = ask(
+            client,
+            project=project,
+            asset=asset,
+            connection=connection,
+            positive=[{"x": 5.0, "y": 5.0}],
+        )
+        assert answer.status_code == 200, answer.text
+        body = answer.json()
+
+    assert body["model_ref"] == "fake/remote@1"
+    (region,) = body["regions"]
+    assert region["geometry"]["type"] == "polygon"
 
 
 def test_a_box_only_class_is_offered_the_outlines_extent(

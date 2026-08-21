@@ -12,7 +12,10 @@ segmenter, and those answer different questions — one takes words and one take
 places. So the family is read from the model's own config, a small JSON file
 already sitting in the cache beside the weights. A connection pointed at a
 detector and asked with points is then refused with the port's own vocabulary
-rather than dying inside a forward pass on a shape mismatch.
+rather than dying inside a forward pass on a shape mismatch. An ``http``
+connection resolves by what it recorded instead: the driver it names and the
+capability its endpoint declared, because there is no config on this machine
+to read.
 
 **And a family no installed driver serves is refused rather than guessed at.**
 What the installed drivers declare is the whole of what resolves; there is no
@@ -42,6 +45,7 @@ from typing import Final
 from visionset.inference._extra import require
 from visionset.inference.cache import DEFAULT_PROVIDER_CAPACITY, BoundedCache, KeyedLocks
 from visionset.inference.families import family_of
+from visionset.inference.http_provider import HTTP_PROVIDER_ID
 from visionset.inference.registry import families_served, recorded, registered, serving
 from visionset.inference.stub_provider import STUB_FAMILY, STUB_MODEL_ID
 from visionset.inference.weights import cache_root
@@ -141,15 +145,21 @@ def resident() -> ProviderPool:
     return _RESIDENT
 
 
-def not_set_up_message(connection_name: str) -> str:
-    """The sentence a connection whose weights have not arrived gets.
+def not_set_up_message(connection: InferenceConnection) -> str:
+    """The sentence a connection that is not set up gets, naming the action that
+    makes the identical request succeed.
 
-    A function rather than a literal, so ``_local`` and a route that must
-    refuse the same fact before it would otherwise build a runner raise the
-    identical sentence.
+    A function rather than a literal so resolution and a route that must refuse
+    the same fact before it would otherwise build a runner raise the identical
+    sentence — and kind-aware, because the action differs by kind.
     """
+    if connection.connection_type is ConnectionType.HTTP:
+        return (
+            f"connection {connection.name!r} has not been asked what its endpoint answers yet; "
+            "run its test_endpoint action first"
+        )
     return (
-        f"connection {connection_name!r} has no weights on this machine yet; "
+        f"connection {connection.name!r} has no weights on this machine yet; "
         "run its download_weights action first"
     )
 
@@ -163,21 +173,19 @@ def provider_for(connection: InferenceConnection, *, workspace_root: Path) -> Ru
 
     Raises:
         InferenceConnectionNotSetUp: a local connection whose weights are not
-            here yet. The message names ``download_weights``, because that is the
-            action that makes the identical call succeed.
-        InferenceConnectionNotRunnable: nothing in this build runs a connection
-            of that kind, or of that declared model type. The message names what
-            this build does run.
+            here yet, or an http connection whose endpoint has not been asked
+            what it answers — the message names the action that makes the
+            identical call succeed.
+        InferenceConnectionNotRunnable: the connection's recorded driver is not
+            installed, or does not serve what the model (or the endpoint)
+            declares.
         LocalInferenceUnavailable: the optional runtime is not installed.
     """
     match connection.connection_type:
         case ConnectionType.LOCAL:
             return _local(connection, workspace_root=workspace_root)
         case ConnectionType.HTTP:
-            raise InferenceConnectionNotRunnable(
-                f"connection {connection.name!r} is an http connection, and this build has no "
-                "adapter that can speak to one; use a local connection, or a later version"
-            )
+            return _remote(connection, workspace_root=workspace_root)
 
 
 def _local(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
@@ -197,7 +205,7 @@ def _local(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
     worth more than a guess that is right most of the time.
     """
     if connection.setup_state is not ConnectionSetupState.READY:
-        raise InferenceConnectionNotSetUp(not_set_up_message(connection.name))
+        raise InferenceConnectionNotSetUp(not_set_up_message(connection))
     drivers = registered().providers
     if connection.model_id == STUB_MODEL_ID:
         # Before ``require()``, and that ordering is the point rather than an
@@ -210,6 +218,25 @@ def _local(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
         require()
         family = family_of(connection, cache_dir=cache_root(workspace_root))
     driver = driver_for(connection, family=family, drivers=drivers)
+    return driver.build(connection, family=family, workspace_root=workspace_root)
+
+
+def _remote(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
+    """A runner for the endpoint this connection names.
+
+    Resolved by what the row recorded and nothing else: the driver it names
+    (the built-in one when it names none — every http connection created before
+    there was one to name) and the capability its endpoint declared, which
+    ``test_endpoint`` wrote. Nothing is read from disk and nothing is
+    contacted; a connection nobody has asked is refused with the action that
+    asks.
+    """
+    driver = recorded(registered().providers, connection.provider_id or HTTP_PROVIDER_ID)
+    family = connection.model_family or ""
+    if not family:
+        raise InferenceConnectionNotSetUp(not_set_up_message(connection))
+    if family not in driver.families:
+        raise InferenceConnectionNotRunnable(_wrong_family_for(connection, driver, family))
     return driver.build(connection, family=family, workspace_root=workspace_root)
 
 
@@ -262,9 +289,9 @@ def _wrong_family_for(connection: InferenceConnection, driver: Provider, family:
     serves = ", ".join(sorted(driver.families))
     return (
         f"connection {connection.name!r} is served by provider {driver.provider_id!r}, whose "
-        f"downloaded config declares model type {family!r} — a type that provider does not "
-        f"serve; it serves {serves}. Point the connection at a model of one of those types, or "
-        "at the provider that serves this one"
+        f"declared model type {family!r} — the downloaded config's, or the endpoint's — is a "
+        f"type that provider does not serve; it serves {serves}. Point the connection at a model "
+        "of one of those types, or at the provider that serves this one"
     )
 
 
