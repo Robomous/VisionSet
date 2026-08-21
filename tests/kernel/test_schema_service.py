@@ -40,6 +40,7 @@ from visionset.kernel.domain import (
     AnnotationSchema,
     Asset,
     Attribute,
+    Batch,
     BboxGeometry,
     Geometry,
     GeometryType,
@@ -79,8 +80,8 @@ def _annotate(
     project_id: UUID,
     label_class: str,
     geometry: Geometry | None = None,
-) -> None:
-    """Give the project one annotation under ``label_class``, schema aside.
+) -> Asset:
+    """Give the project one annotation under ``label_class``, schema aside, and return its asset.
 
     **The shape has to be one the class declares**, which was free to ignore while
     the orphan gate matched on the class name and is not any more: since #592 the
@@ -111,6 +112,7 @@ def _annotate(
                 provenance="human",
             )
         )
+    return asset
 
 
 #: Makes each ``_annotate`` call its own asset — see the note in that helper.
@@ -564,6 +566,148 @@ def test_the_refusal_counts_only_the_annotations_the_change_would_orphan(tmp_pat
     with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)") as caught:
         schemas.create_version(project.id, [_CAR_BOX], allow_destructive=True)
     assert [one.annotations for one in caught.value.blockers] == [1]
+    workspace.close()
+
+
+# --- the frames behind the counts ---------------------------------------------
+
+
+def _one_doomed_polygon(
+    tmp_path: Path,
+) -> tuple[WorkspaceService, SchemaService, UUID, Asset, Batch, Batch]:
+    """A `car` project where narrowing to boxes strands exactly one polygon.
+
+    The construction `test_the_refusal_counts_only_the_annotations_the_change
+    _would_orphan` uses, plus the batch memberships the listing has to name.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [_CAR_BOTH])
+    box_asset = _annotate(workspace, project.id, "car")
+    polygon_asset = _annotate(workspace, project.id, "car", _LANE_SHAPE)
+    with workspace.unit_of_work() as uow:
+        first = uow.batches.add(
+            Batch(project_id=project.id, name="first", asset_ids=[box_asset.id, polygon_asset.id])
+        )
+        correction = uow.batches.add(
+            Batch(project_id=project.id, name="correction", asset_ids=[polygon_asset.id])
+        )
+    return workspace, schemas, project.id, polygon_asset, first, correction
+
+
+def test_blocking_assets_lists_only_the_assets_whose_own_shape_is_doomed(tmp_path: Path) -> None:
+    """The listing crosses the same grain the count does.
+
+    A ``car`` losing its polygon is blocked by the polygon and not by the boxes
+    that survive, so the assets carrying only boxes must not appear.
+    """
+    workspace, schemas, project_id, polygon_asset, _, _ = _one_doomed_polygon(tmp_path)
+
+    listed = schemas.blocking_assets(project_id, [_CAR_BOX])
+
+    assert [one.asset.id for one in listed] == [polygon_asset.id]
+    assert listed[0].label_classes == ("car",)
+    assert listed[0].annotations == 1
+    workspace.close()
+
+
+def test_blocking_assets_and_preview_agree_on_the_totals(tmp_path: Path) -> None:
+    """The contract this whole capability exists for.
+
+    ``preview`` counts and ``blocking_assets`` lists; two reports that agreed
+    by coincidence is the drift the typed report was introduced to end.
+    """
+    workspace, schemas, project_id, _, _, _ = _one_doomed_polygon(tmp_path)
+
+    previewed = schemas.preview(project_id, [_CAR_BOX])
+    listed = schemas.blocking_assets(project_id, [_CAR_BOX])
+
+    assert sum(one.annotations for one in listed) == sum(
+        count.annotations for count in previewed.blockers
+    )
+    # Not equality: ``ClassCount.assets`` is per class, so an asset carrying two
+    # blocking classes is one row here and two there.
+    assert len(listed) <= sum(count.assets for count in previewed.blockers)
+    workspace.close()
+
+
+def test_blocking_assets_names_the_batches_holding_each_asset(tmp_path: Path) -> None:
+    """An asset is held by many batches, so the row carries all of them."""
+    workspace, schemas, project_id, _, first, correction = _one_doomed_polygon(tmp_path)
+
+    listed = schemas.blocking_assets(project_id, [_CAR_BOX])
+
+    assert set(listed[0].batches) == {first.id, correction.id}
+    workspace.close()
+
+
+def _two_doomed_classes_on_one_asset(
+    tmp_path: Path,
+) -> tuple[WorkspaceService, SchemaService, UUID, Asset, Asset]:
+    """One asset carrying two doomed classes, and a second carrying one of them.
+
+    `_annotate` gives every annotation an asset of its own, which is what the rest
+    of this module needs and is exactly what this must not do. The second asset is
+    not decoration: with a single asset in the project every ordering of the walk
+    groups to one row, so a listing that split one frame in two could not be
+    caught here at all.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [_CAR_BOTH, LANE])
+    content_hash = workspace.blob_store.put(BytesIO(b"car-and-lane"))
+    with workspace.unit_of_work() as uow:
+        both = uow.assets.add(
+            Asset(project_id=project.id, content_hash=content_hash, uri="/tmp/car-and-lane.png")
+        )
+        for label_class in ("car", "lane"):
+            uow.annotations.add(
+                Annotation(
+                    asset_id=both.id,
+                    label_class=label_class,
+                    schema_version=1,
+                    geometry=_LANE_SHAPE,
+                    provenance="human",
+                )
+            )
+    car_only = _annotate(workspace, project.id, "car", _LANE_SHAPE)
+    return workspace, schemas, project.id, both, car_only
+
+
+def test_blocking_assets_gives_one_row_to_a_frame_under_two_doomed_classes(
+    tmp_path: Path,
+) -> None:
+    """One frame is one row, however many of its classes the change dooms.
+
+    Somebody opens a row to fix a frame, so a frame doomed twice must not arrive
+    as two rows to open. The grouping that guarantees it holds only while the walk
+    yields an asset's annotations together — a class-major walk would split this
+    frame around the one below it.
+
+    It is also the case that makes the count and the listing disagree honestly:
+    ``ClassCount.assets`` is per class, so two classes each name this frame and
+    there is still one of it. Hence ``<`` rather than ``==`` in the totals test.
+    """
+    workspace, schemas, project_id, both, car_only = _two_doomed_classes_on_one_asset(tmp_path)
+
+    previewed = schemas.preview(project_id, [_CAR_BOX])
+    listed = schemas.blocking_assets(project_id, [_CAR_BOX])
+
+    assert [one.asset.id for one in listed] == [both.id, car_only.id]
+    assert (listed[0].annotations, listed[0].label_classes) == (2, ("car", "lane"))
+    assert (listed[1].annotations, listed[1].label_classes) == (1, ("car",))
+    assert sum(one.annotations for one in listed) == sum(
+        count.annotations for count in previewed.blockers
+    )
+    assert len(listed) < sum(count.assets for count in previewed.blockers)
+    workspace.close()
+
+
+def test_blocking_assets_is_empty_when_the_change_removes_nothing(tmp_path: Path) -> None:
+    """An additive change guards nothing, so nothing can block it."""
+    workspace, schemas, project_id, _, _, _ = _one_doomed_polygon(tmp_path)
+
+    assert schemas.blocking_assets(project_id, [_CAR_BOTH, SIGN]) == ()
     workspace.close()
 
 

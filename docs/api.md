@@ -47,6 +47,7 @@ GET    /projects/{project_id}/schema/versions
 GET    /projects/{project_id}/schema/versions/{version}
 GET    /projects/{project_id}/schema/compare             ?from=&to=
 POST   /projects/{project_id}/schema/preview             would this publish?
+POST   /projects/{project_id}/schema/blocking-assets     paged, what is in the way
 GET    /projects/{project_id}/schema/drafts/{kind}        curated or annotation
 PUT    /projects/{project_id}/schema/drafts/{kind}        409 STALE_WRITE
 DELETE /projects/{project_id}/schema/drafts/{kind}
@@ -208,9 +209,13 @@ An array cannot grow a field without breaking every client that parsed it. `tota
 route without moving the shape everything else already spoke. An empty collection is
 `{"items": [], "total": 0}` and a 200, never a 404.
 
-**Paging is on the two large collections and nowhere else** - `GET /batches/{id}/assets` and
-`GET /datasets/{id}/assets`, the batch that an ingest can fill with fifty thousand frames and
-the trunk that accumulates every batch a project ever completed. It bounds the *response*, not
+**Paging is on the asset listings and nowhere else** - `GET /projects/{id}/assets`,
+`GET /batches/{id}/assets`, `GET /datasets/{id}/assets` and
+`POST /projects/{id}/schema/blocking-assets`. What they have in common is that their size is a
+property of how many frames somebody ingested rather than of how many things somebody made: an
+ingest can fill a batch with fifty thousand, the trunk accumulates every batch a project ever
+completed, and the last of them is a *subset* of the first - the frames in the way of one
+narrowing, which is bounded by nothing but the project. It bounds the *response*, not
 the read. The kernel has no windowed read, so `limit` and `offset` slice a list that was fetched
 whole - worth doing, because a batch of fifty thousand frames must not be sent to a gallery in
 one body, but not a cheap query and not advertised as one. Every other collection is small by
@@ -620,7 +625,8 @@ consulted, so attaching counts would put a walk over every asset in the project 
 refusal that does not need it. A client that wants them asks the preview below.
 
 `blockers` is why no flag helps, counted two ways — a thousand labels over a thousand images and the
-same thousand over ten are the same `annotations` and a very different problem.
+same thousand over ten are the same `annotations` and a very different problem. It counts and does
+not name: which frames those are is a page, and it is asked for separately below.
 
 Neither is available by parsing `message`, and neither should be: `message`'s own field description
 says the wording is not part of the contract.
@@ -653,6 +659,34 @@ not the need to handle being refused.
 
 A POST because the proposal is a whole class list, which does not belong in a query string. It is
 still a read.
+
+### Reaching what is in the way
+
+```
+POST /projects/{project_id}/schema/blocking-assets        ?limit=&offset=
+```
+
+`blockers` counts; this lists. Same body, same walk over the project — the guarded
+`(class, shape)` pairs are derived from the diff here exactly as the preview derives them, which
+is why the two cannot come to disagree about one proposal. A client that sent its own pairs could
+send a set the guard does not match, so it does not get to.
+
+```json
+{ "items": [ { "asset": { "id": "…", "width": 1920, "height": 1080 },
+               "label_classes": ["lane"],
+               "annotations": 4,
+               "batch_ids": ["…"] } ],
+  "total": 3 }
+```
+
+`annotations` is how many of **that frame's** labels the change would orphan, not how many it
+carries. `batch_ids` is a list because an asset put in a batch and later in a correction of it is
+in both, and no stored fact makes one of them the answer — it is what turns "this frame is in the
+way" into somewhere to go and fix it.
+
+A frame blocking under two classes is **one item**, so `total` is not the sum of the preview's
+per-class `assets`. `total` is every blocking frame and never the size of the page, on the paging
+convention above.
 
 ---
 

@@ -175,6 +175,7 @@ from visionset.kernel.domain.schema import (
     SchemaPublication,
 )
 from visionset.kernel.domain.schema_diff import (
+    BlockingAsset,
     ChangeKind,
     ClassShape,
     SchemaChange,
@@ -322,6 +323,7 @@ __all__ = [
     "BatchCompleted",
     "BatchState",
     "BboxGeometry",
+    "BlockingAsset",
     "BySegments",
     "BySize",
     "ChangeKind",

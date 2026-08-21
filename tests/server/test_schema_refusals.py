@@ -65,20 +65,32 @@ def project(client: TestClient) -> str:
 
 @pytest.fixture()
 def labeled(client: TestClient, runner: InlineDispatcher, tmp_path: Path, project: str) -> str:
-    """The same project, with two `sign` labels drawn across two assets.
+    """The same project, with three `sign` labels drawn across two assets.
 
     Real annotations through the real routes rather than rows planted underneath,
     because the counts are what these tests are about and a planted row would let
     a broken walk agree with a broken fixture.
+
+    **Three over two, deliberately.** Every number this fixture feeds — frames,
+    annotations, and a frame's own blocking classes — has to differ from the
+    others, or a report that returned the wrong one of them agrees with every
+    assertion. The first asset carries two boxes for exactly that reason.
     """
     batch_id = batch_from_ingest(client, runner, tmp_path, project, images=2)
     client.post(f"/batches/{batch_id}/approve")
     client.post(f"/batches/{batch_id}/start")
     job_id: str = client.get(f"/batches/{batch_id}/jobs").json()["items"][0]["id"]
     client.post(f"/jobs/{job_id}/start")
+    first, second = asset_ids(client, batch_id)
     response = client.post(
         f"/jobs/{job_id}/annotations",
-        json=[a_box(asset_id) for asset_id in asset_ids(client, batch_id)],
+        json=[
+            a_box(first),
+            a_box(
+                first, geometry={"type": "bbox", "x": 5.0, "y": 6.0, "width": 7.0, "height": 8.0}
+            ),
+            a_box(second),
+        ],
     )
     assert response.status_code == 201, response.text
     return project
@@ -106,7 +118,7 @@ def test_an_orphan_refusal_carries_a_count_per_class(client: TestClient, labeled
     assert response.status_code == 409
     body = response.json()
     assert body["code"] == "SCHEMA_CHANGE_WOULD_ORPHAN"
-    assert body["detail"] == {"blockers": [{"label_class": "sign", "annotations": 2, "assets": 2}]}
+    assert body["detail"] == {"blockers": [{"label_class": "sign", "annotations": 3, "assets": 2}]}
 
 
 def test_the_orphan_refusal_does_not_put_the_project_id_in_its_sentence(
@@ -194,6 +206,92 @@ def test_a_preview_and_the_refusal_report_the_same_blockers(
 
 def test_a_preview_of_an_unknown_project_is_404(client: TestClient) -> None:
     response = preview(client, "0f4f0f8e-0000-4000-8000-000000000000", a_class("sign"))
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "PROJECT_NOT_FOUND"
+
+
+# --- the listing behind the counts --------------------------------------------
+
+
+def blocking_assets(
+    client: TestClient, project: str, *classes: dict[str, Any], **query: Any
+) -> Any:
+    return client.post(
+        f"/projects/{project}/schema/blocking-assets",
+        json={"classes": list(classes)},
+        params=query,
+    )
+
+
+def test_the_listing_and_the_preview_count_the_same_frames(
+    client: TestClient, labeled: str
+) -> None:
+    """One walk, two questions — the listing cannot outgrow the count.
+
+    The annotation totals are compared across every class, which is exact; the
+    frame count is compared against the one blocking class this fixture has,
+    because summing `assets` over classes would count a frame blocking under two
+    of them twice and the listing deliberately carries it once.
+    """
+    previewed = preview(client, labeled, a_class("lane")).json()
+    listed = blocking_assets(client, labeled, a_class("lane")).json()
+
+    assert [count["label_class"] for count in previewed["blockers"]] == ["sign"]
+    assert listed["total"] == previewed["blockers"][0]["assets"]
+    assert sum(item["annotations"] for item in listed["items"]) == sum(
+        count["annotations"] for count in previewed["blockers"]
+    )
+
+
+def test_a_blocking_frame_names_the_batches_holding_it(client: TestClient, labeled: str) -> None:
+    """Keyed by asset rather than by position: which row lands where is not the claim.
+
+    The listing *does* promise an order - insertion order, which the route states -
+    so asserting through position here would make this a second, weaker test of that
+    promise instead of a test of what a row carries.
+    """
+    batch_id = client.get(f"/projects/{labeled}/batches").json()["items"][0]["id"]
+    doubled, single = asset_ids(client, batch_id)
+    listed = blocking_assets(client, labeled, a_class("lane")).json()
+
+    by_asset = {item["asset"]["id"]: item for item in listed["items"]}
+    assert by_asset[doubled]["batch_ids"] == [batch_id]
+    assert by_asset[doubled]["label_classes"] == ["sign"]
+    # `annotations` is what the change would orphan *on this frame* — not how
+    # many blocking classes it carries, and not how many frames are in the way.
+    # Two here and one there is what tells those three numbers apart.
+    assert by_asset[doubled]["annotations"] == 2
+    assert by_asset[single]["annotations"] == 1
+
+
+def test_a_blocking_frame_does_not_publish_its_path(client: TestClient, labeled: str) -> None:
+    """`AssetOut` withholds `uri`, and a listing is how that has leaked before.
+
+    The whole item, not only its `asset`: a `uri` hung on `BlockingAssetOut`
+    itself would be the same leak one level up.
+    """
+    listed = blocking_assets(client, labeled, a_class("lane")).json()
+
+    assert "uri" not in str(listed["items"][0])
+
+
+def test_an_additive_change_blocks_on_nothing(client: TestClient, labeled: str) -> None:
+    listed = blocking_assets(client, labeled, SIGN, a_class("lane"), a_class("pole")).json()
+
+    assert listed == {"items": [], "total": 0}
+
+
+def test_the_listing_windows_without_moving_its_total(client: TestClient, labeled: str) -> None:
+    """`total` is what matched, never the page."""
+    listed = blocking_assets(client, labeled, a_class("lane"), limit=1, offset=0).json()
+
+    assert len(listed["items"]) == 1
+    assert listed["total"] == 2
+
+
+def test_a_listing_for_an_unknown_project_is_404(client: TestClient) -> None:
+    response = blocking_assets(client, "0f4f0f8e-0000-4000-8000-000000000000", a_class("sign"))
 
     assert response.status_code == 404
     assert response.json()["code"] == "PROJECT_NOT_FOUND"

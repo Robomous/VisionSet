@@ -26,6 +26,7 @@ import { ProjectScreen } from "./ProjectScreen";
 import { ProjectsScreen } from "./ProjectsScreen";
 import {
   usePreviewSchemaChange,
+  useSchemaBlockingAssets,
   type LabelClassBody,
   type SchemaChangePreview,
 } from "./queries";
@@ -37,6 +38,8 @@ type BatchState = capComponents["schemas"]["BatchState"];
 /** See `dataShell.test.tsx`: undici's `Request` needs an absolute URL. */
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
+/** A second project, for the draft that must not follow somebody into it. */
+const OTHER_PROJECT = "77777777-7777-4777-8777-777777777777";
 
 /** One route table, matched in order. A miss is a loud 500 rather than a hang. */
 type HandlerAnswer = { status: number; body: unknown } | undefined;
@@ -203,6 +206,23 @@ function PreviewSchemaChangeProbe({
   );
 }
 
+function SchemaBlockingAssetsProbe({
+  projectId,
+  classes,
+}: {
+  readonly projectId: string;
+  readonly classes: readonly LabelClassBody[] | null;
+}): JSX.Element {
+  const query = useSchemaBlockingAssets(projectId, classes);
+  return (
+    <div data-testid="blocking-assets-result">
+      {query.data === undefined
+        ? "pending"
+        : `${query.data.total}:${query.data.items[0]?.annotations}:${query.data.items[0]?.batch_ids.length}`}
+    </div>
+  );
+}
+
 describe("the project list", () => {
   it("lists projects and opens one through the callback, never a router", async () => {
     on("GET", /^\/projects$/, {
@@ -358,6 +378,338 @@ describe("the schema editor", () => {
         (sentRequest) =>
           sentRequest.method === "POST" &&
           new URL(sentRequest.url).pathname.endsWith("/schema/drafts/curated/publish"),
+      ),
+    ).toBe(false);
+  });
+
+  it("reads the blocking frames off the typed listing", async () => {
+    const ASSET = "22222222-2222-4222-8222-222222222222";
+    const BATCH = "33333333-3333-4333-8333-333333333333";
+    on("POST", /\/schema\/blocking-assets$/, {
+      status: 200,
+      body: {
+        items: [
+          {
+            asset: {
+              id: ASSET,
+              project_id: PROJECT,
+              modality: "image",
+              content_hash: "deadbeef",
+              format: "jpeg",
+              width: 1920,
+              height: 1080,
+              frame_index: null,
+              frame_timestamp: null,
+              source_id: null,
+              thumbnail_hash: "abc",
+              ingested_at: "2024-01-01T00:00:00Z",
+            },
+            label_classes: ["lane"],
+            annotations: 12,
+            batch_ids: [BATCH],
+          },
+        ],
+        total: 1,
+      },
+    });
+
+    render(mount(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={[]} />));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("blocking-assets-result").textContent).toBe("1:12:1"),
+    );
+  });
+
+  it("stays disabled while nothing is proposed", () => {
+    render(mount(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={null} />));
+    expect(screen.getByTestId("blocking-assets-result").textContent).toBe("pending");
+    expect(
+      sent.some((sentRequest) => new URL(sentRequest.url).pathname.endsWith("/schema/blocking-assets")),
+    ).toBe(false);
+  });
+
+  it("hashes a proposal's property order out of the key, not just its members", async () => {
+    on("POST", /\/schema\/blocking-assets$/, { status: 200, body: { items: [], total: 0 } });
+
+    // Same class, two builds: `color` before `attributes` versus after. Two
+    // logically-identical proposals reaching this hook by different code paths
+    // must share a cache entry — TanStack's own key hash sorts object keys for
+    // exactly this reason, and pre-stringifying here would have thrown that away.
+    const classesA: readonly LabelClassBody[] = [
+      { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
+    ];
+    const classesB: readonly LabelClassBody[] = [
+      { color: "#38bdf8", attributes: [], name: "vehicle", geometries: ["bbox"] },
+    ];
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrap = (node: ReactNode): JSX.Element => (
+      <ApiProvider baseUrl={API} queryClient={queryClient}>
+        {node}
+      </ApiProvider>
+    );
+
+    const { rerender } = render(
+      wrap(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={classesA} />),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("blocking-assets-result").textContent).toBe("0:undefined:undefined"),
+    );
+
+    rerender(wrap(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={classesB} />));
+    await waitFor(() =>
+      expect(screen.getByTestId("blocking-assets-result").textContent).toBe("0:undefined:undefined"),
+    );
+
+    expect(
+      sent.filter((sentRequest) =>
+        new URL(sentRequest.url).pathname.endsWith("/schema/blocking-assets"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("lists the frames in the way and links each to every batch holding it", async () => {
+    const ASSET = "22222222-2222-4222-8222-222222222222";
+    const BATCH = "33333333-3333-4333-8333-333333333333";
+    const CORRECTION = "44444444-4444-4444-8444-444444444444";
+    projectWithSchema();
+    // The full wire shape: `useBatches` validates the response, and a listing
+    // that fails validation is a query with no data — which reads here as every
+    // link falling back to "Open batch".
+    const batch = (id: string, name: string): Record<string, unknown> => ({
+      id,
+      project_id: PROJECT,
+      name,
+      state: "in_annotation",
+      asset_count: 4,
+      schema_version: 3,
+      progress: {
+        unannotated: 4,
+        pre_labeled: 0,
+        annotated: 0,
+        skipped: 0,
+        review_pending: 0,
+        accepted: 0,
+        total: 4,
+      },
+      allowed_actions: batchActions("in_annotation"),
+      promoted_asset_count: 0,
+      parent_batch_id: null,
+      pre_label_run: null,
+    });
+    on("GET", /\/batches$/, {
+      status: 200,
+      body: { items: [batch(BATCH, "survey"), batch(CORRECTION, "fixes")], total: 2 },
+    });
+    on("POST", /\/schema\/blocking-assets/, {
+      status: 200,
+      body: {
+        items: [
+          {
+            asset: {
+              id: ASSET,
+              project_id: PROJECT,
+              modality: "image",
+              content_hash: "deadbeef",
+              format: "jpeg",
+              width: 1920,
+              height: 1080,
+              frame_index: 42,
+              frame_timestamp: null,
+              source_id: null,
+              thumbnail_hash: null,
+              ingested_at: "2024-01-01T00:00:00Z",
+            },
+            label_classes: ["lane"],
+            annotations: 12,
+            batch_ids: [BATCH, CORRECTION],
+          },
+        ],
+        // Every blocking frame, not this page's size: the panel says how many
+        // there are and how many of them it is showing.
+        total: 30,
+      },
+    });
+    const opened = vi.fn();
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={opened} />));
+
+    const panel = await screen.findByTestId("blocking-assets");
+    await within(panel).findByTestId("blocking-asset-list");
+    expect(panel.textContent).toContain("12");
+    expect(panel.textContent).toContain("lane");
+    // Two rows reading "12 labels under lane" would be one row to a screen
+    // reader, so the frame names itself.
+    expect(panel.textContent).toContain("Frame 42");
+    // `total` counts every blocking frame and the request is windowed, so the
+    // panel states the whole number and how much of it is on screen.
+    expect(screen.getByTestId("blocking-asset-count").textContent).toContain("30");
+    // The clause too, not only the number: a count with no window stated is a
+    // panel silently showing 12 of 30.
+    expect(screen.getByTestId("blocking-asset-count").textContent).toContain(
+      "showing the first",
+    );
+    const asked = sent.find((request) =>
+      new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
+    );
+    expect(new URL(asked?.url ?? "").searchParams.get("limit")).toBe("12");
+    // An asset is held by many batches — `batches_holding` returns a list, and an
+    // annotation names no batch at all — so the row offers all of them rather
+    // than picking one there is no stored fact to prefer.
+    const links = within(panel).getAllByTestId("blocking-asset-batch");
+    expect(links).toHaveLength(2);
+    // Named from the batch listing the header already read: three links all
+    // reading "Open batch" would name no destination between them.
+    expect(links[0].textContent).toContain("survey");
+    expect(links[1].textContent).toContain("fixes");
+    await userEvent.click(links[0]);
+    expect(opened).toHaveBeenCalledWith(BATCH);
+  });
+
+  /**
+   * The settle's own cross-project hole, which the guard above cannot close.
+   *
+   * `useSettled` holds a value across a props change, and this screen is
+   * re-rendered rather than remounted when `:projectId` does — so a panel that
+   * survives the switch asks the arriving project about the classes it settled
+   * on under the departing one, guard or no guard. `key={projectId}` is what
+   * remounts it, and this is the probe that says so.
+   *
+   * Both halves of the setup are load-bearing. The arriving project is rendered
+   * **first** so its schema and draft are cached: without that `SchemaSection`
+   * renders `LoadingState`, the panel unmounts on its own, and the bug hides.
+   * And the typing is followed by a real pause, so the settle actually fires
+   * under the departing project — a switch inside the debounce window clears the
+   * pending timer and the probe passes whether or not the key is there.
+   */
+  it("does not carry a settled proposal across a project switch", async () => {
+    projectWithSchema();
+    on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrap = (projectId: string): JSX.Element => (
+      <ApiProvider baseUrl={API} queryClient={queryClient}>
+        <ProjectScreen projectId={projectId} tab="schema" onOpenBatch={vi.fn()} />
+      </ApiProvider>
+    );
+
+    // The project switched *to*, first, so its own queries are warm when it
+    // comes back — otherwise the panel is unmounted by its own loading state.
+    const view = render(wrap(OTHER_PROJECT));
+    await screen.findByTestId("blocking-assets");
+
+    view.rerender(wrap(PROJECT));
+    await screen.findByTestId("schema-editor");
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-2"), "PEDESTRIAN");
+    // Long enough for the settle to fire here, which is the whole point: the
+    // value the panel is holding when the switch lands must be this project's.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    view.rerender(wrap(OTHER_PROJECT));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    const askedElsewhere = sent
+      .filter((request) => {
+        const path = new URL(request.url).pathname;
+        return (
+          path.startsWith(`/projects/${OTHER_PROJECT}/`) &&
+          path.endsWith("/schema/blocking-assets")
+        );
+      })
+      .map((request) => bodies.get(request) ?? "");
+    expect(askedElsewhere.length).toBeGreaterThan(0);
+    for (const body of askedElsewhere) expect(body).not.toContain("PEDESTRIAN");
+  });
+
+  it("asks once the class name stops changing, not once per keystroke", async () => {
+    projectWithSchema();
+    on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={vi.fn()} />));
+    await screen.findByTestId("schema-editor");
+    const asks = (): number =>
+      sent.filter((request) =>
+        new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
+      ).length;
+    await waitFor(() => expect(asks()).toBe(1));
+
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
+    // Ten characters, and the server walks every annotation in the project for
+    // each answer — so the panel asks about the name somebody meant and not
+    // about the nine prefixes of it.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    // A bound rather than an exact count, and the settle is why: ten
+    // `userEvent.type` keystrokes under a loaded machine can outlast one 400ms
+    // window, which makes a third ask correct behaviour rather than a defect.
+    // What is not a race is the ratio — an undebounced panel asks once per
+    // keystroke, so anything near the keystroke count fails this — and that the
+    // last question asked is about the whole name.
+    expect(asks()).toBeLessThan(5);
+    const asked = sent.filter((request) =>
+      new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
+    );
+    expect(bodies.get(asked[asked.length - 1] as Request)).toContain("pedestrian");
+  });
+
+  /**
+   * `ProjectScreen` is *re-rendered* rather than remounted when the route's
+   * `:projectId` changes, and nothing clears the draft it holds — so a draft
+   * typed in one project is still in hand while another one is on screen. Every
+   * read of it goes through `shownDraft`'s project guard, and this panel is the
+   * one that would otherwise POST project A's classes to project B's API and
+   * invite somebody to go clear real annotations over a narrowing nobody
+   * proposed there.
+   */
+  it("never asks one project's API about another project's draft", async () => {
+    projectWithSchema();
+    on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrap = (node: ReactNode): JSX.Element => (
+      <ApiProvider baseUrl={API} queryClient={queryClient}>
+        {node}
+      </ApiProvider>
+    );
+
+    const view = render(
+      wrap(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={vi.fn()} />),
+    );
+    await screen.findByTestId("schema-editor");
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
+
+    view.rerender(wrap(<ProjectScreen projectId={OTHER_PROJECT} tab="schema" onOpenBatch={vi.fn()} />));
+
+    const under = (projectId: string): Request[] =>
+      sent.filter((request) => {
+        const path = new URL(request.url).pathname;
+        return path.startsWith(`/projects/${projectId}/`) && path.endsWith("/schema/blocking-assets");
+      });
+    // The panel does ask on the project now showing…
+    await waitFor(() => expect(under(OTHER_PROJECT).length).toBeGreaterThan(0), { timeout: 2000 });
+    // …and long enough for the settle to have fired the departing project's
+    // proposal too, had anything been holding it.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    // …and never about the class somebody typed in the project they left.
+    for (const request of under(OTHER_PROJECT)) {
+      expect(bodies.get(request) ?? "").not.toContain("pedestrian");
+    }
+  });
+
+  it("offers no frames-in-the-way section to a host that cannot open a batch", async () => {
+    projectWithSchema();
+    on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+
+    await screen.findByTestId("schema-editor");
+    // Every row's way onward is a batch. A host with nowhere to send anybody is
+    // not offered the section at all, rather than a panel of dead links — the
+    // same rule this screen already applies to the Batches tab.
+    expect(screen.queryByTestId("blocking-assets")).toBeNull();
+    expect(
+      sent.some((request) =>
+        new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
       ),
     ).toBe(false);
   });

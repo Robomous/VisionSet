@@ -17,18 +17,23 @@ read as a removal plus an addition, which looks lossy until you remember that
 orphan every annotation under the old name. The kernel cannot see intent, and
 guessing at it would be guessing with someone's labels.
 
-This module is pure — two sequences in, a verdict out. It touches no ports and
-no ids, so ``SchemaService`` can gate on it, a delivery surface can preview with
-it, and neither has to reach for the other.
+This module is pure — no ports, no store, no workspace. The judging functions
+take two class lists and return a verdict; the report models beside them carry
+entities and ids a service has already read, because a caller told *this is
+refused* has to be able to reach what refused it. Nothing here reads them. So
+``SchemaService`` can gate on it, a delivery surface can preview with it, and
+neither has to reach for the other.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from enum import StrEnum
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from visionset.kernel.domain.asset import Asset
 from visionset.kernel.domain.dataset import ClassCount
 from visionset.kernel.domain.schema import Attribute, GeometryType, LabelClass
 
@@ -132,6 +137,28 @@ class SchemaChangePreview(BaseModel):
         hand-mirrored table the ``ui-capabilities`` contract bans, in miniature.
         """
         return bool(self.blockers)
+
+
+class BlockingAsset(BaseModel):
+    """One asset standing in the way of a narrowing, and where to reach it.
+
+    :class:`SchemaChangePreview` counts a class; this names the frames behind the
+    count, at the same ``(class, shape)`` grain the guard matches on, so a listing
+    and a count of the same narrowing cannot disagree.
+
+    ``batches`` is every batch holding the asset rather than one, because an asset
+    put in a batch and later in a correction of it is in both, and there is no
+    stored fact that would make one of them the answer.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    asset: Asset
+    #: The blocking classes this asset carries, sorted.
+    label_classes: tuple[str, ...]
+    #: How many of its annotations the guard would orphan.
+    annotations: int = Field(ge=1)
+    batches: tuple[UUID, ...]
 
 
 type ClassShape = tuple[str, GeometryType]

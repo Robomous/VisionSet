@@ -33,15 +33,20 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
+from itertools import groupby
+from operator import itemgetter
 from typing import NoReturn
 from uuid import UUID
 
 from visionset.kernel.domain import (
     IMPLEMENTED_GEOMETRIES,
     REPINNABLE_STATES,
+    Annotation,
     AnnotationSchema,
+    Asset,
+    BlockingAsset,
     ChangeKind,
     ClassCount,
     ClassShape,
@@ -185,17 +190,47 @@ class SchemaService:
             ProjectNotFound: no such project in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
-            self._require_project(uow, project_id)
-            active = self.active(uow, project_id)
-            previous = () if active is None else active.classes
-            diff = diff_classes(previous, classes)
-            # The *same* set the guard will match on, not a name-level
-            # approximation of it: a preview that warned about a class whose
-            # doomed shape nobody has drawn would promise a refusal that never
-            # comes, which is the disagreement this model exists to prevent.
-            return SchemaChangePreview(
-                diff=diff, blockers=_blockers(uow, project_id, orphanable_shapes(previous, diff))
-            )
+            diff, guarded = self._guarded(uow, project_id, classes)
+            return SchemaChangePreview(diff=diff, blockers=_blockers(uow, project_id, guarded))
+
+    def blocking_assets(
+        self, project_id: UUID, classes: Sequence[LabelClass]
+    ) -> tuple[BlockingAsset, ...]:
+        """Which frames would block publishing these classes, and where they sit.
+
+        The listing half of :meth:`preview`'s counts, from :meth:`_guarded`'s one
+        derivation and one walk, so the number a caller was shown and the rows it
+        can open are answers to one question.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            _, guarded = self._guarded(uow, project_id, classes)
+            return _blocking_assets(uow, project_id, guarded)
+
+    def _guarded(
+        self, uow: UnitOfWork, project_id: UUID, classes: Sequence[LabelClass]
+    ) -> tuple[SchemaDiff, frozenset[ClassShape]]:
+        """What publishing ``classes`` would change, and which pairs it would orphan.
+
+        One derivation for every caller that asks about a proposed version before
+        writing it, so a warning and a listing of the same narrowing cannot be
+        answering two subtly different questions.
+
+        The set is the *same* one the guard will match on, not a name-level
+        approximation of it: a preview that warned about a class whose doomed
+        shape nobody has drawn would promise a refusal that never comes, which is
+        the disagreement these reports exist to prevent.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+        """
+        self._require_project(uow, project_id)
+        active = self.active(uow, project_id)
+        previous = () if active is None else active.classes
+        diff = diff_classes(previous, classes)
+        return diff, orphanable_shapes(previous, diff)
 
     # --- writing: the only door --------------------------------------------
 
@@ -574,20 +609,17 @@ def _advance_pins(
     return tuple(moved)
 
 
-def _annotated_classes(
+def _guarded_annotations(
     uow: UnitOfWork, project_id: UUID, guarded: frozenset[ClassShape]
-) -> dict[str, ClassCount]:
-    """How much of this project is at risk from ``guarded``, per class.
+) -> Iterator[tuple[Asset, Annotation]]:
+    """Every annotation this change would orphan, with the asset carrying it.
 
-    **Counts the annotations the guard would actually orphan**, which since #592
-    is a question about the pair an annotation carries and not about its class:
-    a ``car`` losing its polygon must not be reported as *12 car annotations* when
-    eleven of them are boxes that survive. So an annotation is counted only when
-    its own ``(class, shape)`` is in ``guarded``.
-
-    Keyed by class name all the same, because a class is what somebody fixes —
-    two of its shapes going at once is one problem, not two — and because
-    ``ClassCount`` is the shape both the warning and the refusal already publish.
+    **The one place the guard's predicate is spelled.** An annotation carries one
+    class *and one shape*, so it is doomed only when its own ``(class, shape)``
+    pair is guarded: a ``car`` losing its polygon must not sweep in the boxes that
+    survive. Both the count and the listing fold over this, because a second copy
+    of that test is how a correction to one of them lands in a report and misses
+    the other.
 
     Walks the project's assets and reads each one's annotations, because the
     persistence port has no cross-table query: ``Repository.list`` takes a single
@@ -596,6 +628,53 @@ def _annotated_classes(
     is worth more at M1 scale than the round trips cost. When it does start to
     cost, the fix is a method on the port (``annotations.list_for_project``)
     implemented in the adapter, never a SQLAlchemy import in a service.
+
+    Yields an asset's rows together and in ``assets.list`` order, which is what
+    lets a caller group by asset without sorting.
+    """
+    for asset in uow.assets.list(project_id):
+        for annotation in uow.annotations.list(asset.id):
+            if (annotation.label_class, annotation.geometry.type) in guarded:
+                yield asset, annotation
+
+
+def _blocking_assets(
+    uow: UnitOfWork, project_id: UUID, guarded: frozenset[ClassShape]
+) -> tuple[BlockingAsset, ...]:
+    """The frames behind :func:`_annotated_classes`' counts, from the same walk.
+
+    Both fold over :func:`_guarded_annotations`, so the two cannot come to report
+    different things about one narrowing. That generator yields an asset's rows
+    together and in ``assets.list`` order, which is what lets this group by asset
+    without sorting and leaves the listing in insertion order.
+    """
+    if not guarded:
+        return ()
+    found: list[BlockingAsset] = []
+    for asset, rows in groupby(_guarded_annotations(uow, project_id, guarded), itemgetter(0)):
+        annotations = [annotation for _, annotation in rows]
+        found.append(
+            BlockingAsset(
+                asset=asset,
+                label_classes=tuple(sorted({one.label_class for one in annotations})),
+                annotations=len(annotations),
+                batches=tuple(uow.batches_holding(asset.id)),
+            )
+        )
+    return tuple(found)
+
+
+def _annotated_classes(
+    uow: UnitOfWork, project_id: UUID, guarded: frozenset[ClassShape]
+) -> dict[str, ClassCount]:
+    """How much of this project is at risk from ``guarded``, per class.
+
+    **Counts the annotations the guard would actually orphan** — the ones
+    :func:`_guarded_annotations` yields, at the pair grain the gate matches on.
+
+    Keyed by class name all the same, because a class is what somebody fixes —
+    two of its shapes going at once is one problem, not two — and because
+    ``ClassCount`` is the shape both the warning and the refusal already publish.
 
     ``ClassCount`` rather than a bare count, and reused rather than re-spelled:
     both numbers mean here exactly what they mean for the trunk, and a class
@@ -606,12 +685,9 @@ def _annotated_classes(
     """
     annotations: dict[str, int] = {}
     assets: dict[str, set[UUID]] = {}
-    for asset in uow.assets.list(project_id):
-        for annotation in uow.annotations.list(asset.id):
-            if (annotation.label_class, annotation.geometry.type) not in guarded:
-                continue
-            annotations[annotation.label_class] = annotations.get(annotation.label_class, 0) + 1
-            assets.setdefault(annotation.label_class, set()).add(asset.id)
+    for asset, annotation in _guarded_annotations(uow, project_id, guarded):
+        annotations[annotation.label_class] = annotations.get(annotation.label_class, 0) + 1
+        assets.setdefault(annotation.label_class, set()).add(asset.id)
     return {
         name: ClassCount(label_class=name, annotations=count, assets=len(assets[name]))
         for name, count in annotations.items()
