@@ -4,16 +4,16 @@
  * Autogeneration would order these alphabetically, and alphabetical is exactly
  * wrong for documentation that has a reading order: `annotations` before
  * `batches` before `install` puts the last chapter first. The grouping below is
- * `docs/README.md`'s own — get it, the shape of it, the concepts in the order the
- * pipeline visits them, the surfaces you drive it through — and the cost of writing
- * it out is that a new document has to be placed deliberately.
+ * `content/README.md`'s own — get it, the shape of it, the concepts in the order
+ * the pipeline visits them, the surfaces you drive it through — and the cost of
+ * writing it out is that a new document has to be placed deliberately.
  *
  * That cost is what `tests/scripts/docs_sidebar.test.mjs` collects: it holds this
- * roster to `git ls-files docs`, so a page added to `docs/` and forgotten here is a
- * red test rather than a page nothing links to. It is a **plain data module with no
- * imports** for that gate's sake — `pnpm test:scripts` runs from the repository
- * root, where `docs-site/node_modules` may not exist, and a module that imported
- * Starlight could not be read there.
+ * roster to `git ls-files docs/content`, so a page added to `content/` and
+ * forgotten here is a red test rather than a page nothing links to. It is a
+ * **plain data module with no imports** for that gate's sake — `pnpm test:scripts`
+ * runs from the repository root, where `docs/node_modules` may not exist, and a
+ * module that imported Starlight could not be read there.
  *
  * Entries name a `slug`, so each page's label is its own `# H1` and there is no
  * second place a title can be wrong. The two exceptions are links rather than

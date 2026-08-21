@@ -2,8 +2,8 @@
  * Every internal link in every tracked Markdown file resolves — file *and* anchor
  *.
  *
- * **`.mdx` counts as Markdown here.** `docs/` is `.md` today and the documentation
- * site's own rule keeps it that way (see `docs-site/README.md`), but the site can
+ * **`.mdx` counts as Markdown here.** `docs/content/` is `.md` today and the documentation
+ * site's own rule keeps it that way (see `docs/README.md`), but the site can
  * take `.mdx` for a page that genuinely needs a component — and an extension this
  * scan did not name would be a document exempt from every rule below, silently,
  * from the moment somebody added one. The two are checked identically: a fragment
@@ -15,7 +15,7 @@
  * paragraph you were promised. It was a near miss during the
  * `visionset ui` → `visionset server` rename, where prose changes reached
  * headings — and this repository leans on cross-document references hard enough
- * (`docs/` alone is nineteen files that cite each other by section) that a reviewing
+ * (`docs/content/` alone is nineteen files that cite each other by section) that a reviewing
  * habit is the wrong instrument. It is mechanically decidable, so it is a gate.
  *
  * **External URLs are out of scope**, deliberately: checking them makes the gate
@@ -31,7 +31,7 @@
  * ## Fenced code comes out for both scans; inline code comes out for only one
  *
  * A fence has to go before anything else looks at the text, in both directions:
- * `docs/cli.md` holds shell transcripts containing `[project.scripts]`, which a
+ * `docs/content/cli.md` holds shell transcripts containing `[project.scripts]`, which a
  * link regex reads as a reference definition into nowhere, and a `# comment`
  * opening a bash block is a level-one heading to anything that cannot see the
  * fence around it.
@@ -53,7 +53,7 @@
  *
  * A repeat of an existing slug gains `-1`, `-2`, … in document order. Nothing links
  * to a suffixed anchor today, so this rule guards against a *false* finding rather
- * than covering a live link — `docs/api.md` has three `### Errors` sections, and
+ * than covering a live link — `docs/content/api.md` has three `### Errors` sections, and
  * without it a perfectly good link to the second one would be reported broken. That
  * is the failure worth pre-empting: a gate that cries wolf gets switched off.
  */
@@ -256,16 +256,16 @@ test("external links are ignored, whatever shape they arrive in", () => {
     "[b](http://example.com)",
     "[c](//example.com/x)",
     "[d](mailto:someone@example.com)",
-    "[e](docs/api.md#errors)",
+    "[e](docs/content/api.md#errors)",
   ].join("\n");
   assert.deepEqual(
     linksIn(source).map((link) => link.target),
-    ["docs/api.md#errors"],
+    ["docs/content/api.md#errors"],
   );
 });
 
 test("nothing inside a code block is read as a link or as a heading", () => {
-  // Both halves have bitten this file. `docs/cli.md` holds shell transcripts whose
+  // Both halves have bitten this file. `docs/content/cli.md` holds shell transcripts whose
   // `[project.scripts]` reads as a reference definition, and a bash comment opening
   // a block reads as an `<h1>`.
   const source = [
@@ -290,20 +290,20 @@ test("nothing inside a code block is read as a link or as a heading", () => {
 });
 
 test("a repeated heading gets GitHub's numeric suffix, so a live link is never miscalled", () => {
-  // `docs/api.md` has three `### Errors`. No link points at the second or third
+  // `docs/content/api.md` has three `### Errors`. No link points at the second or third
   // today — this is here so that the day one does, it is not reported broken.
   const source = ["## Errors", "## Errors", "## Errors"].join("\n");
   assert.deepEqual([...anchorsOf(source)], ["errors", "errors-1", "errors-2"]);
 });
 
 test("an .mdx document is held to these rules, not exempt from them", () => {
-  // There is no `.mdx` in the repository today — `docs/` is Markdown and
-  // `docs-site/README.md` says why it stays that way. This is the forward guard:
+  // There is no `.mdx` in the repository today — `docs/content/` is Markdown and
+  // `docs/README.md` says why it stays that way. This is the forward guard:
   // the day the documentation site takes one for a page that needs a component,
   // it must arrive already covered rather than silently outside every rule above.
   // Narrowing either half back to `.md` alone reddens this.
-  assert.ok(isMarkdown("docs-site/src/content/docs/example.mdx"));
-  assert.ok(isMarkdown("docs/api.md"));
+  assert.ok(isMarkdown("docs/src/content/docs/example.mdx"));
+  assert.ok(isMarkdown("docs/content/api.md"));
   assert.ok(!isMarkdown("openapi.json"));
   assert.ok(!isMarkdown("README.mdx.txt"));
 });

@@ -1,7 +1,7 @@
 /**
  * Every internal link in the **built site** resolves — page and anchor both.
  *
- * `tests/scripts/docs_links.test.mjs` already holds every link in `docs/` to a file
+ * `tests/scripts/docs_links.test.mjs` already holds every link in `content/` to a file
  * and a heading that exist. This is the other half, and neither covers it: that gate
  * reads the Markdown *before* `sync-docs.mjs` rewrites it, so a rewrite that turns a
  * good `../CONTRIBUTING.md` into a URL pointing nowhere passes it untouched. What is
@@ -110,7 +110,7 @@ if (broken.length > 0) {
   process.exit(1);
 }
 
-// A scan that silently found nothing would agree with an empty list. `docs/` alone
+// A scan that silently found nothing would agree with an empty list. `content/` alone
 // cross-references itself hundreds of times, so anything near zero means this is
 // not reading the pages.
 if (checked < 200) {

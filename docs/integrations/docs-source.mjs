@@ -1,5 +1,5 @@
 /**
- * The one thing that keeps `src/content/docs/` in agreement with `../docs`.
+ * The one thing that keeps `src/content/docs/` in agreement with `content/`.
  *
  * `scripts/sync-docs.mjs` does the work; this decides *when*. Two moments, because
  * there are two ways this site is built:
@@ -9,13 +9,10 @@
  *                         first and CI cannot build a stale site
  *   `astro:server:setup`  the dev server watches `../docs` as well as its own tree
  *
- * The second is the interesting half. Astro's dev server watches its **project
- * root**, and `docs/` is a sibling of that root — so without this, editing
- * `docs/api.md` changes nothing in the browser and the site quietly serves whatever
- * the last build saw. Vite's watcher takes an extra path, and the projection writes
- * into `src/content/docs/`, which Astro *is* watching; so the chain from keystroke
- * to reload closes through Astro's own content-layer HMR and nothing here has to
- * know how that works.
+ * `content/` sits inside this project's root, so Vite already watches it — but a
+ * change there has to be *projected* before Astro sees a page move, and that is
+ * what the watcher hook does: it re-runs the sync, which writes into
+ * `src/content/docs/`, and Astro's own content-layer HMR takes it from there.
  *
  * `sync()` writes a file only when its bytes change, which is what makes this cheap
  * enough to run on every event: one edit moves one page.
@@ -43,7 +40,7 @@ export default function docsSource() {
           if (!file.startsWith(`${DOCS_DIR}${path.sep}`) || !file.endsWith(".md")) return;
           const { written, removed } = sync();
           if (written.length + removed.length === 0) return;
-          logger.info(`docs/${path.relative(DOCS_DIR, file)} → ${[...written, ...removed].join(", ")}`);
+          logger.info(`content/${path.relative(DOCS_DIR, file)} → ${[...written, ...removed].join(", ")}`);
         };
 
         for (const event of ["add", "change", "unlink"]) server.watcher.on(event, changed);
