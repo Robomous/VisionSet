@@ -82,6 +82,10 @@ CLAUDE.md
 *-plan-*.md
 *.tmp.md
 
+# Plans and research an agent writes for itself while working. They describe one
+# task's approach, not the project, so they belong to the machine that ran it.
+docs/superpowers/
+
 # graphify: knowledge-graph artifacts stay local (regenerate with `graphify update .`)
 graphify-out/
 
