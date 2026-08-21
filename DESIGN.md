@@ -168,11 +168,19 @@ primitive targets):
 | Sidebar (shadcn's own component; VisionSet's rail is a custom composition — see *Sidebar / Menu*) | `16rem` / `18rem` mobile / `3rem` icon |
 | Elevation | `ring-1 ring-foreground/10` + a resting shadow — never a coloured border |
 
-`frontend/ui-core/src/primitives/` currently carries this vocabulary and Nova's
-interaction idioms (uniform disabled opacity, soft destructive, `/80`-opacity hover, the
-inverted menu subtree) throughout; bringing every control's exact measurement in the
-table above (heights, `ring-3` focus, `duration-100`, the `--card-spacing` variable) into
-the primitives themselves is tracked as migration debt, not asserted as done.
+`frontend/ui-core/src/primitives/` carries the table itself, not a family resemblance to
+it: the heights, the `ring-3` focus treatment, the `duration-100` enter/exit, the
+`--card-spacing` variable and Nova's interaction idioms (uniform disabled opacity, soft
+destructive, `/80`-opacity hover, the inverted menu subtree) are the primitives' own
+declarations. The table is the contract and the primitives are where it is spelled, so a
+control reaching past it is now a diff against this document rather than a gap in a
+migration.
+
+Two measurements are deliberately *not* the table's, and both are argued at the
+component: `SelectTrigger` is `min-h-8` rather than `h-8`, because a two-line option has
+to grow the control instead of being squashed inside it, and `Textarea` is `min-h-16` for
+the same reason. A minimum where the table says a fixed height is the one substitution
+this document sanctions, and only where the content's own height is the point.
 
 ## Radius
 
@@ -194,25 +202,45 @@ No arbitrary radius appears outside this scale.
 ## Borders and Focus
 
 The base layer applies `border-border` and `outline-ring/50` to every element and
-`bg-background text-foreground` to `body` — a hairline and a focus fallback are the
+`bg-background text-foreground` to `body` — a hairline and the outline's colour are the
 default state of anything on the page, not something each component re-declares.
 Nova's component-level focus treatment is stronger and more specific:
 `focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50` — a 3px ring
 in the `ring` token's colour, painted outside the control so it survives any fill. Focus
 is never colour-only and never removed; an element that can be focused shows it.
 
-The base layer also carries one transitional rule: `:focus-visible { @apply outline-2; }`,
-keeping every element's keyboard focus at a visible 2px until the primitives that don't
-yet carry Nova's own `ring-3` treatment (e.g. the tab bar) are migrated to it — remove it
-once every focusable primitive supplies its own Nova ring.
+Focus *geometry* is never declared in the base layer. The `*` rule names the outline
+colour and stops there; the ring itself belongs to the component, because a single
+stylesheet-wide `:focus-visible` declaration overrides every primitive's ring at once and
+wins on layer order no matter how specific the component's own selector is. So each
+focusable primitive carries the treatment: `Button`, `Badge`, `Input`, `Textarea` and
+`SelectTrigger` the `ring-3` ring above, `TabsTrigger` the same ring plus a 1px
+`outline-ring` hairline, and menu and select items `focus:bg-accent
+focus:text-accent-foreground` (the combobox paints the same fill on its active option,
+which it tracks itself because the list keeps DOM focus on the input). An item inside a
+floating surface reads focus as the fill it would take on hover, not as a ring inside a
+list.
+
+`frontend/app/e2e/styleguide.spec.ts` measures the tab bar's ring in a real browser,
+which is the only place the composition can be checked: Tailwind renders `ring-3` as a
+`box-shadow` layer, so "the ring is there" is a question about a computed shadow list
+rather than about a class string.
 
 ## Sidebar / Menu
 
 - **`menuColor: inverted`.** Every menu and popover subtree — dropdown content, select
-  and combobox popovers, the tooltip surface — carries the literal `dark` class, so a
-  menu is always the dark theme's `popover`/`popover-foreground` regardless of the
-  page's own theme. This is deliberate contrast, not a bug: a floating surface reads as
-  "above" the page partly by not matching it.
+  and combobox popovers — carries the literal `dark` class, so a menu is always the dark
+  theme's `popover`/`popover-foreground` regardless of the page's own theme. This is
+  deliberate contrast, not a bug: a floating surface reads as "above" the page partly by
+  not matching it.
+- **The tooltip inverts itself instead.** `TooltipContent` is Nova's own recipe:
+  `bg-foreground text-background` with a matching `Arrow` and `sideOffset` 0, so it flips
+  with the theme by construction rather than by being handed the `dark` class. Same
+  intent as the bullet above, reached without a subtree — a tooltip holds one line of
+  text and no tokens of its own to keep in step, so the token pair *is* the inversion.
+  Menus, selects and the combobox keep the `dark` mechanism, because a surface with its
+  own borders, hover fills and destructive items needs a whole palette flipped, not two
+  colours swapped.
 - **`menuAccent: subtle`.** Items highlight on hover/focus with `bg-accent
   text-accent-foreground` — the same interactive-surface token every other hover state
   uses, not a saturated selection colour.
@@ -329,9 +357,12 @@ First-class, and part of every rule above rather than a section to satisfy after
 - **Ad-hoc geometry that fights Nova.** A control's height, padding, or radius is not a
   per-screen decision; reaching past the geometry table above for a bespoke size is a
   design decision to make in this document, not in a component diff.
-- **Mixing icon sets in new code.** Tabler is the target set for anything written or
-  substantially touched going forward; `lucide-react` remains only in components this
-  rewrite did not touch, as migration debt, not as a second sanctioned choice.
+- **Mixing icon sets in new code.** Tabler is the set, and inside the primitives it is
+  already the only one: every icon `frontend/ui-core/src/primitives/` draws is
+  `@tabler/icons-react` — the select's chevrons and check, the dialog's close — and no
+  file there imports `lucide-react` at all. Lucide survives at *screen* level, in views
+  this rewrite did not open, and that is the whole of the remaining debt: a screen still
+  importing it is a file to migrate, not a precedent to follow.
 - **Brand in a functional control.** Robomous coral is identity — the wordmark and its
   styleguide swatch, nothing else. A functional control reaching for `brand` is a
   semantic-colour violation regardless of how many other sites already use it correctly.

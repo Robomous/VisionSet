@@ -193,14 +193,14 @@
 }
 
 @layer base {
+  /* The hairline and the outline *colour* — the two things every element
+     inherits. The focus treatment itself belongs to the primitives: each one
+     carries Nova's own `ring-3` ring in `ring/50` (DESIGN.md, Borders and
+     Focus), so the base layer names the colour and stays out of the geometry.
+     Nothing here may declare focus geometry again: one blanket declaration in
+     this layer is how thirteen components' rings got overridden at once. */
   * {
     @apply border-border outline-ring/50;
-  }
-  /* Until the primitives adopt Nova's own focus rings (ring-3 + outline-none),
-     the base layer keeps keyboard focus at a visible 2px. Nova components
-     override this with their own treatment; delete when the migration lands. */
-  :focus-visible {
-    @apply outline-2;
   }
   /* Motion is opt-out for vestibular safety: under prefers-reduced-motion every
      animation and transition collapses to a frame. Information is never
