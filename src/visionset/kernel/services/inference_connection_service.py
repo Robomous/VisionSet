@@ -187,6 +187,7 @@ class InferenceConnectionService:
         device: str | None = None,
         precision: str | None = None,
         endpoint_url: str | None = None,
+        provider_id: str | None = None,
     ) -> InferenceConnection:
         """Configure a connection. Nothing is fetched and nothing is contacted.
 
@@ -203,6 +204,13 @@ class InferenceConnectionService:
             InferenceConnectionNameTaken: another connection holds that name.
             InferenceConnectionInvalid: the parameters do not match the kind, or
                 the device or precision is outside what this build offers.
+
+        ``provider_id`` is taken as given and never checked against what is
+        installed: which drivers this process found is
+        ``visionset.inference``'s to say and the kernel may not import it. A
+        connection naming a driver nobody has is created, and refused when
+        something tries to run it — which is the same treatment a model id
+        pointing at nothing gets, and for the same reason.
         """
         try:
             with self._workspace.unit_of_work() as uow:
@@ -216,6 +224,7 @@ class InferenceConnectionService:
                         device=device,
                         precision=precision,
                         endpoint_url=endpoint_url,
+                        provider_id=provider_id,
                         setup_state=_born_in(connection_type),
                     )
                 )
@@ -232,6 +241,7 @@ class InferenceConnectionService:
         device: str | None = None,
         precision: str | None = None,
         endpoint_url: str | None = None,
+        provider_id: str | None = None,
     ) -> InferenceConnection:
         """Edit a connection in place. Every argument is optional; ``None`` means
         *leave this alone*.
@@ -268,6 +278,7 @@ class InferenceConnectionService:
                     ("device", device),
                     ("precision", precision),
                     ("endpoint_url", endpoint_url),
+                    ("provider_id", provider_id),
                 ):
                     if value is not None:
                         changes[field] = value
@@ -292,6 +303,14 @@ class InferenceConnectionService:
                     for field in ("model_id", "model_revision")
                 ):
                     changes["model_family"] = None
+                    # The recorded driver goes with it, on the same reasoning one
+                    # step over: it was recorded for the model this row used to
+                    # name, and the driver that serves the new one is a different
+                    # question. Unless this edit supplied one — a re-pin from one
+                    # offered checkpoint to another carries the id of whoever
+                    # offers the new one, and that answer is newer than this rule.
+                    if provider_id is None:
+                        changes["provider_id"] = None
                     if current.connection_type in WEIGHT_HOLDING_TYPES:
                         changes["setup_state"] = ConnectionSetupState.NOT_SET_UP
                 # Rebuilt rather than mutated, so the cross-field rule runs on the
@@ -338,7 +357,11 @@ class InferenceConnectionService:
         raise InferenceConnectionNotDownloadable(_why_not_downloadable(connection))
 
     def record_weights_ready(
-        self, connection_id: UUID, *, model_family: str | None = None
+        self,
+        connection_id: UUID,
+        *,
+        model_family: str | None = None,
+        provider_id: str | None = None,
     ) -> InferenceConnection:
         """Mark the weights present. Called **after** they are, never before.
 
@@ -365,6 +388,14 @@ class InferenceConnectionService:
         string means *I looked and it declared nothing*, which is a finding and
         is recorded as one.
 
+        ``provider_id`` arrives the same way and for a narrower reason: a
+        connection created against an offered checkpoint already recorded one, so
+        this is how a row that recorded *none* acquires one — the download had to
+        resolve a driver to fetch anything, and the one it actually used is a
+        better answer than deriving it again on every later read. ``None`` leaves
+        whatever the row already had, which is what a re-run over an
+        already-recorded connection passes.
+
         Raises:
             InferenceConnectionNotFound: no such connection in this workspace.
         """
@@ -373,6 +404,8 @@ class InferenceConnectionService:
             changes: dict[str, object] = {"setup_state": ConnectionSetupState.READY}
             if model_family is not None:
                 changes["model_family"] = model_family
+            if provider_id is not None:
+                changes["provider_id"] = provider_id
             if all(getattr(current, field) == value for field, value in changes.items()):
                 return current
             return uow.inference_connections.update(

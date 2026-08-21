@@ -589,3 +589,101 @@ def test_a_pre_label_payload_round_trips_its_three_facts() -> None:
     assert payload[BATCH_JOB_KEY] == str(batch_id)
     assert payload[CONNECTION_JOB_KEY] == str(connection_id)
     assert payload[PRE_LABEL_CONFIDENCE_KEY] == 0.35
+
+
+# --- which driver serves a connection ----------------------------------------
+
+
+def test_a_provider_is_recorded_as_given_without_asking_what_is_installed(
+    connections,  # noqa: ANN001
+) -> None:
+    """The kernel cannot see the entry-point scan, so it does not pretend to.
+
+    A driver nobody has installed is accepted here and refused where the
+    registry is visible — the same treatment a model id pointing at nothing
+    gets.
+    """
+    made = connections.create("local", **LOCAL, provider_id="nobody-ships-this")
+
+    assert made.provider_id == "nobody-ships-this"
+
+
+def test_a_connection_records_no_provider_unless_one_is_given(
+    connections,  # noqa: ANN001
+) -> None:
+    """``None`` is the honest answer for a model no catalog offered, and is what
+    every row written before the column existed holds."""
+    assert connections.create("local", **LOCAL).provider_id is None
+
+
+def test_a_blank_provider_is_refused_because_it_says_what_absent_already_says() -> None:
+    with pytest.raises(ValidationError, match="provider_id is a driver's own id"):
+        InferenceConnection(**LOCAL, name="local", provider_id="   ")
+
+
+def test_pointing_at_another_model_forgets_which_driver_served_the_old_one(
+    connections,  # noqa: ANN001
+) -> None:
+    """The recorded driver was recorded for the model this row used to name.
+
+    It travels with ``model_family`` for the same reason: which driver serves
+    the *new* model is a question nobody has answered yet, and keeping the old
+    answer would resolve the connection through a driver that never saw it.
+    """
+    made = connections.create("local", **LOCAL, provider_id="sam")
+
+    moved = connections.update(made.id, model_id="other/model")
+
+    assert moved.provider_id is None
+    assert moved.model_family is None
+
+
+def test_a_repin_that_names_a_driver_keeps_the_one_it_named(
+    connections,  # noqa: ANN001
+) -> None:
+    """Moving from one offered checkpoint to another carries the new owner, and
+    that answer is newer than the rule that clears it."""
+    made = connections.create("local", **LOCAL, provider_id="sam")
+
+    moved = connections.update(made.id, model_id="other/model", provider_id="grounding-dino")
+
+    assert moved.provider_id == "grounding-dino"
+    # The family still goes: it is read from a config nothing has looked at yet.
+    assert moved.model_family is None
+
+
+def test_an_edit_that_moves_nothing_leaves_the_recorded_driver_alone(
+    connections,  # noqa: ANN001
+) -> None:
+    """The only client there is sends the whole shape on every edit, so a rename
+    arrives carrying the model id it already had."""
+    made = connections.create("local", **LOCAL, provider_id="sam")
+
+    renamed = connections.update(made.id, name="renamed", model_id=LOCAL["model_id"])
+
+    assert renamed.provider_id == "sam"
+
+
+def test_a_download_records_the_driver_for_a_connection_that_named_none(
+    connections,  # noqa: ANN001
+) -> None:
+    """How a row written before this column existed acquires one.
+
+    The download had to resolve a driver to fetch anything, so the one it
+    actually used is a better answer than deriving it again on every read.
+    """
+    made = connections.create("local", **LOCAL)
+
+    ready = connections.record_weights_ready(made.id, model_family="sam2", provider_id="sam")
+
+    assert ready.provider_id == "sam"
+
+
+def test_a_re_download_that_names_no_driver_leaves_the_recorded_one(
+    connections,  # noqa: ANN001
+) -> None:
+    made = connections.create("local", **LOCAL, provider_id="sam")
+
+    rechecked = connections.record_weights_ready(made.id, model_family="sam2")
+
+    assert rechecked.provider_id == "sam"

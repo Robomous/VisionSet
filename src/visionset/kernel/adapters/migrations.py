@@ -291,6 +291,31 @@ def _add_schema_drafts(connection: Connection) -> None:
     Base.metadata.create_all(connection, tables=[Base.metadata.tables["schema_draft"]])
 
 
+def _add_provider_id(connection: Connection) -> None:
+    """``inference_connection.provider_id``: which installed driver serves it.
+
+    **Nothing is backfilled, and no guess is available to make.** Which driver
+    would run an existing connection is worked out today from the family its
+    downloaded config declares — a derivation that lives outside the kernel, and
+    one that answers nothing at all for a connection whose weights were never
+    fetched or whose model runs elsewhere. Writing whichever driver happens to
+    serve that family today would record a decision nobody made, on rows created
+    before the question was asked.
+
+    So every existing row starts NULL, meaning *nobody recorded one*, and
+    resolution falls back to the family for those exactly as it did for all of
+    them before. The value arrives later from whoever genuinely knows it: a
+    connection created against a catalog entry names the driver that offered it,
+    and a download that resolves a driver records the one it actually used.
+
+    ``_add_model_family`` is the precedent, and the reason differs in a way worth
+    keeping straight: that column could not be filled because the kernel may not
+    reach the model cache, and this one could not be filled because the answer
+    did not exist to be read.
+    """
+    _add_column(connection, "inference_connection", "provider_id")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -302,6 +327,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=8, name="progress_touched", upgrade=_add_progress_touched),
     Migration(version=9, name="job_assignee", upgrade=_add_job_assignee),
     Migration(version=10, name="schema_drafts", upgrade=_add_schema_drafts),
+    Migration(version=11, name="provider_id", upgrade=_add_provider_id),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version
