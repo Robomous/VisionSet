@@ -77,8 +77,9 @@ LANE = LabelClass(name="lane", geometries=(GeometryType.POLYGON,))
 
 #: The real schema the bug report was filed against: five classes, each
 #: declaring both ``bbox`` and ``polygon`` and no attributes. Multi-geometry on
-#: purpose — ``detectable_classes`` tests for ``bbox`` membership rather than
-#: equality, and this is the shape that actually reached the failing run.
+#: purpose — ``detectable_classes`` intersects a class's geometries with what
+#: the model produces rather than comparing them, and this is the shape that
+#: actually reached the failing run.
 CAR = LabelClass(name="car", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
 TRUCK = LabelClass(name="truck", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
 MOTORCYCLE = LabelClass(name="motorcycle", geometries=(GeometryType.BBOX, GeometryType.POLYGON))

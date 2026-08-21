@@ -355,8 +355,9 @@ def test_pre_label_names_every_class_it_leaves_out_and_why(
 ) -> None:
     """A class absent from the prompt is visibly absent, with the reason beside it.
 
-    `crossing` carries both reasons: told only that it admits no box, somebody
-    adds one and watches it stay absent from the next run.
+    `crossing` carries both reasons: told only that it admits no shape this
+    model produces, somebody adds one and watches it stay absent from the next
+    run.
     """
     batch = _mixed_schema_batch(root, tmp_path)
 

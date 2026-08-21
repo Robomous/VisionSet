@@ -181,8 +181,8 @@ class PreLabelExcludedClass:
     """One class a run will not ask for, and every reason it will not.
 
     ``reasons`` is a sequence rather than a single value because both can hold
-    at once, and a caller told only the first would add ``bbox`` to a class and
-    watch it stay silently absent.
+    at once, and a caller told only the first would add the shape to a class
+    and watch it stay silently absent.
     """
 
     name: str
