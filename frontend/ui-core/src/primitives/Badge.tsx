@@ -21,7 +21,9 @@ import type { HTMLAttributes, JSX, ReactNode } from "react";
 import { cn } from "../lib/cn";
 
 export const badgeVariants = cva(
-  "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-xs font-medium",
+  "inline-flex h-5 w-fit shrink-0 items-center gap-1 rounded-4xl border px-2 py-0.5 text-xs font-medium " +
+    "whitespace-nowrap focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 " +
+    "[&>svg]:size-3!",
   {
     variants: {
       variant: {

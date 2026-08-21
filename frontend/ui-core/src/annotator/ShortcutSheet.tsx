@@ -224,7 +224,7 @@ export function ShortcutSheet({ open, onOpenChange, registry }: ShortcutSheetPro
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-testid="shortcut-sheet"
-        className="max-h-[80vh] max-w-xl overflow-y-auto"
+        className="max-h-[80vh] sm:max-w-xl overflow-y-auto"
         // `?` closes it again, which is what "toggle" means. Escape is Radix's
         // own and needs nothing here; `?` does, because while the sheet is open
         // the annotator no longer holds focus and never sees the key.

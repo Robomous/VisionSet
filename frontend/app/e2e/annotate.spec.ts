@@ -13,7 +13,14 @@
 
 import { expect, test, type Page, type Request } from "@playwright/test";
 import { assetActions, batchActions, jobActions } from "./_wire";
-import { expectNothingToSave, expectProgress, openOverflow, saveNow, zoomWheel } from "./_frame";
+import {
+  closeOverflow,
+  expectNothingToSave,
+  expectProgress,
+  openOverflow,
+  saveNow,
+  zoomWheel,
+} from "./_frame";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -624,9 +631,13 @@ test("both reabsorbable controls are on the bar again at 1440", async ({ page })
   await expect(page.getByTestId("menu-save")).toHaveCount(0);
 
   // The squash that reported the overflow before it was visible: `more-actions`
-  // measured 16px against its declared 36 while the zone was over-subscribed.
+  // measured 16px against its declared size while the zone was over-subscribed.
+  // The floor is Nova's `icon` size, `size-8` — 32px, where the pre-Nova button
+  // stood at 36 — and it is a floor rather than an equality because what is being
+  // caught is a control compressed below its own declared box, at whatever that
+  // box currently is.
   const overflow = (await page.getByTestId("more-actions").boundingBox())!;
-  expect(overflow.width).toBeGreaterThanOrEqual(36);
+  expect(overflow.width).toBeGreaterThanOrEqual(32);
 });
 
 test("the cluster is the same width whichever resolution verb the frame offers", async ({
@@ -1704,6 +1715,13 @@ test("no drag lifts the picture, and the tool's own gesture survives the attempt
   await page.mouse.up();
   expect(await nativeDrags(page)).toBe(0);
   await page.keyboard.press("Escape");
+  // Waited for, not fired and forgotten. Nova's overlay animates out over
+  // `duration-100`, so Radix holds the gallery mounted for a beat after `Escape`
+  // and hands focus back to `open-gallery` when it finally goes — which, without
+  // this, lands *after* the `focus()` below and steals it, so the digit arms
+  // nothing and the drag draws nothing. Every other `Escape` in this file is
+  // already followed by the same kind of assertion; this one was the exception.
+  await expect(page.getByTestId("frame-gallery")).toHaveCount(0);
 
   // The interaction state came through the attempts untouched: the next
   // gesture is an ordinary draw and it lands.
@@ -2279,15 +2297,15 @@ test("what is drawn on the surround stays legible against it", async ({ page }) 
 /**
  * The space between a tab bar and its content must not be applied twice.
  *
- * A `flex flex-col gap-3` around `TabsContent`, which carries its own
- * `mt-3`, adds — so the tabs float 24px above
- * the content they switch, about twice what the rhythm asks for.
+ * A `flex flex-col gap-3` around a `TabsContent` that carried its own margin
+ * adds — so the tabs float 24px above the content they switch, about twice what
+ * the rhythm asks for.
  *
- * The rule is now that **the primitive owns it**: `TabsContent`'s margin is the
- * one declaration, and a consumer adds no gap of its own. That direction rather
- * than the other because it makes the primitive self-sufficient — a `Tabs` that
- * is not a flex column at all still spaces correctly, and a consumer cannot
- * forget something it never had to know.
+ * The rule is still that **the primitive owns it**, and it is now the `Tabs`
+ * root's own `gap-2` — Nova's 8px — instead of a margin on the panel: the
+ * container spaces its children once, which is a declaration that cannot be
+ * doubled by a second one two elements away. A consumer adds no gap of its own
+ * either way, and cannot forget something it never had to know.
  *
  * The annotator's panel has no tabs, so what is left to
  * measure is the project view — the same doubling is possible wherever a `Tabs`
@@ -2316,7 +2334,7 @@ test("the project view's tabs use the same one rule", async ({ page }) => {
   // tidy-up from adding a gap here and rediscovering the doubling on a different
   // screen.
   await expect(page.getByTestId("project-tabs")).toBeVisible();
-  expect(await tabGap(page, "project-tabs")).toBeCloseTo(12, 0);
+  expect(await tabGap(page, "project-tabs")).toBeCloseTo(8, 0);
 });
 
 /**
@@ -2624,7 +2642,7 @@ test("a frame goes out for review, comes back, and is accepted the second time",
   // send back, so the menu must not offer the reviewer's "no".
   await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await closeOverflow(page);
 
   await page.getByTestId("submit-for-review").click();
   // Settling advances, because the person is finished with this frame.
@@ -2637,7 +2655,7 @@ test("a frame goes out for review, comes back, and is accepted the second time",
   await expectProgress(page, "review_pending");
   await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toBeVisible();
-  await page.keyboard.press("Escape");
+  await closeOverflow(page);
   await expect(page.getByTestId("accept")).toBeVisible();
   await expect(page.getByTestId("submit-for-review")).toHaveCount(0);
   // `review_pending` is not in `WRITABLE_PROGRESS`, so the frame is read-only —
@@ -2666,7 +2684,7 @@ test("a frame goes out for review, comes back, and is accepted the second time",
   await expect(page.getByTestId("submit-for-review")).toHaveCount(0);
   await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await closeOverflow(page);
   await expect(page.getByTestId("readonly-banner")).toContainText(/correction batch/i);
 });
 
@@ -2681,7 +2699,7 @@ test("an unannotated frame is not offered to a reviewer at all", async ({ page }
   await expect(page.getByTestId("accept")).toHaveCount(0);
   await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await closeOverflow(page);
 });
 
 test("a refused review move says why, like every other one", async ({ page }) => {

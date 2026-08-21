@@ -293,9 +293,35 @@ export async function expectProgress(page: Page, progress: string): Promise<void
  *
  * Radix closes the menu on select, so a scenario pressing two of these opens it
  * twice. That is the product's behaviour and not a harness quirk.
+ *
+ * The menu is waited for rather than assumed: the trigger *toggles*, so a press
+ * that arrives while the previous menu is still leaving is read as a dismiss
+ * instead of an open (see {@link closeOverflow}). Waiting here is what makes that
+ * fail as "the menu did not open" rather than as a missing item three lines later.
  */
 export async function openOverflow(page: Page): Promise<void> {
   await page.getByTestId("more-actions").click();
+  await expect(page.getByRole("menu")).toBeVisible();
+}
+
+/**
+ * Escape out of the overflow menu, and wait until it has actually left.
+ *
+ * Nova's menu surface animates out (`data-closed:animate-out` over `duration-100`),
+ * which means Radix keeps the content — and its dismissable layer — mounted for a
+ * beat after `open` goes false. A press on the trigger inside that beat hits both
+ * handlers at once: the trigger toggles the menu open, and the still-listening
+ * layer reads the same pointer-down as an interaction *outside* itself and
+ * dismisses. The two cancel, and the menu never appears — which is exactly what
+ * reopening the overflow straight after an `Escape` used to run into.
+ *
+ * So the close is a state to wait on, not a keystroke to fire and forget. The wait
+ * is on the menu leaving the DOM, which is also the assertion that `Escape` closed
+ * it at all — no clock anywhere, per `tests/scripts/e2e_discipline.test.mjs`.
+ */
+export async function closeOverflow(page: Page): Promise<void> {
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
 }
 
 /**

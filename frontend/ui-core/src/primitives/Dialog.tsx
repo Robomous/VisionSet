@@ -14,7 +14,7 @@
  */
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
+import { IconX } from "@tabler/icons-react";
 import {
   forwardRef,
   type ComponentPropsWithoutRef,
@@ -30,7 +30,9 @@ export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 export const DialogPortal = DialogPrimitive.Portal;
 
-const OVERLAY = "fixed inset-0 z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs";
+const OVERLAY =
+  "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs " +
+  "data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0";
 
 export const DialogOverlay = forwardRef<
   ElementRef<typeof DialogPrimitive.Overlay>,
@@ -49,8 +51,10 @@ export const DialogContent = forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 flex w-full max-w-lg -translate-x-1/2 -translate-y-1/2 " +
-            "flex-col gap-4 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 " +
+            "gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 " +
+            "duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 " +
+            "data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className,
         )}
         {...props}
@@ -58,9 +62,13 @@ export const DialogContent = forwardRef<
         {children}
         <DialogPrimitive.Close
           aria-label="Close"
-          className="absolute right-4 top-4 rounded-sm text-muted-foreground hover:text-foreground"
+          className={
+            "absolute top-2 right-2 inline-flex size-7 items-center justify-center rounded-lg " +
+            "text-muted-foreground outline-none transition-all hover:bg-muted hover:text-foreground " +
+            "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:hover:bg-muted/50"
+          }
         >
-          <X className="size-4" aria-hidden="true" />
+          <IconX className="size-4" aria-hidden="true" />
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
     </DialogPortal>
@@ -74,7 +82,7 @@ export const DialogTitle = forwardRef<
   return (
     <DialogPrimitive.Title
       ref={ref}
-      className={cn("text-base font-semibold", className)}
+      className={cn("font-heading text-base leading-none font-medium", className)}
       {...props}
     />
   );
@@ -87,7 +95,10 @@ export const DialogDescription = forwardRef<
   return (
     <DialogPrimitive.Description
       ref={ref}
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn(
+        "text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+        className,
+      )}
       {...props}
     />
   );
@@ -97,7 +108,15 @@ export function DialogFooter({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>): JSX.Element {
-  return <div className={cn("flex justify-end gap-2", className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 /** The sheet: the same dialog, anchored to an edge. `DESIGN.md`'s 12px radius. */

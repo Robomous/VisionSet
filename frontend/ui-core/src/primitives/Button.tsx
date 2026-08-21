@@ -18,27 +18,30 @@ import { forwardRef, type ButtonHTMLAttributes } from "react";
 
 import { cn } from "../lib/cn";
 
-/**
- * The fill a disabled control wears.
- *
- * Nova's disabled idiom is uniform 50% opacity rather than a colour swap: the
- * button dims as itself instead of putting on a separate neutral skin, so
- * "unavailable" reads as the same control turned down rather than as a
- * different, greyed-out component.
- *
- * `pointer-events-none` is what keeps every `hover:` above from firing here.
- */
-const DISABLED_FILLED = "disabled:pointer-events-none disabled:opacity-50";
-
 export const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium " +
-    "transition-colors disabled:pointer-events-none " +
-    "[&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent " +
+    "bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none " +
+    "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 " +
+    // A `haspopup` trigger's own menu opening *is* its press feedback; every
+    // other button nudges down a pixel so a click reads as physically taken.
+    "active:not-aria-[haspopup]:translate-y-px " +
+    // Nova's disabled idiom is uniform 50% opacity rather than a colour swap,
+    // and — unlike the previous per-variant treatment — it now lives on the
+    // base string, so every variant dims as itself instead of putting on a
+    // separate neutral skin. `pointer-events-none` is what keeps every
+    // `hover:` above from firing here.
+    "disabled:pointer-events-none disabled:opacity-50 " +
+    "aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 " +
+    "dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 " +
+    "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        primary: `bg-primary text-primary-foreground hover:bg-primary/80 ${DISABLED_FILLED}`,
-        secondary: `border border-input bg-card text-foreground hover:bg-muted ${DISABLED_FILLED}`,
+        primary: "bg-primary text-primary-foreground hover:bg-primary/80",
+        secondary:
+          "border-border bg-background hover:bg-muted hover:text-foreground " +
+          "aria-expanded:bg-muted aria-expanded:text-foreground " +
+          "dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         /**
          * The second filled weight, and it has exactly one sanctioned caller:
          * the annotation editor's `Save and stay` (`DESIGN.md`, *One filled
@@ -51,24 +54,28 @@ export const buttonVariants = cva(
          * gesture sit side by side, which is a shape the rest of the product
          * does not have.
          */
-        success: `bg-success text-success-foreground hover:bg-success/90 ${DISABLED_FILLED}`,
+        success: "bg-success text-success-foreground hover:bg-success/80",
         ghost:
-          "text-muted-foreground hover:bg-muted hover:text-foreground " +
-          // No fill: a ghost has none to grey out, and giving it one on the way
-          // out would make it appear rather than recede.
-          "disabled:opacity-50",
+          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground " +
+          "dark:hover:bg-muted/50",
         // Nova's soft destructive: a tinted background and ink rather than a
         // solid fill, so the one variant that can end something does not read
         // as loud as `primary`.
-        destructive: `bg-destructive/10 text-destructive hover:bg-destructive/20 ${DISABLED_FILLED}`,
-        link: "text-foreground underline underline-offset-4 hover:text-primary disabled:opacity-50",
+        destructive:
+          "bg-destructive/10 text-destructive hover:bg-destructive/20 " +
+          "focus-visible:border-destructive/40 focus-visible:ring-destructive/20 " +
+          "dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+        link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        sm: "h-8 px-3 text-xs",
-        md: "h-9 px-4 text-sm",
-        lg: "h-10 px-6 text-sm",
-        // 36px square — the tool strip's size, and `DESIGN.md`'s.
-        icon: "size-9 p-0",
+        xs: "h-6 gap-1 px-2 text-xs [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-7 gap-1 px-2.5 text-[0.8rem] [&_svg:not([class*='size-'])]:size-3.5",
+        md: "h-8 gap-1.5 px-2.5",
+        lg: "h-9 gap-1.5 px-2.5",
+        // 32px square — Nova's icon-button contract.
+        icon: "size-8 p-0",
+        "icon-xs": "size-6 p-0 [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm": "size-7 p-0",
       },
     },
     defaultVariants: { variant: "secondary", size: "md" },
@@ -90,6 +97,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   return (
     <Component
       ref={ref}
+      data-slot="button"
+      data-variant={variant ?? "secondary"}
+      data-size={size ?? "md"}
       // A `<button>` inside a form defaults to `submit`, which is how a "Cancel"
       // ends up posting one. Only defaulted for a real button — `asChild` may be
       // rendering an `<a>`, where the attribute means something else entirely.
