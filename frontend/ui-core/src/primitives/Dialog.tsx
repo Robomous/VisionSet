@@ -16,7 +16,13 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { IconX } from "@tabler/icons-react";
 import {
+  createContext,
   forwardRef,
+  useCallback,
+  useContext,
+  useId,
+  useLayoutEffect,
+  useState,
   type ComponentPropsWithoutRef,
   type ElementRef,
   type HTMLAttributes,
@@ -26,6 +32,25 @@ import {
 import { cn } from "../lib/cn";
 
 export const Dialog = DialogPrimitive.Root;
+
+/*
+ * Radix mints one description id per dialog root: every `Description` renders it
+ * and `Content` points `aria-describedby` at it, so a dialog with two
+ * descriptions has duplicate ids and a screen reader hears only the first. Each
+ * description here carries its own id and registers it with the enclosing
+ * content, which describes itself by all of them.
+ */
+type RegisterDescription = (id: string) => () => void;
+const DescriptionRegistry = createContext<RegisterDescription | null>(null);
+
+function useDescribedBy(): { readonly describedBy: string | undefined; readonly register: RegisterDescription } {
+  const [ids, setIds] = useState<readonly string[]>([]);
+  const register = useCallback<RegisterDescription>((id) => {
+    setIds((previous) => [...previous, id]);
+    return () => setIds((previous) => previous.filter((known) => known !== id));
+  }, []);
+  return { describedBy: ids.length > 0 ? ids.join(" ") : undefined, register };
+}
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 export const DialogPortal = DialogPrimitive.Portal;
@@ -45,11 +70,13 @@ export const DialogContent = forwardRef<
   ElementRef<typeof DialogPrimitive.Content>,
   ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(function DialogContent({ className, children, ...props }, ref) {
+  const { describedBy, register } = useDescribedBy();
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
         ref={ref}
+        aria-describedby={describedBy}
         className={cn(
           "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 " +
             "gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 " +
@@ -59,7 +86,7 @@ export const DialogContent = forwardRef<
         )}
         {...props}
       >
-        {children}
+        <DescriptionRegistry.Provider value={register}>{children}</DescriptionRegistry.Provider>
         <DialogPrimitive.Close
           aria-label="Close"
           className={
@@ -92,9 +119,13 @@ export const DialogDescription = forwardRef<
   ElementRef<typeof DialogPrimitive.Description>,
   ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
 >(function DialogDescription({ className, ...props }, ref) {
+  const id = useId();
+  const register = useContext(DescriptionRegistry);
+  useLayoutEffect(() => register?.(id), [register, id]);
   return (
     <DialogPrimitive.Description
       ref={ref}
+      id={id}
       className={cn(
         "text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
         className,
@@ -133,11 +164,13 @@ export const SheetContent = forwardRef<
   ElementRef<typeof DialogPrimitive.Content>,
   SheetContentProps
 >(function SheetContent({ className, side = "right", children, ...props }, ref) {
+  const { describedBy, register } = useDescribedBy();
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
         ref={ref}
+        aria-describedby={describedBy}
         className={cn(
           "fixed inset-y-0 z-50 flex w-full max-w-sm flex-col gap-4 border-border bg-popover p-6 shadow-lg",
           side === "right" ? "right-0 border-l" : "left-0 border-r",
@@ -145,7 +178,7 @@ export const SheetContent = forwardRef<
         )}
         {...props}
       >
-        {children}
+        <DescriptionRegistry.Provider value={register}>{children}</DescriptionRegistry.Provider>
       </DialogPrimitive.Content>
     </DialogPortal>
   );

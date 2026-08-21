@@ -161,6 +161,14 @@ function on(method: string, pattern: RegExp, answer: { status: number; body?: un
   );
 }
 
+/** The text of every element a dialog's `aria-describedby` reaches. */
+function describedBy(dialog: HTMLElement): readonly (string | null)[] {
+  return (dialog.getAttribute("aria-describedby") ?? "")
+    .split(" ")
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent ?? null);
+}
+
 function mount(node: ReactNode): JSX.Element {
   return (
     <ApiProvider
@@ -874,6 +882,9 @@ describe("the schema editor", () => {
     const dialog = await screen.findByTestId("destructive-dialog");
     expect(dialog.textContent).toContain("lane");
     expect(dialog.textContent).not.toContain("internal wording must not appear");
+    // Three descriptions, and a screen reader reaches all three — not only the first.
+    expect(describedBy(dialog)).toHaveLength(3);
+    expect(describedBy(dialog).join(" ")).toContain("A batch still open on the current version");
     // The blast radius, counted: DESIGN.md requires a confirmation to name what
     // it costs. `blockers` is empty on every preview that reaches this dialog,
     // so the zero is measured rather than assumed.
@@ -1097,6 +1108,8 @@ describe("the schema editor", () => {
     const dialog = await screen.findByTestId("orphan-dialog");
     expect(dialog.textContent).toContain("12 annotations");
     expect(dialog.textContent).toContain("3 assets");
+    expect(describedBy(dialog)).toHaveLength(2);
+    expect(describedBy(dialog).join(" ")).toContain("There is no override for this one");
     // What was asked, in the kernel's words — the only place a re-casing is told
     // apart from a removal. Additive changes stay out of a refusal.
     expect(

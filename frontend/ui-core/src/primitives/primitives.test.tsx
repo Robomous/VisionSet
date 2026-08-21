@@ -20,6 +20,7 @@ import { describe, expect, it } from "vitest";
 import { Alert, Badge } from "./Badge";
 import { Button } from "./Button";
 import { Card, CardTitle } from "./Card";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./Dialog";
 import { Progress } from "./Feedback";
 import { FieldError, Input, Label } from "./Input";
 import {
@@ -262,5 +263,37 @@ describe("Progress", () => {
     expect(screen.getByRole("progressbar", { name: "Ingest" }).getAttribute("aria-valuenow")).toBe(
       "42",
     );
+  });
+});
+
+describe("Dialog", () => {
+  function Described({ second }: { readonly second: boolean }): JSX.Element {
+    return (
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Narrowing</DialogTitle>
+          <DialogDescription>one class narrows</DialogDescription>
+          {second ? <DialogDescription>nothing becomes invalid</DialogDescription> : null}
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  function describedBy(dialog: HTMLElement): readonly (string | null)[] {
+    return (dialog.getAttribute("aria-describedby") ?? "")
+      .split(" ")
+      .filter(Boolean)
+      .map((id) => document.getElementById(id)?.textContent ?? null);
+  }
+
+  it("points aria-describedby at every description, each under its own id", () => {
+    const { rerender } = render(<Described second />);
+    const dialog = screen.getByRole("dialog");
+    expect(describedBy(dialog)).toEqual(["one class narrows", "nothing becomes invalid"]);
+    const ids = Array.from(dialog.querySelectorAll("p")).map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    rerender(<Described second={false} />);
+    expect(describedBy(dialog)).toEqual(["one class narrows"]);
   });
 });
