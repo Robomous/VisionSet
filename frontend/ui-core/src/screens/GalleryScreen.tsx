@@ -36,7 +36,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Check, Eye, PlayCircle, SkipForward, Trash2, Undo2, X } from "lucide-react";
+import { Check, Eraser, Eye, PlayCircle, SkipForward, Trash2, Undo2, X } from "lucide-react";
 
 import { Async } from "../data/Async";
 import { readStep, writePref } from "../data/prefs";
@@ -98,6 +98,7 @@ import {
   useBatchAssets,
   useBatchJobs,
   useBatches,
+  useBulkDiscardModelLabels,
   useBulkSetProgress,
   useProject,
   useRemoveBatchAssets,
@@ -1427,8 +1428,10 @@ function BulkBar({
   readonly onClear: () => void;
 }): JSX.Element | null {
   const bulk = useBulkSetProgress(batchId);
+  const discard = useBulkDiscardModelLabels(batchId);
   const remove = useRemoveBatchAssets(batchId);
   const [confirming, setConfirming] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const batchState = batch?.state;
   // A job id is null exactly while the batch is a draft, and a draft renders no
   // selection at all — so this filter is about the *frames*, not about the state.
@@ -1439,6 +1442,10 @@ function BulkBar({
   const skippable = targets(ASSET_ACTION.skip);
   const restorable = targets(ASSET_ACTION.restore);
   const returnable = targets(ASSET_ACTION.returnToAnnotator);
+  const confirmable = targets(ASSET_ACTION.confirm);
+  const discardable = declaring(chosen, ASSET_ACTION.annotate)
+    .filter((one) => one.progress === "pre_labeled")
+    .map((one) => ({ jobId: one.job_id ?? "", assetId: one.id }));
 
   /**
    * Why nothing here can be pressed, when nothing can.
@@ -1533,6 +1540,30 @@ function BulkBar({
         {bulk.isPending ? "Working…" : `Return to annotator (${returnable.length})`}
       </Button>
 
+      <Button
+        variant="secondary"
+        size="sm"
+        data-testid="bulk-confirm"
+        disabled={confirmable.length === 0 || bulk.isPending}
+        {...(withheld === null ? {} : { title: withheld })}
+        onClick={() => bulk.mutate({ targets: confirmable, progress: "annotated" })}
+      >
+        <Check className="size-4" aria-hidden="true" />
+        {bulk.isPending ? "Working…" : `Confirm labels (${confirmable.length})`}
+      </Button>
+
+      <Button
+        variant="secondary"
+        size="sm"
+        data-testid="bulk-discard"
+        disabled={discardable.length === 0 || discard.isPending}
+        {...(withheld === null ? {} : { title: withheld })}
+        onClick={() => setDiscarding(true)}
+      >
+        <Eraser className="size-4" aria-hidden="true" />
+        {discard.isPending ? "Discarding…" : `Discard model labels (${discardable.length})`}
+      </Button>
+
       {/*
         Batch-level, so it is enabled or disabled for the whole selection rather
         than counting targets like the two above. Disabled-with-reason rather
@@ -1590,6 +1621,24 @@ function BulkBar({
           {refusalProse(bulk.error)}
         </span>
       )}
+      {discard.isSuccess && discard.data.refusals.length === 0 && (
+        <span className="text-xs text-muted-foreground" data-testid="bulk-discarded">
+          Discarded the model's labels on {discard.data.discarded} frame{discard.data.discarded === 1 ? "" : "s"}.
+        </span>
+      )}
+      {discard.isSuccess && discard.data.refusals.length > 0 && (
+        <span className="text-xs text-destructive" data-testid="bulk-partial">
+          {discard.data.discarded} discarded,{" "}
+          {groupRefusals(discard.data.refusals)
+            .map((group) => `${group.count} refused: ${group.prose}`)
+            .join(" ")}
+        </span>
+      )}
+      {discard.isError && (
+        <span className="text-xs text-destructive" data-testid="bulk-error">
+          {refusalProse(discard.error)}
+        </span>
+      )}
       {/*
         Said once, and only when it is the whole story — but which story it is
         depends on whether the *batch* is closed or the *frames* are settled.
@@ -1598,9 +1647,13 @@ function BulkBar({
         completed batch is a different sentence with a different remedy, and
         running them together is what made a closed batch read as a broken bar.
       */}
-      {skippable.length === 0 && restorable.length === 0 && returnable.length === 0 && (
+      {skippable.length === 0 &&
+        restorable.length === 0 &&
+        returnable.length === 0 &&
+        confirmable.length === 0 &&
+        discardable.length === 0 && (
         <span className="text-xs text-muted-foreground" data-testid="bulk-unavailable">
-          {withheld ?? "Nothing here can be skipped, restored or returned to the annotator."}
+          {withheld ?? "Nothing here can be skipped, restored, confirmed, discarded or returned to the annotator."}
           {/*
             The sentence says "corrections happen in a correction batch" and
             points at the header's control, and the selection this bar is
@@ -1643,6 +1696,19 @@ function BulkBar({
             .mutateAsync(removalIds)
             .then(() => setConfirming(false))
             .catch(() => setConfirming(false));
+        }}
+      />
+
+      <DiscardModelLabelsDialog
+        open={discarding}
+        count={discardable.length}
+        pending={discard.isPending}
+        onCancel={() => setDiscarding(false)}
+        onConfirm={() => {
+          discard
+            .mutateAsync(discardable)
+            .then(() => setDiscarding(false))
+            .catch(() => setDiscarding(false));
         }}
       />
     </div>
@@ -1697,6 +1763,43 @@ function RemoveFromBatchDialog({
           </Button>
           <Button variant="destructive" onClick={onConfirm} disabled={pending} data-testid="remove-confirm">
             {pending ? "Removing…" : "Remove from batch"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DiscardModelLabelsDialog({
+  open,
+  count,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  readonly open: boolean;
+  readonly count: number;
+  readonly pending: boolean;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}): JSX.Element {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onCancel()}>
+      <DialogContent data-testid="discard-dialog">
+        <DialogTitle>
+          Discard the model's labels on {count} frame{count === 1 ? "" : "s"}?
+        </DialogTitle>
+        <DialogDescription>
+          This deletes every label the model wrote on them and cannot be undone — a pre-labeling
+          run does not repeat over a frame it has already labeled. The frames go back to
+          unannotated.
+        </DialogDescription>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onCancel} data-testid="discard-cancel">
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={pending} data-testid="discard-confirm">
+            {pending ? "Discarding…" : "Discard model labels"}
           </Button>
         </DialogFooter>
       </DialogContent>

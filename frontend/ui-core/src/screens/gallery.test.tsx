@@ -1225,6 +1225,90 @@ describe("the bulk bar", () => {
       }));
   }
 
+  function annotationItem(id: string): Record<string, unknown> {
+    return {
+      id,
+      asset_id: "asset-0",
+      label_class: "vehicle",
+      schema_version: 1,
+      geometry: { type: "bbox", x: 10, y: 10, width: 20, height: 20 },
+      attributes: {},
+      provenance: "model",
+      model_ref: "some/model@abc123",
+      confidence: 0.9,
+      job_id: JOB,
+    };
+  }
+
+  /**
+   * `unshift`, not `on`: `withBatch` has already installed a 200 for this path
+   * (see `withFrames`), and handlers are consulted in registration order.
+   */
+  function stubAnnotations(items: readonly Record<string, unknown>[]): void {
+    handlers.unshift((request) =>
+      request.method === "GET" && /\/annotations$/.test(new URL(request.url).pathname)
+        ? { status: 200, body: { total: items.length, items } }
+        : undefined,
+    );
+  }
+
+  it("offers Confirm labels for exactly the frames that declare it", async () => {
+    await withFrames("pre_labeled", "pre_labeled", "annotated", "unannotated");
+    selectAll(4);
+
+    expect(screen.getByTestId("bulk-confirm").textContent).toContain("(2)");
+    fireEvent.click(screen.getByTestId("bulk-confirm"));
+
+    await waitFor(() =>
+      expect(sentProgress()).toEqual([
+        { path: `/jobs/${JOB}/assets/asset-0/progress`, progress: "annotated" },
+        { path: `/jobs/${JOB}/assets/asset-1/progress`, progress: "annotated" },
+      ]),
+    );
+  });
+
+  it("discards the model's labels only after asking, and says what it deleted", async () => {
+    await withFrames("pre_labeled", "pre_labeled", "annotated");
+    stubAnnotations([annotationItem("m-1"), annotationItem("m-2")]);
+    on("DELETE", /\/jobs\/[^/]+\/annotations$/, { status: 204, body: null });
+    selectAll(3);
+
+    expect(screen.getByTestId("bulk-discard").textContent).toContain("(2)");
+    fireEvent.click(screen.getByTestId("bulk-discard"));
+    expect(screen.getByTestId("discard-dialog").textContent).toMatch(/cannot be undone/i);
+    fireEvent.click(screen.getByTestId("discard-confirm"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("bulk-discarded").textContent).toContain(
+        "Discarded the model's labels on 2 frames",
+      ),
+    );
+    const deletes = sent.filter((one) => one.method === "DELETE");
+    expect(deletes).toHaveLength(1);
+    expect(new URL(deletes[0]!.url).searchParams.getAll("id")).toEqual(["m-1", "m-2", "m-1", "m-2"]);
+  });
+
+  it("reports a discard the kernel refused, with the reason", async () => {
+    await withFrames("pre_labeled");
+    stubAnnotations([annotationItem("m-1")]);
+    on("DELETE", /\/jobs\/[^/]+\/annotations$/, {
+      status: 409,
+      body: { code: "ASSET_NOT_WRITABLE", message: "not writable", detail: null },
+    });
+    selectAll(1);
+    fireEvent.click(screen.getByTestId("bulk-discard"));
+    fireEvent.click(screen.getByTestId("discard-confirm"));
+
+    await waitFor(() => expect(screen.getByTestId("bulk-partial").textContent).toMatch(/1 refused/));
+  });
+
+  it("offers neither confirm nor discard on a selection with no model-labeled frame", async () => {
+    await withFrames("annotated", "skipped");
+    selectAll(2);
+    expect((screen.getByTestId("bulk-confirm") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("bulk-discard") as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("counts a skip only for the frames that can take one", async () => {
     await withFrames("skipped", "unannotated", "annotated", "accepted");
     selectAll(4);
@@ -1317,9 +1401,11 @@ describe("the bulk bar", () => {
     expect((screen.getByTestId("bulk-skip") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId("bulk-restore") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId("bulk-return") as HTMLButtonElement).disabled).toBe(true);
-    // Said once, where three zeroes on three buttons would just look broken.
+    expect((screen.getByTestId("bulk-confirm") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("bulk-discard") as HTMLButtonElement).disabled).toBe(true);
+    // Said once, where five zeroes on five buttons would just look broken.
     expect(screen.getByTestId("bulk-unavailable").textContent).toContain(
-      "skipped, restored or returned to the annotator",
+      "skipped, restored, confirmed, discarded or returned to the annotator",
     );
   });
 

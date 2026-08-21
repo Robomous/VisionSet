@@ -43,6 +43,7 @@ import {
   checkCompareSchemaVersions,
   checkCreateSchemaVersion,
   checkDatasetStats,
+  checkDeleteAnnotations,
   checkDeleteBatch,
   checkDeleteProject,
   checkDiscardSchemaDraft,
@@ -59,6 +60,7 @@ import {
   checkGetSchemaDraft,
   checkGetSource,
   checkGetReleaseManifest,
+  checkListAssetAnnotations,
   checkListBatchAssets,
   checkListBatchJobs,
   checkListBatches,
@@ -1333,6 +1335,74 @@ export function useBulkSetProgress(batchId: string) {
       // assets, and a screen showing the old value for those is a counter that
       // did not move. Both keys, because the counts live on the batch and the per-asset
       // state lives in the listing.
+      void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
+      void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
+    },
+  });
+}
+
+export interface BulkDiscardResult {
+  readonly discarded: number;
+  readonly refusals: readonly Refusal[];
+}
+
+/**
+ * Throw away the model's labels on the selected frames.
+ *
+ * Read-then-delete through routes that already exist: one `GET` per frame for the
+ * ids, then one all-or-nothing `DELETE` per job. Progress derives to `unannotated`
+ * by the kernel's own rule when the last label goes; nothing here decides state.
+ * A frame whose read or whose job's delete is refused is counted as a refusal,
+ * one per frame, so the grouped report reads in frames.
+ */
+export function useBulkDiscardModelLabels(batchId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      targets: readonly { readonly jobId: string; readonly assetId: string }[],
+    ): Promise<BulkDiscardResult> => {
+      const refusals: Refusal[] = [];
+      const perJob = new Map<string, { frames: number; ids: string[] }>();
+      for (const target of targets) {
+        try {
+          const page = unwrap(
+            await client.GET("/jobs/{job_id}/assets/{asset_id}/annotations", {
+              params: { path: { job_id: target.jobId, asset_id: target.assetId } },
+            }),
+            checkListAssetAnnotations,
+          );
+          const ids = page.items.filter((one) => one.provenance === "model").map((one) => one.id);
+          const bucket = perJob.get(target.jobId) ?? { frames: 0, ids: [] };
+          bucket.frames += 1;
+          bucket.ids.push(...ids);
+          perJob.set(target.jobId, bucket);
+        } catch (cause) {
+          const error = asApiError(cause);
+          refusals.push({ code: error.code, message: error.message });
+        }
+      }
+      let discarded = 0;
+      for (const [jobId, bucket] of perJob) {
+        if (bucket.ids.length === 0) continue;
+        try {
+          unwrap(
+            await client.DELETE("/jobs/{job_id}/annotations", {
+              params: { path: { job_id: jobId }, query: { id: bucket.ids } },
+            }),
+            checkDeleteAnnotations,
+          );
+          discarded += bucket.frames;
+        } catch (cause) {
+          const error = asApiError(cause);
+          for (let at = 0; at < bucket.frames; at += 1) {
+            refusals.push({ code: error.code, message: error.message });
+          }
+        }
+      }
+      return { discarded, refusals };
+    },
+    onSettled: () => {
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
     },
