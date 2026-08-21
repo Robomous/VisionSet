@@ -973,6 +973,13 @@ def test_a_project_with_no_open_batch_is_refused_by_name(prelabel_fixture: Fixtu
         select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id)
 
 
+def test_an_explicitly_empty_selection_is_refused_by_its_own_sentence(
+    prelabel_fixture: Fixture,
+) -> None:
+    with pytest.raises(BatchNotInAnnotation, match="no batch named"):
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, [])
+
+
 def test_an_unknown_project_is_not_found(prelabel_fixture: Fixture) -> None:
     with pytest.raises(ProjectNotFound):
         select_pre_labelable(prelabel_fixture.workspace, uuid4())
@@ -986,9 +993,7 @@ def test_a_selected_batch_with_no_detectable_class_is_refused_by_name(
     prelabel_fixture.schemas.create_version(
         prelabel_fixture.project.id, [LANE], allow_destructive=True
     )
-    polygon_only = _second_open_batch(prelabel_fixture, "lanes", seeds=range(20, 22))
+    _second_open_batch(prelabel_fixture, "lanes", seeds=range(20, 22))
 
     with pytest.raises(SchemaHasNoDetectableClass, match="batch 'lanes'"):
         select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id)
-
-    assert polygon_only is not None

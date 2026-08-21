@@ -1318,8 +1318,8 @@ class ProjectPreLabelRequest(BaseModel):
 
     `batch_ids` absent means every batch of the project that is open for
     annotation; present means exactly those — a batch outside the project is
-    404, one not open is 409, and the request is refused whole, never partly
-    launched.
+    404, one not open is 409, an empty list names nothing and is 409 too, and
+    the request is refused whole, never partly launched.
     """
 
     model_config = ConfigDict(extra="forbid")

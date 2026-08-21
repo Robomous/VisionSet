@@ -268,13 +268,18 @@ def select_pre_labelable(
     Raises:
         ProjectNotFound: no such project in this workspace.
         BatchNotFound: a named batch is not in this project.
-        BatchNotInAnnotation: a named batch is not ``in_annotation``, or the
-            project has no open batch at all.
+        BatchNotInAnnotation: a named batch is not ``in_annotation``, the
+            project has no open batch at all, or ``batch_ids`` is an empty list.
         WorkspaceCorrupt: an open batch pinned no schema version.
         SchemaHasNoDetectableClass: a selected batch's pinned schema holds no
             class a detection could be written as.
     """
     project = ProjectService(workspace).get(project_id)
+    if batch_ids is not None and not batch_ids:
+        raise BatchNotInAnnotation(
+            f"no batch named for project {project.name!r}; pass at least one batch id, "
+            "or omit batch_ids to run every batch open for annotation"
+        )
     batches = BatchService(workspace)
     if batch_ids is None:
         selected = [one for one in batches.list(project_id) if one.state in PRE_LABELABLE_STATES]

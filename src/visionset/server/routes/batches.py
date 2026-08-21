@@ -489,9 +489,9 @@ def pre_label_project_batches(
     `INFERENCE_CONNECTION_NOT_SET_UP`, a model that answers places rather than
     words is 422 `UNSUPPORTED_PROMPT`. Then the selection: an unknown project
     is 404 `PROJECT_NOT_FOUND`; a named batch outside this project is 404
-    `BATCH_NOT_FOUND`; a named batch not `in_annotation`, or a project with no
-    open batch at all, is 409 `BATCH_NOT_IN_ANNOTATION`; any selected batch
-    whose pinned schema has no class a box can be written as is 409
+    `BATCH_NOT_FOUND`; a named batch not `in_annotation`, a project with no
+    open batch at all, or an empty `batch_ids`, is 409 `BATCH_NOT_IN_ANNOTATION`;
+    any selected batch whose pinned schema has no class a box can be written as is 409
     `SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message names the batch so the
     caller can leave it out by name and ask again. A partly launched project
     would leave rows the caller was never told about, which is why the whole

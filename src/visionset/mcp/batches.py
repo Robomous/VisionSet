@@ -441,11 +441,11 @@ def pre_label_project(
 
     Refused whole before anything runs, so a call that started has a selection
     every batch of which can run: a named batch outside the project, a named
-    batch that is not open, a project with no open batch, or any selected
-    batch whose pinned schema has no class a box can be written as — the
-    message names that batch so it can be left out by name. Assets in no batch
-    are not reached; cut a batch first (`create_batch`, `approve_batch`,
-    `start_batch`).
+    batch that is not open, an empty `batch_ids`, a project with no open
+    batch, or any selected batch whose pinned schema has no class a box can be
+    written as — the message names that batch so it can be left out by name.
+    Assets in no batch are not reached; cut a batch first (`create_batch`,
+    `approve_batch`, `start_batch`).
 
     Interrupting is as safe as it is for one batch: some prefix of the
     selection is entered, asset by asset, and calling again resumes over what is

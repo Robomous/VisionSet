@@ -749,6 +749,18 @@ def test_a_project_with_no_open_batch_is_409(client: TestClient, draft_batch: Op
     assert "no batch open for annotation" in response.json()["message"]
 
 
+def test_an_empty_batch_list_is_409_by_its_own_sentence(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = _launch(
+        client, in_annotation_batch.project_id, in_annotation_batch.connection_id, batch_ids=[]
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "BATCH_NOT_IN_ANNOTATION"
+    assert "no batch named" in response.json()["message"]
+
+
 def test_one_undetectable_pin_refuses_the_whole_request_naming_the_batch(
     client: TestClient, runner: InlineDispatcher, tmp_path: Path, polygon_only_batch: OpenBatch
 ) -> None:

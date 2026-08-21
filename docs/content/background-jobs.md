@@ -38,9 +38,10 @@ The last three are why the throttled progress below matters: a weight download i
 gigabytes, an integrity check reads every byte of them, and pre-labeling is one
 forward pass per untouched asset, so all three report for minutes rather than
 seconds. `processed` and `total` are counted in **assets** for pre-labeling, where
-the other two count bytes and files. None of the three CLI equivalents queues:
-`visionset inference download`, `visionset inference check-integrity`, and
-`visionset batch pre-label` run their shared bodies inline because a terminal has no worker.
+the other two count bytes and files. None of the four CLI equivalents queues:
+`visionset inference download`, `visionset inference check-integrity`,
+`visionset batch pre-label`, and `visionset project pre-label` run their shared
+bodies inline because a terminal has no worker.
 
 They are also the only three launchers that **join a run instead of starting a
 second one**: asked for a kind this connection or this batch already has queued
