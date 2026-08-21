@@ -1,10 +1,12 @@
-"""The Python half of the annotator's wire gate.
+"""The Python half of the annotator's wire gate, and of the wire-roster gate.
 
-`tests/fixtures/wire_annotations.json` is a committed artifact, and the only
-thing that carries the wire contract across the language boundary: the
-`frontend` CI job installs no Python and reads what is in the repository. Since
-it carries the three inputs an annotator document is built from — an asset, a
-schema and the annotations on that asset — not annotations alone.
+`tests/fixtures/wire_annotations.json` and `tests/fixtures/wire_capabilities.json`
+are committed artifacts, and the only things that carry the kernel's answers
+across the language boundary: the `frontend` CI job installs no Python and reads
+what is in the repository. The first carries the three inputs an annotator
+document is built from — an asset, a schema and the annotations on that asset —
+not annotations alone; the second carries `allowed_actions` per state, which
+`tests/scripts/wire_rosters.test.mjs` holds two hand-written doubles against.
 
 So it needs two independent links, the shape `openapi.json` and its generated
 client already have. This module is the first — the fixture is the
@@ -22,7 +24,8 @@ import json
 from pathlib import Path
 from typing import Any, get_args
 
-from scripts.export_wire_fixtures import OUTPUT_PATH, build_fixture
+import pytest
+from scripts.export_wire_fixtures import OUTPUT_PATH, OUTPUTS
 
 from visionset.kernel.domain import IMPLEMENTED_GEOMETRIES, Attribute, GeometryType
 
@@ -34,9 +37,10 @@ def committed() -> dict[str, Any]:
     return payload
 
 
-def test_the_committed_fixture_matches_the_application() -> None:
-    assert committed() == build_fixture(), (
-        "tests/fixtures/wire_annotations.json is stale — run "
+@pytest.mark.parametrize("relative", list(OUTPUTS))
+def test_the_committed_fixture_matches_the_application(relative: str) -> None:
+    assert json.loads((REPO_ROOT / relative).read_text()) == OUTPUTS[relative](), (
+        f"{relative} is stale — run "
         "`uv run python scripts/export_wire_fixtures.py` and commit the result."
     )
 

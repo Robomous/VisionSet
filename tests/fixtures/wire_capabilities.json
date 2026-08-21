@@ -1,0 +1,56 @@
+{
+  "ASSET_ACTIONS": {
+    "accepted": [],
+    "annotated": [
+      "annotate",
+      "skip",
+      "submit_for_review"
+    ],
+    "pre_labeled": [
+      "annotate",
+      "skip"
+    ],
+    "review_pending": [
+      "accept",
+      "return_to_annotator"
+    ],
+    "skipped": [
+      "restore"
+    ],
+    "unannotated": [
+      "annotate",
+      "skip"
+    ]
+  },
+  "BATCH_ACTIONS": {
+    "approved": [
+      "start",
+      "repin",
+      "delete"
+    ],
+    "completed": [
+      "promote",
+      "create_correction"
+    ],
+    "draft": [
+      "approve",
+      "edit_membership",
+      "delete"
+    ],
+    "in_annotation": [
+      "complete",
+      "repin",
+      "pre_label",
+      "delete"
+    ]
+  },
+  "JOB_ACTIONS": {
+    "completed": [],
+    "in_progress": [
+      "complete"
+    ],
+    "pending": [
+      "start"
+    ]
+  }
+}

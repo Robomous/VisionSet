@@ -1,11 +1,18 @@
-"""Export kernel-produced payloads to tests/fixtures/wire_annotations.json.
+"""Export kernel-produced payloads to tests/fixtures/wire_*.json.
 
-The committed fixture is how the TypeScript annotator proves its hand-written
-mirror of the wire contract still matches this one. It cannot read the Python
-models, and `frontend/annotator` must not depend on `@visionset/ui-core` to
-reach the generated client — that package carries `openapi-fetch` as a runtime
-dependency, and the annotator's contract is "no HTTP, no fetching". So the
-contract travels as bytes, the way `openapi.json` already does.
+Two committed artifacts, one mechanism: the kernel's own answer written as bytes
+so a gate that installs no Python can hold a hand-written transcription against
+it. `wire_annotations.json` is how the TypeScript annotator proves its mirror of
+the wire contract still matches this one; `wire_capabilities.json` is how
+`tests/scripts/wire_rosters.test.mjs` proves the two test doubles of
+`allowed_actions` still say what `kernel/domain/capabilities.py` says — holding
+them only against each other let a member they both lacked pass.
+
+The annotator cannot read the Python models, and `frontend/annotator` must not
+depend on `@visionset/ui-core` to reach the generated client — that package
+carries `openapi-fetch` as a runtime dependency, and the annotator's contract is
+"no HTTP, no fetching". So the contract travels as bytes, the way `openapi.json`
+already does.
 
 Two gates, sharing no toolchain, exactly like the spec and its client:
 `tests/server/test_wire_fixtures.py` keeps this file matching the application;
@@ -26,7 +33,9 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, get_args
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -44,15 +53,22 @@ from tests.fixtures.samples import ANNOTATION, ASSET, GEOMETRIES, SCHEMA_VERSION
 from visionset.kernel.domain import (  # noqa: E402
     IMPLEMENTED_GEOMETRIES,
     Annotation,
+    AnnotationJobState,
     AnnotationSchema,
+    AssetProgress,
     Attribute,
+    BatchState,
     GeometryType,
     LabelClass,
     SchemaProvenance,
+    asset_actions,
+    batch_actions,
+    job_actions,
 )
 from visionset.server.models import AnnotationOut, AssetOut, SchemaVersionOut  # noqa: E402
 
 OUTPUT_PATH = "tests/fixtures/wire_annotations.json"
+CAPABILITIES_PATH = "tests/fixtures/wire_capabilities.json"
 
 # `Annotation.id` defaults to `uuid4()` and `samples.ASSET.id` is one too, so
 # reusing them verbatim would make this file different on every run and the
@@ -178,10 +194,51 @@ def build_fixture() -> dict[str, Any]:
     }
 
 
+def build_capabilities() -> dict[str, dict[str, list[str]]]:
+    """`allowed_actions` per state, as the two test doubles transcribe it.
+
+    The doubles table the open-batch projection — a job inside an `in_annotation`
+    batch with every asset settled, an asset inside an open job — and apply the
+    other dimensions as code, so that is the projection exported. Keyed by the
+    names the rosters carry, so the gate matches roster to answer by name and a
+    roster it cannot match is reported rather than skipped.
+    """
+
+    def names(actions: Iterable[StrEnum]) -> list[str]:
+        return [action.value for action in actions]
+
+    return {
+        "BATCH_ACTIONS": {state.value: names(batch_actions(state)) for state in BatchState},
+        "JOB_ACTIONS": {
+            state.value: names(
+                job_actions(state, batch_state=BatchState.IN_ANNOTATION, progress=[])
+            )
+            for state in AnnotationJobState
+        },
+        "ASSET_ACTIONS": {
+            progress.value: names(
+                asset_actions(
+                    progress,
+                    batch_state=BatchState.IN_ANNOTATION,
+                    job_state=AnnotationJobState.IN_PROGRESS,
+                )
+            )
+            for progress in AssetProgress
+        },
+    }
+
+
+OUTPUTS: dict[str, Callable[[], Any]] = {
+    OUTPUT_PATH: build_fixture,
+    CAPABILITIES_PATH: build_capabilities,
+}
+
+
 def main() -> None:
-    out = REPO_ROOT / OUTPUT_PATH
-    out.write_text(json.dumps(build_fixture(), indent=2, sort_keys=True) + "\n")
-    print(f"wrote {out}")
+    for relative, build in OUTPUTS.items():
+        out = REPO_ROOT / relative
+        out.write_text(json.dumps(build(), indent=2, sort_keys=True) + "\n")
+        print(f"wrote {out}")
 
 
 if __name__ == "__main__":

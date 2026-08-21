@@ -1,34 +1,36 @@
 // Run with: pnpm test:scripts  (also part of the root `pnpm test`)
 //
-// The two transcriptions of the wire's action tables must agree.
+// The two transcriptions of the wire's action tables must agree with the kernel,
+// and with each other.
 //
 // `allowed_actions` is answered by `kernel/domain/capabilities.py`, and two test
 // doubles stand in for that answer:
 //
-//   frontend/ui-core/src/testing/wire.fixtures.ts   rows typed `BatchAction` &c.
-//   frontend/app/e2e/_wire.ts                       rows typed `readonly string[]`
+//   frontend/ui-core/src/testing/wire.fixtures.ts
+//   frontend/app/e2e/_wire.ts
 //
-// Only the first is held by the compiler, and only for *membership* — `tsc` refuses
-// a value outside the generated union, which is what catches the fixture when a
-// withdrew `BatchAction.DELETE`. The second is `string[]` by deliberate choice (it
-// stubs the wire rather than consuming it, so it does not import the app's types),
-// and that choice costs it every compile-time guarantee: it kept serving `"delete"`
-// after the member was gone, `checks.ts` rejected the payload *inside a hook* — which
-// does not raise, it just never resolves — and every gallery spec failed with
-// `element(s) not found` and a 20-second timeout pointing at the UI. 2590 pytest,
-// both vitest suites, mypy, ruff, lint-imports, `generate:client:check` and
-// `typecheck:e2e` are green the whole time. This file is the
-// option 3.
+// Both are typed against the generated vocabularies, and that holds *membership*
+// only — `tsc` refuses a value outside the union, which is what catches a
+// withdrawn `BatchAction.DELETE`, and nothing else: the *rows* are hand-written,
+// so a member the kernel gains and nobody transcribes is invisible to the compiler.
+// When the e2e stub was still `string[]` a withdrawn member surfaced only as every
+// gallery spec timing out, because `checks.ts` rejects the payload inside a hook,
+// and 2590 pytest, both vitest suites, mypy, ruff, lint-imports,
+// `generate:client:check` and `typecheck:e2e` were green the whole time.
 //
-// ## What this proves, and what it does not
+// ## What this proves
 //
-// It proves the two doubles agree with **each other**. It does not prove either one
-// agrees with the kernel: they could drift together and this gate would stay green.
-// Closing that needs the rosters to have one source rather than two — options 1 and
-// 2 (a `@visionset/ui-core/testing` subpath, or generating `_wire.ts`), both
-// of which change `ui-core`'s public surface and are deliberately left open. What is
-// bought here is that a *unilateral* edit, the failure mode that actually happened,
-// is named and red.
+// Each double says what the kernel says, state by state, in both directions — and
+// the two doubles say the same thing as each other. The kernel's answer reaches
+// here as `tests/fixtures/wire_capabilities.json`, written by
+// `scripts/export_wire_fixtures.py` from `batch_actions` &c. and held fresh by
+// `tests/server/test_wire_fixtures.py`, because the `frontend` CI job installs no
+// Python — the same bytes-across-the-boundary arrangement as `openapi.json` and the
+// annotator's `wire_annotations.json`. The double-to-double comparison stays
+// because its failure names the two files that disagree, which is the message a
+// unilateral edit deserves; it used to be the only comparison, and it could not
+// see a member both doubles lacked — which is exactly what happened when
+// `pre_label` joined `BatchAction` and neither roster was told.
 //
 // Ordering, stated precisely because it is easy to overclaim: this runs in the
 // `frontend` CI job, which today completes before `annotator e2e (chromium)`. That is
@@ -39,8 +41,8 @@
 //
 // The rosters are read by parsing both files as text. Importing them is not on the
 // table: `_wire.ts` is TypeScript that `node --test` cannot load, and reaching
-// `wire.fixtures.ts` through `@visionset/ui-core` would mean exporting it — the API
-// widening option 3 exists to avoid. Parsing is therefore the least-brittle mechanism
+// `wire.fixtures.ts` through `@visionset/ui-core` would mean exporting it — an API
+// widening nobody asked for. Parsing is therefore the least-brittle mechanism
 // *available*, and it is made tolerant of reformatting rather than of rewriting:
 // comments are stripped with a scanner that respects string literals, the object
 // literal is found by brace balancing rather than by line, and keys may be bare or
@@ -62,9 +64,10 @@ import { test } from "node:test";
 // should not need it installed to run.
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-/** The two files, by the names the failure messages use. */
+/** The three files, by the names the failure messages use. */
 const FIXTURE = "frontend/ui-core/src/testing/wire.fixtures.ts";
 const STUB = "frontend/app/e2e/_wire.ts";
+const KERNEL = "tests/fixtures/wire_capabilities.json";
 
 /**
  * `text` with comments removed and everything else — including line breaks — kept.
@@ -149,6 +152,13 @@ export function rostersIn(text) {
     rosters.set(match[1], rows);
   }
   return rosters;
+}
+
+/** The kernel's exported answer, in the shape `rostersIn` produces, so one comparison serves both. */
+export function rostersOf(payload) {
+  return new Map(
+    Object.entries(payload).map(([name, rows]) => [name, new Map(Object.entries(rows))]),
+  );
 }
 
 /** The contents of the object literal whose `{` sits at `open`, or null if unbalanced. */
@@ -243,6 +253,16 @@ test("the parse reads a roster whichever way it is formatted", () => {
   );
 });
 
+test("the kernel's JSON reads as the same shape the parser produces", () => {
+  const parsed = rostersIn(`const A: Record<S, readonly string[]> = { draft: ["approve"], done: [] };`);
+  const exported = rostersOf({ A: { draft: ["approve"], done: [] } });
+  assert.deepEqual(divergences(parsed, exported, "parsed", "p", "exported", "e"), []);
+  assert.equal(
+    divergences(parsed, rostersOf({ A: { draft: [] , done: [] } }), "parsed", "p", "exported", "e").length,
+    1,
+  );
+});
+
 test("a divergence is reported in whichever file has the extra, naming both", () => {
   const withDelete = rostersIn(`const A: Record<S, readonly string[]> = { draft: ["approve", "delete"] };`);
   const without = rostersIn(`const A: Record<S, readonly string[]> = { draft: ["approve"] };`);
@@ -269,24 +289,47 @@ test("a roster present in only one file is reported", () => {
   assert.match(found[0], /^roster: B is in/);
 });
 
-test("both files are parsed, and neither is read as empty", () => {
+const kernel = () => rostersOf(JSON.parse(read(KERNEL)));
+
+test("all three files are read, and none as empty", () => {
   // Guards the vacuous pass: a rename or a reformat this parser cannot follow would
-  // otherwise make the comparison below trivially true.
-  for (const [name, relative] of [
-    ["fixture", FIXTURE],
-    ["stub", STUB],
+  // otherwise make the comparisons below trivially true.
+  for (const [name, relative, rosters] of [
+    ["fixture", FIXTURE, rostersIn(read(FIXTURE))],
+    ["stub", STUB, rostersIn(read(STUB))],
+    ["kernel", KERNEL, kernel()],
   ]) {
-    const rosters = rostersIn(read(relative));
     assert.ok(
       rosters.size > 0,
-      `${relative} (${name}): no \`const NAME: Record<…> = {…}\` roster found. If a roster ` +
-        `was renamed or its declaration reshaped, this gate can no longer see it — teach ` +
-        `\`rostersIn\` the new form rather than deleting the assertion.`,
+      `${relative} (${name}): no roster found. If a roster was renamed, its declaration ` +
+        `reshaped, or the export emptied, this gate can no longer see it — teach ` +
+        `\`rostersIn\` the new form, or regenerate the anchor, rather than deleting the assertion.`,
     );
     for (const [roster, rows] of rosters)
       assert.ok(rows.size > 0, `${relative}: ${roster} parsed as empty`);
   }
 });
+
+for (const [name, relative] of [
+  ["the ui-core fixture", FIXTURE],
+  ["the e2e stub", STUB],
+]) {
+  test(`${name} declares what the kernel declares`, () => {
+    const found = divergences(kernel(), rostersIn(read(relative)), "the kernel", KERNEL, name, relative);
+    assert.deepEqual(
+      found,
+      [],
+      `${relative} has drifted from the kernel's own answer:\n\n` +
+        found.map((one) => `  - ${one}`).join("\n") +
+        `\n\n${KERNEL} is \`allowed_actions\` as kernel/domain/capabilities.py answers it ` +
+        `(held fresh by tests/server/test_wire_fixtures.py). A member in the kernel and not ` +
+        `in the double means a stub is lying about what the server would send; a member in ` +
+        `the double and not in the kernel means the stub promises a control the server ` +
+        `refuses. Fix the double — or, if the kernel changed, regenerate the anchor with ` +
+        `\`uv run python scripts/export_wire_fixtures.py\` and then fix the double.\n`,
+    );
+  });
+}
 
 test("the e2e stub and the ui-core fixture declare the same actions", () => {
   const found = divergences(
@@ -304,7 +347,7 @@ test("the e2e stub and the ui-core fixture declare the same actions", () => {
       found.map((one) => `  - ${one}`).join("\n") +
       `\n\nThey are test doubles for the same answer — \`allowed_actions\`, from ` +
       `kernel/domain/capabilities.py — so an action in one and not the other means a ` +
-      `stub is lying about what the server would send. Fix whichever is stale (the ` +
-      `kernel is the authority, not either file), and see #358 for why there are two.\n`,
+      `stub is lying about what the server would send. Fix whichever is stale — the ` +
+      `kernel is the authority, not either file, and the tests above say which one it is.\n`,
   );
 });
