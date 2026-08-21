@@ -49,11 +49,13 @@ from visionset.kernel.domain import (
     AssetSegmentation,
     CuratedModel,
     DownloadSize,
+    GeometryType,
     InferenceConnection,
     ModelCapability,
     PointPrompt,
     PredictionRequest,
     SegmentedMask,
+    ServedFamily,
 )
 from visionset.kernel.errors import UnsupportedPrompt
 
@@ -155,12 +157,19 @@ def _square(size: tuple[int, int], *, at: tuple[float, float]) -> list[list[bool
     return [lit if top <= row < bottom else dark for row in range(height)]
 
 
-STUB_FAMILIES: Final[Mapping[str, ModelCapability]] = {STUB_FAMILY: ModelCapability.POINT_SUGGEST}
+STUB_FAMILIES: Final[Mapping[str, ServedFamily]] = {
+    STUB_FAMILY: ServedFamily(
+        capability=ModelCapability.POINT_SUGGEST,
+        produces=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+    )
+}
 """The one family no checkpoint declares.
 
 It is recorded on a connection rather than read from a config, because there is no
 config. Declaring it here is what makes a stub connection answer ``point_suggest``,
-and that answer is what makes the editor offer the suggest tool.
+and that answer is what makes the editor offer the suggest tool. Its mask goes
+through the same conversion a real segmenter's does, so it answers in the same
+two shapes.
 """
 
 

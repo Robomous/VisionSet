@@ -13,9 +13,9 @@ trailing slash matters, which is the whole reason it is one URL.
 **The family an http connection records is the capability the endpoint
 declared, verbatim.** A local connection's family is the ``model_type`` its
 config declares, read literally; this is the same rule against a different
-declaration. So :data:`HTTP_FAMILIES` maps each capability name onto itself,
-and an endpoint declaring something this build does not know is refused when
-it is asked rather than recorded and then refused on every request.
+declaration. So :data:`HTTP_FAMILIES` is keyed by capability name, and an
+endpoint declaring something this build does not know is refused when it is
+asked rather than recorded and then refused on every request.
 
 **The wrong prompt kind is refused here, before any request is made** (on the
 first iteration, as the local adapters do — ``predict`` and ``segment`` are
@@ -56,6 +56,7 @@ from visionset.kernel.domain import (
     AssetSegmentation,
     CuratedModel,
     Geometry,
+    GeometryType,
     InferenceConnection,
     ModelCapability,
     PointPrompt,
@@ -63,6 +64,7 @@ from visionset.kernel.domain import (
     PredictionRequest,
     PredictionTarget,
     SegmentedMask,
+    ServedFamily,
     TextPrompt,
 )
 from visionset.kernel.errors import (
@@ -83,9 +85,17 @@ MAX_RESPONSE_BYTES: Final = 64 * 1024 * 1024
 # a 4K mask PNG is well under a megabyte, so this bounds a misbehaving
 # endpoint, not a real answer.
 
-HTTP_FAMILIES: Final[Mapping[str, ModelCapability]] = {
-    ModelCapability.POINT_SUGGEST.value: ModelCapability.POINT_SUGGEST,
-    ModelCapability.TEXT_DETECT.value: ModelCapability.TEXT_DETECT,
+# The decoder accepts the domain's whole geometry union, and a box and an outline
+# are what the endpoint contract documents an answer arriving as.
+HTTP_FAMILIES: Final[Mapping[str, ServedFamily]] = {
+    ModelCapability.POINT_SUGGEST.value: ServedFamily(
+        capability=ModelCapability.POINT_SUGGEST,
+        produces=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+    ),
+    ModelCapability.TEXT_DETECT.value: ServedFamily(
+        capability=ModelCapability.TEXT_DETECT,
+        produces=frozenset({GeometryType.BBOX, GeometryType.POLYGON}),
+    ),
 }
 
 
@@ -415,7 +425,8 @@ class HttpProvider:
     def build(
         self, connection: InferenceConnection, *, family: str, workspace_root: Path
     ) -> RemoteSegmenter | RemoteDetector:
-        capability = HTTP_FAMILIES.get(family)
+        declared = HTTP_FAMILIES.get(family)
+        capability = None if declared is None else declared.capability
         if capability is ModelCapability.POINT_SUGGEST:
             return RemoteSegmenter(connection)
         if capability is ModelCapability.TEXT_DETECT:

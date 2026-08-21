@@ -21,8 +21,10 @@ from visionset.inference.transformers_provider import LocalTransformersProvider
 from visionset.kernel.domain import (
     ConnectionType,
     CuratedModel,
+    GeometryType,
     InferenceConnection,
     ModelCapability,
+    ServedFamily,
 )
 from visionset.kernel.errors import (
     InferenceConnectionNotRunnable,
@@ -249,14 +251,17 @@ def test_an_unsupported_model_leaves_nothing_behind_for_the_next_request(
 # --- which driver answers, once one is recorded --------------------------------
 
 
-POINT = ModelCapability.POINT_SUGGEST
-TEXT = ModelCapability.TEXT_DETECT
+POINT = ServedFamily(
+    capability=ModelCapability.POINT_SUGGEST,
+    produces=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+)
+TEXT = ServedFamily(capability=ModelCapability.TEXT_DETECT, produces=frozenset({GeometryType.BBOX}))
 
 
 class _Driver:
     """A provider built by hand, so a test needs no installed distribution."""
 
-    def __init__(self, provider_id: str, families: Mapping[str, ModelCapability]) -> None:
+    def __init__(self, provider_id: str, families: Mapping[str, ServedFamily]) -> None:
         self.provider_id = provider_id
         self.families = families
         self.curated: tuple[CuratedModel, ...] = ()

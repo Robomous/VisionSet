@@ -2154,7 +2154,8 @@ class ProviderOut(BaseModel):
         return cls(
             provider_id=provider.provider_id,
             families={
-                family: capability.value for family, capability in sorted(provider.families.items())
+                family: declared.capability.value
+                for family, declared in sorted(provider.families.items())
             },
             # An entry naming a family its own driver does not serve has no
             # capability to publish, and one such entry must not cost a reader
@@ -2162,7 +2163,9 @@ class ProviderOut(BaseModel):
             # source; this is what keeps a third party's mistake local to itself.
             curated=[
                 CuratedModelOut.of(
-                    entry, provider.families[entry.family].value, provider.provider_id
+                    entry,
+                    provider.families[entry.family].capability.value,
+                    provider.provider_id,
                 )
                 for entry in provider.curated
                 if entry.family in provider.families

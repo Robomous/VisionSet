@@ -4,8 +4,9 @@
 Two questions with one answer between them. A model's family — the ``model_type``
 its own config declares — decides which driver can run it, and the *same* fact
 decides what a caller may ask it for. Neither is written here any more: each
-installed driver declares the families it serves and the capability each one
-takes, in one mapping, so an adapter and its declaration are the same edit.
+installed driver declares the families it serves, the capability each one takes
+and the shapes each answers in, in one mapping, so an adapter and its declaration
+are the same edit.
 
 **The family is read from the model, never guessed from its name.** A model id is
 something somebody typed; the config is something the publisher wrote. Matching on
@@ -28,8 +29,8 @@ from pathlib import Path
 from typing import Final
 
 from visionset.inference._extra import imported
-from visionset.inference.registry import capabilities, registered
-from visionset.kernel.domain import InferenceConnection, ModelCapability
+from visionset.inference.registry import capabilities, registered, served
+from visionset.kernel.domain import GeometryType, InferenceConnection, ModelCapability
 
 CONFIG_FILE: Final = "config.json"
 """The file in a snapshot that declares what the model is. The hub's own name for
@@ -53,6 +54,17 @@ def capabilities_of(model_family: str | None) -> list[ModelCapability]:
     """
     capability = capabilities(registered().providers).get(model_family or "")
     return [] if capability is None else [capability]
+
+
+def produces_of(model_family: str | None) -> frozenset[GeometryType]:
+    """The shapes a model of that family answers in. Empty when nothing is known.
+
+    The same three inputs :func:`capabilities_of` collapses to nothing collapse
+    here, for the same reason: no shape can be promised for a model nobody has
+    read, that declared nothing, or that this build has no adapter for.
+    """
+    declared = served(registered().providers).get(model_family or "")
+    return frozenset() if declared is None else declared.produces
 
 
 def family_of(connection: InferenceConnection, *, cache_dir: Path) -> str:

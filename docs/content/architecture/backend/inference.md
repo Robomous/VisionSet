@@ -54,12 +54,12 @@ model the user does not have.
 ## One fact, two readings, one module
 
 Each driver declares the families it serves **and** what each one may be asked
-for, in one mapping, because they are the same fact read twice: which driver can
-run this model, and which prompts a caller may send it. The two are
-one declaration rather than a set and a map beside it, so an adapter and its
-capability are one edit - a family a driver served without declaring what it takes
-would run fine and declare nothing, and every client that
-filters on the declaration would stop offering it.
+for **and what it answers in**, in one mapping, because they are the same fact
+read several times: which driver can run this model, which prompts a caller may
+send it, and which shapes an answer can arrive as. They are one declaration rather
+than a set and a map beside it, so an adapter and its capability are one edit - a
+family a driver served without declaring what it takes would run fine and declare
+nothing, and every client that filters on the declaration would stop offering it.
 
 The vocabulary itself is the kernel's (`ModelCapability`) and the mapping is not:
 what a tool can ask for is a domain word, while which `model_type` values this
@@ -126,8 +126,8 @@ this build already resolves costs a curated catalog entry and nothing else. A ne
 family in the same capability costs one entry in the serving driver's `families`
 mapping plus a check that its post-processing signature matches what that driver
 already does. Only a genuinely new capability costs a family *and* a driver - and
-because `families` maps a `model_type` straight onto the capability it takes, a
-family acquires its declared capability in the edit that adds it.
+because `families` maps a `model_type` straight onto what it may be asked for and
+what it answers in, a family acquires both declarations in the edit that adds it.
 
 The family a connection resolves on is read literally out of the snapshot's
 `config.json`, not resolved through `transformers`, which can only name a type it

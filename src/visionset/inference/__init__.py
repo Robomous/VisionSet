@@ -57,7 +57,7 @@ from visionset.inference.cache import (
     DEFAULT_PROVIDER_CAPACITY,
     BoundedCache,
 )
-from visionset.inference.families import capabilities_of, family_of
+from visionset.inference.families import capabilities_of, family_of, produces_of
 from visionset.inference.http_provider import HTTP_PROVIDER_ID, HttpProvider, ask_endpoint
 from visionset.inference.integrity import (
     READ_CHUNK,
@@ -186,6 +186,7 @@ __all__ = [
     "download_size",
     "family_of",
     "fetch_weights",
+    "produces_of",
     "Digest",
     "IntegrityReport",
     "PublishedDigest",

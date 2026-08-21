@@ -400,7 +400,8 @@ about to send? So a connection also declares what it can be asked for.
 **The vocabulary is closed and the set of models answering to it is not.** These two are the
 whole of what a connection can declare, and each exists because a surface renders it. Which
 *model families* answer to them belongs to this installation rather than to this release: a
-driver declares the families it serves and what each may be asked for, and drivers are found
+driver declares the families it serves, what each may be asked for and the shapes it answers in,
+and drivers are found
 through an entry-point group, so one somebody `pip`-installed serves families this repository
 has never heard of. What this distribution ships serves the SAM 2 and SAM 3 families for
 `point_suggest` and the Grounding DINO families for `text_detect`.
@@ -479,8 +480,9 @@ A text prompt is `{ "kind": "text", "phrases": ["cat", "dog"] }`. The answer is
 `{ "answers": [ … ] }` with **exactly one answer per target, matched by `asset_id`**:
 
 - for `text_detect`, `{ "asset_id", "model_ref", "regions": [ { "label", "confidence", "geometry" } ] }`,
-  where `geometry` is this project's own geometry JSON (`{"type": "bbox", "x", "y", "width", "height"}`
-  for a box);
+  where `geometry` is this project's own geometry JSON - `{"type": "bbox", "x", "y", "width", "height"}`
+  for a box, or `{"type": "polygon", "points": [[x, y], …]}` for an outline; the built-in `http`
+  driver declares both for `text_detect`;
 - for `point_suggest`, `{ "asset_id", "model_ref", "segments": [ { "score", "mask" } ] }`, where
   `mask` is a **base64 PNG at the asset's own size** and any non-zero pixel is inside the mask.
 

@@ -19,25 +19,25 @@ import pytest
 from tests.fixtures.local_inference import require_local_inference
 
 from visionset.inference import families as families_module
-from visionset.inference.families import capabilities_of, family_of
+from visionset.inference.families import capabilities_of, family_of, produces_of
 from visionset.inference.http_provider import HTTP_FAMILIES
 from visionset.inference.registry import capabilities, families_served, registered
 from visionset.inference.sam_provider import SAM_FAMILIES
 from visionset.inference.stub_provider import STUB_FAMILIES
 from visionset.inference.transformers_provider import DINO_FAMILIES
-from visionset.kernel.domain import ConnectionType, ModelCapability
+from visionset.kernel.domain import ConnectionType, GeometryType, ModelCapability
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
 
 INSTALLED = registered().providers
 _HTTP_POINT_FAMILIES = frozenset(
     family
-    for family, capability in HTTP_FAMILIES.items()
-    if capability is ModelCapability.POINT_SUGGEST
+    for family, declared in HTTP_FAMILIES.items()
+    if declared.capability is ModelCapability.POINT_SUGGEST
 )
 _HTTP_TEXT_FAMILIES = frozenset(
     family
-    for family, capability in HTTP_FAMILIES.items()
-    if capability is ModelCapability.TEXT_DETECT
+    for family, declared in HTTP_FAMILIES.items()
+    if declared.capability is ModelCapability.TEXT_DETECT
 )
 SEGMENTER_FAMILIES = frozenset(SAM_FAMILIES) | frozenset(STUB_FAMILIES) | _HTTP_POINT_FAMILIES
 DETECTOR_FAMILIES = frozenset(DINO_FAMILIES) | _HTTP_TEXT_FAMILIES
@@ -297,3 +297,16 @@ def test_nothing_is_declared_where_nothing_is_known(model_family: str | None, wh
     sentence rather than in a vocabulary something switches on.
     """
     assert capabilities_of(model_family) == [], why
+
+
+@pytest.mark.parametrize("family", sorted(DETECTOR_FAMILIES))
+def test_every_detector_family_answers_in_boxes(family: str) -> None:
+    """Membership rather than equality, because the two detector drivers differ:
+    the local one answers in boxes only, the endpoint contract also admits an
+    outline. A box is what every text-prompted family here can produce."""
+    assert GeometryType.BBOX in produces_of(family)
+
+
+@pytest.mark.parametrize("model_family", [None, "", "totally-unknown-net"])
+def test_nothing_is_produced_where_nothing_is_known(model_family: str | None) -> None:
+    assert produces_of(model_family) == frozenset()

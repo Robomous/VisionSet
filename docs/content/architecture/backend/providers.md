@@ -37,13 +37,19 @@ protocol with data members raises.
 | Member | What it is |
 | --- | --- |
 | `provider_id: str` | What the driver calls itself. Distinct from its entry-point name, which is packaging metadata: two strings, and only this one is the contract |
-| `families: Mapping[str, ModelCapability]` | Which `model_type` values this driver serves, and what each may be asked for |
+| `families: Mapping[str, ServedFamily]` | Which `model_type` values this driver serves, and for each what it may be asked for and the shapes it answers in |
 | `curated: tuple[CuratedModel, ...]` | Checkpoints offered by name. Empty is legitimate - a driver that runs whatever it is pointed at curates nothing |
 | `build(connection, *, family, workspace_root) -> Runner` | The thing that will answer for this connection |
 
 `families` is a mapping and not a set, and that is the whole derivation guarantee: a family
-acquires an adapter and a declared capability in one edit. Declaring the two separately is how a
-family comes to run fine while every client filtering on the declaration stops offering it.
+acquires an adapter, a declared capability and its declared output shapes in one edit. Declaring
+them separately is how a family comes to run fine while every client filtering on the declaration
+stops offering it - or offers it classes the answer can never be written to.
+
+A `ServedFamily` carries both axes because they are independent: a model that takes words may
+answer with boxes or with masks, and a declaration carrying only the prompt kind left every
+consumer to assume the other. `produces` is a non-empty `frozenset[GeometryType]`, the domain's
+whole geometry vocabulary, so a class is askable when it admits any shape the model produces.
 
 `build` is told which family it resolved to rather than working it out. More than one
 architecture can answer the same prompt kind while loading through different classes, and a
@@ -142,10 +148,12 @@ from typing import Final
 from visionset.kernel.domain import (
     AssetSegmentation,
     CuratedModel,
+    GeometryType,
     InferenceConnection,
     ModelCapability,
     PointPrompt,
     PredictionRequest,
+    ServedFamily,
 )
 from visionset.kernel.errors import UnsupportedPrompt
 
@@ -168,7 +176,12 @@ class MySegmenter:
 
 class MyProvider:
     provider_id: Final = "my-driver"
-    families: Final = {"my_model_type": ModelCapability.POINT_SUGGEST}
+    families: Final = {
+        "my_model_type": ServedFamily(
+            capability=ModelCapability.POINT_SUGGEST,
+            produces=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+        )
+    }
     curated: Final[tuple[CuratedModel, ...]] = ()
 
     def build(
@@ -197,14 +210,16 @@ a port docstring binds nobody until something checks it on every implementation 
 
 What it holds a driver to: that it satisfies `Provider` under `isinstance`; that its
 `provider_id` is non-blank and unique across the installed set; that `families` is non-empty and
-every value is a `ModelCapability` member; that every curated entry names a family its own driver
+every value is a `ServedFamily` declaring at least one shape; that every curated entry names a
+family its own driver
 serves and is pinned to a commit; that declaring `WeightsSource` is all-or-nothing and a driver
 that declares it can price a checkpoint it offers; that what `build` returns satisfies the port
 its declared capability implies; that a runner refuses a prompt kind it does not take with a
 sentence naming what it does support; that every answer carries the `model_ref` that produced it;
-that there is exactly one answer per target, in the order asked; and that a driver declaring no
-`WeightsSource` is built against a hosted connection and still answers once per target, in order -
-the suite runs its own contract-speaking endpoint for that.
+that there is exactly one answer per target, in the order asked; that a text-prompted runner
+answers in a shape its family declares; and that a driver declaring no `WeightsSource` is built
+against a hosted connection and still answers once per target, in order - the suite runs its own
+contract-speaking endpoint for that.
 
 **Run it against your own driver by installing your driver, not by injecting a fake.** The suite
 derives its subjects from the entry-point group, so a real distribution is picked up

@@ -26,6 +26,7 @@ from collections.abc import Callable, Iterator, Mapping
 from importlib.metadata import EntryPoint, entry_points
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Final
 from uuid import uuid4
 
 import pytest
@@ -50,12 +51,14 @@ from visionset.kernel.domain import (
     ConnectionType,
     CuratedModel,
     DownloadSize,
+    GeometryType,
     InferenceConnection,
     ModelCapability,
     PointPrompt,
     PredictionRequest,
     PredictionTarget,
     SegmentedMask,
+    ServedFamily,
     TextPrompt,
 )
 from visionset.kernel.errors import (
@@ -76,9 +79,9 @@ INSTALLED: Mapping[str, Provider] = registered().providers
 DRIVERS: tuple[str, ...] = tuple(sorted(INSTALLED))
 
 SERVED: tuple[tuple[str, str, ModelCapability], ...] = tuple(
-    (provider_id, family, capability)
+    (provider_id, family, declared.capability)
     for provider_id in DRIVERS
-    for family, capability in sorted(INSTALLED[provider_id].families.items())
+    for family, declared in sorted(INSTALLED[provider_id].families.items())
 )
 """Every (driver, family, capability) this installation serves.
 
@@ -90,6 +93,17 @@ parametrised over this, with nothing to remember.
 SERVED_IDS = tuple(f"{provider_id}:{family}" for provider_id, family, _ in SERVED)
 
 COMMIT_LENGTH = 40
+
+SEGMENTS: Final = ServedFamily(
+    capability=ModelCapability.POINT_SUGGEST,
+    produces=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+)
+DETECTS: Final = ServedFamily(
+    capability=ModelCapability.TEXT_DETECT, produces=frozenset({GeometryType.BBOX})
+)
+"""What the drivers this suite brings with it declare. Both axes, so they are
+subjects of the shape rules rather than exempt from them."""
+
 
 PROMPTS: Mapping[ModelCapability, PointPrompt | TextPrompt] = {
     ModelCapability.POINT_SUGGEST: PointPrompt(positive=((30.0, 24.0),)),
@@ -286,15 +300,19 @@ def test_a_driver_declares_at_least_one_family_and_what_each_takes(provider_id: 
     """``isinstance`` against the port checks that ``families`` is *present* and
     never what is in it — a driver whose values are plain strings satisfies the
     protocol and then declares capabilities no client can switch on.
+
+    Both axes, because a shape nobody declared is the same gap as a capability
+    nobody declared: a client filtering on what it can draw sees nothing.
     """
     families = INSTALLED[provider_id].families
     assert families, "a driver serving nothing is a driver nothing can resolve to"
-    for family, capability in families.items():
+    for family, declared in families.items():
         assert family.strip(), f"{provider_id} declares a blank family"
-        assert isinstance(capability, ModelCapability), (
-            f"{provider_id} maps {family!r} onto {capability!r}, which is not a "
-            "member of the kernel's closed capability vocabulary"
+        assert isinstance(declared, ServedFamily), (
+            f"{provider_id} maps {family!r} onto {declared!r}, which is not a "
+            "declaration of what that family takes and answers in"
         )
+        assert declared.produces, f"{provider_id} declares {family!r} answering in no shape at all"
 
 
 @pytest.mark.parametrize("provider_id", DRIVERS)
@@ -352,7 +370,7 @@ class Named:
 
     curated: tuple[CuratedModel, ...] = ()
 
-    def __init__(self, provider_id: str, families: Mapping[str, ModelCapability]) -> None:
+    def __init__(self, provider_id: str, families: Mapping[str, ServedFamily]) -> None:
         self.provider_id = provider_id
         self.families = families
 
@@ -393,8 +411,8 @@ def test_two_drivers_claiming_one_id_is_not_something_a_scan_can_report() -> Non
     The rule itself is asserted one section up, against the registrations, where
     a collision is still visible.
     """
-    first = Named("acme", {"one": ModelCapability.POINT_SUGGEST})
-    second = Named("acme", {"two": ModelCapability.POINT_SUGGEST})
+    first = Named("acme", {"one": SEGMENTS})
+    second = Named("acme", {"two": SEGMENTS})
 
     found = installed([Recorded("first", first), Recorded("second", second)])
 
@@ -452,7 +470,7 @@ class Echo:
     """
 
     provider_id = "test-hosted-echo"
-    families: Mapping[str, ModelCapability] = {"acme_hosted": ModelCapability.TEXT_DETECT}
+    families: Mapping[str, ServedFamily] = {"acme_hosted": DETECTS}
     curated: tuple[CuratedModel, ...] = ()
 
     def __init__(self) -> None:
@@ -495,7 +513,7 @@ class AcmeSeg:
     """
 
     provider_id = "test-acme-seg"
-    families: Mapping[str, ModelCapability] = {ACME_FAMILY: ModelCapability.POINT_SUGGEST}
+    families: Mapping[str, ServedFamily] = {ACME_FAMILY: SEGMENTS}
     curated = (ACME_ENTRY,)
 
     def __init__(self) -> None:
@@ -765,17 +783,17 @@ def offline_runners(
     built: dict[str, tuple[object, ModelCapability]] = {}
     for provider_id in EXERCISED:
         driver = INSTALLED[provider_id]
-        family, capability = sorted(driver.families.items())[0]
+        family, declared = sorted(driver.families.items())[0]
         connection = local if isinstance(driver, WeightsSource) else hosted
         built[provider_id] = (
             driver.build(connection, family=family, workspace_root=tmp_path),
-            capability,
+            declared.capability,
         )
     for fake in (Echo(), AcmeSeg()):
-        family, capability = next(iter(fake.families.items()))
+        family, declared = next(iter(fake.families.items()))
         built[fake.provider_id] = (
             fake.build(local, family=family, workspace_root=tmp_path),
-            capability,
+            declared.capability,
         )
     return built
 
@@ -838,6 +856,44 @@ def test_exactly_one_answer_per_target_in_the_order_asked(
     ]
 
 
+@pytest.mark.parametrize(("provider_id", "family", "capability"), SERVED, ids=SERVED_IDS)
+def test_a_text_prompted_answer_arrives_in_a_declared_shape(
+    provider_id: str, family: str, capability: ModelCapability, tmp_path: Path, endpoint_url: str
+) -> None:
+    """The declaration and what comes back, checked against each other.
+
+    A driver answering in a shape it never declared is worse than one declaring
+    nothing: a client that filtered the class list on ``produces`` offers exactly
+    the classes the answer cannot be written to, and the mismatch surfaces as
+    dropped regions rather than as a refusal.
+
+    Excused where the two checks above are excused, for the same reason — a
+    runner needing a multi-gigabyte snapshot cannot answer here at all.
+    """
+    if capability is not ModelCapability.TEXT_DETECT:
+        pytest.skip("only a text-prompted runner answers in regions")
+    if provider_id in NEEDS_WEIGHTS:
+        pytest.skip(f"{provider_id} cannot answer without a checkpoint")
+    driver = INSTALLED[provider_id]
+    connection = (
+        a_local_connection(ready=True)
+        if isinstance(driver, WeightsSource)
+        else a_hosted_connection(endpoint_url)
+    )
+    runner = driver.build(connection, family=family, workspace_root=tmp_path)
+
+    answers = list(asking(runner)(a_request(tmp_path, prompt=PROMPTS[capability], targets=2)))
+
+    produces = driver.families[family].produces
+    seen = [region.geometry.type for answer in answers for region in answer.regions]
+    assert seen, "a runner that found nothing at all cannot be checked"
+    for shape in seen:
+        assert shape in produces, (
+            f"{provider_id} answered {family!r} with a {shape.value}, which it does not declare; "
+            f"it declares {', '.join(sorted(one.value for one in produces))}"
+        )
+
+
 # --- what resolution does before a driver is asked ----------------------------
 
 
@@ -845,7 +901,7 @@ class Spy:
     """A driver that records being asked to build, and would build if it were."""
 
     provider_id = "test-spy"
-    families: Mapping[str, ModelCapability] = {ACME_FAMILY: ModelCapability.POINT_SUGGEST}
+    families: Mapping[str, ServedFamily] = {ACME_FAMILY: SEGMENTS}
     curated: tuple[CuratedModel, ...] = ()
 
     def __init__(self) -> None:

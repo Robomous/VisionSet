@@ -21,7 +21,13 @@ from typing import get_type_hints
 
 import pytest
 
-from visionset.kernel.domain import CuratedModel, DownloadSize, ModelCapability
+from visionset.kernel.domain import (
+    CuratedModel,
+    DownloadSize,
+    GeometryType,
+    ModelCapability,
+    ServedFamily,
+)
 from visionset.kernel.ports import Provider, Runner, WeightsSource, model_provider, point_segmenter
 from visionset.kernel.ports import provider as provider_port
 
@@ -74,8 +80,8 @@ def test_this_port_is_not_swept_as_a_model_port() -> None:
 
 def test_a_provider_declares_families_as_a_closed_capability_mapping() -> None:
     """A `frozenset[str]` here would let a driver ship a family with no capability
-    behind it, and prose saying otherwise can drift from the type."""
-    assert get_type_hints(Provider)["families"] == Mapping[str, ModelCapability]
+    or no shape behind it, and prose saying otherwise can drift from the type."""
+    assert get_type_hints(Provider)["families"] == Mapping[str, ServedFamily]
 
 
 def test_a_provider_offers_curated_entries_as_an_immutable_sequence() -> None:
@@ -110,7 +116,11 @@ def test_a_hosted_driver_is_a_provider_and_is_not_a_weights_source() -> None:
 
     class Hosted:
         provider_id = "test-hosted"
-        families: Mapping[str, ModelCapability] = {"remote": ModelCapability.TEXT_DETECT}
+        families: Mapping[str, ServedFamily] = {
+            "remote": ServedFamily(
+                capability=ModelCapability.TEXT_DETECT, produces=frozenset({GeometryType.BBOX})
+            )
+        }
         curated: tuple[CuratedModel, ...] = ()
 
         def build(self, connection: object, *, workspace_root: Path) -> object:
@@ -127,7 +137,12 @@ def test_a_local_driver_satisfies_both() -> None:
 
     class Local:
         provider_id = "test-local"
-        families: Mapping[str, ModelCapability] = {"sam2": ModelCapability.POINT_SUGGEST}
+        families: Mapping[str, ServedFamily] = {
+            "sam2": ServedFamily(
+                capability=ModelCapability.POINT_SUGGEST,
+                produces=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+            )
+        }
         curated: tuple[CuratedModel, ...] = ()
 
         def build(self, connection: object, *, workspace_root: Path) -> object:
