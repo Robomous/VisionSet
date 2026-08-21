@@ -64,6 +64,8 @@
  * `untouched === 0` a launch is a guaranteed no-op. That reason renders next to
  * the disabled press rather than at the bottom of the form, and the config
  * fields collapse to one line of context once they stop being live choices.
+ * The one exception is *Replace*: ticked over pre-labeled frames, a run has
+ * somewhere to write again, so `Start` is live with nothing untouched left.
  */
 
 import { useEffect, useState, type JSX } from "react";
@@ -150,6 +152,7 @@ interface RunView {
   readonly assetsLabeled: number | null;
   readonly regionsDiscarded: number | null;
   readonly regionsOutOfBounds: number | null;
+  readonly annotationsReplaced: number | null;
 }
 
 /**
@@ -162,6 +165,7 @@ function viewFromJob(job: BackgroundJob): RunView {
   const assetsLabeled = job.result.assets_labeled;
   const regionsDiscarded = job.result.regions_discarded;
   const regionsOutOfBounds = job.result.regions_out_of_bounds;
+  const annotationsReplaced = job.result.annotations_replaced;
   return {
     jobId: job.id,
     state: job.state,
@@ -172,6 +176,7 @@ function viewFromJob(job: BackgroundJob): RunView {
     assetsLabeled: typeof assetsLabeled === "number" ? assetsLabeled : null,
     regionsDiscarded: typeof regionsDiscarded === "number" ? regionsDiscarded : null,
     regionsOutOfBounds: typeof regionsOutOfBounds === "number" ? regionsOutOfBounds : null,
+    annotationsReplaced: typeof annotationsReplaced === "number" ? annotationsReplaced : null,
   };
 }
 
@@ -187,6 +192,7 @@ function viewFromRun(run: PreLabelRun): RunView {
     assetsLabeled: run.assets_labeled,
     regionsDiscarded: run.regions_discarded,
     regionsOutOfBounds: run.regions_out_of_bounds,
+    annotationsReplaced: run.annotations_replaced,
   };
 }
 
@@ -199,8 +205,11 @@ function modeOf(view: RunView | null): Mode {
 }
 
 /** "Labels up to N of M untouched assets" — shown only while there is something to run. */
-function untouchedSummary(untouched: number, total: number): string {
-  return `Labels up to ${untouched} of ${total} untouched asset${total === 1 ? "" : "s"}.`;
+function untouchedSummary(untouched: number, total: number, replacing: number): string {
+  const labels = `Labels up to ${untouched} of ${total} untouched asset${total === 1 ? "" : "s"}.`;
+  return replacing === 0
+    ? labels
+    : `${labels} Also replaces the model labels on ${replacing} pre-labeled frame${replacing === 1 ? "" : "s"}.`;
 }
 
 /**
@@ -209,14 +218,20 @@ function untouchedSummary(untouched: number, total: number): string {
  * a settled, successful run actually says so — otherwise this describes the
  * state itself, since a client cannot verify a batch was hand-worked.
  */
-function blockedReason(view: RunView | null): string {
+function blockedReason(view: RunView | null, preLabeled: number): string {
+  const replaceHint =
+    preLabeled === 0
+      ? ""
+      : ` Tick Replace to rewrite the ${preLabeled} pre-labeled frame${preLabeled === 1 ? "" : "s"}.`;
   if (view !== null && view.state === "succeeded") {
     const labeled = view.assetsLabeled;
     return labeled === null
-      ? "This batch has been pre-labeled — nothing here is untouched for a run to reach."
-      : `This batch has been pre-labeled — ${labeled} asset${labeled === 1 ? "" : "s"} labeled, and nothing here is untouched for another run to reach.`;
+      ? `This batch has been pre-labeled — nothing here is untouched for a run to reach.${replaceHint}`
+      : `This batch has been pre-labeled — ${labeled} asset${labeled === 1 ? "" : "s"} labeled, and nothing here is untouched for another run to reach.${replaceHint}`;
   }
-  return "Nothing here is untouched — there is nothing left for a run to touch.";
+  return preLabeled === 0
+    ? "Nothing here is untouched — there is nothing left for a run to touch."
+    : `Nothing here is untouched — tick Replace to rewrite the ${preLabeled} pre-labeled frame${preLabeled === 1 ? "" : "s"}.`;
 }
 
 /** "A previous run laboured over N of M frames and stopped", with what remains. */
@@ -268,6 +283,12 @@ function DoneSummary({
       )}
       {outOfBounds > 0 && (
         <p>{`${outOfBounds} model region${outOfBounds === 1 ? " was" : "s were"} outside their asset and were skipped.`}</p>
+      )}
+      {(view.annotationsReplaced ?? 0) > 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="prelabel-replaced">
+          Replaced {view.annotationsReplaced} earlier model region
+          {view.annotationsReplaced === 1 ? "" : "s"}.
+        </p>
       )}
       {skipped > 0 && (
         <p className="text-xs text-muted-foreground">
@@ -341,9 +362,10 @@ function PromptClasses({ plan }: { readonly plan: PreLabelPlan | null }): JSX.El
 
 /**
  * `Start`, disabled, with `Edit these frames` beside it where there is
- * something to edit. The shared shape for every mode that has nothing left
- * to launch — `configure`, `stopped` and `failed` all reach it the same way;
- * `done` keeps its own footer because `Edit` is offered there unconditionally.
+ * something to edit. The shared shape for `stopped` and `failed`, the two modes
+ * that have nothing left to launch and no replace to offer; `configure` builds
+ * its own because the press has to survive the tick that enables it, and `done`
+ * because `Edit` is offered there unconditionally.
  */
 function BlockedActions({
   preLabeled,
@@ -483,6 +505,7 @@ function PreLabelDialog({
   );
   const [connectionId, setConnectionId] = useState("");
   const [confidence, setConfidence] = useState(DEFAULT_CONFIDENCE);
+  const [replace, setReplace] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const remembered = batch?.pre_label_run ?? null;
   // Guards the second invalidation so a job polled past its own settling does
@@ -516,8 +539,10 @@ function PreLabelDialog({
   const total = batch?.progress.total ?? 0;
   const preLabeled = batch?.progress.pre_labeled ?? 0;
   // A launch would be a guaranteed no-op: only untouched assets are ever
-  // eligible, whichever verb offers the press.
-  const blocked = untouched === 0;
+  // eligible, whichever verb offers the press — unless a replace is asked for,
+  // which reaches the pre-labeled frames an earlier run wrote and nobody edited.
+  const replacing = replace && preLabeled > 0;
+  const blocked = untouched === 0 && !replacing;
   const confidenceValue = Number(confidence);
   // `confidence.trim() !== ""` first: `Number("")` is `0`, a value inside the
   // valid range, so an emptied field would otherwise read as a valid `0` and
@@ -559,7 +584,11 @@ function PreLabelDialog({
     // never invalidate the batch.
     setSettled(false);
     preLabel.mutate(
-      { connectionId: active.id, minimumConfidence: confidenceValue },
+      {
+        connectionId: active.id,
+        minimumConfidence: confidenceValue,
+        replaceModelLabels: replacing,
+      },
       { onSuccess: (queued) => setJobId(queued.id) },
     );
   }
@@ -571,6 +600,7 @@ function PreLabelDialog({
 
   function close(): void {
     setJobId(null);
+    setReplace(false);
     setSettled(false);
     onClose();
   }
@@ -586,7 +616,9 @@ function PreLabelDialog({
         </DialogDescription>
 
         <div className="flex flex-col gap-3">
-          {(mode === "configure" || mode === "running") && !blocked && (
+          {/* Live where a replace could still reach something, blocked or not:
+              the tick that unblocks a run lives among these fields. */}
+          {(mode === "configure" || mode === "running") && (!blocked || preLabeled > 0) && (
             <>
               <PreLabelSettings
                 candidates={candidates}
@@ -599,13 +631,36 @@ function PreLabelDialog({
 
               <PromptClasses plan={plan.data ?? null} />
 
+              {preLabeled > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="flex items-start gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      className="accent-primary mt-0.5"
+                      data-testid="prelabel-replace"
+                      checked={replace}
+                      disabled={mode === "running"}
+                      onChange={(event) => setReplace(event.target.checked)}
+                    />
+                    <span>
+                      Replace the model labels on {preLabeled} pre-labeled frame
+                      {preLabeled === 1 ? "" : "s"}
+                    </span>
+                  </label>
+                  <FieldHint>
+                    Frames a person has edited, confirmed or skipped are never touched. This
+                    cannot be undone.
+                  </FieldHint>
+                </div>
+              )}
+
               <p className="text-xs text-muted-foreground" data-testid="prelabel-count">
-                {untouchedSummary(untouched, total)}
+                {untouchedSummary(untouched, total, replacing ? preLabeled : 0)}
               </p>
             </>
           )}
 
-          {mode === "configure" && blocked && active !== undefined && (
+          {mode === "configure" && blocked && preLabeled === 0 && active !== undefined && (
             // Model and threshold are context here, not choices: nothing is
             // about to run, so one line replaces the two live fields above.
             <p className="text-xs text-muted-foreground" data-testid="prelabel-config-summary">
@@ -662,7 +717,9 @@ function PreLabelDialog({
           )}
 
           {blocked && mode !== "running" && (
-            <Alert data-testid="prelabel-blocked-reason">{blockedReason(view)}</Alert>
+            <Alert data-testid="prelabel-blocked-reason">
+              {blockedReason(view, preLabeled)}
+            </Alert>
           )}
 
           {plan.isError && (
@@ -689,19 +746,26 @@ function PreLabelDialog({
                 Close
               </Button>
 
-              {mode === "configure" &&
-                (blocked ? (
-                  <BlockedActions preLabeled={preLabeled} onEdit={goToPreLabeled} />
-                ) : (
+              {mode === "configure" && (
+                // One press whose disabled state changes, never two swapped
+                // in and out: the tick that unblocks a run has to enable the
+                // button already on screen rather than replace it with another.
+                <>
                   <Button
-                    variant="primary"
+                    variant={blocked ? "secondary" : "primary"}
                     data-testid="prelabel-submit"
                     disabled={launchDisabled}
                     onClick={submit}
                   >
                     {running ? "Labeling…" : "Start"}
                   </Button>
-                ))}
+                  {blocked && preLabeled > 0 && (
+                    <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
+                      Edit these frames
+                    </Button>
+                  )}
+                </>
+              )}
 
               {mode === "done" && (
                 <>

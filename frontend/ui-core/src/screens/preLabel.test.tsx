@@ -170,6 +170,7 @@ function preLabelRunOf(overrides: Record<string, unknown> = {}): Record<string, 
     assets_labeled: 9,
     regions_discarded: 0,
     regions_out_of_bounds: 0,
+    annotations_replaced: 0,
     ...overrides,
   };
 }
@@ -212,7 +213,11 @@ function refuses(status: number, code: string): Answer {
 
 interface Extra {
   readonly connections?: readonly Connection[];
-  readonly counts?: { readonly unannotated: number; readonly total: number };
+  readonly counts?: {
+    readonly unannotated: number;
+    readonly total: number;
+    readonly pre_labeled?: number;
+  };
   readonly preLabel?: Answer;
   readonly plan?: Answer;
 }
@@ -225,7 +230,14 @@ function renderGallery(batchOverrides: Record<string, unknown> = {}, extra: Extr
       ...batchOverrides,
       ...(counts === undefined
         ? {}
-        : { progress: { ...NO_PROGRESS, total: counts.total, unannotated: counts.unannotated } }),
+        : {
+            progress: {
+              ...NO_PROGRESS,
+              total: counts.total,
+              unannotated: counts.unannotated,
+              pre_labeled: counts.pre_labeled ?? 0,
+            },
+          }),
     }),
   });
   on("GET", /\/assets$/, { status: 200, body: { total: 0, items: [] } });
@@ -451,7 +463,80 @@ it("sends the chosen model and the typed confidence, not a default nobody set", 
   await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
   const post = sent.find((r) => r.method === "POST" && r.url.endsWith("/pre-label"));
   const body = JSON.parse(await post!.clone().text());
-  expect(body).toEqual({ connection_id: DETECTOR.id, minimum_confidence: 0.5 });
+  expect(body).toEqual({
+    connection_id: DETECTOR.id,
+    minimum_confidence: 0.5,
+    replace_model_labels: false,
+  });
+});
+
+it("offers no replace control while nothing is pre-labeled", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await screen.findByTestId("prelabel-submit");
+  expect(screen.queryByTestId("prelabel-replace")).toBeNull();
+});
+
+it("offers replace, off by default, once frames are pre-labeled \u2014 and it unblocks Start", async () => {
+  renderGallery(
+    { allowed_actions: ["pre_label"] },
+    { counts: { unannotated: 0, pre_labeled: 48, total: 48 } },
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  const replace = (await screen.findByTestId("prelabel-replace")) as HTMLInputElement;
+  expect(replace.checked).toBe(false);
+  const start = (await screen.findByTestId("prelabel-submit")) as HTMLButtonElement;
+  expect(start.disabled).toBe(true);
+  expect((await screen.findByTestId("prelabel-blocked-reason")).textContent).toMatch(/replace/i);
+
+  await userEvent.click(replace);
+  await waitFor(() => expect(start.disabled).toBe(false));
+  expect(screen.queryByTestId("prelabel-blocked-reason")).toBeNull();
+  expect((await screen.findByTestId("prelabel-count")).textContent).toMatch(
+    /replaces the model labels on 48 pre-labeled frames/i,
+  );
+});
+
+it("posts replace_model_labels only when ticked", async () => {
+  on("POST", /\/pre-label$/, { status: 202, body: backgroundJobOf({ state: "queued" }) });
+  renderGallery(
+    { allowed_actions: ["pre_label"] },
+    { counts: { unannotated: 10, pre_labeled: 38, total: 48 } },
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await userEvent.click(await screen.findByTestId("prelabel-replace"));
+  await userEvent.click(await screen.findByTestId("prelabel-submit"));
+
+  const posted = sent.find((r) => r.method === "POST" && r.url.endsWith("/pre-label"));
+  expect(posted).toBeDefined();
+  const body = JSON.parse(await posted!.clone().text()) as Record<string, unknown>;
+  expect(body.replace_model_labels).toBe(true);
+});
+
+it("says how many earlier model labels a finished run replaced", async () => {
+  on("GET", /\/background-jobs\//, {
+    status: 200,
+    body: backgroundJobOf({
+      state: "succeeded",
+      result: {
+        assets_labeled: 40,
+        annotations_written: 90,
+        regions_discarded: 0,
+        regions_out_of_bounds: 0,
+        annotations_replaced: 75,
+        assets_skipped: 0,
+        stopped_early: false,
+      },
+    }),
+  });
+  renderGallery({ allowed_actions: ["pre_label"] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await userEvent.click(await screen.findByRole("button", { name: /start/i }));
+
+  expect((await screen.findByTestId("prelabel-replaced")).textContent).toContain(
+    "Replaced 75 earlier model regions",
+  );
 });
 
 /**
@@ -693,6 +778,7 @@ it("on reopen after a failed run, shows the handler's error and offers Try again
         assets_labeled: null,
         regions_discarded: null,
         regions_out_of_bounds: null,
+        annotations_replaced: null,
       }),
     },
     { counts: { unannotated: 43, total: 48 } },
