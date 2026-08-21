@@ -186,10 +186,11 @@ function planOf(overrides: Record<string, unknown> = {}): Record<string, unknown
   return {
     schema_version: 3,
     asked_classes: ["person", "car"],
+    produces: ["bbox"],
     excluded_classes: [
       { name: "vehicle", reasons: ["required_attribute"] },
-      { name: "lane", reasons: ["no_bbox_geometry"] },
-      { name: "crossing", reasons: ["no_bbox_geometry", "required_attribute"] },
+      { name: "lane", reasons: ["no_producible_geometry"] },
+      { name: "crossing", reasons: ["no_producible_geometry", "required_attribute"] },
     ],
     ...overrides,
   };
@@ -309,11 +310,12 @@ it("names every class it will not ask for, with the reason beside it", async () 
   renderGallery({ allowed_actions: ["pre_label"] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
-  // `crossing` carries both reasons: told only that it admits no box, somebody
-  // adds one and watches it stay absent from the next run's prompt.
+  // `crossing` carries both reasons: told only that no shape of it is producible,
+  // somebody adds one and watches it stay absent from the next run's prompt.
   expect((await screen.findByTestId("prelabel-excluded-classes")).textContent).toBe(
     "Not asked for: vehicle (requires an attribute a prediction cannot supply); " +
-      "lane (no box); crossing (no box, requires an attribute a prediction cannot supply).",
+      "lane (no shape this model produces); crossing (no shape this model produces, " +
+      "requires an attribute a prediction cannot supply).",
   );
 });
 
@@ -329,7 +331,7 @@ it("still names a class whose reason this build has never compiled against", asy
         body: planOf({
           excluded_classes: [
             { name: "vehicle", reasons: ["something_this_build_never_saw"] },
-            { name: "lane", reasons: ["no_bbox_geometry"] },
+            { name: "lane", reasons: ["no_producible_geometry"] },
           ],
         }),
       },
@@ -338,7 +340,33 @@ it("still names a class whose reason this build has never compiled against", asy
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   expect((await screen.findByTestId("prelabel-excluded-classes")).textContent).toBe(
-    "Not asked for: vehicle; lane (no box).",
+    "Not asked for: vehicle; lane (no shape this model produces).",
+  );
+});
+
+it("reads the plan for the chosen connection and says what the run writes", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect((await screen.findByTestId("prelabel-produces")).textContent).toBe("Writes boxes.");
+  expect(
+    sent.some(
+      (request) =>
+        request.method === "GET" &&
+        request.url.includes(`/pre-label?connection_id=${DETECTOR.id}`),
+    ),
+  ).toBe(true);
+});
+
+it("words a polygon-producing model's plan", async () => {
+  renderGallery(
+    { allowed_actions: ["pre_label"] },
+    { connections: [DETECTOR], plan: { status: 200, body: planOf({ produces: ["bbox", "polygon"] }) } },
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect((await screen.findByTestId("prelabel-produces")).textContent).toBe(
+    "Writes boxes or polygons.",
   );
 });
 

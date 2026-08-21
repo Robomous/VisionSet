@@ -767,10 +767,13 @@ guess rather than inheriting it silently as their own work.
 **The prompt is named, and so is everything left out of it.** A count of assets says nothing about
 which classes a run will look for, so a schema whose `vehicle` requires an attribute completes a
 run, labels no vehicles, and reads exactly like a run that should have labeled something. The
-dialog reads `GET /batches/{id}/pre-label` when it opens and shows both halves: the classes it
-asks for, and beside them each class it does not, with the reason - no box, or an attribute a
-prediction cannot supply. The lists come off the wire rather than being derived from the pinned
-schema in the browser, because the same narrowing decides what the run really prompts with. They
+dialog reads `GET /batches/{id}/pre-label?connection_id=` for the chosen model - and again when
+the model changes, because a schema of polygon classes is a prompt for a segmenter and a refusal
+for a detector - and shows three things: the classes it asks for; beside them each class it does
+not, with the reason - no shape this model produces, or an attribute a prediction cannot supply;
+and what the run writes (*Writes boxes.*). The lists come off the wire rather than being derived
+from the pinned schema in the browser, because the same narrowing decides what the run really
+prompts with. They
 are shown again under a settled run's summary, which is where a run that labeled nothing is
 actually read. A schema with no askable class at all refuses this read, and the dialog renders
 that refusal and leaves `Start` dead rather than waiting for the press to produce it.

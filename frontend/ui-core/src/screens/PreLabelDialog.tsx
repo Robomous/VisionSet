@@ -24,13 +24,16 @@
  * what a run will touch rather than an exact one — which is why the string
  * below says "up to".
  *
- * ## The prompt is named, not described
+ * ## The prompt is named, not described — and it is read per model
  *
- * A run asks only for the classes a bare box prediction can be written as, and
- * a count of assets says nothing about that — so a schema whose `vehicle`
- * requires a `color` completes a run, labels no vehicles, and offers no reason.
- * `usePreLabelPlan` fetches both halves and `PromptClasses` shows them, which is
- * why a left-out class is visibly left out with its reason beside it. The lists
+ * A run asks only for the classes the chosen model can answer, and a count of
+ * assets says nothing about that — so a schema whose `vehicle` requires a
+ * `color` completes a run, labels no vehicles, and offers no reason.
+ * `usePreLabelPlan` fetches the halves and `PromptClasses` shows them, which is
+ * why a left-out class is visibly left out with its reason beside it. The plan
+ * is a function of the pinned schema *and* of the connection — a schema of
+ * polygon classes is a prompt for a segmenter and a refusal for a detector — so
+ * the read is keyed by both and asked again when the model changes. The lists
  * are read off the wire rather than derived from the pinned schema here: the
  * same narrowing decides what the run really prompts with, and a second copy of
  * it in the browser is how a dialog comes to name a class no run asks about.
@@ -317,7 +320,7 @@ function DoneSummary({
  * rather than rendering an empty pair of parentheses.
  */
 const EXCLUSION_PROSE: Record<KnownMembers["PreLabelExclusionReason"], string> = {
-  no_bbox_geometry: "no box",
+  no_producible_geometry: "no shape this model produces",
   required_attribute: "requires an attribute a prediction cannot supply",
 };
 
@@ -335,6 +338,28 @@ function excludedProse(excluded: PreLabelExclusion): string {
     .map((one) => EXCLUSION_PROSE[one as KnownMembers["PreLabelExclusionReason"]])
     .filter((one) => one !== undefined);
   return said.length === 0 ? excluded.name : `${excluded.name} (${said.join(", ")})`;
+}
+
+/**
+ * How each shape a run writes reads: "Writes boxes or polygons."
+ *
+ * A plain `Record`, not one over the known members: the vocabulary is open and
+ * an unknown shape passes through raw rather than being dropped, because what a
+ * newer server says the run will write is exactly what the reader needs.
+ */
+const PRODUCES_PROSE: Record<string, string> = {
+  bbox: "boxes",
+  polygon: "polygons",
+  polyline: "polylines",
+  mask: "masks",
+  keypoints: "keypoints",
+  classification_tag: "tags",
+  cuboid_3d: "3D cuboids",
+  polyline_3d: "3D polylines",
+};
+
+function producesProse(produces: readonly string[]): string {
+  return produces.map((one) => PRODUCES_PROSE[one] ?? one).join(" or ");
 }
 
 /**
@@ -356,6 +381,9 @@ function PromptClasses({ plan }: { readonly plan: PreLabelPlan | null }): JSX.El
     <div className="flex flex-col gap-1" data-testid="prelabel-classes">
       <p className="text-xs text-muted-foreground" data-testid="prelabel-asked-classes">
         Asks for {plan.asked_classes.join(", ")}.
+      </p>
+      <p className="text-xs text-muted-foreground" data-testid="prelabel-produces">
+        Writes {producesProse(plan.produces)}.
       </p>
       {plan.excluded_classes.length > 0 && (
         <p className="text-xs text-muted-foreground" data-testid="prelabel-excluded-classes">
@@ -509,9 +537,11 @@ function PreLabelDialog({
     () => remembered !== null && isSettled(remembered.state),
   );
   const preLabel = usePreLabelBatch(batch?.id ?? "");
+  const active = candidates.find((row) => row.id === connectionId) ?? candidates[0];
   // Read while the dialog is open and not before: the prompt is a property of
-  // the pinned schema, so a gallery that never opens this never asks for it.
-  const plan = usePreLabelPlan(batch?.id, batch?.schema_version, batch !== null);
+  // the pinned schema and of the chosen model, so a gallery that never opens
+  // this never asks for it, and changing the model asks again.
+  const plan = usePreLabelPlan(batch?.id, batch?.schema_version, active?.id, batch !== null);
   // The job this session launched if there is one, otherwise the batch's own
   // remembered run — watched by its id so a run still genuinely in flight,
   // started elsewhere, keeps polling here rather than sitting frozen.
@@ -522,7 +552,6 @@ function PreLabelDialog({
     launched !== null ? viewFromJob(launched) : remembered !== null ? viewFromRun(remembered) : null;
   const mode = modeOf(view);
 
-  const active = candidates.find((row) => row.id === connectionId) ?? candidates[0];
   const untouched = batch?.progress.unannotated ?? 0;
   // `progress.total`, not `asset_count`: the sentence is about assets a run's
   // progress can move, and the two only diverge for a draft — which cannot
