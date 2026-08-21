@@ -15,7 +15,7 @@ Two kinds exist today:
   you take later, with the size shown before you agree to it.
 - **`http`** - an endpoint that answers this project's own inference contract (below). It carries
   an `endpoint_url`, it is born **ready** because there is nothing to set up on this machine, and
-  it declares what it answers once its endpoint has been asked — see [Asking an endpoint what it
+  it declares what it answers once its endpoint has been asked - see [Asking an endpoint what it
   answers](#asking-an-endpoint-what-it-answers).
 
 The model reference is a pair - an id and a **pinned revision**, both required. A moving pointer
@@ -378,8 +378,8 @@ before this existed acquires its answer the first time its weights arrive. `None
 legitimate and stays legitimate: a hand-typed model nothing in the catalog offers records
 nothing, and is served by whichever installed driver declares its family.
 
-**An `http` connection records the driver that asked its endpoint** — `http`, the built-in
-driver that speaks the contract below — and resolves by that and by the capability the endpoint
+**An `http` connection records the driver that asked its endpoint** - `http`, the built-in
+driver that speaks the contract below - and resolves by that and by the capability the endpoint
 declared; there is no config on this machine to read.
 
 ## What a connection can be asked for
@@ -413,12 +413,12 @@ deep in a request.
 
 **Empty means nothing is known yet**, which happens four ways: the weights were never fetched, so
 nothing has read a config; the config declared no model type; it declared one no installed driver
-serves; or it is an `http` connection nobody has asked yet — see [Asking an endpoint what it
+serves; or it is an `http` connection nobody has asked yet - see [Asking an endpoint what it
 answers](#asking-an-endpoint-what-it-answers). Empty is not a refusal - the server still judges
 every request on its own. It says only that no tool can rely on this connection.
 
-**It is recorded when the weights arrive** — or, for an `http` connection, when its endpoint is
-asked — because that is the first moment it is knowable without reaching a network. Editing a
+**It is recorded when the weights arrive** - or, for an `http` connection, when its endpoint is
+asked - because that is the first moment it is knowable without reaching a network. Editing a
 connection to point at another model or revision clears it again - nothing has read the new one,
 and a stale answer reads exactly like a fresh one - and takes the setup state with it, for the
 same reason: see [Pointing a connection somewhere
@@ -429,7 +429,7 @@ its answer the first time something reads it, from files already on your disk.
 
 A local connection's abilities are read out of its downloaded config. An `http` connection's
 have to be **asked**: its model runs elsewhere, and this workspace never loads it. The
-`test_endpoint` action does the asking — one request to the connection's `endpoint_url` — and
+`test_endpoint` action does the asking - one request to the connection's `endpoint_url` - and
 records what came back: the capability the endpoint declared becomes the row's `capabilities`,
 and `provider_id` records the driver that asked (`http`, unless the row already named another).
 Until then an `http` connection declares nothing, sits under *No ability declared yet* in the
@@ -440,8 +440,8 @@ previous answer, on the same reasoning a moved model forgets its family: what th
 declared says nothing about the new one.
 
 It is also the reachability test. An endpoint that cannot be reached, does not answer in time,
-answers a status outside 2xx, or answers outside the contract is `INFERENCE_ENDPOINT_UNAVAILABLE`
-— a 502, because the request was fine and this program is fine and the other end did not answer —
+answers a status outside 2xx, or answers outside the contract is `INFERENCE_ENDPOINT_UNAVAILABLE` -
+a 502, because the request was fine and this program is fine and the other end did not answer -
 and the message names the endpoint and what happened. Nothing is recorded then.
 
 Over HTTP it is `POST /inference/connections/{id}/test-endpoint`, answering `200` with the
@@ -460,8 +460,10 @@ appended to it; no trailing slash matters.
 { "model_ref": "acme/segmenter@3f2a9c…", "capability": "point_suggest" }
 ```
 
-`capability` is one of `point_suggest`, `text_detect` — exactly one. `model_ref` is the string that
-stamps every answer, and becomes an annotation's provenance when one is accepted.
+`capability` is one of `point_suggest`, `text_detect` - exactly one. `model_ref` says what the
+endpoint is here, and it is checked non-blank and nothing more - it is the `model_ref` each POST
+answer carries below, not this one, that stamps an annotation's provenance when a suggestion is
+accepted.
 
 **`POST endpoint_url`** predicts. The body is a JSON request and the answer is JSON:
 
@@ -482,15 +484,15 @@ A text prompt is `{ "kind": "text", "phrases": ["cat", "dog"] }`. The answer is
 - for `point_suggest`, `{ "asset_id", "model_ref", "segments": [ { "score", "mask" } ] }`, where
   `mask` is a **base64 PNG at the asset's own size** and any non-zero pixel is inside the mask.
 
-An image nobody found anything on still answers, with an empty `regions` or `segments` — "found
-nothing" and "was not looked at" are different facts. Anything outside this shape — a missing or
-extra answer, a mask of the wrong size, a blank `model_ref` — is refused as
+An image nobody found anything on still answers, with an empty `regions` or `segments` - "found
+nothing" and "was not looked at" are different facts. Anything outside this shape - a missing or
+extra answer, a mask of the wrong size, a blank `model_ref` - is refused as
 `INFERENCE_ENDPOINT_UNAVAILABLE` with the reason. A prompt kind the endpoint's declared capability
 does not take is refused **before** any request is made, as `UNSUPPORTED_PROMPT`.
 
 **`minimum_confidence` is enforced on this side too.** The endpoint may return whatever it likes;
-an answer below the threshold is dropped from what this workspace records, whatever the endpoint
-itself judged worth reporting.
+a region or segment below the threshold is dropped from what this workspace records, whatever
+the endpoint itself judged worth reporting.
 
 **A redirect that leaves `http` or `https` is refused**, never followed - a scheme this driver
 never promised to open is not one it will silently trust because the endpoint pointed at it.
@@ -660,8 +662,8 @@ click.
 The connection is resolved before the asset, deliberately: if you are part-way through setting a
 connection up, you should hear about the connection rather than about an asset that was never the
 problem. A connection whose weights are not here yet is `INFERENCE_CONNECTION_NOT_SET_UP` and
-names `download` as the remedy; one whose model answers words rather than places is
-`UNSUPPORTED_PROMPT`.
+names `download` as the remedy - an `http` connection nobody has asked yet gets the same code,
+naming `test-endpoint`; one whose model answers words rather than places is `UNSUPPORTED_PROMPT`.
 
 That last one is still the law and is still enforced on every call. It is simply no longer how a
 person finds out: a client with `capabilities` in hand can decline to ask, which is why the
@@ -740,7 +742,7 @@ form.
   connection downloads nothing, so not knowing the size is information rather than a barrier.
 - **HTTP** asks for the endpoint URL. Once created, **Test endpoint** in the row's menu asks the
   endpoint what it answers and moves the row under that ability. There is no credential field;
-  where a secret would live is still open (`cf. #421`), and a field added ahead of that answer
+  where a secret would live is still open (#421), and a field added ahead of that answer
   would be answering it.
 
 Because that list is a request rather than a constant, the model field has four states and says

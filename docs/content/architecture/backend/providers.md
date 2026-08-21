@@ -72,8 +72,8 @@ is not checkable.
 
 **The shipped hosted driver is `http`**
 ([`inference/http_provider.py`](../../../../src/visionset/inference/http_provider.py)). It serves
-`point_suggest` and `text_detect` — its family names *are* the capability names, because the
-family an `http` connection records is the capability its endpoint declared, verbatim — declares no
+`point_suggest` and `text_detect` - its family names *are* the capability names, because the
+family an `http` connection records is the capability its endpoint declared, verbatim - declares no
 `WeightsSource`, and builds a runner that speaks the endpoint contract in
 [`docs/content/inference.md`](../../inference.md#serving-a-model-over-http-the-endpoint-contract).
 Resolution for an `http` connection reads the row and nothing else: the driver it recorded (this
