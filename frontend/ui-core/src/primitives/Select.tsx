@@ -30,6 +30,15 @@
  * identifier cut off in the middle is not an identifier, which is also why the
  * trigger omits Nova's own `*:data-[slot=select-value]:line-clamp-1`.
  *
+ * The padding is `py-1`, which is `Input`'s — and it is `py-1` *because* the
+ * height is a minimum rather than a fixed one. Under a fixed `h-8` the padding
+ * cannot change the height, so Nova's own `py-2` is free; under `min-h-8` it
+ * adds, and one line of `text-sm` (20px) plus `py-2` (16px) plus the border
+ * (2px) is a 38px control standing beside a 32px `Input` in the same field row.
+ * With `py-1` the minimum governs the one-line case at exactly Nova's 32px and
+ * the second line still grows the box. `styleguide.spec.ts` measures both, and
+ * measures the trigger against the `Input` next to it.
+ *
  * ## The list scrolls; it never runs off the screen
  *
  * Two-line options make a list tall quickly, and a list taller than the room under
@@ -81,14 +90,16 @@ export const SelectTrigger = forwardRef<
         // `bg-transparent` and `dark:bg-input/30`, for `Input`'s reasons — Nova's
         // own neutral skin, not a card surface.
         //
-        // `min-h-8` with `py-2` rather than Nova's fixed `data-[size=default]:h-8`:
+        // `min-h-8` with `py-1` rather than Nova's fixed `data-[size=default]:h-8`:
         // a one-line value still lands on Nova's own control height, and a
-        // two-line one grows the control instead of overflowing it. `text-left`
+        // two-line one grows the control instead of overflowing it. The padding
+        // is `Input`'s, not Nova's `py-2`, because under a *minimum* height the
+        // padding adds — see the module note. `text-left`
         // because this is a <button>, which centres its text, and a value that
         // wrapped would centre with it. No `whitespace-nowrap`: that is Nova's
         // one-line contract, and this trigger's is two lines.
         "flex min-h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-input " +
-          "bg-transparent py-2 pr-2 pl-2.5 text-left text-sm transition-colors outline-none " +
+          "bg-transparent py-1 pr-2 pl-2.5 text-left text-sm transition-colors outline-none " +
           "select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 " +
           "disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive " +
           "aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground " +
