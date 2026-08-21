@@ -527,8 +527,8 @@ describe("the schema editor", () => {
     // so the zero is measured rather than assumed.
     expect(dialog.textContent).toContain("1 class narrows");
     expect(dialog.textContent).toContain("No existing annotation becomes invalid");
-    // The removed promise. It described what happens to annotations *after* the
-    // publish, which the kernel has not decided, so the dialog stops claiming it.
+    // The removed promise. It said annotations are untouched, which answers the
+    // invariant by implication; the dialog states the rule itself instead.
     expect(dialog.textContent).not.toContain("Existing annotations are not touched");
     expect(
       sent.some(
@@ -591,6 +591,44 @@ describe("the schema editor", () => {
     expect(dialog.textContent).toContain("lane");
     expect(dialog.textContent).toContain("sign");
     expect(dialog.textContent).toContain("No existing annotation becomes invalid");
+  });
+
+  it("says what a batch still open on the outgoing version will keep writing", async () => {
+    projectWithSchema();
+    handlers.push((request) => {
+      if (request.method !== "POST" || !new URL(request.url).pathname.endsWith("/schema/preview")) {
+        return undefined;
+      }
+      return {
+        status: 200,
+        body: {
+          is_refused: false,
+          blockers: [],
+          diff: {
+            is_destructive: true,
+            destructive_classes: ["lane", "sign"],
+            changes: [
+              { kind: "destructive", label_class: "lane", attribute: null, detail: "class 'lane' removed" },
+              { kind: "destructive", label_class: "sign", attribute: null, detail: "class 'sign' removed" },
+            ],
+          },
+        },
+      };
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await removeClass(1);
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    const dialog = await screen.findByTestId("destructive-dialog");
+    // A batch still pinned to the outgoing version keeps writing the dropped
+    // class, and the bill arrives at the release rather than at this save.
+    expect(dialog.textContent).toContain("still open on the current version");
+    expect(dialog.textContent).toContain("a release cannot be published");
+    // Still no machine code, no UUID, no SDK keyword.
+    expect(dialog.textContent).not.toContain("SCHEMA_CHANGE_WOULD_ORPHAN");
+    expect(dialog.textContent).not.toContain("allow_destructive");
   });
 
   it("prevents repeated confirmation while its second preview is pending", async () => {
