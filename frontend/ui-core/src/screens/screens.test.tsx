@@ -426,6 +426,45 @@ describe("the schema editor", () => {
     ).toBe(false);
   });
 
+  it("hashes a proposal's property order out of the key, not just its members", async () => {
+    on("POST", /\/schema\/blocking-assets$/, { status: 200, body: { items: [], total: 0 } });
+
+    // Same class, two builds: `color` before `attributes` versus after. Two
+    // logically-identical proposals reaching this hook by different code paths
+    // must share a cache entry — TanStack's own key hash sorts object keys for
+    // exactly this reason, and pre-stringifying here would have thrown that away.
+    const classesA: readonly LabelClassBody[] = [
+      { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
+    ];
+    const classesB: readonly LabelClassBody[] = [
+      { color: "#38bdf8", attributes: [], name: "vehicle", geometries: ["bbox"] },
+    ];
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrap = (node: ReactNode): JSX.Element => (
+      <ApiProvider baseUrl={API} queryClient={queryClient}>
+        {node}
+      </ApiProvider>
+    );
+
+    const { rerender } = render(
+      wrap(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={classesA} />),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("blocking-assets-result").textContent).toBe("0:undefined:undefined"),
+    );
+
+    rerender(wrap(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={classesB} />));
+    await waitFor(() =>
+      expect(screen.getByTestId("blocking-assets-result").textContent).toBe("0:undefined:undefined"),
+    );
+
+    expect(
+      sent.filter((sentRequest) =>
+        new URL(sentRequest.url).pathname.endsWith("/schema/blocking-assets"),
+      ),
+    ).toHaveLength(1);
+  });
+
   it("treats a schema-less project as an empty draft, not as an error", async () => {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,

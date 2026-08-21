@@ -130,7 +130,7 @@ export const queryKeys = {
   // The proposal is part of the key: two class lists are two answers, and sharing
   // one key would make editing the draft a cache overwrite rather than a new read.
   schemaBlockingAssets: (projectId: string, classes: readonly LabelClassBody[]) =>
-    ["projects", projectId, "schema", "blocking-assets", JSON.stringify(classes)] as const,
+    ["projects", projectId, "schema", "blocking-assets", classes] as const,
 };
 
 /**
