@@ -42,6 +42,7 @@ from visionset.kernel.domain import (
     IMPLEMENTED_GEOMETRIES,
     REPINNABLE_STATES,
     AnnotationSchema,
+    BlockingAsset,
     ChangeKind,
     ClassCount,
     ClassShape,
@@ -196,6 +197,25 @@ class SchemaService:
             return SchemaChangePreview(
                 diff=diff, blockers=_blockers(uow, project_id, orphanable_shapes(previous, diff))
             )
+
+    def blockers(
+        self, project_id: UUID, classes: Sequence[LabelClass]
+    ) -> tuple[BlockingAsset, ...]:
+        """Which frames would block publishing these classes, and where they sit.
+
+        The listing half of :meth:`preview`'s counts. The guarded set is derived
+        here the same way, from the same diff, so the number a caller was shown
+        and the rows it can open are answers to one question.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            self._require_project(uow, project_id)
+            active = self.active(uow, project_id)
+            previous = () if active is None else active.classes
+            diff = diff_classes(previous, classes)
+            return _blocking_assets(uow, project_id, orphanable_shapes(previous, diff))
 
     # --- writing: the only door --------------------------------------------
 
@@ -572,6 +592,39 @@ def _advance_pins(
         uow.batches.update(batch.model_copy(update={"schema_version": created.version}))
         moved.append(batch.id)
     return tuple(moved)
+
+
+def _blocking_assets(
+    uow: UnitOfWork, project_id: UUID, guarded: frozenset[ClassShape]
+) -> tuple[BlockingAsset, ...]:
+    """The frames behind :func:`_annotated_classes`' counts, in the same walk.
+
+    Same loop and same ``guarded`` set as the count, so the two cannot report
+    different things about one narrowing. Ordering follows ``assets.list``, which
+    is insertion order.
+    """
+    if not guarded:
+        return ()
+    found: list[BlockingAsset] = []
+    for asset in uow.assets.list(project_id):
+        classes: set[str] = set()
+        counted = 0
+        for annotation in uow.annotations.list(asset.id):
+            if (annotation.label_class, annotation.geometry.type) not in guarded:
+                continue
+            classes.add(annotation.label_class)
+            counted += 1
+        if counted == 0:
+            continue
+        found.append(
+            BlockingAsset(
+                asset=asset,
+                label_classes=tuple(sorted(classes)),
+                annotations=counted,
+                batches=tuple(uow.batches_holding(asset.id)),
+            )
+        )
+    return tuple(found)
 
 
 def _annotated_classes(

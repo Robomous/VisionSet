@@ -40,6 +40,7 @@ from visionset.kernel.domain import (
     AnnotationSchema,
     Asset,
     Attribute,
+    Batch,
     BboxGeometry,
     Geometry,
     GeometryType,
@@ -79,8 +80,8 @@ def _annotate(
     project_id: UUID,
     label_class: str,
     geometry: Geometry | None = None,
-) -> None:
-    """Give the project one annotation under ``label_class``, schema aside.
+) -> Asset:
+    """Give the project one annotation under ``label_class``, schema aside, and return its asset.
 
     **The shape has to be one the class declares**, which was free to ignore while
     the orphan gate matched on the class name and is not any more: since #592 the
@@ -111,6 +112,7 @@ def _annotate(
                 provenance="human",
             )
         )
+    return asset
 
 
 #: Makes each ``_annotate`` call its own asset — see the note in that helper.
@@ -564,6 +566,84 @@ def test_the_refusal_counts_only_the_annotations_the_change_would_orphan(tmp_pat
     with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)") as caught:
         schemas.create_version(project.id, [_CAR_BOX], allow_destructive=True)
     assert [one.annotations for one in caught.value.blockers] == [1]
+    workspace.close()
+
+
+# --- the frames behind the counts ---------------------------------------------
+
+
+def _one_doomed_polygon(
+    tmp_path: Path,
+) -> tuple[WorkspaceService, SchemaService, UUID, Asset, Batch, Batch]:
+    """A `car` project where narrowing to boxes strands exactly one polygon.
+
+    The construction `test_the_refusal_counts_only_the_annotations_the_change
+    _would_orphan` uses, plus the batch memberships the listing has to name.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [_CAR_BOTH])
+    box_asset = _annotate(workspace, project.id, "car")
+    polygon_asset = _annotate(workspace, project.id, "car", _LANE_SHAPE)
+    with workspace.unit_of_work() as uow:
+        first = uow.batches.add(
+            Batch(project_id=project.id, name="first", asset_ids=[box_asset.id, polygon_asset.id])
+        )
+        correction = uow.batches.add(
+            Batch(project_id=project.id, name="correction", asset_ids=[polygon_asset.id])
+        )
+    return workspace, schemas, project.id, polygon_asset, first, correction
+
+
+def test_blockers_lists_only_the_assets_whose_own_shape_is_doomed(tmp_path: Path) -> None:
+    """The listing crosses the same grain the count does.
+
+    A ``car`` losing its polygon is blocked by the polygon and not by the boxes
+    that survive, so the assets carrying only boxes must not appear.
+    """
+    workspace, schemas, project_id, polygon_asset, _, _ = _one_doomed_polygon(tmp_path)
+
+    listed = schemas.blockers(project_id, [_CAR_BOX])
+
+    assert [one.asset.id for one in listed] == [polygon_asset.id]
+    assert listed[0].label_classes == ("car",)
+    assert listed[0].annotations == 1
+    workspace.close()
+
+
+def test_blockers_and_preview_agree_on_the_totals(tmp_path: Path) -> None:
+    """The contract this whole capability exists for.
+
+    ``preview`` counts and ``blockers`` lists; two walks that agreed by
+    coincidence is the drift the typed report was introduced to end.
+    """
+    workspace, schemas, project_id, _, _, _ = _one_doomed_polygon(tmp_path)
+
+    previewed = schemas.preview(project_id, [_CAR_BOX])
+    listed = schemas.blockers(project_id, [_CAR_BOX])
+
+    assert sum(one.annotations for one in listed) == sum(
+        count.annotations for count in previewed.blockers
+    )
+    assert len(listed) == sum(count.assets for count in previewed.blockers)
+    workspace.close()
+
+
+def test_blockers_names_the_batches_holding_each_asset(tmp_path: Path) -> None:
+    """An asset is held by many batches, so the row carries all of them."""
+    workspace, schemas, project_id, _, first, correction = _one_doomed_polygon(tmp_path)
+
+    listed = schemas.blockers(project_id, [_CAR_BOX])
+
+    assert set(listed[0].batches) == {first.id, correction.id}
+    workspace.close()
+
+
+def test_blockers_is_empty_when_the_change_removes_nothing(tmp_path: Path) -> None:
+    """An additive change has no guard, so the walk never runs."""
+    workspace, schemas, project_id, _, _, _ = _one_doomed_polygon(tmp_path)
+
+    assert schemas.blockers(project_id, [_CAR_BOTH, SIGN]) == ()
     workspace.close()
 
 
