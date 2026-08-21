@@ -1192,7 +1192,7 @@ describe("the schema editor", () => {
 
       const error = await screen.findByTestId("schema-error");
       expect(error.textContent).toContain(
-        "Annotations already exist under a class this change removes.",
+        "Annotations already exist that this change would orphan.",
       );
       expect(error.textContent).not.toContain("internal wording must not appear");
       expect(error.textContent).not.toContain("SCHEMA_CHANGE_WOULD_ORPHAN");
