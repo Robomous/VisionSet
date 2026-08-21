@@ -475,9 +475,13 @@ refusals are **both 409** with only one override between them, so it branches on
 
 `POST /projects/{id}/schema/preview` now routes `SchemaService.preview`, so a client can ask
 both questions about a *draft* before it publishes; `compare` remains the question about two
-*published* versions, which is what the version navigator asks. See
-[ui.md](ui.md#the-schema-editor-and-the-three-409s) and
-[api.md](api.md#asking-before-you-are-refused).
+*published* versions, which is what the version navigator asks.
+`POST /projects/{id}/schema/blocking-assets` routes `SchemaService.blocking_assets`, which is the
+listing behind the counts: a "Close" dialog can name the frames rather than only a number, and it
+walks the project once, the same way, so the two never disagree. See
+[ui.md](ui.md#the-schema-editor-and-the-three-409s),
+[api.md](api.md#asking-before-you-are-refused) and
+[api.md](api.md#reaching-what-is-in-the-way).
 
 ## Drafts
 
