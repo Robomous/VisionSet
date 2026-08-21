@@ -57,19 +57,15 @@
  * Configure, running, done, stopped and failed each get their own body and
  * their own primary press — never the same "Start" re-offered once a run has
  * already settled. `stopped` is a cancelled or orphaned run: `Continue`, never
- * `Start` — restarting is not what cancelling asked for, and only untouched
- * assets are ever eligible, so it cannot duplicate a label.
+ * `Start` — restarting is not what cancelling asked for, and left alone it
+ * reaches only untouched assets, so it cannot duplicate a label.
  *
- * `Start` (and its twins) is disabled once nothing untouched remains: with
- * `untouched === 0` a launch is a guaranteed no-op. That reason renders next to
- * the disabled press rather than at the bottom of the form, and the config
- * fields collapse to one line of context once they stop being live choices.
- *
- * The one exception is *Replace*: ticked over pre-labeled frames a run has
- * somewhere to write again, so every verb is live with nothing untouched left.
- * That is why the configuration fields belong to no single mode — they follow
- * whichever summary the mode wrote, in all five, wherever a launch could still
- * do something.
+ * `Start` (and its twins) is disabled once nothing untouched remains and
+ * *Replace* is not ticked: that launch would be a guaranteed no-op. The reason
+ * renders next to the disabled press rather than at the bottom of the form, and
+ * the config fields collapse to one line of context only where no launch could
+ * reach anything at all — otherwise they follow whichever summary the mode
+ * wrote, in every mode, because the tick that revives a run lives among them.
  */
 
 import { useEffect, useState, type JSX } from "react";
@@ -208,12 +204,17 @@ function modeOf(view: RunView | null): Mode {
   return "failed";
 }
 
-/** "Labels up to N of M untouched assets" — shown only while there is something to run. */
+/** "Labels up to N of M untouched assets", and what a ticked replace adds to that. */
 function untouchedSummary(untouched: number, total: number, replacing: number): string {
-  const labels = `Labels up to ${untouched} of ${total} untouched asset${total === 1 ? "" : "s"}.`;
-  return replacing === 0
-    ? labels
-    : `${labels} Also replaces the model labels on ${replacing} pre-labeled frame${replacing === 1 ? "" : "s"}.`;
+  const labels =
+    untouched === 0
+      ? ""
+      : `Labels up to ${untouched} of ${total} untouched asset${total === 1 ? "" : "s"}.`;
+  if (replacing === 0) return labels;
+  const frames = `${replacing} pre-labeled frame${replacing === 1 ? "" : "s"}`;
+  return labels === ""
+    ? `Replaces the model labels on ${frames}.`
+    : `${labels} Also replaces the model labels on ${frames}.`;
 }
 
 /**
@@ -532,11 +533,10 @@ function PreLabelDialog({
   // which reaches the pre-labeled frames an earlier run wrote and nobody edited.
   const replacing = replace && preLabeled > 0;
   const blocked = untouched === 0 && !replacing;
-  // Whether a launch could still do anything at all, ticked or not: the
-  // configuration block renders on this, and each settled mode offers its own
-  // verb on it rather than a dead `Start`, so the tick can enable that verb in
-  // place.
+  // Each settled mode offers its own verb on this rather than a dead `Start`,
+  // so ticking Replace enables that verb in place instead of replacing it.
   const offering = !blocked || preLabeled > 0;
+  const countLine = untouchedSummary(untouched, total, replacing ? preLabeled : 0);
   const confidenceValue = Number(confidence);
   // `confidence.trim() !== ""` first: `Number("")` is `0`, a value inside the
   // valid range, so an emptied field would otherwise read as a valid `0` and
@@ -707,9 +707,11 @@ function PreLabelDialog({
                 </div>
               )}
 
-              <p className="text-xs text-muted-foreground" data-testid="prelabel-count">
-                {untouchedSummary(untouched, total, replacing ? preLabeled : 0)}
-              </p>
+              {countLine !== "" && (
+                <p className="text-xs text-muted-foreground" data-testid="prelabel-count">
+                  {countLine}
+                </p>
+              )}
             </>
           )}
 
@@ -799,8 +801,9 @@ function PreLabelDialog({
                         Continue
                       </Button>
                       <FieldHint data-testid="prelabel-continue-hint">
-                        Only untouched assets are eligible — this can&rsquo;t create a duplicate
-                        label.
+                        {replacing
+                          ? `Also rewrites the model labels on the ${preLabeled} pre-labeled frame${preLabeled === 1 ? "" : "s"}.`
+                          : "Only untouched assets are eligible — this can’t create a duplicate label."}
                       </FieldHint>
                     </div>
                     {blocked && preLabeled > 0 && (

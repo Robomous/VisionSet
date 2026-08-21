@@ -858,3 +858,78 @@ it("offers the replacing re-run when a completed run left nothing untouched", as
   await waitFor(() => expect(again.disabled).toBe(false));
   expect(screen.queryByTestId("prelabel-blocked-reason")).toBeNull();
 });
+
+it("forgets a ticked replace once the dialog closes", async () => {
+  renderGallery(
+    {
+      allowed_actions: ["pre_label"],
+      pre_label_run: preLabelRunOf({
+        state: "succeeded",
+        assets_processed: 48,
+        assets_total: 48,
+        error: null,
+        stopped_early: false,
+        assets_labeled: 48,
+      }),
+    },
+    { counts: { unannotated: 0, pre_labeled: 48, total: 48 } },
+  );
+
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await userEvent.click(await screen.findByTestId("prelabel-replace"));
+  const again = (await screen.findByTestId("prelabel-run-again")) as HTMLButtonElement;
+  await waitFor(() => expect(again.disabled).toBe(false));
+
+  // This dialog is never unmounted — `PreLabelButton` keeps it mounted and
+  // passes `batch={null}` instead — so nothing but `close()` clears the tick,
+  // and a reopened dialog arriving pre-armed would replace on the next press.
+  await userEvent.click(screen.getAllByRole("button", { name: /^close$/i })[0]);
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect(((await screen.findByTestId("prelabel-replace")) as HTMLInputElement).checked).toBe(false);
+  expect((screen.getByTestId("prelabel-run-again") as HTMLButtonElement).disabled).toBe(true);
+  expect(await screen.findByTestId("prelabel-blocked-reason")).not.toBeNull();
+});
+
+it("will not let the tick change while a run is under way", async () => {
+  renderGallery(
+    {
+      allowed_actions: ["pre_label"],
+      pre_label_run: preLabelRunOf({
+        state: "running",
+        assets_processed: 5,
+        assets_total: 48,
+        stopped_early: null,
+        assets_labeled: null,
+        regions_discarded: null,
+        regions_out_of_bounds: null,
+        annotations_replaced: null,
+      }),
+    },
+    { counts: { unannotated: 43, pre_labeled: 5, total: 48 } },
+  );
+
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect(((await screen.findByTestId("prelabel-replace")) as HTMLInputElement).disabled).toBe(true);
+});
+
+it("stops promising Continue cannot duplicate a label once replace is ticked", async () => {
+  renderGallery(
+    {
+      allowed_actions: ["pre_label"],
+      pre_label_run: preLabelRunOf({ state: "cancelled", assets_processed: 12, assets_total: 48 }),
+    },
+    { counts: { unannotated: 36, pre_labeled: 9, total: 48 } },
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  const hint = await screen.findByTestId("prelabel-continue-hint");
+  expect(hint.textContent).toMatch(/can.t create a duplicate label/i);
+
+  // The sentence above is a promise about what a run reaches, and ticking
+  // replace is precisely what breaks it.
+  await userEvent.click(await screen.findByTestId("prelabel-replace"));
+  await waitFor(() => expect(hint.textContent).not.toMatch(/duplicate label/i));
+  expect(hint.textContent).toContain("rewrites the model labels on the 9 pre-labeled frames");
+});
