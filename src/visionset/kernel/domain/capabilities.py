@@ -276,7 +276,8 @@ UNNAMED_EDGES: Final[frozenset[tuple[AssetProgress, AssetProgress]]] = frozenset
     )
     is not None
 )
-"""Legal progress edges that deliberately have no action name.
+"""Legal progress edges that deliberately have no action name of their own — except
+``pre_labeled -> annotated``, which ``confirm`` also names.
 
 Five edges, all of them *computed from* ``progress_after_annotating`` rather
 than listed beside it. The first two are an annotation appearing or

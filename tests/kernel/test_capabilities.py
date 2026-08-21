@@ -13,7 +13,7 @@ what happened against what was declared, for every state a resource can reach:
 - *complete* — an undeclared action, invoked, is refused, with the two documented
   exceptions derived rather than listed (`JobService.mark` treats a move to the
   state an asset is already in as a no-op, and `UNNAMED_EDGES` is the legal edge
-  nobody clicks);
+  nobody clicks, save the one `confirm` also reaches);
 - *covered* — every edge of every table is claimed by an action or deliberately
   named as unclaimed, so a new edge cannot arrive with no capability.
 
