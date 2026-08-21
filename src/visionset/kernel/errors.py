@@ -1128,8 +1128,8 @@ class InferenceConnectionNotRunnable(VisionSetError):
     **not** a sibling of ``InferenceConnectionNotSetUp``: one is a state a user
     can leave, the other is a version of this program they do not have.
 
-    The message carries what a reader can act on, which is the kind that was
-    asked for and the fact that this build has no adapter for it.
+    The message carries what a reader can act on: which family or driver was
+    asked for, and what this build does serve or has installed.
     """
 
 

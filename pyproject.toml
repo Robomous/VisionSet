@@ -139,6 +139,7 @@ openlane-2d = "visionset.formats.lanes:OpenLane2dExporter"
 sam = "visionset.inference.sam_provider:SamProvider"
 grounding-dino = "visionset.inference.transformers_provider:GroundingDinoProvider"
 stub = "visionset.inference.stub_provider:StubProvider"
+http = "visionset.inference.http_provider:HttpProvider"
 
 [dependency-groups]
 dev = [

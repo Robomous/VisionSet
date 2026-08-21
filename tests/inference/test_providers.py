@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from visionset.inference import providers as providers_module
+from visionset.inference.http_provider import RemoteDetector, RemoteSegmenter
 from visionset.inference.providers import ProviderPool, driver_for, provider_for, resident
 from visionset.inference.registry import families_served, registered, serving
 from visionset.inference.sam_provider import LocalSamProvider
@@ -92,11 +93,58 @@ def test_a_connection_without_weights_is_told_which_action_fixes_it(
         provider_for(connection, workspace_root=tmp_path)
 
 
-def test_an_http_connection_is_refused_because_this_build_has_no_adapter(
+def test_an_http_connection_nobody_asked_is_told_which_action_fixes_it(
     connections: InferenceConnectionService, tmp_path: Path
 ) -> None:
-    with pytest.raises(InferenceConnectionNotRunnable, match="http connection"):
+    with pytest.raises(InferenceConnectionNotSetUp, match="test_endpoint"):
         provider_for(an_http(connections), workspace_root=tmp_path)
+
+
+def test_an_http_connection_that_declared_resolves_to_the_http_driver(
+    connections: InferenceConnectionService, tmp_path: Path
+) -> None:
+    made = an_http(connections)
+    declared = connections.record_endpoint_answer(
+        made.id, model_family="point_suggest", provider_id="http"
+    )
+    runner = provider_for(declared, workspace_root=tmp_path)
+    assert isinstance(runner, RemoteSegmenter)
+
+
+def test_an_http_connection_recording_no_driver_is_served_by_the_built_in_one(
+    connections: InferenceConnectionService, tmp_path: Path
+) -> None:
+    made = an_http(connections)
+    declared = connections.record_endpoint_answer(
+        made.id, model_family="text_detect", provider_id="http"
+    )
+    # Forget the driver again, the way a row written by an older build would look.
+    forgotten = connections.update(declared.id, model_id="other/model")
+    redeclared = connections.record_weights_ready(forgotten.id, model_family="text_detect")
+    assert redeclared.provider_id is None
+    assert isinstance(provider_for(redeclared, workspace_root=tmp_path), RemoteDetector)
+
+
+def test_an_http_connection_declaring_a_family_its_driver_does_not_serve_is_refused(
+    connections: InferenceConnectionService, tmp_path: Path
+) -> None:
+    made = an_http(connections)
+    declared = connections.record_endpoint_answer(
+        made.id, model_family="telepathy", provider_id="http"
+    )
+    with pytest.raises(InferenceConnectionNotRunnable, match="telepathy"):
+        provider_for(declared, workspace_root=tmp_path)
+
+
+def test_an_http_connection_naming_a_driver_nobody_has_is_refused_by_name(
+    connections: InferenceConnectionService, tmp_path: Path
+) -> None:
+    made = an_http(connections)
+    declared = connections.record_endpoint_answer(
+        made.id, model_family="point_suggest", provider_id="acme-hosted"
+    )
+    with pytest.raises(InferenceConnectionNotRunnable, match="acme-hosted"):
+        provider_for(declared, workspace_root=tmp_path)
 
 
 def test_a_missing_runtime_is_reported_after_the_connections_own_state(

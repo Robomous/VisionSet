@@ -220,10 +220,10 @@ class TestTheKeptScan:
         registry.reset()
         assert registry.registered() is not first
 
-    def test_the_three_shipped_drivers_are_discovered(self) -> None:
+    def test_the_shipped_drivers_are_discovered(self) -> None:
         """Through installed metadata, not a hardcoded list — the plugin promise."""
         registry.reset()
-        assert set(registry.registered().providers) == {"sam", "grounding-dino", "stub"}
+        assert set(registry.registered().providers) == {"sam", "grounding-dino", "stub", "http"}
 
 
 class TestMergingCapabilities:

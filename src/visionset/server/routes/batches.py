@@ -418,7 +418,7 @@ def pre_label_batch(
         # `UNSUPPORTED_PROMPT` for that would claim the model answers places
         # rather than words, which is false — it answers words fine and has no
         # weights yet.
-        raise InferenceConnectionNotSetUp(not_set_up_message(connection.name))
+        raise InferenceConnectionNotSetUp(not_set_up_message(connection))
     # `capabilities` is derived from the model family rather than stored on the
     # row, so it is asked for here the same way the connection wire model asks.
     if ModelCapability.TEXT_DETECT not in capabilities_of(connection.model_family):

@@ -422,7 +422,9 @@ class InferenceConnectionService:
         is the capability the endpoint declared, recorded verbatim by the caller
         that asked it, and the provider is the driver that asked. Idempotent the
         same way — re-asking an endpoint that says the same thing is not an
-        edit. ``setup_state`` is already ``ready`` for this kind and stays so.
+        edit. Writes ``ready`` unconditionally; it is the caller's job — ``ask_endpoint``
+        does it via ``require_endpoint_testable`` — to have already refused a
+        connection this action is not legal for.
 
         Raises:
             InferenceConnectionNotFound: no such connection in this workspace.
