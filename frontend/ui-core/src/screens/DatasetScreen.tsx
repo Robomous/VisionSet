@@ -943,8 +943,12 @@ function ExportDialog({
           )}
 
           {needsConsent && (
-            <Alert variant="destructive" title={LOSSY} data-testid="lossy-consent">
-              <p>{failure?.message}</p>
+            <Alert
+              variant="destructive"
+              title="Some shapes cannot be exported"
+              data-testid="lossy-consent"
+            >
+              <p>{refusalProse(failure)}</p>
               <label className="mt-2 flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"

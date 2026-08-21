@@ -378,7 +378,8 @@ describe("export, and the third gate word", () => {
     await userEvent.click(screen.getByTestId("export-submit"));
 
     const consent = await screen.findByTestId("lossy-consent");
-    expect(consent.textContent).toContain("cannot express polygon");
+    expect(consent.textContent).toContain("cannot express every shape");
+    expect(consent.textContent).not.toContain("LOSSY_EXPORT_NOT_CONSENTED");
     // Shut until the box is ticked — the gate is the consent, not the click.
     expect(screen.getByTestId("export-submit")).toHaveProperty("disabled", true);
 

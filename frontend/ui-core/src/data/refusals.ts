@@ -25,6 +25,21 @@
  * Entries are for codes whose server message is *correct but unhelpful in
  * context*: the kernel says what rule was broken, and the product says what the
  * person can do about it.
+ *
+ * ## Where the code may appear
+ *
+ * The prose is always the visible notice. The identifier survives only where a
+ * bug report can reach it, and which place that is depends on the surface:
+ *
+ * - an inline notice (`EditorNotice`) puts it in the DOM `title` tooltip —
+ *   quotable, never rendered;
+ * - a full error state (`ErrorState`) puts it in a secondary mono meta line,
+ *   de-duplicated against the sentence;
+ * - a bare `Alert` does not carry it at all;
+ * - a visible `Badge` beside the raw message, which six sites still do, is
+ *   the fourth shape and is not yet settled.
+ *
+ * A code as an `Alert` heading is the shape this map exists to end.
  */
 
 import { asApiError } from "./errors.js";
