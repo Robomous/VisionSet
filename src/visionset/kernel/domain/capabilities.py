@@ -124,7 +124,8 @@ class AssetAction(OpenVocabulary):
 
 # ``download_weights`` arrives here in the same change as the route, the command
 # and the job that perform it, per the rule above. ``test_endpoint`` arrives the
-# same way, in the same change as the service door that answers it.
+# same way, in the same change as the route, the command and the tool that
+# perform it.
 #
 # It is declared **first**, which is a display decision. This is the only
 # connection action that moves the resource forward — it is what takes a local

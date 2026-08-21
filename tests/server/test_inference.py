@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.fixtures.endpoint import closed_port, serving_endpoint
 from tests.fixtures.local_inference import without_the_extra
 from tests.server._api import api_client
 from tests.server._jobs import InlineDispatcher, ManualDispatcher
@@ -271,8 +272,7 @@ def test_an_unknown_connection_is_not_found(
 
 
 def test_a_connection_declares_what_this_slice_can_perform(client: TestClient) -> None:
-    """The declared set is exactly the routes that exist, per kind — `test_endpoint`
-    is the one declared action still without a route in this slice.
+    """The declared set is exactly the routes that exist.
 
     A fresh `local` connection has weights to fetch and says so; an `http` one
     has none of its own and never will, in any state, but does have an endpoint
@@ -294,28 +294,28 @@ def test_every_declared_action_is_one_the_api_performs(
     `tests/architecture/test_capability_reachability.py` is deliberately
     batches-only — it requires an MCP tool as well as a route, and MCP is a later
     slice for this resource — so the reachability half is proved here instead.
-
-    `test_endpoint` is excluded on purpose: it is declared in this slice, in
-    the same change as the service door it calls through, but the route that
-    reaches it is a later slice of this same effort — see
-    `test_a_connection_declares_what_this_slice_can_perform`.
     """
-    made = created(client, body)
-    routes = {
-        "download_weights": lambda: client.post(f"/inference/connections/{made['id']}/download"),
-        "check_integrity": lambda: client.post(
-            f"/inference/connections/{made['id']}/check-integrity"
-        ),
-        "update": lambda: client.patch(
-            f"/inference/connections/{made['id']}", json={"model_revision": "deadbeef"}
-        ),
-        "delete": lambda: client.delete(f"/inference/connections/{made['id']}"),
-    }
-    reachable = [action for action in made["allowed_actions"] if action != "test_endpoint"]
-    assert set(reachable) <= set(routes)
-    for action in reachable:
-        response = routes[action]()
-        assert response.status_code in (200, 202, 204), (action, response.text)
+    with serving_endpoint() as endpoint:
+        made = created(client, {**body, "endpoint_url": endpoint.url} if body is HTTP else body)
+        routes = {
+            "download_weights": lambda: client.post(
+                f"/inference/connections/{made['id']}/download"
+            ),
+            "check_integrity": lambda: client.post(
+                f"/inference/connections/{made['id']}/check-integrity"
+            ),
+            "test_endpoint": lambda: client.post(
+                f"/inference/connections/{made['id']}/test-endpoint"
+            ),
+            "update": lambda: client.patch(
+                f"/inference/connections/{made['id']}", json={"model_revision": "deadbeef"}
+            ),
+            "delete": lambda: client.delete(f"/inference/connections/{made['id']}"),
+        }
+        assert set(made["allowed_actions"]) <= set(routes)
+        for action in made["allowed_actions"]:
+            response = routes[action]()
+            assert response.status_code in (200, 202, 204), (action, response.text)
 
 
 # --- updating -----------------------------------------------------------------
@@ -1467,3 +1467,38 @@ def test_the_two_runs_are_separate_records_on_one_row(
     assert row["integrity_check"]["job_id"] != row["download"]["job_id"]
     assert set(row["integrity_check"]) == {"job_id", "state", "files_read", "files_total", "error"}
     assert set(row["download"]) == {"job_id", "state", "bytes_done", "bytes_total", "error"}
+
+
+# --- asking an endpoint what it answers -----------------------------------------
+
+
+def test_testing_an_endpoint_records_what_it_answers(client: TestClient) -> None:
+    with serving_endpoint(capability="point_suggest") as endpoint:
+        made = created(client, {**HTTP, "endpoint_url": endpoint.url})
+        assert made["capabilities"] == [] and "test_endpoint" in made["allowed_actions"]
+        response = client.post(f"/inference/connections/{made['id']}/test-endpoint")
+    assert response.status_code == 200, response.text
+    document = response.json()
+    assert document["capabilities"] == ["point_suggest"]
+    assert document["provider_id"] == "http"
+    listed = client.get("/inference/connections").json()["items"][0]
+    assert listed["capabilities"] == ["point_suggest"]
+
+
+def test_a_local_connection_has_no_endpoint_to_test(client: TestClient) -> None:
+    made = created(client, LOCAL)
+    assert "test_endpoint" not in made["allowed_actions"]
+    response = client.post(f"/inference/connections/{made['id']}/test-endpoint")
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_TESTABLE"
+    assert "no endpoint" in response.json()["message"]
+
+
+def test_an_endpoint_that_does_not_answer_is_a_502_naming_it(client: TestClient) -> None:
+    url = closed_port()
+    made = created(client, {**HTTP, "endpoint_url": url})
+    response = client.post(f"/inference/connections/{made['id']}/test-endpoint")
+    assert response.status_code == 502, response.text
+    assert response.json()["code"] == "INFERENCE_ENDPOINT_UNAVAILABLE"
+    assert url in response.json()["message"]
+    assert client.get(f"/inference/connections/{made['id']}").json()["capabilities"] == []

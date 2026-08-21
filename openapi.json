@@ -1787,6 +1787,7 @@
         "enum": [
           "download_weights",
           "check_integrity",
+          "test_endpoint",
           "update",
           "delete"
         ],
@@ -6294,7 +6295,7 @@
         ]
       },
       "post": {
-        "description": "Ask a model to label every untouched asset in this batch, and answer at once.\n\nThe `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:\nnobody judged them, so they arrive editable and correctable rather than\nclaiming to be somebody's work \u2014 and, being unjudged, they never reach the\nDataset until a person has taken them over.\n\n**Only assets nothing has touched \u2014 which is stronger than reading\n`unannotated`.** An asset already `pre_labeled`, annotated, skipped,\nawaiting review or accepted is passed over, and so is an `unannotated` one\nthat still carries annotations from an earlier round that was skipped and\nthen restored: that sequence deletes no labels, so progress alone does not\nprove an asset untouched. A run never writes over what a person did, and\nnever writes twice over what a model did \u2014 a second run extends an earlier\none onto whatever is still untouched rather than refreshing the labels it\nleft, so re-running with a lower confidence does not re-ask about a frame\nalready carrying a guess.\n\n**The batch's pinned schema is the prompt.** The model is asked for each class\nthe schema declares that a box can be written as; an answer naming one of\nthose classes, matched case-insensitively, is written under the schema's own\nspelling, and an answer naming none of them is discarded. A schema whose\nclasses are all polygons, polylines or tags \u2014 or whose box classes each\nrequire an attribute a prediction cannot supply \u2014 has nowhere for a\ndetection to land and is refused.\n\n**202, not 200.** A batch is hundreds of forward passes, so this follows the\nlaunch-and-poll contract the export and weight-download routes use: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state` is\n`succeeded`, then re-read the batch's assets. Progress on the row is counted\nin assets.\n\n**Everything a caller can be told now is told now**, and no refusal creates a\njob \u2014 so a caller holding a job id holds one that will run. These refusals\nare about the request, and the caller can act on each. They are checked in\nthis order, and it is the order `pre_label` itself checks in, so a request\nwrong about the connection and the batch both always names the connection:\na connection whose weights have not arrived is 409\n`INFERENCE_CONNECTION_NOT_SET_UP`; a connection whose model answers places\nrather than words is 422 `UNSUPPORTED_PROMPT`; a batch that is not\n`in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no\nclass a box can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.\n\nTwo failures are about this installation rather than about the request, and\nanswer 500 carrying the message that says which: a machine without the\noptional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the\nexact command that installs it, and a workspace whose records no longer\nhold together \u2014 a batch pinned to a schema version that is not stored \u2014 is\n`WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no\nstate here a caller can change, so the remedy is the one the message names.\n\n**Asking twice joins the run already in flight rather than starting a second\none.** A request arriving while this batch has a pre-labeling run queued or\nrunning is answered with that run's id, so a double-click and a second tab\nwatch one run instead of paying for the same inference twice.",
+        "description": "Ask a model to label every untouched asset in this batch, and answer at once.\n\nThe `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:\nnobody judged them, so they arrive editable and correctable rather than\nclaiming to be somebody's work \u2014 and, being unjudged, they never reach the\nDataset until a person has taken them over.\n\n**Only assets nothing has touched \u2014 which is stronger than reading\n`unannotated`.** An asset already `pre_labeled`, annotated, skipped,\nawaiting review or accepted is passed over, and so is an `unannotated` one\nthat still carries annotations from an earlier round that was skipped and\nthen restored: that sequence deletes no labels, so progress alone does not\nprove an asset untouched. A run never writes over what a person did, and\nnever writes twice over what a model did \u2014 a second run extends an earlier\none onto whatever is still untouched rather than refreshing the labels it\nleft, so re-running with a lower confidence does not re-ask about a frame\nalready carrying a guess.\n\n**The batch's pinned schema is the prompt.** The model is asked for each class\nthe schema declares that a box can be written as; an answer naming one of\nthose classes, matched case-insensitively, is written under the schema's own\nspelling, and an answer naming none of them is discarded. A schema whose\nclasses are all polygons, polylines or tags \u2014 or whose box classes each\nrequire an attribute a prediction cannot supply \u2014 has nowhere for a\ndetection to land and is refused.\n\n**202, not 200.** A batch is hundreds of forward passes, so this follows the\nlaunch-and-poll contract the export and weight-download routes use: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state` is\n`succeeded`, then re-read the batch's assets. Progress on the row is counted\nin assets.\n\n**Everything a caller can be told now is told now**, and no refusal creates a\njob \u2014 so a caller holding a job id holds one that will run. These refusals\nare about the request, and the caller can act on each. They are checked in\nthis order, and it is the order `pre_label` itself checks in, so a request\nwrong about the connection and the batch both always names the connection:\na connection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` \u2014 its\nweights not here, or its endpoint not yet asked what it answers; a\nconnection whose model answers places rather than words is 422\n`UNSUPPORTED_PROMPT`; a batch that is not `in_annotation` is 409\n`BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class a box can be\nwritten as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.\n\nTwo failures are about this installation rather than about the request, and\nanswer 500 carrying the message that says which: a machine without the\noptional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the\nexact command that installs it, and a workspace whose records no longer\nhold together \u2014 a batch pinned to a schema version that is not stored \u2014 is\n`WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no\nstate here a caller can change, so the remedy is the one the message names.\n\n**Asking twice joins the run already in flight rather than starting a second\none.** A request arriving while this batch has a pre-labeling run queued or\nrunning is answered with that run's id, so a double-click and a second tab\nwatch one run instead of paying for the same inference twice.",
         "operationId": "pre_label_batch",
         "parameters": [
           {
@@ -8192,6 +8193,115 @@
           }
         ],
         "summary": "Download Connection Weights",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/inference/connections/{connection_id}/test-endpoint": {
+      "post": {
+        "description": "Ask an `http` connection's endpoint what it answers, and record the answer.\n\nThe `test_endpoint` action. One `GET` to the connection's `endpoint_url`,\nwhich answers `{\"model_ref\": \u2026, \"capability\": \u2026}` \u2014 this project's endpoint\ncontract. The declared capability becomes the connection's `capabilities`,\nwhich is what lets the suggest tool and pre-labeling offer it. Asking again\nre-asks and overwrites, so an endpoint that now serves a different model\ndeclares that on its next test.\n\n**Only for an `http` connection.** A local one has no endpoint to ask: 409\n`INFERENCE_CONNECTION_NOT_TESTABLE`, the same answer `allowed_actions` gave.\nAn endpoint that cannot be reached, does not answer in time, answers outside\nthe contract, or declares a capability this build does not know is 502\n`INFERENCE_ENDPOINT_UNAVAILABLE`; the message names the endpoint and what\nhappened, and nothing is recorded.\n\n`200` with the connection rather than `202` with a job: one small request,\nanswered while you wait.",
+        "operationId": "test_connection_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "An http connection's endpoint did not answer"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Test Connection Endpoint",
         "tags": [
           "inference"
         ]

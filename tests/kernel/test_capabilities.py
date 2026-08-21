@@ -1058,12 +1058,11 @@ def test_the_actions_a_connection_cannot_yet_be_asked_for_are_not_declared() -> 
 
     This fails the moment somebody adds a name without the slice behind it.
     `check_integrity` joined deliberately, in the same change as its route,
-    its command, its job and its menu item. `test_endpoint` joined the same
-    way one action later, in the same change as the service door it calls
-    through (`require_endpoint_testable`, `record_endpoint_answer`) — the
-    route and the CLI/MCP surfaces that reach it are a later slice of this
-    same effort. The set is updated by hand precisely so that arriving here
-    is a decision.
+    its command, its job and its menu item. A declaration arrives in the same
+    change as the route, the command and the tool that perform it, and
+    `test_endpoint` is no exception: its service door (`require_endpoint_testable`,
+    `record_endpoint_answer`), its route, and the CLI/MCP tools that reach it.
+    The set is updated by hand precisely so that arriving here is a decision.
     """
     assert {a.value for a in ConnectionAction} == {
         "download_weights",

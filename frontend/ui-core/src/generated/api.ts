@@ -452,11 +452,12 @@ export interface paths {
          *     are about the request, and the caller can act on each. They are checked in
          *     this order, and it is the order `pre_label` itself checks in, so a request
          *     wrong about the connection and the batch both always names the connection:
-         *     a connection whose weights have not arrived is 409
-         *     `INFERENCE_CONNECTION_NOT_SET_UP`; a connection whose model answers places
-         *     rather than words is 422 `UNSUPPORTED_PROMPT`; a batch that is not
-         *     `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no
-         *     class a box can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+         *     a connection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` — its
+         *     weights not here, or its endpoint not yet asked what it answers; a
+         *     connection whose model answers places rather than words is 422
+         *     `UNSUPPORTED_PROMPT`; a batch that is not `in_annotation` is 409
+         *     `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class a box can be
+         *     written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
          *
          *     Two failures are about this installation rather than about the request, and
          *     answer 500 carrying the message that says which: a machine without the
@@ -1050,6 +1051,43 @@ export interface paths {
          *     and a client polls what it is given either way.
          */
         post: operations["download_connection_weights"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inference/connections/{connection_id}/test-endpoint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Connection Endpoint
+         * @description Ask an `http` connection's endpoint what it answers, and record the answer.
+         *
+         *     The `test_endpoint` action. One `GET` to the connection's `endpoint_url`,
+         *     which answers `{"model_ref": …, "capability": …}` — this project's endpoint
+         *     contract. The declared capability becomes the connection's `capabilities`,
+         *     which is what lets the suggest tool and pre-labeling offer it. Asking again
+         *     re-asks and overwrites, so an endpoint that now serves a different model
+         *     declares that on its next test.
+         *
+         *     **Only for an `http` connection.** A local one has no endpoint to ask: 409
+         *     `INFERENCE_CONNECTION_NOT_TESTABLE`, the same answer `allowed_actions` gave.
+         *     An endpoint that cannot be reached, does not answer in time, answers outside
+         *     the contract, or declares a capability this build does not know is 502
+         *     `INFERENCE_ENDPOINT_UNAVAILABLE`; the message names the endpoint and what
+         *     happened, and nothing is recorded.
+         *
+         *     `200` with the connection rather than `202` with a job: one small request,
+         *     answered while you wait.
+         */
+        post: operations["test_connection_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3327,7 +3365,7 @@ export interface components {
          * @description What can be asked of an inference connection. Order is display order.
          * @enum {string}
          */
-        ConnectionAction: "download_weights" | "check_integrity" | "update" | "delete" | (string & {});
+        ConnectionAction: "download_weights" | "check_integrity" | "test_endpoint" | "update" | "delete" | (string & {});
         /**
          * ConnectionCreate
          * @description What a caller supplies to configure a connection.
@@ -7374,6 +7412,91 @@ export interface operations {
             };
         };
     };
+    test_connection_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description An http connection's endpoint did not answer */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     inference_download_size: {
         parameters: {
             query: {
@@ -11149,7 +11272,7 @@ export type OpenMember<A extends string> = A | (string & {});
 export interface KnownMembers {
   AssetAction: "annotate" | "skip" | "restore" | "confirm" | "submit_for_review" | "accept" | "return_to_annotator";
   BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "pre_label" | "edit_membership" | "delete";
-  ConnectionAction: "download_weights" | "check_integrity" | "update" | "delete";
+  ConnectionAction: "download_weights" | "check_integrity" | "test_endpoint" | "update" | "delete";
   JobAction: "start" | "complete";
   ModelCapability: "point_suggest" | "text_detect";
   PreLabelExclusionReason: "no_bbox_geometry" | "required_attribute";
