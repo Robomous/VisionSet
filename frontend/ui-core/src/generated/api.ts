@@ -427,11 +427,15 @@ export interface paths {
          *     awaiting review or accepted is passed over, and so is an `unannotated` one
          *     that still carries annotations from an earlier round that was skipped and
          *     then restored: that sequence deletes no labels, so progress alone does not
-         *     prove an asset untouched. A run never writes over what a person did, and
-         *     never writes twice over what a model did — a second run extends an earlier
-         *     one onto whatever is still untouched rather than refreshing the labels it
-         *     left, so re-running with a lower confidence does not re-ask about a frame
-         *     already carrying a guess.
+         *     prove an asset untouched. A run never writes over what a person did in this
+         *     batch, and never writes twice over what a model did — a plain second run
+         *     extends an earlier one onto whatever is still untouched.
+         *     `replace_model_labels` widens it to every frame still `pre_labeled` and
+         *     supersedes those labels with this run's answer, one frame per transaction;
+         *     a frame anyone edited, confirmed or skipped in this batch is never touched,
+         *     and a frame the model now finds nothing on returns to `unannotated`. A
+         *     replacing request arriving while a run is in flight joins that run,
+         *     whichever flag it carries.
          *
          *     **The batch's pinned schema is the prompt.** The model is asked for each class
          *     the schema declares that a box can be written as; an answer naming one of
@@ -4199,7 +4203,8 @@ export interface components {
         };
         /**
          * PreLabelRequest
-         * @description Which model should pre-label this batch, and how sure it has to be.
+         * @description Which model should pre-label this batch, how sure it has to be, and whether it
+         *     may replace its own earlier labels.
          */
         PreLabelRequest: {
             /**
@@ -4212,6 +4217,11 @@ export interface components {
              * @default 0.35
              */
             minimum_confidence: number;
+            /**
+             * Replace Model Labels
+             * @default false
+             */
+            replace_model_labels: boolean;
         };
         /**
          * PreLabelRunOut
@@ -4229,14 +4239,16 @@ export interface components {
          *     counted in the unit its own work is over.
          *
          *     **The outcome, once the job has one.** `stopped_early`, `assets_labeled`,
-         *     `regions_discarded` and `regions_out_of_bounds` are the handler's own
-         *     account of what a settled run did.
+         *     `regions_discarded`, `regions_out_of_bounds` and `annotations_replaced` are
+         *     the handler's own account of what a settled run did.
          *     They are `null` while the job is still `queued` or `running`, and `null`
          *     where it ended `failed` before producing one — but a `cancelled` run still
          *     carries them: stopping partway is a coherent outcome for a handler whose
          *     contract is to write only where nothing has been written.
          */
         PreLabelRunOut: {
+            /** Annotations Replaced */
+            annotations_replaced: number | null;
             /** Assets Labeled */
             assets_labeled: number | null;
             /** Assets Processed */

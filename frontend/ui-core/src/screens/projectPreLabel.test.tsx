@@ -264,6 +264,7 @@ it("marks a batch whose remembered run is live", async () => {
         assets_labeled: null,
         regions_discarded: null,
         regions_out_of_bounds: null,
+        annotations_replaced: null,
       },
     },
   ]);

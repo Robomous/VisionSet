@@ -249,6 +249,7 @@ def test_a_settled_pre_label_run_has_wire_parity_when_nested_in_a_batch() -> Non
         assets_labeled=1,
         regions_discarded=2,
         regions_out_of_bounds=3,
+        annotations_replaced=4,
     )
 
     projected = wire.batch(BATCH, COUNTS, promoted=frozenset(), pre_labeled=run)

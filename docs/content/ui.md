@@ -775,6 +775,21 @@ are shown again under a settled run's summary, which is where a run that labeled
 actually read. A schema with no askable class at all refuses this read, and the dialog renders
 that refusal and leaves `Start` dead rather than waiting for the press to produce it.
 
+**Replacing an earlier pass is a tick, off by default.** The live configuration - the model,
+the minimum prompt affinity, the prompt classes, and the count of what a run would consider -
+sits below whichever summary the mode wrote, in every mode with something left to reach:
+during a run too, with its fields and the tick disabled, and under a `done`, `stopped` or
+`failed` summary whenever the batch has an untouched asset left, whether or not anything here
+is pre-labeled. Where the batch holds
+pre-labeled frames, under it sits **Replace the model labels on N pre-labeled frame(s)**,
+unticked, saying that frames anyone has edited, confirmed or skipped in this batch are never
+touched and that this cannot be undone. Ticked, the count line adds that the run also replaces
+the model labels on those N frames, and the launch -
+`Start`, `Run again`, `Continue` or `Try again` - goes live. A batch with nothing untouched left
+and the box unticked has no run to launch at all, so the press is disabled and the notice names
+the tick as what would give the run something to do. A settled run's summary reports how many
+earlier model regions it replaced.
+
 The route answers `202` with a background job, on the export and weight-download routes'
 contract, and the dialog polls it exactly as `ExportDialog` polls an export: nothing here waits
 for the run to finish, but nothing closes over an outcome unseen either. Every refusal the route
@@ -811,9 +826,9 @@ The bulk bar adds two verbs over the selection. **Confirm labels** keeps a model
 the frames' own (`pre_labeled → annotated`, the `confirm` action); the annotator offers the
 same on an unedited model-labeled frame. **Discard model labels** deletes every label the
 model wrote on the selected frames through the existing all-or-nothing delete, after a
-dialog, and the frames return to `unannotated`; it cannot be undone, because a run does not
-repeat over a frame it has labeled (cf. #683). Per-class thresholds and a threshold filter are
-deliberately not here yet.
+dialog, and the frames return to `unannotated`. It cannot be undone; a replacing re-run from the
+Pre-label dialog is the way to redo the machine's pass over frames still `pre_labeled`. Per-class
+thresholds and a threshold filter are deliberately not here yet.
 
 ### The ingest flow, and the order the domain forces
 

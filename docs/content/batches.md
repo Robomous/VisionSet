@@ -238,8 +238,17 @@ asset, never the lineage - an ordinary batch cut by hand over already-labeled as
 seeded exactly the same way, because a rule that asked "is this a correction?" would be wrong
 about whichever case it had not been written for.
 
+One asset reads differently, and the rule still reads the asset: an asset whose every label is
+a model's — whatever an earlier batch made of them — opens `pre_labeled`, because a second batch
+must not be the thing that turns unreviewed predictions promotable. Provenance is the whole
+question here; what an earlier round's progress said about the frame is not read at all. A frame
+confirmed in one batch therefore opens `pre_labeled` in a later one cut over it, and is
+confirmed again there. An edit keeps a label's provenance — a box a person moved is still a
+model's box — so an asset whose labels are all model-made, adjusted or not, opens `pre_labeled`
+in a later batch and is within reach of a replacing run there.
+
 The honest consequence: `annotated` is in `SETTLED_PROGRESS`, so **a correction whose every
-asset seeded that way can be completed with no edits at all**. That is the intended reading -
+asset seeded `annotated` can be completed with no edits at all**. That is the intended reading -
 a correction is opt-in per asset, and the alternative is making somebody re-declare work
 nobody disputed.
 
@@ -316,11 +325,12 @@ declaring differently depending on which endpoint answered - is worse than one h
 ## Pre-labeling
 
 A batch that is `in_annotation` can ask a text-prompt model to label its **untouched** assets -
-`unannotated`, and carrying no annotations at all. An asset already `pre_labeled`, `annotated`,
-`skipped`, `review_pending` or `accepted` is passed over, and so is an `unannotated` one that
-still carries a person's boxes from an earlier round that was skipped and then restored - progress
-alone does not prove untouched, since that sequence deletes nothing. Either way, a run never
-writes over what a person - or an earlier run - did.
+`unannotated`, and carrying no annotations at all. An asset already `pre_labeled` - unless the run
+is asked to replace, below - `annotated`, `skipped`, `review_pending` or `accepted` is passed over,
+and so is an `unannotated` one that still carries a person's boxes from an earlier round that was
+skipped and then restored - progress alone does not prove untouched, since that sequence deletes
+nothing. Either way, a run never writes over what a person did in this batch, and it supersedes an
+earlier run's own labels only where it is asked to - the second-run paragraph below.
 
 **An asset somebody starts working while a run is still going is passed over too, not fatal.** The
 batch is `in_annotation`, so that is the ordinary case rather than a race: the run skips it and
@@ -361,17 +371,27 @@ a person's finished work needs a second opinion. One asset is one transaction: i
 move to `pre_labeled` commit together, so a run that stops midway has either not touched an asset
 or fully entered it.
 
-**A second run picks up whatever is still untouched.** Nothing here is a one-shot: since the
-entry rule only ever writes onto `unannotated`, running it again after a partial run, an
-interruption, or a person handling some assets in the meantime costs nothing on what already
-landed. `visionset.inference.pre_label` is the one implementation an SDK caller, the API and MCP
+**A second run extends the first, and can be asked to redo it.** A plain run is a continuation
+and nothing else: since without the flag it only writes onto `unannotated`, running it again
+after a partial run, an interruption, or a person handling some assets in the meantime costs
+nothing on what already landed. `replace_model_labels` - the request field, the MCP parameter,
+and `--replace-model-labels` at a terminal - widens that reach to every frame still
+`pre_labeled`: the model's earlier labels there are deleted and the new ones land in the same
+transaction, one frame at a time, so no frame is ever briefly bare. A frame anybody edited,
+confirmed or skipped in this batch is passed over whatever the flag says, and a `pre_labeled`
+frame the second run finds nothing on returns to `unannotated`. Both the outcome and
+`pre_label_run` carry `annotations_replaced`, the count of earlier model labels the run
+superseded.
+
+`visionset.inference.pre_label` is the one implementation an SDK caller, the API and MCP
 all run - see [background-jobs.md](background-jobs.md) for the `annotation.pre_label` job type
 this is queued as over HTTP, and [mcp.md](mcp.md) for the synchronous `pre_label_batch` tool.
 
 Over HTTP, the server queues `annotation.pre_label` because it has a dispatcher. At a terminal,
 the same operation runs inline because there is no worker to claim a queued job. Interruption
 leaves only whole assets entered: an asset's labels and progress state commit together, and a
-later run considers only assets still untouched.
+later run considers only assets still untouched - plus, where it is asked to replace, those
+still `pre_labeled`.
 
 **The batch remembers its own run.** `BatchService.latest_pre_label_job` reads the queue for the
 most recent `annotation.pre_label` job naming this batch - live or settled - and projects it as
@@ -379,9 +399,9 @@ most recent `annotation.pre_label` job naming this batch - live or settled - and
 reload, a second tab or a run started at a terminal can only be shown by the batch itself saying
 so. Counted in assets, the unit this handler works in, and carrying the outcome
 `prelabel.py`'s `run` returns once the job has settled - `stopped_early`, `assets_labeled`,
-`regions_discarded`, `regions_out_of_bounds` - so a client can tell a cancelled run from an
-untouched batch. Derived, never stored, and published on `BatchOut` as `pre_label_run`, `null`
-where none ever ran.
+`annotations_replaced`, `regions_discarded`, `regions_out_of_bounds` - so a client can tell a
+cancelled run from an untouched batch. Derived, never stored, and published on `BatchOut` as
+`pre_label_run`, `null` where none ever ran.
 
 **Beyond one batch, the batch is still the unit.** `POST /projects/{id}/batches/pre-label` fans a
 launch out over the project's batches that are `in_annotation` - every one of them, or exactly
@@ -448,7 +468,7 @@ otherwise loop, which is the shape `SchemaChangeWouldOrphan` already argues for.
 visionset batch list --project road-signs
 visionset batch approve "$BATCH" --jobs-of 100
 visionset batch start "$BATCH"
-visionset batch pre-label "$BATCH" CONNECTION [--minimum-confidence FLOAT]
+visionset batch pre-label "$BATCH" CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels]
 visionset batch complete "$BATCH"
 visionset batch promote "$BATCH"
 ```
@@ -488,7 +508,8 @@ POST /batches/{id}/repin?allow_destructive=          → 200 BatchOut
 POST /batches/{id}/complete                          → 200 BatchOut
 GET  /batches/{id}/pre-label                         → 200 PreLabelPlanOut, the prompt and
                                                         every class left out of it
-POST /batches/{id}/pre-label { "connection_id": …, "minimum_confidence": … } → 202 BackgroundJobOut
+POST /batches/{id}/pre-label { "connection_id": …, "minimum_confidence": …,
+                               "replace_model_labels": … }  → 202 BackgroundJobOut
 POST /batches/{id}/promote                           → 200 AssetPage, the assets that entered
 GET  /batches/{id}/jobs                              → 200 JobPage
 GET  /batches/{id}/assets?limit=&offset=&progress=&sort=   → 200 BatchAssetPage

@@ -1167,10 +1167,14 @@ export function useFinishBatch(batchId: string) {
   });
 }
 
-/** What launching a run needs: which model, and how sure it has to be. */
+/**
+ * What launching a run needs: which model, how sure it has to be, and whether it
+ * may rewrite the model labels an earlier run left on untouched frames.
+ */
 export interface PreLabelInput {
   readonly connectionId: string;
   readonly minimumConfidence: number;
+  readonly replaceModelLabels: boolean;
 }
 
 /**
@@ -1193,6 +1197,7 @@ export function usePreLabelBatch(batchId: string) {
           body: {
             connection_id: input.connectionId,
             minimum_confidence: input.minimumConfidence,
+            replace_model_labels: input.replaceModelLabels,
           },
         }),
         checkPreLabelBatch,

@@ -405,21 +405,29 @@ BATCH_JOB_KEY: Final = "batch_id"
 PRE_LABEL_CONFIDENCE_KEY: Final = "minimum_confidence"
 """The floor a run applies to what the model returns, inside its payload."""
 
+PRE_LABEL_REPLACE_KEY: Final = "replace_model_labels"
+"""Whether a run supersedes the model labels on ``pre_labeled`` frames, inside its payload."""
+
 
 def pre_label_job_payload(
-    batch_id: UUID, connection_id: UUID, minimum_confidence: float
+    batch_id: UUID,
+    connection_id: UUID,
+    minimum_confidence: float,
+    replace_model_labels: bool = False,
 ) -> dict[str, JsonValue]:
     """The payload a pre-labeling job carries. Built here, read here.
 
-    Three facts and no more: which batch, which connection answers, and the floor
-    the run applies. Everything else the handler needs — the phrases, the asset
-    set — is derived on the other side from the batch itself, because a payload
-    that carried them would be a copy of state that can move underneath it.
+    Four facts and no more: which batch, which connection answers, the floor
+    the run applies, and whether it may supersede its own earlier labels.
+    Everything else the handler needs — the phrases, the asset set — is derived
+    on the other side from the batch itself, because a payload that carried them
+    would be a copy of state that can move underneath it.
     """
     return {
         BATCH_JOB_KEY: str(batch_id),
         CONNECTION_JOB_KEY: str(connection_id),
         PRE_LABEL_CONFIDENCE_KEY: minimum_confidence,
+        PRE_LABEL_REPLACE_KEY: replace_model_labels,
     }
 
 
@@ -618,8 +626,8 @@ class PreLabelRun(BaseModel):
     is known, on ``ConnectionJob``'s own reasoning.
 
     **The handler's own outcome, carried rather than re-derived.**
-    ``stopped_early``, ``assets_labeled``, ``regions_discarded`` and
-    ``regions_out_of_bounds`` are read
+    ``stopped_early``, ``assets_labeled``, ``regions_discarded``,
+    ``regions_out_of_bounds`` and ``annotations_replaced`` are read
     straight out of the settled job's ``result`` — the dict ``prelabel.py``'s
     ``run`` returns — because a bare progress count cannot say how a cancelled
     run differs from an untouched batch, nor how many of a model's answers were
@@ -663,6 +671,9 @@ class PreLabelRun(BaseModel):
     #: discarded rather than written. ``None`` until the job settles with a
     #: result.
     regions_out_of_bounds: int | None = None
+    #: Model labels a replacing run superseded. ``None`` until the job settles
+    #: with a result.
+    annotations_replaced: int | None = None
 
     @model_validator(mode="after")
     def _progress_is_within_its_total(self) -> Self:
@@ -695,6 +706,7 @@ class PreLabelRun(BaseModel):
         assets_labeled = result.get("assets_labeled")
         regions_discarded = result.get("regions_discarded")
         regions_out_of_bounds = result.get("regions_out_of_bounds")
+        annotations_replaced = result.get("annotations_replaced")
         return cls(
             batch_id=UUID(named),
             job_id=job.id,
@@ -706,6 +718,7 @@ class PreLabelRun(BaseModel):
             assets_labeled=_result_int(assets_labeled),
             regions_discarded=_result_int(regions_discarded),
             regions_out_of_bounds=(_result_int(regions_out_of_bounds)),
+            annotations_replaced=_result_int(annotations_replaced),
         )
 
 

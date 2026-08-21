@@ -33,6 +33,7 @@ from visionset.kernel.domain import (
     CONNECTION_JOB_KEY,
     PRE_LABEL_CONFIDENCE_KEY,
     PRE_LABEL_JOB_TYPE,
+    PRE_LABEL_REPLACE_KEY,
     pre_label_job_payload,
 )
 from visionset.kernel.ports import ProgressReporter
@@ -49,10 +50,13 @@ HANDLER = register(HandlerRef(type=JOB_TYPE, func=f"{__name__}:run", idempotent=
 
 
 def payload_for(
-    batch_id: UUID, connection_id: UUID, minimum_confidence: float
+    batch_id: UUID,
+    connection_id: UUID,
+    minimum_confidence: float,
+    replace_model_labels: bool = False,
 ) -> dict[str, JsonValue]:
     """The payload this handler expects, built where the type is known."""
-    return pre_label_job_payload(batch_id, connection_id, minimum_confidence)
+    return pre_label_job_payload(batch_id, connection_id, minimum_confidence, replace_model_labels)
 
 
 def run(
@@ -67,8 +71,7 @@ def run(
     follows is a loop over assets rather than one library call, and every
     iteration boundary is a point at which the last asset is committed and the
     next is untouched. Stopping there leaves a batch partly pre-labeled, which is
-    a coherent state precisely because a run only ever writes where nothing was
-    written.
+    a coherent state precisely because one frame is one transaction.
 
     **What it reports is assets.** A job row's ``processed`` and ``total`` are an
     absolute count of whatever this run works in, and the total is known before
@@ -88,12 +91,19 @@ def run(
     **A mapped region with no overlap with a measured asset is also discarded.**
     ``regions_out_of_bounds`` keeps that geometry refusal distinct from an
     unmappable model label.
+
+    **Asked to replace, it also rewrites the frames it entered before.**
+    ``replace_model_labels`` in the payload reaches every ``pre_labeled`` frame
+    and supersedes its model labels, one frame per transaction; a row enqueued
+    before the key existed runs unflagged. ``annotations_replaced`` in the
+    result says how many labels went.
     """
     if reporter.is_cancelled():
         return {}
     batch_id = UUID(str(payload[BATCH_JOB_KEY]))
     connection_id = UUID(str(payload[CONNECTION_JOB_KEY]))
     minimum_confidence = float(str(payload[PRE_LABEL_CONFIDENCE_KEY]))
+    replace_model_labels = bool(payload.get(PRE_LABEL_REPLACE_KEY, False))
     # Never a ``with``: the handle belongs to the worker and outlives this task.
     # See ``jobs/context.py``.
     workspace = workspace_for(workspace_root)
@@ -102,6 +112,7 @@ def run(
         batch_id=batch_id,
         connection_id=connection_id,
         minimum_confidence=minimum_confidence,
+        replace_model_labels=replace_model_labels,
         on_progress=lambda done, total: reporter.report(processed=done, total=total),
         should_stop=reporter.is_cancelled,
     )
@@ -115,4 +126,5 @@ def run(
         "assets_skipped": outcome.assets_skipped,
         "regions_discarded": outcome.regions_discarded,
         "regions_out_of_bounds": outcome.regions_out_of_bounds,
+        "annotations_replaced": outcome.annotations_replaced,
     }

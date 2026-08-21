@@ -52,6 +52,13 @@ def test_the_payload_is_built_where_the_type_is_known() -> None:
     assert payload["batch_id"] == str(batch_id)
     assert payload["connection_id"] == str(connection_id)
     assert payload["minimum_confidence"] == 0.35
+    assert payload["replace_model_labels"] is False
+    assert (
+        prelabel.payload_for(batch_id, connection_id, 0.35, replace_model_labels=True)[
+            "replace_model_labels"
+        ]
+        is True
+    )
 
 
 def test_a_cancelled_run_does_nothing_and_says_so(
@@ -100,12 +107,14 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
         batch_id: UUID,
         connection_id: UUID,
         minimum_confidence: float,
+        replace_model_labels: bool,
         on_progress: Any,
         should_stop: Any,
     ) -> PreLabelOutcome:
         captured["batch_id"] = batch_id
         captured["connection_id"] = connection_id
         captured["minimum_confidence"] = minimum_confidence
+        captured["replace_model_labels"] = replace_model_labels
         captured["should_stop"] = should_stop
         on_progress(1, 2)
         on_progress(2, 2)
@@ -114,6 +123,7 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
             assets_labeled=2,
             annotations_written=3,
             model_ref="acme/detector@abc123",
+            annotations_replaced=1,
         )
 
     monkeypatch.setattr(prelabel, "pre_label", fake_pre_label)
@@ -135,15 +145,55 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
         "assets_skipped": 0,
         "regions_discarded": 0,
         "regions_out_of_bounds": 0,
+        "annotations_replaced": 1,
     }
     assert captured["batch_id"] == batch_id
     assert captured["connection_id"] == connection_id
     assert captured["minimum_confidence"] == 0.4
+    assert captured["replace_model_labels"] is False
     # The reporter's own method, not a wrapper around it — a loop can consult it
     # every iteration without this handler holding any state of its own.
     assert captured["should_stop"] == reporter.is_cancelled
     assert reporter.is_cancelled() is False
     assert reporter.reports == [(1, 2), (2, 2)]
+
+
+def test_a_payload_written_before_the_flag_existed_runs_unflagged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_pre_label(workspace: object, **kwargs: Any) -> PreLabelOutcome:
+        captured.update(kwargs)
+        return PreLabelOutcome(assets_considered=0, assets_labeled=0, annotations_written=0)
+
+    monkeypatch.setattr(prelabel, "pre_label", fake_pre_label)
+    monkeypatch.setattr(prelabel, "workspace_for", lambda root: object())
+    payload = prelabel.payload_for(uuid4(), uuid4(), 0.4)
+    del payload["replace_model_labels"]
+
+    prelabel.run(Path("/does/not/matter"), payload, Reporter())
+
+    assert captured["replace_model_labels"] is False
+
+
+def test_a_flagged_payload_asks_for_a_replacing_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_pre_label(workspace: object, **kwargs: Any) -> PreLabelOutcome:
+        captured.update(kwargs)
+        return PreLabelOutcome(assets_considered=0, assets_labeled=0, annotations_written=0)
+
+    monkeypatch.setattr(prelabel, "pre_label", fake_pre_label)
+    monkeypatch.setattr(prelabel, "workspace_for", lambda root: object())
+
+    prelabel.run(
+        Path("/does/not/matter"),
+        prelabel.payload_for(uuid4(), uuid4(), 0.4, replace_model_labels=True),
+        Reporter(),
+    )
+
+    assert captured["replace_model_labels"] is True
 
 
 # --- end to end: nobody polling ------------------------------------------------

@@ -100,7 +100,7 @@ export const checkBatchState: Check<Schemas["BatchState"]> =
   /*#__PURE__*/ oneOf(["draft", "approved", "in_annotation", "completed"] as const);
 
 export const checkPreLabelRunOut: Check<Schemas["PreLabelRunOut"]> =
-  /*#__PURE__*/ object({ "assets_labeled": [true, either([isInteger, isNull] as const)], "assets_processed": [true, isInteger], "assets_total": [true, either([isInteger, isNull] as const)], "error": [true, either([isString, isNull] as const)], "job_id": [true, isString], "regions_discarded": [true, either([isInteger, isNull] as const)], "regions_out_of_bounds": [true, either([isInteger, isNull] as const)], "state": [true, checkBackgroundJobState], "stopped_early": [true, either([isBoolean, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "annotations_replaced": [true, either([isInteger, isNull] as const)], "assets_labeled": [true, either([isInteger, isNull] as const)], "assets_processed": [true, isInteger], "assets_total": [true, either([isInteger, isNull] as const)], "error": [true, either([isString, isNull] as const)], "job_id": [true, isString], "regions_discarded": [true, either([isInteger, isNull] as const)], "regions_out_of_bounds": [true, either([isInteger, isNull] as const)], "state": [true, checkBackgroundJobState], "stopped_early": [true, either([isBoolean, isNull] as const)] } as const);
 
 export const checkProgressCounts: Check<Schemas["ProgressCounts"]> =
   /*#__PURE__*/ object({ "accepted": [true, isInteger], "annotated": [true, isInteger], "pre_labeled": [true, isInteger], "review_pending": [true, isInteger], "skipped": [true, isInteger], "total": [true, isInteger], "unannotated": [true, isInteger] } as const);

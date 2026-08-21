@@ -99,6 +99,25 @@ def test_unjudged_changes_nothing_else() -> None:
         for has_annotations in (True, False):
             if current is AssetProgress.UNANNOTATED and has_annotations:
                 continue
+            if current is AssetProgress.PRE_LABELED and has_annotations:
+                continue
             assert progress_after_annotating(
                 current, has_annotations=has_annotations, judged=False
             ) is progress_after_annotating(current, has_annotations=has_annotations)
+
+
+def test_an_unjudged_write_onto_a_pre_labeled_frame_leaves_it_pre_labeled() -> None:
+    """A model superseding its own labels is not a person taking the frame over."""
+    assert (
+        progress_after_annotating(AssetProgress.PRE_LABELED, has_annotations=True, judged=False)
+        is None
+    )
+
+
+def test_an_unjudged_write_that_leaves_no_label_returns_a_pre_labeled_frame_to_unannotated() -> (
+    None
+):
+    assert (
+        progress_after_annotating(AssetProgress.PRE_LABELED, has_annotations=False, judged=False)
+        is AssetProgress.UNANNOTATED
+    )
