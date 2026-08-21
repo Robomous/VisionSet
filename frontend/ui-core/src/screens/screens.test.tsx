@@ -543,6 +543,11 @@ describe("the schema editor", () => {
     // `total` counts every blocking frame and the request is windowed, so the
     // panel states the whole number and how much of it is on screen.
     expect(screen.getByTestId("blocking-asset-count").textContent).toContain("30");
+    // The clause too, not only the number: a count with no window stated is a
+    // panel silently showing 12 of 30.
+    expect(screen.getByTestId("blocking-asset-count").textContent).toContain(
+      "showing the first",
+    );
     const asked = sent.find((request) =>
       new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
     );
@@ -558,6 +563,61 @@ describe("the schema editor", () => {
     expect(links[1].textContent).toContain("fixes");
     await userEvent.click(links[0]);
     expect(opened).toHaveBeenCalledWith(BATCH);
+  });
+
+  /**
+   * The settle's own cross-project hole, which the guard above cannot close.
+   *
+   * `useSettled` holds a value across a props change, and this screen is
+   * re-rendered rather than remounted when `:projectId` does — so a panel that
+   * survives the switch asks the arriving project about the classes it settled
+   * on under the departing one, guard or no guard. `key={projectId}` is what
+   * remounts it, and this is the probe that says so.
+   *
+   * Both halves of the setup are load-bearing. The arriving project is rendered
+   * **first** so its schema and draft are cached: without that `SchemaSection`
+   * renders `LoadingState`, the panel unmounts on its own, and the bug hides.
+   * And the typing is followed by a real pause, so the settle actually fires
+   * under the departing project — a switch inside the debounce window clears the
+   * pending timer and the probe passes whether or not the key is there.
+   */
+  it("does not carry a settled proposal across a project switch", async () => {
+    projectWithSchema();
+    on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrap = (projectId: string): JSX.Element => (
+      <ApiProvider baseUrl={API} queryClient={queryClient}>
+        <ProjectScreen projectId={projectId} tab="schema" onOpenBatch={vi.fn()} />
+      </ApiProvider>
+    );
+
+    // The project switched *to*, first, so its own queries are warm when it
+    // comes back — otherwise the panel is unmounted by its own loading state.
+    const view = render(wrap(OTHER_PROJECT));
+    await screen.findByTestId("blocking-assets");
+
+    view.rerender(wrap(PROJECT));
+    await screen.findByTestId("schema-editor");
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-2"), "PEDESTRIAN");
+    // Long enough for the settle to fire here, which is the whole point: the
+    // value the panel is holding when the switch lands must be this project's.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    view.rerender(wrap(OTHER_PROJECT));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    const askedElsewhere = sent
+      .filter((request) => {
+        const path = new URL(request.url).pathname;
+        return (
+          path.startsWith(`/projects/${OTHER_PROJECT}/`) &&
+          path.endsWith("/schema/blocking-assets")
+        );
+      })
+      .map((request) => bodies.get(request) ?? "");
+    expect(askedElsewhere.length).toBeGreaterThan(0);
+    for (const body of askedElsewhere) expect(body).not.toContain("PEDESTRIAN");
   });
 
   it("asks once the class name stops changing, not once per keystroke", async () => {
