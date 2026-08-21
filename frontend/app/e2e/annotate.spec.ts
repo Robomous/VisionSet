@@ -624,9 +624,13 @@ test("both reabsorbable controls are on the bar again at 1440", async ({ page })
   await expect(page.getByTestId("menu-save")).toHaveCount(0);
 
   // The squash that reported the overflow before it was visible: `more-actions`
-  // measured 16px against its declared 36 while the zone was over-subscribed.
+  // measured 16px against its declared size while the zone was over-subscribed.
+  // The floor is Nova's `icon` size, `size-8` — 32px, where the pre-Nova button
+  // stood at 36 — and it is a floor rather than an equality because what is being
+  // caught is a control compressed below its own declared box, at whatever that
+  // box currently is.
   const overflow = (await page.getByTestId("more-actions").boundingBox())!;
-  expect(overflow.width).toBeGreaterThanOrEqual(36);
+  expect(overflow.width).toBeGreaterThanOrEqual(32);
 });
 
 test("the cluster is the same width whichever resolution verb the frame offers", async ({
