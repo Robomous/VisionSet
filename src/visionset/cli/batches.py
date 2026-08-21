@@ -42,6 +42,7 @@ from visionset.inference import (
     PreLabelExclusionReason,
     PreLabelPlan,
     pre_label,
+    shapes_prose,
 )
 from visionset.kernel.domain import SETTLED_PROGRESS, AssetProgress, BySize, Partition
 from visionset.kernel.services import (
@@ -196,7 +197,7 @@ def batch_start(
 #: How each reason a class is left out of the prompt reads at a terminal.
 #: Short, because they are joined inside a parenthesis beside the class name.
 _EXCLUSION_PROSE: Final = {
-    PreLabelExclusionReason.NO_BBOX_GEOMETRY: "no box",
+    PreLabelExclusionReason.NO_PRODUCIBLE_GEOMETRY: "no shape this model produces",
     PreLabelExclusionReason.REQUIRED_ATTRIBUTE: "requires an attribute a prediction cannot supply",
 }
 
@@ -209,7 +210,10 @@ def announce_plan(plan: PreLabelPlan) -> None:
     nothing under the other three, and afterwards there is only the silence to
     explain.
     """
-    note(f"Asking for {len(plan.asked)} class(es): {', '.join(plan.asked)}.")
+    note(
+        f"Asking for {len(plan.asked)} class(es): {', '.join(plan.asked)}; "
+        f"what it finds lands as {shapes_prose(plan.produces)}."
+    )
     if not plan.excluded:
         return
     left_out = "; ".join(

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final
 from uuid import UUID
 
@@ -44,9 +45,12 @@ from visionset.kernel.domain import (
     AssetProgress,
     Batch,
     GeometryType,
+    InferenceConnection,
     LabelClass,
+    ModelCapability,
     PredictionRequest,
     PredictionTarget,
+    ServedFamily,
     TextPrompt,
     media_type_of,
 )
@@ -98,11 +102,11 @@ class PreLabelOutcome:
     #: reached them. Passed over rather than an error, on the same idempotency
     #: argument that makes a second run safe.
     assets_skipped: int = 0
-    #: Regions the model answered with a label that named no phrase asked for —
-    #: a span decoded across a phrase boundary, most often. Discarded before an
-    #: annotation is built rather than written and refused, so a run that drops
-    #: a meaningful share of the model's output says so instead of reporting a
-    #: clean success.
+    #: Regions that could not be written as the class they named — a label
+    #: naming no phrase asked for, or a shape the class does not admit.
+    #: Discarded before an annotation is built rather than written and refused,
+    #: so a run that drops a meaningful share of the model's output says so
+    #: instead of reporting a clean success.
     regions_discarded: int = 0
     #: Regions whose geometry has no overlap with a measured asset. Kept
     #: separate from unmappable labels because their class mapping succeeded.
@@ -126,17 +130,33 @@ def unsupported_prompt_message(connection_name: str) -> str:
     )
 
 
-def no_detectable_class_message(schema_version: int) -> str:
-    """The sentence a schema with no class a detection can land on gets.
+def shapes_prose(produces: frozenset[GeometryType]) -> str:
+    """``a box``, ``a polygon``, ``a box or a polygon`` — the shapes, for a sentence."""
+    names = {
+        GeometryType.BBOX: "a box",
+        GeometryType.POLYGON: "a polygon",
+        GeometryType.POLYLINE: "a polyline",
+        GeometryType.MASK: "a mask",
+        GeometryType.KEYPOINTS: "keypoints",
+        GeometryType.CLASSIFICATION_TAG: "a tag",
+        GeometryType.CUBOID_3D: "a 3D cuboid",
+        GeometryType.POLYLINE_3D: "a 3D polyline",
+    }
+    return " or ".join(names[shape] for shape in sorted(produces, key=lambda shape: shape.value))
 
-    True of both reasons :func:`detectable_classes` excludes a class — missing
-    ``bbox`` or a required attribute a prediction cannot supply — because it
-    describes the outcome rather than either cause.
+
+def no_detectable_class_message(schema_version: int, produces: frozenset[GeometryType]) -> str:
+    """The sentence a schema with no class this model's answer can land on gets.
+
+    True of both reasons :func:`detectable_classes` excludes a class — no shape
+    the model produces or a required attribute a prediction cannot supply —
+    because it describes the outcome rather than either cause.
     """
+    shapes = shapes_prose(produces)
     return (
-        f"schema version {schema_version} declares no class that a box can be written "
-        f"as, so a detector has nowhere to put what it finds; add a class whose "
-        f"geometries include bbox, or pre-label a batch pinned to one that has"
+        f"schema version {schema_version} declares no class that {shapes} can be written "
+        f"as, so this model has nowhere to put what it finds; add a class whose "
+        f"geometries include one of those, or pre-label a batch pinned to one that has"
     )
 
 
@@ -149,8 +169,8 @@ class PreLabelExclusionReason(OpenVocabulary):
     names is visibly left out whether or not that client can word the reason.
     """
 
-    #: The class does not admit ``bbox``, so a detection has no shape to land as.
-    NO_BBOX_GEOMETRY = "no_bbox_geometry"
+    #: The class admits no shape the model produces, so an answer has nowhere to land.
+    NO_PRODUCIBLE_GEOMETRY = "no_producible_geometry"
     #: The class declares a required attribute. A model's answer carries no
     #: attribute values, so a bare prediction has nothing to satisfy it with.
     REQUIRED_ATTRIBUTE = "required_attribute"
@@ -183,21 +203,26 @@ class PreLabelPlan:
     schema_version: int
     #: The prompt, in the schema's own declaration order.
     asked: tuple[str, ...]
+    #: The shapes the model answers in — what the plan was derived against, and
+    #: what a run writes.
+    produces: frozenset[GeometryType]
     #: The rest, each with why — empty when the whole schema is askable.
     excluded: tuple[PreLabelExcludedClass, ...]
 
 
-def _exclusions(label_class: LabelClass) -> tuple[PreLabelExclusionReason, ...]:
+def _exclusions(
+    label_class: LabelClass, produces: frozenset[GeometryType]
+) -> tuple[PreLabelExclusionReason, ...]:
     """Every reason a bare prediction could not be written as this class."""
     reasons: list[PreLabelExclusionReason] = []
-    if GeometryType.BBOX not in label_class.geometries:
-        reasons.append(PreLabelExclusionReason.NO_BBOX_GEOMETRY)
+    if not (set(label_class.geometries) & produces):
+        reasons.append(PreLabelExclusionReason.NO_PRODUCIBLE_GEOMETRY)
     if any(attribute.required for attribute in label_class.attributes):
         reasons.append(PreLabelExclusionReason.REQUIRED_ATTRIBUTE)
     return tuple(reasons)
 
 
-def prompt_plan(schema: AnnotationSchema) -> PreLabelPlan:
+def prompt_plan(schema: AnnotationSchema, produces: frozenset[GeometryType]) -> PreLabelPlan:
     """Split a schema into the classes a run asks for and the ones it cannot.
 
     The prompt on its own is not enough to work from: both exclusions are
@@ -209,16 +234,23 @@ def prompt_plan(schema: AnnotationSchema) -> PreLabelPlan:
     asked: list[str] = []
     excluded: list[PreLabelExcludedClass] = []
     for label_class in schema.classes:
-        reasons = _exclusions(label_class)
+        reasons = _exclusions(label_class, produces)
         if reasons:
             excluded.append(PreLabelExcludedClass(name=label_class.name, reasons=reasons))
         else:
             asked.append(label_class.name)
-    return PreLabelPlan(schema_version=schema.version, asked=tuple(asked), excluded=tuple(excluded))
+    return PreLabelPlan(
+        schema_version=schema.version,
+        asked=tuple(asked),
+        produces=produces,
+        excluded=tuple(excluded),
+    )
 
 
-def detectable_classes(schema: AnnotationSchema) -> tuple[str, ...]:
-    """The class names a box can be written as, which are also the prompt.
+def detectable_classes(
+    schema: AnnotationSchema, produces: frozenset[GeometryType]
+) -> tuple[str, ...]:
+    """The class names a shape the model produces can be written as, which are also the prompt.
 
     Public because the route asks it to refuse before enqueueing anything, and a
     second implementation of "which classes can hold a detection" is how a
@@ -226,10 +258,12 @@ def detectable_classes(schema: AnnotationSchema) -> tuple[str, ...]:
     :func:`prompt_plan` for the same reason: the list a dialog shows and the
     list a run prompts with are one derivation, never two.
     """
-    return prompt_plan(schema).asked
+    return prompt_plan(schema, produces).asked
 
 
-def require_detectable_schema(workspace: WorkspaceService, batch: Batch) -> AnnotationSchema:
+def require_detectable_schema(
+    workspace: WorkspaceService, batch: Batch, produces: frozenset[GeometryType]
+) -> AnnotationSchema:
     """The pinned schema of a batch already established as pre-labelable, or the refusal.
 
     The one read the route and the orchestration both need before they can go
@@ -251,14 +285,15 @@ def require_detectable_schema(workspace: WorkspaceService, batch: Batch) -> Anno
             "approval is what pins one, and it is never unset"
         )
     schema = SchemaService(workspace).get(batch.project_id, batch.schema_version)
-    if not detectable_classes(schema):
-        raise SchemaHasNoDetectableClass(no_detectable_class_message(schema.version))
+    if not detectable_classes(schema, produces):
+        raise SchemaHasNoDetectableClass(no_detectable_class_message(schema.version, produces))
     return schema
 
 
 def select_pre_labelable(
     workspace: WorkspaceService,
     project_id: UUID,
+    produces: frozenset[GeometryType],
     batch_ids: Sequence[UUID] | None = None,
 ) -> list[Batch]:
     """The batches a project-wide run fans out over, or the refusal.
@@ -267,8 +302,9 @@ def select_pre_labelable(
     annotation, in listing order; present means exactly those, in the order
     given. Refusals are whole: a named batch outside the project, a named
     batch not open, a project with no open batch, or any selected batch whose
-    pin no detection can be written as — each refused up front, naming the
-    batch, so a caller that got a list got one every surface can run as is.
+    pin holds no class a shape the model produces can be written as — each
+    refused up front, naming the batch, so a caller that got a list got one
+    every surface can run as is.
 
     Raises:
         ProjectNotFound: no such project in this workspace.
@@ -277,7 +313,7 @@ def select_pre_labelable(
             project has no open batch at all, or ``batch_ids`` is an empty list.
         WorkspaceCorrupt: an open batch pinned no schema version.
         SchemaHasNoDetectableClass: a selected batch's pinned schema holds no
-            class a detection could be written as.
+            class a shape this model produces could be written as.
     """
     project = ProjectService(workspace).get(project_id)
     if batch_ids is not None and not batch_ids:
@@ -302,10 +338,53 @@ def select_pre_labelable(
         )
     for batch in selected:
         try:
-            require_detectable_schema(workspace, batch)
+            require_detectable_schema(workspace, batch, produces)
         except SchemaHasNoDetectableClass as refusal:
             raise SchemaHasNoDetectableClass(f"batch {batch.name!r}: {refusal}") from refusal
     return selected
+
+
+def _served_for(
+    pool: ProviderPool, connection: InferenceConnection, *, workspace_root: Path
+) -> ServedFamily:
+    """The declaration behind the connection, refused unless it answers words."""
+    declared = pool.served(connection, workspace_root=workspace_root)
+    if declared.capability is not ModelCapability.TEXT_DETECT:
+        raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
+    return declared
+
+
+def planned(
+    workspace: WorkspaceService,
+    *,
+    batch_id: UUID,
+    connection_id: UUID,
+    pool: ProviderPool | None = None,
+) -> PreLabelPlan:
+    """The plan a run of that connection over that batch would prompt with, without running it.
+
+    The same lookups in the same order as :func:`pre_label` — connection, then
+    batch, then schema — so a surface that reads this and then launches gets one
+    set of refusals, not two.
+
+    Raises:
+        InferenceConnectionNotFound: no such connection.
+        InferenceConnectionNotSetUp: a local connection whose weights are absent.
+        InferenceConnectionNotRunnable: nothing here runs that kind.
+        UnsupportedPrompt: that connection's model answers places, not words.
+        BatchNotFound: no such batch in this workspace.
+        BatchNotInAnnotation: the batch is not open for annotation, so a model
+            cannot pre-label it.
+        WorkspaceCorrupt: the batch is open but pinned no schema version — a
+            broken invariant, since approval is what pins one.
+        SchemaHasNoDetectableClass: the pinned schema holds no class a shape
+            this model produces could be written as.
+    """
+    connection = InferenceConnectionService(workspace).get(connection_id)
+    declared = _served_for(pool or resident(), connection, workspace_root=workspace.root)
+    batch = BatchService(workspace).require_pre_labelable(batch_id)
+    schema = require_detectable_schema(workspace, batch, declared.produces)
+    return prompt_plan(schema, declared.produces)
 
 
 def pre_label(
@@ -325,18 +404,20 @@ def pre_label(
     The order of the lookups is the order of the refusals a caller most needs:
     the connection first, because "this build cannot run that kind" is an answer
     about a setup somebody is part-way through, then the batch's own state,
-    then the schema, because a batch with nowhere to write a box is refused
-    before a single image is read.
+    then the schema, because a batch with nowhere to write what the model
+    produces is refused before a single image is read.
 
     An asset untouched when the run started but worked by somebody before the
     run reaches it is passed over, not fatal — the batch is open for
     annotation, so that is the normal case rather than a race. The run keeps
     going and ``PreLabelOutcome.assets_skipped`` says how many.
 
-    A region whose label names no phrase asked for is passed over the same
-    way: a text-prompted detector answers with decoded text, not a choice from
-    the phrase list, and a merged answer is discarded rather than guessed onto
-    either half. ``PreLabelOutcome.regions_discarded`` says how many.
+    A region that could not be written as the class it named is passed over
+    the same way — a label naming no phrase asked for, or a shape the class does
+    not admit. A text-prompted detector answers with decoded text, not a choice
+    from the phrase list, and a merged answer is discarded rather than guessed
+    onto either half; a model declaring two shapes may answer in the one its
+    class does not take. ``PreLabelOutcome.regions_discarded`` says how many.
 
     A region whose mapped geometry has no overlap with a measured asset is also
     passed over before the atomic write. ``PreLabelOutcome.regions_out_of_bounds``
@@ -364,27 +445,31 @@ def pre_label(
             cannot pre-label it.
         WorkspaceCorrupt: the batch is open but pinned no schema version — a
             broken invariant, since approval is what pins one.
-        SchemaHasNoDetectableClass: the pinned schema holds no box class.
+        SchemaHasNoDetectableClass: the pinned schema holds no class a shape
+            this model produces could be written as.
     """
     connection = InferenceConnectionService(workspace).get(connection_id)
-    runner = (pool or resident()).get(connection, workspace_root=workspace.root)
+    resolved = pool or resident()
+    runner = resolved.get(connection, workspace_root=workspace.root)
     if not isinstance(runner, ModelProvider):
         # Refused here rather than inside the adapter, because the adapter it
         # would reach has no `predict` to refuse from. The split between the two
         # ports is what makes this checkable before anything loads.
         raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
+    declared = resolved.served(connection, workspace_root=workspace.root)
 
     batches = BatchService(workspace)
     batch = batches.require_pre_labelable(batch_id)
-    schema = require_detectable_schema(workspace, batch)
+    schema = require_detectable_schema(workspace, batch, declared.produces)
     # Announced from inside the run rather than derived by the caller, so the
     # plan a surface reports is the one this run is about to prompt with and the
     # order the refusals above arrive in is left alone.
-    plan = prompt_plan(schema)
+    plan = prompt_plan(schema, declared.produces)
     if on_plan is not None:
         on_plan(plan)
     phrases = plan.asked
     class_by_answer = _class_by_answer(phrases)
+    admits = {label_class.name: frozenset(label_class.geometries) for label_class in schema.classes}
 
     jobs = batches.jobs(batch_id)
     targets = _targets(workspace, jobs, replace_model_labels=replace_model_labels)
@@ -427,13 +512,14 @@ def pre_label(
         in_bounds: list[Annotation] = []
         if answer is not None:
             model_ref = answer.model_ref
-            proposed, unmapped = _annotations_from(
+            proposed, dropped = _annotations_from(
                 answer,
                 asset_id=asset_id,
                 schema_version=schema.version,
                 class_by_answer=class_by_answer,
+                admits=admits,
             )
-            discarded += unmapped
+            discarded += dropped
             in_bounds = [
                 annotation
                 for annotation in proposed
@@ -541,6 +627,7 @@ def _annotations_from(
     asset_id: UUID,
     schema_version: int,
     class_by_answer: Mapping[str, str],
+    admits: Mapping[str, frozenset[GeometryType]],
 ) -> tuple[list[Annotation], int]:
     """Regions mapped onto a class that was asked for, and how many could not be.
 
@@ -553,16 +640,24 @@ def _annotations_from(
     writing it under either half of a merged answer would be inventing an
     attribution nobody can check.
 
+    A region whose shape the matched class does not admit is dropped the same
+    way. A model declaring both a box and a polygon may answer either for a
+    class that takes only one, and the class is what the annotation has to be
+    valid against.
+
     ``schema_version`` is supplied because ``Annotation`` requires one; the
     service stamps the pinned value over it, which is what keeps a caller from
     claiming a version it does not get to choose.
     """
     annotations = []
-    unmapped = 0
+    discarded = 0
     for region in answer.regions:
         label_class = class_by_answer.get(region.label.casefold())
         if label_class is None:
-            unmapped += 1
+            discarded += 1
+            continue
+        if region.geometry.type not in admits[label_class]:
+            discarded += 1
             continue
         annotations.append(
             Annotation(
@@ -575,4 +670,4 @@ def _annotations_from(
                 confidence=region.confidence,
             )
         )
-    return annotations, unmapped
+    return annotations, discarded

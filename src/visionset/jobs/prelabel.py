@@ -82,11 +82,11 @@ def run(
     the ordinary case; the run passes it over and keeps going, and
     ``assets_skipped`` in the result says how many.
 
-    **A region the model answered with a label nobody asked for is discarded,
+    **A region that could not be written as the class it named is discarded,
     not fatal either.** A text-prompted detector answers with decoded text
     rather than a choice from the prompt's phrases, so a merged answer is
-    dropped before it is ever written; ``regions_discarded`` in the result says
-    how many.
+    dropped before it is ever written; so is a shape the named class does not
+    admit. ``regions_discarded`` in the result says how many.
 
     **A mapped region with no overlap with a measured asset is also discarded.**
     ``regions_out_of_bounds`` keeps that geometry refusal distinct from an

@@ -22,7 +22,14 @@ from tests.mcp._flow import (
 )
 
 from visionset.inference import prelabel as prelabel_module
-from visionset.kernel.domain import AssetPrediction, BboxGeometry, PredictedRegion
+from visionset.kernel.domain import (
+    AssetPrediction,
+    BboxGeometry,
+    GeometryType,
+    ModelCapability,
+    PredictedRegion,
+    ServedFamily,
+)
 
 
 def test_a_freshly_ingested_batch_is_a_draft_with_no_jobs_and_no_pin(
@@ -465,6 +472,11 @@ class _FakePool:
 
     def get(self, connection: object, *, workspace_root: Path) -> object:
         return self._runner
+
+    def served(self, connection: object, *, workspace_root: Path) -> ServedFamily:
+        return ServedFamily(
+            capability=ModelCapability.TEXT_DETECT, produces=frozenset({GeometryType.BBOX})
+        )
 
 
 def _predicting(

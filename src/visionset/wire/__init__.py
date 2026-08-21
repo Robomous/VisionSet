@@ -471,11 +471,12 @@ def pre_label_plan(value: PreLabelPlan) -> dict[str, Any]:
     that reports the plan it ran under; two would be how an agent comes to see
     ``excluded_classes`` under one and something else under the other.
     ``schema_version`` is the pin both halves were derived from — a re-pin
-    changes both.
+    changes both. ``produces`` is the shapes the model answers in, sorted.
     """
     return {
         "schema_version": value.schema_version,
         "asked_classes": list(value.asked),
+        "produces": sorted(shape.value for shape in value.produces),
         "excluded_classes": [
             {"name": one.name, "reasons": [reason.value for reason in one.reasons]}
             for one in value.excluded

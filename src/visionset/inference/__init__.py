@@ -92,10 +92,12 @@ from visionset.inference.prelabel import (
     PreLabelPlan,
     detectable_classes,
     no_detectable_class_message,
+    planned,
     pre_label,
     prompt_plan,
     require_detectable_schema,
     select_pre_labelable,
+    shapes_prose,
     unsupported_prompt_message,
 )
 from visionset.inference.providers import (
@@ -216,8 +218,10 @@ __all__ = [
     "filled",
     "polygon_at",
     "shapes_from",
+    "shapes_prose",
     "simplified",
     "tolerance_for",
+    "planned",
     "pre_label",
     "provider_for",
     "require",

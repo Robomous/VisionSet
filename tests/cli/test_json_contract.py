@@ -65,6 +65,7 @@ from visionset.kernel.domain import (
     AnnotationSummary,
     AssetProgress,
     BackgroundJobState,
+    GeometryType,
     PreLabelRun,
 )
 from visionset.server import models
@@ -76,11 +77,12 @@ from visionset.server import models
 PRE_LABEL_PLAN = PreLabelPlan(
     schema_version=SCHEMA_VERSION.version,
     asked=("sign",),
+    produces=frozenset({GeometryType.BBOX}),
     excluded=(
         PreLabelExcludedClass(
             name="crossing",
             reasons=(
-                PreLabelExclusionReason.NO_BBOX_GEOMETRY,
+                PreLabelExclusionReason.NO_PRODUCIBLE_GEOMETRY,
                 PreLabelExclusionReason.REQUIRED_ATTRIBUTE,
             ),
         ),

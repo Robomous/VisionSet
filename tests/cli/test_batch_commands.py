@@ -28,7 +28,14 @@ from visionset.cli import batches as batch_commands
 from visionset.cli.main import app
 from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, PreLabelExclusionReason
 from visionset.inference import prelabel as prelabel_module
-from visionset.kernel.domain import AssetPrediction, BboxGeometry, PredictedRegion
+from visionset.kernel.domain import (
+    AssetPrediction,
+    BboxGeometry,
+    GeometryType,
+    ModelCapability,
+    PredictedRegion,
+    ServedFamily,
+)
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR,
     DatasetService,
@@ -85,6 +92,11 @@ class _FakePool:
 
     def get(self, connection: object, *, workspace_root: Path) -> object:
         return self._predictor
+
+    def served(self, connection: object, *, workspace_root: Path) -> ServedFamily:
+        return ServedFamily(
+            capability=ModelCapability.TEXT_DETECT, produces=frozenset({GeometryType.BBOX})
+        )
 
 
 @pytest.fixture()
@@ -334,7 +346,7 @@ def test_pre_label_says_which_classes_it_asks_for(
     result = run(root, "batch", "pre-label", batch, _connection(root))
 
     assert result.exit_code == 0, result.output
-    assert "Asking for 1 class(es): sign." in result.stderr
+    assert "Asking for 1 class(es): sign; what it finds lands as a box." in result.stderr
     assert "Not asking for" not in result.stderr
 
 
@@ -351,10 +363,11 @@ def test_pre_label_names_every_class_it_leaves_out_and_why(
     result = run(root, "batch", "pre-label", batch, _connection(root))
 
     assert result.exit_code == 0, result.output
-    assert "Asking for 2 class(es): sign, post." in result.stderr
+    assert "Asking for 2 class(es): sign, post; what it finds lands as a box." in result.stderr
     assert (
-        "Not asking for 2 class(es): lane (no box); "
-        "crossing (no box, requires an attribute a prediction cannot supply)." in result.stderr
+        "Not asking for 2 class(es): lane (no shape this model produces); "
+        "crossing (no shape this model produces, requires an attribute a prediction "
+        "cannot supply)." in result.stderr
     )
 
 
