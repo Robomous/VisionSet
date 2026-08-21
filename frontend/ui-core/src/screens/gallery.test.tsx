@@ -1934,7 +1934,8 @@ describe("the jobs strip", () => {
       return undefined;
     });
     renderGallery();
-    const said = await screen.findByText("That batch is no longer on record.");
+    const said = await screen.findByRole("alert");
+    expect(said.textContent).toContain("That batch is no longer on record.");
     expect(said.textContent).not.toContain(BATCH);
     expect(said.textContent).not.toContain("BATCH_NOT_FOUND");
   });
@@ -1955,7 +1956,8 @@ describe("the jobs strip", () => {
     const strip = within(await screen.findByTestId("jobs-strip"));
     await userEvent.click(strip.getByRole("button", { name: /assign/i }));
     await userEvent.keyboard("Dana Reyes{Enter}");
-    const said = await strip.findByText("That job is no longer on record.");
+    const said = await strip.findByRole("alert");
+    expect(said.textContent).toContain("That job is no longer on record.");
     expect(said.textContent).not.toContain(JOB);
     expect(said.textContent).not.toContain("JOB_NOT_FOUND");
   });

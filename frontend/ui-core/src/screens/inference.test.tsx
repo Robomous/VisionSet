@@ -744,29 +744,7 @@ it("shows the download size before anything is confirmed", async () => {
   expect(sent.some((one) => one.method === "POST")).toBe(false);
 });
 
-it("keeps the local form usable when the size cannot be read, and quotes the refusal", async () => {
-  listing([]);
-  catalog();
-  on("GET", /^\/inference\/download-size$/, {
-    status: 500,
-    body: {
-      code: "LOCAL_INFERENCE_UNAVAILABLE",
-      message:
-        'running a model locally needs the local-inference extra. Install it with: pip install "visionset[local-inference]"',
-    },
-  });
-  render(mount(<InferenceScreen />));
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
-  const shown = await screen.findByTestId("size-unavailable");
-  expect(shown.textContent).toContain('pip install "visionset[local-inference]"');
-  // Principle 9: the form is not disabled by not knowing. Creating downloads
-  // nothing, so the unknown size is information rather than a gate.
-  await userEvent.type(screen.getByTestId("connection-name"), "sam2");
-  expect((screen.getByTestId("connection-submit") as HTMLButtonElement).disabled).toBe(false);
-});
-
-it("keeps the install command while dropping the code badge", async () => {
+it("keeps the local form usable when the size cannot be read, quoting the refusal without its code", async () => {
   listing([]);
   catalog();
   on("GET", /^\/inference\/download-size$/, {
@@ -782,9 +760,14 @@ it("keeps the install command while dropping the code badge", async () => {
   await userEvent.click(await screen.findByTestId("choose-local"));
   const shown = await screen.findByTestId("size-unavailable");
   // Withheld from REFUSAL_PROSE on purpose: the message carries its own remedy,
-  // and a mapped sentence would delete the one actionable thing it says.
+  // and a mapped sentence would delete the one actionable thing it says. Only
+  // the code badge goes.
   expect(shown.textContent).toContain('pip install "visionset[local-inference]"');
   expect(shown.textContent).not.toContain("LOCAL_INFERENCE_UNAVAILABLE");
+  // Principle 9: the form is not disabled by not knowing. Creating downloads
+  // nothing, so the unknown size is information rather than a gate.
+  await userEvent.type(screen.getByTestId("connection-name"), "sam2");
+  expect((screen.getByTestId("connection-submit") as HTMLButtonElement).disabled).toBe(false);
 });
 
 it("asks for no size at all for an http connection", async () => {

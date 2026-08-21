@@ -1268,9 +1268,10 @@ function AccessLine({
  *
  * D1's "download size shown before confirming", and the one place a missing local
  * runtime becomes visible in this form. The refusal is rendered **as the server
- * wrote it** — `LOCAL_INFERENCE_UNAVAILABLE` is one of the four codes that opt
- * out of the opaque body precisely so the install command reaches a person, and a
- * sentence written here would throw it away.
+ * wrote it** — `LOCAL_INFERENCE_UNAVAILABLE` is one of the seven codes
+ * `server/errors.py` marks `expose_message`, opting out of the opaque body
+ * precisely so the install command reaches a person, and a sentence written
+ * here would throw it away.
  *
  * The form stays usable throughout (principle 9): not knowing the size does not
  * stop somebody configuring a connection, because creating one downloads nothing.
