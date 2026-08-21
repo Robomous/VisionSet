@@ -87,6 +87,16 @@ def inference_create(
     endpoint_url: Annotated[
         str | None, typer.Option("--endpoint", help="HTTP only. Where to send predictions.")
     ] = None,
+    provider_id: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help=(
+                "Which installed driver serves it. Omitted, the connection resolves "
+                "by the model type its downloaded config declares."
+            ),
+        ),
+    ] = None,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -100,6 +110,7 @@ def inference_create(
             device=device,
             precision=precision,
             endpoint_url=endpoint_url,
+            provider_id=provider_id,
         )
     if json_out:
         document(wire.connection(created))
@@ -145,6 +156,16 @@ def inference_update(
         ),
     ] = None,
     endpoint_url: Annotated[str | None, typer.Option("--endpoint", help="HTTP only.")] = None,
+    provider_id: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help=(
+                "Which installed driver serves it. Omitted, the connection resolves "
+                "by the model type its downloaded config declares."
+            ),
+        ),
+    ] = None,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -159,6 +180,7 @@ def inference_update(
             device=device,
             precision=precision,
             endpoint_url=endpoint_url,
+            provider_id=provider_id,
         )
     if json_out:
         document(wire.connection(edited))
