@@ -380,6 +380,15 @@ describe("the single review action", () => {
     expect(screen.getByTestId("skip")).toBeDefined();
   });
 
+  it("is Confirm labels on a model-labeled frame nobody has edited", async () => {
+    progress = "pre_labeled";
+    await open();
+
+    expect(screen.getByTestId("confirm").textContent).toMatch(/confirm labels/i);
+    expect(screen.queryByTestId("submit-for-review")).toBeNull();
+    expect(screen.queryByTestId("accept")).toBeNull();
+  });
+
   it("is Submit for review on an annotated frame", async () => {
     progress = "annotated";
     await open();
