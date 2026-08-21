@@ -8,11 +8,13 @@ from uuid import uuid4
 
 import pytest
 from tests.cli._flow import (
+    RENDERING,
     completed_batch,
     ingested_batch,
     jobs_of,
     ok,
     payload,
+    plain,
     project,
     run,
     runner,
@@ -393,8 +395,10 @@ def test_pre_label_replace_model_labels_rewrites_the_first_runs_frames(
 
 
 def test_batch_pre_label_help_lists_the_replace_option() -> None:
-    result = runner.invoke(app, ["batch", "pre-label", "--help"])
-    assert "--replace-model-labels" in result.output
+    """Read under the pinned rendering: rich colours the option name in pieces, so
+    the unstripped help never contains the flag as one string on CI."""
+    result = runner.invoke(app, ["batch", "pre-label", "--help"], env=RENDERING, color=True)
+    assert "--replace-model-labels" in plain(result.output)
 
 
 def test_pre_label_resolves_a_connection_name_and_passes_its_confidence(
