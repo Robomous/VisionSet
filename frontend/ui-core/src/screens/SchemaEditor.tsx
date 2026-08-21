@@ -1265,10 +1265,10 @@ function describeDestructiveClasses(classes: readonly string[]): string {
  * refused outright and never reaches this dialog — and a measured zero is the
  * reason the publish is offered at all, so it is stated rather than implied.
  *
- * It says nothing about what becomes of annotations *after* the publish. An
- * open batch pinned to the outgoing version can still write the removed class,
- * and whether that is tolerated or forbidden is not something this dialog is
- * entitled to answer.
+ * It also states what becomes of annotations *after* the publish. An annotation
+ * is valid against its own batch's pin, so a batch still open on the outgoing
+ * version keeps writing a class this version drops; those labels stand, and the
+ * release is where they are refused.
  *
  * A shape removed from a class and the class itself removed are indistinguishable
  * here: the wire's change record carries the class name but not the geometry, so
@@ -1299,6 +1299,11 @@ function DestructiveDialog({
         <DialogDescription>
           No existing annotation becomes invalid — that is why this can be published at all.
           Publishing adds a new version; earlier versions keep what they declared.
+        </DialogDescription>
+        <DialogDescription>
+          A batch still open on the current version keeps writing what that version declares,
+          including what this one drops. Those labels are kept — but a release cannot be published
+          while they are in it.
         </DialogDescription>
         <DialogFooter>
           <Button variant="secondary" onClick={onCancel}>
