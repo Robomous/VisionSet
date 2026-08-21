@@ -21,6 +21,7 @@
  */
 
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -42,6 +43,7 @@ import {
   checkCompareSchemaVersions,
   checkCreateSchemaVersion,
   checkDatasetStats,
+  checkDeleteAnnotations,
   checkDeleteBatch,
   checkDeleteProject,
   checkDiscardSchemaDraft,
@@ -58,6 +60,7 @@ import {
   checkGetSchemaDraft,
   checkGetSource,
   checkGetReleaseManifest,
+  checkListAssetAnnotations,
   checkListBatchAssets,
   checkListBatchJobs,
   checkListBatches,
@@ -870,10 +873,19 @@ export type ProgressCounts = components["schemas"]["ProgressCounts"];
 export type Partition = components["schemas"]["BatchApprove"]["partition"];
 /** Re-exported from where the annotation page declares it, so this module has one name for it. */
 export type AssetProgress = components["schemas"]["AssetProgress"];
+export type AssetSort = components["schemas"]["AssetSort"];
+
+export interface AssetView {
+  readonly progress?: readonly AssetProgress[];
+  readonly sort: AssetSort;
+}
 
 export const batchKeys = {
   batch: (batchId: string) => ["batches", batchId] as const,
   assets: (batchId: string) => ["batches", batchId, "assets"] as const,
+  /** One window's identity: the segment and the order are part of what was asked. */
+  assetsView: (batchId: string, view: AssetView) =>
+    ["batches", batchId, "assets", view.progress ?? "all", view.sort] as const,
   jobs: (batchId: string) => ["batches", batchId, "jobs"] as const,
   // The pinned version is part of the key because the plan is a function of it
   // and of nothing else: a re-pin must not leave a dialog naming the classes of
@@ -915,22 +927,32 @@ export function useBatchJobs(batchId: string, enabled = true) {
  *
  * The **only** paginated collection in this API, and it exists for exactly this
  * caller: a batch can hold fifty thousand frames. Two properties of that contract
- * decide the shape here — `total` is the size of the *whole* batch and does not
- * move as you page, so "have I seen everything" is `seen < total` rather than
+ * decide the shape here — `total` is the size of what the view matched, the
+ * whole batch only when nothing narrows it, and it does not move as you page
+ * *within* that view, so "have I seen everything" is `seen < total` rather than
  * "was the last page short"; and an offset past the end is 200 with an empty
  * `items`, never a 404, so overrunning is harmless.
  */
-export function useBatchAssets(batchId: string) {
+export function useBatchAssets(batchId: string, view: AssetView = { sort: "membership" }) {
   const client = useApiClient();
   return useInfiniteQuery({
-    queryKey: batchKeys.assets(batchId),
+    queryKey: batchKeys.assetsView(batchId, view),
     initialPageParam: 0,
+    // A segment or sort switch is a new query key, and without this the grid
+    // would drop to the loading skeleton for the round trip rather than keep
+    // showing the view it already has.
+    placeholderData: keepPreviousData,
     queryFn: async ({ pageParam }) =>
       unwrap(
         await client.GET("/batches/{batch_id}/assets", {
           params: {
             path: { batch_id: batchId },
-            query: { limit: GALLERY_PAGE_SIZE, offset: pageParam },
+            query: {
+              limit: GALLERY_PAGE_SIZE,
+              offset: pageParam,
+              ...(view.progress === undefined ? {} : { progress: [...view.progress] }),
+              sort: view.sort,
+            },
           },
         }),
         checkListBatchAssets,
@@ -1313,6 +1335,107 @@ export function useBulkSetProgress(batchId: string) {
       // assets, and a screen showing the old value for those is a counter that
       // did not move. Both keys, because the counts live on the batch and the per-asset
       // state lives in the listing.
+      void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
+      void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
+    },
+  });
+}
+
+export interface BulkDiscardResult {
+  readonly discarded: number;
+  readonly refusals: readonly Refusal[];
+}
+
+/**
+ * h11's request-line cap (16 KiB) holds roughly this many `?id=` repeats before a
+ * DELETE stops being one request — well inside "a few hundred frames", which is
+ * why this is chunked rather than sent as a single line.
+ */
+const DISCARD_CHUNK_CEILING = 200;
+
+/**
+ * Group a job's per-frame id lists into DELETE-sized chunks.
+ *
+ * A frame's own ids never split across two chunks — the caller counts a refusal
+ * or a success per *frame*, so a frame has to belong to exactly one request.
+ */
+function chunkByIds(perFrame: readonly (readonly string[])[]): (readonly string[])[][] {
+  const chunks: (readonly string[])[][] = [];
+  let current: (readonly string[])[] = [];
+  let count = 0;
+  for (const ids of perFrame) {
+    if (current.length > 0 && count + ids.length > DISCARD_CHUNK_CEILING) {
+      chunks.push(current);
+      current = [];
+      count = 0;
+    }
+    current.push(ids);
+    count += ids.length;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
+/**
+ * Throw away the model's labels on the selected frames.
+ *
+ * Read-then-delete through routes that already exist: one `GET` per frame for the
+ * ids, then one all-or-nothing `DELETE` per job, in chunks of whole frames under
+ * the request-line ceiling (`DISCARD_CHUNK_CEILING`). Progress derives to
+ * `unannotated` by the kernel's own rule when the last label goes; nothing here
+ * decides state. A frame whose read or whose chunk's delete is refused is
+ * counted as a refusal, one per frame, so the grouped report reads in frames.
+ */
+export function useBulkDiscardModelLabels(batchId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      targets: readonly { readonly jobId: string; readonly assetId: string }[],
+    ): Promise<BulkDiscardResult> => {
+      const refusals: Refusal[] = [];
+      const perJob = new Map<string, string[][]>();
+      for (const target of targets) {
+        try {
+          const page = unwrap(
+            await client.GET("/jobs/{job_id}/assets/{asset_id}/annotations", {
+              params: { path: { job_id: target.jobId, asset_id: target.assetId } },
+            }),
+            checkListAssetAnnotations,
+          );
+          const ids = page.items.filter((one) => one.provenance === "model").map((one) => one.id);
+          const perFrame = perJob.get(target.jobId) ?? [];
+          perFrame.push(ids);
+          perJob.set(target.jobId, perFrame);
+        } catch (cause) {
+          const error = asApiError(cause);
+          refusals.push({ code: error.code, message: error.message });
+        }
+      }
+      let discarded = 0;
+      for (const [jobId, perFrame] of perJob) {
+        for (const chunk of chunkByIds(perFrame)) {
+          const ids = chunk.flat();
+          if (ids.length === 0) continue;
+          try {
+            unwrap(
+              await client.DELETE("/jobs/{job_id}/annotations", {
+                params: { path: { job_id: jobId }, query: { id: ids } },
+              }),
+              checkDeleteAnnotations,
+            );
+            discarded += chunk.length;
+          } catch (cause) {
+            const error = asApiError(cause);
+            for (let at = 0; at < chunk.length; at += 1) {
+              refusals.push({ code: error.code, message: error.message });
+            }
+          }
+        }
+      }
+      return { discarded, refusals };
+    },
+    onSettled: () => {
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
     },

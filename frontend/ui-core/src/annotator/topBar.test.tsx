@@ -165,6 +165,8 @@ function answer(path: string): unknown {
       allowed_actions: assetActions(progress, {
         batchState: closedBatch ? "completed" : "in_annotation",
       }),
+      annotation_count: 0,
+      min_confidence: null,
     }));
     return { items, total: items.length };
   }
@@ -376,6 +378,15 @@ describe("the single review action", () => {
     }
     // Skip is the other resolution verb and stays visible — the bar is not empty.
     expect(screen.getByTestId("skip")).toBeDefined();
+  });
+
+  it("is Confirm labels on a model-labeled frame nobody has edited", async () => {
+    progress = "pre_labeled";
+    await open();
+
+    expect(screen.getByTestId("confirm").textContent).toMatch(/confirm labels/i);
+    expect(screen.queryByTestId("submit-for-review")).toBeNull();
+    expect(screen.queryByTestId("accept")).toBeNull();
   });
 
   it("is Submit for review on an annotated frame", async () => {

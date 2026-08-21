@@ -7,7 +7,12 @@ Convention reminders encoded here:
   normalization is an exporter concern.
 """
 
-from visionset.kernel.domain.annotation import Annotation, AnnotationTotals, Provenance
+from visionset.kernel.domain.annotation import (
+    Annotation,
+    AnnotationSummary,
+    AnnotationTotals,
+    Provenance,
+)
 from visionset.kernel.domain.asset import Asset
 from visionset.kernel.domain.batch import (
     BATCH_TRANSITIONS,
@@ -17,6 +22,7 @@ from visionset.kernel.domain.batch import (
     PRE_LABELABLE_STATES,
     PROMOTABLE_STATES,
     REPINNABLE_STATES,
+    AssetSort,
     Batch,
     BatchState,
     MembershipChange,
@@ -305,11 +311,13 @@ __all__ = [
     "AnnotationJobState",
     "AnnotationOperation",
     "AnnotationSchema",
+    "AnnotationSummary",
     "AnnotationTotals",
     "AnnotationsWritten",
     "Asset",
     "AssetPrediction",
     "AssetProgress",
+    "AssetSort",
     "BackgroundJob",
     "BackgroundJobFailed",
     "BackgroundJobOutcome",

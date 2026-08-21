@@ -476,13 +476,17 @@ GET  /batches/{id}/pre-label                         → 200 PreLabelPlanOut, th
 POST /batches/{id}/pre-label { "connection_id": …, "minimum_confidence": … } → 202 BackgroundJobOut
 POST /batches/{id}/promote                           → 200 AssetPage, the assets that entered
 GET  /batches/{id}/jobs                              → 200 JobPage
-GET  /batches/{id}/assets?limit=&offset=             → 200 BatchAssetPage
+GET  /batches/{id}/assets?limit=&offset=&progress=&sort=   → 200 BatchAssetPage
 
 POST   /projects/{id}/batches  { "name": …, "asset_ids": […] }  → 201 BatchOut
 POST   /batches/{id}/assets    { "asset_ids": […] }             → 200 BatchMembershipOut
 DELETE /batches/{id}/assets?id=&id=                             → 200 BatchMembershipOut
 DELETE /batches/{id}?confirm=true                               → 204
 ```
+
+`progress` repeats per state and narrows `total` with it; `sort=confidence` puts the frame whose
+weakest model label scores lowest first, unscored last, ties in membership order. Each item
+carries `annotation_count` and `min_confidence`.
 
 **A batch is born from an ingest in the ordinary case**, and that has not changed: an ingest run
 puts what it gathered into a batch (`batch_name` for a new one, `batch_id` to join an existing

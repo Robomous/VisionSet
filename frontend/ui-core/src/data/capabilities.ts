@@ -86,6 +86,7 @@ export const ASSET_ACTION = {
   annotate: "annotate",
   skip: "skip",
   restore: "restore",
+  confirm: "confirm",
   submitForReview: "submit_for_review",
   accept: "accept",
   returnToAnnotator: "return_to_annotator",

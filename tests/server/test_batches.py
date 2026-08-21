@@ -23,6 +23,7 @@ from tests.server._flow import (
     asset_ids,
     batch_from_ingest,
     dataset_of,
+    open_job,
     project_with_schema,
 )
 from tests.server._jobs import InlineDispatcher
@@ -1091,3 +1092,64 @@ def test_deleting_a_batch_takes_nothing_out_of_the_trunk(
     job_id = client.get(f"/batches/{promoted_batch}/jobs").json()["items"][0]["id"]
     kept = client.get(f"/jobs/{job_id}/assets/{same_assets[0]}/annotations")
     assert kept.json()["total"] == 1
+
+
+def _model_box(asset_id: str, confidence: float | None) -> dict[str, object]:
+    return a_box(asset_id, provenance="model", model_ref="stub@1", confidence=confidence)
+
+
+def test_every_listed_asset_carries_a_count_and_a_model_minimum(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    batch_id, job_id = open_job(client, runner, tmp_path, images=3)
+    a, b, _ = asset_ids(client, batch_id)
+    client.post(f"/jobs/{job_id}/annotations", json=[_model_box(a, 0.9), _model_box(a, 0.4)])
+    client.post(f"/jobs/{job_id}/annotations", json=[a_box(b)])
+
+    items = client.get(f"/batches/{batch_id}/assets").json()["items"]
+
+    by_id = {one["id"]: one for one in items}
+    assert (by_id[a]["annotation_count"], by_id[a]["min_confidence"]) == (2, 0.4)
+    assert (by_id[b]["annotation_count"], by_id[b]["min_confidence"]) == (1, None)
+    assert all("annotation_count" in one and "min_confidence" in one for one in items)
+
+
+def test_progress_filters_the_listing_and_its_total(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    batch_id, job_id = open_job(client, runner, tmp_path, images=3)
+    a, b, c = asset_ids(client, batch_id)
+    client.post(f"/jobs/{job_id}/annotations", json=[a_box(a)])
+    client.put(f"/jobs/{job_id}/assets/{c}/progress", json={"progress": "skipped"})
+
+    only = client.get(f"/batches/{batch_id}/assets", params={"progress": "annotated"}).json()
+    assert (only["total"], [x["id"] for x in only["items"]]) == (1, [a])
+
+    two = client.get(
+        f"/batches/{batch_id}/assets", params={"progress": ["annotated", "skipped"]}
+    ).json()
+    assert (two["total"], [x["id"] for x in two["items"]]) == (2, [a, c])
+
+
+def test_a_progress_filter_over_a_draft_is_an_empty_page(client: TestClient, ingested: str) -> None:
+    body = client.get(f"/batches/{ingested}/assets", params={"progress": "unannotated"}).json()
+    assert body == {"items": [], "total": 0}
+
+
+def test_sorting_by_confidence_puts_the_weakest_first_and_unscored_last(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    batch_id, job_id = open_job(client, runner, tmp_path, images=4)
+    a, b, c, d = asset_ids(client, batch_id)
+    client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[_model_box(a, 0.9), _model_box(b, 0.8), _model_box(b, 0.2), _model_box(d, 0.2)],
+    )
+
+    items = client.get(f"/batches/{batch_id}/assets", params={"sort": "confidence"}).json()["items"]
+
+    assert [x["id"] for x in items] == [b, d, a, c]
+
+
+def test_an_unknown_sort_is_a_422(client: TestClient, ingested: str) -> None:
+    assert client.get(f"/batches/{ingested}/assets", params={"sort": "size"}).status_code == 422

@@ -681,3 +681,44 @@ def test_the_batch_declares_pre_label_only_while_in_annotation(
     payload(call("start_batch", batch_id=batch_id))
 
     assert "pre_label" in payload(call("get_batch", batch_id=batch_id))["allowed_actions"]
+
+
+def test_listing_batch_assets_can_narrow_by_progress_and_order_by_confidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=3)
+    ids = [a["id"] for a in payload(call("list_batch_assets", batch_id=batch_id))["items"]]
+    payload(call("set_asset_progress", job_id=job_id, asset_id=ids[2], progress="skipped"))
+
+    narrowed = payload(call("list_batch_assets", batch_id=batch_id, progress=["skipped"]))
+    assert (narrowed["total"], [a["id"] for a in narrowed["items"]]) == (1, [ids[2]])
+
+    ordered = payload(call("list_batch_assets", batch_id=batch_id, sort="confidence"))
+    assert [a["id"] for a in ordered["items"]] == ids
+    assert {a["annotation_count"] for a in ordered["items"]} == {0}
+    assert {a["min_confidence"] for a in ordered["items"]} == {None}
+
+
+def test_an_unknown_sort_or_progress_value_is_a_malformed_request(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `sort` and `progress` are typed on the domain enums, `set_asset_progress`'s
+    # `progress` idiom: the tool's inputSchema advertises the legal values and
+    # the MCP boundary itself refuses an unknown one before the body runs, so
+    # there is no manual parsing here to raise a bare traceback instead.
+    _, batch_id, _ = open_batch(monkeypatch, tmp_path, count=2)
+
+    bad_sort = call("list_batch_assets", batch_id=batch_id, sort="size")
+    assert bad_sort.is_error
+    assert "confidence" in bad_sort.content[0].text
+
+    bad_progress = call("list_batch_assets", batch_id=batch_id, progress=["nope"])
+    assert bad_progress.is_error
+    assert "annotated" in bad_progress.content[0].text
+
+
+def test_an_empty_progress_list_means_no_filter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, _ = open_batch(monkeypatch, tmp_path, count=2)
+    assert payload(call("list_batch_assets", batch_id=batch_id, progress=[]))["total"] == 2

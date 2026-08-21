@@ -37,6 +37,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import NoReturn
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict
+
 from visionset.kernel.domain import (
     BATCH_JOB_KEY,
     BATCH_TRANSITIONS,
@@ -50,7 +52,10 @@ from visionset.kernel.domain import (
     AnnotationJob,
     AnnotationJobState,
     AnnotationSchema,
+    AnnotationSummary,
     Asset,
+    AssetProgress,
+    AssetSort,
     BackgroundJob,
     Batch,
     BatchApproved,
@@ -196,6 +201,68 @@ class BatchService:
         """
         with self._workspace.unit_of_work() as uow:
             return assets_of(uow, self.require_batch(uow, batch_id))
+
+    def asset_page(
+        self,
+        batch_id: UUID,
+        *,
+        progress: frozenset[AssetProgress] | None = None,
+        sort: AssetSort = AssetSort.MEMBERSHIP,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[list[PlacedAsset], int]:
+        """A window of the batch's assets with placement and label summary, and the filtered total.
+
+        Placement is read once off the jobs, the summary once off the store, and only
+        the window's assets are hydrated — the listing used to read every asset of
+        the batch for every page. ``confidence`` orders by the lowest model score,
+        unscored last, ties in membership order.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            batch = self.require_batch(uow, batch_id)
+            placement = {
+                asset_id: (job.id, job.state, state)
+                for job in jobs_of(uow, batch)
+                for asset_id, state in job.progress.items()
+            }
+            summary = uow.annotation_summary(batch.id)
+            nothing = AnnotationSummary(count=0)
+            ids = [
+                asset_id
+                for asset_id in batch.asset_ids
+                if progress is None or placement.get(asset_id, (None, None, None))[2] in progress
+            ]
+            if sort is AssetSort.CONFIDENCE:
+                position = {asset_id: at for at, asset_id in enumerate(batch.asset_ids)}
+                ids.sort(
+                    key=lambda asset_id: (
+                        summary.get(asset_id, nothing).min_model_confidence is None,
+                        summary.get(asset_id, nothing).min_model_confidence or 0.0,
+                        position[asset_id],
+                    )
+                )
+            window = ids[offset:] if limit is None else ids[offset : offset + limit]
+            items = []
+            for asset_id in window:
+                asset = uow.assets.get(asset_id)
+                if asset is None:
+                    raise WorkspaceCorrupt(
+                        f"batch {batch.name!r} holds asset {asset_id}, which is not stored"
+                    )
+                job_id, job_state, state = placement.get(asset_id, (None, None, None))
+                items.append(
+                    PlacedAsset(
+                        asset=asset,
+                        job_id=job_id,
+                        job_state=job_state,
+                        progress=state,
+                        summary=summary.get(asset_id, nothing),
+                    )
+                )
+            return items, len(ids)
 
     # ``list`` shadows the builtin for every annotation after it in this class
     # body, so it comes last here and the helpers that need ``list[...]`` live
@@ -800,6 +867,20 @@ def _already_labeled(uow: UnitOfWork, asset_ids: Iterable[UUID]) -> set[UUID]:
     counting would be a number nobody reads.
     """
     return {asset_id for asset_id in asset_ids if uow.annotations.list(asset_id)}
+
+
+class PlacedAsset(BaseModel):
+    """One asset seen from inside its batch: the asset, where its work stands, and
+    its labels in two numbers.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    asset: Asset
+    job_id: UUID | None
+    job_state: AnnotationJobState | None
+    progress: AssetProgress | None
+    summary: AnnotationSummary
 
 
 def assets_of(uow: UnitOfWork, batch: Batch) -> list[Asset]:

@@ -76,7 +76,7 @@ POST   /batches/{batch_id}/repin                          ?allow_destructive=
 POST   /batches/{batch_id}/complete
 POST   /batches/{batch_id}/corrections                    a new batch over a completed one
 GET    /batches/{batch_id}/jobs
-GET    /batches/{batch_id}/assets                         paged
+GET    /batches/{batch_id}/assets                         paged; ?progress=&sort=
 POST   /batches/{batch_id}/assets                         draft only
 DELETE /batches/{batch_id}/assets?id=&id=                 draft only
 GET    /jobs/{job_id}

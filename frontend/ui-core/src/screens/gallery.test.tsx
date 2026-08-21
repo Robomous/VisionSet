@@ -323,6 +323,8 @@ describe("the gallery", () => {
       allowed_actions: assetActions(
         (overrides.progress as Progress | null | undefined) ?? "unannotated",
       ),
+      annotation_count: 0,
+      min_confidence: null,
       ...overrides,
     };
   }
@@ -339,7 +341,9 @@ describe("the gallery", () => {
     const states = ["unannotated", "annotated", "review_pending", "accepted", "skipped"];
     return {
       total: states.length,
-      items: states.map((progress, index) => asset(index, { progress, job_id: JOB })),
+      items: states.map((progress, index) =>
+        asset(index, { progress, job_id: JOB, annotation_count: progress === "annotated" ? 3 : 0 }),
+      ),
     };
   }
 
@@ -503,6 +507,113 @@ describe("the gallery", () => {
     expect(screen.getByTestId("segment-done").textContent).toContain("Done (13)");
   });
 
+  it("asks the server for the segment rather than filtering the loaded page", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({ state: "in_annotation", schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 3, unannotated: 2, pre_labeled: 1 } }),
+    });
+    on("GET", /\/assets$/, { status: 200, body: assets(3) });
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    await screen.findByTestId("segment-pre_labeled");
+
+    fireEvent.click(screen.getByTestId("segment-pre_labeled"));
+
+    await waitFor(() => {
+      const last = sent.filter((one) => new URL(one.url).pathname.endsWith("/assets")).at(-1);
+      if (last === undefined) throw new Error("no request");
+      expect(new URL(last.url).searchParams.getAll("progress")).toEqual(["pre_labeled"]);
+    });
+
+    fireEvent.click(screen.getByTestId("segment-done"));
+    await waitFor(() => {
+      const last = sent.filter((one) => new URL(one.url).pathname.endsWith("/assets")).at(-1);
+      if (last === undefined) throw new Error("no request");
+      expect(new URL(last.url).searchParams.getAll("progress")).toEqual([
+        "annotated", "skipped", "accepted",
+      ]);
+    });
+  });
+
+  it("orders the weakest model labels first on request, and names the scale", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({ state: "in_annotation", schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 2, pre_labeled: 2 } }),
+    });
+    on("GET", /\/assets$/, { status: 200, body: assets(2) });
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    const order = (await screen.findByTestId("sort-order")) as HTMLSelectElement;
+
+    expect(order.textContent).toMatch(/prompt affinity/i);
+    fireEvent.change(order, { target: { value: "confidence" } });
+
+    await waitFor(() => {
+      const last = sent.filter((one) => new URL(one.url).pathname.endsWith("/assets")).at(-1);
+      if (last === undefined) throw new Error("no request");
+      expect(new URL(last.url).searchParams.get("sort")).toBe("confidence");
+    });
+  });
+
+  it("shows a draft no sort control, because a draft has no scores", async () => {
+    on("GET", /\/assets$/, { status: 200, body: assets(2) });
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    await screen.findByTestId("tile-asset-0");
+    expect(screen.queryByTestId("sort-order")).toBeNull();
+  });
+
+  it("reads the object count off the wire and names the weakest affinity on a model-labeled card", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({ state: "in_annotation", schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 2, annotated: 1, pre_labeled: 1 } }),
+    });
+    on("GET", /\/assets$/, {
+      status: 200,
+      body: {
+        total: 2,
+        items: [
+          asset(0, { job_id: JOB, progress: "annotated", annotation_count: 3, min_confidence: null }),
+          asset(1, { job_id: JOB, progress: "pre_labeled", annotation_count: 2, min_confidence: 0.41 }),
+        ],
+      },
+    });
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+
+    expect((await screen.findByTestId("state-asset-0")).textContent).toBe("3 boxes");
+    const card = screen.getByTestId("state-asset-1");
+    expect(card.textContent).toBe("2 pre-labeled · ≥41% affinity");
+    expect(card.getAttribute("title")).toMatch(/lowest prompt affinity/i);
+    expect(sent.some((one) => new URL(one.url).pathname.endsWith("/annotations"))).toBe(false);
+  });
+
+  it("says a segment is empty in words, not by claiming the whole batch is", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({ state: "in_annotation", schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 3, unannotated: 3 } }),
+    });
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname.endsWith("/assets")) {
+        return url.searchParams.getAll("progress").includes("pre_labeled")
+          ? { status: 200, body: { total: 0, items: [] } }
+          : { status: 200, body: assets(3) };
+      }
+      return undefined;
+    });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    await screen.findByTestId("tile-asset-0");
+
+    fireEvent.click(screen.getByTestId("segment-pre_labeled"));
+
+    expect((await screen.findByTestId("segment-empty")).textContent).toBe(
+      "No frames are model-labeled.",
+    );
+    expect(screen.queryByText("This batch is empty")).toBeNull();
+  });
+
   /**
    * A draft shows less, and every omission is a documented zero rather than a
    * missing feature.
@@ -613,10 +724,6 @@ describe("the gallery", () => {
     // The gallery's dots were a monochrome ramp off `primary` while the
     // annotator's were semantic, so `accepted` was green on one screen and
     // near-black on the other. Both read `batchState.ts` now.
-    //
-    // Token *and* word on every row: the annotation count is what would replace
-    // the word on an `annotated` card, and it never arrives here because nothing
-    // stubs `/annotations`.
     on("GET", /\/batches\/[^/]+$/, {
       status: 200,
       body: batch({ state: "in_annotation", progress: { ...NO_PROGRESS, total: 5, annotated: 5 } }),
@@ -626,6 +733,10 @@ describe("the gallery", () => {
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
     await waitFor(() => expect(screen.queryByTestId("state-asset-1")).not.toBeNull());
 
+    // `word` is what the *timeline* names every state by — `progressLabel`,
+    // unchanged here. The card itself says something more specific on an
+    // `annotated` frame, its wire-carried count, so that one line asserts a
+    // second, narrower string.
     const expected = [
       { id: "asset-0", tone: "neutral", word: "unannotated", dot: "bg-transparent", cell: "bg-muted" },
       { id: "asset-1", tone: "success", word: "annotated", dot: "bg-success", cell: "bg-success" },
@@ -637,7 +748,7 @@ describe("the gallery", () => {
     for (const { id, tone, word, dot, cell } of expected) {
       const state = screen.getByTestId(`state-${id}`);
       expect(state.getAttribute("data-tone")).toBe(tone);
-      expect(state.textContent).toContain(word);
+      expect(state.textContent).toContain(id === "asset-1" ? "3 boxes" : word);
       // The drawn class, not only the declared tone: an attribute that agrees
       // with a map the dot no longer reads is a test of the map alone.
       expect(state.innerHTML).toContain(dot);
@@ -1062,6 +1173,8 @@ describe("the bulk bar", () => {
       // progress. That is the dimension the client's old mirror dropped, and
       // threading the batch state through here is what lets a test see it.
       allowed_actions: assetActions(progress as Progress, { batchState }),
+      annotation_count: 0,
+      min_confidence: null,
     };
   }
 
@@ -1111,6 +1224,223 @@ describe("the bulk bar", () => {
         progress: JSON.parse(bodies.get(one) ?? "{}").progress,
       }));
   }
+
+  function annotationItem(id: string, assetId: string): Record<string, unknown> {
+    return {
+      id,
+      asset_id: assetId,
+      label_class: "vehicle",
+      schema_version: 1,
+      geometry: { type: "bbox", x: 10, y: 10, width: 20, height: 20 },
+      attributes: {},
+      provenance: "model",
+      model_ref: "some/model@abc123",
+      confidence: 0.9,
+      job_id: JOB,
+    };
+  }
+
+  /**
+   * `unshift`, not `on`: `withBatch` has already installed a 200 for this path
+   * (see `withFrames`), and handlers are consulted in registration order.
+   *
+   * Keyed by the asset id the request actually names, read off the URL, rather
+   * than one fixed page every frame gets alike — a bug that answered the wrong
+   * frame's ids would still pass a stub that cannot tell them apart.
+   */
+  function stubAnnotations(byAsset: Readonly<Record<string, readonly Record<string, unknown>[]>>): void {
+    handlers.unshift((request) => {
+      const url = new URL(request.url);
+      if (request.method !== "GET" || !/\/annotations$/.test(url.pathname)) return undefined;
+      const assetId = url.pathname.split("/").at(-2) ?? "";
+      const items = byAsset[assetId] ?? [];
+      return { status: 200, body: { total: items.length, items } };
+    });
+  }
+
+  it("offers Confirm labels for exactly the frames that declare it", async () => {
+    await withFrames("pre_labeled", "pre_labeled", "annotated", "unannotated");
+    selectAll(4);
+
+    expect(screen.getByTestId("bulk-confirm").textContent).toContain("(2)");
+    fireEvent.click(screen.getByTestId("bulk-confirm"));
+
+    await waitFor(() =>
+      expect(sentProgress()).toEqual([
+        { path: `/jobs/${JOB}/assets/asset-0/progress`, progress: "annotated" },
+        { path: `/jobs/${JOB}/assets/asset-1/progress`, progress: "annotated" },
+      ]),
+    );
+  });
+
+  it("discards the model's labels only after asking, and says what it deleted", async () => {
+    await withFrames("pre_labeled", "pre_labeled", "annotated");
+    stubAnnotations({
+      "asset-0": [annotationItem("m-1", "asset-0")],
+      "asset-1": [annotationItem("m-2", "asset-1")],
+    });
+    on("DELETE", /\/jobs\/[^/]+\/annotations$/, { status: 204, body: null });
+    selectAll(3);
+
+    expect(screen.getByTestId("bulk-discard").textContent).toContain("(2)");
+    fireEvent.click(screen.getByTestId("bulk-discard"));
+    expect(screen.getByTestId("discard-dialog").textContent).toMatch(/cannot be undone/i);
+    fireEvent.click(screen.getByTestId("discard-confirm"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("bulk-discarded").textContent).toContain(
+        "Discarded the model's labels on 2 frames",
+      ),
+    );
+    const deletes = sent.filter((one) => one.method === "DELETE");
+    expect(deletes).toHaveLength(1);
+    expect(new URL(deletes[0]!.url).searchParams.getAll("id")).toEqual(["m-1", "m-2"]);
+  });
+
+  it("reports a discard the kernel refused, with the reason", async () => {
+    await withFrames("pre_labeled");
+    stubAnnotations({ "asset-0": [annotationItem("m-1", "asset-0")] });
+    on("DELETE", /\/jobs\/[^/]+\/annotations$/, {
+      status: 409,
+      body: { code: "ASSET_NOT_WRITABLE", message: "not writable", detail: null },
+    });
+    selectAll(1);
+    fireEvent.click(screen.getByTestId("bulk-discard"));
+    fireEvent.click(screen.getByTestId("discard-confirm"));
+
+    await waitFor(() => expect(screen.getByTestId("bulk-partial").textContent).toMatch(/1 refused/));
+  });
+
+  it("chunks a job's DELETE under the request-line ceiling, and still counts frames exactly", async () => {
+    // h11 caps a request line at 16 KiB — a few hundred `?id=` repeats. One
+    // frame with 150 ids, then a second with 150 more, forces a chunk boundary
+    // before the second frame's ids fit; a third frame's 10 ids join the
+    // second chunk. Two requests, three frames, no id crosses the boundary its
+    // own frame did not.
+    await withFrames("pre_labeled", "pre_labeled", "pre_labeled");
+    const many = (assetId: string, count: number) =>
+      Array.from({ length: count }, (_, at) => annotationItem(`${assetId}-${at}`, assetId));
+    stubAnnotations({
+      "asset-0": many("asset-0", 150),
+      "asset-1": many("asset-1", 150),
+      "asset-2": many("asset-2", 10),
+    });
+    on("DELETE", /\/jobs\/[^/]+\/annotations$/, { status: 204, body: null });
+    selectAll(3);
+
+    fireEvent.click(screen.getByTestId("bulk-discard"));
+    fireEvent.click(screen.getByTestId("discard-confirm"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("bulk-discarded").textContent).toContain(
+        "Discarded the model's labels on 3 frames",
+      ),
+    );
+    const deletes = sent.filter((one) => one.method === "DELETE");
+    expect(deletes).toHaveLength(2);
+    expect(new URL(deletes[0]!.url).searchParams.getAll("id")).toHaveLength(150);
+    expect(new URL(deletes[1]!.url).searchParams.getAll("id")).toHaveLength(160);
+  });
+
+  it("offers neither confirm nor discard on a selection with no model-labeled frame", async () => {
+    await withFrames("annotated", "skipped");
+    selectAll(2);
+    expect((screen.getByTestId("bulk-confirm") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("bulk-discard") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  /**
+   * Segments are server-side (see the describe above this one): a clean sweep
+   * over the whole "Model-labeled" segment moves every target out of it, the
+   * mutation's `onSettled` refetches, and the refetch of *that segment* comes
+   * back empty. `present` — the selection intersected with what is still
+   * loaded — drops to zero right along with it. The report has to survive that
+   * refetch or it is never seen at all; `reporting` is what keeps the bar
+   * mounted for it.
+   */
+  it("keeps the discard report on screen after the segment it acted on narrows to nothing", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({
+        state: "in_annotation",
+        schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 2, pre_labeled: 2 },
+      }),
+    });
+    let swept = false;
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (request.method !== "GET" || !url.pathname.endsWith("/assets")) return undefined;
+      const items = [tile(0, "pre_labeled", "in_annotation"), tile(1, "pre_labeled", "in_annotation")];
+      return swept
+        ? { status: 200, body: { total: 0, items: [] } }
+        : { status: 200, body: { total: items.length, items } };
+    });
+    stubAnnotations({
+      "asset-0": [annotationItem("m-1", "asset-0")],
+      "asset-1": [annotationItem("m-2", "asset-1")],
+    });
+    handlers.push((request) => {
+      if (request.method !== "DELETE" || !/\/jobs\/[^/]+\/annotations$/.test(new URL(request.url).pathname)) {
+        return undefined;
+      }
+      swept = true;
+      return { status: 204, body: null };
+    });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    fireEvent.click(await screen.findByTestId("segment-pre_labeled"));
+    await screen.findByTestId("select-asset-0");
+    selectAll(2);
+    fireEvent.click(screen.getByTestId("bulk-discard"));
+    fireEvent.click(screen.getByTestId("discard-confirm"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("bulk-discarded").textContent).toContain(
+        "Discarded the model's labels on 2 frames",
+      ),
+    );
+    await waitFor(() => expect(screen.queryByTestId("tile-asset-0")).toBeNull());
+    expect(screen.getByTestId("bulk-discarded").textContent).toContain(
+      "Discarded the model's labels on 2 frames",
+    );
+  });
+
+  it("keeps the Confirm labels report on screen after the segment it acted on narrows to nothing", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({
+        state: "in_annotation",
+        schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 2, pre_labeled: 2 },
+      }),
+    });
+    let moved = false;
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (request.method !== "GET" || !url.pathname.endsWith("/assets")) return undefined;
+      const items = [tile(0, "pre_labeled", "in_annotation"), tile(1, "pre_labeled", "in_annotation")];
+      return moved
+        ? { status: 200, body: { total: 0, items: [] } }
+        : { status: 200, body: { total: items.length, items } };
+    });
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (request.method !== "PUT" || !url.pathname.endsWith("/progress")) return undefined;
+      moved = true;
+      return { status: 200, body: { asset_id: url.pathname.split("/").at(-2), progress: "annotated" } };
+    });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    fireEvent.click(await screen.findByTestId("segment-pre_labeled"));
+    await screen.findByTestId("select-asset-0");
+    selectAll(2);
+    fireEvent.click(screen.getByTestId("bulk-confirm"));
+
+    await waitFor(() => expect(screen.getByTestId("bulk-moved").textContent).toContain("Moved 2 frames"));
+    await waitFor(() => expect(screen.queryByTestId("tile-asset-0")).toBeNull());
+    expect(screen.getByTestId("bulk-moved").textContent).toContain("Moved 2 frames");
+  });
 
   it("counts a skip only for the frames that can take one", async () => {
     await withFrames("skipped", "unannotated", "annotated", "accepted");
@@ -1204,9 +1534,11 @@ describe("the bulk bar", () => {
     expect((screen.getByTestId("bulk-skip") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId("bulk-restore") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId("bulk-return") as HTMLButtonElement).disabled).toBe(true);
-    // Said once, where three zeroes on three buttons would just look broken.
+    expect((screen.getByTestId("bulk-confirm") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("bulk-discard") as HTMLButtonElement).disabled).toBe(true);
+    // Said once, where five zeroes on five buttons would just look broken.
     expect(screen.getByTestId("bulk-unavailable").textContent).toContain(
-      "skipped, restored or returned to the annotator",
+      "skipped, restored, confirmed, discarded or returned to the annotator",
     );
   });
 
@@ -1280,10 +1612,10 @@ describe("the bulk bar", () => {
     await userEvent.click(screen.getByTestId("bulk-return"));
 
     await waitFor(() =>
-      expect(screen.getByTestId("state-asset-0").textContent).toContain("annotated"),
+      expect(screen.getByTestId("state-asset-0").textContent).toContain("0 boxes"),
     );
     // Its own count moves with it, read off the same refetched page.
-    expect(screen.getByTestId("state-asset-1").textContent).toContain("annotated");
+    expect(screen.getByTestId("state-asset-1").textContent).toContain("0 boxes");
   });
 
   /**
@@ -1619,6 +1951,8 @@ describe("the gallery header's way into the annotator", () => {
         job_id: JOB,
         progress,
         allowed_actions: assetActions(progress as Progress, { batchState }),
+        annotation_count: 0,
+        min_confidence: null,
       })),
     };
   }
@@ -1751,6 +2085,8 @@ describe("the gallery header's own next step", () => {
         job_id: JOB,
         progress,
         allowed_actions: assetActions(progress as Progress, { batchState }),
+        annotation_count: 0,
+        min_confidence: null,
       })),
     };
   }

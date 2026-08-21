@@ -7,7 +7,7 @@ written against this file cannot accidentally depend on SQLite.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
 from datetime import datetime
 from typing import Final, Protocol, runtime_checkable
@@ -17,6 +17,7 @@ from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
     AnnotationSchema,
+    AnnotationSummary,
     AnnotationTotals,
     Asset,
     AssetProgress,
@@ -443,6 +444,16 @@ class UnitOfWork(Protocol):
         zeros — the ordinary state of a fresh ingest, not an error. An unknown
         project answers two zeros too: existence is the caller's question and
         every caller has already resolved the project before asking this.
+        """
+        ...
+
+    def annotation_summary(self, batch_id: UUID) -> Mapping[UUID, AnnotationSummary]:
+        """Per asset of one batch: how many labels, and the lowest model confidence.
+
+        One aggregate joined through membership, for the reason ``annotation_totals``
+        gives: ``Repository[Annotation]`` is parented on the asset, so a gallery page
+        asking per card reads the batch once per frame. Assets carrying no label are
+        absent from the mapping; an unknown batch answers an empty one.
         """
         ...
 

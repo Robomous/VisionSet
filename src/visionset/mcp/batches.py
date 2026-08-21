@@ -53,7 +53,7 @@ from visionset.inference import (
     prompt_plan,
     require_detectable_schema,
 )
-from visionset.kernel.domain import BySize, Partition
+from visionset.kernel.domain import AssetProgress, AssetSort, BySize, Partition
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
@@ -497,48 +497,55 @@ def list_batch_assets(
         Field(ge=1, description="How many assets to return. Omit for all of them."),
     ] = None,
     offset: Annotated[int, Field(ge=0, description="How many assets to skip.")] = 0,
+    progress: Annotated[
+        list[AssetProgress] | None,
+        Field(description="Keep only assets in these states. An empty list means no filter."),
+    ] = None,
+    sort: Annotated[
+        AssetSort,
+        Field(
+            description=(
+                "'membership' (stored order) or 'confidence' (lowest model "
+                "confidence first, unscored last)."
+            )
+        ),
+    ] = AssetSort.MEMBERSHIP,
 ) -> dict[str, Any]:
-    """List a batch's assets, with the job each belongs to and its progress.
+    """List a batch's assets, with the job, progress and label summary each carries.
 
     The paged view of what is in a batch — a batch of fifty thousand frames is an
-    ordinary thing, so page it. `total` is the size of the whole batch and does
-    not change as you page; an offset past the end is an empty page, not an error.
+    ordinary thing, so page it. `total` is the size of what matched and does not
+    change as you page; an offset past the end is an empty page, not an error.
+    `annotation_count` is every label on the asset; `min_confidence` is the lowest
+    score among the labels a model wrote, on that model's own scale, or null.
 
     `job_id` and `progress` are both null exactly while the batch is a draft,
-    because a draft has no jobs. Use `get_asset_image` on any `id` here to see
-    the pixels.
+    because a draft has no jobs, so a `progress` filter over a draft matches
+    nothing. Use `get_asset_image` on any `id` here to see the pixels.
     """
     with opened_workspace() as workspace:
         resolved = identifier(batch_id, what="batch_id")
         service = BatchService(workspace)
         batch = service.get(resolved)
-        assets = service.assets(resolved)
-        # The partition is exact, so each asset appears in at most one job and
-        # this projection is a lookup rather than a join. Two public reads and no
-        # new kernel method, which is what the REST listing does too.
-        # The job's *state* travels beside its id: what an asset allows depends
-        # on it, and a completed job's frames declare nothing.
-        placement = {
-            asset_id: (job.id, job.state, progress)
-            for job in service.jobs(resolved)
-            for asset_id, progress in job.progress.items()
-        }
-        # `limit` bounds the *response*, not the read. The kernel has no windowed
-        # read, so this slices a full list and `total` stays the size of the whole
-        # batch — page until you have seen `total` items, not until it moves.
-        window = assets[offset:] if limit is None else assets[offset : offset + limit]
+        placed, total = service.asset_page(
+            resolved,
+            progress=frozenset(progress) if progress else None,
+            sort=sort,
+            limit=limit,
+            offset=offset,
+        )
         items = [
             wire.batch_asset(
-                a,
-                job_id=job_id,
-                job_state=job_state,
-                progress=progress,
+                one.asset,
+                job_id=one.job_id,
+                job_state=one.job_state,
+                progress=one.progress,
                 batch_state=batch.state,
+                summary=one.summary,
             )
-            for a in window
-            for job_id, job_state, progress in [placement.get(a.id, (None, None, None))]
+            for one in placed
         ]
-    return {"items": items, "total": len(assets)}
+    return {"items": items, "total": total}
 
 
 def promote_batch(batch_id: BatchRef) -> dict[str, Any]:

@@ -23,29 +23,24 @@
  * `docs/content/api.md`: `limit`/`offset` bound the **response, not the read**, and this is
  * the one collection with them because a batch can hold fifty thousand frames. So
  * the network side stays `useInfiniteQuery` over that contract, with `total` fixed
- * at the whole batch, and the render side stays virtualized over **rows** — a row
- * is the unit the browser lays out, and virtualizing tiles inside a CSS grid means
+ * at what the current view matched — the whole batch only when nothing narrows
+ * it — and the render side stays virtualized over **rows** — a row is the unit
+ * the browser lays out, and virtualizing tiles inside a CSS grid means
  * reimplementing the grid.
  *
- * ## The counts on the cards are fetched, and that is a stated cost
+ * ## The counts come off the wire
  *
- * `BatchAssetOut` carries no annotation count, so "12 boxes" comes from
- * `GET /jobs/{id}/assets/{id}/annotations` per card. Two things keep it honest:
- * only rows the virtualizer has actually rendered ask, and only assets whose state
- * implies annotations exist (`mayHaveAnnotations`) — an `unannotated` frame has
- * none by definition, so an entire page of them sends nothing. The right fix is a
- * count on the wire; it was scoped out of this task deliberately, and the card
- * degrades to the state word while the request is in flight rather than showing a
- * zero it has not confirmed.
+ * `BatchAssetOut` carries `annotation_count` and `min_confidence`, so a card needs
+ * no request of its own.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Check, Eye, PlayCircle, SkipForward, Trash2, Undo2, X } from "lucide-react";
+import { Check, Eraser, Eye, PlayCircle, SkipForward, Trash2, Undo2, X } from "lucide-react";
 
 import { Async } from "../data/Async";
 import { readStep, writePref } from "../data/prefs";
-import { useAssetAnnotations, type AssetProgress } from "../annotator/jobQueries";
+import type { AssetProgress } from "../annotator/jobQueries";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import {
@@ -79,12 +74,11 @@ import {
 } from "../data/capabilities";
 import { groupRefusals, refusalProse } from "../data/refusals";
 import {
+  affinityWord,
   BATCH_STATE_VARIANT,
   batchStateLabel,
   earliestArrival,
-  inSegment,
   hasJobs,
-  mayHaveAnnotations,
   progressCellClass,
   progressDot,
   progressDotClass,
@@ -92,6 +86,7 @@ import {
   progressTone,
   relativeAge,
   segmentCounts,
+  segmentProgress,
   SEGMENT_LABEL,
   SEGMENTS,
   type Segment,
@@ -103,10 +98,12 @@ import {
   useBatchAssets,
   useBatchJobs,
   useBatches,
+  useBulkDiscardModelLabels,
   useBulkSetProgress,
   useProject,
   useRemoveBatchAssets,
   useSource,
+  type AssetSort,
   type Batch,
   type BatchAsset,
   type Job,
@@ -223,9 +220,10 @@ export function GalleryScreen({
 }: GalleryScreenProps): JSX.Element {
   const project = useProject(projectId);
   const batch = useBatch(batchId);
-  const assets = useBatchAssets(batchId);
-
   const [segment, setSegment] = useState<Segment>("all");
+  const [sort, setSort] = useState<AssetSort>("membership");
+  const assets = useBatchAssets(batchId, { progress: segmentProgress(segment), sort });
+
   const [density, setDensity] = useState(() =>
     readStep(DENSITY_PREF, DENSITY_INDEXES, DEFAULT_DENSITY),
   );
@@ -245,13 +243,9 @@ export function GalleryScreen({
     [assets.data],
   );
   const total = assets.data?.pages[0]?.total ?? 0;
-  const shown = useMemo(
-    () => loaded.filter((asset) => inSegment(asset.progress, segment)),
-    [loaded, segment],
-  );
 
   const { columns, columnWidth, grid, attach } = useColumns(minColumn);
-  const rows = Math.ceil(shown.length / columns);
+  const rows = Math.ceil(loaded.length / columns);
   // **From the measured column, never from the minimum.** The grid is
   // `auto-fill` + `1fr`, so a tile is as wide as the leftover space makes it —
   // which at few columns is far wider than `minColumn`. Estimating a 4:3 tile's
@@ -311,16 +305,7 @@ export function GalleryScreen({
     // Within two rows of the end, and only when there is a page to get. The
     // guard on `isFetchingNextPage` is what stops a scroll that outruns the
     // network from queueing five identical requests.
-    //
-    // A filter makes the `rows === 0` clause necessary rather than defensive: if
-    // a segment matches nothing on the pages loaded so far there are no rows at
-    // all, so nothing would ever reach the end of the list and ask for the next
-    // page — the filter would read as empty when it is merely unloaded.
-    if (
-      (lastVisibleRow >= rows - 2 || rows === 0) &&
-      assets.hasNextPage &&
-      !assets.isFetchingNextPage
-    ) {
+    if (lastVisibleRow >= rows - 2 && assets.hasNextPage && !assets.isFetchingNextPage) {
       void assets.fetchNextPage();
     }
   }, [lastVisibleRow, rows, assets]);
@@ -349,7 +334,7 @@ export function GalleryScreen({
   const toggle = useCallback(
     (index: number, modifiers: Modifiers) => {
       setSelected((current) => {
-        const at = shown[index];
+        const at = loaded[index];
         if (at === undefined) return current;
         const next = new Set(current);
         if (modifiers.shift && anchor.current !== null) {
@@ -357,7 +342,7 @@ export function GalleryScreen({
           const from = bounds[0] ?? index;
           const to = bounds[1] ?? index;
           for (let cursor = from; cursor <= to; cursor += 1) {
-            const one = shown[cursor];
+            const one = loaded[cursor];
             if (one !== undefined) next.add(one.id);
           }
           return next;
@@ -376,7 +361,7 @@ export function GalleryScreen({
         return new Set([at.id]);
       });
     },
-    [shown],
+    [loaded],
   );
 
   // Before approval there are no jobs, so there is no progress to describe and
@@ -480,6 +465,8 @@ export function GalleryScreen({
         segment={segment}
         counts={counts}
         onSegment={setSegment}
+        sort={sort}
+        onSort={setSort}
         density={density}
         onDensity={chooseDensity}
         showSegments={showsProgress}
@@ -490,7 +477,7 @@ export function GalleryScreen({
           assets={loaded}
           highlighted={highlighted}
           onPick={(assetId) => {
-            const at = shown.findIndex((one) => one.id === assetId);
+            const at = loaded.findIndex((one) => one.id === assetId);
             if (at < 0) return;
             virtualizer.scrollToIndex(Math.floor(at / columns), { align: "center" });
             setHighlighted(assetId);
@@ -505,7 +492,9 @@ export function GalleryScreen({
           title: "This batch is empty",
           description: "Ingest into it, or promote a different batch.",
         }}
-        isEmpty={() => total === 0}
+        // Only the unfiltered view can say the *batch* is empty; a segment
+        // with no matches has its own message below, `segment-empty`.
+        isEmpty={() => total === 0 && segment === "all"}
       >
         {() => (
           <div
@@ -517,7 +506,7 @@ export function GalleryScreen({
             // `data-columns` against itself would assert nothing at all.
             data-min-column={minColumn}
           >
-            {shown.length === 0 ? (
+            {loaded.length === 0 ? (
               <p
                 className="py-8 text-center text-xs text-muted-foreground"
                 data-testid="segment-empty"
@@ -556,7 +545,7 @@ export function GalleryScreen({
                       gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
                     }}
                   >
-                    {shown
+                    {loaded
                       .slice(row.index * columns, row.index * columns + columns)
                       .map((asset, offset) => (
                         <Tile
@@ -992,6 +981,8 @@ function Toolbar({
   segment,
   counts,
   onSegment,
+  sort,
+  onSort,
   density,
   onDensity,
   showSegments,
@@ -999,6 +990,8 @@ function Toolbar({
   readonly segment: Segment;
   readonly counts: Record<Segment, number>;
   readonly onSegment: (next: Segment) => void;
+  readonly sort: AssetSort;
+  readonly onSort: (next: AssetSort) => void;
   readonly density: number;
   readonly onDensity: (step: number) => void;
   /**
@@ -1021,29 +1014,45 @@ function Toolbar({
       }
     >
       {showSegments && (
-      <div
-        className="inline-flex rounded-md border border-border p-0.5"
-        role="group"
-        aria-label="Filter frames by state"
-        data-testid="segments"
-      >
-        {SEGMENTS.map((one) => (
-          <button
-            key={one}
-            type="button"
-            aria-pressed={segment === one}
-            data-testid={`segment-${one}`}
-            onClick={() => onSegment(one)}
-            className={
-              segment === one
-                ? "rounded-sm bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
-                : "rounded-sm px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
-            }
+        <>
+          <div
+            className="inline-flex rounded-md border border-border p-0.5"
+            role="group"
+            aria-label="Filter frames by state"
+            data-testid="segments"
           >
-            {SEGMENT_LABEL[one]} ({counts[one]})
-          </button>
-        ))}
-      </div>
+            {SEGMENTS.map((one) => (
+              <button
+                key={one}
+                type="button"
+                aria-pressed={segment === one}
+                data-testid={`segment-${one}`}
+                onClick={() => onSegment(one)}
+                className={
+                  segment === one
+                    ? "rounded-sm bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
+                    : "rounded-sm px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                }
+              >
+                {SEGMENT_LABEL[one]} ({counts[one]})
+              </button>
+            ))}
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Order
+            <select
+              data-testid="sort-order"
+              aria-label="Order frames"
+              value={sort}
+              onChange={(event) => onSort(event.target.value as AssetSort)}
+              className="rounded-sm border border-border bg-card px-2 py-1 text-xs text-foreground"
+            >
+              <option value="membership">Frame order</option>
+              <option value="confidence">Lowest prompt affinity first</option>
+            </select>
+          </label>
+        </>
       )}
 
       {/*
@@ -1293,29 +1302,29 @@ function Tile({
  * together: this is the only place in the product that can say an asset has been
  * *reviewed* rather than merely labelled.
  *
- * The count replaces the word `annotated` only once it has actually arrived. A
- * card reading `0 boxes` while its request was in flight would be stating
- * something it has not been told, and on an annotated asset it would be stating
- * something false.
+ * The count and the confidence come off `BatchAssetOut` directly, so the word is
+ * known on first render rather than arriving behind a second request.
  */
 function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
   const dot = progressDot(asset.progress);
   const tone = progressTone(asset.progress);
-  const counted = useAssetAnnotations(
-    asset.job_id ?? "",
-    asset.job_id !== null && mayHaveAnnotations(asset.progress) ? asset.id : undefined,
-  );
-  const count = counted.data?.length;
   const word =
-    asset.progress === "annotated" && count !== undefined
-      ? `${count} ${count === 1 ? "box" : "boxes"}`
-      : progressLabel(asset.progress);
+    asset.progress === "annotated"
+      ? `${asset.annotation_count} ${asset.annotation_count === 1 ? "box" : "boxes"}`
+      : asset.progress === "pre_labeled"
+        ? affinityWord(asset.annotation_count, asset.min_confidence)
+        : progressLabel(asset.progress);
+  const title =
+    asset.progress === "pre_labeled" && asset.min_confidence !== null
+      ? "Lowest prompt affinity among this frame's model labels"
+      : undefined;
 
   return (
     <span
       className="flex items-center gap-1 truncate text-xs text-muted-foreground"
       data-testid={`state-${asset.id}`}
       data-tone={tone}
+      {...(title === undefined ? {} : { title })}
     >
       <span
         aria-hidden="true"
@@ -1419,8 +1428,10 @@ function BulkBar({
   readonly onClear: () => void;
 }): JSX.Element | null {
   const bulk = useBulkSetProgress(batchId);
+  const discard = useBulkDiscardModelLabels(batchId);
   const remove = useRemoveBatchAssets(batchId);
   const [confirming, setConfirming] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const batchState = batch?.state;
   // A job id is null exactly while the batch is a draft, and a draft renders no
   // selection at all — so this filter is about the *frames*, not about the state.
@@ -1431,6 +1442,10 @@ function BulkBar({
   const skippable = targets(ASSET_ACTION.skip);
   const restorable = targets(ASSET_ACTION.restore);
   const returnable = targets(ASSET_ACTION.returnToAnnotator);
+  const confirmable = targets(ASSET_ACTION.confirm);
+  const discardable = declaring(chosen, ASSET_ACTION.annotate)
+    .filter((one) => one.progress === "pre_labeled")
+    .map((one) => ({ jobId: one.job_id ?? "", assetId: one.id }));
 
   /**
    * Why nothing here can be pressed, when nothing can.
@@ -1466,7 +1481,13 @@ function BulkBar({
    */
   const present = assets.filter((one) => selected.has(one.id));
   const removalIds = present.map((one) => one.id);
-  const reporting = remove.isSuccess || remove.isError;
+  const reporting =
+    remove.isSuccess ||
+    remove.isError ||
+    bulk.isSuccess ||
+    bulk.isError ||
+    discard.isSuccess ||
+    discard.isError;
 
   // Mounted while there is a report to give even after the selection has emptied
   // itself out — see `present`.
@@ -1525,6 +1546,30 @@ function BulkBar({
         {bulk.isPending ? "Working…" : `Return to annotator (${returnable.length})`}
       </Button>
 
+      <Button
+        variant="secondary"
+        size="sm"
+        data-testid="bulk-confirm"
+        disabled={confirmable.length === 0 || bulk.isPending}
+        {...(withheld === null ? {} : { title: withheld })}
+        onClick={() => bulk.mutate({ targets: confirmable, progress: "annotated" })}
+      >
+        <Check className="size-4" aria-hidden="true" />
+        {bulk.isPending ? "Working…" : `Confirm labels (${confirmable.length})`}
+      </Button>
+
+      <Button
+        variant="secondary"
+        size="sm"
+        data-testid="bulk-discard"
+        disabled={discardable.length === 0 || discard.isPending}
+        {...(withheld === null ? {} : { title: withheld })}
+        onClick={() => setDiscarding(true)}
+      >
+        <Eraser className="size-4" aria-hidden="true" />
+        {discard.isPending ? "Discarding…" : `Discard model labels (${discardable.length})`}
+      </Button>
+
       {/*
         Batch-level, so it is enabled or disabled for the whole selection rather
         than counting targets like the two above. Disabled-with-reason rather
@@ -1569,6 +1614,11 @@ function BulkBar({
         tells somebody that something went wrong and nothing about what. Grouped
         by code, because forty frames refused by one rule is one sentence.
       */}
+      {bulk.isSuccess && bulk.data.refusals.length === 0 && bulk.data.moved > 0 && (
+        <span className="text-xs text-muted-foreground" data-testid="bulk-moved">
+          Moved {bulk.data.moved} frame{bulk.data.moved === 1 ? "" : "s"}.
+        </span>
+      )}
       {bulk.isSuccess && bulk.data.refusals.length > 0 && (
         <span className="text-xs text-destructive" data-testid="bulk-partial">
           {bulk.data.moved} moved,{" "}
@@ -1582,6 +1632,24 @@ function BulkBar({
           {refusalProse(bulk.error)}
         </span>
       )}
+      {discard.isSuccess && discard.data.refusals.length === 0 && (
+        <span className="text-xs text-muted-foreground" data-testid="bulk-discarded">
+          Discarded the model's labels on {discard.data.discarded} frame{discard.data.discarded === 1 ? "" : "s"}.
+        </span>
+      )}
+      {discard.isSuccess && discard.data.refusals.length > 0 && (
+        <span className="text-xs text-destructive" data-testid="bulk-partial">
+          {discard.data.discarded} discarded,{" "}
+          {groupRefusals(discard.data.refusals)
+            .map((group) => `${group.count} refused: ${group.prose}`)
+            .join(" ")}
+        </span>
+      )}
+      {discard.isError && (
+        <span className="text-xs text-destructive" data-testid="bulk-error">
+          {refusalProse(discard.error)}
+        </span>
+      )}
       {/*
         Said once, and only when it is the whole story — but which story it is
         depends on whether the *batch* is closed or the *frames* are settled.
@@ -1590,9 +1658,13 @@ function BulkBar({
         completed batch is a different sentence with a different remedy, and
         running them together is what made a closed batch read as a broken bar.
       */}
-      {skippable.length === 0 && restorable.length === 0 && returnable.length === 0 && (
+      {skippable.length === 0 &&
+        restorable.length === 0 &&
+        returnable.length === 0 &&
+        confirmable.length === 0 &&
+        discardable.length === 0 && (
         <span className="text-xs text-muted-foreground" data-testid="bulk-unavailable">
-          {withheld ?? "Nothing here can be skipped, restored or returned to the annotator."}
+          {withheld ?? "Nothing here can be skipped, restored, confirmed, discarded or returned to the annotator."}
           {/*
             The sentence says "corrections happen in a correction batch" and
             points at the header's control, and the selection this bar is
@@ -1614,7 +1686,15 @@ function BulkBar({
 
       <button
         type="button"
-        onClick={onClear}
+        onClick={() => {
+          // Clearing the selection is also what dismisses a report on a segment
+          // that has emptied itself out from under it (see `reporting` above) —
+          // so the reports have to go with it, or the bar cannot unmount either.
+          bulk.reset();
+          discard.reset();
+          remove.reset();
+          onClear();
+        }}
         data-testid="bulk-clear"
         aria-label="Clear selection"
         className="text-muted-foreground hover:text-foreground"
@@ -1635,6 +1715,19 @@ function BulkBar({
             .mutateAsync(removalIds)
             .then(() => setConfirming(false))
             .catch(() => setConfirming(false));
+        }}
+      />
+
+      <DiscardModelLabelsDialog
+        open={discarding}
+        count={discardable.length}
+        pending={discard.isPending}
+        onCancel={() => setDiscarding(false)}
+        onConfirm={() => {
+          discard
+            .mutateAsync(discardable)
+            .then(() => setDiscarding(false))
+            .catch(() => setDiscarding(false));
         }}
       />
     </div>
@@ -1689,6 +1782,43 @@ function RemoveFromBatchDialog({
           </Button>
           <Button variant="destructive" onClick={onConfirm} disabled={pending} data-testid="remove-confirm">
             {pending ? "Removing…" : "Remove from batch"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DiscardModelLabelsDialog({
+  open,
+  count,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  readonly open: boolean;
+  readonly count: number;
+  readonly pending: boolean;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}): JSX.Element {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onCancel()}>
+      <DialogContent data-testid="discard-dialog">
+        <DialogTitle>
+          Discard the model's labels on {count} frame{count === 1 ? "" : "s"}?
+        </DialogTitle>
+        <DialogDescription>
+          This deletes every label the model wrote on them and cannot be undone — a pre-labeling
+          run does not repeat over a frame it has already labeled. The frames go back to
+          unannotated.
+        </DialogDescription>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onCancel} data-testid="discard-cancel">
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={pending} data-testid="discard-confirm">
+            {pending ? "Discarding…" : "Discard model labels"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -185,7 +185,7 @@ re-deriving the rules from `JOB_TRANSITIONS` would drop. `complete` is refined b
 | Progress | Declares |
 | --- | --- |
 | `unannotated` | `annotate`, `skip` |
-| `pre_labeled` | `annotate`, `skip` |
+| `pre_labeled` | `annotate`, `skip`, `confirm` |
 | `annotated` | `annotate`, `skip`, `submit_for_review` |
 | `skipped` | `restore` |
 | `review_pending` | `accept`, `return_to_annotator` |
@@ -198,16 +198,20 @@ job empties the column the same way**, inside a batch that is still open: `asset
 `in_progress`, and `completed` is *nothing*, whatever the progress column would otherwise allow.
 
 `annotate` is not a progress move: it is the right to add, change or remove labels, which is
-`WRITABLE_PROGRESS` and the two lifecycle gates together. The five others each name one edge of
-`ASSET_PROGRESS_TRANSITIONS`. Five legal edges deliberately have **no** name. The first two are
-`unannotated ↔ annotated`, the pair an annotation appearing or disappearing makes on its own. The
-other three are the same shape one state over: `unannotated → pre_labeled` is what a model's
-unattended write makes in the same transaction as its labels, `pre_labeled → annotated` is a
-person's edit taking the frame over, and `pre_labeled → unannotated` is that edit deleting the
-model's last label. Nobody clicks any of the five: four of them are the consequence of `annotate`,
-which is declared on both `unannotated` and `pre_labeled`, and the entry edge into `pre_labeled`
-is the consequence of a batch-level pre-label action rather than a per-asset one. Offering any of
-them as its own control would mean changing the marker while the labels stay put.
+`WRITABLE_PROGRESS` and the two lifecycle gates together. The six others each name one edge of
+`ASSET_PROGRESS_TRANSITIONS`. Five legal edges are derived rather than listed beside a name. The
+first two are `unannotated ↔ annotated`, the pair an annotation appearing or disappearing makes on
+its own. The other three are the same shape one state over: `unannotated → pre_labeled` is what a
+model's unattended write makes in the same transaction as its labels, `pre_labeled → annotated` is
+a person's edit taking the frame over, and `pre_labeled → unannotated` is that edit deleting the
+model's last label. Four of the five have no name at all, and nobody clicks them: they are the
+consequence of `annotate`, which is declared on both `unannotated` and `pre_labeled`, and the entry
+edge into `pre_labeled` is the consequence of a batch-level pre-label action rather than a
+per-asset one. `pre_labeled → annotated` is the fifth, and the one edge with two ways to ride it:
+an edit, which is derived like the other four, and `confirm`, which a person clicks to keep a
+model's labels as the frame's own without editing them - labels exist either way, the marker
+records judgment. Offering any of the other four as a control would mean changing a marker while
+the labels stay put.
 
 ## Settled, not terminal
 

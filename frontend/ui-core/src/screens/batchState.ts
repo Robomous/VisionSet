@@ -205,6 +205,22 @@ export function inSegment(
   return segment === "all" || segmentOf(progress) === segment;
 }
 
+/** The states a segment asks the server for; `all` asks for nothing. */
+export function segmentProgress(segment: Segment): readonly AssetProgress[] | undefined {
+  switch (segment) {
+    case "all":
+      return undefined;
+    case "unannotated":
+      return ["unannotated"];
+    case "pre_labeled":
+      return ["pre_labeled"];
+    case "review":
+      return ["review_pending"];
+    case "done":
+      return ["annotated", "skipped", "accepted"];
+  }
+}
+
 /**
  * How many assets each segment holds, from the batch's own counts.
  *
@@ -372,22 +388,14 @@ export function progressCellClass(progress: AssetProgress | null | undefined): s
 }
 
 /**
- * Whether an asset is far enough along that asking for its annotations is worth a
- * request.
- *
- * The count on a card is fetched per asset, because `BatchAssetOut` does not carry
- * one — so the cheapest correct thing is to not ask about the assets that
- * certainly have none. An `unannotated` asset has no annotations by definition;
- * a `skipped` one was passed over. `pre_labeled` has annotations by
- * definition too — a model wrote them — so it joins the rest.
+ * The card's word for a model-labeled frame: how many labels, and the weakest
+ * score among them — named as prompt affinity, the scale pre-labeling runs on.
  */
-export function mayHaveAnnotations(progress: AssetProgress | null | undefined): boolean {
-  return (
-    progress === "pre_labeled" ||
-    progress === "annotated" ||
-    progress === "review_pending" ||
-    progress === "accepted"
-  );
+export function affinityWord(count: number, minConfidence: number | null): string {
+  const labels = `${count} pre-labeled`;
+  return minConfidence === null
+    ? labels
+    : `${labels} · ≥${Math.round(minConfidence * 100)}% affinity`;
 }
 
 /**

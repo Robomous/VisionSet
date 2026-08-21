@@ -769,6 +769,24 @@ press, a connection whose model answers places rather than words, a pinned schem
 a detection can be written as, and a local runtime that is not installed, whose message carries
 the exact `pip install` to run.
 
+#### Reviewing a pre-labeled batch
+
+The gallery's segments are answered by the server - `Model-labeled (48)` asks for
+`progress=pre_labeled` and the page *is* the segment - and the counts still come off the
+batch's `ProgressCounts`. An **Order** control offers *Frame order* or *Lowest prompt
+affinity first* (`sort=confidence`): the frame whose weakest model label scored lowest comes
+first, so a reviewer's attention lands where the model doubted. A model-labeled card reads
+`3 pre-labeled · ≥41% affinity` - the number is always named, because a point-prompt mask
+score and a text-prompt affinity are different scales (pre-labeling runs only the second).
+
+The bulk bar adds two verbs over the selection. **Confirm labels** keeps a model's labels as
+the frames' own (`pre_labeled → annotated`, the `confirm` action); the annotator offers the
+same on an unedited model-labeled frame. **Discard model labels** deletes every label the
+model wrote on the selected frames through the existing all-or-nothing delete, after a
+dialog, and the frames return to `unannotated`; it cannot be undone, because a run does not
+repeat over a frame it has labeled (cf. #683). Per-class thresholds and a threshold filter are
+deliberately not here yet.
+
 ### The ingest flow, and the order the domain forces
 
 The issue asks for an fps parameter "with original-fps display from the probe".

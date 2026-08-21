@@ -61,7 +61,12 @@ from tests.fixtures.samples import (
 from visionset import wire
 from visionset.formats._dummy import DummyExporter
 from visionset.inference import PreLabelExcludedClass, PreLabelExclusionReason, PreLabelPlan
-from visionset.kernel.domain import AssetProgress, BackgroundJobState, PreLabelRun
+from visionset.kernel.domain import (
+    AnnotationSummary,
+    AssetProgress,
+    BackgroundJobState,
+    PreLabelRun,
+)
 from visionset.server import models
 
 #: A plan with both halves populated and one class carrying both reasons at
@@ -144,6 +149,7 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
             job_state=JOB.state,
             progress=AssetProgress.ANNOTATED,
             batch_state=BATCH.state,
+            summary=AnnotationSummary(count=2, min_model_confidence=0.4),
         ),
         models.BatchAssetOut,
     ),

@@ -15,6 +15,7 @@ from tests.fixtures import samples
 from visionset import wire
 from visionset.kernel.domain import (
     Annotation,
+    AnnotationSummary,
     Asset,
     AssetProgress,
     Attribute,
@@ -361,7 +362,12 @@ def test_the_batch_vantage_point_carries_the_arrival_too() -> None:
     asset = Asset(project_id=uuid4(), content_hash="a" * 64, uri="/blobs/a", ingested_at=arrived)
 
     published = BatchAssetOut.in_batch(
-        asset, job_id=None, job_state=None, progress=None, batch_state=BatchState.DRAFT
+        asset,
+        job_id=None,
+        job_state=None,
+        progress=None,
+        batch_state=BatchState.DRAFT,
+        summary=AnnotationSummary(count=0),
     )
 
     assert published.ingested_at == arrived

@@ -437,11 +437,12 @@
         "type": "object"
       },
       "AssetAction": {
-        "description": "What can be asked of one asset inside a batch.\n\n``ANNOTATE`` is the odd one and the important one: it is not a progress move\nbut the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the\nbatch gate together. The other five each name one edge of\n``ASSET_PROGRESS_TRANSITIONS`` \u2014 see :data:`ASSET_MOVES`.",
+        "description": "What can be asked of one asset inside a batch.\n\n``ANNOTATE`` is the odd one and the important one: it is not a progress move\nbut the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the\nbatch gate together. The other six each name one edge of\n``ASSET_PROGRESS_TRANSITIONS`` \u2014 see :data:`ASSET_MOVES`.",
         "enum": [
           "annotate",
           "skip",
           "restore",
+          "confirm",
           "submit_for_review",
           "accept",
           "return_to_annotator"
@@ -646,6 +647,15 @@
         ],
         "title": "AssetProgressSet",
         "type": "object"
+      },
+      "AssetSort": {
+        "description": "How a batch's asset listing is ordered.",
+        "enum": [
+          "membership",
+          "confidence"
+        ],
+        "title": "AssetSort",
+        "type": "string"
       },
       "AttentionItemOut": {
         "description": "One thing in the workspace that is waiting on somebody.",
@@ -1016,7 +1026,7 @@
         "type": "object"
       },
       "BatchAssetOut": {
-        "description": "One item of a batch, with the job that carries it and where it has got to.",
+        "description": "One item of a batch, with the job that carries it and where it has got to.\n\n`annotation_count` is every label on this asset. `min_confidence` is the lowest\nconfidence among the labels a model wrote, or `null` when none carries one; the\nscale is the one the model that wrote them scores on \u2014 a text-prompt detector's\nprompt affinity, a point-prompt segmenter's mask quality.",
         "properties": {
           "allowed_actions": {
             "items": {
@@ -1024,6 +1034,10 @@
             },
             "title": "Allowed Actions",
             "type": "array"
+          },
+          "annotation_count": {
+            "title": "Annotation Count",
+            "type": "integer"
           },
           "content_hash": {
             "title": "Content Hash",
@@ -1101,6 +1115,17 @@
             ],
             "title": "Job Id"
           },
+          "min_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Confidence"
+          },
           "modality": {
             "const": "image",
             "title": "Modality",
@@ -1171,7 +1196,9 @@
           "ingested_at",
           "job_id",
           "progress",
-          "allowed_actions"
+          "allowed_actions",
+          "annotation_count",
+          "min_confidence"
         ],
         "title": "BatchAssetOut",
         "type": "object"
@@ -5613,7 +5640,7 @@
         ]
       },
       "get": {
-        "description": "Everything in the batch, in membership order, with where each asset has got to.\n\nThe order is stored, so reading twice gives the same sequence and an ingest\ninto an existing batch appends rather than reshuffles. `total` is the size of\nthe whole batch and not of the page; an offset past the end is an empty list\nand a 200, never a 404. The 404 belongs to the batch itself, which is\nresolved first: an unknown one is `BATCH_NOT_FOUND`.\n\n`job_id` and `progress` are null while the batch is a draft, because a draft\nhas no jobs. Bytes are not here: an asset is named by its hashes, and\n`GET /projects/{project_id}/assets/{asset_id}/content` is what serves them.",
+        "description": "The batch's assets, with where each has got to and its labels in two numbers.\n\nMembership order by default, so reading twice gives the same sequence and an\ningest into an existing batch appends rather than reshuffles; `sort=confidence`\nputs the frame whose weakest model label scores lowest first, unscored frames\nlast, ties in membership order. `progress` narrows to the states named, and\n`total` is the size of what matched \u2014 the whole batch when nothing narrows it.\nAn offset past the end is an empty list and a 200, never a 404. The 404 belongs\nto the batch itself, which is resolved first: an unknown one is `BATCH_NOT_FOUND`.\n\n`job_id` and `progress` are null while the batch is a draft, because a draft\nhas no jobs \u2014 so a `progress` filter over a draft matches nothing. Bytes are\nnot here: an asset is named by its hashes, and\n`GET /projects/{project_id}/assets/{asset_id}/content` is what serves them.",
         "operationId": "list_batch_assets",
         "parameters": [
           {
@@ -5656,6 +5683,38 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Keep only assets in these states. Repeat the parameter per state.",
+            "in": "query",
+            "name": "progress",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/AssetProgress"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keep only assets in these states. Repeat the parameter per state.",
+              "title": "Progress"
+            }
+          },
+          {
+            "description": "`membership` is stored order; `confidence` is lowest model confidence first, unscored last, ties in membership order.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AssetSort",
+              "default": "membership",
+              "description": "`membership` is stored order; `confidence` is lowest model confidence first, unscored last, ties in membership order."
             }
           }
         ],

@@ -269,10 +269,17 @@ export const REVIEW_ACTIONS: readonly {
   readonly action: AssetAction;
   readonly label: string;
   readonly testId: string;
-  readonly progress: "review_pending" | "accepted";
+  readonly progress: "annotated" | "review_pending" | "accepted";
   /** What the move means, for a product with no annotator identity. */
   readonly tooltip: string;
 }[] = [
+  {
+    action: ASSET_ACTION.confirm,
+    label: "Confirm labels",
+    testId: "confirm",
+    progress: "annotated",
+    tooltip: "Keeps the model's labels as this frame's own — nothing else changes",
+  },
   {
     action: ASSET_ACTION.submitForReview,
     label: "Submit for review",
@@ -1742,9 +1749,9 @@ function Workspace({
    * would have needed a walk to a skipped or accepted frame first. So `complete`
    * keeps its own control (below) and this slot is about the *frame*.
    *
-   * The two that remain are mutually exclusive by construction:
-   * `submit_for_review` is offered from `annotated` and `accept` only from
-   * `review_pending`, so the order below can never actually arbitrate. It is
+   * The three that remain are mutually exclusive by construction: `confirm` is
+   * offered from `pre_labeled`, `submit_for_review` from `annotated`, `accept`
+   * from `review_pending`, so the order below can never actually arbitrate. It is
    * written as a list anyway because that is what makes the claim checkable —
    * `test_asset_actions` sweeps the whole progress square, and a third reviewer
    * action landing in one of those states would fail the test that pins this

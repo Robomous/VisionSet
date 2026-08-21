@@ -36,7 +36,7 @@ error envelope, and the three gate words.
 | `get_pre_label_plan` | `batch_id` | Which classes a pre-labeling run over this batch would ask a model about. |
 | `pre_label_batch` | `batch_id`, `connection`, `minimum_confidence`? | Ask a model to label every untouched asset in a batch. This blocks until it is done. |
 | `repin_batch` | `batch_id`, `allow_destructive`? | Move a batch's schema pin onto the project's *current* active version. |
-| `list_batch_assets` | `batch_id`, `limit`?, `offset`? | List a batch's assets, with the job each belongs to and its progress. |
+| `list_batch_assets` | `batch_id`, `limit`?, `offset`?, `progress`?, `sort`? | List a batch's assets, with the job, progress and label summary each carries. |
 | `create_batch` | `project`, `name`, `asset_ids`? | Start a draft batch over a chosen set of a project's assets. |
 | `add_batch_assets` | `batch_id`, `asset_ids` | Put assets into a draft batch. |
 | `remove_batch_assets` | `batch_id`, `asset_ids` | Take assets out of a draft batch. This does not delete anything. |

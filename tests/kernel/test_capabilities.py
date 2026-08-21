@@ -13,7 +13,7 @@ what happened against what was declared, for every state a resource can reach:
 - *complete* — an undeclared action, invoked, is refused, with the two documented
   exceptions derived rather than listed (`JobService.mark` treats a move to the
   state an asset is already in as a no-op, and `UNNAMED_EDGES` is the legal edge
-  nobody clicks);
+  nobody clicks, save the one `confirm` also reaches);
 - *covered* — every edge of every table is claimed by an action or deliberately
   named as unclaimed, so a new edge cannot arrive with no capability.
 
@@ -624,9 +624,12 @@ def _assert_undeclared_is_refused(
     """An undeclared action is refused — with the two exceptions the kernel documents.
 
     Both are derived from the tables rather than listed as cases: a move to the
-    state an asset is already in is `JobService.mark`'s documented no-op, and
-    `UNNAMED_EDGES` is the legal edge no action is the name of. Everything else
-    must raise.
+    state an asset is already in is `JobService.mark`'s documented no-op, and a
+    move to a state the transition table allows from here is accepted regardless
+    of which action's name reached it — `mark` takes a target progress, never an
+    action, so an edge legally claimed by a *different* action (`confirm` and
+    `return_to_annotator` both land on `annotated`) is indistinguishable from one
+    `UNNAMED_EDGES` leaves nameless on purpose. Everything else must raise.
     """
     if job_id is None:
         # A draft has no jobs, so there is nothing to address in the first place.
@@ -658,7 +661,7 @@ def _assert_undeclared_is_refused(
     if move.to is progress:
         _run_asset(fixture, job_id, asset_id, action)
         assert fixture.state_of(job_id, asset_id) is progress
-    elif (progress, move.to) in UNNAMED_EDGES:
+    elif move.to in ASSET_PROGRESS_TRANSITIONS[progress]:
         _run_asset(fixture, job_id, asset_id, action)
         assert fixture.state_of(job_id, asset_id) is move.to
     else:
@@ -763,6 +766,27 @@ def test_declaration_order_is_stable(tmp_path: Path) -> None:
         AssetAction.SKIP,
         AssetAction.SUBMIT_FOR_REVIEW,
     ]
+    assert asset_actions(
+        PRE_LABELED,
+        batch_state=BatchState.IN_ANNOTATION,
+        job_state=AnnotationJobState.IN_PROGRESS,
+    ) == [
+        AssetAction.ANNOTATE,
+        AssetAction.SKIP,
+        AssetAction.CONFIRM,
+    ]
+
+
+def test_confirm_is_declared_on_pre_labeled_and_nowhere_else() -> None:
+    """A person keeps a model's labels as the frame's own: the one click out of
+    `pre_labeled` that leaves its labels untouched."""
+    for progress in AssetProgress:
+        declared = asset_actions(
+            progress,
+            batch_state=BatchState.IN_ANNOTATION,
+            job_state=AnnotationJobState.IN_PROGRESS,
+        )
+        assert (AssetAction.CONFIRM in declared) is (progress is AssetProgress.PRE_LABELED)
 
 
 def test_delete_is_declared_from_the_kernels_own_gate_and_not_from_a_copy() -> None:

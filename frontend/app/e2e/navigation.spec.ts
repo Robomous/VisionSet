@@ -156,6 +156,8 @@ async function serveApi(page: Page): Promise<void> {
               job_id: JOB,
               progress: "unannotated",
               allowed_actions: assetActions("unannotated"),
+              annotation_count: 0,
+              min_confidence: null,
             },
           ],
           total: 1,

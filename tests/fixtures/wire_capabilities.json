@@ -8,7 +8,8 @@
     ],
     "pre_labeled": [
       "annotate",
-      "skip"
+      "skip",
+      "confirm"
     ],
     "review_pending": [
       "accept",

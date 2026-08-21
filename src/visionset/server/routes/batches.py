@@ -46,8 +46,7 @@ from visionset.inference import require as require_local_inference
 from visionset.jobs.prelabel import JOB_TYPE as pre_label_job_type
 from visionset.jobs.prelabel import payload_for as pre_label_payload_for
 from visionset.kernel.domain import (
-    AnnotationJobState,
-    AssetProgress,
+    AssetSort,
     BackgroundJobSpec,
     ConnectionSetupState,
     MembershipChange,
@@ -83,7 +82,8 @@ from visionset.server.models import (
     OffsetQuery,
     PreLabelPlanOut,
     PreLabelRequest,
-    window,
+    ProgressQuery,
+    SortQuery,
 )
 
 project_router = protected_router(prefix="/projects/{project_id}/batches", tags=["batches"])
@@ -462,47 +462,47 @@ def list_batch_assets(
     batch_id: UUID,
     limit: LimitQuery = None,
     offset: OffsetQuery = 0,
+    progress: ProgressQuery = None,
+    sort: SortQuery = AssetSort.MEMBERSHIP,
 ) -> BatchAssetPage:
-    """Everything in the batch, in membership order, with where each asset has got to.
+    """The batch's assets, with where each has got to and its labels in two numbers.
 
-    The order is stored, so reading twice gives the same sequence and an ingest
-    into an existing batch appends rather than reshuffles. `total` is the size of
-    the whole batch and not of the page; an offset past the end is an empty list
-    and a 200, never a 404. The 404 belongs to the batch itself, which is
-    resolved first: an unknown one is `BATCH_NOT_FOUND`.
+    Membership order by default, so reading twice gives the same sequence and an
+    ingest into an existing batch appends rather than reshuffles; `sort=confidence`
+    puts the frame whose weakest model label scores lowest first, unscored frames
+    last, ties in membership order. `progress` narrows to the states named, and
+    `total` is the size of what matched — the whole batch when nothing narrows it.
+    An offset past the end is an empty list and a 200, never a 404. The 404 belongs
+    to the batch itself, which is resolved first: an unknown one is `BATCH_NOT_FOUND`.
 
     `job_id` and `progress` are null while the batch is a draft, because a draft
-    has no jobs. Bytes are not here: an asset is named by its hashes, and
+    has no jobs — so a `progress` filter over a draft matches nothing. Bytes are
+    not here: an asset is named by its hashes, and
     `GET /projects/{project_id}/assets/{asset_id}/content` is what serves them.
     """
     batches = BatchService(workspace)
     batch = batches.get(batch_id)
-    found = batches.assets(batch_id)
-    # Two reads and a projection, not a join. ``jobs`` already carries the
-    # per-asset progress map that approval wrote, so where an asset has got to is
-    # read off the job that owns it rather than asked for separately — and the
-    # partition is exact, so every asset appears in this map at most once.
-    placement: dict[UUID, tuple[UUID | None, AnnotationJobState | None, AssetProgress | None]] = {
-        asset_id: (job.id, job.state, progress)
-        for job in batches.jobs(batch_id)
-        for asset_id, progress in job.progress.items()
-    }
-    items = []
-    for asset in window(found, limit=limit, offset=offset):
-        # The job's *state* travels beside its id because what an asset allows
-        # depends on it: a completed job's frames are settled and declare nothing,
-        # and the job it belongs to is the only thing that knows.
-        job_id, job_state, progress = placement.get(asset.id, (None, None, None))
-        items.append(
+    placed, total = batches.asset_page(
+        batch_id,
+        progress=None if progress is None else frozenset(progress),
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+    return BatchAssetPage(
+        items=[
             BatchAssetOut.in_batch(
-                asset,
-                job_id=job_id,
-                job_state=job_state,
-                progress=progress,
+                one.asset,
+                job_id=one.job_id,
+                job_state=one.job_state,
+                progress=one.progress,
                 batch_state=batch.state,
+                summary=one.summary,
             )
-        )
-    return BatchAssetPage(items=items, total=len(found))
+            for one in placed
+        ],
+        total=total,
+    )
 
 
 #: Which assets to take out of the batch, repeated once per id. The
