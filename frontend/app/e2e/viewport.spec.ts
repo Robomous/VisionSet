@@ -12,7 +12,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { assetActions, batchActions, jobActions } from "./_wire";
+import { assetActions, batchActions, jobActions, type Wire } from "./_wire";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -33,13 +33,13 @@ const NO_PROGRESS = {
   review_pending: 0,
   accepted: 0,
   total: 1,
-};
+} satisfies Wire["ProgressCounts"];
 
 const SCHEMA = {
   project_id: PROJECT,
   version: 1,
   classes: [{ name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] }],
-};
+} satisfies Wire["SchemaVersionOut"];
 
 const PIXEL = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -62,7 +62,7 @@ const ASSET = {
   job_id: JOB,
   progress: "unannotated",
   allowed_actions: assetActions("unannotated"),
-};
+} satisfies Wire["BatchAssetOut"];
 
 async function serveApi(page: Page): Promise<void> {
   await page.route("**/api/**", (route) => {
@@ -70,11 +70,16 @@ async function serveApi(page: Page): Promise<void> {
     if (path === "/session") return route.fulfill({ json: { issued: false } });
     if (path === "/projects") {
       return route.fulfill({
-        json: { items: [{ id: PROJECT, name: "road-signs", description: null }], total: 1 },
+        json: {
+          items: [{ id: PROJECT, name: "road-signs", description: null }],
+          total: 1,
+        } satisfies Wire["ProjectPage"],
       });
     }
     if (path === `/projects/${PROJECT}`) {
-      return route.fulfill({ json: { id: PROJECT, name: "road-signs", description: null } });
+      return route.fulfill({
+        json: { id: PROJECT, name: "road-signs", description: null } satisfies Wire["ProjectOut"],
+      });
     }
     if (path === `/jobs/${JOB}`) {
       return route.fulfill({
@@ -85,7 +90,7 @@ async function serveApi(page: Page): Promise<void> {
           asset_count: 1,
           allowed_actions: jobActions("in_progress"),
           assignee: null,
-        },
+        } satisfies Wire["JobOut"],
       });
     }
     if (path === `/jobs/${JOB}/progress`) return route.fulfill({ json: NO_PROGRESS });
@@ -103,16 +108,18 @@ async function serveApi(page: Page): Promise<void> {
           pre_label_run: null,
           asset_count: 1,
           progress: NO_PROGRESS,
-        },
+        } satisfies Wire["BatchOut"],
       });
     }
     if (path.endsWith("/schema/versions/1")) return route.fulfill({ json: SCHEMA });
     if (path === `/batches/${BATCH}/assets`) {
-      return route.fulfill({ json: { items: [ASSET], total: 1 } });
+      return route.fulfill({ json: { items: [ASSET], total: 1 } satisfies Wire["BatchAssetPage"] });
     }
-    if (path.endsWith("/annotations")) return route.fulfill({ json: { items: [], total: 0 } });
+    if (path.endsWith("/annotations")) {
+      return route.fulfill({ json: { items: [], total: 0 } satisfies Wire["AnnotationPage"] });
+    }
     if (path.endsWith("/content")) return route.fulfill({ contentType: "image/png", body: PIXEL });
-    return route.fulfill({ json: { items: [], total: 0 } });
+    return route.fulfill({ json: { items: [], total: 0 } satisfies Wire["AssetPage"] });
   });
 }
 

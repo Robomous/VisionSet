@@ -35,6 +35,8 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
+import type { Wire } from "./_wire";
+
 const CONNECTION = "22222222-2222-4222-8222-222222222222";
 const JOB = "44444444-4444-4444-8444-444444444444";
 const CHECK_JOB = "55555555-5555-4555-8555-555555555555";
@@ -140,21 +142,20 @@ const PROVIDERS = {
     },
   ],
   total: 3,
+} satisfies Wire["ProviderPage"];
+
+// Derived from the generated run shapes rather than transcribed, because a
+// transcription is the defect this file is being typed against, one level down:
+// the pair below spelt `state` as `string` and would have gone on accepting a
+// job state the server can never send. `job_id` and `error` are supplied by
+// `connection` for every caller, so a scenario names neither.
+type Download = Omit<Wire["WeightDownloadOut"], "job_id" | "error"> & {
+  readonly error?: string | null;
 };
 
-interface Download {
-  readonly state: string;
-  readonly bytes_done: number;
-  readonly bytes_total: number | null;
+type Check = Omit<Wire["IntegrityCheckOut"], "job_id" | "error"> & {
   readonly error?: string | null;
-}
-
-interface Check {
-  readonly state: string;
-  readonly files_read: number;
-  readonly files_total: number | null;
-  readonly error?: string | null;
-}
+};
 
 /**
  * What the server answers for one local connection, in the state a test wants.
@@ -168,8 +169,8 @@ function connection(
   setup: "not_set_up" | "ready",
   download: Download | null,
   check: Check | null = null,
-  capabilities: readonly string[] = setup === "ready" ? ["point_suggest"] : [],
-): unknown {
+  capabilities: Wire["ConnectionOut"]["capabilities"] = setup === "ready" ? ["point_suggest"] : [],
+): Wire["ConnectionOut"] {
   return {
     id: CONNECTION,
     name: "sam2-local",
@@ -199,7 +200,7 @@ function connection(
  * every request, so what a test changes is the *workspace*, and the screen reads
  * it the way it reads a server.
  */
-async function serveApi(page: Page, next: () => unknown): Promise<void> {
+async function serveApi(page: Page, next: () => Wire["ConnectionOut"]): Promise<void> {
   // These scenarios reach Inference by signing in at `/`, which is a real page
   // now rather than a redirect to the project list — so it makes this request on
   // the way past. Empty totals: nothing here is about the dashboard, and an
@@ -213,12 +214,12 @@ async function serveApi(page: Page, next: () => unknown): Promise<void> {
         attention: [],
         projects: [],
         activity: [],
-      },
+      } satisfies Wire["HomeOut"],
     }),
   );
   await page.route("**/api/session", (route) => route.fulfill({ json: { issued: false } }));
   await page.route("**/api/inference/connections*", (route) =>
-    route.fulfill({ status: 200, json: { items: [next()], total: 1 } }),
+    route.fulfill({ status: 200, json: { items: [next()], total: 1 } satisfies Wire["ConnectionPage"] }),
   );
   // The create form's own read. It has to hold the whole offered set, because
   // one scenario below asserts the list is taller than the window.
@@ -226,7 +227,7 @@ async function serveApi(page: Page, next: () => unknown): Promise<void> {
     route.fulfill({ status: 200, json: PROVIDERS }),
   );
   await page.route("**/api/projects**", (route) =>
-    route.fulfill({ status: 200, json: { items: [], total: 0 } }),
+    route.fulfill({ status: 200, json: { items: [], total: 0 } satisfies Wire["ProjectPage"] }),
   );
 }
 
@@ -359,7 +360,12 @@ test("a model list taller than the window scrolls instead of running off it", as
   await page.route("**/api/inference/download-size*", (route) =>
     route.fulfill({
       status: 200,
-      json: { model_id: "m", model_revision: "r", total_bytes: 1_200_000_000, file_count: 3 },
+      json: {
+        model_id: "m",
+        model_revision: "r",
+        total_bytes: 1_200_000_000,
+        file_count: 3,
+      } satisfies Wire["DownloadSizeOut"],
     }),
   );
   // Short enough that the curated list cannot fit under its trigger whatever the
@@ -422,7 +428,7 @@ test("a model the installation offers is chosen and becomes a connection", async
           },
         ],
         total: 1,
-      },
+      } satisfies Wire["ProviderPage"],
     }),
   );
   const created: unknown[] = [];
@@ -434,7 +440,12 @@ test("a model the installation offers is chosen and becomes a connection", async
   await page.route("**/api/inference/download-size*", (route) =>
     route.fulfill({
       status: 200,
-      json: { model_id: "m", model_revision: "r", total_bytes: 1_200_000_000, file_count: 3 },
+      json: {
+        model_id: "m",
+        model_revision: "r",
+        total_bytes: 1_200_000_000,
+        file_count: 3,
+      } satisfies Wire["DownloadSizeOut"],
     }),
   );
   await openInference(page);
