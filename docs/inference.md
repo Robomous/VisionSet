@@ -267,7 +267,11 @@ makes a download and a check over one cache impossible, only unlikely to be aske
 Editing a local connection's `model_id` or `model_revision` puts it back to `not_set_up`. The
 weights on your disk are the weights of the model it used to name, and `setup_state` answers *are
 the weights here* - so leaving it `ready` would have it claim to be set up over files nothing ever
-fetched. It forgets what kind of model it holds at the same time, and for the same reason.
+fetched. It forgets what kind of model it holds at the same time, and for the same reason. The
+recorded driver goes with them, unless the same edit names one: it was recorded for the model
+the row used to name, and who serves the new one is a different question - which a re-pin from
+one offered checkpoint to another answers in the same edit, carrying the id of whoever offers
+the new entry.
 
 **The remedy is the ordinary one.** The row offers **Download weights** again, and the cache is
 keyed by model rather than by connection: the previous model's files are left where they are, so
@@ -334,6 +338,45 @@ sentence naming the members. What this closes is a gap rather than a freedom: `g
 accepted and then resolved onto the CPU, so the connection described a run that never happened.
 A device is in the vocabulary when the adapters can honour it, which is why `mps` is in it and
 `gpu` and `auto` are not.
+
+## Which driver serves the model
+
+Running a model is a **driver's** job - an adapter that declares the model families it serves,
+found through an entry-point group so that one somebody `pip`-installed counts. A connection
+records which driver serves it, in `provider_id`, and the record is an answer somebody gave
+rather than one worked out: a connection created from an offered catalog entry records the
+driver that offered it, and a download that had to resolve one records the driver it actually
+used - an observation, not a guess.
+
+**The family stays read from the downloaded config, and both facts are kept because they answer
+different questions.** The family says what kind of model this is: it is what catches a
+connection pointed at the wrong kind of model, and what tells a driver serving several families
+which one it is running. The provider says *who runs it*, which is knowable before anything is
+downloaded - and working the driver out from the family cannot be, for a connection whose
+weights are not here: choosing a driver needs the family, the family needs the config, and the
+config only arrives with the weights the unchosen driver was supposed to fetch. Recording the
+driver breaks that circle, and it is what lets the download ask the recorded driver's own
+weights source to price and fetch - so a driver whose weights come from somewhere other than
+the hub is actually asked.
+
+**A recorded driver that is not installed here is refused by name**, never quietly replaced by
+whoever else serves the same family - that would run the connection through a driver nobody
+chose. The row says who should run it and this installation does not have them; the refusal
+lists what is installed, and the remedy is to install the distribution that provides the named
+driver or to point the connection at a model one of these serves. In a listing, one row naming
+a driver nobody has costs that row its late family read and nothing else - the page it is on
+still renders.
+
+**A recorded driver that does not serve what the config declares is refused too**, which is why
+recording one does not make reading the config unnecessary: the declaration on disk is still
+the check that catches a connection pointed at the wrong kind of model.
+
+**A connection recording none resolves by family**, exactly as every connection did before
+there was anywhere to record one, and its download comes from the hub as it always has. The
+first download that succeeds writes onto such a row the driver it used, so a connection created
+before this existed acquires its answer the first time its weights arrive. `None` is
+legitimate and stays legitimate: a hand-typed model nothing in the catalog offers records
+nothing, and is served by whichever installed driver declares its family.
 
 ## What a connection can be asked for
 
@@ -607,11 +650,15 @@ form.
   somebody `pip`-installed is offered here without this repository knowing it exists. The headings
   are the abilities - *Interactive segmentation*, *Text-prompt detection* - because a driver says
   which question its model answers and never how that question is named on screen. Each entry
-  carries its id, one line on what it is for, and the commit the driver that offers it pinned; no
-  size, because what a download costs is read live for the exact pair, and a number frozen into a
-  list would be a second answer to a question already answered accurately. **Custom model...** is
+  carries its id, one line on what it is for, the commit the driver that offers it pinned, and
+  the id of that driver; no size, because what a download costs is read live for the exact pair,
+  and a number frozen into a list would be a second answer to a question already answered
+  accurately. Picking an entry records its driver on the connection - a value that rides along
+  with a choice somebody already made, so there is no control to operate. **Custom model...** is
   the last entry and reveals the free model id and revision fields: the list guides, it does not
-  restrict, and any model this build has an adapter for remains typeable. Device and precision are
+  restrict, and any model this build has an adapter for remains typeable. A custom model records
+  no driver - nobody offered it - and is served by whichever installed driver declares the family
+  its downloaded config names. Device and precision are
   lists too, and the precision list follows the device, because half precision applies on CUDA
   only - so picking `mps` leaves `fp32` as the only precision offered. Underneath is what fetching
   the chosen pair would cost, read while you are still deciding. An entry whose weights have to be
@@ -678,6 +725,7 @@ visionset inference size some/model --revision abc123
 visionset inference create local-detector \
     --type local --model some/model --revision abc123 --device cuda --precision fp16
 # --device takes cpu, mps, cuda or cuda:N; --precision takes fp16 or fp32, and fp16 needs a cuda device
+# --provider names the installed driver that serves it; omitted, the model's declared type decides
 visionset inference list
 visionset inference show local-detector --json
 visionset inference update local-detector --revision def456
@@ -701,7 +749,7 @@ workspace, compared without regard to case, so `local` and `Local` cannot name t
 | --- | --- | --- |
 | `INFERENCE_CONNECTION_NOT_FOUND` | 404 | No connection with that id or name in this workspace |
 | `INFERENCE_CONNECTION_NAME_TAKEN` | 409 | Another connection already holds that name |
-| `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` | 409 | Already set up, or a kind with no weights of its own |
+| `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` | 409 | Already set up, a kind with no weights of its own, or a recorded driver that declares none - it answers from somewhere this machine keeps no files for |
 | `INFERENCE_CONNECTION_NOT_CHECKABLE` | 409 | A kind with no weights of its own, or weights that are not here yet - run `download` |
 | `WEIGHTS_DAMAGED` | 409 | An integrity check found files that do not match; they were removed and the connection stood down |
 | `INFERENCE_CONNECTION_NOT_SET_UP` | 409 | Asked to predict before its weights were fetched - run `download` |
@@ -710,7 +758,7 @@ workspace, compared without regard to case, so `local` and `Local` cannot name t
 | `UNSUPPORTED_PROMPT` | 422 | The model does not answer that way of asking |
 | `PROMPT_POINT_OUT_OF_BOUNDS` | 422 | A suggest point falls outside the asset; the message names the coordinate and the size |
 | `LOCAL_INFERENCE_UNAVAILABLE` | 500 | The `local-inference` extra is not installed; the message carries the command |
-| `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | Nothing installed here runs that connection - an `http` one, which no adapter speaks to yet, or a model family no installed driver serves. The message names the families that are served |
+| `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | Nothing installed here runs that connection - an `http` one, which no adapter speaks to yet; a model family no installed driver serves; a recorded provider that is not installed here; or one that does not serve the family the downloaded config declares. The message names what is served or installed instead |
 | `INFERENCE_OUT_OF_MEMORY` | 500 | The device ran out of memory loading or running the model; the message names the device and what to do about it |
 
 The last three are 5xx because they are conditions of the *machine* rather than of the request:

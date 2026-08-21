@@ -43,7 +43,7 @@ from visionset.inference import (
     PreLabelPlan,
     pre_label,
 )
-from visionset.kernel.domain import AssetProgress, BySize, Partition
+from visionset.kernel.domain import SETTLED_PROGRESS, AssetProgress, BySize, Partition
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
@@ -130,7 +130,7 @@ def batch_list(
                 _NO_SCHEMA if batch.schema_version is None else str(batch.schema_version),
                 str(len(batch.asset_ids)),
                 str(count[AssetProgress.ANNOTATED]),
-                str(sum(count.values()) - count[AssetProgress.UNANNOTATED]),
+                str(sum(count[state] for state in SETTLED_PROGRESS)),
             )
             for batch, count in zip(batches, counts, strict=True)
         ],

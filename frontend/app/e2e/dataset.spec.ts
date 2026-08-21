@@ -26,6 +26,8 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
+import type { Wire } from "./_wire";
+
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const DATASET = "22222222-2222-4222-8222-222222222222";
 
@@ -41,7 +43,7 @@ const ASSETS = [
   { id: "aaaaaaaa-0000-4000-8000-000000000003", frame_index: 2 },
 ] as const;
 
-function assetRow(asset: { id: string; frame_index: number }): Record<string, unknown> {
+function assetRow(asset: { id: string; frame_index: number }): Wire["AssetOut"] {
   // Every field `AssetOut` declares, nulls included. The generated shape check
   // runs before any screen renders, so an omitted field is a runtime rejection
   // and a stub answering a shape the endpoint never sends tests nothing.
@@ -82,11 +84,16 @@ async function serveApi(page: Page): Promise<void> {
     if (path === "/session") return route.fulfill({ json: { issued: false } });
     if (path === "/projects") {
       return route.fulfill({
-        json: { items: [{ id: PROJECT, name: "road-signs", description: null }], total: 1 },
+        json: {
+          items: [{ id: PROJECT, name: "road-signs", description: null }],
+          total: 1,
+        } satisfies Wire["ProjectPage"],
       });
     }
     if (path === `/projects/${PROJECT}`) {
-      return route.fulfill({ json: { id: PROJECT, name: "road-signs", description: null } });
+      return route.fulfill({
+        json: { id: PROJECT, name: "road-signs", description: null } satisfies Wire["ProjectOut"],
+      });
     }
     if (path === `/projects/${PROJECT}/dataset`) {
       // `description` is required on `DatasetOut` and present-as-null is what the
@@ -96,7 +103,12 @@ async function serveApi(page: Page): Promise<void> {
       // leaves the stats, the trunk *and* the releases pending forever, and the
       // screen reads as three slow requests rather than as one bad stub.
       return route.fulfill({
-        json: { id: DATASET, project_id: PROJECT, name: "road-signs", description: null },
+        json: {
+          id: DATASET,
+          project_id: PROJECT,
+          name: "road-signs",
+          description: null,
+        } satisfies Wire["DatasetOut"],
       });
     }
     if (path === `/datasets/${DATASET}/stats`) {
@@ -109,19 +121,19 @@ async function serveApi(page: Page): Promise<void> {
           annotated_asset_count: 0,
           annotation_count: 0,
           classes: [],
-        },
+        } satisfies Wire["DatasetStatsOut"],
       });
     }
     if (path === `/datasets/${DATASET}/assets`) {
       const items = ASSETS.filter((asset) => trunk.has(asset.id)).map(assetRow);
-      return route.fulfill({ json: { items, total: items.length } });
+      return route.fulfill({ json: { items, total: items.length } satisfies Wire["AssetPage"] });
     }
     if (path.endsWith("/thumbnail")) {
       return route.fulfill({ contentType: "image/png", body: PIXEL });
     }
     // Everything else the screen may ask for. An empty collection is a legal
     // answer to every listing this spec reaches, and none is under test.
-    return route.fulfill({ json: { items: [], total: 0 } });
+    return route.fulfill({ json: { items: [], total: 0 } satisfies Wire["AssetPage"] });
   });
 }
 

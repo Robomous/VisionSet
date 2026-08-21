@@ -75,6 +75,16 @@ def create_inference_connection(
     endpoint_url: Annotated[
         str | None, Field(description="HTTP only. Where to send predictions.")
     ] = None,
+    provider_id: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Which installed driver serves it, as `list_providers` names them. "
+                "Omitted, the connection resolves by the model type its downloaded "
+                "config declares."
+            )
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Configure a connection. Nothing is downloaded and nothing is contacted.
 
@@ -93,6 +103,7 @@ def create_inference_connection(
             device=device,
             precision=precision,
             endpoint_url=endpoint_url,
+            provider_id=provider_id,
         )
     return wire.connection(created)
 

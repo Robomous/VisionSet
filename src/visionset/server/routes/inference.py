@@ -104,6 +104,7 @@ def create_inference_connection(workspace: WorkspaceDep, body: ConnectionCreate)
             device=body.device,
             precision=body.precision,
             endpoint_url=body.endpoint_url,
+            provider_id=body.provider_id,
         )
     )
 
@@ -141,6 +142,7 @@ def update_inference_connection(
         device=body.device,
         precision=body.precision,
         endpoint_url=body.endpoint_url,
+        provider_id=body.provider_id,
     )
     # An edit can land while a run is in flight, so the response says the same
     # thing the listing would. A shape that carried the fields only on some routes

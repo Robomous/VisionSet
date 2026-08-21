@@ -239,6 +239,11 @@ def test_the_listing_uses_the_envelope_like_every_other_collection(
                 "families": {"acme_seg": "point_suggest"},
                 "curated": [
                     {
+                        # Repeated on the entry as well as on the provider that
+                        # holds it: a form flattens the drivers into one list of
+                        # offers, and an entry that could not say who offered it
+                        # would have to be traced back through its parent.
+                        "provider_id": "acme",
                         "model_id": "acme/seg-gated",
                         "model_revision": "0" * 40,
                         "family": "acme_seg",

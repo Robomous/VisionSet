@@ -90,6 +90,13 @@ def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
 # --- create -------------------------------------------------------------------
 
 
+def test_create_records_the_driver_an_agent_names(root: Path) -> None:
+    """An agent reads `list_providers` and hands back a `provider_id` from it, so
+    the tool surface configures a connection as completely as the form does."""
+    document = payload(call("create_inference_connection", **LOCAL, provider_id="sam"))
+    assert document["provider_id"] == "sam"
+
+
 def test_create_answers_the_connection_document(root: Path) -> None:
     document = payload(call("create_inference_connection", **LOCAL))
     assert document["name"] == "local-gd"

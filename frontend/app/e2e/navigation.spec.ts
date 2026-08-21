@@ -25,7 +25,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { assetActions, batchActions, jobActions } from "./_wire";
+import { assetActions, batchActions, jobActions, type Wire } from "./_wire";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -40,13 +40,13 @@ const NO_PROGRESS = {
   review_pending: 0,
   accepted: 0,
   total: 0,
-};
+} satisfies Wire["ProgressCounts"];
 
 const SCHEMA = {
   project_id: PROJECT,
   version: 1,
   classes: [{ name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] }],
-};
+} satisfies Wire["SchemaVersionOut"];
 
 /** A 1x1 PNG, so the annotator has real pixels to lay out. */
 const PIXEL = Buffer.from(
@@ -67,15 +67,29 @@ async function serveApi(page: Page): Promise<void> {
 
     if (path === "/session") return route.fulfill({ json: { issued: false } });
     if (path === "/projects") {
-      return route.fulfill({ json: { items: [{ id: PROJECT, name: "road-signs", description: null }], total: 1 } });
+      return route.fulfill({
+        json: {
+          items: [{ id: PROJECT, name: "road-signs", description: null }],
+          total: 1,
+        } satisfies Wire["ProjectPage"],
+      });
     }
     if (path === `/projects/${PROJECT}`) {
-      return route.fulfill({ json: { id: PROJECT, name: "road-signs", description: null } });
+      return route.fulfill({
+        json: { id: PROJECT, name: "road-signs", description: null } satisfies Wire["ProjectOut"],
+      });
     }
     if (path === `/projects/${PROJECT}/schema`) return route.fulfill({ json: SCHEMA });
     if (path === `/projects/${PROJECT}/schema/versions/1`) return route.fulfill({ json: SCHEMA });
     if (path === `/projects/${PROJECT}/dataset`) {
-      return route.fulfill({ json: { id: DATASET, project_id: PROJECT, name: "road-signs" } });
+      return route.fulfill({
+        json: {
+          id: DATASET,
+          project_id: PROJECT,
+          name: "road-signs",
+          description: null,
+        } satisfies Wire["DatasetOut"],
+      });
     }
     if (path === `/datasets/${DATASET}/stats`) {
       return route.fulfill({
@@ -85,7 +99,7 @@ async function serveApi(page: Page): Promise<void> {
           annotated_asset_count: 0,
           annotation_count: 0,
           classes: [],
-        },
+        } satisfies Wire["DatasetStatsOut"],
       });
     }
     if (path === `/jobs/${JOB}`) {
@@ -97,10 +111,14 @@ async function serveApi(page: Page): Promise<void> {
           asset_count: 1,
           allowed_actions: jobActions("in_progress"),
           assignee: null,
-        },
+        } satisfies Wire["JobOut"],
       });
     }
-    if (path === `/jobs/${JOB}/progress`) return route.fulfill({ json: { ...NO_PROGRESS, unannotated: 1, total: 1 } });
+    if (path === `/jobs/${JOB}/progress`) {
+      return route.fulfill({
+        json: { ...NO_PROGRESS, unannotated: 1, total: 1 } satisfies Wire["ProgressCounts"],
+      });
+    }
     if (path === `/batches/${BATCH}`) {
       return route.fulfill({
         json: {
@@ -115,7 +133,7 @@ async function serveApi(page: Page): Promise<void> {
           schema_version: 1,
           asset_count: 1,
           progress: { ...NO_PROGRESS, unannotated: 1, total: 1 },
-        },
+        } satisfies Wire["BatchOut"],
       });
     }
     if (path === `/batches/${BATCH}/assets`) {
@@ -141,7 +159,7 @@ async function serveApi(page: Page): Promise<void> {
             },
           ],
           total: 1,
-        },
+        } satisfies Wire["BatchAssetPage"],
       });
     }
     // The project's own counts. The catch-all below answers every
@@ -161,14 +179,16 @@ async function serveApi(page: Page): Promise<void> {
           // predate v0.1.0, and for one holding none. Present, not omitted:
           // a stub answering a shape the endpoint never sends tests nothing.
           last_ingest_at: null,
-        },
+        } satisfies Wire["ProjectStatsOut"],
       });
     }
-    if (path.endsWith("/annotations")) return route.fulfill({ json: { items: [], total: 0 } });
+    if (path.endsWith("/annotations")) {
+      return route.fulfill({ json: { items: [], total: 0 } satisfies Wire["AnnotationPage"] });
+    }
     if (path.endsWith("/content")) return route.fulfill({ contentType: "image/png", body: PIXEL });
     // Everything else a screen may ask for: an empty collection is a legal answer
     // to every listing this suite reaches, and none of them is what is under test.
-    return route.fulfill({ json: { items: [], total: 0 } });
+    return route.fulfill({ json: { items: [], total: 0 } satisfies Wire["AssetPage"] });
   });
 }
 

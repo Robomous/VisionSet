@@ -128,6 +128,7 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     device: "cuda",
     precision: "fp16",
     endpoint_url: null,
+    provider_id: "sam",
     setup_state: "not_set_up",
     allowed_actions: ["download_weights", "update", "delete"],
     // Not optional on the wire, so not optional here: the generated runtime
@@ -169,6 +170,7 @@ const SERVED: unknown = {
       },
       curated: [
         {
+          provider_id: "sam",
           model_id: SAM_BASE_PLUS,
           model_revision: SAM_BASE_PLUS_COMMIT,
           family: "sam2_video",
@@ -178,6 +180,7 @@ const SERVED: unknown = {
           access_url: null,
         },
         {
+          provider_id: "sam",
           model_id: SAM3,
           model_revision: SAM3_COMMIT,
           family: "sam3_video",
@@ -193,6 +196,7 @@ const SERVED: unknown = {
       families: { "grounding-dino": "text_detect" },
       curated: [
         {
+          provider_id: "grounding-dino",
           model_id: DINO_TINY,
           model_revision: "a2bb814dd30d776dcf7e30523b00659f4f141c71",
           family: "grounding-dino",
@@ -1784,6 +1788,10 @@ it("sends an edit carrying only the fields ConnectionUpdate declares", async () 
     "model_revision",
     "name",
     "precision",
+    // Declared by `ConnectionUpdate`, so it travels on an edit too: null means
+    // *leave this alone*, and a re-pin from one offered checkpoint to another
+    // carries the new owner across.
+    "provider_id",
   ]);
 });
 

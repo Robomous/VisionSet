@@ -2009,6 +2009,15 @@ class FormatPage(Page[FormatOut]):
 class CuratedModelOut(BaseModel):
     """A checkpoint a driver offers by name, and what it can be asked for."""
 
+    #: Which driver offers this entry — the same string as the enclosing
+    #: `ProviderOut.provider_id`, repeated on the entry itself.
+    #:
+    #: Repeated rather than left to be read from the parent because the entries
+    #: are what a form works in: a catalog is flattened across drivers into one
+    #: list of offers, and an entry that could not say who offered it would have
+    #: to be traced back to its provider by every caller that needs to record the
+    #: answer.
+    provider_id: str
     model_id: str
     #: A commit, never a branch. A moving pointer is not a provenance, and the
     #: hint beside it would describe whatever the branch pointed at last week.
@@ -2035,8 +2044,9 @@ class CuratedModelOut(BaseModel):
     access_url: str | None
 
     @classmethod
-    def of(cls, entry: CuratedModel, capability: str) -> Self:
+    def of(cls, entry: CuratedModel, capability: str, provider_id: str) -> Self:
         return cls(
+            provider_id=provider_id,
             model_id=entry.model_id,
             model_revision=entry.model_revision,
             family=entry.family,
@@ -2075,7 +2085,9 @@ class ProviderOut(BaseModel):
             # the whole listing. The conformance suite is what refuses it at the
             # source; this is what keeps a third party's mistake local to itself.
             curated=[
-                CuratedModelOut.of(entry, provider.families[entry.family].value)
+                CuratedModelOut.of(
+                    entry, provider.families[entry.family].value, provider.provider_id
+                )
                 for entry in provider.curated
                 if entry.family in provider.families
             ],
@@ -2204,6 +2216,18 @@ class ConnectionOut(BaseModel):
     precision: Precision | None
     endpoint_url: str | None
     setup_state: ConnectionSetupState
+    #: Which installed driver serves this connection, or null where none was
+    #: recorded — a connection created against a model no catalog offered, or a
+    #: row written before connections named one. Null is not a failure: such a
+    #: connection resolves by the model type its config declares, which is how
+    #: every connection resolved before this field existed.
+    #:
+    #: The `provider_id` a driver calls itself by, matching `ProviderOut`.
+    #: Whether that driver is installed *here* is a fact about this
+    #: installation, so a client is told what the row says rather than whether
+    #: it will run — the refusal, if there is one, arrives when something asks
+    #: it to predict.
+    provider_id: str | None
     allowed_actions: list[ConnectionAction]
     #: What this connection's model can be asked for, and empty where nothing is
     #: known yet: a connection whose weights have never been fetched, one whose
@@ -2263,6 +2287,7 @@ class ConnectionOut(BaseModel):
             precision=connection.precision,
             endpoint_url=connection.endpoint_url,
             setup_state=connection.setup_state,
+            provider_id=connection.provider_id,
             allowed_actions=connection_actions(
                 connection.setup_state, connection_type=connection.connection_type
             ),
@@ -2299,6 +2324,20 @@ class ConnectionCreate(BaseModel):
     device: str | None = None
     precision: Precision | None = None
     endpoint_url: str | None = None
+    #: Which installed driver should serve this connection. Optional, and
+    #: normally the `provider_id` of the `ProviderOut` whose catalog offered the
+    #: model being named — a form that picked an entry already knows it.
+    #:
+    #: Omitting it is legitimate and means nothing is recorded: the connection
+    #: resolves by the model type its downloaded config declares. Naming one is
+    #: what lets a driver whose weights come from somewhere other than the
+    #: default hub be asked to fetch them, and what lets a connection with no
+    #: weights on this machine say who answers for it at all.
+    #:
+    #: Not checked against what is installed. A name nothing here provides is
+    #: recorded as given and refused when something tries to run it, which is the
+    #: same treatment a model id pointing at nothing gets.
+    provider_id: str | None = None
 
 
 class ConnectionUpdate(BaseModel):
@@ -2319,6 +2358,14 @@ class ConnectionUpdate(BaseModel):
     device: str | None = None
     precision: Precision | None = None
     endpoint_url: str | None = None
+    #: Which installed driver should serve this connection from now on.
+    #:
+    #: **Moving the model reference clears this on its own**, because the driver
+    #: recorded was recorded for the model the row used to name. Supplying one in
+    #: the same edit is how a re-pin from one offered checkpoint to another
+    #: carries the new owner across — that answer is newer than the rule that
+    #: clears it.
+    provider_id: str | None = None
 
 
 class DownloadSizeOut(BaseModel):

@@ -3333,6 +3333,8 @@ export interface components {
             /** Name */
             name: string;
             precision?: components["schemas"]["Precision"] | null;
+            /** Provider Id */
+            provider_id?: string | null;
         };
         /**
          * ConnectionOut
@@ -3367,6 +3369,8 @@ export interface components {
             /** Name */
             name: string;
             precision: components["schemas"]["Precision"] | null;
+            /** Provider Id */
+            provider_id: string | null;
             setup_state: components["schemas"]["ConnectionSetupState"];
             /**
              * Updated At
@@ -3434,6 +3438,8 @@ export interface components {
             /** Name */
             name?: string | null;
             precision?: components["schemas"]["Precision"] | null;
+            /** Provider Id */
+            provider_id?: string | null;
         };
         /**
          * CuratedModelOut
@@ -3454,6 +3460,8 @@ export interface components {
             model_id: string;
             /** Model Revision */
             model_revision: string;
+            /** Provider Id */
+            provider_id: string;
         };
         /**
          * DatasetChangeOut

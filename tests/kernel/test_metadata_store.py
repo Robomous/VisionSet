@@ -195,6 +195,12 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
             model_revision="abc123",
             device="cpu",
             precision="fp32",
+            # Both nullable columns carry a value, and neither did before: a seed
+            # that leaves one at its default round-trips through a mapper that
+            # never mentions it, so the assertion below passes whether or not the
+            # column is mapped at all.
+            model_family="grounding-dino",
+            provider_id="grounding-dino",
             created_at=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
             updated_at=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
         )

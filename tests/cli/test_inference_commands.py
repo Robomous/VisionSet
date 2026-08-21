@@ -89,6 +89,22 @@ def test_create_writes_the_connection(root: Path) -> None:
     assert _stored(root) == ["local-gd"]
 
 
+def test_create_records_the_driver_named_by_provider(root: Path) -> None:
+    """Every surface is a client of the same SDK, so the terminal can record what
+    the form records — a connection configured here is not a lesser one."""
+    ok(root, *LOCAL, "--provider", "sam")
+    with WorkspaceService.open(root) as service:
+        (stored,) = InferenceConnectionService(service).list()
+    assert stored.provider_id == "sam"
+
+
+def test_create_records_no_driver_when_none_is_named(root: Path) -> None:
+    ok(root, *LOCAL)
+    with WorkspaceService.open(root) as service:
+        (stored,) = InferenceConnectionService(service).list()
+    assert stored.provider_id is None
+
+
 def test_the_new_id_is_the_only_thing_on_stdout(root: Path) -> None:
     result = run(root, *LOCAL)
     assert result.stdout.strip().count("\n") == 0

@@ -34,6 +34,7 @@ function connection(
     device: "cpu",
     precision: "fp32",
     endpoint_url: null,
+    provider_id: "sam",
     setup_state: "ready",
     allowed_actions: [],
     capabilities,

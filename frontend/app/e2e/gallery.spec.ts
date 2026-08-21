@@ -23,7 +23,7 @@
  */
 
 import { expect, test, type Page, type Request } from "@playwright/test";
-import { assetActions, batchActions, jobActions } from "./_wire";
+import { assetActions, batchActions, jobActions, type Wire } from "./_wire";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -52,7 +52,7 @@ const PIXEL = Buffer.from(
  * not the window — a filter whose numbers described the hundred rows in memory
  * would be lying about the fifty thousand it is filtering.
  */
-const STATES = [
+const STATES: readonly Wire["AssetProgress"][] = [
   "unannotated",
   "unannotated",
   "annotated",
@@ -61,7 +61,7 @@ const STATES = [
   "accepted",
   "skipped",
   "unannotated",
-] as const;
+];
 
 const INDEXES = [0, 1, 2, 3, 4, 5, 6, 1047] as const;
 
@@ -72,7 +72,7 @@ const INDEXES = [0, 1, 2, 3, 4, 5, 6, 1047] as const;
  * nothing `unannotated` and nothing `review_pending`, so nothing blocks
  * completion, and a majority skipped so `Restore` has something real to act on.
  */
-const SETTLED_STATES = [
+const SETTLED_STATES: readonly Wire["AssetProgress"][] = [
   "annotated",
   "annotated",
   "annotated",
@@ -81,15 +81,15 @@ const SETTLED_STATES = [
   "skipped",
   "skipped",
   "skipped",
-] as const;
+];
 
 function assets(
   jobId: string | null,
   settled = false,
-  batchState = "in_annotation",
+  batchState: Wire["BatchState"] = "in_annotation",
   removed: ReadonlySet<string> = new Set(),
-): Record<string, unknown> {
-  const all: readonly string[] = settled ? SETTLED_STATES : STATES;
+): Wire["BatchAssetPage"] {
+  const all = settled ? SETTLED_STATES : STATES;
   // Derived from what the run has actually removed, never a frozen list: a stub
   // that keeps answering the same membership after a DELETE lets an
   // implementation that never sent one pass, and lets one that sent the wrong
@@ -130,7 +130,7 @@ const BATCH_COUNTS = {
   review_pending: 5,
   accepted: 1,
   skipped: 4,
-};
+} satisfies Wire["ProgressCounts"];
 
 /** Nothing outstanding, which is the whole precondition for finishing. */
 const SETTLED_COUNTS = {
@@ -141,11 +141,11 @@ const SETTLED_COUNTS = {
   review_pending: 0,
   accepted: 0,
   skipped: 45,
-};
+} satisfies Wire["ProgressCounts"];
 
 interface Options {
   /** `draft` is the state with the approve CTA, and the state with no jobs. */
-  readonly state?: string;
+  readonly state?: Wire["BatchState"];
   /**
    * Every frame settled and nothing outstanding.
    *
@@ -156,7 +156,7 @@ interface Options {
    */
   readonly settled?: boolean;
   /** The state the batch's one job is in when the page loads. */
-  readonly jobState?: string;
+  readonly jobState?: Wire["AnnotationJobState"];
 }
 
 async function serveApi(page: Page, sent: Request[], options: Options = {}): Promise<void> {
@@ -200,17 +200,38 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           promoted_asset_count: 0,
           parent_batch_id: null,
           pre_label_run: null,
-        },
+        } satisfies Wire["BatchOut"],
       });
     }
     if (path === `/batches/${BATCH}/jobs`) {
       return route.fulfill({
-        json: { items: [{ id: JOB, batch_id: BATCH, state: job, asset_count: 48, allowed_actions: jobActions(job), assignee: null }], total: 1 },
+        json: {
+          items: [
+            {
+              id: JOB,
+              batch_id: BATCH,
+              state: job,
+              asset_count: 48,
+              allowed_actions: jobActions(job),
+              assignee: null,
+            },
+          ],
+          total: 1,
+        } satisfies Wire["JobPage"],
       });
     }
     if (request.method() === "POST" && path === `/jobs/${JOB}/start`) {
       job = "in_progress";
-      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: job, asset_count: 48, allowed_actions: jobActions(job), assignee: null } });
+      return route.fulfill({
+        json: {
+          id: JOB,
+          batch_id: BATCH,
+          state: job,
+          asset_count: 48,
+          allowed_actions: jobActions(job),
+          assignee: null,
+        } satisfies Wire["JobOut"],
+      });
     }
     if (request.method() === "POST" && path === `/jobs/${JOB}/complete`) {
       // The kernel's own gate, kept rather than stubbed away: a job may only be
@@ -223,7 +244,16 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
         });
       }
       job = "completed";
-      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: job, asset_count: 48, allowed_actions: jobActions(job), assignee: null } });
+      return route.fulfill({
+        json: {
+          id: JOB,
+          batch_id: BATCH,
+          state: job,
+          asset_count: 48,
+          allowed_actions: jobActions(job),
+          assignee: null,
+        } satisfies Wire["JobOut"],
+      });
     }
     if (request.method() === "POST" && path === `/batches/${BATCH}/complete`) {
       // And the outer gate. This is the 409 the founder saw, reproduced exactly:
@@ -251,14 +281,21 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           promoted_asset_count: 0,
           parent_batch_id: null,
           pre_label_run: null,
-        },
+        } satisfies Wire["BatchOut"],
       });
     }
     if (request.method() === "PUT" && /\/progress$/.test(path)) {
-      return route.fulfill({ json: { asset_id: path.split("/")[4], progress: "skipped" } });
+      return route.fulfill({
+        json: {
+          asset_id: path.split("/")[4],
+          progress: "skipped",
+        } satisfies Wire["AssetProgressOut"],
+      });
     }
     if (path === `/projects/${PROJECT}`) {
-      return route.fulfill({ json: { id: PROJECT, name: "road-signs", description: null } });
+      return route.fulfill({
+        json: { id: PROJECT, name: "road-signs", description: null } satisfies Wire["ProjectOut"],
+      });
     }
     if (path === `/batches/${BATCH}`) {
       return route.fulfill({
@@ -278,7 +315,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           promoted_asset_count: 0,
           parent_batch_id: null,
           pre_label_run: null,
-        },
+        } satisfies Wire["BatchOut"],
       });
     }
     if (request.method() === "DELETE" && path === `/batches/${BATCH}/assets`) {
@@ -315,7 +352,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
             pre_label_run: null,
           },
           changed,
-        },
+        } satisfies Wire["BatchMembershipOut"],
       });
     }
     if (path === `/batches/${BATCH}/assets`) {
@@ -339,7 +376,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
             width: 1280,
             height: 720,
           },
-        },
+        } satisfies Wire["SourceOut"],
       });
     }
     if (path.endsWith("/thumbnail")) {
@@ -363,10 +400,10 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
             schema_version: 3,
           })),
           total: 3,
-        },
+        } satisfies Wire["AnnotationPage"],
       });
     }
-    return route.fulfill({ json: { items: [], total: 0 } });
+    return route.fulfill({ json: { items: [], total: 0 } satisfies Wire["AssetPage"] });
   });
 }
 

@@ -20,6 +20,8 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
+import type { Wire } from "./_wire";
+
 /**
  * The token form's one request. Its body is irrelevant; its status is not.
  *
@@ -48,7 +50,7 @@ async function serveApi(page: Page, { session = false } = {}): Promise<void> {
         attention: [],
         projects: [],
         activity: [],
-      },
+      } satisfies Wire["HomeOut"],
     }),
   );
   // The Inference section's one read. Empty, because this suite is about the
@@ -56,7 +58,7 @@ async function serveApi(page: Page, { session = false } = {}): Promise<void> {
   // `inference.test.tsx`, and an unrouted request here would leave the page
   // waiting on a network that is not there.
   await page.route("**/api/inference/**", (route) =>
-    route.fulfill({ status: 200, json: { items: [], total: 0 } }),
+    route.fulfill({ status: 200, json: { items: [], total: 0 } satisfies Wire["ConnectionPage"] }),
   );
   await page.route("**/api/projects**", (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -67,12 +69,15 @@ async function serveApi(page: Page, { session = false } = {}): Promise<void> {
       });
     }
     if (path.endsWith("/schema/versions")) {
-      return route.fulfill({ status: 200, json: { items: [], total: 0 } });
+      return route.fulfill({
+        status: 200,
+        json: { items: [], total: 0 } satisfies Wire["SchemaVersionPage"],
+      });
     }
     if (/\/api\/projects\/[^/]+$/.test(path)) {
       return route.fulfill({
         status: 200,
-        json: { id: PROJECT, name: "highway", description: null },
+        json: { id: PROJECT, name: "highway", description: null } satisfies Wire["ProjectOut"],
       });
     }
     // The project header counts the project, and the catch-all below answers every
@@ -94,10 +99,10 @@ async function serveApi(page: Page, { session = false } = {}): Promise<void> {
           // predate v0.1.0, and for one holding none. Present, not omitted:
           // a stub answering a shape the endpoint never sends tests nothing.
           last_ingest_at: null,
-        },
+        } satisfies Wire["ProjectStatsOut"],
       });
     }
-    return route.fulfill({ status: 200, json: { items: [], total: 0 } });
+    return route.fulfill({ status: 200, json: { items: [], total: 0 } satisfies Wire["ProjectPage"] });
   });
 }
 

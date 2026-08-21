@@ -773,6 +773,28 @@ class InferenceConnection(BaseModel):
     #: Never derived from the model id. A name is not a declaration, and
     #: matching on one is the guessing this product removed from the resolver.
     model_family: str | None = None
+    #: Which installed driver serves this connection — the ``provider_id`` a
+    #: driver calls itself by, recorded rather than worked out.
+    #:
+    #: **It answers a different question from** :attr:`model_family`, and both
+    #: are kept. The family is what the downloaded config declares, so it is what
+    #: catches a connection pointed at the wrong kind of model, and a driver
+    #: serving several families still has to be told which one. This says who
+    #: runs it — which is knowable *before* anything is downloaded, and is the
+    #: only thing that is when the weights come from somewhere this build does
+    #: not fetch from by default, or when there are no weights on this machine at
+    #: all.
+    #:
+    #: ``None`` is legitimate and means nobody recorded one: every row written
+    #: before this column existed, and every connection created against a model
+    #: nothing in the catalog offers. Resolution falls back to the family for
+    #: those, which is what it did for all of them before.
+    #:
+    #: Opaque to the kernel, and necessarily so — whether a driver of that name
+    #: is installed is a fact about ``visionset.inference``'s entry-point scan,
+    #: which the kernel is forbidden to reach. A recorded provider that is not
+    #: installed is refused where the registry can be seen, not here.
+    provider_id: str | None = None
 
     @field_validator("name", "model_id", "model_revision")
     @classmethod
@@ -780,6 +802,18 @@ class InferenceConnection(BaseModel):
         field = getattr(info, "field_name", "value")
         if not value.strip():
             raise ValueError(f"{field} must contain at least one non-blank character")
+        return value
+
+    @field_validator("provider_id")
+    @classmethod
+    def _is_not_blank_when_given(cls, value: str | None) -> str | None:
+        """Blank is refused where absent is not: they would mean the same thing
+        and only one of them says so."""
+        if value is not None and not value.strip():
+            raise ValueError(
+                "provider_id is a driver's own id or nothing at all; "
+                "a blank string says the same as no value and hides that it does"
+            )
         return value
 
     @field_validator("device", mode="before")

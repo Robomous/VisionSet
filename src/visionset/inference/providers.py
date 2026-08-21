@@ -42,7 +42,7 @@ from typing import Final
 from visionset.inference._extra import require
 from visionset.inference.cache import DEFAULT_PROVIDER_CAPACITY, BoundedCache, KeyedLocks
 from visionset.inference.families import family_of
-from visionset.inference.registry import families_served, registered, serving
+from visionset.inference.registry import families_served, recorded, registered, serving
 from visionset.inference.stub_provider import STUB_FAMILY, STUB_MODEL_ID
 from visionset.inference.weights import cache_root
 from visionset.kernel.domain import ConnectionSetupState, ConnectionType, InferenceConnection
@@ -54,7 +54,14 @@ from visionset.kernel.ports import Provider, Runner
 
 _Key = tuple[str, str]
 
-__all__ = ["ProviderPool", "Runner", "not_set_up_message", "provider_for", "resident"]
+__all__ = [
+    "ProviderPool",
+    "Runner",
+    "driver_for",
+    "not_set_up_message",
+    "provider_for",
+    "resident",
+]
 """``Runner`` is re-exported rather than redefined.
 
 It moved to ``kernel/ports/provider.py``, beside the ``Provider`` whose ``build``
@@ -202,10 +209,63 @@ def _local(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
     else:
         require()
         family = family_of(connection, cache_dir=cache_root(workspace_root))
-    driver = serving(drivers, family)
-    if driver is None:
-        raise InferenceConnectionNotRunnable(_no_adapter_for(connection, family, drivers))
+    driver = driver_for(connection, family=family, drivers=drivers)
     return driver.build(connection, family=family, workspace_root=workspace_root)
+
+
+def driver_for(
+    connection: InferenceConnection, *, family: str, drivers: Mapping[str, Provider]
+) -> Provider:
+    """Which installed driver answers for this connection.
+
+    **A recorded provider beats a derived one**, because it is an answer
+    somebody gave rather than one worked out: it was chosen from the served
+    catalog when the connection was made, or written down by the download that
+    actually used it. Deriving over the top of that would let a second driver
+    claiming the same family silently take a connection away from the one that
+    fetched its weights.
+
+    **The family still has to agree**, and that is why recording a provider does
+    not make the config unnecessary. What the snapshot on disk declares is the
+    check that catches a connection pointed at the wrong kind of model, and a
+    driver serving several families still has to be told which one — so a
+    recorded driver that does not serve what arrived is refused rather than
+    handed a model it never said it could load.
+
+    A connection that recorded nothing resolves by family exactly as every
+    connection did before there was anywhere to record one.
+
+    Raises:
+        InferenceConnectionNotRunnable: the recorded provider is not installed,
+            it does not serve the family this connection's model declares, or —
+            for a connection that recorded none — nothing installed serves that
+            family.
+    """
+    if connection.provider_id is None:
+        driver = serving(drivers, family)
+        if driver is None:
+            raise InferenceConnectionNotRunnable(_no_adapter_for(connection, family, drivers))
+        return driver
+    driver = recorded(drivers, connection.provider_id)
+    if family and family not in driver.families:
+        raise InferenceConnectionNotRunnable(_wrong_family_for(connection, driver, family))
+    return driver
+
+
+def _wrong_family_for(connection: InferenceConnection, driver: Provider, family: str) -> str:
+    """Why the recorded driver cannot run what was downloaded.
+
+    The connection names a driver and the weights turned out to be something
+    else, so both halves are named: a reader has to know which of the two to
+    change, and the sentence is useless if it reports only that they disagree.
+    """
+    serves = ", ".join(sorted(driver.families))
+    return (
+        f"connection {connection.name!r} is served by provider {driver.provider_id!r}, whose "
+        f"downloaded config declares model type {family!r} — a type that provider does not "
+        f"serve; it serves {serves}. Point the connection at a model of one of those types, or "
+        "at the provider that serves this one"
+    )
 
 
 def _no_adapter_for(

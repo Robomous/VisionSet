@@ -767,6 +767,15 @@ class InferenceConnectionRow(Base):
     #: and it declared nothing". ``InferenceConnection.model_family`` carries the
     #: reason those are worth telling apart.
     model_family: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: After ``model_family`` because it arrived after it, on the same rule.
+    #:
+    #: Which installed driver serves this connection. Nullable and *only*
+    #: nullable — unlike the column above there is no meaningful empty string
+    #: here, because nothing ever "looks and finds no provider": a provider is
+    #: recorded by whoever knew one, or it is absent.
+    #: ``InferenceConnection.provider_id`` carries why it is kept beside a family
+    #: rather than instead of one.
+    provider_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 #: Connection names are unique in the workspace, case-insensitively.

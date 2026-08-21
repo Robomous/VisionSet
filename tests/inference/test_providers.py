@@ -7,22 +7,28 @@ a provider rebuilt per request carries an empty cache into every click.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 import pytest
 
 from visionset.inference import providers as providers_module
-from visionset.inference.providers import ProviderPool, provider_for, resident
-from visionset.inference.registry import families_served, registered
+from visionset.inference.providers import ProviderPool, driver_for, provider_for, resident
+from visionset.inference.registry import families_served, registered, serving
 from visionset.inference.sam_provider import LocalSamProvider
 from visionset.inference.transformers_provider import LocalTransformersProvider
-from visionset.kernel.domain import ConnectionType, InferenceConnection
+from visionset.kernel.domain import (
+    ConnectionType,
+    CuratedModel,
+    InferenceConnection,
+    ModelCapability,
+)
 from visionset.kernel.errors import (
     InferenceConnectionNotRunnable,
     InferenceConnectionNotSetUp,
     LocalInferenceUnavailable,
 )
+from visionset.kernel.ports import Provider
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
 
 
@@ -41,7 +47,11 @@ def connections(workspace: WorkspaceService) -> InferenceConnectionService:
 
 
 def a_local(
-    connections: InferenceConnectionService, name: str = "seg", *, ready: bool = True
+    connections: InferenceConnectionService,
+    name: str = "seg",
+    *,
+    ready: bool = True,
+    provider_id: str | None = None,
 ) -> InferenceConnection:
     made = connections.create(
         name,
@@ -50,6 +60,7 @@ def a_local(
         model_revision="abc123",
         device="cpu",
         precision="fp32",
+        provider_id=provider_id,
     )
     return connections.record_weights_ready(made.id) if ready else made
 
@@ -185,6 +196,87 @@ def test_an_unsupported_model_leaves_nothing_behind_for_the_next_request(
         pool.get(a_local(connections), workspace_root=tmp_path)
     assert len(pool) == 0
     assert pool.builds == 0
+
+
+# --- which driver answers, once one is recorded --------------------------------
+
+
+POINT = ModelCapability.POINT_SUGGEST
+TEXT = ModelCapability.TEXT_DETECT
+
+
+class _Driver:
+    """A provider built by hand, so a test needs no installed distribution."""
+
+    def __init__(self, provider_id: str, families: Mapping[str, ModelCapability]) -> None:
+        self.provider_id = provider_id
+        self.families = families
+        self.curated: tuple[CuratedModel, ...] = ()
+
+    def build(self, connection: object, *, family: str, workspace_root: Path) -> object:
+        raise NotImplementedError
+
+
+def test_a_recorded_provider_wins_over_another_driver_serving_the_same_family(
+    connections: InferenceConnectionService,
+) -> None:
+    """A recorded provider is an answer somebody gave, not one worked out.
+
+    ``serving`` refuses a contested family outright, so a connection over these
+    two drivers is resolvable at all only *because* one was recorded.
+    """
+    drivers: dict[str, Provider] = {
+        "acme": _Driver("acme", {"sam2": POINT}),
+        "zeta": _Driver("zeta", {"sam2": POINT}),
+    }
+    with pytest.raises(InferenceConnectionNotRunnable):
+        serving(drivers, "sam2")
+
+    connection = a_local(connections, provider_id="zeta")
+    assert driver_for(connection, family="sam2", drivers=drivers) is drivers["zeta"]
+
+
+def test_a_recorded_provider_nobody_installed_is_refused_naming_both_sides(
+    connections: InferenceConnectionService,
+) -> None:
+    """Never a fallback to whoever else serves the family: that would run the
+    connection through a driver nobody chose, and quietly."""
+    drivers: dict[str, Provider] = {"acme": _Driver("acme", {"sam2": POINT})}
+    connection = a_local(connections, provider_id="ghost")
+
+    with pytest.raises(InferenceConnectionNotRunnable) as raised:
+        driver_for(connection, family="sam2", drivers=drivers)
+
+    message = str(raised.value)
+    assert "ghost" in message
+    assert "acme" in message
+
+
+def test_a_recorded_provider_that_does_not_serve_the_declared_family_is_refused(
+    connections: InferenceConnectionService,
+) -> None:
+    """Recording a driver does not retire the config's declaration: the family
+    check is what still catches a connection pointed at the wrong kind of model."""
+    drivers: dict[str, Provider] = {"acme": _Driver("acme", {"sam2": POINT})}
+    connection = a_local(connections, provider_id="acme")
+
+    with pytest.raises(InferenceConnectionNotRunnable) as raised:
+        driver_for(connection, family="grounding-dino", drivers=drivers)
+
+    message = str(raised.value)
+    assert "acme" in message
+    assert "grounding-dino" in message
+
+
+def test_a_connection_recording_no_provider_still_resolves_by_family(
+    connections: InferenceConnectionService,
+) -> None:
+    """Every row written before there was anywhere to record one."""
+    drivers: dict[str, Provider] = {
+        "acme": _Driver("acme", {"sam2": POINT}),
+        "dino": _Driver("dino", {"grounding-dino": TEXT}),
+    }
+    assert driver_for(a_local(connections), family="sam2", drivers=drivers) is drivers["acme"]
 
 
 # --- residency ----------------------------------------------------------------
