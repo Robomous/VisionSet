@@ -26,6 +26,7 @@ import { ProjectScreen } from "./ProjectScreen";
 import { ProjectsScreen } from "./ProjectsScreen";
 import {
   usePreviewSchemaChange,
+  useSchemaBlockingAssets,
   type LabelClassBody,
   type SchemaChangePreview,
 } from "./queries";
@@ -203,6 +204,23 @@ function PreviewSchemaChangeProbe({
   );
 }
 
+function SchemaBlockingAssetsProbe({
+  projectId,
+  classes,
+}: {
+  readonly projectId: string;
+  readonly classes: readonly LabelClassBody[] | null;
+}): JSX.Element {
+  const query = useSchemaBlockingAssets(projectId, classes);
+  return (
+    <div data-testid="blocking-assets-result">
+      {query.data === undefined
+        ? "pending"
+        : `${query.data.total}:${query.data.items[0]?.annotations}:${query.data.items[0]?.batch_ids.length}`}
+    </div>
+  );
+}
+
 describe("the project list", () => {
   it("lists projects and opens one through the callback, never a router", async () => {
     on("GET", /^\/projects$/, {
@@ -359,6 +377,52 @@ describe("the schema editor", () => {
           sentRequest.method === "POST" &&
           new URL(sentRequest.url).pathname.endsWith("/schema/drafts/curated/publish"),
       ),
+    ).toBe(false);
+  });
+
+  it("reads the blocking frames off the typed listing", async () => {
+    const ASSET = "22222222-2222-4222-8222-222222222222";
+    const BATCH = "33333333-3333-4333-8333-333333333333";
+    on("POST", /\/schema\/blocking-assets$/, {
+      status: 200,
+      body: {
+        items: [
+          {
+            asset: {
+              id: ASSET,
+              project_id: PROJECT,
+              modality: "image",
+              content_hash: "deadbeef",
+              format: "jpeg",
+              width: 1920,
+              height: 1080,
+              frame_index: null,
+              frame_timestamp: null,
+              source_id: null,
+              thumbnail_hash: "abc",
+              ingested_at: "2024-01-01T00:00:00Z",
+            },
+            label_classes: ["lane"],
+            annotations: 12,
+            batch_ids: [BATCH],
+          },
+        ],
+        total: 1,
+      },
+    });
+
+    render(mount(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={[]} />));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("blocking-assets-result").textContent).toBe("1:12:1"),
+    );
+  });
+
+  it("stays disabled while nothing is proposed", () => {
+    render(mount(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={null} />));
+    expect(screen.getByTestId("blocking-assets-result").textContent).toBe("pending");
+    expect(
+      sent.some((sentRequest) => new URL(sentRequest.url).pathname.endsWith("/schema/blocking-assets")),
     ).toBe(false);
   });
 

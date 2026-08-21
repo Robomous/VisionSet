@@ -61,6 +61,7 @@ import {
   checkListBatchAssets,
   checkListBatchJobs,
   checkListBatches,
+  checkListBlockingAssets,
   checkListDatasetAssets,
   checkListFormats,
   checkListProjectAssets,
@@ -105,6 +106,8 @@ export type ProjectStats = components["schemas"]["ProjectStatsOut"];
 export type ClassCount = components["schemas"]["ClassCountOut"];
 export type Asset = components["schemas"]["AssetOut"];
 export type AssetPage = components["schemas"]["AssetPage"];
+export type BlockingAsset = components["schemas"]["BlockingAssetOut"];
+export type BlockingAssetPage = components["schemas"]["BlockingAssetPage"];
 
 /** One place the key space is written down. Prefixes are the invalidation API. */
 export const queryKeys = {
@@ -124,6 +127,10 @@ export const queryKeys = {
     ["projects", projectId, "schema", "compare", from, to] as const,
   schemaDraft: (projectId: string, kind: SchemaDraftKind) =>
     ["projects", projectId, "schema", "draft", kind] as const,
+  // The proposal is part of the key: two class lists are two answers, and sharing
+  // one key would make editing the draft a cache overwrite rather than a new read.
+  schemaBlockingAssets: (projectId: string, classes: readonly LabelClassBody[]) =>
+    ["projects", projectId, "schema", "blocking-assets", JSON.stringify(classes)] as const,
 };
 
 /**
@@ -371,6 +378,33 @@ export function usePreviewSchemaChange(projectId: string) {
           body: { classes: [...classes] },
         }),
         checkPreviewSchemaChange,
+      ),
+  });
+}
+
+/**
+ * The frames behind a narrowing's blocker counts.
+ *
+ * `usePreviewSchemaChange` answers how many; this answers which, from the same
+ * server-side walk over the whole proposed class list — the client sends no
+ * filter of its own. Disabled while `classes` is null, because a panel with
+ * nothing proposed has nothing to ask.
+ */
+export function useSchemaBlockingAssets(
+  projectId: string,
+  classes: readonly LabelClassBody[] | null,
+): UseQueryResult<BlockingAssetPage, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.schemaBlockingAssets(projectId, classes ?? []),
+    enabled: classes !== null,
+    queryFn: async () =>
+      unwrap(
+        await client.POST("/projects/{project_id}/schema/blocking-assets", {
+          params: { path: { project_id: projectId } },
+          body: { classes: [...(classes ?? [])] },
+        }),
+        checkListBlockingAssets,
       ),
   });
 }
