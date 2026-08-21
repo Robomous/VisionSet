@@ -105,7 +105,7 @@ def _promoted(workspace: WorkspaceDep, project_id: UUID) -> frozenset[UUID]:
     return DatasetService(workspace).member_asset_ids(dataset.id)
 
 
-@project_router.post("", status_code=201, responses=documented(404, 422))
+@project_router.post("", status_code=201, responses=documented(404))
 def create_batch(workspace: WorkspaceDep, project_id: UUID, body: BatchCreate) -> BatchOut:
     """Start a draft batch over a chosen set of the project's assets.
 
@@ -271,7 +271,7 @@ def complete_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     )
 
 
-@router.post("/{batch_id}/corrections", status_code=201, responses=documented(404, 409, 422))
+@router.post("/{batch_id}/corrections", status_code=201, responses=documented(404, 409))
 def create_correction_batch(
     workspace: WorkspaceDep, batch_id: UUID, body: BatchCorrection
 ) -> BatchOut:
