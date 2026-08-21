@@ -218,6 +218,13 @@ proves nothing - so it is not something to run because a list rendered. A broken
 manifest is reported on its own: the service stops with `checked: 0`, so every other
 number would be about a document that is not the one its hash names.
 
+**A release the active schema no longer describes is refused with its classes.** Publishing
+revalidates every trunk annotation against the active schema, and the 409
+`RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA` carries the per-class counts in `detail.blockers` — the
+same `ClassCount` shape the schema editor's orphan dialog reads. The publish dialog renders
+them under the sentence, one line per class, and says what to do: correct those labels in a
+new batch, remove the frames, or publish a version that describes the classes again.
+
 **The split's fractions are compared the kernel's way.** `0.7 + 0.15 + 0.15` is not
 `1.0` in binary floating point, and the kernel uses `math.isclose(abs_tol=1e-9)`; a
 stricter check in the browser would refuse a recipe the API accepts.

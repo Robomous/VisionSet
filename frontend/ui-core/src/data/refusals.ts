@@ -75,6 +75,8 @@
  */
 
 import { asApiError } from "./errors.js";
+import type { components } from "../generated/api.js";
+import { formatCount } from "../lib/format.js";
 
 /**
  * The codes worth restating, and what they say instead.
@@ -140,6 +142,9 @@ export const REFUSAL_PROSE: Record<string, string> = {
   EXPORT_FORMAT_NOT_FOUND: "No exporter for that format is installed on this server.",
   UNSERIALIZABLE_MANIFEST: "This release's manifest cannot be read back — the workspace may be damaged.",
   EMPTY_RELEASE: "This dataset has no frames yet — promote a completed batch first.",
+  // The dialog lists the classes beside this, from the refusal's own `blockers`.
+  RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA:
+    "The active schema no longer describes some annotations in this dataset.",
 
   // Inference connections.
   INFERENCE_CONNECTION_NOT_FOUND: "That model connection is no longer on record.",
@@ -209,4 +214,39 @@ export function groupRefusals(
     });
   }
   return [...byCode].map(([code, { prose, count }]) => ({ code, prose, count }));
+}
+
+/** How much of one label class is in the way. The shape two 409s carry as `detail.blockers`. */
+export type ClassCount = components["schemas"]["ClassCountOut"];
+
+function isClassCount(value: unknown): value is ClassCount {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate["label_class"] === "string" &&
+    typeof candidate["annotations"] === "number" &&
+    typeof candidate["assets"] === "number"
+  );
+}
+
+/**
+ * The per-class blockers a refusal carries, or null when it carries none.
+ *
+ * `SCHEMA_CHANGE_WOULD_ORPHAN` and `RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA` both
+ * put a `ClassCount` list in `detail.blockers`; one reader serves both, so a
+ * screen rendering either names the classes rather than only the rule.
+ */
+export function classBlockers(detail: Record<string, unknown> | null): readonly ClassCount[] | null {
+  const blockers = detail?.["blockers"];
+  if (!Array.isArray(blockers) || !blockers.every(isClassCount)) return null;
+  return blockers;
+}
+
+/** One blocker as a sentence: `lane: 12 annotations across 3 assets.` */
+export function describeClassCount(blocker: ClassCount): string {
+  return (
+    `${blocker.label_class}: ${formatCount(blocker.annotations)} ` +
+    `${blocker.annotations === 1 ? "annotation" : "annotations"} across ` +
+    `${formatCount(blocker.assets)} ${blocker.assets === 1 ? "asset" : "assets"}.`
+  );
 }
