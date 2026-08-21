@@ -21,6 +21,7 @@
  */
 
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -924,8 +925,9 @@ export function useBatchJobs(batchId: string, enabled = true) {
  *
  * The **only** paginated collection in this API, and it exists for exactly this
  * caller: a batch can hold fifty thousand frames. Two properties of that contract
- * decide the shape here — `total` is the size of the *whole* batch and does not
- * move as you page, so "have I seen everything" is `seen < total` rather than
+ * decide the shape here — `total` is the size of what the view matched, the
+ * whole batch only when nothing narrows it, and it does not move as you page
+ * *within* that view, so "have I seen everything" is `seen < total` rather than
  * "was the last page short"; and an offset past the end is 200 with an empty
  * `items`, never a 404, so overrunning is harmless.
  */
@@ -934,6 +936,10 @@ export function useBatchAssets(batchId: string, view: AssetView = { sort: "membe
   return useInfiniteQuery({
     queryKey: batchKeys.assetsView(batchId, view),
     initialPageParam: 0,
+    // A segment or sort switch is a new query key, and without this the grid
+    // would drop to the loading skeleton for the round trip rather than keep
+    // showing the view it already has.
+    placeholderData: keepPreviousData,
     queryFn: async ({ pageParam }) =>
       unwrap(
         await client.GET("/batches/{batch_id}/assets", {

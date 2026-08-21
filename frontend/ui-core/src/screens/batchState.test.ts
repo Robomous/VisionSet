@@ -28,6 +28,7 @@ import {
   BATCH_STATE_VARIANT,
   segmentCounts,
   segmentOf,
+  segmentProgress,
   SEGMENTS,
   type Segment,
 } from "./batchState";
@@ -126,6 +127,22 @@ describe("the five segments over six states", () => {
   it("matches everything under `all`", () => {
     for (const state of STATES) expect(inSegment(state, "all")).toBe(true);
     expect(inSegment(null, "all")).toBe(true);
+  });
+
+  it("asks the server for exactly the states that round-trip back to the segment", () => {
+    // The two mappings have to agree in both directions: what the server is
+    // asked to keep is what the client, looking at what came back, would have
+    // filed under the same name.
+    for (const segment of SEGMENTS.filter((one) => one !== "all")) {
+      for (const state of segmentProgress(segment) ?? []) {
+        expect(segmentOf(state)).toBe(segment);
+      }
+    }
+  });
+
+  it("asks for nothing under `all` and for `review_pending` alone under `review`", () => {
+    expect(segmentProgress("all")).toBeUndefined();
+    expect(segmentProgress("review")).toEqual(["review_pending"]);
   });
 
   it("makes the segment counts sum to the batch's own total", () => {

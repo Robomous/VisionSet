@@ -23,8 +23,9 @@
  * `docs/content/api.md`: `limit`/`offset` bound the **response, not the read**, and this is
  * the one collection with them because a batch can hold fifty thousand frames. So
  * the network side stays `useInfiniteQuery` over that contract, with `total` fixed
- * at the whole batch, and the render side stays virtualized over **rows** — a row
- * is the unit the browser lays out, and virtualizing tiles inside a CSS grid means
+ * at what the current view matched — the whole batch only when nothing narrows
+ * it — and the render side stays virtualized over **rows** — a row is the unit
+ * the browser lays out, and virtualizing tiles inside a CSS grid means
  * reimplementing the grid.
  *
  * ## The counts come off the wire
@@ -490,7 +491,9 @@ export function GalleryScreen({
           title: "This batch is empty",
           description: "Ingest into it, or promote a different batch.",
         }}
-        isEmpty={() => total === 0}
+        // Only the unfiltered view can say the *batch* is empty; a segment
+        // with no matches has its own message below, `segment-empty`.
+        isEmpty={() => total === 0 && segment === "all"}
       >
         {() => (
           <div
@@ -1010,45 +1013,45 @@ function Toolbar({
       }
     >
       {showSegments && (
-      <>
-      <div
-        className="inline-flex rounded-md border border-border p-0.5"
-        role="group"
-        aria-label="Filter frames by state"
-        data-testid="segments"
-      >
-        {SEGMENTS.map((one) => (
-          <button
-            key={one}
-            type="button"
-            aria-pressed={segment === one}
-            data-testid={`segment-${one}`}
-            onClick={() => onSegment(one)}
-            className={
-              segment === one
-                ? "rounded-sm bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
-                : "rounded-sm px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
-            }
+        <>
+          <div
+            className="inline-flex rounded-md border border-border p-0.5"
+            role="group"
+            aria-label="Filter frames by state"
+            data-testid="segments"
           >
-            {SEGMENT_LABEL[one]} ({counts[one]})
-          </button>
-        ))}
-      </div>
+            {SEGMENTS.map((one) => (
+              <button
+                key={one}
+                type="button"
+                aria-pressed={segment === one}
+                data-testid={`segment-${one}`}
+                onClick={() => onSegment(one)}
+                className={
+                  segment === one
+                    ? "rounded-sm bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
+                    : "rounded-sm px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                }
+              >
+                {SEGMENT_LABEL[one]} ({counts[one]})
+              </button>
+            ))}
+          </div>
 
-      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-        Order
-        <select
-          data-testid="sort-order"
-          aria-label="Order frames"
-          value={sort}
-          onChange={(event) => onSort(event.target.value as AssetSort)}
-          className="rounded-sm border border-border bg-card px-2 py-1 text-xs text-foreground"
-        >
-          <option value="membership">Frame order</option>
-          <option value="confidence">Lowest prompt affinity first</option>
-        </select>
-      </label>
-      </>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Order
+            <select
+              data-testid="sort-order"
+              aria-label="Order frames"
+              value={sort}
+              onChange={(event) => onSort(event.target.value as AssetSort)}
+              className="rounded-sm border border-border bg-card px-2 py-1 text-xs text-foreground"
+            >
+              <option value="membership">Frame order</option>
+              <option value="confidence">Lowest prompt affinity first</option>
+            </select>
+          </label>
+        </>
       )}
 
       {/*

@@ -587,6 +587,33 @@ describe("the gallery", () => {
     expect(sent.some((one) => new URL(one.url).pathname.endsWith("/annotations"))).toBe(false);
   });
 
+  it("says a segment is empty in words, not by claiming the whole batch is", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({ state: "in_annotation", schema_version: 1,
+        progress: { ...NO_PROGRESS, total: 3, unannotated: 3 } }),
+    });
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname.endsWith("/assets")) {
+        return url.searchParams.getAll("progress").includes("pre_labeled")
+          ? { status: 200, body: { total: 0, items: [] } }
+          : { status: 200, body: assets(3) };
+      }
+      return undefined;
+    });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    await screen.findByTestId("tile-asset-0");
+
+    fireEvent.click(screen.getByTestId("segment-pre_labeled"));
+
+    expect((await screen.findByTestId("segment-empty")).textContent).toBe(
+      "No frames are model-labeled.",
+    );
+    expect(screen.queryByText("This batch is empty")).toBeNull();
+  });
+
   /**
    * A draft shows less, and every omission is a documented zero rather than a
    * missing feature.
