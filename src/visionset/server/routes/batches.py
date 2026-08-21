@@ -393,14 +393,15 @@ def pre_label_batch(
     awaiting review or accepted is passed over, and so is an `unannotated` one
     that still carries annotations from an earlier round that was skipped and
     then restored: that sequence deletes no labels, so progress alone does not
-    prove an asset untouched. A run never writes over what a person did, and
-    never writes twice over what a model did — a plain second run extends an
-    earlier one onto whatever is still untouched. `replace_model_labels` widens
-    it to every frame still `pre_labeled` and supersedes those labels with this
-    run's answer, one frame per transaction; a frame a person edited, confirmed
-    or skipped is never touched, and a frame the model now finds nothing on
-    returns to `unannotated`. A replacing request arriving while a run is in
-    flight joins that run, whichever flag it carries.
+    prove an asset untouched. A run never writes over what a person did in this
+    batch, and never writes twice over what a model did — a plain second run
+    extends an earlier one onto whatever is still untouched.
+    `replace_model_labels` widens it to every frame still `pre_labeled` and
+    supersedes those labels with this run's answer, one frame per transaction;
+    a frame anyone edited, confirmed or skipped in this batch is never touched,
+    and a frame the model now finds nothing on returns to `unannotated`. A
+    replacing request arriving while a run is in flight joins that run,
+    whichever flag it carries.
 
     **The batch's pinned schema is the prompt.** The model is asked for each class
     the schema declares that a box can be written as; an answer naming one of

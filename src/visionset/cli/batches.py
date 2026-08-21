@@ -237,8 +237,8 @@ def batch_pre_label(
         typer.Option(
             "--replace-model-labels",
             help="Also rewrite the model labels on frames still pre-labeled (nobody has "
-            "touched them). Frames a person edited, confirmed or skipped are never affected. "
-            "Cannot be undone.",
+            "touched them). Frames anyone edited, confirmed or skipped in this batch are "
+            "never affected. Cannot be undone.",
         ),
     ] = False,
     json_out: JsonOption = False,

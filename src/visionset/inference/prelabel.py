@@ -23,8 +23,8 @@ and its move to ``pre_labeled`` together, so a run that dies has either not
 touched an asset or fully entered it. That is also what makes a second run safe:
 it collects the untouched assets again, and the ones already entered are no longer
 among them. Asked to replace, it also reaches the frames it entered before and
-supersedes them the same way, one frame per transaction, and nothing a person
-judged.
+supersedes them the same way, one frame per transaction, and nothing anybody
+judged in this batch.
 """
 
 from __future__ import annotations
@@ -345,9 +345,9 @@ def pre_label(
     ``replace_model_labels`` widens the run from untouched frames to every frame
     still ``pre_labeled`` — labels a model wrote and nobody has judged — and
     supersedes those labels with this run's answer, one frame per transaction.
-    A frame a person edited, confirmed or skipped is never touched, flagged or
-    not. A frame the model now finds nothing on loses its stale labels and reads
-    untouched again; ``PreLabelOutcome.annotations_replaced`` says how many
+    A frame anyone edited, confirmed or skipped in this batch is never touched,
+    flagged or not. A frame the model now finds nothing on loses its stale
+    labels and reads untouched again; ``PreLabelOutcome.annotations_replaced`` says how many
     labels went.
 
     ``on_plan`` is handed the prompt and the classes left out of it, once, after

@@ -16,12 +16,13 @@
  * `pre_labeled`, never `annotated`: what comes back is a model's guess, so it is
  * editable from the moment it arrives rather than inherited as somebody's own
  * work — correcting a detector's boxes is the normal path, not a special one.
- * Only assets nothing has touched are asked for — the route's own rule, and it
- * is stronger than `progress.unannotated` alone: a labeled, skipped and
- * restored asset reads `unannotated` again without losing its boxes, and the
- * route passes it over too. So `progress.unannotated`, the
- * count shown here, is an upper bound on what a run will touch rather than an
- * exact one — which is why the string below says "up to".
+ * Only assets nothing has touched are asked for — unless the run is asked to
+ * replace, below — the route's own rule, and it is stronger than
+ * `progress.unannotated` alone: a labeled, skipped and restored asset reads
+ * `unannotated` again without losing its boxes, and the route passes it over
+ * too. So `progress.unannotated`, the count shown here, is an upper bound on
+ * what a run will touch rather than an exact one — which is why the string
+ * below says "up to".
  *
  * ## The prompt is named, not described
  *
@@ -604,9 +605,10 @@ function PreLabelDialog({
       <DialogContent data-testid="pre-label-dialog">
         <DialogTitle>Pre-label {batch?.name}</DialogTitle>
         <DialogDescription>
-          Asks the model about every asset nothing has touched yet, under the classes named
-          below. What it finds lands <strong>pre-labeled and editable</strong>, never as
-          somebody&rsquo;s own annotation.
+          Asks the model about every asset nothing has touched yet — and, if you ask it to,
+          the frames it pre-labeled before — under the classes named below. What it finds
+          lands <strong>pre-labeled and editable</strong>, never as somebody&rsquo;s own
+          annotation.
         </DialogDescription>
 
         <div className="flex flex-col gap-3">
@@ -701,8 +703,8 @@ function PreLabelDialog({
                     </span>
                   </label>
                   <FieldHint>
-                    Frames a person has edited, confirmed or skipped are never touched. This
-                    cannot be undone.
+                    Frames anyone has edited, confirmed or skipped in this batch are never
+                    touched. This cannot be undone.
                   </FieldHint>
                 </div>
               )}

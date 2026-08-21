@@ -1303,7 +1303,8 @@ class BatchApprove(BaseModel):
 
 
 class PreLabelRequest(BaseModel):
-    """Which model should pre-label this batch, and how sure it has to be."""
+    """Which model should pre-label this batch, how sure it has to be, and whether it
+    may replace its own earlier labels."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1319,7 +1320,7 @@ class PreLabelRequest(BaseModel):
     #: labels a model wrote and nobody has edited, confirmed or skipped. Those
     #: labels are superseded by this run's answer, one frame per transaction,
     #: and a frame the model now finds nothing on returns to `unannotated`.
-    #: Frames a person has touched are never affected. This cannot be undone.
+    #: Frames anyone has touched in this batch are never affected. This cannot be undone.
     replace_model_labels: bool = False
 
 

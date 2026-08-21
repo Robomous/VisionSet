@@ -1809,9 +1809,8 @@ function DiscardModelLabelsDialog({
           Discard the model's labels on {count} frame{count === 1 ? "" : "s"}?
         </DialogTitle>
         <DialogDescription>
-          This deletes every label the model wrote on them and cannot be undone — a pre-labeling
-          run does not repeat over a frame it has already labeled. The frames go back to
-          unannotated.
+          This deletes every label the model wrote on them and cannot be undone. The frames go
+          back to unannotated, where a new pre-labeling run reaches them again.
         </DialogDescription>
         <DialogFooter>
           <Button variant="secondary" onClick={onCancel} data-testid="discard-cancel">
