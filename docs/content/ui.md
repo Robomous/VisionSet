@@ -159,6 +159,13 @@ recordable ranked last and ordered among themselves by progress. That second gro
 is every batch in a workspace created before the stamp existed, since it was added
 without a backfill.
 
+**The attention list names who is being waited on.** A batch holding frames awaiting
+review is waiting on a reviewer; a batch holding frames a model labeled and nobody has
+read is waiting on an annotator, and its row says so rather than reading like the first -
+*48 model-labeled frames waiting on an annotator*. Both rows open the batch gallery,
+where the model-labeled segment and its bulk verbs are
+([below](#reviewing-a-pre-labeled-batch)); a batch holding both kinds gets both rows.
+
 One thing about the page is still a consequence of the storage format rather than a
 choice, and it is stated on the endpoint as well as here: the activity feed's
 `ingest` entry is the newest `Asset.ingested_at` in a project rather than a run

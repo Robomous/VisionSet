@@ -54,6 +54,7 @@ import {
   Play,
   Plus,
   Rocket,
+  Sparkles,
   Tags,
   Upload,
 } from "lucide-react";
@@ -84,7 +85,7 @@ export interface HomeScreenProps {
    * honour the distinction renders neither.
    */
   readonly onContinue?: (jobId: string, assetId: string | null) => void;
-  /** The batch gallery, for the fallback and for a review row. */
+  /** The batch gallery, for the fallback and for a review or pre-labeled row. */
   readonly onOpenBatch?: (projectId: string, batchId: string) => void;
   readonly onOpenProject?: (projectId: string) => void;
   /** The project list, behind the recent-projects header link. */
@@ -382,7 +383,8 @@ function AttentionRow({
   );
   const shared = "flex w-full items-center gap-2 px-3 py-2 text-left";
 
-  if (item.kind === "review_pending" && item.project_id !== null && onOpenBatch !== undefined) {
+  const isBatch = item.kind === "review_pending" || item.kind === "pre_labeled";
+  if (isBatch && item.project_id !== null && onOpenBatch !== undefined) {
     return (
       <button
         type="button"
@@ -409,6 +411,9 @@ function AttentionIcon({ kind }: { readonly kind: AttentionItem["kind"] }): JSX.
   if (kind === "job_running") {
     return <Loader className={`${shape} text-muted-foreground`} aria-hidden="true" />;
   }
+  if (kind === "pre_labeled") {
+    return <Sparkles className={`${shape} text-muted-foreground`} aria-hidden="true" />;
+  }
   return <Layers className={`${shape} text-muted-foreground`} aria-hidden="true" />;
 }
 
@@ -417,6 +422,10 @@ function attentionLine(item: AttentionItem): string {
   if (item.kind === "review_pending") {
     const frames = item.count ?? 0;
     return `${item.label} — ${formatCount(frames)} ${frames === 1 ? "frame" : "frames"} waiting on review`;
+  }
+  if (item.kind === "pre_labeled") {
+    const frames = item.count ?? 0;
+    return `${item.label} — ${formatCount(frames)} model-labeled ${frames === 1 ? "frame" : "frames"} waiting on an annotator`;
   }
   if (item.kind === "job_failed") {
     // The cause is the useful half, and the API's error contract already
