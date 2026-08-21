@@ -18,7 +18,9 @@ Navigation maps 1:1 to domain objects. This is the target structure; if implemen
 /projects/:id                      Project — tabs, in this order:
     ?tab=overview                    Overview (dashboard, see below)
     ?tab=schema                      Schema (contract)
-                                       └─ version history: subsection INSIDE Schema, not a sibling tab
+                                       ├─ version history: subsection INSIDE Schema, not a sibling tab
+                                       └─ frames in the way: subsection INSIDE Schema; each row links
+                                          out to /projects/:id/batches/:batchId, once per holding batch
     ?tab=batches                     Batches (workflow) — omitted when the host wires no batch route
     ?tab=dataset                     Dataset (trunk + releases)   ← primary tab, not a buried route
 /projects/:id/ingest               Ingest flow
@@ -41,6 +43,7 @@ Rules:
 
 - **A correction batch is reached from the batch that needs correcting**, never from a "new batch" form: the gallery header and the Batches row both offer it on a `completed` batch, capability-gated on `create_correction`. The annotator's read-only banner and the gallery's bulk bar *link* to it rather than duplicating it — creating a batch is a curation act, curation lives on the batch view, and a second place batches are made is a second place the rules can drift.
 - **Dataset is first-class.** It is the product's central object and must be reachable in ≤1 click from any project tab. It is never gated behind, or discoverable only through, onboarding UI. Promotion success links onward to it; the gallery links to it once a batch is `completed`.
+- **The frames blocking a narrowing are a subsection of Schema, not a screen.** They are a *view of* the draft on the editor above them, the same relation version history has to the schema. A row links to **every** batch holding its frame rather than to one: an annotation carries an `asset_id` and no batch, so there is no single annotator address to prefer. The section is omitted entirely when the host wires no batch route, on the rule the Batches tab already follows. It shows a window of the frames and states the total as text rather than a "see all": the destination that control would need is a project-wide asset view, and there is none — the count is a property of the proposal, not the length of a list somebody can open.
 - **"Schema history" is not a sibling tab.** Version history lives inside the Schema tab, below the editor and beside the `VersionNavigator` seam. The two overlap on purpose: the navigator is the *reader* (one version, with what it changed), the history is the *ledger* (every version at once). `?tab=versions` remains as a redirect; it does not appear in the tab bar.
 - **The 4-step checklist is onboarding, not navigation.** It retires itself twice over: when the journey is finished (`hasReleases` makes `done` derivable) and when somebody dismisses it. Dismissal is **per project** and persisted — finishing one project does not teach you the pipeline for the next. It gates nothing and is never the sole path to a screen.
   `hasReleases` is derived in `useProjectReadiness` from the two-hop read (project → dataset → releases) rather than added to the project-stats wire model: the Overview dashboard already makes both requests for its own cards, so a third spelling of the fact on the server would be exactly the drift these rules exist to prevent.

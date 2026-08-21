@@ -71,6 +71,7 @@ from visionset.kernel.domain import (
     BatchAction,
     BatchState,
     BboxGeometry,
+    BlockingAsset,
     BySegments,
     BySize,
     ChangeKind,
@@ -600,6 +601,35 @@ class SchemaChangePreviewOut(BaseModel):
             blockers=tuple(ClassCountOut.of(count) for count in preview.blockers),
             is_refused=preview.is_refused,
         )
+
+
+class BlockingAssetOut(BaseModel):
+    """One frame standing in the way of a narrowing, and where to reach it."""
+
+    asset: AssetOut
+    #: The blocking classes this frame carries, sorted. Names rather than a
+    #: per-class map, for ``DatasetStatsOut.classes``' reason: an open object
+    #: generates as a ``Record``, which tells a client nothing about its keys.
+    label_classes: list[str]
+    #: How many of this frame's annotations the change would orphan — not how
+    #: many it carries.
+    annotations: int
+    #: Every batch holding this frame. An asset put in a batch and later in a
+    #: correction of it is in both, and neither is more the answer.
+    batch_ids: list[UUID]
+
+    @classmethod
+    def of(cls, blocking: BlockingAsset) -> Self:
+        return cls(
+            asset=AssetOut.of(blocking.asset),
+            label_classes=list(blocking.label_classes),
+            annotations=blocking.annotations,
+            batch_ids=list(blocking.batches),
+        )
+
+
+class BlockingAssetPage(Page[BlockingAssetOut]):
+    """A page of the frames blocking a narrowing."""
 
 
 class SchemaVersionCreate(BaseModel):

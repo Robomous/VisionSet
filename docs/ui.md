@@ -921,6 +921,33 @@ protected is not lost, only moved: a blank note still becomes a `null` descripti
 `SchemaDraftService.publish` sends `draft.note or None` to `create_version` - the empty
 string never reaches the version as itself.
 
+### Frames in the way
+
+The third section of the Schema tab, below the editor and the version history. A refused
+publish states how many frames block it and then closes; those frames are still there
+afterwards, and this is where they can be reached. It reads the listing behind the
+preview's own counts (`POST .../schema/blocking-assets`,
+[api.md](api.md#reaching-what-is-in-the-way)) - the same walk over the project, from the
+same proposal - so the number the dialog quoted and the rows here cannot come to
+disagree.
+
+**It asks about the draft the editor above it is showing**, not a copy of it: the class
+list comes from `shownDraft`, the editor's own derivation, because a second spelling of
+which classes are on screen is a panel answering about a proposal nobody is looking at.
+The read is deferred until that list has held still for the same 400ms the autosave
+settles on - `ClassFields` emits an edit per character typed, and every intermediate
+name is a walk over every annotation in the project that nobody asked for.
+
+It shows the first twelve and says how many there are, because each row fetches a
+thumbnail on mount and a narrowing that orphans five thousand frames would otherwise
+open five thousand requests at once. The remainder is stated as text rather than offered
+as a "see all", since there is no project-wide asset view to send anybody to. **A row
+links to every batch holding its frame, never to one** - an annotation carries an
+`asset_id` and no batch, so a frame in three batches has three honest destinations and
+no preferred one, and a frame in none gets no link rather than a guess. That makes the
+whole section pointless without a batch route, so a host that wires none does not get
+it; nor does a project with no published version, which has no contract to narrow yet.
+
 ### Adding a class from the annotation page
 
 A class that does not exist used to cost a round trip through the Schema tab **and a

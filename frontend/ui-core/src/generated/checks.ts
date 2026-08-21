@@ -114,6 +114,12 @@ export const checkBatchMembershipOut: Check<Schemas["BatchMembershipOut"]> =
 export const checkBatchPage: Check<Schemas["BatchPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchOut)], "total": [true, isInteger] } as const);
 
+export const checkBlockingAssetOut: Check<Schemas["BlockingAssetOut"]> =
+  /*#__PURE__*/ object({ "annotations": [true, isInteger], "asset": [true, checkAssetOut], "batch_ids": [true, arrayOf(isString)], "label_classes": [true, arrayOf(isString)] } as const);
+
+export const checkBlockingAssetPage: Check<Schemas["BlockingAssetPage"]> =
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkBlockingAssetOut)], "total": [true, isInteger] } as const);
+
 export const checkConnectionAction: Check<Schemas["ConnectionAction"]> =
   /*#__PURE__*/ openOneOf(["download_weights", "check_integrity", "update", "delete"] as const);
 
@@ -408,6 +414,7 @@ export const checkListBackgroundJobs = checkBackgroundJobPage;
 export const checkListBatchAssets = checkBatchAssetPage;
 export const checkListBatchJobs = checkJobPage;
 export const checkListBatches = checkBatchPage;
+export const checkListBlockingAssets = checkBlockingAssetPage;
 export const checkListDatasetAssets = checkAssetPage;
 export const checkListDatasetChanges = checkDatasetChangePage;
 export const checkListFormats = checkFormatPage;

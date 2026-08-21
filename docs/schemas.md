@@ -475,9 +475,17 @@ refusals are **both 409** with only one override between them, so it branches on
 
 `POST /projects/{id}/schema/preview` now routes `SchemaService.preview`, so a client can ask
 both questions about a *draft* before it publishes; `compare` remains the question about two
-*published* versions, which is what the version navigator asks. See
-[ui.md](ui.md#the-schema-editor-and-the-three-409s) and
-[api.md](api.md#asking-before-you-are-refused).
+*published* versions, which is what the version navigator asks.
+`POST /projects/{id}/schema/blocking-assets` routes `SchemaService.blocking_assets`, which is the
+listing behind the counts. It surfaces as **"Frames in the way"**, a section under the editor in
+the Schema tab rather than anything inside the refusal dialog: the dialog states a number and
+closes, and the frames it counted are still there to be dealt with afterwards. Each row links to
+every batch holding its frame — an annotation names no batch, so there is no single one to send
+anybody to. Both readings walk the project once, the same way, so the count and the rows never
+disagree. See
+[ui.md](ui.md#frames-in-the-way),
+[api.md](api.md#asking-before-you-are-refused) and
+[api.md](api.md#reaching-what-is-in-the-way).
 
 ## Drafts
 
