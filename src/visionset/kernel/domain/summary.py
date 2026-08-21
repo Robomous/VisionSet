@@ -41,6 +41,10 @@ class AttentionKind(StrEnum):
 
     #: A batch holding frames whose review has not happened.
     REVIEW_PENDING = "review_pending"
+    #: A batch holding frames a model labeled and no person has looked at. Waits
+    #: on an annotator where ``REVIEW_PENDING`` waits on a reviewer, and the two
+    #: are never merged into one row.
+    PRE_LABELED = "pre_labeled"
     #: A queued unit of machine work that stopped and said why.
     JOB_FAILED = "job_failed"
     #: A queued unit of machine work still going.
@@ -184,13 +188,14 @@ class AttentionItem(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: AttentionKind
-    #: The batch, for a review row; the background job, for the other two.
+    #: The batch, for a review or pre-labeled row; the background job otherwise.
     subject_id: UUID
     project_id: UUID | None = None
     project_name: str | None = None
     #: A human-facing name for the subject: the batch's, or the job's type.
     label: str
-    #: Frames awaiting review, for ``review_pending``. NULL for a job row.
+    #: Frames awaiting review, for ``review_pending``; frames a model labeled and
+    #: nobody has judged, for ``pre_labeled``. NULL for a job row.
     count: int | None = Field(default=None, ge=0)
     #: Items dealt with so far, for ``job_running``. NULL otherwise.
     processed: int | None = Field(default=None, ge=0)

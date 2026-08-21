@@ -78,6 +78,15 @@ RECENT_PROJECTS_LIMIT = 5
 #: it becomes ``running`` without anybody doing anything.
 ATTENTION_JOB_STATES = (BackgroundJobState.FAILED, BackgroundJobState.RUNNING)
 
+#: The asset-progress states that make an open batch somebody's business, each
+#: with the row it earns. One row per state rather than one per batch: a batch
+#: holding both is waiting on a reviewer *and* on an annotator, and a merged row
+#: would have to pick one to say.
+_BATCH_ATTENTION = (
+    (AttentionKind.REVIEW_PENDING, AssetProgress.REVIEW_PENDING),
+    (AttentionKind.PRE_LABELED, AssetProgress.PRE_LABELED),
+)
+
 
 class SummaryService:
     """Reads across every project in the workspace to answer one page."""
@@ -122,18 +131,19 @@ class SummaryService:
                     if batch.state is not BatchState.IN_ANNOTATION:
                         continue
                     jobs = jobs_of(uow, batch)
-                    waiting = _in_state(jobs, AssetProgress.REVIEW_PENDING)
-                    if waiting:
-                        attention.append(
-                            AttentionItem(
-                                kind=AttentionKind.REVIEW_PENDING,
-                                subject_id=batch.id,
-                                project_id=project.id,
-                                project_name=project.name,
-                                label=batch.name,
-                                count=waiting,
+                    for kind, progress in _BATCH_ATTENTION:
+                        waiting = _in_state(jobs, progress)
+                        if waiting:
+                            attention.append(
+                                AttentionItem(
+                                    kind=kind,
+                                    subject_id=batch.id,
+                                    project_id=project.id,
+                                    project_name=project.name,
+                                    label=batch.name,
+                                    count=waiting,
+                                )
                             )
-                        )
                     candidate = _candidate(project, batch, jobs, _touched(uow, jobs))
                     if candidate is not None:
                         best = _preferred(best, candidate)

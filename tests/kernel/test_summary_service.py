@@ -783,6 +783,49 @@ def test_a_batch_holding_frames_for_review_asks_for_attention(tmp_path: Path) ->
         fixture.close()
 
 
+def test_a_batch_a_model_labeled_and_nobody_has_read_asks_for_an_annotator(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        assets = fixture.assets(project, 3)
+        batch, job = fixture.open_batch(project, "pre-labeled", assets)
+        for asset_id in assets[:2]:
+            fixture.jobs.mark(job, asset_id, AssetProgress.PRE_LABELED)
+
+        rows = [row for row in fixture.summary().attention if row.kind is AttentionKind.PRE_LABELED]
+
+        assert len(rows) == 1
+        assert rows[0].subject_id == batch
+        assert rows[0].count == 2
+        assert rows[0].label == "pre-labeled"
+        assert rows[0].project_name == "p"
+    finally:
+        fixture.close()
+
+
+def test_a_batch_waiting_on_both_gets_a_row_for_each(tmp_path: Path) -> None:
+    """A reviewer and an annotator are two different people; one row cannot ask both."""
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        assets = fixture.assets(project, 3)
+        batch, job = fixture.open_batch(project, "both", assets)
+        fixture.annotate(job, assets[:1])
+        fixture.jobs.mark(job, assets[0], AssetProgress.REVIEW_PENDING)
+        fixture.jobs.mark(job, assets[1], AssetProgress.PRE_LABELED)
+
+        rows = [row for row in fixture.summary().attention if row.subject_id == batch]
+
+        assert [(row.kind, row.count) for row in rows] == [
+            (AttentionKind.REVIEW_PENDING, 1),
+            (AttentionKind.PRE_LABELED, 1),
+        ]
+    finally:
+        fixture.close()
+
+
 def test_a_failed_background_job_asks_for_attention_and_names_the_cause(
     tmp_path: Path,
 ) -> None:

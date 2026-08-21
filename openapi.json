@@ -758,6 +758,7 @@
         "description": "What sort of thing a row of the attention list is.\n\nA ``StrEnum`` rather than a plain ``str`` on the ``SourceKind`` test: no\nwriter outside this build produces one, the value decides how a row renders,\nand the set grows deliberately. Contrast ``DatasetChange.operation``, which\nis a plain ``str`` precisely because a log outlives the build that wrote it.",
         "enum": [
           "review_pending",
+          "pre_labeled",
           "job_failed",
           "job_running"
         ],
