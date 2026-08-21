@@ -61,7 +61,6 @@ from visionset.kernel.services import (
     ProjectService,
     WorkspaceService,
 )
-from visionset.mcp._errors import refused
 from visionset.mcp._resolve import (
     ConnectionRef,
     ProjectRef,
@@ -499,18 +498,18 @@ def list_batch_assets(
     ] = None,
     offset: Annotated[int, Field(ge=0, description="How many assets to skip.")] = 0,
     progress: Annotated[
-        list[str] | None,
-        Field(description="Keep only assets in these states, e.g. ['pre_labeled']."),
+        list[AssetProgress] | None,
+        Field(description="Keep only assets in these states. An empty list means no filter."),
     ] = None,
     sort: Annotated[
-        str,
+        AssetSort,
         Field(
             description=(
                 "'membership' (stored order) or 'confidence' (lowest model "
                 "confidence first, unscored last)."
             )
         ),
-    ] = "membership",
+    ] = AssetSort.MEMBERSHIP,
 ) -> dict[str, Any]:
     """List a batch's assets, with the job, progress and label summary each carries.
 
@@ -521,24 +520,17 @@ def list_batch_assets(
     score among the labels a model wrote, on that model's own scale, or null.
 
     `job_id` and `progress` are both null exactly while the batch is a draft,
-    because a draft has no jobs. Use `get_asset_image` on any `id` here to see
-    the pixels.
+    because a draft has no jobs, so a `progress` filter over a draft matches
+    nothing. Use `get_asset_image` on any `id` here to see the pixels.
     """
-    try:
-        parsed_progress = (
-            None if progress is None else frozenset(AssetProgress(p) for p in progress)
-        )
-        parsed_sort = AssetSort(sort)
-    except ValueError as exc:
-        return refused(str(exc))
     with opened_workspace() as workspace:
         resolved = identifier(batch_id, what="batch_id")
         service = BatchService(workspace)
         batch = service.get(resolved)
         placed, total = service.asset_page(
             resolved,
-            progress=parsed_progress,
-            sort=parsed_sort,
+            progress=frozenset(progress) if progress else None,
+            sort=sort,
             limit=limit,
             offset=offset,
         )
