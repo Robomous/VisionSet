@@ -3,7 +3,7 @@
  *.
  *
  * **`.mdx` counts as Markdown here.** `docs/content/` is `.md` today and the documentation
- * site's own rule keeps it that way (see `docs/content/README.md`), but the site can
+ * site's own rule keeps it that way (see `docs/README.md`), but the site can
  * take `.mdx` for a page that genuinely needs a component — and an extension this
  * scan did not name would be a document exempt from every rule below, silently,
  * from the moment somebody added one. The two are checked identically: a fragment
@@ -298,7 +298,7 @@ test("a repeated heading gets GitHub's numeric suffix, so a live link is never m
 
 test("an .mdx document is held to these rules, not exempt from them", () => {
   // There is no `.mdx` in the repository today — `docs/content/` is Markdown and
-  // `docs/content/README.md` says why it stays that way. This is the forward guard:
+  // `docs/README.md` says why it stays that way. This is the forward guard:
   // the day the documentation site takes one for a page that needs a component,
   // it must arrive already covered rather than silently outside every rule above.
   // Narrowing either half back to `.md` alone reddens this.
