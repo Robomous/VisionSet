@@ -116,13 +116,15 @@ export const SelectContent = forwardRef<
       <SelectPrimitive.Content
         ref={ref}
         position={position}
+        data-align-trigger={position === "item-aligned"}
         className={cn(
           // `data-[state=open]`/`data-[state=closed]`, not a bare `data-open`: Radix
           // reports open/closed as `data-state`'s value, and Tailwind's bare
           // `data-*` variant only matches an attribute's *presence*.
-          "dark relative z-50 flex max-h-(--radix-select-content-available-height) min-w-32 " +
-            "flex-col overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md " +
-            "ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 " +
+          "dark relative z-50 flex max-h-(--radix-select-content-available-height) min-w-36 " +
+            "origin-(--radix-select-content-transform-origin) flex-col overflow-hidden rounded-lg " +
+            "bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 " +
+            "data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 " +
             "data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 " +
             "data-[side=top]:slide-in-from-bottom-2 data-[state=open]:animate-in " +
             "data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out " +
@@ -142,13 +144,13 @@ export const SelectContent = forwardRef<
           scrolls the content element itself — this keeps the split deliberately,
           because it is the fix `inference.spec.ts` asserts.
         */}
-        <SelectPrimitive.ScrollUpButton className="z-10 flex cursor-default items-center justify-center bg-popover py-1">
+        <SelectPrimitive.ScrollUpButton className="z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4">
           <IconChevronUp className="size-4 text-muted-foreground" aria-hidden="true" />
         </SelectPrimitive.ScrollUpButton>
         <SelectPrimitive.Viewport className="overflow-y-auto p-1">
           {children}
         </SelectPrimitive.Viewport>
-        <SelectPrimitive.ScrollDownButton className="z-10 flex cursor-default items-center justify-center bg-popover py-1">
+        <SelectPrimitive.ScrollDownButton className="z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4">
           <IconChevronDown className="size-4 text-muted-foreground" aria-hidden="true" />
         </SelectPrimitive.ScrollDownButton>
       </SelectPrimitive.Content>
@@ -174,7 +176,10 @@ export const SelectItem = forwardRef<
       className={cn(
         "relative flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 " +
           "text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground " +
-          "data-disabled:pointer-events-none data-disabled:opacity-50",
+          "not-data-[variant=destructive]:focus:**:text-accent-foreground " +
+          "data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none " +
+          "[&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex " +
+          "*:[span]:last:items-center *:[span]:last:gap-2",
         className,
       )}
       {...props}
