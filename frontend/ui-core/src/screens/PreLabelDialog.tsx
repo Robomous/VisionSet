@@ -581,9 +581,8 @@ function PreLabelDialog({
   // `Start`'s own twins — `Continue`, `Run again`, `Try again` — share this: a
   // launch with no untouched asset left is a guaranteed no-op, whichever mode
   // offers it.
-  // `plan.isError` is `SCHEMA_HAS_NO_DETECTABLE_CLASS` — the launch refuses on
-  // the same read, so pressing Start could only reproduce the refusal already
-  // on screen.
+  // `plan.isError` covers every refusal the plan read can hit; the launch
+  // refuses on the same gate, so pressing Start could only reproduce it.
   const launchDisabled =
     running || active === undefined || !validConfidence || blocked || plan.isError;
   // The primitive the effect is actually a function of, not the object that
