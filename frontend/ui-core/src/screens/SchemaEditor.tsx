@@ -149,7 +149,11 @@ const STALE_DRAFT = "STALE_WRITE";
 type SchemaChangeFlow =
   | { readonly kind: "idle" }
   | { readonly kind: "checking-removal" }
-  | { readonly kind: "blockers"; readonly blockers: readonly ClassCount[] }
+  | {
+      readonly kind: "blockers";
+      readonly blockers: readonly ClassCount[];
+      readonly diff: SchemaDiff | null;
+    }
   | { readonly kind: "destructive"; readonly preview: SchemaChangePreview }
   | { readonly kind: "preview-error"; readonly error: unknown };
 
@@ -437,6 +441,7 @@ export function SchemaEditor({
   const failure = publish.isError ? asApiError(publish.error) : null;
   const publishBlockers = failure?.code === WOULD_ORPHAN ? orphanBlockers(failure.detail) : null;
   const shownBlockers = flow.kind === "blockers" ? flow.blockers : publishBlockers;
+  const shownNarrowing = flow.kind === "blockers" ? flow.diff : null;
   const draftFailure = draftSaveError == null ? null : asApiError(draftSaveError);
   /**
    * `STALE_WRITE`, whichever of the two calls surfaced it.
@@ -571,7 +576,7 @@ export function SchemaEditor({
     try {
       const previewed = await preview.mutateAsync({ classes });
       if (previewed.is_refused) {
-        setFlow({ kind: "blockers", blockers: previewed.blockers });
+        setFlow({ kind: "blockers", blockers: previewed.blockers, diff: previewed.diff });
         finishSave();
         return;
       }
@@ -658,7 +663,7 @@ export function SchemaEditor({
     try {
       const previewed = await preview.mutateAsync({ classes: candidate });
       if (previewed.is_refused) {
-        setFlow({ kind: "blockers", blockers: previewed.blockers });
+        setFlow({ kind: "blockers", blockers: previewed.blockers, diff: previewed.diff });
         return;
       }
       setFlow({ kind: "idle" });
@@ -956,6 +961,7 @@ export function SchemaEditor({
 
       <OrphanBlockersDialog
         blockers={shownBlockers}
+        diff={shownNarrowing}
         framesListed={framesListed}
         onClose={closeBlockers}
       />
@@ -1255,18 +1261,44 @@ function ClassDetail({
 }
 
 /**
+ * The narrowing changes, in the kernel's words.
+ *
+ * A count of classes cannot tell a class removed from a class re-cased or a
+ * shape dropped — all of them "narrow one class" — and the detail is the one
+ * place the kernel says which, so both dialogs below list it rather than
+ * re-deriving it from names.
+ */
+function NarrowingChanges({ diff }: { readonly diff: SchemaDiff | null }): JSX.Element | null {
+  const narrowing = diff?.changes.filter((change) => change.kind === "destructive") ?? [];
+  if (narrowing.length === 0) return null;
+  return (
+    <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+      {narrowing.map((change, index) => (
+        <li key={index} data-testid="narrowing-change">
+          {change.detail}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
  * The terminal refusal, and where the frames behind it are.
  *
- * `framesListed` is threaded rather than assumed: the section this points at is
- * offered only to a host that can open a batch, and a dialog naming a section
- * that is not on the page is worse than one naming nothing.
+ * `diff` is the preview this refusal came from, when it came from one: a publish
+ * that was refused without a preview has none, and the dialog then names only
+ * the classes. `framesListed` is threaded rather than assumed: the section this
+ * points at is offered only to a host that can open a batch, and a dialog naming
+ * a section that is not on the page is worse than one naming nothing.
  */
 function OrphanBlockersDialog({
   blockers,
+  diff,
   framesListed,
   onClose,
 }: {
   readonly blockers: readonly ClassCount[] | null;
+  readonly diff: SchemaDiff | null;
   readonly framesListed: boolean;
   readonly onClose: () => void;
 }): JSX.Element {
@@ -1274,6 +1306,7 @@ function OrphanBlockersDialog({
     <Dialog open={blockers !== null} onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="orphan-dialog">
         <DialogTitle>Annotations already use these classes</DialogTitle>
+        <NarrowingChanges diff={diff} />
         {blockers?.map((blocker) => (
           <DialogDescription key={blocker.label_class}>
             {blocker.label_class}: {formatCount(blocker.annotations)}{" "}
@@ -1333,11 +1366,6 @@ function describeDestructiveClasses(classes: readonly string[]): string {
  * is valid against its own batch's pin, so a batch still open on the outgoing
  * version keeps writing a class this version drops; those labels stand, and the
  * release is where they are refused.
- *
- * A shape removed from a class and the class itself removed are indistinguishable
- * here: the wire's change record carries the class name but not the geometry, so
- * the copy counts classes, which is true of both, rather than guessing which
- * happened.
  */
 function DestructiveDialog({
   preview,
@@ -1360,6 +1388,7 @@ function DestructiveDialog({
           {destructiveClasses.length === 1 ? "class narrows" : "classes narrow"}:{" "}
           {describeDestructiveClasses(destructiveClasses)}.
         </DialogDescription>
+        <NarrowingChanges diff={preview?.diff ?? null} />
         <DialogDescription>
           No existing annotation becomes invalid — that is why this can be published at all.
           Publishing adds a new version; earlier versions keep what they declared.
