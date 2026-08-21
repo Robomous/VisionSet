@@ -51,27 +51,6 @@ if (typeof Element !== "undefined") {
 }
 
 /**
- * `ResizeObserver`, which jsdom does not implement either — the same species
- * of gap as the pointer-capture block above, tripped by a different Radix
- * primitive. `TooltipContent`'s `Arrow` (Nova's self-inverting tooltip) asks
- * `@radix-ui/react-use-size` to measure itself so the popper can offset for
- * it, and that hook reaches for `ResizeObserver` unconditionally in its
- * mount effect — nothing about the measurement is simulated here, only the
- * constructor's existence, which is all a jsdom tree needs to not throw.
- *
- * Without it, any test that opens a `Tooltip` (a hover that survives the
- * provider's delay) crashes inside Radix with `ResizeObserver is not
- * defined` — a component failure for a harness gap, same as above.
- */
-if (typeof globalThis.ResizeObserver === "undefined") {
-  globalThis.ResizeObserver = class ResizeObserver {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
-  };
-}
-
-/**
  * Give `FormData` back to the realm that owns `fetch`.
  *
  * vitest's jsdom environment replaces `globalThis.FormData` with jsdom's class

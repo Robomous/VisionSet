@@ -205,6 +205,21 @@ beforeEach(() => {
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
+  // Nova's `TooltipContent` renders a Radix `Arrow`, and the popper measures
+  // it through `@radix-ui/react-use-size`, which reaches for `ResizeObserver`
+  // unconditionally on mount. jsdom has none, and this file is the one that
+  // actually hovers a trigger long enough for the tooltip to open — every
+  // other suite renders a `Tooltip` closed. Scoped to this file rather than
+  // the shared setup: `gallery.test.tsx` asserts jsdom's real absence of
+  // `ResizeObserver` on purpose, and a global stub would falsify that.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    },
+  );
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
     if (request.method !== "GET") {
