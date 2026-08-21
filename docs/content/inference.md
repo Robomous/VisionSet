@@ -13,10 +13,10 @@ Two kinds exist today:
 - **`local`** - weights this machine runs. It carries a `device` and a `precision`, and it is
   born **not set up**, because the weights are not here yet. Fetching them is an explicit action
   you take later, with the size shown before you agree to it.
-- **`http`** - an endpoint that answers this project's own inference contract. It carries an
-  `endpoint_url`, and it is born **ready**, because there is nothing to set up on this machine.
-  Whether it *answers* is a separate question with a fresh answer every time it is asked, so it
-  is not stored on the row.
+- **`http`** - an endpoint that answers this project's own inference contract (below). It carries
+  an `endpoint_url`, it is born **ready** because there is nothing to set up on this machine, and
+  it declares what it answers once its endpoint has been asked — see [Asking an endpoint what it
+  answers](#asking-an-endpoint-what-it-answers).
 
 The model reference is a pair - an id and a **pinned revision**, both required. A moving pointer
 is not a provenance: "which model produced this label" is unanswerable if the answer names
@@ -378,6 +378,10 @@ before this existed acquires its answer the first time its weights arrive. `None
 legitimate and stays legitimate: a hand-typed model nothing in the catalog offers records
 nothing, and is served by whichever installed driver declares its family.
 
+**An `http` connection records the driver that asked its endpoint** — `http`, the built-in
+driver that speaks the contract below — and resolves by that and by the capability the endpoint
+declared; there is no config on this machine to read.
+
 ## What a connection can be asked for
 
 A connection row says where a model runs and whether its weights are here. Neither answers the
@@ -409,17 +413,89 @@ deep in a request.
 
 **Empty means nothing is known yet**, which happens four ways: the weights were never fetched, so
 nothing has read a config; the config declared no model type; it declared one no installed driver
-serves; or it is an `http` connection, whose model runs elsewhere and which declares nothing
-until the remote contract says how an endpoint states what it can do. Empty is not a refusal -
-the server still judges every request on its own. It says only that no tool can rely on this
-connection.
+serves; or it is an `http` connection nobody has asked yet — see [Asking an endpoint what it
+answers](#asking-an-endpoint-what-it-answers). Empty is not a refusal - the server still judges
+every request on its own. It says only that no tool can rely on this connection.
 
-**It is recorded when the weights arrive**, because that is the first moment it is knowable
-without reaching a network. Editing a connection to point at another model or revision clears it
-again - nothing has read the new one, and a stale answer reads exactly like a fresh one - and
-takes the setup state with it, for the same reason: see [Pointing a connection somewhere
+**It is recorded when the weights arrive** — or, for an `http` connection, when its endpoint is
+asked — because that is the first moment it is knowable without reaching a network. Editing a
+connection to point at another model or revision clears it again - nothing has read the new one,
+and a stale answer reads exactly like a fresh one - and takes the setup state with it, for the
+same reason: see [Pointing a connection somewhere
 else](#pointing-a-connection-somewhere-else). A connection created before this shipped acquires
 its answer the first time something reads it, from files already on your disk.
+
+## Asking an endpoint what it answers
+
+A local connection's abilities are read out of its downloaded config. An `http` connection's
+have to be **asked**: its model runs elsewhere, and this workspace never loads it. The
+`test_endpoint` action does the asking — one request to the connection's `endpoint_url` — and
+records what came back: the capability the endpoint declared becomes the row's `capabilities`,
+and `provider_id` records the driver that asked (`http`, unless the row already named another).
+Until then an `http` connection declares nothing, sits under *No ability declared yet* in the
+Inference section, and is refused with `INFERENCE_CONNECTION_NOT_SET_UP` naming `test_endpoint`.
+
+Asking again re-asks and overwrites. Pointing the connection at a different endpoint forgets the
+previous answer, on the same reasoning a moved model forgets its family: what the old endpoint
+declared says nothing about the new one.
+
+It is also the reachability test. An endpoint that cannot be reached, does not answer in time,
+answers a status outside 2xx, or answers outside the contract is `INFERENCE_ENDPOINT_UNAVAILABLE`
+— a 502, because the request was fine and this program is fine and the other end did not answer —
+and the message names the endpoint and what happened. Nothing is recorded then.
+
+Over HTTP it is `POST /inference/connections/{id}/test-endpoint`, answering `200` with the
+connection. At a terminal, `visionset inference test-endpoint NAME_OR_ID`. Over MCP,
+`test_inference_connection`. A local connection is refused by all three with
+`INFERENCE_CONNECTION_NOT_TESTABLE`: there is no endpoint to ask.
+
+## Serving a model over HTTP: the endpoint contract
+
+`endpoint_url` is **one URL**, and the endpoint behind it answers two requests. Nothing is
+appended to it; no trailing slash matters.
+
+**`GET endpoint_url`** describes the endpoint:
+
+```json
+{ "model_ref": "acme/segmenter@3f2a9c…", "capability": "point_suggest" }
+```
+
+`capability` is one of `point_suggest`, `text_detect` — exactly one. `model_ref` is the string that
+stamps every answer, and becomes an annotation's provenance when one is accepted.
+
+**`POST endpoint_url`** predicts. The body is a JSON request and the answer is JSON:
+
+```json
+{
+  "prompt": { "kind": "points", "positive": [[412.0, 230.5]], "negative": [] },
+  "minimum_confidence": 0.0,
+  "targets": [ { "asset_id": "…", "media_type": "image/png", "content": "<base64 image bytes>" } ]
+}
+```
+
+A text prompt is `{ "kind": "text", "phrases": ["cat", "dog"] }`. The answer is
+`{ "answers": [ … ] }` with **exactly one answer per target, matched by `asset_id`**:
+
+- for `text_detect`, `{ "asset_id", "model_ref", "regions": [ { "label", "confidence", "geometry" } ] }`,
+  where `geometry` is this project's own geometry JSON (`{"type": "bbox", "x", "y", "width", "height"}`
+  for a box);
+- for `point_suggest`, `{ "asset_id", "model_ref", "segments": [ { "score", "mask" } ] }`, where
+  `mask` is a **base64 PNG at the asset's own size** and any non-zero pixel is inside the mask.
+
+An image nobody found anything on still answers, with an empty `regions` or `segments` — "found
+nothing" and "was not looked at" are different facts. Anything outside this shape — a missing or
+extra answer, a mask of the wrong size, a blank `model_ref` — is refused as
+`INFERENCE_ENDPOINT_UNAVAILABLE` with the reason. A prompt kind the endpoint's declared capability
+does not take is refused **before** any request is made, as `UNSUPPORTED_PROMPT`.
+
+**`minimum_confidence` is enforced on this side too.** The endpoint may return whatever it likes;
+an answer below the threshold is dropped from what this workspace records, whatever the endpoint
+itself judged worth reporting.
+
+**A redirect that leaves `http` or `https` is refused**, never followed - a scheme this driver
+never promised to open is not one it will silently trust because the endpoint pointed at it.
+
+There is no credential in the contract yet; an endpoint that needs one is its own open question.
 
 ## Suggesting a shape from a click
 
@@ -619,11 +695,6 @@ job, and the kernel imports no inference stack at all. A connection can be confi
 machine that could not possibly run it - which is exactly what you want when the thing that runs
 it is somewhere else.
 
-It is **not an endpoint client**, yet. An `http` connection can be created, edited and listed, but
-nothing in this version speaks to one: asking it to predict is refused with
-`INFERENCE_CONNECTION_NOT_RUNNABLE`, which is a statement about this build rather than about your
-configuration. There is no `test` action for the same reason.
-
 ## Deleting one destroys a configuration, not work
 
 Annotations record the model that produced them by **copying** its identity onto the label when
@@ -667,8 +738,10 @@ form.
   later. If this machine has no `local-inference` extra the size cannot be read, and the form says
   so, in the server's own words, with the install command. **It stays usable**: creating a
   connection downloads nothing, so not knowing the size is information rather than a barrier.
-- **HTTP** asks for the endpoint URL. There is no credential field; where a secret would live is
-  still open (`cf. #421`), and a field added ahead of that answer would be answering it.
+- **HTTP** asks for the endpoint URL. Once created, **Test endpoint** in the row's menu asks the
+  endpoint what it answers and moves the row under that ability. There is no credential field;
+  where a secret would live is still open (`cf. #421`), and a field added ahead of that answer
+  would be answering it.
 
 Because that list is a request rather than a constant, the model field has four states and says
 which one it is in. While the answer is in flight it says it is reading, and puts nothing else in
@@ -730,6 +803,7 @@ visionset inference list
 visionset inference show local-detector --json
 visionset inference update local-detector --revision def456
 visionset inference download local-detector
+visionset inference test-endpoint remote-detector
 visionset inference delete local-detector --yes
 ```
 
@@ -751,18 +825,21 @@ workspace, compared without regard to case, so `local` and `Local` cannot name t
 | `INFERENCE_CONNECTION_NAME_TAKEN` | 409 | Another connection already holds that name |
 | `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` | 409 | Already set up, a kind with no weights of its own, or a recorded driver that declares none - it answers from somewhere this machine keeps no files for |
 | `INFERENCE_CONNECTION_NOT_CHECKABLE` | 409 | A kind with no weights of its own, or weights that are not here yet - run `download` |
+| `INFERENCE_CONNECTION_NOT_TESTABLE` | 409 | A local connection has no endpoint to ask |
 | `WEIGHTS_DAMAGED` | 409 | An integrity check found files that do not match; they were removed and the connection stood down |
-| `INFERENCE_CONNECTION_NOT_SET_UP` | 409 | Asked to predict before its weights were fetched - run `download` |
+| `INFERENCE_CONNECTION_NOT_SET_UP` | 409 | Asked to predict before it was set up - a local one before `download`, an `http` one before `test-endpoint` |
 | `INFERENCE_CONNECTION_INVALID` | 422 | The parameters do not describe a usable connection of that kind |
 | `INVALID_NAME` | 422 | The name is blank once stripped |
 | `UNSUPPORTED_PROMPT` | 422 | The model does not answer that way of asking |
 | `PROMPT_POINT_OUT_OF_BOUNDS` | 422 | A suggest point falls outside the asset; the message names the coordinate and the size |
 | `LOCAL_INFERENCE_UNAVAILABLE` | 500 | The `local-inference` extra is not installed; the message carries the command |
-| `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | Nothing installed here runs that connection - an `http` one, which no adapter speaks to yet; a model family no installed driver serves; a recorded provider that is not installed here; or one that does not serve the family the downloaded config declares. The message names what is served or installed instead |
+| `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | Nothing installed here runs that connection - a model family no installed driver serves; a recorded provider that is not installed here; or one that does not serve the family the downloaded config declares. The message names what is served or installed instead |
 | `INFERENCE_OUT_OF_MEMORY` | 500 | The device ran out of memory loading or running the model; the message names the device and what to do about it |
+| `INFERENCE_ENDPOINT_UNAVAILABLE` | 502 | The endpoint named by an `http` connection could not be reached, did not answer in time, or answered outside the contract; the message names it and what happened |
 
-The last three are 5xx because they are conditions of the *machine* rather than of the request:
-none of them is a fact about what you sent, so none is a 409. The first two never succeed until
-somebody installs something; the third can succeed on a retry, but only after you free the device
-or choose a smaller model - which is why its message names both. All three expose their message,
-because the message is the remedy - which is the same licence a missing `ffmpeg` gets.
+The 5xx rows are conditions of the *machine* or of the *other end* rather than of the request.
+`LOCAL_INFERENCE_UNAVAILABLE` and `INFERENCE_CONNECTION_NOT_RUNNABLE` never succeed until
+somebody installs something; `INFERENCE_OUT_OF_MEMORY` can succeed on a retry, but only after you
+free the device or choose a smaller model; `INFERENCE_ENDPOINT_UNAVAILABLE` is a 502 because this
+program and the request were fine and the upstream did not answer. All four expose their
+message, because the message is the remedy.

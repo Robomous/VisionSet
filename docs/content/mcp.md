@@ -196,15 +196,18 @@ call until the end. #439 has since added a job gate, but it changes none of this
 | `create_inference_connection` | Configure one. Downloads nothing, contacts nothing. |
 | `download_connection_weights` | Fetch a local connection's weights. Synchronous. |
 | `check_connection_integrity` | Re-read every byte against the hub's digests. Synchronous. |
+| `test_inference_connection` | Ask an http connection's endpoint what it answers, and record it. Synchronous. |
 | `update_inference_connection` | Edit one. The type cannot change. |
 
 The tools that make a workspace auto-label-ready without a browser — the SDK-first half of the
 Inference section (#421). Connections are workspace infrastructure, so nothing here takes a
 project, and the group sits after the cycle rather than in it. There is no `get`: a workspace
-holds a handful of connections and the listing carries the whole document. There is no `test`
-either — nothing in this build can contact a configured endpoint, and a declared action with
-nothing behind it is an offer the product cannot keep; it arrives with the HTTP endpoint
-contract, on every surface at once.
+holds a handful of connections and the listing carries the whole document.
+`test_inference_connection` asks an http connection's endpoint what it answers and records what
+came back — the capability the endpoint declared becomes the connection's `capabilities`, and the
+driver that asked becomes its `provider_id`; see [Asking an endpoint what it
+answers](inference.md#asking-an-endpoint-what-it-answers). A local connection has no endpoint to
+ask and is refused with `INFERENCE_CONNECTION_NOT_TESTABLE`.
 
 ### Offered only with `--allow-destructive`
 
