@@ -104,7 +104,7 @@ import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { Alert, Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "../primitives/Card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/Card";
 import {
   Dialog,
   DialogContent,
@@ -1150,7 +1150,7 @@ function ClassDetail({
 
   return (
     <Card data-testid={`class-${index}`}>
-      <CardHeader className="flex-row items-center justify-between gap-2 pb-2">
+      <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2">
           <span
             aria-hidden="true"
@@ -1165,24 +1165,26 @@ function ClassDetail({
             declared.name
           )}
         </CardTitle>
-        <div className="flex items-center gap-2">
-          <span
-            className="text-xs tabular-nums text-muted-foreground"
-            data-testid={`class-count-${index}`}
-          >
-            {formatCount(annotations)} {annotations === 1 ? "annotation" : "annotations"}
-          </span>
-          <Button
-            variant="ghost"
-            size={checking ? "sm" : "icon"}
-            aria-label={checking ? "Checking class removal" : `Remove class ${index + 1}`}
-            data-testid={`remove-class-${index}`}
-            disabled={locked}
-            onClick={onRemove}
-          >
-            {checking ? "Checking…" : <Trash2 className="size-4" aria-hidden="true" />}
-          </Button>
-        </div>
+        <CardAction>
+          <div className="flex items-center gap-2">
+            <span
+              className="text-xs tabular-nums text-muted-foreground"
+              data-testid={`class-count-${index}`}
+            >
+              {formatCount(annotations)} {annotations === 1 ? "annotation" : "annotations"}
+            </span>
+            <Button
+              variant="ghost"
+              size={checking ? "sm" : "icon"}
+              aria-label={checking ? "Checking class removal" : `Remove class ${index + 1}`}
+              data-testid={`remove-class-${index}`}
+              disabled={locked}
+              onClick={onRemove}
+            >
+              {checking ? "Checking…" : <Trash2 className="size-4" aria-hidden="true" />}
+            </Button>
+          </div>
+        </CardAction>
       </CardHeader>
       <CardContent>
         <ClassFields

@@ -279,15 +279,18 @@ describe("structure", () => {
   });
 
   /**
-   * Transitional: the `*` rule above only sets `outline-color`, and with the
-   * previous foundation's explicit 2px rule gone, an unstyled `:focus-visible`
-   * renders at the browser's native 1px — below the visible-focus floor.
-   * This rule keeps keyboard focus at 2px until the primitives adopt Nova's
-   * own `focus-visible:ring-3` treatment, at which point it — and this test —
-   * should be deleted.
+   * The `*` rule above names the outline *colour* and nothing else about focus.
+   * The geometry is the primitives': every focusable one carries Nova's
+   * `focus-visible:ring-3 focus-visible:ring-ring/50` (the tab bar adds a 1px
+   * `outline-ring` on top of it), so a stylesheet-level `:focus-visible`
+   * override would now fight the components instead of backing them up.
+   *
+   * Asserted as an absence, because the absence is what the migration bought:
+   * re-adding a blanket rule here is how a single global declaration would
+   * quietly start overriding thirteen components again.
    */
-  it("keeps keyboard focus at a visible 2px until Nova's own rings land", () => {
-    expect(/:focus-visible\s*\{\s*@apply outline-2;\s*\}/.test(STYLESHEET)).toBe(true);
+  it("leaves focus geometry to the primitives: no stylesheet-level :focus-visible rule", () => {
+    expect(STYLESHEET).not.toContain(":focus-visible");
   });
 
   it("applies the heading font at the semantic-HTML level", () => {

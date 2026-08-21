@@ -19,7 +19,7 @@ export const Table = forwardRef<HTMLTableElement, HTMLAttributes<HTMLTableElemen
   ref,
 ) {
   return (
-    <div className="w-full overflow-x-auto rounded-xl border border-border">
+    <div className="w-full overflow-x-auto rounded-xl ring-1 ring-foreground/10">
       <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
     </div>
   );
@@ -33,7 +33,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, HTMLAttributes<HT
 
 export const TableBody = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTableSectionElement>>(
   function TableBody({ className, ...props }, ref) {
-    return <tbody ref={ref} className={cn("divide-y divide-border", className)} {...props} />;
+    return <tbody ref={ref} className={cn("[&_tr:last-child]:border-0", className)} {...props} />;
   },
 );
 
@@ -42,7 +42,7 @@ export const TableRow = forwardRef<HTMLTableRowElement, HTMLAttributes<HTMLTable
     return (
       <tr
         ref={ref}
-        className={cn("border-b border-border last:border-0 hover:bg-muted", className)}
+        className={cn("border-b hover:bg-muted/50 data-[state=selected]:bg-muted", className)}
         {...props}
       />
     );
@@ -54,7 +54,7 @@ export const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLT
     return (
       <th
         ref={ref}
-        className={cn("px-3 py-2 text-left text-xs font-medium text-muted-foreground", className)}
+        className={cn("h-10 px-2 text-left align-middle text-xs font-medium text-muted-foreground", className)}
         {...props}
       />
     );
@@ -63,7 +63,7 @@ export const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLT
 
 export const TableCell = forwardRef<HTMLTableCellElement, TdHTMLAttributes<HTMLTableCellElement>>(
   function TableCell({ className, ...props }, ref) {
-    return <td ref={ref} className={cn("px-3 py-2 align-middle", className)} {...props} />;
+    return <td ref={ref} className={cn("p-2 align-middle", className)} {...props} />;
   },
 );
 
@@ -77,7 +77,7 @@ export function TableEmpty({
 }): JSX.Element {
   return (
     <tr>
-      <td colSpan={colSpan} className="px-3 py-8 text-center text-sm text-muted-foreground">
+      <td colSpan={colSpan} className="px-2 py-8 text-center text-sm text-muted-foreground">
         {children}
       </td>
     </tr>

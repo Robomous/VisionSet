@@ -19,8 +19,14 @@ export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 
 const SURFACE =
-  "dark z-50 min-w-40 overflow-hidden rounded-lg border border-border bg-popover p-1 " +
-  "text-popover-foreground shadow-lg";
+  "dark z-50 max-h-(--radix-dropdown-menu-content-available-height) " +
+  "w-(--radix-dropdown-menu-trigger-width) min-w-32 " +
+  "origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto " +
+  "rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 " +
+  "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 " +
+  "data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 " +
+  "data-[state=closed]:overflow-hidden data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 " +
+  "data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
 
 export const DropdownMenuContent = forwardRef<
   ElementRef<typeof DropdownMenuPrimitive.Content>,
@@ -45,10 +51,15 @@ export const DropdownMenuItem = forwardRef<
   return (
     <DropdownMenuPrimitive.Item
       ref={ref}
+      data-variant={destructive ? "destructive" : undefined}
       className={cn(
-        "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm " +
-          "outline-none data-[highlighted]:bg-muted data-[disabled]:opacity-50",
-        destructive && "text-destructive",
+        "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 " +
+          "py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground " +
+          "not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 " +
+          "data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 " +
+          "data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 " +
+          "data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none " +
+          "[&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
         className,
       )}
       {...props}
@@ -76,18 +87,29 @@ export const TooltipTrigger = TooltipPrimitive.Trigger;
 export const TooltipContent = forwardRef<
   ElementRef<typeof TooltipPrimitive.Content>,
   ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
->(function TooltipContent({ className, sideOffset = 6, ...props }, ref) {
+>(function TooltipContent({ className, sideOffset = 0, children, ...props }, ref) {
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Content
         ref={ref}
         sideOffset={sideOffset}
         className={cn(
-          "dark z-50 rounded-md bg-popover px-2 py-1 text-xs text-popover-foreground shadow-lg",
+          "z-50 inline-flex w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin) items-center " +
+            "gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background " +
+            "has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 " +
+            "data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 " +
+            "data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate " +
+            "**:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-sm data-[state=delayed-open]:animate-in " +
+            "data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in " +
+            "data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 " +
+            "data-closed:zoom-out-95",
           className,
         )}
         {...props}
-      />
+      >
+        {children}
+        <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground" />
+      </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
   );
 });

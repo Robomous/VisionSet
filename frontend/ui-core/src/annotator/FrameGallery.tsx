@@ -115,7 +115,7 @@ export function FrameGallery({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-testid="frame-gallery"
-        className="max-w-3xl gap-3"
+        className="sm:max-w-3xl gap-3"
         // Opening starts on the frame you are looking at: it is the anchor for
         // the arrow keys and, because a browser scrolls to what it focuses, it is
         // also how a job of five hundred opens at the right place.

@@ -149,11 +149,11 @@ describe("Select", () => {
 
   it("grows rather than clipping, and leaves a one-line option where it was", () => {
     render(pickOne());
-    // `h-9` would fix the height and squash the second line; `min-h-9` keeps the
-    // one-line control on the contract's 36px and lets a two-line one grow.
+    // `h-8` would fix the height and squash the second line; `min-h-8` keeps the
+    // one-line control on Nova's contract height and lets a two-line one grow.
     const trigger = screen.getByTestId("model");
-    expect(trigger.className).toContain("min-h-9");
-    expect(trigger.className).not.toMatch(/(^|\s)h-9(\s|$)/);
+    expect(trigger.className).toContain("min-h-8");
+    expect(trigger.className).not.toMatch(/(^|\s)h-8(\s|$)/);
     // Nothing truncates: half a model id is not a model id.
     expect(trigger.className).not.toContain("truncate");
   });

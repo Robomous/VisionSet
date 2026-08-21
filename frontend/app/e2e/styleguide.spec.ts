@@ -48,6 +48,61 @@ async function rgbaOf(page: Page, locator: Locator, prop: string): Promise<reado
   return channelsOf(page, raw);
 }
 
+/**
+ * A computed `box-shadow`, split into its layers at the top-level commas.
+ *
+ * Nova's focus ring is a `box-shadow` rather than an outline (`ring-3`), and
+ * Tailwind v4 composes every shadow-ish utility into that **one** property through
+ * five variables — inset shadow, inset ring, ring offset, ring, drop shadow — each
+ * with a transparent `0 0 #0000` initial value. So a control wearing a ring *and*
+ * `shadow-sm` computes to six comma-separated layers, three of them placeholders,
+ * and the ring is not the first of them. Reading it back means picking a layer out
+ * of a list.
+ *
+ * The split is paren-aware because `rgba(0, 0, 0, 0)` — which is exactly what the
+ * three placeholder layers serialise as — has commas inside it, so a plain
+ * `split(",")` cuts every layer into pieces.
+ */
+async function shadowLayersOf(locator: Locator): Promise<readonly string[]> {
+  return locator.evaluate((node) => {
+    const raw = getComputedStyle(node).boxShadow;
+    const layers: string[] = [];
+    let depth = 0;
+    let start = 0;
+    for (let at = 0; at < raw.length; at += 1) {
+      const ch = raw[at];
+      if (ch === "(") depth += 1;
+      else if (ch === ")") depth -= 1;
+      else if (ch === "," && depth === 0) {
+        layers.push(raw.slice(start, at).trim());
+        start = at + 1;
+      }
+    }
+    layers.push(raw.slice(start).trim());
+    return layers;
+  });
+}
+
+/** The geometry Nova's ring paints: no offset, no blur, 3px of spread. */
+const RING_GEOMETRY = "0px 0px 0px 3px";
+
+/**
+ * The colour of the 3px ring layer in `locator`'s `box-shadow`, as painted bytes.
+ *
+ * The layer is found by its *geometry* rather than by its position, and that is
+ * half the assertion: a ring that lost its spread — or a control that never got
+ * one — is not found at all and this throws rather than passing on a shadow that
+ * happens to be there for another reason.
+ */
+async function ringColourOf(page: Page, locator: Locator): Promise<readonly number[]> {
+  const layers = await shadowLayersOf(locator);
+  const ring = layers.find((layer) => layer.endsWith(RING_GEOMETRY));
+  if (ring === undefined) {
+    throw new Error(`no ${RING_GEOMETRY} ring in box-shadow: ${JSON.stringify(layers)}`);
+  }
+  return channelsOf(page, ring.slice(0, ring.length - RING_GEOMETRY.length).trim());
+}
+
 /** `--color-primary` — the preset's own near-black neutral, `oklch(0.205 0 0)`. */
 const PRIMARY = [23, 23, 23];
 /** `--color-brand` — the coral, `oklch(0.653 0.178 32.3)`. Identity only; it
@@ -175,15 +230,39 @@ test("a dialog traps focus, closes on Escape and returns focus to its trigger", 
  * green through a restyle that made all three tabs look identical. The difference
  * between an active tab and an inactive one is a computed colour, and jsdom
  * computes nothing from a stylesheet. This is where that is checked.
+ *
+ * What that difference *is* moved with Nova: `TabsList`'s default is a **segmented
+ * control**, not an underlined row. The list is a `muted` trough and the active tab
+ * is a `background` chip lifted out of it on a hairline shadow, so the active
+ * claim is a fill plus a shadow rather than a `border-bottom-color`. The inactive
+ * claim is untouched and reads stronger for it: "no fill, no shadow" is now
+ * exactly the pair the active tab has, rather than the absence of an underline.
  */
-test("the active tab wears the accent rule and an inactive one wears no chrome", async ({
+test("the active tab is lifted out of the trough and an inactive one wears no chrome", async ({
   page,
 }) => {
-  const bar = page.getByTestId("tabs-underline");
+  const bar = page.getByTestId("tabs-segmented");
   const open = bar.getByRole("tab", { name: "Batches" });
   const shut = bar.getByRole("tab", { name: "About" });
 
-  expect((await rgbaOf(page, open, "border-bottom-color")).slice(0, 3)).toEqual(PRIMARY);
+  // The trough the chip is lifted out of. A list that were `background` too would
+  // leave the segmented control with no shape at all — the raised tab and the
+  // surface behind it would be the same colour.
+  const list = bar.getByRole("tablist");
+  expect((await rgbaOf(page, list, "background-color")).slice(0, 3)).toEqual(MUTED);
+
+  // Polled rather than read once, for the reason spelled out at the click below:
+  // `transition-all` is on this element and a colour caught mid-transition is a
+  // flake, not a failure.
+  await expect
+    .poll(async () => (await rgbaOf(page, open, "background-color")).slice(0, 3))
+    .toEqual(BACKGROUND);
+  // `shadow-sm`, and it is the second half of "lifted": the fill alone would read
+  // as a flat swap on a page whose own background is the same white.
+  await expect
+    .poll(async () => open.evaluate((node) => getComputedStyle(node).boxShadow))
+    .not.toBe("none");
+
   // The report's complaint, inverted into an assertion: no fill, no border, no
   // shadow. An inactive tab must not read as a button somebody has not pressed.
   // `transparent` is a keyword, not an `oklch()` value, so Chromium still
@@ -193,47 +272,78 @@ test("the active tab wears the accent rule and an inactive one wears no chrome",
   await expect(shut).toHaveCSS("box-shadow", "none");
 
   await shut.click();
-  // `transition-colors` animates the new border in rather than snapping it, so
-  // a bare read-once-and-compare can catch the colour mid-transition — Chromium
-  // did, occasionally, in the gate. `expect.poll` retries `rgbaOf` the same way
+  // `transition-all` animates the new fill in rather than snapping it, so a bare
+  // read-once-and-compare can catch the colour mid-transition — Chromium did,
+  // occasionally, in the gate. `expect.poll` retries `rgbaOf` the same way
   // `toHaveCSS` retries its own read, so the assertion waits out the animation
   // instead of racing it.
-  await expect.poll(async () => (await rgbaOf(page, shut, "border-bottom-color")).slice(0, 3)).toEqual(
-    PRIMARY,
-  );
-  await expect(open).toHaveCSS("border-bottom-color", "rgba(0, 0, 0, 0)");
+  await expect
+    .poll(async () => (await rgbaOf(page, shut, "background-color")).slice(0, 3))
+    .toEqual(BACKGROUND);
+  // And the chrome moved rather than accumulating: the tab that was raised is
+  // back down in the trough, fill and shadow both.
+  await expect(open).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(open).toHaveCSS("box-shadow", "none");
 });
 
-test("focus is visible on a tab that has no fill to draw it against", async ({ page }) => {
+/**
+ * Focus, now that the primitive owns it.
+ *
+ * `styles.css` used to carry a blanket `:focus-visible { @apply outline-2; }` —
+ * a stylesheet-level floor, there because the tab bar had no ring of its own and
+ * the alternative was the browser's native 1px `outline-style: auto`. That rule is
+ * gone (`DESIGN.md`, *Borders and Focus*): every focusable primitive supplies
+ * Nova's ring itself, so what is asserted here is the *component's* treatment,
+ * which is also why this reads `1px` where it used to read `2px`. Delete the ring
+ * from `TabsTrigger` and nothing global catches it any more — which is the whole
+ * point of measuring it here.
+ */
+test("focus on a tab is Nova's own ring, not a stylesheet-wide floor", async ({ page }) => {
   // Arrive by keyboard, because `:focus-visible` is the point — and from the last
   // focusable before the bar, so this is one press rather than a hunt.
   await page.getByLabel("Description").focus();
   await page.keyboard.press("Tab");
 
-  const focused = page.getByTestId("tabs-underline").getByRole("tab", { name: "Batches" });
+  const focused = page.getByTestId("tabs-segmented").getByRole("tab", { name: "Batches" });
   await expect(focused).toBeFocused();
-  // The ring comes from `styles.css`'s base layer (`outline-ring/50`) and is
-  // drawn *outside* the box, so it never depended on the chip the underline
-  // variant dropped. The variant adds the fill the ring encloses, which is
-  // what "still clearly visible" means once the tab is otherwise bare.
-  const outline = await rgbaOf(page, focused, "outline-color");
+
+  // `focus-visible:ring-[3px] focus-visible:ring-ring/50` — a box-shadow, painted
+  // *outside* the box, so it survives whichever fill is underneath it.
+  //
+  // Polled, and the poll is the spread assertion: `transition-all` animates the
+  // ring in from nothing, so a single read can land on a 1.4px ring on its way to
+  // 3px, and `RING_GEOMETRY` would not match a ring caught halfway there. Waiting
+  // for the layer to exist is waiting for the transition to finish.
+  await expect
+    .poll(async () => (await shadowLayersOf(focused)).some((one) => one.endsWith(RING_GEOMETRY)))
+    .toBe(true);
+  const ring = await ringColourOf(page, focused);
   // The ring token's own grey — a canvas's RGB read-back is unpremultiplied,
   // so the colour channels come back exact regardless of the alpha below.
-  expect(outline.slice(0, 3)).toEqual(RING);
-  // …at partial opacity, which is what the base layer's `/50` modifier
-  // promises: fully opaque would be a different rule, and fully transparent
-  // would be no ring at all.
-  expect(outline[3]).toBeGreaterThan(64);
-  expect(outline[3]).toBeLessThan(220);
-  // 2px: `styles.css`'s base layer carries a transitional `:focus-visible {
-  // @apply outline-2; }` rule (`DESIGN.md`, *Borders and Focus*) precisely
-  // because the tab bar doesn't yet carry Nova's own `focus-visible:ring-3`
-  // treatment — without it, keyboard focus here would fall back to the
-  // browser's native 1px `outline-style: auto`, which is below the product's
-  // visible-focus floor. Delete this comment's premise (and the base-layer
-  // rule) together, once every focusable primitive supplies its own ring.
-  await expect(focused).toHaveCSS("outline-width", "2px");
-  expect((await rgbaOf(page, focused, "background-color")).slice(0, 3)).toEqual(MUTED);
+  expect(ring.slice(0, 3)).toEqual(RING);
+  // …at partial opacity, which is what the `/50` modifier promises: fully opaque
+  // would be a different rule, and fully transparent would be no ring at all.
+  expect(ring[3]).toBeGreaterThan(64);
+  expect(ring[3]).toBeLessThan(220);
+
+  // The 1px hairline `TabsTrigger` adds on top of the ring, in the same token at
+  // full strength (`focus-visible:outline-1 focus-visible:outline-ring`). The
+  // *colour* still comes from the base layer's `outline-ring/50` on every element;
+  // the width and the full-strength colour are the primitive's.
+  await expect(focused).toHaveCSS("outline-width", "1px");
+  expect((await rgbaOf(page, focused, "outline-color")).slice(0, 3)).toEqual(RING);
+  // And the border joins in (`focus-visible:border-ring`), which is the same
+  // three-part treatment `Button`, `Input` and `SelectTrigger` wear — one focus
+  // idiom, so a keyboard user reads the same thing everywhere. Polled because this
+  // one travels between two *different* hues — `border` to `ring` — so unlike the
+  // outline's alpha ramp, a mid-transition read here is a different colour.
+  await expect
+    .poll(async () => (await rgbaOf(page, focused, "border-bottom-color")).slice(0, 3))
+    .toEqual(RING);
+
+  // Focus decorates the active tab rather than replacing it: the chip is still
+  // lifted onto `background` underneath the ring.
+  expect((await rgbaOf(page, focused, "background-color")).slice(0, 3)).toEqual(BACKGROUND);
 });
 
 test("the class palette draws the schema's colour and the derived hue side by side", async ({
@@ -258,19 +368,25 @@ test("the class palette draws the schema's colour and the derived hue side by si
 /**
  * One rule owns the space between a tab bar and its content.
  *
- * `TabsContent`'s `mt-3` is that rule, and a consumer adds no gap of its own.
+ * That rule is now the `Tabs` **root**'s `gap-2` — 8px, Nova's own — rather than
+ * the `mt-3` `TabsContent` used to bake in, and a consumer still adds no gap of its
+ * own. The direction of the move matters more than the number: a margin on the
+ * panel is a declaration two elements have to agree about (and did not, which is
+ * how the doubling this test was written for happened), while a gap on the root is
+ * the container spacing its own children once.
+ *
  * Measured here as well as on the real screen, because the styleguide is where the
  * bar is looked at in isolation and a regression would be seen first.
  */
 test("the tab bar sits one rhythm step above its content", async ({ page }) => {
   await page.goto("/styleguide");
 
-  const scope = page.getByTestId("tabs-underline");
+  const scope = page.getByTestId("tabs-segmented");
   const list = await scope.locator('[role="tablist"]').boundingBox();
   const panel = await scope.locator('[role="tabpanel"][data-state="active"]').boundingBox();
   expect(list).not.toBeNull();
   expect(panel).not.toBeNull();
-  expect(panel!.y - (list!.y + list!.height)).toBeCloseTo(12, 0);
+  expect(panel!.y - (list!.y + list!.height)).toBeCloseTo(8, 0);
 });
 
 /**
@@ -279,19 +395,30 @@ test("the tab bar sits one rhythm step above its content", async ({ page }) => {
  * `primitives.test.tsx` asserts the *structure* — two elements, the meta in the
  * muted role, the id keeping its own line — and jsdom computes no layout, so the
  * one thing it cannot see is the thing that was reported: a two-line value inside
- * a control measured for one line. A revert to `h-9` leaves every unit test green
- * and fails here.
+ * a control measured for one line. A revert to a fixed height leaves every unit
+ * test green and fails here.
+ *
+ * The one-line number is Nova's control height, 32px, and it is asserted twice:
+ * against the constant, and against the `Input` in the same field row. The second
+ * is the one that catches the interesting failure — `SelectTrigger` is `min-h-8`
+ * rather than `h-8` so the second line can grow it, and a *minimum* height is one
+ * the padding can quietly overshoot. A trigger standing taller than the text field
+ * beside it is a broken row whatever the absolute number turns out to be.
  */
-test("a two-line option grows its trigger, and a one-line one stays on the contract's 36px", async ({
+test("a two-line option grows its trigger, and a one-line one is Nova's 32px", async ({
   page,
 }) => {
   const plain = await page.getByLabel("Geometry").boundingBox();
   const stacked = await page.getByLabel("Model").boundingBox();
+  const field = await page.getByLabel("Project name").boundingBox();
   expect(plain).not.toBeNull();
   expect(stacked).not.toBeNull();
+  expect(field).not.toBeNull();
 
-  // Unmoved: every select that shipped before the variant is still exactly 36px.
-  expect(plain!.height).toBeCloseTo(36, 0);
+  // Nova's own control height: `min-h-8`, and the padding does not overshoot it.
+  expect(plain!.height).toBeCloseTo(32, 0);
+  // The same height as the `Input` beside it, which is what the field row reads as.
+  expect(plain!.height).toBeCloseTo(field!.height, 0);
   // Grown, not squashed: the second line is inside the box rather than over it.
   expect(stacked!.height).toBeGreaterThan(plain!.height);
 
