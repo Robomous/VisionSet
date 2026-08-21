@@ -2279,15 +2279,15 @@ test("what is drawn on the surround stays legible against it", async ({ page }) 
 /**
  * The space between a tab bar and its content must not be applied twice.
  *
- * A `flex flex-col gap-3` around `TabsContent`, which carries its own
- * `mt-3`, adds — so the tabs float 24px above
- * the content they switch, about twice what the rhythm asks for.
+ * A `flex flex-col gap-3` around a `TabsContent` that carried its own margin
+ * adds — so the tabs float 24px above the content they switch, about twice what
+ * the rhythm asks for.
  *
- * The rule is now that **the primitive owns it**: `TabsContent`'s margin is the
- * one declaration, and a consumer adds no gap of its own. That direction rather
- * than the other because it makes the primitive self-sufficient — a `Tabs` that
- * is not a flex column at all still spaces correctly, and a consumer cannot
- * forget something it never had to know.
+ * The rule is still that **the primitive owns it**, and it is now the `Tabs`
+ * root's own `gap-2` — Nova's 8px — instead of a margin on the panel: the
+ * container spaces its children once, which is a declaration that cannot be
+ * doubled by a second one two elements away. A consumer adds no gap of its own
+ * either way, and cannot forget something it never had to know.
  *
  * The annotator's panel has no tabs, so what is left to
  * measure is the project view — the same doubling is possible wherever a `Tabs`
@@ -2316,7 +2316,7 @@ test("the project view's tabs use the same one rule", async ({ page }) => {
   // tidy-up from adding a gap here and rediscovering the doubling on a different
   // screen.
   await expect(page.getByTestId("project-tabs")).toBeVisible();
-  expect(await tabGap(page, "project-tabs")).toBeCloseTo(12, 0);
+  expect(await tabGap(page, "project-tabs")).toBeCloseTo(8, 0);
 });
 
 /**

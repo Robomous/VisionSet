@@ -259,7 +259,10 @@ export function Styleguide(): JSX.Element {
           </div>
         </Section>
 
-        <Section title="Fields" description="Radix labels; the ring comes from the base layer.">
+        <Section
+          title="Fields"
+          description="Radix labels; every control carries Nova's own focus ring."
+        >
           <div className="grid max-w-3xl gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sg-name">Project name</Label>
@@ -342,9 +345,9 @@ export function Styleguide(): JSX.Element {
 
         <Section
           title="Cards, tabs and tables"
-          description="The screens are made of these. A tab bar underlines — there is no second shape."
+          description="The screens are made of these. A tab bar is a segmented control; the line variant is the other shape."
         >
-          <Tabs defaultValue="batches" data-testid="tabs-underline">
+          <Tabs defaultValue="batches" data-testid="tabs-segmented">
             <TabsList>
               <TabsTrigger value="batches">Batches</TabsTrigger>
               <TabsTrigger value="about">About</TabsTrigger>
