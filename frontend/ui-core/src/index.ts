@@ -80,8 +80,8 @@ export {
   SheetTrigger,
   type SheetContentProps,
 } from "./primitives/Dialog.js";
-// One shape, so there is no variant to export and no `cva` behind it — see the
-// argument in `Tabs.tsx`.
+// `tabsListVariants` stays unexported: `TabsList`'s own `variant` prop is the
+// public surface, and the `cva` behind it is `Tabs.tsx`'s implementation detail.
 export { Tabs, TabsContent, TabsList, TabsTrigger } from "./primitives/Tabs.js";
 export {
   Select,

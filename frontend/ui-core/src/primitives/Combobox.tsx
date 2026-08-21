@@ -224,7 +224,7 @@ export function Combobox<T>({
         role="listbox"
         aria-label={label}
         data-testid={`${testId}-list`}
-        className="dark absolute left-0 top-9 z-50 max-h-72 w-64 overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+        className="dark absolute left-0 top-9 z-50 max-h-72 w-64 overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
       >
         {shown.map((item, index) => (
           <li
@@ -235,8 +235,8 @@ export function Combobox<T>({
             data-testid={`${testId}-option-${itemKey(item)}`}
             data-active={index === active ? "true" : "false"}
             className={cn(
-              "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm",
-              index === active && "bg-muted",
+              "flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm",
+              index === active && "bg-accent text-accent-foreground",
             )}
             // `mousedown`, not `click`: the outside-press dismissal also runs on
             // mousedown, and a row that waited for `click` would be gone by then.
@@ -258,8 +258,8 @@ export function Combobox<T>({
             data-testid={extra.testId ?? `${testId}-footer`}
             data-active={shown.length === active ? "true" : "false"}
             className={cn(
-              "mt-1 flex cursor-pointer items-center gap-2 rounded border-t border-border px-2 py-1.5 text-sm text-muted-foreground",
-              shown.length === active && "bg-muted",
+              "mt-1 flex cursor-pointer items-center gap-2 rounded-md border-t border-border px-1.5 py-1 text-sm text-muted-foreground",
+              shown.length === active && "bg-accent text-accent-foreground",
             )}
             onMouseDown={(event) => {
               event.preventDefault();
@@ -275,7 +275,7 @@ export function Combobox<T>({
           <li
             role="presentation"
             data-testid={`${testId}-empty`}
-            className="px-2 py-1.5 text-sm text-muted-foreground"
+            className="px-1.5 py-1 text-sm text-muted-foreground"
           >
             {emptyLabel}
           </li>
