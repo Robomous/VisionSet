@@ -12,6 +12,9 @@ description: Execution rules for any refactoring or feature task in the VisionSe
   in the PR body.
 - **Do not implement open issues "in passing"** — reference them (`cf. #NNN`) and move on. **Do
   not fix unrelated bugs you discover** — record them in the PR body under "Found, not fixed".
+- **A change adds no comments by default.** The bar and the never-earns list are in
+  AGENTS.md, `### Comments and docstrings`. The diff-time form: if a reviewer reading only the
+  diff would understand it without the comment, the comment does not ship.
 - **Layer boundaries**: no kernel changes unless the task grants them; `@visionset/annotator`
   internals untouched unless named; import-linter contracts stay green. Settled domain decisions
   (`batch-lifecycle` skill) are not re-litigated; if a task appears to require violating one,

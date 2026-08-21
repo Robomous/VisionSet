@@ -45,7 +45,9 @@ entry-point group. Project mechanics (ruff, mypy strictness, naming, import plac
 ## 4. Enhance clarity
 
 - Early returns over deep nesting; delete dead code and premature abstractions.
-- Remove comments that restate the code; keep comments that record *why*.
+- Delete comments that fail the AGENTS.md bar (`### Comments and docstrings`) — restatements of
+  the code, change narration, notes explaining a rename. Keep the ones recording *why*; when
+  torn between deleting and rewriting, rewrite.
 - Extract a well-named function instead of a comment-delimited block.
 - Narrow exception handling — no bare `except:`, no swallowing `except Exception`.
 - Prefer the stdlib over a new dependency; a new runtime dependency ships to every wheel user.

@@ -133,9 +133,17 @@ names the targeted checks that ran and leaves the exhaustive verdict to the pull
 
 ### Comments and docstrings
 
-- **Be brief.** One to three sentences for a rationale comment. A docstring says what the
-  thing does and why it exists — not how it came to be, and not a narrative of the work that
-  produced it. Length is not thoroughness; a comment nobody finishes explains nothing.
+- **The default is no comment.** Before writing one, name what breaks without it — an
+  invariant, a constraint the types cannot carry, a reason the obvious reading is wrong here.
+  If you cannot name it, delete the comment. Most diffs add zero.
+- **These never earn a comment**: a new variable, a moved line, a rename, an extracted
+  function, a changed literal, a restatement of the line below, or a note about what the
+  change did. Code needing a comment to be understood is usually asking to be renamed or
+  split instead.
+- **Be brief when one is earned.** One to three sentences for a rationale comment. A docstring
+  says what the thing does and why it exists — not how it came to be, and not a narrative of
+  the work that produced it. Length is not thoroughness; a comment nobody finishes explains
+  nothing.
 - **Never explain with an issue or PR number.** `#160`, `see #212`, `fixed in #323` are
   pointers rather than explanations, and a reader in an editor, a vendored copy or a fork
   cannot follow one. Write the reason itself, in the present tense, as a property of the
@@ -147,7 +155,7 @@ names the targeted checks that ran and leaves the exhaustive verdict to the pull
   one wherever it appears, including inside quoted text.
 - **Never delete a comment that carries an invariant, a non-obvious constraint, or a "why"
   the code cannot express.** Rewrite it shorter. When torn between deleting and rewriting,
-  rewrite.
+  rewrite. This protects comments already there; it is not a licence to add new ones.
 - A pydantic model's or FastAPI route's docstring is **published**: FastAPI copies it
   verbatim into `openapi.json` and it reaches the generated TypeScript client. Write those
   for a client reading the contract, and regenerate both artifacts in the same change.
