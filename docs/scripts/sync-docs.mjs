@@ -1,14 +1,14 @@
 /**
- * Project `docs/` into the content collection Starlight reads, deterministically.
+ * Project `content/` into the content collection Starlight reads, deterministically.
  *
- * **`docs/` is the only source of truth.** It is plain Markdown, it renders on
+ * **`content/` is the only source of truth.** It is plain Markdown, it renders on
  * GitHub, and a tool or an agent reads it with nothing installed. Starlight is a
  * rendering layer over it, never a second copy — so this script is the whole of the
  * relationship between the two, and everything it writes is git-ignored.
  *
- * ## Why a projection rather than pointing Starlight at `../docs`
+ * ## Why a projection rather than pointing Starlight at `content/`
  *
- * Astro's `glob()` loader will happily take `base: "../docs"`, and that was the
+ * Astro's `glob()` loader will happily take `base: "./content"`, and that was the
  * first thing tried. Two things in Starlight's content model refuse it, and neither
  * is worth bending `docs/` around:
  *
@@ -30,8 +30,8 @@
  *
  *     install.md              → /install/       a sibling page of this site
  *     architecture/README.md  → /architecture/  a directory's index
- *     ../src/visionset/       → GitHub tree/    code, which this site does not host
- *     ../CONTRIBUTING.md      → GitHub blob/    a repository file, likewise
+ *     ../../src/visionset/    → GitHub tree/    code, which this site does not host
+ *     ../../CONTRIBUTING.md   → GitHub blob/    a repository file, likewise
  *     https://…, #anchor      → untouched
  *
  * Fragments survive: Astro slugs headings with github-slugger, the same algorithm
@@ -39,7 +39,7 @@
  * anchor that resolves on GitHub resolves here.
  *
  * Nothing inside a fenced block or an inline code span is rewritten, and no `#` line
- * inside one is mistaken for the title. `docs/cli.md` holds shell transcripts, where
+ * inside one is mistaken for the title. `content/cli.md` holds shell transcripts, where
  * a path is output rather than a link and `# comment` opens a bash block — the same
  * rule the link gate follows, for the same reason.
  *
@@ -63,14 +63,17 @@ import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-/** `docs-site/`. */
+/** `docs/` — the site, and the corpus it renders. */
 export const SITE_ROOT = path.resolve(HERE, "..");
 
-/** The repository root — `docs/`, and the code every out-of-docs link points into. */
+/** The repository root — the code every out-of-corpus link points into. */
 export const REPO_ROOT = path.resolve(SITE_ROOT, "..");
 
-/** The canonical documentation. Read only; this script never writes here. */
-export const DOCS_DIR = path.join(REPO_ROOT, "docs");
+/** The canonical documentation, repository-relative. Read only; this script never writes here. */
+const CORPUS = "docs/content";
+
+/** The same, absolute. */
+export const DOCS_DIR = path.join(REPO_ROOT, CORPUS);
 
 /** Where the projection lands. Generated, git-ignored, never edited by hand. */
 export const CONTENT_DIR = path.join(SITE_ROOT, "src", "content", "docs");
@@ -162,7 +165,7 @@ function isDirectory(repoRelative) {
 /**
  * Where a `docs/`-relative document is served from.
  *
- * `README.md` is a directory's index, which is what makes `docs/README.md` the
+ * `README.md` is a directory's index, which is what makes `content/README.md` the
  * site's home page and `architecture/README.md` the page `architecture/` links to.
  */
 export function sitePath(docsRelative) {
@@ -174,7 +177,7 @@ export function sitePath(docsRelative) {
 /**
  * One link target, as this site should spell it.
  *
- * The three outcomes are the three kinds of destination a link in `docs/` has: a
+ * The three outcomes are the three kinds of destination a link in the corpus has: a
  * page of this site, a file of this repository, and somewhere else entirely.
  */
 export function rewriteTarget(target, fromDocsRelative) {
@@ -185,18 +188,18 @@ export function rewriteTarget(target, fromDocsRelative) {
   const fragment = hash < 0 ? "" : target.slice(hash);
   if (where === "") return target;
 
-  // Resolved against the repository root, so a target that climbs out of `docs/`
-  // is simply a path that does not start with `docs/`.
-  const fromDir = path.posix.dirname(path.posix.join("docs", fromDocsRelative));
+  // Resolved against the repository root, so a target that climbs out of the
+  // corpus is simply a path that does not start with it.
+  const fromDir = path.posix.dirname(path.posix.join(CORPUS, fromDocsRelative));
   const repoRelative = path.posix.normalize(path.posix.join(fromDir, where));
 
-  if (repoRelative === "docs" || repoRelative === "docs/") return `/${fragment}`;
-  if (repoRelative.startsWith("docs/")) {
-    const inDocs = repoRelative.slice("docs/".length);
+  if (repoRelative === CORPUS || repoRelative === `${CORPUS}/`) return `/${fragment}`;
+  if (repoRelative.startsWith(`${CORPUS}/`)) {
+    const inDocs = repoRelative.slice(CORPUS.length + 1);
     if (isDirectory(repoRelative)) return `${sitePath(inDocs)}${fragment}`;
     if (inDocs.endsWith(".md")) return `${sitePath(inDocs)}${fragment}`;
-    // Anything else under `docs/` is a file this site does not serve, so it falls
-    // through to the repository below like any other.
+    // Anything else under the corpus is a file this site does not serve, so it
+    // falls through to the repository below like any other.
   }
 
   const kind = where.endsWith("/") || isDirectory(repoRelative) ? "tree" : "blob";
@@ -219,7 +222,7 @@ export function rewriteTarget(target, fromDocsRelative) {
  *   `…the [event\nbus](events.md) is in-process…`
  *       the label is wrapped across a line break. Rewrite line by line and the
  *       second half has no opening `[`, so again nothing matches. One link in
- *       `docs/workspaces.md` is written this way, and it was the last one still
+ *       `content/workspaces.md` is written this way, and it was the last one still
  *       pointing at a `.md` file after the code-span fix.
  *
  * So the pass below runs over the whole document at once and uses these ranges to
@@ -310,9 +313,9 @@ export function transform(source, docsRelative) {
     `title: ${yamlString(title ?? path.posix.basename(docsRelative, ".md"))}`,
     // Per page rather than through Starlight's `editLink.baseUrl`, because the
     // projection moves two kinds of path: `README.md` becomes `index.md`, and the
-    // site's root is one directory below the repository's. A global prefix would
-    // send every index page at a file that does not exist.
-    `editUrl: ${yamlString(`${GITHUB}/edit/${GITHUB_BRANCH}/docs/${docsRelative}`)}`,
+    // site's root is `content/` rather than the repository's root. A global prefix
+    // would send every index page at a file that does not exist.
+    `editUrl: ${yamlString(`${GITHUB}/edit/${GITHUB_BRANCH}/${CORPUS}/${docsRelative}`)}`,
     "---",
     "",
   ].join("\n");
@@ -343,7 +346,7 @@ function existingPages(dir = CONTENT_DIR, prefix = "") {
 }
 
 /**
- * Bring `src/content/docs/` into agreement with `docs/`.
+ * Bring `src/content/docs/` into agreement with `content/`.
  *
  * Returns `{ written, removed, stale, total }` — `stale` is what `--check` reports
  * and what a write run repairs.
