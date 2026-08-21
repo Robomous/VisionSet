@@ -1,6 +1,6 @@
 # @visionset/annotator
 
-[`frontend/annotator/`](../../../frontend/annotator/) is the annotation engine. Its
+[`frontend/annotator/`](../../../../frontend/annotator/) is the annotation engine. Its
 whole claim is that the part which *decides* anything - geometry, hit testing, the
 interaction state machine, undo - is pure TypeScript that has never heard of a
 browser, and React is one renderer over the top of it.
@@ -41,9 +41,9 @@ All three run under `pnpm --filter @visionset/annotator lint`.
 
 | Gate | Where | Catches |
 | --- | --- | --- |
-| `no-restricted-imports` | [`eslint.config.js`](../../../frontend/annotator/eslint.config.js), scoped to `src/core/**` | a React import |
+| `no-restricted-imports` | [`eslint.config.js`](../../../../frontend/annotator/eslint.config.js), scoped to `src/core/**` | a React import |
 | `no-restricted-globals` | same file, same scope | a browser host object used as a **value** |
-| `tsconfig.core.json` | [`tsconfig.core.json`](../../../frontend/annotator/tsconfig.core.json) | a DOM type in a **signature** |
+| `tsconfig.core.json` | [`tsconfig.core.json`](../../../../frontend/annotator/tsconfig.core.json) | a DOM type in a **signature** |
 
 The third is the one worth understanding. It compiles the shipped engine with
 `lib: ["ES2022"]` and `types: []` - no DOM library, no ambient `@types` - so
@@ -53,7 +53,7 @@ annotation is not a value reference, and it is exactly the shape that leaked int
 v1's supposedly-pure layer.
 
 That each gate actually fires is itself proved:
-[`tests/scripts/annotator_boundary.test.mjs`](../../../tests/scripts/annotator_boundary.test.mjs)
+[`tests/scripts/annotator_boundary.test.mjs`](../../../../tests/scripts/annotator_boundary.test.mjs)
 introduces a violation of each and asserts the corresponding gate rejects it.
 
 ## How a host talks to it
@@ -80,5 +80,5 @@ thing an embedder had to fight.
 
 [`docs/annotations.md`](../../annotations.md) covers the behaviour - the tools,
 the shortcut table, the ceiling on zoom. The
-[`annotator-core`](../../../.agents/skills/frontend/annotator-core/SKILL.md) skill
+[`annotator-core`](../../../../.agents/skills/frontend/annotator-core/SKILL.md) skill
 is the one to read before touching interaction, geometry or a render adapter.

@@ -4,10 +4,10 @@ The REST surface is a thin SDK client: each route parses input, calls one servic
 the output. This document covers the parts of the contract shared by all endpoints, including
 the failure format and how clients should interpret it.
 
-The routes themselves are described by [`openapi.json`](../openapi.json) at the repo root, which
+The routes themselves are described by [`openapi.json`](../../openapi.json) at the repo root, which
 is generated (`uv run python scripts/export_openapi.py`) and diffed in CI. Never hand-edit it.
 
-For a worked external client, [`examples/http_end_to_end.py`](../examples/http_end_to_end.py) starts
+For a worked external client, [`examples/http_end_to_end.py`](../../examples/http_end_to_end.py) starts
 `visionset server` on a free port and drives the whole cycle - upload, launch-and-poll ingest,
 annotate, promote, publish, verify, export - with `urllib` and a bearer token, and nothing else. It
 is deliberately dependency-free: a contract only a smart client can drive is not really a contract.

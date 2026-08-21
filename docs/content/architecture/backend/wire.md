@@ -1,6 +1,6 @@
 # wire
 
-[`src/visionset/wire/`](../../../src/visionset/wire/) is one hand-written JSON
+[`src/visionset/wire/`](../../../../src/visionset/wire/) is one hand-written JSON
 projection per resource. It is what `visionset --json` prints and what an MCP tool
 result carries.
 
@@ -32,7 +32,7 @@ same twenty projections, and a second hand-written copy is what "promoted, not
 copied" exists to prevent.
 
 The two are held to each other by
-[`tests/cli/test_json_contract.py`](../../../tests/cli/test_json_contract.py),
+[`tests/cli/test_json_contract.py`](../../../../tests/cli/test_json_contract.py),
 which imports both and asserts each pair has the same keys *and* that the
 projection round-trips through the wire model. A test may import what neither
 package may.

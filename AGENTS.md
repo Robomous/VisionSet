@@ -184,5 +184,5 @@ names the targeted checks that ran and leaves the exhaustive verdict to the pull
 
 ### Documentation
 
-- When adding or changing a feature, update the relevant file under `docs/` — create one only
+- When adding or changing a feature, update the relevant file under `docs/content/` — create one only
   if no existing doc covers the topic.

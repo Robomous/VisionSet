@@ -4,7 +4,7 @@ This page explains how `@visionset/ui-core` communicates with the API and the
 three decisions inherited by every screen: the API location, the active
 credential, and the response to an invalid credential.
 
-The **visual** contract is [`DESIGN.md`](../DESIGN.md) at the repository root. This
+The **visual** contract is [`DESIGN.md`](../../DESIGN.md) at the repository root. This
 document is the data half.
 
 ## What M5 shipped
@@ -52,7 +52,7 @@ Two of the tab values are not in that list. `?tab=versions` is honoured and land
 Schema, because version history lives inside that tab and a URL somebody bookmarked is a
 promise; and `/projects/:id/dataset` is the Dataset tab's old address, kept as a redirect
 for the same reason. Neither appears in the tab bar. The
-[`information-architecture`](../.agents/skills/frontend/information-architecture/SKILL.md)
+[`information-architecture`](../../.agents/skills/frontend/information-architecture/SKILL.md)
 skill is the canonical sitemap.
 
 Two of those query parameters are kept true rather than only read, and it is the same

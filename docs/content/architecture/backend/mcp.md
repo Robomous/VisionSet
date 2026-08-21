@@ -1,6 +1,6 @@
 # mcp
 
-[`src/visionset/mcp/`](../../../src/visionset/mcp/) is the surface an agent uses.
+[`src/visionset/mcp/`](../../../../src/visionset/mcp/) is the surface an agent uses.
 It speaks MCP over stdio, and it is the fourth client of the same kernel - every
 tool is a thin mapping onto one or two service calls.
 
@@ -23,13 +23,13 @@ flowchart TB
 ```
 
 Registration happens in one table in
-[`main.py`](../../../src/visionset/mcp/main.py) rather than as a decorator at each
+[`main.py`](../../../../src/visionset/mcp/main.py) rather than as a decorator at each
 definition site. That is not style: `@server.tool()` inside `projects.py` would
 make that module import `main`, which imports it. Doing it in one place also gives
 the three cross-cutting decisions exactly one home - the error wrapper, the
 cleaned docstring that becomes the tool description, and the read/write
 annotations - and lets
-[`tests/mcp/test_registration.py`](../../../tests/mcp/test_registration.py) assert
+[`tests/mcp/test_registration.py`](../../../../tests/mcp/test_registration.py) assert
 that every registered tool went through all three.
 
 ## The destructive posture
@@ -57,14 +57,14 @@ package may not import - the `Delivery clients are siblings` contract - and
 deriving one from a class name would key a public contract to a Python identifier.
 What a code was actually needed for here is one question, *may I retry this, and
 with what?*, and `RETRY_WITH` in
-[`_errors.py`](../../../src/visionset/mcp/_errors.py) answers it directly.
+[`_errors.py`](../../../../src/visionset/mcp/_errors.py) answers it directly.
 
 ## Two generated artifacts
 
 - [`docs/mcp-tools.md`](../../mcp-tools.md) is written from the tool listing the
   server actually advertises, by `scripts/export_mcp_tools.py`. A hand-written
   reference would be a second copy of an interface an agent reads verbatim.
-- [`tests/architecture/test_capability_reachability.py`](../../../tests/architecture/test_capability_reachability.py)
+- [`tests/architecture/test_capability_reachability.py`](../../../../tests/architecture/test_capability_reachability.py)
   resolves every declared batch action against the real routing table *and* the
   real tool listing, so a capability the wire declares cannot be unperformable.
 

@@ -517,7 +517,7 @@ a `select` - defined in `visionset/formats/lanes/_core.py` and not in the kernel
 domain does not know what a road is and the same geometry labels railway tracks. A missing
 attribute resolves to `other` rather than refusing, and `position_role` falls back to the class
 name, so a schema whose classes *are* the road positions needs no attributes at all. See
-[`src/visionset/formats/lanes/README.md`](../src/visionset/formats/lanes/README.md).
+[`src/visionset/formats/lanes/README.md`](../../src/visionset/formats/lanes/README.md).
 
 Two of the five refuse rather than invent: TuSimple will not write a lane whose points are not
 sorted by ascending Y - its row sampling has no meaning for a path that doubles back - and CULane

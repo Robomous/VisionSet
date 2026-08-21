@@ -5,7 +5,7 @@
 ```bash
 uv sync                        # Python 3.12+, installs the package editable + dev tools
 pnpm install                   # pnpm workspace under frontend/
-pnpm --dir docs-site install   # optional: the documentation site (its own workspace)
+pnpm --dir docs install   # optional: the documentation site (its own workspace)
 bash scripts/setup_agents.sh   # optional: expose .agents/skills/ to coding agents
 ```
 
@@ -16,12 +16,12 @@ root, so nothing they write into the checkout ends up owned by somebody you have
 | | |
 | --- | --- |
 | The app | **http://localhost:8080** — nginx, the only port you need |
-| The docs | **http://localhost:4321** — `docs/` rendered; useful on its own (`up docs`) |
+| The docs | **http://localhost:4321** — `docs/content/` rendered; useful on its own (`up docs`) |
 | Storage | `workspace-data/` (contents git-ignored, the directory itself tracked): `visionset.db` + `blobs/`. Move it with `VISIONSET_DATA=/path` |
 | Who writes it | you — the built services run as `VISIONSET_UID`/`VISIONSET_GID`, default 1000. Another uid? `printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env`, then `--build` |
 | Token | minted on first boot, printed in the `api` logs |
 | Behind the proxy | API on :8000 and vite on :5173 are published too, for curl and for reading a vite error without nginx in the way |
-| Live reload | every layer, with nothing restarted: `src/visionset/` through uvicorn `--reload`, `frontend/app/src/` through vite HMR, `frontend/{ui-core,annotator}/src/` through a `tsc --watch` per package that rewrites the `dist/` vite resolves them from, and `docs/` through Astro |
+| Live reload | every layer, with nothing restarted: `src/visionset/` through uvicorn `--reload`, `frontend/app/src/` through vite HMR, `frontend/{ui-core,annotator}/src/` through a `tsc --watch` per package that rewrites the `dist/` vite resolves them from, and `docs/content/` through Astro |
 | After a dependency change | `build` — in either language, and nothing else. No `node_modules` is mounted from the host or from a volume, so a rebuilt image is what the containers get |
 | After changing a `package.json`, a tsconfig, `vite.config.ts` or `index.html` | `build` — these are baked into the app image, beside the install they configure |
 | After changing a Dockerfile or an entry script | `build` for the first, `restart api` / `restart app` for the second — an entry script is read once, at container start |
@@ -242,7 +242,7 @@ a deliberate manual run, because each costs minutes or needs its own install.
 | OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) | `generated` |
 | Generated API client | `pnpm generate:client` (commit the diff) — writes **two** artifacts under `frontend/ui-core/src/generated/`: `api.ts` (the types) and `checks.ts` (the runtime response checks `unwrap` takes). CI diffs the whole directory. | `generated` |
 | Annotator wire fixture | `uv run python scripts/export_wire_fixtures.py` (commit the diff) | part of `python` |
-| MCP tool reference | `uv run python scripts/export_mcp_tools.py` (commit the diff) — `docs/mcp-tools.md` is generated from the server's own tool listing, because a tool description *is* the interface an agent reads | `generated` |
+| MCP tool reference | `uv run python scripts/export_mcp_tools.py` (commit the diff) — `docs/content/mcp-tools.md` is generated from the server's own tool listing, because a tool description *is* the interface an agent reads | `generated` |
 
 **`scripts/check.sh` runs pytest under `pytest-xdist` with `-n auto`.** The suite is
 roughly 3200 tests averaging 63 ms, with only eight over a second — there is no expensive
@@ -282,10 +282,10 @@ Any change to `@visionset/app` or `@visionset/ui-core` is governed by
 [`DESIGN.md`](DESIGN.md) at the repository root — **read it before building or changing a
 screen**, not after. It owns the visual foundations: colour semantics, typography roles,
 spacing, radius, materials, motion, action hierarchy, and accessibility. The product's own
-UI rules live beside it: [`docs/ui/product-principles.md`](docs/ui/product-principles.md)
+UI rules live beside it: [`docs/content/ui/product-principles.md`](docs/content/ui/product-principles.md)
 (what a screen must show and offer — headers, numbers, why a disabled button with no
-explanation is forbidden), [`docs/ui/navigation.md`](docs/ui/navigation.md) (breadcrumbs,
-the rail, URL state), and [`docs/ui/annotator.md`](docs/ui/annotator.md) (the annotation
+explanation is forbidden), [`docs/content/ui/navigation.md`](docs/content/ui/navigation.md) (breadcrumbs,
+the rail, URL state), and [`docs/content/ui/annotator.md`](docs/content/ui/annotator.md) (the annotation
 workspace).
 
 It is prose over running code, not decoration. `frontend/ui-core/src/styles.css` carries the
@@ -296,30 +296,30 @@ is a reason to amend the file, never to inline the value.
 
 ## Documentation
 
-**`docs/` is the documentation.** Plain Markdown, committed, rendering on GitHub and readable
+**`docs/content/` is the documentation.** Plain Markdown, committed, rendering on GitHub and readable
 with nothing installed — which is a requirement rather than a convenience, because tools and
-coding agents read it that way. Edit the file that owns the topic; [`docs/README.md`](docs/README.md)
+coding agents read it that way. Edit the file that owns the topic; [`docs/content/README.md`](docs/content/README.md)
 is the index and says which one that is.
 
-`docs-site/` renders it as a website with [Astro](https://astro.build) and
+`docs/` renders it as a website with [Astro](https://astro.build) and
 [Starlight](https://starlight.astro.build). It is a **rendering layer, never a second copy**:
-`docs-site/scripts/sync-docs.mjs` projects `docs/**/*.md` into a generated, git-ignored content
+`docs/scripts/sync-docs.mjs` projects `docs/content/**/*.md` into a generated, git-ignored content
 collection, lifting each document's first `# H1` into the frontmatter title Starlight requires
 and rewriting the links that would otherwise break. No prose is changed, and the projection runs
 automatically before every dev, build and preview — there is no sync step to remember.
 
 ```bash
 docker compose -f docker/compose.yaml up docs   # http://localhost:4321, nothing installed
-pnpm --dir docs-site install                    # or run it directly: its own workspace root
-pnpm --dir docs-site dev                        # http://localhost:4321
-pnpm --dir docs-site build                      # static output in docs-site/dist/
+pnpm --dir docs install                    # or run it directly: its own workspace root
+pnpm --dir docs dev                        # http://localhost:4321
+pnpm --dir docs build                      # static output in docs/dist/
 ```
 
-Either way, editing a file under `docs/` reloads the page.
+Either way, editing a file under `docs/content/` reloads the page.
 
-**Markdown, not MDX, in `docs/`.** `.mdx` does not render on GitHub, so a `.mdx` file there
+**Markdown, not MDX, in `docs/content/`.** `.mdx` does not render on GitHub, so a `.mdx` file there
 breaks the promise above. Reach for it only when a page genuinely needs a Starlight or Astro
-component — such a page is a *site* page and belongs in `docs-site/`. The link gate checks both
+component — such a page is a *site* page and belongs in `docs/` outside `content/`. The link gate checks both
 extensions, so an MDX page cannot slip past it.
 
 Three gates cover this, and none of them is in `check.sh`'s default run:
@@ -327,11 +327,11 @@ Three gates cover this, and none of them is in `check.sh`'s default run:
 | | |
 | --- | --- |
 | `bash scripts/check.sh docs` | builds the site, asserts the projection is deterministic, and checks every internal link in the built output — anchors included. Opt-in: it needs its own install and reaches nothing the other groups cover. CI runs it on every pull request as `docs site` |
-| `tests/scripts/docs_links.test.mjs` | every link in `docs/` resolves — file *and* anchor — before the site rewrites anything. Part of `pnpm test` |
-| `tests/scripts/docs_sidebar.test.mjs` | every document appears in `docs-site/src/sidebar.mjs` exactly once, so a new page cannot land with nothing navigating to it. Part of `pnpm test` |
+| `tests/scripts/docs_links.test.mjs` | every link in `docs/content/` resolves — file *and* anchor — before the site rewrites anything. Part of `pnpm test` |
+| `tests/scripts/docs_sidebar.test.mjs` | every document appears in `docs/src/sidebar.mjs` exactly once, so a new page cannot land with nothing navigating to it. Part of `pnpm test` |
 
 The site deploys as static output through AWS Amplify Hosting; [`amplify.yml`](amplify.yml) is
-the build, and [`docs-site/README.md`](docs-site/README.md) covers the rest.
+the build, and [`docs/README.md`](docs/README.md) covers the rest.
 
 ## Versioning
 
@@ -431,7 +431,7 @@ The first artifact anyone installs is the beta: bump `VERSION` to `0.0.1b1`, run
 sits at `0.0.1.dev0` rather than the `0.1.0.dev0` the repo was bootstrapped with.
 
 **The beta ships to PyPI, and nothing ships to npm** — decided in #69, with the reasoning
-and the whole runbook in [docs/releasing.md](docs/releasing.md). The short version: pip is
+and the whole runbook in [docs/content/releasing.md](docs/content/releasing.md). The short version: pip is
 the vehicle the product is designed around, and a pre-release is invisible to a plain
 `pip install`, so publishing one is safe rather than premature.
 

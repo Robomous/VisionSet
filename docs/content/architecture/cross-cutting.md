@@ -15,9 +15,9 @@ change that fights one is wrong - the boundary does not move to make a build pas
 `visionset.inference`, nor `fastapi`, `typer`, `mcp` or `uvicorn`.
 
 - **Contract** - `[[tool.importlinter.contracts]]` in
-  [`pyproject.toml`](../../pyproject.toml), run by `uv run lint-imports`.
+  [`pyproject.toml`](../../../pyproject.toml), run by `uv run lint-imports`.
 - **Second check** -
-  [`tests/architecture/test_kernel_purity.py`](../../tests/architecture/test_kernel_purity.py)
+  [`tests/architecture/test_kernel_purity.py`](../../../tests/architecture/test_kernel_purity.py)
   imports the kernel in a fresh interpreter and inspects `sys.modules`, which is
   what a deferred import inside a function cannot satisfy.
 - **Why it is drawn there** - [backend/kernel.md](backend/kernel.md).
@@ -32,7 +32,7 @@ change that fights one is wrong - the boundary does not move to make a build pas
   `lib` and no ambient `@types`, and the only one of the three that can see a DOM
   type in a *signature*.
 - **Second check** -
-  [`tests/scripts/annotator_boundary.test.mjs`](../../tests/scripts/annotator_boundary.test.mjs)
+  [`tests/scripts/annotator_boundary.test.mjs`](../../../tests/scripts/annotator_boundary.test.mjs)
   proves each gate fires by breaking it.
 - **Why it is drawn there** - [frontend/annotator.md](frontend/annotator.md).
 
@@ -68,13 +68,13 @@ Two consequences follow, and both are load-bearing:
   user meets it.
 - **A declared action obliges every client to offer it.** So a name lands on the
   wire only in the same change as the route, the tool and the control that honour
-  it. [`tests/architecture/test_capability_reachability.py`](../../tests/architecture/test_capability_reachability.py)
+  it. [`tests/architecture/test_capability_reachability.py`](../../../tests/architecture/test_capability_reachability.py)
   resolves every declared batch action against the real routing table and the real
   MCP listing.
 
 The authority is
-[`kernel/domain/capabilities.py`](../../src/visionset/kernel/domain/capabilities.py)
-and the [`ui-capabilities`](../../.agents/skills/frontend/ui-capabilities/SKILL.md)
+[`kernel/domain/capabilities.py`](../../../src/visionset/kernel/domain/capabilities.py)
+and the [`ui-capabilities`](../../../.agents/skills/frontend/ui-capabilities/SKILL.md)
 skill, which also bans the two antipatterns this contract exists to remove.
 
 ## The batch lifecycle, at a glance
@@ -120,6 +120,6 @@ a new batch, not a reopened one.
 
 The settled model - and it *is* settled, not to be re-litigated in an
 implementation task - is the
-[`batch-lifecycle`](../../.agents/skills/domain/batch-lifecycle/SKILL.md) skill.
+[`batch-lifecycle`](../../../.agents/skills/domain/batch-lifecycle/SKILL.md) skill.
 [`docs/batches.md`](../batches.md) and [`docs/jobs.md`](../jobs.md) are the
 behavioural pages.

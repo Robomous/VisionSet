@@ -1,6 +1,6 @@
 # @visionset/ui-core
 
-[`frontend/ui-core/`](../../../frontend/ui-core/) is where the product's UI
+[`frontend/ui-core/`](../../../../frontend/ui-core/) is where the product's UI
 actually lives: the design system, the domain screens, and the typed client that
 talks to the API. Everything except routing.
 
@@ -48,7 +48,7 @@ screen showing an error and every other screen showing stale data forever.
 
 ## The generated client, and the check beside it
 
-`src/generated/` is written from the committed [`openapi.json`](../../../openapi.json)
+`src/generated/` is written from the committed [`openapi.json`](../../../../openapi.json)
 and is never hand-edited. `openapi-fetch` types a response off the contract and
 verifies **nothing** at runtime, so `unwrap` takes a generated *check* as well:
 
@@ -91,7 +91,7 @@ agree, declaration for declaration, and that no retired token has returned;
 `tests/scripts/design_tokens.test.mjs` scans every tracked frontend file for a
 raw colour in a class string, refuses a second `tailwind.config.js`, and
 confines `brand` to its two identity sites; `tests/scripts/docs_links.test.mjs`
-keeps [`DESIGN.md`](../../../DESIGN.md)'s own cross-references honest.
+keeps [`DESIGN.md`](../../../../DESIGN.md)'s own cross-references honest.
 
 ## Libraries
 
@@ -111,9 +111,9 @@ Do not add a library for a covered concern without a documented reason.
 
 ## Related
 
-[`DESIGN.md`](../../../DESIGN.md) is the contract this package implements.
+[`DESIGN.md`](../../../../DESIGN.md) is the contract this package implements.
 [`docs/ui.md`](../../ui.md) covers the data shell. The
-[`ui-capabilities`](../../../.agents/skills/frontend/ui-capabilities/SKILL.md)
+[`ui-capabilities`](../../../../.agents/skills/frontend/ui-capabilities/SKILL.md)
 skill governs any state-gated control, and
-[`information-architecture`](../../../.agents/skills/frontend/information-architecture/SKILL.md)
+[`information-architecture`](../../../../.agents/skills/frontend/information-architecture/SKILL.md)
 is the sitemap.

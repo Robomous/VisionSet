@@ -1,6 +1,6 @@
 # cli
 
-[`src/visionset/cli/`](../../../src/visionset/cli/) is Typer over the kernel. Its
+[`src/visionset/cli/`](../../../../src/visionset/cli/) is Typer over the kernel. Its
 claim is that the whole cycle - create a project, define a schema, ingest, approve,
 annotate, promote, publish, export - is reachable from a shell without touching
 Python.
@@ -30,7 +30,7 @@ Two rules make the output composable, and both are held by tests:
 Three, and one of them carries two meanings deliberately - `visionset release
 verify` and `visionset export --check` both use `1` for *the check ran and the
 answer is no*, which is distinct from *the command failed*. Both meanings are
-written down in [`_errors.py`](../../../src/visionset/cli/_errors.py).
+written down in [`_errors.py`](../../../../src/visionset/cli/_errors.py).
 
 ## What it may depend on
 

@@ -43,15 +43,15 @@ flowchart TB
 
 Every arrow points one way. The kernel never imports a surface, and the surfaces
 never import each other - both are checked by import-linter contracts in
-[`pyproject.toml`](../../pyproject.toml) and by a fresh-process test in
-[`tests/architecture/`](../../tests/architecture/).
+[`pyproject.toml`](../../../pyproject.toml) and by a fresh-process test in
+[`tests/architecture/`](../../../tests/architecture/).
 
 ## The two halves
 
 | Half | Lives in | Ships as | Page |
 | --- | --- | --- | --- |
-| Python distribution | [`src/visionset/`](../../src/visionset/) | a `pip` wheel | [backend/](backend/README.md) |
-| Frontend workspace | [`frontend/`](../../frontend/) | npm packages, and a bundle inside the wheel | [frontend/](frontend/README.md) |
+| Python distribution | [`src/visionset/`](../../../src/visionset/) | a `pip` wheel | [backend/](backend/README.md) |
+| Frontend workspace | [`frontend/`](../../../frontend/) | npm packages, and a bundle inside the wheel | [frontend/](frontend/README.md) |
 
 The browser is not a separate product. `visionset server` serves the compiled
 bundle from `src/visionset/_static/` under `/app`, so one `pip install` is the
@@ -66,5 +66,5 @@ whole thing.
   capabilities contract, and the batch lifecycle at a glance.
 
 For what the system *does* rather than how it is arranged, the index at
-[`docs/README.md`](../README.md) is the map. [`DESIGN.md`](../../DESIGN.md) is the
-visual contract, and [`CONTRIBUTING.md`](../../CONTRIBUTING.md) lists the checks.
+[`docs/README.md`](../README.md) is the map. [`DESIGN.md`](../../../DESIGN.md) is the
+visual contract, and [`CONTRIBUTING.md`](../../../CONTRIBUTING.md) lists the checks.

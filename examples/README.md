@@ -141,7 +141,7 @@ export at `<destination>/export/`. Point a real agent at it:
 visionset mcp --workspace examples/workspace-data/mcp-e2e/ws
 ```
 
-[`docs/examples.md`](../docs/examples.md) walks through what each stage of all five examples does
+[`docs/examples.md`](../docs/content/examples.md) walks through what each stage of all five examples does
 and why.
 
 ## Running the thirty-minute flow

@@ -546,8 +546,8 @@ enormous came along, and a clean-venv install serves `/ui` for real.
 it from the installed wheel in an empty environment, with every stage named and timed.
 
 **Documentation for people who have not seen the repository.** A real quickstart, an
-[install guide](docs/install.md), a [first-dataset tutorial](docs/tutorial.md), a
-[release runbook](docs/releasing.md), and an MCP tool reference generated from the server's own
+[install guide](docs/content/install.md), a [first-dataset tutorial](docs/content/tutorial.md), a
+[release runbook](docs/content/releasing.md), and an MCP tool reference generated from the server's own
 listing so it cannot drift from what an agent is told.
 
 ### Changed

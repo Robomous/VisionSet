@@ -2,7 +2,7 @@
 
 How a person moves through VisionSet, and how the interface says where they are. The
 canonical sitemap — every route, tab, entry point and back-link — is the
-[`information-architecture`](../../.agents/skills/frontend/information-architecture/SKILL.md)
+[`information-architecture`](../../../.agents/skills/frontend/information-architecture/SKILL.md)
 skill; the routing implementation is [`docs/ui.md`](../ui.md) and
 [`docs/architecture/frontend/app.md`](../architecture/frontend/app.md). This page owns the
 UX rules those must satisfy.

@@ -8,10 +8,10 @@ The page has two parts. The second measures whether a model **chooses** these to
 their results. That measures the tool descriptions rather than the kernel underneath them.
 
 The walk below is the executable
-[`tests/mcp/test_agent_walk.py`](../tests/mcp/test_agent_walk.py) in prose. Every call it makes,
+[`tests/mcp/test_agent_walk.py`](../../tests/mcp/test_agent_walk.py) in prose. Every call it makes,
 this section makes; every assertion it makes is stated here as what the answer is good for.
 
-To run it yourself rather than read it, [`examples/mcp_end_to_end.py`](../examples/mcp_end_to_end.py)
+To run it yourself rather than read it, [`examples/mcp_end_to_end.py`](../../examples/mcp_end_to_end.py)
 is the same walk against a **real server over a real pipe** - it spawns `visionset mcp --workspace
 <root>` exactly as an MCP client configuration would and speaks JSON-RPC down its stdin and stdout,
 where the test drives the protocol over a paired in-memory stream. The test proves the tools; the

@@ -12,7 +12,7 @@ point `ingest` at the folder instead; everything after it is identical.
 > on screen and what to press. The app is two commands away and is the better screenshot.
 
 If you would rather read the whole thing as one program first,
-[`examples/thirty_minute_flow.py`](../examples/thirty_minute_flow.py) is exactly these steps with
+[`examples/thirty_minute_flow.py`](../../examples/thirty_minute_flow.py) is exactly these steps with
 the assertions still in them, and it runs in under two seconds.
 
 ---
@@ -139,7 +139,7 @@ Objects/Labels panel on the right.
 Every edit saves as you go - there is no save button and nothing to lose. The full shortcut table
 is in [annotations.md](annotations.md).
 
-Prefer not to click? [`examples/thirty_minute_flow.py`](../examples/thirty_minute_flow.py) writes
+Prefer not to click? [`examples/thirty_minute_flow.py`](../../examples/thirty_minute_flow.py) writes
 fifty boxes through the SDK in one pass, and an agent can do the same over
 [MCP](mcp.md) - including *looking* at each frame.
 
