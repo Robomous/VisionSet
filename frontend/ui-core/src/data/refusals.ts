@@ -26,6 +26,31 @@
  * context*: the kernel says what rule was broken, and the product says what the
  * person can do about it.
  *
+ * ## Six codes are withheld on purpose
+ *
+ * Five carry their remedy in the message itself, and each message says
+ * something a static sentence here would have to drop:
+ *
+ * - `LOCAL_INFERENCE_UNAVAILABLE` ends in the install command for the
+ *   missing extra;
+ * - `INFERENCE_CONNECTION_NOT_RUNNABLE` names what this build does run —
+ *   the adapter list to point the connection at, "use a local connection"
+ *   for an http one, or which of two providers claiming the same model
+ *   type to uninstall;
+ * - `INFERENCE_OUT_OF_MEMORY` says which memory ran out on which device,
+ *   and the remedy changes with that answer;
+ * - `UNSUPPORTED_PROMPT` says what the model does answer — words or
+ *   places — and which capability to ask for instead;
+ * - `INFERENCE_CONNECTION_NOT_CHECKABLE` says which of two states the
+ *   connection is in and names the download that fixes one of them.
+ *
+ * A sentence written here would be shorter and would say less, so these
+ * fall through by decision rather than by omission.
+ *
+ * `DUPLICATE_CLASSIFICATION_TAG` is withheld for a different reason: its
+ * message mixes a leak (an asset id) with a fact (the class name), and a
+ * static sentence cannot keep the fact. The real fix is kernel-side.
+ *
  * ## Where the code may appear
  *
  * The prose is always the visible notice. The identifier survives only where a
@@ -36,8 +61,12 @@
  * - a full error state (`ErrorState`) puts it in a secondary mono meta line,
  *   de-duplicated against the sentence;
  * - a bare `Alert` does not carry it at all;
- * - a visible `Badge` beside the raw message, which six sites still do, is
- *   the fourth shape and is not yet settled.
+ * - a `FieldError` is a bare `<p role="alert">` with no code slot at all —
+ *   the shape most of this file's consumers render;
+ * - a visible `Badge` beside the raw message is the fourth shape, not yet
+ *   settled — two `InferenceScreen` sites still do it. Each renders a
+ *   union: a real wire refusal from the mutation, or a settled background
+ *   job's error string, and it is the job half no code-keyed map can serve.
  *
  * A code as an `Alert` heading is the shape this map exists to end.
  */
@@ -52,6 +81,10 @@ import { asApiError } from "./errors.js";
  * rename cannot silently break a client.
  */
 export const REFUSAL_PROSE: Record<string, string> = {
+  // Projects.
+  PROJECT_NOT_FOUND: "That project is no longer on record.",
+  PROJECT_NAME_TAKEN: "A project with that name already exists.",
+
   // The batch-state family. These three are the ones a capability declaration
   // now pre-empts, so reaching one means the batch moved under the press —
   // another tab, another person — rather than a control that should not have
@@ -60,6 +93,8 @@ export const REFUSAL_PROSE: Record<string, string> = {
   BATCH_NOT_EDITABLE: "This batch can no longer be edited — only a draft can be.",
   BATCH_NOT_COMPLETE: "Some of this batch's jobs are still unfinished.",
   BATCH_IMMUTABLE: "This batch is completed, and completed batches are kept.",
+  BATCH_NOT_FOUND: "That batch is no longer on record.",
+  EMPTY_BATCH: "This batch has no frames — add some before approving it.",
   INVALID_TRANSITION: "This has already moved on — reload to see where it is now.",
   // Not the same sentence as INVALID_TRANSITION, though they are neighbours.
   // That one means the move was never allowed from here; this one means it was
@@ -67,28 +102,48 @@ export const REFUSAL_PROSE: Record<string, string> = {
   // the other person rather than the rule.
   STALE_WRITE: "Someone else changed this while you were working on it — reload to see it.",
 
-  // The per-asset family.
+  // The annotation-work family — a job, and the frames inside one.
   ASSET_NOT_WRITABLE: "This frame's labeling is settled — its labels cannot be changed here.",
   JOB_NOT_COMPLETE: "Some frames still need annotating or skipping.",
   ASSET_NOT_IN_JOB: "This frame is not part of this job.",
+  ASSET_NOT_IN_BATCH: "That frame is not in the batch this one corrects.",
+  ASSET_NOT_FOUND: "Some of those frames are not in this project.",
+  ANNOTATION_NOT_FOUND: "That annotation is no longer on record.",
+  ANNOTATION_GEOMETRY_OUT_OF_BOUNDS: "That shape falls outside the frame it is drawn on.",
+  JOB_NOT_FOUND: "That job is no longer on record.",
+  JOB_FINISHED: "This job is finished — correct its labels in a new batch instead.",
 
   // The schema family. `SCHEMA_NOT_FOUND` is the one with a remedy the screen
   // supplies (a link to the schema tab), so the sentence sets that up.
   SCHEMA_NOT_FOUND: "This project has no labels yet — define them first.",
   DESTRUCTIVE_SCHEMA_CHANGE: "This change removes part of the contract already in use.",
   SCHEMA_CHANGE_WOULD_ORPHAN: "Annotations already exist under a class this change removes.",
+  SCHEMA_DRAFT_NOT_FOUND: "There is no saved draft to publish.",
+  SCHEMA_VERSION_CONFLICT: "Someone else published a version first — try again to take the next one.",
 
   // Ingest.
   INGEST_JOB_NOT_FOUND: "That run is no longer on record.",
   SOURCE_NOT_FOUND: "That source is no longer on record.",
 
+  // Background runs.
+  BACKGROUND_JOB_NOT_FOUND: "That background job is no longer on record.",
+
   // Releases and export.
+  DATASET_NOT_FOUND: "That dataset is no longer on record.",
   RELEASE_NOT_FOUND: "That release is no longer on record.",
   RELEASE_TAG_TAKEN: "A release with that tag already exists — tags are never reused.",
   NO_SPLIT_RECIPE: "This release was published without a split, so there are no folds to show.",
   LOSSY_EXPORT_NOT_CONSENTED: "This format cannot express every shape in the dataset.",
   EXPORT_FORMAT_NOT_FOUND: "No exporter for that format is installed on this server.",
   UNSERIALIZABLE_MANIFEST: "This release's manifest cannot be read back — the workspace may be damaged.",
+  EMPTY_RELEASE: "This dataset has no frames yet — promote a completed batch first.",
+
+  // Inference connections.
+  INFERENCE_CONNECTION_NOT_FOUND: "That model connection is no longer on record.",
+  INFERENCE_CONNECTION_NAME_TAKEN: "A model connection with that name already exists.",
+  INFERENCE_CONNECTION_NOT_DOWNLOADABLE:
+    "This connection's model runs elsewhere, so there are no weights to fetch.",
+  INFERENCE_CONNECTION_NOT_SET_UP: "This connection is not ready — download its weights first.",
 
   // Infrastructure the user can act on.
   WORKSPACE_BUSY: "The workspace is busy — try again in a moment.",
