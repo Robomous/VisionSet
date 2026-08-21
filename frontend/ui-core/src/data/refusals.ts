@@ -26,13 +26,19 @@
  * context*: the kernel says what rule was broken, and the product says what the
  * person can do about it.
  *
- * ## Four codes are withheld on purpose
+ * ## Six codes are withheld on purpose
  *
  * `LOCAL_INFERENCE_UNAVAILABLE`, `INFERENCE_CONNECTION_NOT_RUNNABLE`,
- * `INFERENCE_OUT_OF_MEMORY` and `UNSUPPORTED_PROMPT` carry their remedy in the
- * message itself — an install command, the model family nothing here can run,
- * the device that ran out of memory. A sentence written here would be shorter
+ * `INFERENCE_OUT_OF_MEMORY`, `UNSUPPORTED_PROMPT` and
+ * `INFERENCE_CONNECTION_NOT_CHECKABLE` carry their remedy in the message
+ * itself — an install command, the model family nothing here can run, the
+ * device that ran out of memory, which of two states the connection is in and
+ * the download that fixes one of them. A sentence written here would be shorter
  * and would say less, so these fall through by decision rather than by omission.
+ *
+ * `DUPLICATE_CLASSIFICATION_TAG` is withheld for a different reason: its
+ * message mixes a leak (an asset id) with a fact (the class name), and a
+ * static sentence cannot keep the fact. The real fix is kernel-side.
  *
  * ## Where the code may appear
  *
@@ -60,6 +66,10 @@ import { asApiError } from "./errors.js";
  * rename cannot silently break a client.
  */
 export const REFUSAL_PROSE: Record<string, string> = {
+  // Projects.
+  PROJECT_NOT_FOUND: "That project is no longer on record.",
+  PROJECT_NAME_TAKEN: "A project with that name already exists.",
+
   // The batch-state family. These three are the ones a capability declaration
   // now pre-empts, so reaching one means the batch moved under the press —
   // another tab, another person — rather than a control that should not have
@@ -68,6 +78,8 @@ export const REFUSAL_PROSE: Record<string, string> = {
   BATCH_NOT_EDITABLE: "This batch can no longer be edited — only a draft can be.",
   BATCH_NOT_COMPLETE: "Some of this batch's jobs are still unfinished.",
   BATCH_IMMUTABLE: "This batch is completed, and completed batches are kept.",
+  BATCH_NOT_FOUND: "That batch is no longer on record.",
+  EMPTY_BATCH: "This batch has no frames — add some before approving it.",
   INVALID_TRANSITION: "This has already moved on — reload to see where it is now.",
   // Not the same sentence as INVALID_TRANSITION, though they are neighbours.
   // That one means the move was never allowed from here; this one means it was
@@ -79,54 +91,43 @@ export const REFUSAL_PROSE: Record<string, string> = {
   ASSET_NOT_WRITABLE: "This frame's labeling is settled — its labels cannot be changed here.",
   JOB_NOT_COMPLETE: "Some frames still need annotating or skipping.",
   ASSET_NOT_IN_JOB: "This frame is not part of this job.",
+  ASSET_NOT_IN_BATCH: "That frame is not in the batch this one corrects.",
+  ASSET_NOT_FOUND: "Some of those frames are not in this project any more.",
+  ANNOTATION_NOT_FOUND: "That annotation is no longer on record.",
+  ANNOTATION_GEOMETRY_OUT_OF_BOUNDS: "That shape falls outside the frame it is drawn on.",
+  JOB_NOT_FOUND: "That job is no longer on record.",
+  JOB_FINISHED: "This job is finished — correct its labels in a new batch instead.",
 
   // The schema family. `SCHEMA_NOT_FOUND` is the one with a remedy the screen
   // supplies (a link to the schema tab), so the sentence sets that up.
   SCHEMA_NOT_FOUND: "This project has no labels yet — define them first.",
   DESTRUCTIVE_SCHEMA_CHANGE: "This change removes part of the contract already in use.",
   SCHEMA_CHANGE_WOULD_ORPHAN: "Annotations already exist under a class this change removes.",
+  SCHEMA_DRAFT_NOT_FOUND: "There is no saved draft to publish.",
+  SCHEMA_VERSION_CONFLICT: "Someone else published a version first — yours will be the next one.",
 
   // Ingest.
   INGEST_JOB_NOT_FOUND: "That run is no longer on record.",
   SOURCE_NOT_FOUND: "That source is no longer on record.",
 
+  // Background runs.
+  BACKGROUND_JOB_NOT_FOUND: "That background job is no longer on record.",
+
   // Releases and export.
+  DATASET_NOT_FOUND: "That dataset is no longer on record.",
   RELEASE_NOT_FOUND: "That release is no longer on record.",
   RELEASE_TAG_TAKEN: "A release with that tag already exists — tags are never reused.",
   NO_SPLIT_RECIPE: "This release was published without a split, so there are no folds to show.",
   LOSSY_EXPORT_NOT_CONSENTED: "This format cannot express every shape in the dataset.",
   EXPORT_FORMAT_NOT_FOUND: "No exporter for that format is installed on this server.",
   UNSERIALIZABLE_MANIFEST: "This release's manifest cannot be read back — the workspace may be damaged.",
-
-  // The not-founds. Every one of these prints an id and the workspace's name
-  // today, and none of that is a fact a person can use.
-  PROJECT_NOT_FOUND: "That project is no longer on record.",
-  BATCH_NOT_FOUND: "That batch is no longer on record.",
-  JOB_NOT_FOUND: "That job is no longer on record.",
-  BACKGROUND_JOB_NOT_FOUND: "That background run is no longer on record.",
-  DATASET_NOT_FOUND: "That dataset is no longer on record.",
-  ANNOTATION_NOT_FOUND: "That annotation is no longer on record — someone may have deleted it.",
-  ASSET_NOT_FOUND: "That frame is no longer on record.",
-  INFERENCE_CONNECTION_NOT_FOUND: "That model connection is no longer on record.",
-  SCHEMA_DRAFT_NOT_FOUND: "There is no saved draft to publish.",
-
-  // Names somebody else took first.
-  PROJECT_NAME_TAKEN: "A project with that name already exists.",
-  INFERENCE_CONNECTION_NAME_TAKEN: "A model connection with that name already exists.",
-
-  // Writes a person meets while annotating or curating.
-  SCHEMA_VERSION_CONFLICT: "Someone else published a version first — reload and try again.",
-  ASSET_NOT_IN_BATCH: "That frame is not in the batch this one corrects.",
-  ANNOTATION_GEOMETRY_OUT_OF_BOUNDS: "That shape falls outside the frame it is drawn on.",
-  DUPLICATE_CLASSIFICATION_TAG: "This frame already carries that tag.",
-  JOB_FINISHED: "This job is finished, so its frames are settled.",
-  EMPTY_BATCH: "This batch has no frames — add some before approving it.",
   EMPTY_RELEASE: "This dataset has no frames yet — promote a completed batch first.",
 
-  // Connection state. The three refusals a person meets before a model can run.
+  // Inference connections.
+  INFERENCE_CONNECTION_NOT_FOUND: "That model connection is no longer on record.",
+  INFERENCE_CONNECTION_NAME_TAKEN: "A model connection with that name already exists.",
   INFERENCE_CONNECTION_NOT_DOWNLOADABLE:
     "This connection's model runs elsewhere, so there are no weights to fetch.",
-  INFERENCE_CONNECTION_NOT_CHECKABLE: "There is nothing on this machine to check yet.",
   INFERENCE_CONNECTION_NOT_SET_UP: "This connection is not ready — download its weights first.",
 
   // Infrastructure the user can act on.
