@@ -1454,7 +1454,8 @@ def test_a_replacing_write_that_lands_nothing_returns_the_frame_to_unannotated(
 def test_a_replacing_write_refuses_a_frame_a_person_took_over(
     tmp_path: Path, take_over: Callable[[Fixture, AnnotationJob, UUID], object]
 ) -> None:
-    """Confirming, editing and skipping are judgments; a model's re-run never undoes one."""
+    """Confirming, editing, skipping and submitting for review are judgments; a model's
+    re-run never undoes one."""
     fixture = Fixture(tmp_path)
     job = fixture.working()
     asset_id = fixture.assets[0]

@@ -71,8 +71,7 @@ def run(
     follows is a loop over assets rather than one library call, and every
     iteration boundary is a point at which the last asset is committed and the
     next is untouched. Stopping there leaves a batch partly pre-labeled, which is
-    a coherent state precisely because a run only ever writes where nothing was
-    written.
+    a coherent state precisely because one frame is one transaction.
 
     **What it reports is assets.** A job row's ``processed`` and ``total`` are an
     absolute count of whatever this run works in, and the total is known before

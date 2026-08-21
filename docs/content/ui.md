@@ -770,9 +770,10 @@ that refusal and leaves `Start` dead rather than waiting for the press to produc
 
 **Replacing an earlier pass is a tick, off by default.** The live configuration - the model,
 the minimum prompt affinity, the prompt classes, and the count of what a run would consider -
-sits below whichever summary the mode wrote, in every mode: during a run too, with its fields
-and the tick disabled, and under a `done`, `stopped` or `failed` summary whenever the batch has
-an untouched asset left, whether or not anything here is pre-labeled. Where the batch holds
+sits below whichever summary the mode wrote, in every mode with something left to reach:
+during a run too, with its fields and the tick disabled, and under a `done`, `stopped` or
+`failed` summary whenever the batch has an untouched asset left, whether or not anything here
+is pre-labeled. Where the batch holds
 pre-labeled frames, under it sits **Replace the model labels on N pre-labeled frame(s)**,
 unticked, saying that frames anyone has edited, confirmed or skipped in this batch are never
 touched and that this cannot be undone. Ticked, the count line adds that the run also replaces

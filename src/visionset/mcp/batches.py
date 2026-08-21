@@ -359,12 +359,13 @@ def pre_label_batch(
     asset, so the wait is roughly that many times one image's inference time;
     for a batch of any size, expect minutes.
 
-    **Interrupting is safe.** A run only ever writes to an asset nothing has
-    touched, and commits one asset's labels in the same transaction as its move
-    to `pre_labeled` — so a cut-off call has entered some prefix of the
-    untouched assets and touched nothing else, and calling this again resumes
-    with whatever is still untouched rather than starting over or double-writing
-    what already landed.
+    **Interrupting is safe.** A plain run only ever writes to an asset nothing
+    has touched, and commits one asset's labels in the same transaction as its
+    move to `pre_labeled` — so a cut-off call has entered some prefix of the
+    assets it was reaching and touched nothing else, and calling this again
+    resumes with whatever is still untouched — plus, where
+    `replace_model_labels` is set, the frames still `pre_labeled` — rather than
+    starting over or double-writing what already landed.
 
     **Only assets nothing has touched — not merely assets reading
     `unannotated`.** An asset already `pre_labeled`, annotated, skipped,
