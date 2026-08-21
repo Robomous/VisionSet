@@ -122,7 +122,7 @@ export const REFUSAL_PROSE: Record<string, string> = {
   // supplies (a link to the schema tab), so the sentence sets that up.
   SCHEMA_NOT_FOUND: "This project has no labels yet — define them first.",
   DESTRUCTIVE_SCHEMA_CHANGE: "This change removes part of the contract already in use.",
-  SCHEMA_CHANGE_WOULD_ORPHAN: "Annotations already exist under a class this change removes.",
+  SCHEMA_CHANGE_WOULD_ORPHAN: "Annotations already exist that this change would orphan.",
   SCHEMA_DRAFT_NOT_FOUND: "There is no saved draft to publish.",
   SCHEMA_VERSION_CONFLICT: "Someone else published a version first — try again to take the next one.",
 

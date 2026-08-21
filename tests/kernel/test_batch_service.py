@@ -39,6 +39,8 @@ from visionset.kernel.domain import (
     AnnotationJobState,
     Asset,
     AssetProgress,
+    Attribute,
+    AttributeValue,
     Batch,
     BatchState,
     BboxGeometry,
@@ -751,6 +753,7 @@ def _annotate(
     label_class: str,
     version: int,
     geometry: Geometry | None = None,
+    attributes: dict[str, AttributeValue] | None = None,
 ) -> None:
     """Put one annotation on an asset, the way the delete tests above do.
 
@@ -774,6 +777,7 @@ def _annotate(
                 label_class=label_class,
                 schema_version=version,
                 geometry=geometry,
+                attributes=attributes or {},
                 provenance="human",
             )
         )
@@ -887,6 +891,41 @@ def test_a_repin_dropping_a_shape_this_batch_drew_is_still_refused(tmp_path: Pat
     _annotate(fixture, fixture.assets[0], "car", version=2, geometry=_A_POLYGON)
 
     with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)"):
+        fixture.batches.repin(batch_id, allow_destructive=True)
+    assert fixture.batches.get(batch_id).schema_version == 2
+    fixture.close()
+
+
+_SIGN_OCCLUDED = SIGN.model_copy(
+    update={"attributes": (Attribute(name="occluded", kind="boolean"),)}
+)
+
+
+def test_a_repin_dropping_an_attribute_this_batch_never_set_is_not_refused(
+    tmp_path: Path,
+) -> None:
+    """The attribute grain, one scope down: a batch whose labels never set the
+    attribute being removed holds nothing the narrower version stops describing."""
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [_SIGN_OCCLUDED])
+    batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
+    fixture.schemas.create_version(fixture.project.id, [SIGN], allow_destructive=True)
+    _annotate(fixture, fixture.assets[0], "sign", version=2)
+
+    assert fixture.batches.repin(batch_id, allow_destructive=True).schema_version == 3
+    fixture.close()
+
+
+def test_a_repin_dropping_an_attribute_this_batch_set_is_still_refused(tmp_path: Path) -> None:
+    """The half that keeps the one above honest — same narrowing, attribute set."""
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [_SIGN_OCCLUDED])
+    batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
+    fixture.schemas.create_version(fixture.project.id, [SIGN], allow_destructive=True)
+    _annotate(fixture, fixture.assets[0], "sign", version=2)
+    _annotate(fixture, fixture.assets[1], "sign", version=2, attributes={"occluded": True})
+
+    with pytest.raises(SchemaChangeWouldOrphan, match="'sign' \\(1\\)"):
         fixture.batches.repin(batch_id, allow_destructive=True)
     assert fixture.batches.get(batch_id).schema_version == 2
     fixture.close()

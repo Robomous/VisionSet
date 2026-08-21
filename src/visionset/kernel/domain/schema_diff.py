@@ -37,8 +37,9 @@ from collections.abc import Iterator, Sequence
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from visionset.kernel.domain.annotation import Annotation
 from visionset.kernel.domain.asset import Asset
 from visionset.kernel.domain.dataset import ClassCount
 from visionset.kernel.domain.schema import Attribute, GeometryType, LabelClass
@@ -51,6 +52,48 @@ class ChangeKind(StrEnum):
     DESTRUCTIVE = "destructive"
 
 
+class OrphanGuard(BaseModel):
+    """Which annotations of one class a destructive change leaves orphaned.
+
+    The grain the orphan gate matches on, and the module's one question asked
+    the way an annotation can answer it: an annotation carries one class, one
+    shape and a map of attribute values, so a change dooms it by naming the
+    class and, when the change is narrower than the class, the shape or the
+    attribute it is about. Every field after ``label_class`` narrows the set;
+    a guard with none of them is the whole class.
+
+    ``attribute`` picks the annotations that **carry** the key, unless ``unset``
+    picks the ones that do not; ``option`` narrows the carriers to the one
+    value that is going away. A ``select``'s options are strings, so the value
+    compared is one.
+
+    Both the SQL predicate a guarded write evaluates and :meth:`matches` spell
+    this, and they must agree: the write decides, and the Python walk is what
+    reports what it decided over.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label_class: str
+    geometry: GeometryType | None = None
+    attribute: str | None = None
+    option: str | None = None
+    unset: bool = False
+
+    def matches(self, annotation: Annotation) -> bool:
+        if annotation.label_class != self.label_class:
+            return False
+        if self.geometry is not None and annotation.geometry.type is not self.geometry:
+            return False
+        if self.attribute is None:
+            return True
+        if self.unset:
+            return self.attribute not in annotation.attributes
+        if self.attribute not in annotation.attributes:
+            return False
+        return self.option is None or annotation.attributes[self.attribute] == self.option
+
+
 class SchemaChange(BaseModel):
     """One difference between two versions, already judged."""
 
@@ -59,20 +102,28 @@ class SchemaChange(BaseModel):
     kind: ChangeKind
     label_class: str
     attribute: str | None = None
-    geometry: GeometryType | None = None
-    """Which shape this change is about, when it is about one.
+    orphans: OrphanGuard | None = None
+    """Exactly which annotations this change strands — set on every destructive one.
 
-    The sibling of ``attribute`` and named for the same reason: a change that
-    touches one of a class's geometries says *which*, so a reader is not left
-    parsing ``detail``. It is also what makes the orphan gate exact —
-    :func:`orphanable_shapes` reads this to tell a change that dooms one shape
-    from one that dooms every annotation of the class.
-
-    ``None`` on every other change, including a class removed outright: that one
-    is about the class, and the shapes it takes down are all of them.
+    A destructive change is the only thing that knows its own grain: a shape
+    removed is about one shape, an attribute removed is about the annotations
+    carrying it, a required attribute added is about every annotation of the
+    class. Carrying that here is what lets the orphan gate be exact without
+    re-deriving the diff or parsing ``detail``. ``None`` on an additive change,
+    which orphans nothing by definition.
     """
     detail: str
     """Human-readable, and used verbatim in the errors ``SchemaService`` raises."""
+
+    @model_validator(mode="after")
+    def _destructive_iff_guarded(self) -> SchemaChange:
+        """A destructive change that names no guard would narrow the contract and refuse nothing."""
+        if (self.kind is ChangeKind.DESTRUCTIVE) != (self.orphans is not None):
+            raise ValueError(
+                f"a {self.kind.value} change must "
+                f"{'say' if self.orphans is None else 'not say'} what it orphans"
+            )
+        return self
 
 
 class SchemaDiff(BaseModel):
@@ -92,6 +143,16 @@ class SchemaDiff(BaseModel):
         return frozenset(
             change.label_class for change in self.changes if change.kind is ChangeKind.DESTRUCTIVE
         )
+
+    @property
+    def guards(self) -> frozenset[OrphanGuard]:
+        """Exactly which annotations this diff would leave orphaned, as predicates.
+
+        What a guarded write matches on and what the refusal counts over: one
+        :class:`OrphanGuard` per destructive change, at that change's own grain.
+        Empty for an additive diff, and an empty guard refuses nothing.
+        """
+        return frozenset(change.orphans for change in self.changes if change.orphans is not None)
 
     def describe(self, kind: ChangeKind) -> str:
         """The details of one kind, joined for an error message."""
@@ -149,8 +210,8 @@ class BlockingAsset(BaseModel):
     """One asset standing in the way of a narrowing, and where to reach it.
 
     :class:`SchemaChangePreview` counts a class; this names the frames behind the
-    count, at the same ``(class, shape)`` grain the guard matches on, so a listing
-    and a count of the same narrowing cannot disagree.
+    count, at the same grain the guard matches on, so a listing and a count of
+    the same narrowing cannot disagree.
 
     ``batches`` is every batch holding the asset rather than one, because an asset
     put in a batch and later in a correction of it is in both, and there is no
@@ -165,61 +226,6 @@ class BlockingAsset(BaseModel):
     #: How many of its annotations the guard would orphan.
     annotations: int = Field(ge=1)
     batches: tuple[UUID, ...]
-
-
-type ClassShape = tuple[str, GeometryType]
-"""One class name paired with one of the shapes an annotation of it may carry.
-
-The unit the orphan gate matches on. A class name alone is *not* that unit any
-more: since a class holds a set, taking one shape away leaves every annotation
-drawn as the others perfectly valid, and refusing over the name would refuse a
-change that orphans nothing. See :func:`orphanable_shapes`.
-"""
-
-
-def orphanable_shapes(previous: Sequence[LabelClass], diff: SchemaDiff) -> frozenset[ClassShape]:
-    """Exactly which ``(class, shape)`` pairs this change would leave orphaned.
-
-    The module's one question — *does an annotation valid under the old version
-    stay valid under the new one?* — asked at the grain an annotation actually
-    has. An annotation carries one class **and one shape**, so that pair is what
-    decides it, and answering by class alone over-refuses.
-
-    Three shapes of destructive change, and they differ only in how much of a
-    class they doom:
-
-    - **a geometry removed** dooms that pair and nothing else. This is the whole
-      reason the function exists.
-    - **the class removed** dooms every annotation named it — enumerated as every
-      shape the class *used to* declare, which is complete because an annotation
-      was validated against that declaration when it was written.
-    - **an attribute narrowed** dooms every annotation of the class whatever its
-      shape, so it enumerates the same full set.
-
-    So a change is geometry-scoped exactly when it names a geometry, which is why
-    :attr:`SchemaChange.geometry` exists rather than this re-deriving the fact by
-    parsing ``detail`` or by diffing the class lists a second time. One spelling
-    of the geometry diff, in ``_class_changes``, where it already was.
-
-    ``previous`` supplies the old declarations, and a destructive change always
-    names a class that was in it — a class that was not there cannot be removed,
-    lose a shape, or narrow an attribute. A name that is somehow absent is
-    skipped rather than guessed at: an empty guard refuses nothing, and inventing
-    pairs for a class nobody declared would refuse over shapes that cannot exist.
-    """
-    declared = {label_class.name: label_class for label_class in previous}
-    shapes: set[ClassShape] = set()
-    for change in diff.changes:
-        if change.kind is not ChangeKind.DESTRUCTIVE:
-            continue
-        before = declared.get(change.label_class)
-        if before is None:
-            continue
-        if change.geometry is not None:
-            shapes.add((change.label_class, change.geometry))
-        else:
-            shapes.update((change.label_class, shape) for shape in before.geometries)
-    return frozenset(shapes)
 
 
 def diff_classes(previous: Sequence[LabelClass], proposed: Sequence[LabelClass]) -> SchemaDiff:
@@ -259,7 +265,12 @@ def _changes(
                 f"class by exact name, so a re-casing is a rename and orphans the labels "
                 f"under {name!r}"
             )
-        yield SchemaChange(kind=ChangeKind.DESTRUCTIVE, label_class=name, detail=detail)
+        yield SchemaChange(
+            kind=ChangeKind.DESTRUCTIVE,
+            label_class=name,
+            orphans=OrphanGuard(label_class=name),
+            detail=detail,
+        )
 
 
 def _class_changes(before: LabelClass, after: LabelClass) -> Iterator[SchemaChange]:
@@ -279,14 +290,13 @@ def _class_changes(before: LabelClass, after: LabelClass) -> Iterator[SchemaChan
         yield SchemaChange(
             kind=ChangeKind.ADDITIVE,
             label_class=after.name,
-            geometry=geometry,
             detail=f"geometry {geometry.value!r} added to class {after.name!r}",
         )
     for geometry in sorted(old_geometries - new_geometries):
         yield SchemaChange(
             kind=ChangeKind.DESTRUCTIVE,
             label_class=after.name,
-            geometry=geometry,
+            orphans=OrphanGuard(label_class=after.name, geometry=geometry),
             detail=f"geometry {geometry.value!r} removed from class {after.name!r}",
         )
 
@@ -296,11 +306,14 @@ def _class_changes(before: LabelClass, after: LabelClass) -> Iterator[SchemaChan
     for name, attribute in new.items():
         if name not in old:
             # A required attribute nobody has filled in is a hole in every
-            # annotation that already exists, which is what makes it destructive.
+            # annotation that already exists, which is what makes it destructive
+            # — and of the whole class, since none could carry a key the version
+            # it was written under did not declare.
             yield SchemaChange(
                 kind=(ChangeKind.DESTRUCTIVE if attribute.required else ChangeKind.ADDITIVE),
                 label_class=after.name,
                 attribute=name,
+                orphans=OrphanGuard(label_class=after.name) if attribute.required else None,
                 detail=(
                     f"{'required' if attribute.required else 'optional'} attribute {name!r} "
                     f"added to class {after.name!r}"
@@ -315,6 +328,7 @@ def _class_changes(before: LabelClass, after: LabelClass) -> Iterator[SchemaChan
                 kind=ChangeKind.DESTRUCTIVE,
                 label_class=after.name,
                 attribute=name,
+                orphans=OrphanGuard(label_class=after.name, attribute=name),
                 detail=f"attribute {name!r} removed from class {after.name!r}",
             )
 
@@ -333,6 +347,7 @@ def _attribute_changes(
             kind=ChangeKind.DESTRUCTIVE,
             label_class=label_class,
             attribute=after.name,
+            orphans=OrphanGuard(label_class=label_class, attribute=after.name),
             detail=(
                 f"attribute {after.name!r} on class {label_class!r} changed kind from "
                 f"{before.kind!r} to {after.kind!r}"
@@ -343,10 +358,17 @@ def _attribute_changes(
         return
 
     if before.required != after.required:
+        # Becoming required strands the annotations that never set it; the ones
+        # that did are as valid as they were.
         yield SchemaChange(
             kind=(ChangeKind.DESTRUCTIVE if after.required else ChangeKind.ADDITIVE),
             label_class=label_class,
             attribute=after.name,
+            orphans=(
+                OrphanGuard(label_class=label_class, attribute=after.name, unset=True)
+                if after.required
+                else None
+            ),
             detail=(
                 f"attribute {after.name!r} on class {label_class!r} became "
                 f"{'required' if after.required else 'optional'}"
@@ -367,6 +389,7 @@ def _attribute_changes(
             kind=ChangeKind.DESTRUCTIVE,
             label_class=label_class,
             attribute=after.name,
+            orphans=OrphanGuard(label_class=label_class, attribute=after.name, option=option),
             detail=(
                 f"option {option!r} removed from attribute {after.name!r} on class {label_class!r}"
             ),

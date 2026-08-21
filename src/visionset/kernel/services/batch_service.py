@@ -63,8 +63,8 @@ from visionset.kernel.domain import (
     BatchState,
     ChangeKind,
     ClassCount,
-    ClassShape,
     MembershipChange,
+    OrphanGuard,
     Partition,
     PreLabelRun,
     Project,
@@ -74,7 +74,6 @@ from visionset.kernel.domain import (
     diff_classes,
     initial_progress,
     normalize_name,
-    orphanable_shapes,
     partition_assets,
     require_move,
     require_state,
@@ -616,13 +615,13 @@ class BatchService:
                 return batch
 
             diff = diff_classes(pinned.classes, active.classes)
-            guarded: frozenset[ClassShape] = frozenset()
+            guarded: frozenset[OrphanGuard] = frozenset()
             if diff.is_destructive:
                 self._refuse_narrowing(uow, batch, diff, allow_destructive)
-                # Pairs, not names — the same grain the publish gate uses, and for
-                # the same reason: this batch's `car` boxes survive a version that
-                # only takes `car`'s polygon away. #592
-                guarded = orphanable_shapes(pinned.classes, diff)
+                # The change's grain, not the class name — the same the publish
+                # gate uses, and for the same reason: this batch's `car` boxes
+                # survive a version that only takes `car`'s polygon away.
+                guarded = diff.guards
 
             if not uow.repin_batch_unless_annotated(batch.id, active.version, guarded):
                 self._refuse_orphaning(uow, batch, guarded)
@@ -736,7 +735,7 @@ class BatchService:
             )
 
     def _refuse_orphaning(
-        self, uow: UnitOfWork, batch: Batch, guarded: frozenset[ClassShape]
+        self, uow: UnitOfWork, batch: Batch, guarded: frozenset[OrphanGuard]
     ) -> NoReturn:
         """Name the classes the guarded re-pin refused over, and their counts.
 
@@ -745,7 +744,7 @@ class BatchService:
         an empty count still refuses.
         """
         annotated = _annotated_classes(uow, batch, guarded)
-        affected = sorted(annotated.keys()) or sorted({name for name, _ in guarded})
+        affected = sorted(annotated.keys()) or sorted({guard.label_class for guard in guarded})
         counted = ", ".join(
             f"{name!r} ({annotated[name].annotations})" if name in annotated else repr(name)
             for name in affected
@@ -828,7 +827,7 @@ def _subject(batch: Batch) -> str:
 
 
 def _annotated_classes(
-    uow: UnitOfWork, batch: Batch, guarded: frozenset[ClassShape]
+    uow: UnitOfWork, batch: Batch, guarded: frozenset[OrphanGuard]
 ) -> dict[str, ClassCount]:
     """How much of this batch is at risk from ``guarded``, per class.
 
@@ -845,9 +844,9 @@ def _annotated_classes(
     assets: dict[str, set[UUID]] = {}
     for asset_id in batch.asset_ids:
         for annotation in uow.annotations.list(asset_id):
-            # Only the annotations the guard would orphan — the pair, never the
-            # class. ``SchemaService._annotated_classes`` makes the argument. #592
-            if (annotation.label_class, annotation.geometry.type) not in guarded:
+            # Only the annotations a guard would orphan, never the whole class.
+            # ``SchemaService._guarded_annotations`` makes the argument.
+            if not any(guard.matches(annotation) for guard in guarded):
                 continue
             annotations[annotation.label_class] = annotations.get(annotation.label_class, 0) + 1
             assets.setdefault(annotation.label_class, set()).add(asset_id)

@@ -49,16 +49,15 @@ from visionset.kernel.domain import (
     BlockingAsset,
     ChangeKind,
     ClassCount,
-    ClassShape,
     GeometryType,
     LabelClass,
+    OrphanGuard,
     Project,
     SchemaChangePreview,
     SchemaDiff,
     SchemaProvenance,
     SchemaPublication,
     diff_classes,
-    orphanable_shapes,
 )
 from visionset.kernel.errors import (
     ConstraintViolated,
@@ -211,8 +210,8 @@ class SchemaService:
 
     def _guarded(
         self, uow: UnitOfWork, project_id: UUID, classes: Sequence[LabelClass]
-    ) -> tuple[SchemaDiff, frozenset[ClassShape]]:
-        """What publishing ``classes`` would change, and which pairs it would orphan.
+    ) -> tuple[SchemaDiff, frozenset[OrphanGuard]]:
+        """What publishing ``classes`` would change, and which annotations it would orphan.
 
         One derivation for every caller that asks about a proposed version before
         writing it, so a warning and a listing of the same narrowing cannot be
@@ -220,8 +219,9 @@ class SchemaService:
 
         The set is the *same* one the guard will match on, not a name-level
         approximation of it: a preview that warned about a class whose doomed
-        shape nobody has drawn would promise a refusal that never comes, which is
-        the disagreement these reports exist to prevent.
+        shape nobody has drawn, or whose dropped attribute nobody has set, would
+        promise a refusal that never comes, which is the disagreement these
+        reports exist to prevent.
 
         Raises:
             ProjectNotFound: no such project in this workspace.
@@ -230,7 +230,7 @@ class SchemaService:
         active = self.active(uow, project_id)
         previous = () if active is None else active.classes
         diff = diff_classes(previous, classes)
-        return diff, orphanable_shapes(previous, diff)
+        return diff, diff.guards
 
     # --- writing: the only door --------------------------------------------
 
@@ -316,10 +316,10 @@ class SchemaService:
 
                 previous = () if active is None else active.classes
                 diff = diff_classes(previous, proposed)
-                guarded: frozenset[ClassShape] = frozenset()
+                guarded: frozenset[OrphanGuard] = frozenset()
                 if diff.is_destructive:
                     self._refuse_narrowing(uow, project_id, diff, allow_destructive)
-                    guarded = orphanable_shapes(previous, diff)
+                    guarded = diff.guards
 
                 stored = uow.add_schema_version_unless_annotated(
                     AnnotationSchema(
@@ -376,7 +376,7 @@ class SchemaService:
             )
 
     def _refuse_orphaning(
-        self, uow: UnitOfWork, project_id: UUID, guarded: frozenset[ClassShape]
+        self, uow: UnitOfWork, project_id: UUID, guarded: frozenset[OrphanGuard]
     ) -> NoReturn:
         """Name the classes the guarded insert refused over, and their counts.
 
@@ -394,10 +394,10 @@ class SchemaService:
         nobody asked for.
         """
         annotated = _annotated_classes(uow, project_id, guarded)
-        # Named by class even though the guard matched pairs: a class losing two
+        # Named by class even though the guard matched finer: a class losing two
         # of its shapes is one thing to fix, and the counts are already only the
-        # annotations that carry a doomed shape.
-        affected = sorted(annotated.keys()) or sorted({name for name, _ in guarded})
+        # annotations a guard matches.
+        affected = sorted(annotated.keys()) or sorted({guard.label_class for guard in guarded})
         counted = ", ".join(
             f"{name!r} ({annotated[name].annotations})" if name in annotated else repr(name)
             for name in affected
@@ -527,7 +527,7 @@ def _require_coherent(classes: Sequence[LabelClass]) -> None:
 
 
 def _blockers(
-    uow: UnitOfWork, project_id: UUID, guarded: frozenset[ClassShape]
+    uow: UnitOfWork, project_id: UUID, guarded: frozenset[OrphanGuard]
 ) -> tuple[ClassCount, ...]:
     """Which of ``guarded`` already carry labels, counted — the report, not a gate.
 
@@ -610,14 +610,16 @@ def _advance_pins(
 
 
 def _guarded_annotations(
-    uow: UnitOfWork, project_id: UUID, guarded: frozenset[ClassShape]
+    uow: UnitOfWork, project_id: UUID, guarded: frozenset[OrphanGuard]
 ) -> Iterator[tuple[Asset, Annotation]]:
     """Every annotation this change would orphan, with the asset carrying it.
 
-    **The one place the guard's predicate is spelled.** An annotation carries one
-    class *and one shape*, so it is doomed only when its own ``(class, shape)``
-    pair is guarded: a ``car`` losing its polygon must not sweep in the boxes that
-    survive. Both the count and the listing fold over this, because a second copy
+    **The one place this service asks the guard's question**, and it asks
+    ``OrphanGuard.matches`` rather than re-spelling it: an annotation is doomed
+    only when a guard picks it out by its own class, shape and attribute values,
+    so a ``car`` losing its polygon must not sweep in the boxes that survive, and
+    a ``car`` losing an optional attribute must not sweep in the labels that never
+    set it. Both the count and the listing fold over this, because a second copy
     of that test is how a correction to one of them lands in a report and misses
     the other.
 
@@ -634,12 +636,12 @@ def _guarded_annotations(
     """
     for asset in uow.assets.list(project_id):
         for annotation in uow.annotations.list(asset.id):
-            if (annotation.label_class, annotation.geometry.type) in guarded:
+            if any(guard.matches(annotation) for guard in guarded):
                 yield asset, annotation
 
 
 def _blocking_assets(
-    uow: UnitOfWork, project_id: UUID, guarded: frozenset[ClassShape]
+    uow: UnitOfWork, project_id: UUID, guarded: frozenset[OrphanGuard]
 ) -> tuple[BlockingAsset, ...]:
     """The frames behind :func:`_annotated_classes`' counts, from the same walk.
 
@@ -665,12 +667,12 @@ def _blocking_assets(
 
 
 def _annotated_classes(
-    uow: UnitOfWork, project_id: UUID, guarded: frozenset[ClassShape]
+    uow: UnitOfWork, project_id: UUID, guarded: frozenset[OrphanGuard]
 ) -> dict[str, ClassCount]:
     """How much of this project is at risk from ``guarded``, per class.
 
     **Counts the annotations the guard would actually orphan** — the ones
-    :func:`_guarded_annotations` yields, at the pair grain the gate matches on.
+    :func:`_guarded_annotations` yields, at the grain the gate matches on.
 
     Keyed by class name all the same, because a class is what somebody fixes —
     two of its shapes going at once is one problem, not two — and because

@@ -141,7 +141,7 @@ import {
   useSchemaVersions,
 } from "./queries";
 
-/** The terminal 409: annotations already use a class this change removes. */
+/** The terminal 409: annotations already exist that this change would orphan. */
 const WOULD_ORPHAN = "SCHEMA_CHANGE_WOULD_ORPHAN";
 /** The third, and the only one whose remedy is to throw your own copy away. */
 const STALE_DRAFT = "STALE_WRITE";

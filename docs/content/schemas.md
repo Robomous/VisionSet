@@ -379,6 +379,25 @@ refusal is about intent, the second about facts on disk, and they have different
 Only classes named by a *destructive* change are checked, so labels under a class the
 version merely widened never block anything, and neither do labels in another project.
 
+**The check is at the change's own grain, not the class name.** Each destructive change says
+exactly which annotations it would strand — an `OrphanGuard` on the `SchemaChange` — and
+only those block it, so a class that carries labels stays editable as long as the edit leaves
+those labels valid:
+
+| Destructive change | Annotations that block it |
+| --- | --- |
+| Class removed | every annotation of the class |
+| Geometry removed from a class | the class's annotations drawn as that shape |
+| Required attribute added | every annotation of the class — none could carry a key the version it was written under did not declare |
+| Attribute removed, or its kind changed | the annotations that set the attribute |
+| Attribute became required | the annotations that did **not** set it |
+| `select` option removed | the annotations whose value of the attribute is that option |
+
+Removing an optional attribute nobody ever set, or an option nobody ever chose, is therefore an
+ordinary narrowing: it needs the flag and nothing more. The guarded `INSERT` evaluates the same
+predicate in SQL that the counts evaluate in Python, so the refusal and its count are answers to
+one question.
+
 Counting those labels walks the project's assets and reads each one's annotations, because
 the persistence port has no cross-table query: `Repository.list` takes a single `parent_id`,
 and an annotation's parent is its asset. That is N + 1 reads, and deliberately so at the
