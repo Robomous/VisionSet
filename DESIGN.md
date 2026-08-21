@@ -8,11 +8,11 @@ built after them. It answers one question — **how should a VisionSet interface
 feel, and behave visually?** — and deliberately answers nothing else.
 
 What this document does **not** own: product behaviour
-([`docs/ui/product-principles.md`](docs/ui/product-principles.md)), navigation
-([`docs/ui/navigation.md`](docs/ui/navigation.md)), the annotation workspace
-([`docs/ui/annotator.md`](docs/ui/annotator.md)), the data shell
-([`docs/ui.md`](docs/ui.md)), frontend architecture and library choices
-([`docs/architecture/frontend/`](docs/architecture/frontend/README.md)), or test
+([`docs/ui/product-principles.md`](docs/content/ui/product-principles.md)), navigation
+([`docs/ui/navigation.md`](docs/content/ui/navigation.md)), the annotation workspace
+([`docs/ui/annotator.md`](docs/content/ui/annotator.md)), the data shell
+([`docs/ui.md`](docs/content/ui.md)), frontend architecture and library choices
+([`docs/architecture/frontend/`](docs/content/architecture/frontend/README.md)), or test
 mechanics. Rules here are stated as the present contract; enforcement details live with
 the tests and contributor docs.
 
@@ -113,7 +113,7 @@ picks one of these three; it does not compose a fill from scratch.
 
 - **One dominant action per view**, in `primary`; supporting actions take `secondary` or
   a quieter (ghost/link) treatment. Which action is dominant on which screen, and how it
-  tracks state, is product behaviour — [`docs/ui/product-principles.md`](docs/ui/product-principles.md).
+  tracks state, is product behaviour — [`docs/ui/product-principles.md`](docs/content/ui/product-principles.md).
 - **Hover** on a filled control is the same fill at reduced opacity (`hover:bg-primary/80`),
   not a colour change of meaning; a menu or list item highlights with `accent` instead.
 - **Press** reads as the control moving, not recolouring.
@@ -279,7 +279,7 @@ and `tests/scripts/design_tokens.test.mjs`:
 
 | Token | Purpose | Light | Dark |
 | --- | --- | --- | --- |
-| `stage` | The neutral surround an image is judged against in the annotation workspace — not `background`, not `muted`; distinguishable from both so a white-bordered asset still shows where it ends. Usage rules: [`docs/ui/annotator.md`](docs/ui/annotator.md#the-stage) | `oklch(0.94 0 0)` | `oklch(0.24 0 0)` |
+| `stage` | The neutral surround an image is judged against in the annotation workspace — not `background`, not `muted`; distinguishable from both so a white-bordered asset still shows where it ends. Usage rules: [`docs/ui/annotator.md`](docs/content/ui/annotator.md#the-stage) | `oklch(0.94 0 0)` | `oklch(0.24 0 0)` |
 | `brand` | Robomous coral. Identity only — the wordmark, and its styleguide swatch. Never a functional-UI colour; there is no counted quota, and introducing it into a control is a semantic-colour violation whatever the count | `oklch(0.653 0.178 32.3)` | `oklch(0.653 0.178 32.3)` |
 | `success` / `success-foreground` | The batch-state family's settled/succeeded state and its one filled control — a green analogue of the preset's own destructive treatment | `oklch(0.577 0.132 152)` / `oklch(1 0 0)` | `oklch(0.696 0.17 152)` / `oklch(0.205 0 0)` |
 | `warning` / `warning-foreground` | Something is waiting on a person | `oklch(0.646 0.13 80)` / `oklch(0.205 0 0)` | `oklch(0.75 0.14 80)` / `oklch(0.205 0 0)` |
@@ -315,7 +315,7 @@ First-class, and part of every rule above rather than a section to satisfy after
 - **No colour-only communication.** Status, selection, validity, and provenance all
   carry a redundant channel (a word, an icon, a shape). The product status vocabulary
   itself — the five semantic families and their mapping to product states — is defined
-  in [`docs/ui/product-principles.md`](docs/ui/product-principles.md#status-semantics).
+  in [`docs/ui/product-principles.md`](docs/content/ui/product-principles.md#status-semantics).
 - **`destructive` stays semantically destructive** — the one token that is its own
   status, never repurposed for emphasis and never renamed.
 - **`prefers-reduced-motion`** is a standing rule: motion collapses to opacity changes or
@@ -323,7 +323,7 @@ First-class, and part of every rule above rather than a section to satisfy after
   the media query, every animation and transition duration collapses to a single frame,
   so no component needs to opt in individually.
 - **Never disable without explanation** stays exactly as the product principles state it
-  — [`docs/ui/product-principles.md`](docs/ui/product-principles.md#principles) — this
+  — [`docs/ui/product-principles.md`](docs/content/ui/product-principles.md#principles) — this
   document only fixes disabled's *look* (`opacity-50`), not when a control may be one.
 - Dialogs, menus, and tooltips follow their ARIA patterns: roles, labelled-by
   relationships, focus trap and return, `Escape` behaviour — Radix's own guarantees,
@@ -335,15 +335,15 @@ First-class, and part of every rule above rather than a section to satisfy after
   640 / 768 / 1024 / 1280.
 - **Adaptation reflows; it does not amputate.** Content and controls remain reachable
   and legible at every supported size — nothing simply disappears; see
-  [`docs/ui/navigation.md`](docs/ui/navigation.md) for the rail's own collapse behaviour.
+  [`docs/ui/navigation.md`](docs/content/ui/navigation.md) for the rail's own collapse behaviour.
 - **Content growth is supported, not fought.** Text wraps rather than truncates unless
   the value is re-readable elsewhere; identifiers wrap rather than truncate mid-token;
   controls are never clipped — a readout yields before a button does.
 - Hit targets stay comfortable on touch (44px-order), whatever the pointer.
 - Page, section, and list rhythm is Tailwind's ordinary spacing scale (see *Density and
   Spacing*) — exact page and dialog dimensions are screen-level decisions living with
-  [`docs/ui/product-principles.md`](docs/ui/product-principles.md) and
-  [`docs/ui/navigation.md`](docs/ui/navigation.md), not this document.
+  [`docs/ui/product-principles.md`](docs/content/ui/product-principles.md) and
+  [`docs/ui/navigation.md`](docs/content/ui/navigation.md), not this document.
 
 ## Anti-Patterns
 

@@ -8,7 +8,7 @@ so future maintainers can evaluate it on its merits.
 ## What ships
 
 **One wheel.** The API, the CLI, the MCP server and the compiled browser app are inside it -
-that is the delivery thesis, and [`tests/packaging/`](../tests/packaging) is what stops a wheel
+that is the delivery thesis, and [`tests/packaging/`](../../tests/packaging) is what stops a wheel
 shipping without the app in it. An sdist is built beside it and published too, so a source build
 is possible on a platform without a wheel; there is nothing platform-specific in either, so both
 are `py3-none-any`.
@@ -110,11 +110,11 @@ git tag v0.0.1-beta.2 && git push origin v0.0.1-beta.2
 
 Tag names are `v`-prefixed npm-semver (`v0.0.1-beta.2`); the distribution version is PEP 440
 (`0.0.1b2`). They are the same version written two ways, and
-[CONTRIBUTING.md](../CONTRIBUTING.md#versioning) has the table.
+[CONTRIBUTING.md](../../CONTRIBUTING.md#versioning) has the table.
 
 ### 4. Publish
 
-**The publish path is [`.github/workflows/publish-pypi.yml`](../.github/workflows/publish-pypi.yml),
+**The publish path is [`.github/workflows/publish-pypi.yml`](../../.github/workflows/publish-pypi.yml),
 and it needs no credentials from anybody.** It is `workflow_dispatch` only, so a human starts it
 deliberately; run `30801065205` used it to publish `0.0.1b2` on 2026-08-03.
 
@@ -147,7 +147,7 @@ The GitHub Release is separate from the PyPI upload, and it is still made by han
 gh release create v0.0.1-beta.2 --title "…" --notes-file notes.md
 ```
 
-Write `notes.md` from this version's section of [`CHANGELOG.md`](../CHANGELOG.md). Attaching `dist/*` is optional and mostly
+Write `notes.md` from this version's section of [`CHANGELOG.md`](../../CHANGELOG.md). Attaching `dist/*` is optional and mostly
 misleading — those would be a *second* build of the same commit rather than the bytes PyPI holds,
 and `pip install` is the install path the product is designed around.
 

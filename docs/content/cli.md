@@ -74,7 +74,7 @@ visionset release verify v1.0 --project road-signs && \
   visionset export --project road-signs --release v1.0 --format dummy --out ./out
 ```
 
-[`examples/cli_end_to_end.sh`](../examples/cli_end_to_end.sh) is that walk with its assertions
+[`examples/cli_end_to_end.sh`](../../examples/cli_end_to_end.sh) is that walk with its assertions
 still in it, and it runs in CI on every change.
 
 ## Three exit codes, and no others

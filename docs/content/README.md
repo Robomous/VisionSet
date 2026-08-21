@@ -1,7 +1,7 @@
 # VisionSet documentation
 
 This directory contains the product and architecture documentation. Start with the repo-root
-[README](../README.md) and [CONTRIBUTING](../CONTRIBUTING.md); the architecture
+[README](../../README.md) and [CONTRIBUTING](../../CONTRIBUTING.md); the architecture
 contracts (kernel purity, headless annotator) are described there and enforced in CI.
 
 For the shape of the system, read [architecture/](architecture/README.md) from the
@@ -9,7 +9,7 @@ top down. It covers the layer stack, each package, and the enforcement points fo
 the architectural boundaries. The pages below are the behavioural reference; the
 architecture tree is the map.
 
-The **visual** contract is [DESIGN.md](../DESIGN.md) at the repository root — the
+The **visual** contract is [DESIGN.md](../../DESIGN.md) at the repository root — the
 design foundations every screen builds on. The product-behaviour half lives here:
 [ui/product-principles.md](ui/product-principles.md) for what a screen must show and
 offer, [ui/navigation.md](ui/navigation.md) for how a person moves through the app,

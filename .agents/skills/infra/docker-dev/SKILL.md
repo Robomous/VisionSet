@@ -102,7 +102,7 @@ inside these containers.
 | --- | --- |
 | `api` | `../src` → `/workspace/src`, `../docker` (ro), `${VISIONSET_DATA:-../workspace-data}` → `/data` |
 | `app` | `../frontend/{annotator,ui-core,app}/src`, `../frontend/app/public`, `../docker` (ro) |
-| `docs` | `../docs` (ro), `../docs-site/src`, `../docs-site/public` (ro), `../docker` (ro) |
+| `docs` | `../docs/content` (ro), `../docs/src`, `../docs/public` (ro), `../docker` (ro) |
 | `nginx` | `./nginx.conf` (ro) |
 
 Everything else under `/workspace` — manifests, lockfiles, tsconfigs, **every `node_modules/`**

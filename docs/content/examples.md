@@ -5,12 +5,12 @@ files that do several of them at once. There are six:
 
 | Example | What it drives | Milestone |
 | --- | --- | --- |
-| [`sdk_end_to_end.py`](../examples/sdk_end_to_end.py) | an empty directory to a release whose every byte can be re-hashed and checked | M1 |
-| [`ingest_end_to_end.py`](../examples/ingest_end_to_end.py) | a ten-second clip and a folder of stills to an approved, partitioned batch | M2 |
-| [`http_end_to_end.py`](../examples/http_end_to_end.py) | the same cycle over HTTP, against a real server on a real port, with a bearer token | M3 |
-| [`cli_end_to_end.sh`](../examples/cli_end_to_end.sh) | the same cycle from a shell, using nothing but the `visionset` command | M3 |
-| [`mcp_end_to_end.py`](../examples/mcp_end_to_end.py) | the same cycle over MCP stdio, spawning `visionset mcp` and talking down its pipe | M3 |
-| [`thirty_minute_flow.py`](../examples/thirty_minute_flow.py) | a clip to a YOLO dataset a trainer loads, every stage timed against a wall-clock ceiling | M6 |
+| [`sdk_end_to_end.py`](../../examples/sdk_end_to_end.py) | an empty directory to a release whose every byte can be re-hashed and checked | M1 |
+| [`ingest_end_to_end.py`](../../examples/ingest_end_to_end.py) | a ten-second clip and a folder of stills to an approved, partitioned batch | M2 |
+| [`http_end_to_end.py`](../../examples/http_end_to_end.py) | the same cycle over HTTP, against a real server on a real port, with a bearer token | M3 |
+| [`cli_end_to_end.sh`](../../examples/cli_end_to_end.sh) | the same cycle from a shell, using nothing but the `visionset` command | M3 |
+| [`mcp_end_to_end.py`](../../examples/mcp_end_to_end.py) | the same cycle over MCP stdio, spawning `visionset mcp` and talking down its pipe | M3 |
+| [`thirty_minute_flow.py`](../../examples/thirty_minute_flow.py) | a clip to a YOLO dataset a trainer loads, every stage timed against a wall-clock ceiling | M6 |
 
 ```bash
 uv run python examples/sdk_end_to_end.py
@@ -27,10 +27,10 @@ deliverable rather than an exception to it. The three run as a matrix in CI, one
 a failure names the surface that broke.
 
 Each example runs in CI **twice**: once as a pytest smoke test
-([M1](../tests/examples/test_sdk_end_to_end.py), [M2](../tests/examples/test_ingest_end_to_end.py),
-[HTTP](../tests/examples/test_http_end_to_end.py), [CLI](../tests/examples/test_cli_end_to_end.py),
-[MCP](../tests/examples/test_mcp_end_to_end.py),
-[M6](../tests/examples/test_thirty_minute_flow.py)) that asserts on outcomes, and once as a plain
+([M1](../../tests/examples/test_sdk_end_to_end.py), [M2](../../tests/examples/test_ingest_end_to_end.py),
+[HTTP](../../tests/examples/test_http_end_to_end.py), [CLI](../../tests/examples/test_cli_end_to_end.py),
+[MCP](../../tests/examples/test_mcp_end_to_end.py),
+[M6](../../tests/examples/test_thirty_minute_flow.py)) that asserts on outcomes, and once as a plain
 script, which is the only way to prove it still works from a clean checkout. The last one runs its
 second pass from the **installed wheel** rather than from the source tree, which is the whole
 point of it — see [The thirty-minute flow](#the-thirty-minute-flow).
@@ -147,8 +147,8 @@ is ignored and why an example that needs pictures makes its own.
 
 # The ingest example
 
-Where [`sdk_end_to_end.py`](../examples/sdk_end_to_end.py) treats ingest as one stage,
-[`ingest_end_to_end.py`](../examples/ingest_end_to_end.py) is about nothing else. It generates a
+Where [`sdk_end_to_end.py`](../../examples/sdk_end_to_end.py) treats ingest as one stage,
+[`ingest_end_to_end.py`](../../examples/ingest_end_to_end.py) is about nothing else. It generates a
 ten-second clip, registers it twice at two different rates, ingests a folder of stills with one
 file that is not an image, and stops at an approved batch cut into two jobs. Nothing is annotated
 and nothing is released.
@@ -245,7 +245,7 @@ nothing else - not `httpx`, not `requests`, not `curl`. That is two arguments at
 contract only a smart client can drive is not really a contract. The multipart body is twenty-odd
 lines in the file, written out rather than delegated, and it is the price of the claim.
 
-**The server actually starts.** [`tests/cli/test_server.py`](../tests/cli/test_server.py) patches
+**The server actually starts.** [`tests/cli/test_server.py`](../../tests/cli/test_server.py) patches
 `uvicorn.run` and asserts the arguments, which is right for a unit test and says nothing about
 whether the process comes up. This example binds an ephemeral port, spawns the shipped command
 against it, and waits for `/health` - the one unauthenticated route, and therefore the readiness
@@ -339,9 +339,9 @@ quietly leaving the impression that a terminal can label images.
 ## Four things it is built to demonstrate
 
 **The transport, which nothing else proved.** Every test under
-[`tests/mcp/`](../tests/mcp/) drives the protocol over a paired in-memory stream inside one
+[`tests/mcp/`](../../tests/mcp/) drives the protocol over a paired in-memory stream inside one
 process. That proves the tools themselves and says nothing about the pipe. Meanwhile
-[`tests/cli/test_mcp_command.py`](../tests/cli/test_mcp_command.py) pins `visionset mcp`
+[`tests/cli/test_mcp_command.py`](../../tests/cli/test_mcp_command.py) pins `visionset mcp`
 thoroughly - and mocks `subprocess.run`, so before this example no JSON-RPC byte had ever crossed
 that command. Here the client spawns exactly what an MCP configuration spawns, and the workspace
 travels the way it really travels: resolved by the CLI, opened once to run any migration, stated in

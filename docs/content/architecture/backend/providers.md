@@ -16,7 +16,7 @@ construction. Install one on the same terms you install anything else from an in
 ## Closed capabilities, open providers
 
 A capability is what a connection can be asked for, and the vocabulary is
-[`ModelCapability`](../../../src/visionset/kernel/domain/inference.py) - `point_suggest` and
+[`ModelCapability`](../../../../src/visionset/kernel/domain/inference.py) - `point_suggest` and
 `text_detect` today. **A provider may serve a capability and can never introduce one.** Each
 member exists because a surface renders it, so a capability nothing can draw would be a
 connection declaring an ability no caller could use.
@@ -28,7 +28,7 @@ property of the installation rather than of this release.
 ## The two protocols
 
 Both live in
-[`kernel/ports/provider.py`](../../../src/visionset/kernel/ports/provider.py) and both are
+[`kernel/ports/provider.py`](../../../../src/visionset/kernel/ports/provider.py) and both are
 `@runtime_checkable`, so callers ask with `isinstance` on an *instance* - `issubclass` against a
 protocol with data members raises.
 
@@ -51,8 +51,8 @@ connection does not always carry the family - it is declared by the snapshot on 
 loads nothing**: weights load lazily inside what it returns, so a caller may build one to find
 out whether a connection *could* run. What comes back satisfies the port the declared capability
 implies - `point_suggest` a
-[`PointSegmenter`](../../../src/visionset/kernel/ports/point_segmenter.py), `text_detect` a
-[`ModelProvider`](../../../src/visionset/kernel/ports/model_provider.py).
+[`PointSegmenter`](../../../../src/visionset/kernel/ports/point_segmenter.py), `text_detect` a
+[`ModelProvider`](../../../../src/visionset/kernel/ports/model_provider.py).
 
 **`WeightsSource`** is optional, and a driver whose model runs somewhere else simply is not one:
 
@@ -74,7 +74,7 @@ is not checkable.
 
 Every refusal a driver raises - from `build`, from a runner, from a `WeightsSource` - must derive
 from `VisionSetError` in
-[`kernel/errors.py`](../../../src/visionset/kernel/errors.py). An implementation library's
+[`kernel/errors.py`](../../../../src/visionset/kernel/errors.py). An implementation library's
 exception reaching a surface is a stack trace where a sentence belongs, on every one of the four
 surfaces at once.
 
@@ -181,7 +181,7 @@ for the exact pair, ahead of the confirmation.
 
 ## Conformance
 
-[`tests/inference/test_provider_conformance.py`](../../../tests/inference/test_provider_conformance.py)
+[`tests/inference/test_provider_conformance.py`](../../../../tests/inference/test_provider_conformance.py)
 is one parametrised suite over **whatever is installed**, never over a list of drivers. The three
 drivers this distribution ships are its first subjects and are not its subject: a promise made in
 a port docstring binds nobody until something checks it on every implementation present.

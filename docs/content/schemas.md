@@ -133,7 +133,7 @@ a frozen artifact. Write the description the way you would write a commit messag
 whoever reads it later, not for yourself this afternoon.
 
 A blank description is legal and stored as `None` - an empty commit message is an ordinary
-thing to publish, so this is not [`normalize_name`](../src/visionset/kernel/domain/names.py)
+thing to publish, so this is not [`normalize_name`](../../src/visionset/kernel/domain/names.py)
 and it does not refuse. What it *does* borrow from that rule is the tidying: NFC-normalized
 and stripped, in a validator on the domain model, so no door can write an untidied one.
 

@@ -5,7 +5,7 @@ stores its bytes once, records the decoder output, and adds the result to a draf
 [batch](batches.md) for approval. Nothing else in the kernel creates an `Asset`;
 `examples/sdk_end_to_end.py` once did so but no longer does.
 
-Everything below is executed by [`examples/ingest_end_to_end.py`](../examples/ingest_end_to_end.py),
+Everything below is executed by [`examples/ingest_end_to_end.py`](../../examples/ingest_end_to_end.py),
 which is walked through in [examples.md](examples.md).
 
 ```python

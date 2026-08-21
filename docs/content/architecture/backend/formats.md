@@ -1,6 +1,6 @@
 # formats
 
-[`src/visionset/formats/`](../../../src/visionset/formats/) holds the exporters. It
+[`src/visionset/formats/`](../../../../src/visionset/formats/) holds the exporters. It
 is the one place in the distribution built as a **plugin system**: a format is
 discovered at runtime through an entry-point group, so a third-party distribution
 can ship one and VisionSet finds it without knowing it exists.
@@ -25,21 +25,21 @@ typo answers a `VisionSetError` rather than a `KeyError` and a traceback.
 
 ## What ships
 
-Ten plugins in [`pyproject.toml`](../../../pyproject.toml)'s
+Ten plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 `[project.entry-points."visionset.formats"]`:
 
 | Name | Module |
 | --- | --- |
-| `dummy` | [`_dummy.py`](../../../src/visionset/formats/_dummy.py) - writes nothing; the registry's own test subject |
-| `yolo` | [`yolo/`](../../../src/visionset/formats/yolo/) |
-| `coco` | [`coco/`](../../../src/visionset/formats/coco/) |
-| `voc` | [`voc/`](../../../src/visionset/formats/voc/) |
-| `classification` | [`classification/`](../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
-| `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` | [`lanes/`](../../../src/visionset/formats/lanes/) - five plugins over one shared core |
+| `dummy` | [`_dummy.py`](../../../../src/visionset/formats/_dummy.py) - writes nothing; the registry's own test subject |
+| `yolo` | [`yolo/`](../../../../src/visionset/formats/yolo/) |
+| `coco` | [`coco/`](../../../../src/visionset/formats/coco/) |
+| `voc` | [`voc/`](../../../../src/visionset/formats/voc/) |
+| `classification` | [`classification/`](../../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
+| `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` | [`lanes/`](../../../../src/visionset/formats/lanes/) - five plugins over one shared core |
 
 ## What a plugin declares
 
-The `Exporter` port ([`kernel/ports/exporter.py`](../../../src/visionset/kernel/ports/exporter.py))
+The `Exporter` port ([`kernel/ports/exporter.py`](../../../../src/visionset/kernel/ports/exporter.py))
 asks for three capability facts, and the split between them is the interesting
 part:
 
@@ -60,7 +60,7 @@ store could give a release bytes nobody published.
 
 ## The gate that keeps a report honest
 
-[`tests/formats/test_report_agreement.py`](../../../tests/formats/test_report_agreement.py)
+[`tests/formats/test_report_agreement.py`](../../../../tests/formats/test_report_agreement.py)
 reads every count back out of the written artifacts and compares it against what
 the compatibility report claimed. A fourth exporter registering into the group
 either lands a counter there or is declared as one that writes nothing - a format

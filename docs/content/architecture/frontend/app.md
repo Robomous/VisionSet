@@ -1,6 +1,6 @@
 # @visionset/app
 
-[`frontend/app/`](../../../frontend/app/) is the shell: routes, layout,
+[`frontend/app/`](../../../../frontend/app/) is the shell: routes, layout,
 composition. It is deliberately the thinnest package in the repository.
 
 ## What a route does
@@ -38,12 +38,12 @@ browser suite run with no backend at all.
 ## Structural navigation, never history
 
 Every sub-view names its parent in one table, `PARENT` in
-[`routes.tsx`](../../../frontend/app/src/routes.tsx). A back affordance wired to
+[`routes.tsx`](../../../../frontend/app/src/routes.tsx). A back affordance wired to
 `navigate(-1)` means a different thing depending on how the page was reached - it
 leaves the app on a fresh tab, and after walking forward through several frames it
 walks back through them one at a time.
 
-[`frontend/app/e2e/navigation.spec.ts`](../../../frontend/app/e2e/navigation.spec.ts)
+[`frontend/app/e2e/navigation.spec.ts`](../../../../frontend/app/e2e/navigation.spec.ts)
 holds it, and the method is the assertion: every scenario navigates **by URL** and
 signs in there, so history is empty and only a structural parent can satisfy it.
 
@@ -61,12 +61,12 @@ or a real focus move is a claim only a browser can check - a component test in
 jsdom would assert the broken value as though it were the design.
 
 Each worktree derives its own three ports from its absolute path
-([`e2e-ports.ts`](../../../frontend/app/e2e-ports.ts)), so two checkouts can run
+([`e2e-ports.ts`](../../../../frontend/app/e2e-ports.ts)), so two checkouts can run
 their gates at the same time.
 
 ## Related
 
 [`docs/ui.md`](../../ui.md) covers the client's behaviour.
-[`information-architecture`](../../../.agents/skills/frontend/information-architecture/SKILL.md)
+[`information-architecture`](../../../../.agents/skills/frontend/information-architecture/SKILL.md)
 is the canonical sitemap, and it has to be updated in the same change as any route
 that moves.

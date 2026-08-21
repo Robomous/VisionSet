@@ -1,6 +1,6 @@
 # kernel
 
-[`src/visionset/kernel/`](../../../src/visionset/kernel/) is the part of VisionSet
+[`src/visionset/kernel/`](../../../../src/visionset/kernel/) is the part of VisionSet
 that knows what a project, a batch and a release *are*. Everything else in the
 repository is a way of reaching it.
 
@@ -37,10 +37,10 @@ service against an object literal.
 
 | Directory | Holds | Rule |
 | --- | --- | --- |
-| [`domain/`](../../../src/visionset/kernel/domain/) | pydantic models, the transition tables, the capability tables | Pure values. Imports nothing from the rest of the kernel. |
-| [`ports/`](../../../src/visionset/kernel/ports/) | `Protocol` declarations | Signatures name domain types and standard-library types. Nothing else. |
-| [`services/`](../../../src/visionset/kernel/services/) | the twelve services | The only way to change anything. Take an open `WorkspaceService` and reach ports through it. |
-| [`adapters/`](../../../src/visionset/kernel/adapters/) | SQLite, the filesystem, Pillow, ffmpeg | The only place a third-party library is named. |
+| [`domain/`](../../../../src/visionset/kernel/domain/) | pydantic models, the transition tables, the capability tables | Pure values. Imports nothing from the rest of the kernel. |
+| [`ports/`](../../../../src/visionset/kernel/ports/) | `Protocol` declarations | Signatures name domain types and standard-library types. Nothing else. |
+| [`services/`](../../../../src/visionset/kernel/services/) | the twelve services | The only way to change anything. Take an open `WorkspaceService` and reach ports through it. |
+| [`adapters/`](../../../../src/visionset/kernel/adapters/) | SQLite, the filesystem, Pillow, ffmpeg | The only place a third-party library is named. |
 
 ## The purity contract
 
@@ -59,9 +59,9 @@ and the kernel is the part that must not do any.
 
 Enforced twice, and the second one is the one that catches a lazy import:
 
-- [`pyproject.toml`](../../../pyproject.toml) - the `Kernel purity` import-linter
+- [`pyproject.toml`](../../../../pyproject.toml) - the `Kernel purity` import-linter
   contract, run by `uv run lint-imports`.
-- [`tests/architecture/test_kernel_purity.py`](../../../tests/architecture/test_kernel_purity.py)
+- [`tests/architecture/test_kernel_purity.py`](../../../../tests/architecture/test_kernel_purity.py)
  - imports the kernel in a fresh interpreter and inspects `sys.modules`.
 
 The kernel is also the one package `mypy` runs in strict mode over:
@@ -77,5 +77,5 @@ This page is about arrangement. What the services actually do has its own pages:
 [releases](../../releases.md), [events](../../events.md),
 [persistence](../../persistence.md) and [media](../../media.md).
 
-The [`kernel-architecture`](../../../.agents/skills/backend/kernel-architecture/SKILL.md)
+The [`kernel-architecture`](../../../../.agents/skills/backend/kernel-architecture/SKILL.md)
 skill is the one to read before adding a module here.

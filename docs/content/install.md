@@ -38,7 +38,7 @@ pip install dist/visionset-*.whl
 
 That order matters and the script enforces it: the compiled UI is copied into the package
 immediately before the wheel is built, so a wheel built out of order installs cleanly and then
-serves nothing. See [CONTRIBUTING.md](../CONTRIBUTING.md#building-the-distribution).
+serves nothing. See [CONTRIBUTING.md](../../CONTRIBUTING.md#building-the-distribution).
 
 ## Check it
 
@@ -104,7 +104,7 @@ uv sync --group coco    # pycocotools
 The `yolo` group has a wart worth knowing before you install it into a checkout: the
 `ultralytics` wheel ships a **top-level `tests` package**, which shadows this repository's own
 `tests/` directory. Run the format smoke tests and then `uv sync` again; see
-[CONTRIBUTING.md](../CONTRIBUTING.md#checks-that-must-stay-green).
+[CONTRIBUTING.md](../../CONTRIBUTING.md#checks-that-must-stay-green).
 
 ## Where your data goes
 

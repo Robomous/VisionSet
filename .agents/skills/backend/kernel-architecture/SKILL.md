@@ -72,7 +72,7 @@ contract in `pyproject.toml` to make a build pass; restructure instead.
 | A `visionset ...` subcommand, flags, human output | `cli/` |
 | An MCP tool declaration and its mapping | `mcp/` |
 | Reading/writing COCO, YOLO, … | `formats/` + an entry point |
-| Work that outlives a request (a handler, a payload shape) | `jobs/` — see `docs/background-jobs.md` |
+| Work that outlives a request (a handler, a payload shape) | `jobs/` — see `docs/content/background-jobs.md` |
 
 Rule of thumb: **if it would still make sense with no HTTP, no terminal, and no LLM, it belongs
 in the kernel.**

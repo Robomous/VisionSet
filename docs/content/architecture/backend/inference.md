@@ -1,6 +1,6 @@
 # inference
 
-[`src/visionset/inference/`](../../../src/visionset/inference/) is the composition
+[`src/visionset/inference/`](../../../../src/visionset/inference/) is the composition
 root for models: a configuration row in, a running `ModelProvider` out.
 
 ## Why it is its own package
@@ -87,7 +87,7 @@ because a build that cannot look has not looked.
 Every reference to torch, transformers, accelerate and huggingface_hub is inside a
 function. A base install starts a server, runs a worker and imports this module
 with the optional runtime absent, and
-[`tests/architecture/test_optional_runtime.py`](../../../tests/architecture/test_optional_runtime.py)
+[`tests/architecture/test_optional_runtime.py`](../../../../tests/architecture/test_optional_runtime.py)
 proves it in a fresh interpreter.
 
 **That proof needs an environment where the libraries are actually installed.**
@@ -97,7 +97,7 @@ is true whatever the code does, so the assertion passes and says nothing. CI's
 lockfile and runs this file among the rest of the inference surface. The two
 halves of that matrix, and the environment variable that keeps the with-runtime
 half honest, are described in
-[CONTRIBUTING](../../../CONTRIBUTING.md#the-two-halves-of-the-inference-matrix).
+[CONTRIBUTING](../../../../CONTRIBUTING.md#the-two-halves-of-the-inference-matrix).
 
 The optional **extra** is `local-inference` - an extra rather than a dependency
 group, because a group is for developing this repository and this is something a
@@ -112,7 +112,7 @@ handler imports *this*, so the reverse would close a cycle - and would put the
 optional runtime back on the path a worker takes at spawn.
 
 The port itself is held to a narrower rule by
-[`tests/architecture/test_model_provider_port.py`](../../../tests/architecture/test_model_provider_port.py):
+[`tests/architecture/test_model_provider_port.py`](../../../../tests/architecture/test_model_provider_port.py):
 `kernel/ports/model_provider.py` may import the kernel's own domain and the
 standard library, and nothing else. A signature naming a `Path` says there is a
 filesystem in common; one naming a tensor says there is an array library in

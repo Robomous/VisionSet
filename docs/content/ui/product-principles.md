@@ -2,7 +2,7 @@
 
 VisionSet-specific product rules: how the interface behaves as a *dataset tool*, independent
 of the visual language. The visual foundations — colour, typography, spacing, materials,
-motion, accessibility — are [`DESIGN.md`](../../DESIGN.md) at the repository root. This page
+motion, accessibility — are [`DESIGN.md`](../../../DESIGN.md) at the repository root. This page
 owns the rules that would survive a restyle: what a screen must show, offer, and refuse.
 
 Navigation behaviour is [navigation.md](navigation.md); the annotation workspace is
@@ -40,7 +40,7 @@ Navigation behaviour is [navigation.md](navigation.md); the annotation workspace
 ## Status semantics
 
 The visual foundation defines the status families and forbids colour-only status
-([`DESIGN.md`](../../DESIGN.md)); this is the product's authoritative mapping. A status
+([`DESIGN.md`](../../../DESIGN.md)); this is the product's authoritative mapping. A status
 picks an intent, never a colour, and there is **one mapping product-wide**:
 
 | Family | States |
@@ -85,7 +85,7 @@ diff nobody notices.
 ## Loading and async work
 
 The general feedback baseline (thresholds, minimum visibility, prose for long waits) is in
-[`DESIGN.md`](../../DESIGN.md). Two product rules sit on top of it:
+[`DESIGN.md`](../../../DESIGN.md). Two product rules sit on top of it:
 
 - **Indeterminate progress renders as prose, never as a bar.** An empty track reads as
   *0%* — a lie in the one case where the truth is "this is going, and nobody can say how
@@ -264,7 +264,7 @@ truncates**: an identifier cut off in the middle is not an identifier, so a long
 
 ## Layout specifics (current implementation)
 
-The visual foundation defines layout *principles* ([`DESIGN.md`](../../DESIGN.md)); the
+The visual foundation defines layout *principles* ([`DESIGN.md`](../../../DESIGN.md)); the
 exact values below are screen-level decisions of the current implementation and are owned
 here.
 

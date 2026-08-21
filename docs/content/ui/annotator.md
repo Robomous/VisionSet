@@ -4,7 +4,7 @@ The UX contract for the one screen somebody sits in for an hour. The data flow b
 queries, saving, review moves, the suggest tool's server side — is
 [`docs/ui.md`](../ui.md); the kernel's rules for the labels themselves are
 [`docs/annotations.md`](../annotations.md); the visual foundations are
-[`DESIGN.md`](../../DESIGN.md). This page describes the workspace as the current
+[`DESIGN.md`](../../../DESIGN.md). This page describes the workspace as the current
 implementation renders it, using the current implementation's token names.
 
 ## The workspace is self-sufficient
@@ -421,7 +421,7 @@ in front of for an hour read as a different application.
 It must stay distinguishable from the page background as well as from the image: an asset
 with white borders has to show where it ends. The e2e suite asserts the contrast gap rather
 than the hex. `stage` is a VisionSet-specific semantic token and is recorded as such in
-[`DESIGN.md`](../../DESIGN.md).
+[`DESIGN.md`](../../../DESIGN.md).
 
 ## Shape rendering
 

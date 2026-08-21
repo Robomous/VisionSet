@@ -25,7 +25,7 @@ without a server, an account, or your pixels leaving the machine.
 | **Annotate** | boxes, polygons and classification tags in the browser, with undo/redo, keyboard-first tools, and a headless engine underneath that the UI is only one renderer of. |
 | **Version** | schema versions are immutable and every label records the one it was judged against. A release freezes the whole thing into a manifest; publish twice from unchanged data and the bytes are identical. |
 | **Split** | a stored recipe rather than a materialised assignment, keyed on **content hash** — so two copies of one image cannot straddle a train/test boundary. |
-| **Export** | YOLO, COCO, Pascal VOC and [the lane family](docs/releases.md#the-lane-formats), each declaring what it can carry. VisionSet works out exactly what a format would drop *before* writing anything, and refuses to drop it silently. |
+| **Export** | YOLO, COCO, Pascal VOC and [the lane family](docs/content/releases.md#the-lane-formats), each declaring what it can carry. VisionSet works out exactly what a format would drop *before* writing anything, and refuses to drop it silently. |
 | **Auto-label** | a model you configure and fetch yourself, never one that arrives on its own. Click a point and SAM 2 proposes the shape under it; type words and Grounding DINO finds what they name. Every suggestion is a proposal until you accept it, and an accepted one records which model produced it. |
 | **Automate** | one SDK under everything, reachable as a Python API, a REST API, a CLI, and an MCP server an agent can drive. |
 
@@ -39,9 +39,9 @@ cd ~/datasets/road-signs
 visionset server                         # API at http://127.0.0.1:8000, app at /app
 ```
 
-Then follow [the tutorial](docs/tutorial.md): a clip of video to a YOLO dataset in about half an
+Then follow [the tutorial](docs/content/tutorial.md): a clip of video to a YOLO dataset in about half an
 hour. Full prerequisites — Python 3.12, and ffmpeg only if you are starting from video — are in
-[docs/install.md](docs/install.md).
+[docs/content/install.md](docs/content/install.md).
 
 `init` is the only command that creates a workspace, and it refuses a directory that already holds
 something. `visionset server` run outside one refuses with one sentence and exit 1; it never creates
@@ -61,9 +61,9 @@ labelling:
 The whole cycle as tools, plus the two deletions that are offered only when the server is started
 with `--allow-destructive` — because a `confirm` parameter is documented in the same listing an
 agent reads before choosing, and four of four measured runs sent it on the first call. See
-[docs/mcp.md](docs/mcp.md) for how a client is configured and why each tool exists,
-[docs/mcp-tools.md](docs/mcp-tools.md) for the generated reference, or
-[docs/mcp-walkthrough.md](docs/mcp-walkthrough.md) for a session start to finish — including what
+[docs/content/mcp.md](docs/content/mcp.md) for how a client is configured and why each tool exists,
+[docs/content/mcp-tools.md](docs/content/mcp-tools.md) for the generated reference, or
+[docs/content/mcp-walkthrough.md](docs/content/mcp-walkthrough.md) for a session start to finish — including what
 twelve real agent runs actually did with it.
 
 Or drive the whole cycle from the terminal, without a server:
@@ -80,13 +80,13 @@ visionset export --project road-signs --release v1.0 --format yolo --out ./out -
 ```
 
 Every command takes `--json` for scripting, and the shapes are the REST API's. See
-[docs/cli.md](docs/cli.md), or [`examples/cli_end_to_end.sh`](examples/cli_end_to_end.sh) for that
+[docs/content/cli.md](docs/content/cli.md), or [`examples/cli_end_to_end.sh`](examples/cli_end_to_end.sh) for that
 walk with its assertions still in it.
 
 Prefer to see the SDK first? [`examples/sdk_end_to_end.py`](examples/sdk_end_to_end.py) drives an
 empty directory to a hash-verified release in one pass, generating its own images — no server,
 no CLI, nothing to download. Run it with `uv run python examples/sdk_end_to_end.py`; the
-walkthrough is in [docs/examples.md](docs/examples.md).
+walkthrough is in [docs/content/examples.md](docs/content/examples.md).
 
 For where the assets themselves come from,
 [`examples/ingest_end_to_end.py`](examples/ingest_end_to_end.py) turns a generated ten-second clip
@@ -121,8 +121,8 @@ frontend/
   app/                  @visionset/app — OSS product shell (Vite + React, never published)
 tests/                  Python tests, incl. machine-enforced architecture contracts
 examples/               Six runnable end-to-end scripts, all exercised in CI
-docs/                   User and contributor documentation (planning lives in GitHub issues)
-docs-site/              Astro + Starlight renderer for docs/ — a view of it, never a second copy
+docs/                   Documentation: content/ is the Markdown (user and contributor docs, one page per
+                        subsystem); the rest is the Astro + Starlight site that renders it — a view, never a second copy
 docker/                 Dev-only compose environment (never the release artifact)
 scripts/                Repo automation (OpenAPI export, version sync, bundling, dist build)
 .agents/skills/         Coding-agent skills, tool-agnostic (see AGENTS.md)
@@ -130,20 +130,20 @@ scripts/                Repo automation (OpenAPI export, version sync, bundling,
 
 ## Documentation
 
-Start with [docs/install.md](docs/install.md) and [docs/tutorial.md](docs/tutorial.md).
-[docs/README.md](docs/README.md) indexes the rest — one page per subsystem, each written to
+Start with [docs/content/install.md](docs/content/install.md) and [docs/content/tutorial.md](docs/content/tutorial.md).
+[docs/content/README.md](docs/content/README.md) indexes the rest — one page per subsystem, each written to
 explain the decisions rather than restate the code.
 
-**`docs/` is the source of truth**, and it is plain Markdown so that it reads on GitHub with
-nothing installed. [`docs-site/`](docs-site/README.md) renders the same files as a searchable
+**`docs/content/` is the source of truth**, and it is plain Markdown so that it reads on GitHub with
+nothing installed. [`docs/`](docs/README.md) renders the same files as a searchable
 website; it adds no content of its own. To read it locally:
 
 ```bash
 docker compose -f docker/compose.yaml up docs    # http://localhost:4321
 ```
 
-or, without Docker, `pnpm --dir docs-site install && pnpm --dir docs-site dev`. Editing anything
-under `docs/` reloads the page.
+or, without Docker, `pnpm --dir docs install && pnpm --dir docs dev`. Editing anything
+under `docs/content/` reloads the page.
 
 ## Development setup
 
@@ -163,7 +163,7 @@ docker compose -f docker/compose.yaml up
 
 **Open http://localhost:8080. There is no token to find and nothing to paste** — the app opens on
 the project list. The server signs in the browser it served itself, over an `HttpOnly` cookie it
-sets on the first request the page makes; [docs/auth.md](docs/auth.md#the-browser-session) has the
+sets on the first request the page makes; [docs/content/auth.md](docs/content/auth.md#the-browser-session) has the
 mechanism and the reasoning.
 
 One port, nginx in front of both services. The first run builds two images, every later one just
@@ -218,7 +218,7 @@ flow gate — is in [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Releases
 
 [CHANGELOG.md](CHANGELOG.md) — what each version added, and the six milestones that got here.
-[docs/releasing.md](docs/releasing.md) is the runbook for cutting one.
+[docs/content/releasing.md](docs/content/releasing.md) is the runbook for cutting one.
 
 ## License
 

@@ -1,6 +1,6 @@
 # The frontend
 
-[`frontend/`](../../../frontend/) is a pnpm workspace containing three packages.
+[`frontend/`](../../../../frontend/) is a pnpm workspace containing three packages.
 The division is architectural, not merely a build convenience: each package is
 defined by what it is *allowed to know*.
 
@@ -62,7 +62,7 @@ product.
 - [ui-core.md](ui-core.md) - screens, the design system, and the generated client.
 - [app.md](app.md) - the router shell.
 
-[`DESIGN.md`](../../../DESIGN.md) is the visual contract and the file to read
+[`DESIGN.md`](../../../../DESIGN.md) is the visual contract and the file to read
 before building any screen; the product's own UI rules are
 [`docs/ui/product-principles.md`](../../ui/product-principles.md),
 [`docs/ui/navigation.md`](../../ui/navigation.md) and
