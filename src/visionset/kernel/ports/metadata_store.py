@@ -23,12 +23,12 @@ from visionset.kernel.domain import (
     AssetProgress,
     BackgroundJob,
     Batch,
-    ClassShape,
     Dataset,
     DatasetChange,
     DatasetMember,
     InferenceConnection,
     IngestJob,
+    OrphanGuard,
     Project,
     Release,
     SchemaDraft,
@@ -348,9 +348,9 @@ class UnitOfWork(Protocol):
         ...
 
     def add_schema_version_unless_annotated(
-        self, schema: AnnotationSchema, guarded_shapes: frozenset[ClassShape]
+        self, schema: AnnotationSchema, guards: frozenset[OrphanGuard]
     ) -> AnnotationSchema | None:
-        """Publish the version, and only if none of ``guarded_shapes`` is in use.
+        """Publish the version, and only if no annotation matches one of ``guards``.
 
         ``Repository.add`` with the orphan check moved **inside the statement that
         writes**, which is :meth:`set_asset_progress`' bargain and is here for the
@@ -362,19 +362,21 @@ class UnitOfWork(Protocol):
         window is one walk over every asset in the project, so it is wide, and it
         grows with the project.
 
-        ``guarded_shapes`` is what the caller decided it may remove, so the
-        contended datum is *whether any annotation carries one of them* — a
-        predicate, not a row, which is why there is no version column to compare:
-        a stamp on the schema would say nothing about the annotations, and a
-        stamp on every annotation would be a second name for the rows themselves.
+        ``guards`` is what the caller decided it may strand, so the contended
+        datum is *whether any annotation matches one of them* — a predicate, not
+        a row, which is why there is no version column to compare: a stamp on the
+        schema would say nothing about the annotations, and a stamp on every
+        annotation would be a second name for the rows themselves.
 
-        **A pair, never a class name.** An annotation carries one class and one
-        shape, so that pair is the grain the question has; guarding by name
-        refuses a change that takes one shape from a class whose labels all carry
-        another, which orphans nothing. ``orphanable_shapes`` computes the set and
-        owns the argument for what belongs in it. — #592
+        **At the change's own grain, never the class name.** An annotation carries
+        one class, one shape and its attribute values, and a destructive change
+        dooms it only through the one of those it is about; guarding by name
+        refuses a change that takes one shape, or one optional attribute nobody
+        set, from a class whose labels are all otherwise valid — which orphans
+        nothing. ``OrphanGuard`` is that grain and ``SchemaDiff.guards`` computes
+        the set.
 
-        Empty ``guarded_shapes`` means an unguarded insert. A change that removes
+        Empty ``guards`` means an unguarded insert. A change that removes
         nothing has nothing to orphan, and a predicate over an empty set would
         refuse to say so.
 
@@ -397,9 +399,9 @@ class UnitOfWork(Protocol):
         ...
 
     def repin_batch_unless_annotated(
-        self, batch_id: UUID, schema_version: int, guarded_shapes: frozenset[ClassShape]
+        self, batch_id: UUID, schema_version: int, guards: frozenset[OrphanGuard]
     ) -> bool:
-        """Move the batch's pin, and only if none of ``guarded_shapes`` is in use *here*.
+        """Move the batch's pin, and only if no annotation *here* matches one of ``guards``.
 
         :meth:`add_schema_version_unless_annotated` one scope down, and the scope
         is the whole difference: a re-pin can only orphan labels written into
@@ -408,8 +410,8 @@ class UnitOfWork(Protocol):
         the same reason.
 
         ``True`` when the pin moved, ``False`` when the guard refused it. Empty
-        ``guarded_shapes`` is an unguarded update, as above, and the pair rather
-        than the name is the grain here too.
+        ``guards`` is an unguarded update, as above, and the change's own grain
+        rather than the class name is the grain here too.
 
         Raises ``EntityNotFound`` if there is no such batch — which tells that
         apart from a guard that fired, since both would otherwise write nothing.

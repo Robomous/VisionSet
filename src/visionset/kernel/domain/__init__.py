@@ -184,12 +184,11 @@ from visionset.kernel.domain.schema import (
 from visionset.kernel.domain.schema_diff import (
     BlockingAsset,
     ChangeKind,
-    ClassShape,
+    OrphanGuard,
     SchemaChange,
     SchemaChangePreview,
     SchemaDiff,
     diff_classes,
-    orphanable_shapes,
 )
 from visionset.kernel.domain.schema_draft import DraftAttribute, DraftLabelClass, SchemaDraft
 from visionset.kernel.domain.schema_validation import validate_schema_annotation
@@ -337,7 +336,6 @@ __all__ = [
     "BySegments",
     "BySize",
     "ChangeKind",
-    "ClassShape",
     "ClassCount",
     "ClassificationGeometry",
     "ConnectionSetupState",
@@ -382,6 +380,7 @@ __all__ = [
     "ManifestAsset",
     "ModelCapability",
     "MembershipChange",
+    "OrphanGuard",
     "Partition",
     "PointPrompt",
     "PolygonGeometry",
@@ -436,7 +435,6 @@ __all__ = [
     "canonical_bytes",
     "canonical_path",
     "diff_classes",
-    "orphanable_shapes",
     "generate_secret",
     "hash_secret",
     "initial_progress",

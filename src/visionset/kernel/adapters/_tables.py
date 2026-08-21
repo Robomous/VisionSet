@@ -465,8 +465,10 @@ class AnnotationRow(Base):
     model_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     #: Attribute values keyed by ``Attribute.name``. JSON for the reason
-    #: ``geometry`` is: an immutable value object that must rehydrate exactly,
-    #: and nothing ever looks one attribute up by name in SQL.
+    #: ``geometry`` is: an immutable value object that must rehydrate exactly.
+    #: The one SQL reader is the orphan guard, which asks whether a row carries a
+    #: key through ``json_each`` rather than a path, because a name may hold a
+    #: ``"`` and a JSON path cannot spell one.
     #:
     #: Declared **last**, and carrying a ``server_default``, for the two things
     #: ``ALTER TABLE`` demands — the same pair ``BatchRow.schema_version`` and

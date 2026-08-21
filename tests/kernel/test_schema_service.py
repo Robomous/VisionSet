@@ -40,6 +40,7 @@ from visionset.kernel.domain import (
     AnnotationSchema,
     Asset,
     Attribute,
+    AttributeValue,
     Batch,
     BboxGeometry,
     Geometry,
@@ -80,6 +81,7 @@ def _annotate(
     project_id: UUID,
     label_class: str,
     geometry: Geometry | None = None,
+    attributes: dict[str, AttributeValue] | None = None,
 ) -> Asset:
     """Give the project one annotation under ``label_class``, schema aside, and return its asset.
 
@@ -109,6 +111,7 @@ def _annotate(
                 label_class=label_class,
                 schema_version=1,
                 geometry=geometry or BboxGeometry(x=0, y=0, width=4, height=4),
+                attributes=attributes or {},
                 provenance="human",
             )
         )
@@ -714,11 +717,10 @@ def test_blocking_assets_is_empty_when_the_change_removes_nothing(tmp_path: Path
 def test_removing_the_whole_class_is_refused_whatever_shape_was_drawn(tmp_path: Path) -> None:
     """A class removed takes every shape with it, so no pair escapes the guard.
 
-    The completeness half of :func:`orphanable_shapes`: a change naming no
-    geometry enumerates every shape the class *used to* declare, which covers
-    every annotation because each was validated against that declaration. Drawn
-    as a polygon here, deliberately — a guard that enumerated only the first
-    declared shape would pass with a box and fail here.
+    The completeness half of the guard: a class removed guards the class, whatever
+    shape or attributes an annotation carries. Drawn as a polygon here,
+    deliberately — a guard that only ever named the first declared shape would
+    pass with a box and fail here.
     """
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
@@ -730,12 +732,10 @@ def test_removing_the_whole_class_is_refused_whatever_shape_was_drawn(tmp_path: 
     workspace.close()
 
 
-def test_a_narrowed_attribute_is_refused_whatever_shape_was_drawn(tmp_path: Path) -> None:
-    """An attribute change dooms the class's annotations whatever they carry.
-
-    The third arm, and the one a pair-shaped guard could most easily get wrong:
-    nothing about a required attribute is geometry-scoped, so this must enumerate
-    every shape rather than none. A guard that only ever added pairs for a
+def test_a_required_attribute_added_is_refused_whatever_shape_was_drawn(tmp_path: Path) -> None:
+    """A required attribute nobody could have set dooms the class's annotations
+    whatever they carry: none was written under a version that declared the key.
+    Nothing about it is geometry-scoped, so a guard that only ever named a
     *removed* geometry would let this through and orphan the labels.
     """
     workspace, projects, schemas = _services(tmp_path)
@@ -748,6 +748,149 @@ def test_a_narrowed_attribute_is_refused_whatever_shape_was_drawn(tmp_path: Path
     )
     with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)"):
         schemas.create_version(project.id, [demanding], allow_destructive=True)
+    workspace.close()
+
+
+#: A class with two optional attributes, for the gate that asks which labels set them.
+_VEHICLE = LabelClass(
+    name="vehicle",
+    geometries=(GeometryType.BBOX,),
+    attributes=(
+        Attribute(name="occluded", kind="boolean"),
+        Attribute(name="weather", kind="select", options=("dry", "wet", "snow")),
+    ),
+)
+
+
+def _vehicle(*attributes: Attribute) -> LabelClass:
+    return _VEHICLE.model_copy(update={"attributes": attributes})
+
+
+def _four_labeled_vehicles(
+    tmp_path: Path,
+) -> tuple[WorkspaceService, SchemaService, UUID]:
+    """Four boxes under ``vehicle``, each setting a different slice of its attributes."""
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+    schemas.create_version(project.id, [_VEHICLE])
+    _annotate(workspace, project.id, "vehicle")
+    _annotate(workspace, project.id, "vehicle", attributes={"occluded": True})
+    _annotate(workspace, project.id, "vehicle", attributes={"weather": "wet"})
+    _annotate(workspace, project.id, "vehicle", attributes={"weather": "dry", "occluded": False})
+    return workspace, schemas, project.id
+
+
+@pytest.mark.parametrize(
+    ("proposed", "doomed"),
+    [
+        pytest.param(_vehicle(_VEHICLE.attributes[1]), 2, id="attribute removed: its carriers"),
+        pytest.param(
+            _vehicle(
+                Attribute(name="occluded", kind="boolean", required=True), _VEHICLE.attributes[1]
+            ),
+            2,
+            id="attribute became required: the ones that never set it",
+        ),
+        pytest.param(
+            _vehicle(Attribute(name="occluded", kind="string"), _VEHICLE.attributes[1]),
+            2,
+            id="attribute kind changed: its carriers",
+        ),
+        pytest.param(
+            _vehicle(
+                _VEHICLE.attributes[0],
+                Attribute(name="weather", kind="select", options=("dry", "snow")),
+            ),
+            1,
+            id="option removed: the ones carrying that option",
+        ),
+        pytest.param(
+            _vehicle(*_VEHICLE.attributes, Attribute(name="plate", kind="string", required=True)),
+            4,
+            id="required attribute added: every one",
+        ),
+    ],
+)
+def test_an_attribute_narrowing_is_refused_over_exactly_the_labels_it_strands(
+    tmp_path: Path, proposed: LabelClass, doomed: int
+) -> None:
+    """The preview's count, the listing, and the refusal all say the same number —
+    and it is the number of annotations the change would actually orphan, not the
+    number under the class. Over-refusing here is what made a class with labels
+    uneditable: an optional attribute nobody set was refused as hard as a
+    required one everybody did.
+
+    The refusal is decided by the SQL guard and counted by the Python walk, so a
+    refusal whose count matches is the two predicates agreeing.
+    """
+    workspace, schemas, project_id = _four_labeled_vehicles(tmp_path)
+
+    preview = schemas.preview(project_id, [proposed])
+    assert preview.is_refused is True
+    assert [(one.label_class, one.annotations) for one in preview.blockers] == [("vehicle", doomed)]
+    assert len(schemas.blocking_assets(project_id, [proposed])) == doomed
+
+    with pytest.raises(SchemaChangeWouldOrphan, match=f"'vehicle' \\({doomed}\\)") as caught:
+        schemas.create_version(project_id, [proposed], allow_destructive=True)
+    assert [one.annotations for one in caught.value.blockers] == [doomed]
+    workspace.close()
+
+
+@pytest.mark.parametrize(
+    "proposed",
+    [
+        pytest.param(
+            _vehicle(
+                _VEHICLE.attributes[0],
+                Attribute(name="weather", kind="select", options=("dry", "wet")),
+            ),
+            id="an option nobody chose",
+        ),
+        pytest.param(
+            _vehicle(
+                _VEHICLE.attributes[0],
+                Attribute(name="weather", kind="select", options=("dry", "wet"), required=True),
+            ),
+            id="required, when every label set it",
+        ),
+        pytest.param(_vehicle(_VEHICLE.attributes[1]), id="an attribute nobody set"),
+    ],
+)
+def test_narrowing_an_attribute_no_label_depends_on_is_publishable(
+    tmp_path: Path, proposed: LabelClass
+) -> None:
+    """The other half: with the flag, a narrowing that strands nothing goes through
+    even though the class carries labels — which is what lets the class be edited
+    again once a project has data.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+    schemas.create_version(project.id, [_VEHICLE])
+    _annotate(workspace, project.id, "vehicle", attributes={"weather": "wet"})
+    _annotate(workspace, project.id, "vehicle", attributes={"weather": "dry"})
+
+    assert schemas.preview(project.id, [proposed]).is_refused is False
+    assert (
+        schemas.create_version(project.id, [proposed], allow_destructive=True).published.version
+        == 2
+    )
+    workspace.close()
+
+
+def test_an_attribute_name_the_json_path_cannot_spell_is_still_guarded(tmp_path: Path) -> None:
+    """The SQL guard looks an attribute up by name, and a name is any stripped
+    string — one with a ``"`` in it is exactly what a quoted JSON path cannot
+    address, so the guard must not be built out of one.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+    quoted = Attribute(name='say "cheese"', kind="boolean")
+    schemas.create_version(project.id, [_vehicle(quoted)])
+    _annotate(workspace, project.id, "vehicle", attributes={quoted.name: True})
+    _annotate(workspace, project.id, "vehicle")
+
+    with pytest.raises(SchemaChangeWouldOrphan, match="'vehicle' \\(1\\)"):
+        schemas.create_version(project.id, [_vehicle()], allow_destructive=True)
     workspace.close()
 
 

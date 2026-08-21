@@ -56,7 +56,7 @@ from visionset.kernel.domain import (
     AssetProgress,
     BackgroundJob,
     BackgroundJobState,
-    ClassShape,
+    OrphanGuard,
 )
 from visionset.kernel.errors import (
     ConstraintViolated,
@@ -156,38 +156,44 @@ def _connection_posture(busy_timeout_ms: int) -> Callable[[Any, Any], None]:
     return listener
 
 
-def _is_one_of(shapes: frozenset[ClassShape]) -> Any:
-    """Match an annotation against a set of ``(class, shape)`` pairs.
+def _is_one_of(guards: frozenset[OrphanGuard]) -> Any:
+    """Match an annotation against a set of guards — ``OrphanGuard.matches`` in SQL.
 
-    **The pair, never the class alone** — that is the whole of #592. A class holds
-    a set of geometries, so dropping one of them leaves every annotation drawn as
-    the others valid, and a predicate matching on the name would refuse a change
-    that orphans nothing.
+    **The change's own grain, never the class alone.** A class holds a set of
+    geometries and a map of attributes, so dropping one shape, or one attribute
+    nobody set, leaves every other annotation of the class valid, and a predicate
+    matching on the name would refuse a change that orphans nothing.
 
     The shape is the discriminator inside the stored geometry document, read with
-    ``json_extract``. That is what ``Geometry``'s tagged union puts there and what
-    every variant carries, so it is the one field this can ask for without
-    knowing which variant a row holds.
+    ``json_extract``: what ``Geometry``'s tagged union puts there and what every
+    variant carries. An attribute is looked up through ``json_each`` rather than a
+    JSON path because a path quotes the key and neither SQLAlchemy nor SQLite
+    escapes a ``"`` inside one — and an attribute name is any stripped string.
+    ``value`` of a ``select`` is a JSON string, which ``json_each`` hands back as
+    text, so the option compares as one.
 
-    An ``or_`` of pairs rather than a tuple ``IN``: the set is the size of a
-    schema's narrowing, and this spelling needs nothing of the dialect beyond
-    JSON support, which the geometry column already requires. Callers must not
-    pass an empty set — ``or_()`` is not a predicate — and both do the empty check
-    for their own reasons anyway.
+    An ``or_`` of guards rather than a tuple ``IN``: the set is the size of a
+    schema's narrowing. Callers must not pass an empty set — ``or_()`` is not a
+    predicate — and both do the empty check for their own reasons anyway.
     """
-    return or_(
-        *[
-            and_(
-                t.AnnotationRow.label_class == name,
-                t.AnnotationRow.geometry["type"].as_string() == shape.value,
-            )
-            for name, shape in sorted(shapes)
-        ]
-    )
+    return or_(*[_matches(guard) for guard in sorted(guards, key=str)])
 
 
-def _project_uses(project_id: UUID, shapes: frozenset[ClassShape]) -> Any:
-    """Does any annotation anywhere in this project carry one of these shapes?
+def _matches(guard: OrphanGuard) -> Any:
+    clauses = [t.AnnotationRow.label_class == guard.label_class]
+    if guard.geometry is not None:
+        clauses.append(t.AnnotationRow.geometry["type"].as_string() == guard.geometry.value)
+    if guard.attribute is not None:
+        each = func.json_each(t.AnnotationRow.attributes).table_valued("key", "value")
+        carries = select(literal(1)).select_from(each).where(each.c.key == guard.attribute)
+        if guard.option is not None:
+            carries = carries.where(each.c.value == guard.option)
+        clauses.append(~carries.exists() if guard.unset else carries.exists())
+    return and_(*clauses)
+
+
+def _project_uses(project_id: UUID, guards: frozenset[OrphanGuard]) -> Any:
+    """Does any annotation anywhere in this project match one of these guards?
 
     An ``EXISTS`` rather than a count, because both guards ask a yes/no question
     and stop at the first row; the counts a refusal reports are read afterwards,
@@ -203,12 +209,12 @@ def _project_uses(project_id: UUID, shapes: frozenset[ClassShape]) -> Any:
         .select_from(t.AnnotationRow)
         .join(t.AssetRow, t.AnnotationRow.asset_id == t.AssetRow.id)
         .where(t.AssetRow.project_id == project_id)
-        .where(_is_one_of(shapes))
+        .where(_is_one_of(guards))
         .exists()
     )
 
 
-def _batch_uses(batch_id: UUID, shapes: frozenset[ClassShape]) -> Any:
+def _batch_uses(batch_id: UUID, guards: frozenset[OrphanGuard]) -> Any:
     """:func:`_project_uses` over one batch's membership instead of a project.
 
     Through ``batch_asset`` rather than ``asset.project_id``: a re-pin can only
@@ -220,7 +226,7 @@ def _batch_uses(batch_id: UUID, shapes: frozenset[ClassShape]) -> Any:
         .select_from(t.AnnotationRow)
         .join(t.BatchAssetRow, t.BatchAssetRow.asset_id == t.AnnotationRow.asset_id)
         .where(t.BatchAssetRow.batch_id == batch_id)
-        .where(_is_one_of(shapes))
+        .where(_is_one_of(guards))
         .exists()
     )
 
@@ -590,7 +596,7 @@ class SqlUnitOfWork:
         )
 
     def add_schema_version_unless_annotated(
-        self, schema: AnnotationSchema, guarded_shapes: frozenset[ClassShape]
+        self, schema: AnnotationSchema, guards: frozenset[OrphanGuard]
     ) -> AnnotationSchema | None:
         """One guarded ``INSERT`` — see the port's docstring for why it exists.
 
@@ -619,8 +625,8 @@ class SqlUnitOfWork:
             for name in columns
         ]
         selected = select(*values)
-        if guarded_shapes:
-            selected = selected.where(~_project_uses(schema.project_id, guarded_shapes))
+        if guards:
+            selected = selected.where(~_project_uses(schema.project_id, guards))
 
         result = cast(
             "CursorResult[Any]",
@@ -631,7 +637,7 @@ class SqlUnitOfWork:
         return schema
 
     def repin_batch_unless_annotated(
-        self, batch_id: UUID, schema_version: int, guarded_shapes: frozenset[ClassShape]
+        self, batch_id: UUID, schema_version: int, guards: frozenset[OrphanGuard]
     ) -> bool:
         """One guarded ``UPDATE`` — see the port's docstring for why it exists.
 
@@ -647,8 +653,8 @@ class SqlUnitOfWork:
             raise EntityNotFound(f"no batch {batch_id}")
 
         statement = update(t.BatchRow).where(t.BatchRow.id == batch_id)
-        if guarded_shapes:
-            statement = statement.where(~_batch_uses(batch_id, guarded_shapes))
+        if guards:
+            statement = statement.where(~_batch_uses(batch_id, guards))
 
         result = cast(
             "CursorResult[Any]",

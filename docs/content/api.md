@@ -668,10 +668,10 @@ still a read.
 POST /projects/{project_id}/schema/blocking-assets        ?limit=&offset=
 ```
 
-`blockers` counts; this lists. Same body, same walk over the project — the guarded
-`(class, shape)` pairs are derived from the diff here exactly as the preview derives them, which
-is why the two cannot come to disagree about one proposal. A client that sent its own pairs could
-send a set the guard does not match, so it does not get to.
+`blockers` counts; this lists. Same body, same walk over the project — the guards are derived
+from the diff here exactly as the preview derives them, which is why the two cannot come to
+disagree about one proposal. A client that sent its own guards could send a set the gate does not
+match, so it does not get to.
 
 ```json
 { "items": [ { "asset": { "id": "…", "width": 1920, "height": 1080 },
