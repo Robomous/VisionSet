@@ -560,6 +560,9 @@ function ConnectionRow({
             : "The damaged copies have been removed and the connection is back to Not set up. Download weights again: with the bad files gone, it is a real transfer rather than a cache hit."}
         </FieldError>
       )}
+      {probe.isPending && (
+        <FieldHint data-testid="test-endpoint-pending">Asking the endpoint…</FieldHint>
+      )}
       {probe.isError && (
         <FieldError data-testid="test-endpoint-error">{refusalProse(probe.error)}</FieldError>
       )}

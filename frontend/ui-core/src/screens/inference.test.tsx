@@ -1864,6 +1864,7 @@ const HTTP_ACTIONS: Connection["allowed_actions"] = ["test_endpoint", "update", 
 
 function hosted(overrides: Partial<Connection> = {}): Connection {
   return connection({
+    id: "hosted-1",
     name: "remote-seg",
     connection_type: "http",
     device: null,
@@ -1902,6 +1903,33 @@ it("sends the test to its own route and re-reads the list", async () => {
   await waitFor(() =>
     expect(sent.filter((one) => one.method === "GET" && one.url.includes("/inference/connections")).length).toBeGreaterThan(1),
   );
+});
+
+it("says it is asking while the request is in flight, and stops once it lands", async () => {
+  // Radix closes the menu on `onSelect`, so the item's own "Asking the
+  // endpoint…" label is invisible unless the menu is reopened, and an
+  // unreachable host can hold this open for a real connect timeout. The row
+  // needs its own hint, released by hand the way `catalogOnCue` releases a
+  // slow catalog answer.
+  listing([hosted()]);
+  let release = (): void => undefined;
+  const served = new Promise<Answer>((settle) => {
+    release = () => settle({ status: 200, body: hosted({ capabilities: ["point_suggest"], provider_id: "http" }) });
+  });
+  handlers.push((request) =>
+    request.method === "POST" && /\/test-endpoint$/.test(new URL(request.url).pathname)
+      ? served
+      : undefined,
+  );
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-remote-seg"));
+  await userEvent.click(await screen.findByTestId("action-test-endpoint"));
+
+  const hint = await screen.findByTestId("test-endpoint-pending");
+  expect(hint.textContent).toContain("Asking the endpoint…");
+
+  release();
+  await waitFor(() => expect(screen.queryByTestId("test-endpoint-pending")).toBeNull());
 });
 
 it("renders an endpoint that did not answer as the server's sentence, not a code", async () => {
