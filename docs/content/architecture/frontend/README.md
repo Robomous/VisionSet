@@ -49,7 +49,10 @@ pnpm -r test      # vitest
 pnpm -r lint      # eslint, plus the annotator's two typecheck passes
 ```
 
-`bash scripts/check.sh` runs all three, plus the two browser suites in chromium.
+None of the three opens a browser: both Playwright suites - the annotator e2e and the
+real-server cycle - sit outside them, so anything only chromium can see passes here. CI
+runs all five on every pull request; `bash scripts/check.sh` runs them all locally, browser
+suites included.
 
 The bundle the app produces is copied into `src/visionset/_static/` and served by
 `visionset server` under `/app`, which is why one `pip install` is the whole
