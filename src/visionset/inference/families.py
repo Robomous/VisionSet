@@ -1,4 +1,4 @@
-# usage: from visionset.inference import family_of, capabilities_of
+# usage: from visionset.inference import family_of, capabilities_of, produces_of
 """What kind of model a connection points at, and what that lets it be asked.
 
 Two questions with one answer between them. A model's family — the ``model_type``

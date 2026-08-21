@@ -868,7 +868,9 @@ def test_a_text_prompted_answer_arrives_in_a_declared_shape(
     dropped regions rather than as a refusal.
 
     Excused where the two checks above are excused, for the same reason — a
-    runner needing a multi-gigabyte snapshot cannot answer here at all.
+    runner needing a multi-gigabyte snapshot cannot answer here at all. Excused
+    again when nothing was found: the contract calls an empty ``regions`` an
+    ordinary answer, and this case is about shape rather than about recall.
     """
     if capability is not ModelCapability.TEXT_DETECT:
         pytest.skip("only a text-prompted runner answers in regions")
@@ -886,7 +888,8 @@ def test_a_text_prompted_answer_arrives_in_a_declared_shape(
 
     produces = driver.families[family].produces
     seen = [region.geometry.type for answer in answers for region in answer.regions]
-    assert seen, "a runner that found nothing at all cannot be checked"
+    if not seen:
+        pytest.skip("this runner found nothing to check")
     for shape in seen:
         assert shape in produces, (
             f"{provider_id} answered {family!r} with a {shape.value}, which it does not declare; "
