@@ -1481,7 +1481,13 @@ function BulkBar({
    */
   const present = assets.filter((one) => selected.has(one.id));
   const removalIds = present.map((one) => one.id);
-  const reporting = remove.isSuccess || remove.isError;
+  const reporting =
+    remove.isSuccess ||
+    remove.isError ||
+    bulk.isSuccess ||
+    bulk.isError ||
+    discard.isSuccess ||
+    discard.isError;
 
   // Mounted while there is a report to give even after the selection has emptied
   // itself out — see `present`.
@@ -1608,6 +1614,11 @@ function BulkBar({
         tells somebody that something went wrong and nothing about what. Grouped
         by code, because forty frames refused by one rule is one sentence.
       */}
+      {bulk.isSuccess && bulk.data.refusals.length === 0 && bulk.data.moved > 0 && (
+        <span className="text-xs text-muted-foreground" data-testid="bulk-moved">
+          Moved {bulk.data.moved} frame{bulk.data.moved === 1 ? "" : "s"}.
+        </span>
+      )}
       {bulk.isSuccess && bulk.data.refusals.length > 0 && (
         <span className="text-xs text-destructive" data-testid="bulk-partial">
           {bulk.data.moved} moved,{" "}
@@ -1675,7 +1686,15 @@ function BulkBar({
 
       <button
         type="button"
-        onClick={onClear}
+        onClick={() => {
+          // Clearing the selection is also what dismisses a report on a segment
+          // that has emptied itself out from under it (see `reporting` above) —
+          // so the reports have to go with it, or the bar cannot unmount either.
+          bulk.reset();
+          discard.reset();
+          remove.reset();
+          onClear();
+        }}
         data-testid="bulk-clear"
         aria-label="Clear selection"
         className="text-muted-foreground hover:text-foreground"
