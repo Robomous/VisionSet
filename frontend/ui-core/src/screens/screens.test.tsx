@@ -943,6 +943,10 @@ describe("the schema editor", () => {
     expect(dialog.textContent).toContain("lane");
     expect(dialog.textContent).toContain("sign");
     expect(dialog.textContent).toContain("No existing annotation becomes invalid");
+    // The kernel's words, not a count: a re-casing and a removal both "narrow one
+    // class", and only the detail tells them apart.
+    const listed = within(dialog).getAllByTestId("narrowing-change").map((item) => item.textContent);
+    expect(listed).toEqual(["class 'lane' removed", "class 'sign' removed"]);
   });
 
   it("says what a batch still open on the outgoing version will keep writing", async () => {
@@ -1066,7 +1070,19 @@ describe("the schema editor", () => {
         : {
             status: 200,
             body: {
-              diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+              diff: {
+                changes: [
+                  { kind: "additive", label_class: "Lane", attribute: null, detail: "class 'Lane' added" },
+                  {
+                    kind: "destructive",
+                    label_class: "lane",
+                    attribute: null,
+                    detail: "class 'lane' removed; 'Lane' differs only in its casing",
+                  },
+                ],
+                destructive_classes: ["lane"],
+                is_destructive: true,
+              },
               blockers: [{ label_class: "lane", annotations: 12, assets: 3 }],
               is_refused: true,
             },
@@ -1081,6 +1097,11 @@ describe("the schema editor", () => {
     const dialog = await screen.findByTestId("orphan-dialog");
     expect(dialog.textContent).toContain("12 annotations");
     expect(dialog.textContent).toContain("3 assets");
+    // What was asked, in the kernel's words — the only place a re-casing is told
+    // apart from a removal. Additive changes stay out of a refusal.
+    expect(
+      within(dialog).getAllByTestId("narrowing-change").map((item) => item.textContent),
+    ).toEqual(["class 'lane' removed; 'Lane' differs only in its casing"]);
     // The missing button *is* the assertion. `SchemaChangeWouldOrphan` has no
     // override and is deliberately not a subclass of `DestructiveSchemaChange`, so
     // a "Save anyway" here would be an infinite loop with a person in it.

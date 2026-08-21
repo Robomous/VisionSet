@@ -167,6 +167,21 @@ def test_only_the_narrowed_classes_are_reported_as_destructive() -> None:
     assert diff.destructive_classes == frozenset({"lane"})
 
 
+def test_a_class_recased_is_named_as_a_rename_in_its_detail() -> None:
+    """The one rename whose intent is not a guess: a version cannot hold both
+    casings, so the diff says so where every surface reads it — while the
+    verdict stays destructive, because labels match their class by exact name."""
+    diff = diff_classes([SIGN], [_class("Sign")])
+
+    removed = next(change for change in diff.changes if change.kind is DESTRUCTIVE)
+    assert removed.label_class == "sign"
+    assert removed.detail == (
+        "class 'sign' removed; 'Sign' differs only in its casing, and annotations match "
+        "their class by exact name, so a re-casing is a rename and orphans the labels under 'sign'"
+    )
+    assert diff.describe(ADDITIVE) == "class 'Sign' added"
+
+
 def test_the_detail_of_one_kind_reads_as_a_sentence() -> None:
     """``describe`` is what the refusal messages are built from."""
     diff = diff_classes([SIGN, _class("lane")], [SIGN])
