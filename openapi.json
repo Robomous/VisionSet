@@ -1817,6 +1817,17 @@
                 "type": "null"
               }
             ]
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
           }
         },
         "required": [
@@ -1922,6 +1933,17 @@
               }
             ]
           },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
           "setup_state": {
             "$ref": "#/components/schemas/ConnectionSetupState"
           },
@@ -1941,6 +1963,7 @@
           "precision",
           "endpoint_url",
           "setup_state",
+          "provider_id",
           "allowed_actions",
           "capabilities",
           "download",
@@ -2059,6 +2082,17 @@
                 "type": "null"
               }
             ]
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
           }
         },
         "title": "ConnectionUpdate",
@@ -2108,9 +2142,14 @@
           "model_revision": {
             "title": "Model Revision",
             "type": "string"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "string"
           }
         },
         "required": [
+          "provider_id",
           "model_id",
           "model_revision",
           "family",

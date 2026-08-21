@@ -790,6 +790,10 @@ def connection(
         "precision": value.precision,
         "endpoint_url": value.endpoint_url,
         "setup_state": value.setup_state.value,
+        # Which driver serves it, as the row records it. Null where none was
+        # recorded, which resolves by the model's declared type instead — see
+        # ``InferenceConnection.provider_id``.
+        "provider_id": value.provider_id,
         "allowed_actions": [
             a.value
             for a in connection_actions(value.setup_state, connection_type=value.connection_type)

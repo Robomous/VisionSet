@@ -137,6 +137,59 @@ def test_creating_a_connection_answers_with_it(client: TestClient) -> None:
     assert made["setup_state"] == "not_set_up"
 
 
+def test_a_created_connection_publishes_the_driver_it_was_given(client: TestClient) -> None:
+    """The form reads the driver off the catalog entry it picked and sends it
+    back, so the row can be resolved before anything has been downloaded."""
+    assert created(client, LOCAL | {"provider_id": "sam"})["provider_id"] == "sam"
+
+
+def test_a_connection_created_without_one_publishes_null(client: TestClient) -> None:
+    """Null rather than absent, on every other nullable field's terms: a client
+    reading the shape handles one spelling of "nothing recorded", not two."""
+    made = created(client, LOCAL)
+    assert "provider_id" in made
+    assert made["provider_id"] is None
+
+
+def test_a_driver_nobody_installed_is_still_recorded(client: TestClient) -> None:
+    """Whether a driver is installed is a fact about this installation, not about
+    the payload — so a name nothing here provides is stored and refused later, by
+    whatever tries to run it."""
+    assert created(client, LOCAL | {"provider_id": "not-installed"})["provider_id"] == (
+        "not-installed"
+    )
+
+
+def test_repinning_to_another_offered_model_carries_the_new_driver(client: TestClient) -> None:
+    made = created(client, LOCAL | {"provider_id": "sam"})
+
+    edited = client.patch(
+        f"/inference/connections/{made['id']}",
+        json={"model_id": "acme/other", "provider_id": "acme"},
+    )
+
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["provider_id"] == "acme"
+
+
+def test_moving_to_a_model_naming_no_driver_forgets_the_old_one(client: TestClient) -> None:
+    """The recorded driver was recorded for the model this row used to name.
+
+    The one client there is sends the whole shape on every edit, so this is what
+    a switch to a hand-typed model looks like on the wire: a moved reference and
+    a null provider.
+    """
+    made = created(client, LOCAL | {"provider_id": "sam"})
+
+    edited = client.patch(
+        f"/inference/connections/{made['id']}",
+        json={"model_id": "typed/by-hand", "provider_id": None},
+    )
+
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["provider_id"] is None
+
+
 def test_an_http_connection_is_ready_on_arrival(client: TestClient) -> None:
     assert created(client, HTTP)["setup_state"] == "ready"
 
