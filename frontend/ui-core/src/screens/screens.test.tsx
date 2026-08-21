@@ -465,6 +465,83 @@ describe("the schema editor", () => {
     ).toHaveLength(1);
   });
 
+  it("lists the frames in the way and links each to every batch holding it", async () => {
+    const ASSET = "22222222-2222-4222-8222-222222222222";
+    const BATCH = "33333333-3333-4333-8333-333333333333";
+    const CORRECTION = "44444444-4444-4444-8444-444444444444";
+    projectWithSchema();
+    on("GET", /\/batches$/, {
+      status: 200,
+      body: {
+        items: [
+          { id: BATCH, project_id: PROJECT, name: "survey", state: "in_annotation" },
+          { id: CORRECTION, project_id: PROJECT, name: "fixes", state: "in_annotation" },
+        ],
+        total: 2,
+      },
+    });
+    on("POST", /\/schema\/blocking-assets$/, {
+      status: 200,
+      body: {
+        items: [
+          {
+            asset: {
+              id: ASSET,
+              project_id: PROJECT,
+              modality: "image",
+              content_hash: "deadbeef",
+              format: "jpeg",
+              width: 1920,
+              height: 1080,
+              frame_index: null,
+              frame_timestamp: null,
+              source_id: null,
+              thumbnail_hash: null,
+              ingested_at: "2024-01-01T00:00:00Z",
+            },
+            label_classes: ["lane"],
+            annotations: 12,
+            batch_ids: [BATCH, CORRECTION],
+          },
+        ],
+        total: 1,
+      },
+    });
+    const opened = vi.fn();
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={opened} />));
+
+    const panel = await screen.findByTestId("blocking-assets");
+    await within(panel).findByTestId("blocking-asset-list");
+    expect(panel.textContent).toContain("12");
+    expect(panel.textContent).toContain("lane");
+    // An asset is held by many batches — `batches_holding` returns a list, and an
+    // annotation names no batch at all — so the row offers all of them rather
+    // than picking one there is no stored fact to prefer.
+    const links = within(panel).getAllByTestId("blocking-asset-batch");
+    expect(links).toHaveLength(2);
+    await userEvent.click(links[0]);
+    expect(opened).toHaveBeenCalledWith(BATCH);
+  });
+
+  it("offers no frames-in-the-way section to a host that cannot open a batch", async () => {
+    projectWithSchema();
+    on("POST", /\/schema\/blocking-assets$/, { status: 200, body: { items: [], total: 0 } });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+
+    await screen.findByTestId("schema-editor");
+    // Every row's way onward is a batch. A host with nowhere to send anybody is
+    // not offered the section at all, rather than a panel of dead links — the
+    // same rule this screen already applies to the Batches tab.
+    expect(screen.queryByTestId("blocking-assets")).toBeNull();
+    expect(
+      sent.some((request) =>
+        new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
+      ),
+    ).toBe(false);
+  });
+
   it("treats a schema-less project as an empty draft, not as an error", async () => {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,

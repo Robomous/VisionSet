@@ -283,7 +283,7 @@ function canonical(classes: readonly LabelClassBody[]): string {
  * this attribute mid-typed; defaulting it to `"string"` keeps the editor open on
  * it rather than refusing to render somebody else's unfinished work.
  */
-function fromDraft(classes: readonly DraftLabelClassBody[]): LabelClassBody[] {
+export function fromDraft(classes: readonly DraftLabelClassBody[]): LabelClassBody[] {
   return classes.map((declared) => ({
     ...declared,
     attributes: declared.attributes.map((attribute) => ({

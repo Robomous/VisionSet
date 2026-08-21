@@ -114,8 +114,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
 import { BatchesScreen } from "./BatchesScreen";
 import { DatasetScreen } from "./DatasetScreen";
+import { AssetThumbnail } from "./AssetThumbnail";
 import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
-import { same, SchemaEditor, type SchemaDraft } from "./SchemaEditor";
+import { fromDraft, same, SchemaEditor, type SchemaDraft } from "./SchemaEditor";
 import { groupByProvenance } from "./schemaHistory";
 import {
   useActiveSchema,
@@ -127,9 +128,11 @@ import {
   useRenameProject,
   saveSchemaDraftRequest,
   useSaveSchemaDraft,
+  useSchemaBlockingAssets,
   useSchemaDraft,
   useSchemaVersions,
   type Batch,
+  type LabelClassBody,
   type Project,
   type SchemaVersion,
 } from "./queries";
@@ -601,6 +604,7 @@ export function ProjectScreen({
             onDraftChange={setSchemaDraft}
             draftSaveError={saveSchemaDraft.error}
             onFlushDraft={flushSchemaDraft}
+            {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
           />
         </TabsContent>
 
@@ -1035,6 +1039,7 @@ function SchemaSection({
   onDraftChange,
   draftSaveError,
   onFlushDraft,
+  onOpenBatch,
 }: {
   readonly projectId: string;
   /** Held by `ProjectScreen`, which outlives this tab. See its comment. */
@@ -1044,6 +1049,13 @@ function SchemaSection({
   readonly draftSaveError: unknown;
   /** The autosave's flush, forwarded from `ProjectScreen`. See its comment. */
   readonly onFlushDraft: () => Promise<number | null>;
+  /**
+   * Where a blocking frame is reached, forwarded from `ProjectScreen`.
+   *
+   * Absent means no `BlockingAssets` at all: every row's only way onward is a
+   * batch, and a panel whose links all lead nowhere reads as broken.
+   */
+  readonly onOpenBatch?: (batchId: string) => void;
 }): JSX.Element {
   const schema = useActiveSchema(projectId);
   // Tab-scoped, unlike the debounced write: this is only what seeds the editor,
@@ -1052,6 +1064,20 @@ function SchemaSection({
   const serverDraft = useSchemaDraft(projectId, "curated");
   const failure = schema.isError ? asApiError(schema.error) : null;
   const schemaless = failure?.code === SCHEMA_NOT_FOUND;
+  /*
+   * The class list `BlockingAssets` asks about: the one the editor is showing,
+   * resolved in the editor's own order of preference — the held draft, then the
+   * draft the server holds, then the active version. A panel answering about a
+   * different list than the one on screen answers the wrong question, and the
+   * active version is what an untouched editor is proposing.
+   *
+   * `null` while the server draft is still unknown, and for a project with no
+   * schema and no draft: nothing is proposed, so there is nothing to ask.
+   */
+  const proposed: readonly LabelClassBody[] | null = serverDraft.isPending
+    ? null
+    : (draft?.classes ??
+      (serverDraft.data == null ? (schema.data?.classes ?? null) : fromDraft(serverDraft.data.classes)));
 
   if (schema.isPending) return <LoadingState rows={3} />;
   if (failure !== null && !schemaless) {
@@ -1093,6 +1119,95 @@ function SchemaSection({
         is what the seam was always for.
       */}
       <VersionHistory projectId={projectId} />
+      {onOpenBatch !== undefined && proposed !== null && (
+        <BlockingAssets projectId={projectId} classes={proposed} onOpenBatch={onOpenBatch} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * The frames a proposed narrowing would orphan, below the editor.
+ *
+ * A refused publish states a count per class; this is where those frames can be
+ * reached. Both read the same server-side walk, so the number in the dialog and
+ * the rows here are answering one question.
+ *
+ * **A row links to every batch holding its frame, never to one.** An annotation
+ * carries an `asset_id` and nothing else — no batch, no job — so a blocking
+ * annotation has no single annotator address to send anybody to. A frame in three
+ * batches offers three links; a frame in none offers no link rather than a guess.
+ */
+function BlockingAssets({
+  projectId,
+  classes,
+  onOpenBatch,
+}: {
+  readonly projectId: string;
+  readonly classes: readonly LabelClassBody[];
+  readonly onOpenBatch: (batchId: string) => void;
+}): JSX.Element {
+  const query = useSchemaBlockingAssets(projectId, classes);
+  // The header above already read this list under the same key, so naming the
+  // batches costs no request — and three links all reading "Open batch" would
+  // name no destination between them.
+  const batches = useBatches(projectId);
+  const names = new Map((batches.data?.items ?? []).map((batch) => [batch.id, batch.name]));
+  return (
+    <div className="flex flex-col gap-4" data-testid="blocking-assets">
+      <header className="border-b border-border pb-4">
+        <h2 className="text-base font-semibold tracking-tight">Frames in the way</h2>
+        <p className="text-xs text-muted-foreground">
+          These frames carry labels the draft would drop. A version cannot be published while
+          they do — open one of the batches holding a frame to clear or relabel it.
+        </p>
+      </header>
+      <Async
+        query={query}
+        loadingRows={2}
+        empty={{
+          title: "Nothing is in the way",
+          description: "No frame carries a label this draft would drop.",
+        }}
+      >
+        {(page) => (
+          <ul className="flex flex-col gap-2" data-testid="blocking-asset-list">
+            {page.items.map((item) => (
+              <li key={item.asset.id} className="flex items-center gap-3">
+                <div className="size-12 shrink-0 overflow-hidden rounded-sm bg-muted">
+                  <AssetThumbnail
+                    projectId={projectId}
+                    assetId={item.asset.id}
+                    thumbnailHash={item.asset.thumbnail_hash}
+                    alt=""
+                    className="size-full object-cover"
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm">
+                    <span className="tabular-nums">{formatCount(item.annotations)}</span>{" "}
+                    {item.annotations === 1 ? "label" : "labels"} under{" "}
+                    {item.label_classes.join(", ")}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {item.batch_ids.map((batchId) => (
+                      <Button
+                        key={batchId}
+                        variant="link"
+                        className="h-auto p-0 text-xs"
+                        data-testid="blocking-asset-batch"
+                        onClick={() => onOpenBatch(batchId)}
+                      >
+                        Open {names.get(batchId) ?? "batch"}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Async>
     </div>
   );
 }
