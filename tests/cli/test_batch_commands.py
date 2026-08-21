@@ -20,6 +20,7 @@ from tests.cli._flow import (
     stills,
     workspace,
 )
+from tests.fixtures.media import write_images
 
 from visionset.cli import batches as batch_commands
 from visionset.cli.main import app
@@ -447,3 +448,81 @@ def test_promoting_an_unfinished_batch_exits_one(root: Path, tmp_path: Path) -> 
     result = run(root, "batch", "promote", batch)
     assert result.exit_code == 1, result.output
     assert result.stdout == ""
+
+
+# --- project pre-label ---------------------------------------------------------
+
+
+def _second_started_batch(root: Path, tmp_path: Path, project_name: str) -> str:
+    """Another started batch in the same project over images no other batch holds."""
+    incoming = tmp_path / "more"
+    write_images(incoming, count=2, first_seed=100)
+    batch = ok(root, "ingest", str(incoming), "--project", project_name, "--batch-name", "more")
+    ok(root, "batch", "approve", batch)
+    ok(root, "batch", "start", batch)
+    return batch
+
+
+def test_project_pre_label_runs_every_open_batch(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    name, first = started_batch(root, tmp_path)
+    second = _second_started_batch(root, tmp_path, name)
+    connection = _connection(root)
+
+    result = run(root, "project", "pre-label", name, connection)
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == "8\n"
+    assert "Pre-labeling 'stills' 6/6 asset(s)." in result.stderr
+    assert "Pre-labeling 'more' 2/2 asset(s)." in result.stderr
+    assert "Batch 'stills': pre-labeled 6 asset(s), wrote 6 annotation(s)." in result.stderr
+    assert "Batch 'more': pre-labeled 2 asset(s), wrote 2 annotation(s)." in result.stderr
+    assert "Pre-labeled 2 batch(es), wrote 8 annotation(s)." in result.stderr
+    listed = {row["id"]: row for row in payload(root, "batch", "list", "-p", name)["items"]}
+    assert listed[first]["progress"]["pre_labeled"] == 6
+    assert listed[second]["progress"]["pre_labeled"] == 2
+
+
+def test_project_pre_label_narrows_to_the_named_batch(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    name, first = started_batch(root, tmp_path)
+    second = _second_started_batch(root, tmp_path, name)
+
+    result = run(root, "project", "pre-label", name, _connection(root), "--batch", second)
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == "2\n"
+    listed = {row["id"]: row for row in payload(root, "batch", "list", "-p", name)["items"]}
+    assert listed[first]["progress"]["pre_labeled"] == 0
+    assert listed[second]["progress"]["pre_labeled"] == 2
+
+
+def test_project_pre_label_json_lists_one_outcome_per_batch(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    name, first = started_batch(root, tmp_path)
+    second = _second_started_batch(root, tmp_path, name)
+
+    outcome = payload(root, "project", "pre-label", name, _connection(root))
+
+    assert [item["batch_id"] for item in outcome["items"]] == [first, second]
+    assert [item["batch_name"] for item in outcome["items"]] == ["stills", "more"]
+    assert [item["annotations_written"] for item in outcome["items"]] == [6, 2]
+    assert outcome["annotations_written"] == 8
+
+
+def test_project_pre_label_with_no_open_batch_exits_1_naming_the_project(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    name, _batch = ingested_batch(root, tmp_path)
+
+    result = run(root, "project", "pre-label", name, _connection(root))
+
+    assert result.exit_code == 1
+    assert "has no batch open for annotation" in result.stderr
+
+
+def test_project_help_lists_pre_label() -> None:
+    assert "pre-label" in runner.invoke(app, ["project", "--help"]).stdout
