@@ -25,7 +25,11 @@ from visionset.kernel.services import SchemaDraftService, SchemaService
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
+    BlockingAssetOut,
+    BlockingAssetPage,
     DestructiveQuery,
+    LimitQuery,
+    OffsetQuery,
     SchemaChangePreviewOut,
     SchemaDiffOut,
     SchemaDraftBody,
@@ -35,6 +39,7 @@ from visionset.server.models import (
     SchemaVersionCreate,
     SchemaVersionOut,
     SchemaVersionPage,
+    window,
 )
 
 router = protected_router(prefix="/projects/{project_id}/schema", tags=["schemas"])
@@ -157,6 +162,50 @@ def preview_schema_change(
     """
     classes = [label_class.to_domain() for label_class in body.classes]
     return SchemaChangePreviewOut.of(SchemaService(workspace).preview(project_id, classes))
+
+
+@router.post("/blocking-assets", responses=documented(404))
+def list_blocking_assets(
+    workspace: WorkspaceDep,
+    project_id: UUID,
+    body: SchemaVersionCreate,
+    limit: LimitQuery = None,
+    offset: OffsetQuery = 0,
+) -> BlockingAssetPage:
+    """The frames behind `POST /preview`'s `blockers`, so a client can reach them.
+
+    `preview` answers *how many* annotations block this proposal and under which
+    classes; this answers *which frames carry them*, from the same walk, so a
+    count and a listing of one narrowing cannot disagree.
+
+    **The proposal is the whole class list, not a filter.** Which `(class, shape)`
+    pairs are guarded is derived here from the diff, exactly as `preview` derives
+    them — a client sending its own pairs could send a set the guard does not
+    match, which is the disagreement this route exists to prevent.
+
+    Each item names the frame, how many of *its* annotations the change would
+    orphan, which blocking classes they carry, and every batch holding it.
+    `batch_ids` is a list because an asset put in a batch and later in a
+    correction of it is in both. A frame blocking under two classes is one item,
+    so `total` is not the sum of `preview`'s per-class `assets`.
+
+    `total` is every blocking frame, never the size of this page; an offset past
+    the end is an empty list and a 200. An additive proposal blocks on nothing
+    and answers an empty page.
+
+    A POST for `preview`'s reason: a class list does not belong in a query
+    string. It is still a read — nothing is written, nothing is locked — and
+    `description` and `provenance` are accepted and ignored, so a client
+    previews, lists and publishes the identical document.
+
+    An unknown project is 404 `PROJECT_NOT_FOUND`.
+    """
+    classes = [label_class.to_domain() for label_class in body.classes]
+    found = list(SchemaService(workspace).blocking_assets(project_id, classes))
+    return BlockingAssetPage(
+        items=[BlockingAssetOut.of(one) for one in window(found, limit=limit, offset=offset)],
+        total=len(found),
+    )
 
 
 @router.get("/versions", responses=documented(404))

@@ -1481,6 +1481,63 @@
         "title": "BboxGeometry",
         "type": "object"
       },
+      "BlockingAssetOut": {
+        "description": "One frame standing in the way of a narrowing, and where to reach it.",
+        "properties": {
+          "annotations": {
+            "title": "Annotations",
+            "type": "integer"
+          },
+          "asset": {
+            "$ref": "#/components/schemas/AssetOut"
+          },
+          "batch_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Batch Ids",
+            "type": "array"
+          },
+          "label_classes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Label Classes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "asset",
+          "label_classes",
+          "annotations",
+          "batch_ids"
+        ],
+        "title": "BlockingAssetOut",
+        "type": "object"
+      },
+      "BlockingAssetPage": {
+        "description": "A page of the frames blocking a narrowing.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BlockingAssetOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "BlockingAssetPage",
+        "type": "object"
+      },
       "Body_register_image_source": {
         "properties": {
           "files": {
@@ -10933,6 +10990,137 @@
           }
         ],
         "summary": "Get Active Schema",
+        "tags": [
+          "schemas"
+        ]
+      }
+    },
+    "/projects/{project_id}/schema/blocking-assets": {
+      "post": {
+        "description": "The frames behind `POST /preview`'s `blockers`, so a client can reach them.\n\n`preview` answers *how many* annotations block this proposal and under which\nclasses; this answers *which frames carry them*, from the same walk, so a\ncount and a listing of one narrowing cannot disagree.\n\n**The proposal is the whole class list, not a filter.** Which `(class, shape)`\npairs are guarded is derived here from the diff, exactly as `preview` derives\nthem \u2014 a client sending its own pairs could send a set the guard does not\nmatch, which is the disagreement this route exists to prevent.\n\nEach item names the frame, how many of *its* annotations the change would\norphan, which blocking classes they carry, and every batch holding it.\n`batch_ids` is a list because an asset put in a batch and later in a\ncorrection of it is in both. A frame blocking under two classes is one item,\nso `total` is not the sum of `preview`'s per-class `assets`.\n\n`total` is every blocking frame, never the size of this page; an offset past\nthe end is an empty list and a 200. An additive proposal blocks on nothing\nand answers an empty page.\n\nA POST for `preview`'s reason: a class list does not belong in a query\nstring. It is still a read \u2014 nothing is written, nothing is locked \u2014 and\n`description` and `provenance` are accepted and ignored, so a client\npreviews, lists and publishes the identical document.\n\nAn unknown project is 404 `PROJECT_NOT_FOUND`.",
+        "operationId": "list_blocking_assets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "How many items to return. Everything from `offset` on by default.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How many items to return. Everything from `offset` on by default.",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "How many items to skip. Counts from the start of the collection.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "How many items to skip. Counts from the start of the collection.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchemaVersionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockingAssetPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Blocking Assets",
         "tags": [
           "schemas"
         ]

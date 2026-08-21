@@ -1899,6 +1899,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/schema/blocking-assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List Blocking Assets
+         * @description The frames behind `POST /preview`'s `blockers`, so a client can reach them.
+         *
+         *     `preview` answers *how many* annotations block this proposal and under which
+         *     classes; this answers *which frames carry them*, from the same walk, so a
+         *     count and a listing of one narrowing cannot disagree.
+         *
+         *     **The proposal is the whole class list, not a filter.** Which `(class, shape)`
+         *     pairs are guarded is derived here from the diff, exactly as `preview` derives
+         *     them — a client sending its own pairs could send a set the guard does not
+         *     match, which is the disagreement this route exists to prevent.
+         *
+         *     Each item names the frame, how many of *its* annotations the change would
+         *     orphan, which blocking classes they carry, and every batch holding it.
+         *     `batch_ids` is a list because an asset put in a batch and later in a
+         *     correction of it is in both. A frame blocking under two classes is one item,
+         *     so `total` is not the sum of `preview`'s per-class `assets`.
+         *
+         *     `total` is every blocking frame, never the size of this page; an offset past
+         *     the end is an empty list and a 200. An additive proposal blocks on nothing
+         *     and answers an empty page.
+         *
+         *     A POST for `preview`'s reason: a class list does not belong in a query
+         *     string. It is still a read — nothing is written, nothing is locked — and
+         *     `description` and `provenance` are accepted and ignored, so a client
+         *     previews, lists and publishes the identical document.
+         *
+         *     An unknown project is 404 `PROJECT_NOT_FOUND`.
+         */
+        post: operations["list_blocking_assets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/schema/compare": {
         parameters: {
             query?: never;
@@ -3110,6 +3156,29 @@ export interface components {
             x: number;
             /** Y */
             y: number;
+        };
+        /**
+         * BlockingAssetOut
+         * @description One frame standing in the way of a narrowing, and where to reach it.
+         */
+        BlockingAssetOut: {
+            /** Annotations */
+            annotations: number;
+            asset: components["schemas"]["AssetOut"];
+            /** Batch Ids */
+            batch_ids: string[];
+            /** Label Classes */
+            label_classes: string[];
+        };
+        /**
+         * BlockingAssetPage
+         * @description A page of the frames blocking a narrowing.
+         */
+        BlockingAssetPage: {
+            /** Items */
+            items: components["schemas"]["BlockingAssetOut"][];
+            /** Total */
+            total: number;
         };
         /** Body_register_image_source */
         Body_register_image_source: {
@@ -9337,6 +9406,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SchemaVersionOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_blocking_assets: {
+        parameters: {
+            query?: {
+                /** @description How many items to return. Everything from `offset` on by default. */
+                limit?: number | null;
+                /** @description How many items to skip. Counts from the start of the collection. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchemaVersionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockingAssetPage"];
                 };
             };
             /** @description Missing or invalid bearer token */
