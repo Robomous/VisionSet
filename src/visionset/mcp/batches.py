@@ -313,6 +313,7 @@ def _pre_label_outcome(outcome: PreLabelOutcome, plan: PreLabelPlan) -> dict[str
         "assets_considered": outcome.assets_considered,
         "assets_labeled": outcome.assets_labeled,
         "annotations_written": outcome.annotations_written,
+        "annotations_replaced": outcome.annotations_replaced,
         "model_ref": outcome.model_ref,
         "assets_skipped": outcome.assets_skipped,
         "regions_discarded": outcome.regions_discarded,
@@ -336,6 +337,17 @@ def pre_label_batch(
             ),
         ),
     ] = DEFAULT_MINIMUM_CONFIDENCE,
+    replace_model_labels: Annotated[
+        bool,
+        Field(
+            description=(
+                "Also rewrite the model labels on frames still `pre_labeled` — labels a "
+                "model wrote and nobody has edited, confirmed or skipped — superseding them "
+                "with this run's answer. Frames a person touched are never affected. This "
+                "cannot be undone; read `get_batch`'s `progress.pre_labeled` first."
+            )
+        ),
+    ] = False,
 ) -> dict[str, Any]:
     """Ask a model to label every untouched asset in a batch. This blocks until it is done.
 
@@ -358,7 +370,13 @@ def pre_label_batch(
     awaiting review or accepted is passed over, and so is an `unannotated` one
     that still carries annotations from a round that was skipped and later
     restored, since that sequence deletes no labels. A frame this tool already
-    pre-labeled is therefore never re-asked about, at any confidence. What is written lands at
+    pre-labeled is therefore never re-asked about by a plain call, at any confidence.
+    **`replace_model_labels` is the deliberate exception**: it also reaches every
+    frame still `pre_labeled` and supersedes the model's labels there with this
+    call's answer, one frame per transaction — a frame the model now finds
+    nothing on returns to `unannotated`, and `annotations_replaced` in the
+    result says how many labels went. A frame a person edited, confirmed or
+    skipped is never touched either way. What is written lands at
     `pre_labeled`, never at `annotated` — nobody judged it, so it stays
     editable and out of the Dataset until somebody does. An asset somebody
     starts working while this call is still running is passed over the same
@@ -406,6 +424,7 @@ def pre_label_batch(
             batch_id=identifier(batch_id, what="batch_id"),
             connection_id=resolved_connection.id,
             minimum_confidence=minimum_confidence,
+            replace_model_labels=replace_model_labels,
             on_plan=seen.append,
         )
     return _pre_label_outcome(outcome, seen[0])

@@ -534,12 +534,36 @@ def test_pre_labeling_blocks_and_returns_what_it_wrote(
         "assets_considered": 2,
         "assets_labeled": 2,
         "annotations_written": 2,
+        "annotations_replaced": 0,
         "model_ref": "acme/detector@abc123",
         "assets_skipped": 0,
         "regions_discarded": 0,
         "regions_out_of_bounds": 0,
         "plan": {"schema_version": 1, "asked_classes": ["sign"], "excluded_classes": []},
     }
+    assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
+
+
+def test_a_replacing_run_rewrites_the_frames_the_first_run_labeled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+    call("pre_label_batch", batch_id=batch_id, connection=connection_id)
+
+    again = payload(
+        call(
+            "pre_label_batch",
+            batch_id=batch_id,
+            connection=connection_id,
+            replace_model_labels=True,
+        )
+    )
+
+    assert again["assets_considered"] == 2
+    assert again["annotations_written"] == 2
+    assert again["annotations_replaced"] == 2
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
 
 

@@ -367,12 +367,34 @@ def test_pre_label_json_emits_the_complete_outcome(
         "assets_considered": 6,
         "assets_labeled": 6,
         "annotations_written": 6,
+        "annotations_replaced": 0,
         "model_ref": "acme/detector@abc123",
         "stopped_early": False,
         "assets_skipped": 0,
         "regions_discarded": 0,
         "regions_out_of_bounds": 0,
     }
+
+
+def test_pre_label_replace_model_labels_rewrites_the_first_runs_frames(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    _, batch = started_batch(root, tmp_path)
+    connection = _connection(root)
+    ok(root, "batch", "pre-label", batch, connection)
+
+    result = run(root, "batch", "pre-label", batch, connection, "--replace-model-labels")
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == "6\n"
+    assert "replaced 6 earlier model label(s)" in result.stderr
+    outcome = payload(root, "batch", "pre-label", batch, connection, "--replace-model-labels")
+    assert outcome["annotations_replaced"] == 6
+
+
+def test_batch_pre_label_help_lists_the_replace_option() -> None:
+    result = runner.invoke(app, ["batch", "pre-label", "--help"])
+    assert "--replace-model-labels" in result.output
 
 
 def test_pre_label_resolves_a_connection_name_and_passes_its_confidence(
