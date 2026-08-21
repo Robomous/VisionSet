@@ -121,6 +121,8 @@ function answer(path: string): unknown {
       job_id: JOB,
       progress,
       allowed_actions: assetActions(progress, { batchState: "in_annotation" }),
+      annotation_count: 0,
+      min_confidence: null,
     }));
     return { items, total: items.length };
   }

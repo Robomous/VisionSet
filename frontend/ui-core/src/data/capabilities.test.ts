@@ -131,6 +131,7 @@ describe("the action names the client imports", () => {
       [
         "accept",
         "annotate",
+        "confirm",
         "restore",
         "return_to_annotator",
         "skip",

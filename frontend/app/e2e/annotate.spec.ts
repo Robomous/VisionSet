@@ -68,6 +68,8 @@ function asset(
     // declare it on a finished job — and since the job's state is what the
     // Finish press moves, that is the whole of the live transition below.
     allowed_actions: assetActions(progress, { batchState, jobState }),
+    annotation_count: 0,
+    min_confidence: null,
   };
 }
 

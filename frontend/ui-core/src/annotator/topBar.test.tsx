@@ -165,6 +165,8 @@ function answer(path: string): unknown {
       allowed_actions: assetActions(progress, {
         batchState: closedBatch ? "completed" : "in_annotation",
       }),
+      annotation_count: 0,
+      min_confidence: null,
     }));
     return { items, total: items.length };
   }

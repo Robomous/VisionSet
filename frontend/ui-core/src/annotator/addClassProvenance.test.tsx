@@ -139,6 +139,8 @@ function answer(path: string): unknown {
           job_id: JOB,
           progress: "unannotated",
           allowed_actions: assetActions("unannotated", { batchState: "in_annotation" }),
+          annotation_count: 0,
+          min_confidence: null,
         },
       ],
       total: 1,

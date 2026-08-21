@@ -323,6 +323,8 @@ describe("the gallery", () => {
       allowed_actions: assetActions(
         (overrides.progress as Progress | null | undefined) ?? "unannotated",
       ),
+      annotation_count: 0,
+      min_confidence: null,
       ...overrides,
     };
   }
@@ -1062,6 +1064,8 @@ describe("the bulk bar", () => {
       // progress. That is the dimension the client's old mirror dropped, and
       // threading the batch state through here is what lets a test see it.
       allowed_actions: assetActions(progress as Progress, { batchState }),
+      annotation_count: 0,
+      min_confidence: null,
     };
   }
 
@@ -1619,6 +1623,8 @@ describe("the gallery header's way into the annotator", () => {
         job_id: JOB,
         progress,
         allowed_actions: assetActions(progress as Progress, { batchState }),
+        annotation_count: 0,
+        min_confidence: null,
       })),
     };
   }
@@ -1751,6 +1757,8 @@ describe("the gallery header's own next step", () => {
         job_id: JOB,
         progress,
         allowed_actions: assetActions(progress as Progress, { batchState }),
+        annotation_count: 0,
+        min_confidence: null,
       })),
     };
   }

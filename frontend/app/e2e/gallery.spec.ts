@@ -118,6 +118,8 @@ function assets(
       // dropped: `asset_actions` returns `[]` for every frame of a batch that is
       // not `in_annotation`, whatever the frame's own progress is.
       allowed_actions: assetActions(jobId === null ? null : progress, { batchState }),
+      annotation_count: 0,
+      min_confidence: null,
     })),
   };
 }
