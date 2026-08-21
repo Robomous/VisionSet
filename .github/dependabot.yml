@@ -3,7 +3,7 @@
 # Five ecosystems, six entries:
 #   uv             — the single `visionset` distribution (pyproject.toml + uv.lock)
 #   npm            — the pnpm workspace (pnpm-lock.yaml at the root, packages in frontend/*)
-#   npm            — the documentation site (docs-site/, its own workspace root and lockfile)
+#   npm            — the documentation site (docs/, its own workspace root and lockfile)
 #   github-actions — .github/workflows/
 #   docker         — the three dev-stack images (docker/*.Dockerfile)
 #   docker-compose — the services docker/compose.yaml pulls rather than builds
@@ -82,13 +82,13 @@ updates:
       prefix-development: "chore(deps-dev)"
     labels: ["dependencies", "frontend"]
 
-  # The documentation site, which keeps its own lockfile because `docs-site/` is its
-  # own pnpm workspace root — see docs-site/pnpm-workspace.yaml for why it is not a
+  # The documentation site, which keeps its own lockfile because `docs/` is its
+  # own pnpm workspace root — see docs/pnpm-workspace.yaml for why it is not a
   # member of the frontend workspace. Dependabot reads one lockfile per entry, so
   # without this one Astro and Starlight would be the only npm dependencies here
   # with no automation and no cool-down.
   - package-ecosystem: "npm"
-    directory: "/docs-site"
+    directory: "/docs"
     schedule:
       interval: "weekly"
       day: "monday"

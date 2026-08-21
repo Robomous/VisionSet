@@ -19,8 +19,8 @@
 #
 # `docs` is the one group the default run does not include, and the verdict line
 # says so (`skipped=docs`): it needs its own pnpm install and reaches nothing the
-# other suites cover, so it belongs to a change that touches `docs/` or
-# `docs-site/`. CI runs it on every pull request either way.
+# other suites cover, so it belongs to a change that touches `docs/`. CI runs it
+# on every pull request either way.
 #
 # The browser group is two suites and neither is a luxury: frontend/app's e2e
 # (stubbed API, CI job `annotator e2e (chromium)`) and the whole cycle against a
@@ -194,31 +194,31 @@ run_browser() {
 # separate workspace root with its own install, so `require_node_modules` says
 # nothing about it and this has to check for itself.
 require_docs_site_modules() {
-  if [[ ! -d docs-site/node_modules ]]; then
-    echo "error: docs-site/node_modules is missing — run 'pnpm --dir docs-site install' first" >&2
+  if [[ ! -d docs/node_modules ]]; then
+    echo "error: docs/node_modules is missing — run 'pnpm --dir docs install' first" >&2
     exit 2
   fi
 }
 
 docs_build() {
-  ( cd "$root/docs-site" && pnpm build )
+  ( cd "$root/docs" && pnpm build )
 }
 
-# After the build, never before it: `docs-site/src/content/docs/` is generated
+# After the build, never before it: `docs/src/content/docs/` is generated
 # and git-ignored, so a `sync:check` first would report every page stale on a
 # fresh clone. Run here it asserts determinism — the projection just produced is
 # byte-for-byte what a fresh one produces, which catches a transform that grew a
 # timestamp or a filesystem-dependent ordering.
 docs_projection_is_deterministic() {
-  ( cd "$root/docs-site" && pnpm sync:check )
+  ( cd "$root/docs" && pnpm sync:check )
 }
 
 # Also after the build, and only meaningful after it: this reads `dist/`. The
-# Markdown gate in `tests/scripts/docs_links.test.mjs` checks `docs/` *before* the
+# Markdown gate in `tests/scripts/docs_links.test.mjs` checks `docs/content/` *before* the
 # projection rewrites its links, so neither covers the other — this is what a reader
 # actually clicks.
 docs_links() {
-  ( cd "$root/docs-site" && node scripts/check-links.mjs )
+  ( cd "$root/docs" && node scripts/check-links.mjs )
 }
 
 run_docs() {

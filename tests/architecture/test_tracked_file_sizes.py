@@ -44,8 +44,8 @@ ALLOWLIST: dict[str, int] = {
     # a media guard came to refuse a lockfile. Bounded like the others, so it cannot balloon
     # unnoticed.
     "pnpm-lock.yaml": 1024 * 1024,
-    # The documentation site's resolved dependency graph. `docs-site/` is its own pnpm workspace
-    # root, so it keeps its own lockfile — see docs-site/pnpm-workspace.yaml for why. Same
+    # The documentation site's resolved dependency graph. `docs/` is its own pnpm workspace
+    # root, so it keeps its own lockfile — see docs/pnpm-workspace.yaml for why. Same
     # exemption as uv.lock and for the same reason: text, machine-generated, and being large is
     # the file's job.
     #
@@ -54,7 +54,7 @@ ALLOWLIST: dict[str, int] = {
     # dependencies. Left to trip on its own, the failure would land on some later Dependabot bump
     # as a *media* guard refusing a lockfile, which reads as a broken check rather than as a
     # deliberate limit.
-    "docs-site/pnpm-lock.yaml": 1024 * 1024,
+    "docs/pnpm-lock.yaml": 1024 * 1024,
 }
 """Path -> its own ceiling. An entry here is a deliberate exception and owes a reason above it;
 an exemption raises the limit for one file, it never removes it."""
