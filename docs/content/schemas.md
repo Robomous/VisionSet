@@ -287,6 +287,7 @@ annotation that was valid under the previous version stay valid under this one?*
 | Class added | additive |
 | Class removed | **destructive** |
 | Class renamed | **destructive** (a removal) plus an addition |
+| Class re-cased (`car` → `Car`) | **destructive** — a rename, and the diff says so |
 | Geometry added to a class | additive |
 | Geometry removed from a class | **destructive** |
 | Class color changed | not a change at all |
@@ -308,7 +309,12 @@ name. The kernel cannot see intent, and guessing at it would be guessing with so
 labels.
 
 Within one version, class names must be unique ignoring case, for the same reason: `Car`
-beside `car` is two classes that read as one to everybody except the code.
+beside `car` is two classes that read as one to everybody except the code. That rule is also
+what makes a re-casing the one rename whose intent is not a guess: a version cannot hold both,
+so `car` leaving as `Car` arrives can only be a rename. The verdict does not move — the labels
+still carry `car` — but the change's `detail` names the re-casing and its cost, so a surface
+explains it instead of reporting a removal nobody made. A re-casing with labels under the old
+name is refused like any removal; re-case it before labeling, or keep the casing.
 
 The classifier lives in `kernel/domain/schema_diff.py` and is pure - two sequences in, a
 verdict out. `preview` runs it against the active version without writing, and adds the half the
