@@ -776,6 +776,20 @@ press, a connection whose model answers places rather than words, a pinned schem
 a detection can be written as, and a local runtime that is not installed, whose message carries
 the exact `pip install` to run.
 
+#### Pre-labeling every open batch from the Batches tab
+
+The tab's header offers **Pre-label** whenever some batch of the project declares `pre_label` in its
+own `allowed_actions` - read off the listing, never derived from state here - and is absent
+otherwise. The dialog takes the same model and prompt-affinity controls as the gallery's dialog
+(one component, one copy of the prose), then a checklist of the batches that declare the action,
+each with its untouched count and checked by default when that count is above zero. Start posts
+`POST /projects/{id}/batches/pre-label` with exactly the checked ids, so what runs is what was
+seen; the answer is one row per batch, and the dialog lists each as queued or as having joined a
+run already in flight, each name a link into its gallery. The batch stays the unit: the row in
+the table shows a **pre-labeling…** mark while that batch's own `pre_label_run` is live, and the
+gallery's dialog reads the same run afterwards. A refusal - a pin with no box class, naming the
+batch to leave out - renders as prose in the dialog, and no batch is launched.
+
 #### Reviewing a pre-labeled batch
 
 The gallery's segments are answered by the server - `Model-labeled (48)` asks for
