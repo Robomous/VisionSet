@@ -1,21 +1,36 @@
 /**
- * Unmount between tests.
+ * Unmount between tests, and let the unmount finish.
  *
- * `@testing-library/react` registers this itself when a runner exposes `afterEach`
- * as a global. This suite runs with `globals: false` — imports in a test file
- * should say what the file uses — so the hook has to be registered by hand.
+ * `@testing-library/react` registers `cleanup` itself when a runner exposes
+ * `afterEach` as a global. This suite runs with `globals: false` — imports in a
+ * test file should say what the file uses — so the hook has to be registered by
+ * hand. Without it every render accumulates in one `document.body` and a query
+ * like `getByRole("alert")` starts failing with "found multiple elements" in
+ * whichever test happens to run second. That is a harness bug that reads exactly
+ * like a component bug, which is why it is worth a file and a comment.
  *
- * Without it every render accumulates in one `document.body` and a query like
- * `getByRole("alert")` starts failing with "found multiple elements" in whichever
- * test happens to run second. That is a harness bug that reads exactly like a
- * component bug, which is why it is worth a file and a comment.
+ * The drained macrotask is for work an unmount schedules rather than does.
+ * Radix's focus scope returns focus from a `setTimeout(…, 0)` registered by its
+ * unmount cleanup, so after `cleanup()` that timer is still pending. It fires
+ * into the next test's first millisecond, and after a file's last test it races
+ * the environment teardown: vitest tears jsdom down inside the worker's `stop`
+ * message handler, libuv serves I/O callbacks before the next timers phase, and a
+ * starved worker therefore wakes to the teardown first. The timer then builds a
+ * `CustomEvent` from Node's restored global and dispatches it on a jsdom element,
+ * which jsdom rejects — an uncaught `TypeError` that fails the run with every
+ * test green. A timer scheduled here, after the radix one and for the same
+ * duration, fires after it, so awaiting it is the guarantee that the document the
+ * unmount targets is still there. `harness.test.tsx` asserts the property.
  */
 
 import { cleanup } from "@testing-library/react";
 import { toast } from "sonner";
 import { afterEach } from "vitest";
 
-afterEach(cleanup);
+afterEach(async () => {
+  cleanup();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
 
 /**
  * Sonner's toast store is module-global and outlives `cleanup()` — unmounting a
