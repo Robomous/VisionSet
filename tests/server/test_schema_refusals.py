@@ -247,9 +247,9 @@ def test_the_listing_and_the_preview_count_the_same_frames(
 def test_a_blocking_frame_names_the_batches_holding_it(client: TestClient, labeled: str) -> None:
     """Keyed by asset rather than by position: which row lands where is not the claim.
 
-    The listing *does* promise an order - ``assets.list``' - and the route says so.
-    Asserting through it here would make this a second, weaker test of that promise
-    instead of a test of what a row carries.
+    The listing *does* promise an order - insertion order, which the route states -
+    so asserting through position here would make this a second, weaker test of that
+    promise instead of a test of what a row carries.
     """
     batch_id = client.get(f"/projects/{labeled}/batches").json()["items"][0]["id"]
     doubled, single = asset_ids(client, batch_id)

@@ -1931,10 +1931,10 @@ export interface paths {
          *     the end is an empty list and a 200. An additive proposal blocks on nothing
          *     and answers an empty page.
          *
-         *     **The order is `GET /projects/{project_id}/assets`' order**, which that route
-         *     documents: deterministic, and not chronological. These frames are found by
-         *     walking that same listing and keeping the ones in the way, so paging with
-         *     `offset` shows each frame once rather than reshuffling between requests.
+         *     **The order is insertion order** — the order the assets were first recorded,
+         *     which nothing here re-sorts. It is stable across calls, which is what makes
+         *     paging with `offset` safe; it is not the order any other asset listing
+         *     publishes.
          *
          *     A POST for `preview`'s reason: a class list does not belong in a query
          *     string. It is still a read — nothing is written, nothing is locked — and
