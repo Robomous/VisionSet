@@ -49,7 +49,12 @@ from visionset.inference.http_provider import HTTP_PROVIDER_ID
 from visionset.inference.registry import families_served, recorded, registered, serving
 from visionset.inference.stub_provider import STUB_FAMILY, STUB_MODEL_ID
 from visionset.inference.weights import cache_root
-from visionset.kernel.domain import ConnectionSetupState, ConnectionType, InferenceConnection
+from visionset.kernel.domain import (
+    ConnectionSetupState,
+    ConnectionType,
+    InferenceConnection,
+    ServedFamily,
+)
 from visionset.kernel.errors import (
     InferenceConnectionNotRunnable,
     InferenceConnectionNotSetUp,
@@ -65,6 +70,7 @@ __all__ = [
     "not_set_up_message",
     "provider_for",
     "resident",
+    "resolve",
 ]
 """``Runner`` is re-exported rather than redefined.
 
@@ -124,6 +130,16 @@ class ProviderPool:
             self._builds += 1
             return self._held.put(key, built)
 
+    def served(self, connection: InferenceConnection, *, workspace_root: Path) -> ServedFamily:
+        """What the family this connection resolves to declares — asked for and answered in.
+
+        Resolved, never built: a caller planning a run wants the shapes before it
+        pays for a runner, and every refusal :func:`resolve` raises is raised here
+        too, in the same order.
+        """
+        driver, family = resolve(connection, workspace_root=workspace_root)
+        return driver.families[family]
+
     def clear(self) -> None:
         """Drop everything held. What a test does between cases."""
         self._held.clear()
@@ -164,6 +180,27 @@ def not_set_up_message(connection: InferenceConnection) -> str:
     )
 
 
+def resolve(connection: InferenceConnection, *, workspace_root: Path) -> tuple[Provider, str]:
+    """The driver and the family this connection resolves to, or the reason nothing can.
+
+    What :func:`provider_for` builds from and what a caller asks the declaration
+    of — one resolution, so the runner and the ``ServedFamily`` describing it can
+    never come from different drivers. Loads nothing.
+
+    Raises:
+        InferenceConnectionNotSetUp: a local connection whose weights are not
+            here yet, or an http connection whose endpoint has not been asked.
+        InferenceConnectionNotRunnable: the recorded driver is not installed,
+            or does not serve what the model (or the endpoint) declares.
+        LocalInferenceUnavailable: the optional runtime is not installed.
+    """
+    match connection.connection_type:
+        case ConnectionType.LOCAL:
+            return _local(connection, workspace_root=workspace_root)
+        case ConnectionType.HTTP:
+            return _remote(connection)
+
+
 def provider_for(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
     """The thing that will answer for this connection, or the reason nothing can.
 
@@ -181,15 +218,12 @@ def provider_for(connection: InferenceConnection, *, workspace_root: Path) -> Ru
             declares.
         LocalInferenceUnavailable: the optional runtime is not installed.
     """
-    match connection.connection_type:
-        case ConnectionType.LOCAL:
-            return _local(connection, workspace_root=workspace_root)
-        case ConnectionType.HTTP:
-            return _remote(connection, workspace_root=workspace_root)
+    driver, family = resolve(connection, workspace_root=workspace_root)
+    return driver.build(connection, family=family, workspace_root=workspace_root)
 
 
-def _local(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
-    """A local provider of whichever family this connection's model belongs to.
+def _local(connection: InferenceConnection, *, workspace_root: Path) -> tuple[Provider, str]:
+    """The driver and family of whichever family this connection's model belongs to.
 
     The order of the two checks is deliberate and unchanged from the slice that
     introduced it: the connection's own state first, because "your weights are
@@ -218,11 +252,11 @@ def _local(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
         require()
         family = family_of(connection, cache_dir=cache_root(workspace_root))
     driver = driver_for(connection, family=family, drivers=drivers)
-    return driver.build(connection, family=family, workspace_root=workspace_root)
+    return driver, family
 
 
-def _remote(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
-    """A runner for the endpoint this connection names.
+def _remote(connection: InferenceConnection) -> tuple[Provider, str]:
+    """The driver and family for the endpoint this connection names.
 
     Resolved by what the row recorded and nothing else: the driver it names
     (the built-in one when it names none — every http connection created before
@@ -237,7 +271,7 @@ def _remote(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
         raise InferenceConnectionNotSetUp(not_set_up_message(connection))
     if family not in driver.families:
         raise InferenceConnectionNotRunnable(_wrong_family_for(connection, driver, family))
-    return driver.build(connection, family=family, workspace_root=workspace_root)
+    return driver, family
 
 
 def driver_for(
