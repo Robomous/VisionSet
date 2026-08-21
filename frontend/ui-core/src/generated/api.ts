@@ -1252,7 +1252,9 @@ export interface paths {
          *     or `INFERENCE_CONNECTION_NOT_FOUND`; a connection whose weights are not here
          *     yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` and names what to do; a
          *     connection whose model answers words rather than places is 422
-         *     `UNSUPPORTED_PROMPT`, as is a prompt point off the asset.
+         *     `UNSUPPORTED_PROMPT`, as is a prompt point off the asset; an `http`
+         *     connection whose endpoint does not answer the contract is 502
+         *     `INFERENCE_ENDPOINT_UNAVAILABLE`.
          *
          *     Three failures are about this installation rather than about the request,
          *     and answer 500 carrying the message that says which: a connection of a kind
@@ -7672,6 +7674,15 @@ export interface operations {
             };
             /** @description Unhandled server error, with an incident id */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description An http connection's endpoint did not answer */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

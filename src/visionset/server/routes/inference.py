@@ -370,7 +370,7 @@ def inference_download_size(model_id: str, model_revision: str) -> DownloadSizeO
     return DownloadSizeOut.of(download_size(model_id, model_revision))
 
 
-@beside_connections.post("/suggest", responses=documented(404, 409))
+@beside_connections.post("/suggest", responses=documented(404, 409, 502))
 def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionOut:
     """Propose a shape for the thing under those points.
 
@@ -437,7 +437,9 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
     or `INFERENCE_CONNECTION_NOT_FOUND`; a connection whose weights are not here
     yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` and names what to do; a
     connection whose model answers words rather than places is 422
-    `UNSUPPORTED_PROMPT`, as is a prompt point off the asset.
+    `UNSUPPORTED_PROMPT`, as is a prompt point off the asset; an `http`
+    connection whose endpoint does not answer the contract is 502
+    `INFERENCE_ENDPOINT_UNAVAILABLE`.
 
     Three failures are about this installation rather than about the request,
     and answer 500 carrying the message that says which: a connection of a kind

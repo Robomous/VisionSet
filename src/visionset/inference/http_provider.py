@@ -79,6 +79,10 @@ PREDICT_TIMEOUT: Final = 120.0
 # ponytail: one timeout for every endpoint; a per-connection timeout when
 # somebody's model needs longer than two minutes for one batch.
 
+MAX_RESPONSE_BYTES: Final = 64 * 1024 * 1024
+# a 4K mask PNG is well under a megabyte, so this bounds a misbehaving
+# endpoint, not a real answer.
+
 HTTP_FAMILIES: Final[Mapping[str, ModelCapability]] = {
     ModelCapability.POINT_SUGGEST.value: ModelCapability.POINT_SUGGEST,
     ModelCapability.TEXT_DETECT.value: ModelCapability.TEXT_DETECT,
@@ -167,25 +171,30 @@ def _exchange(url: str, *, payload: dict[str, Any] | None, timeout: float) -> An
     headers = {"Accept": "application/json"}
     if data is not None:
         headers["Content-Type"] = "application/json"
-    asked = urllib_request.Request(
-        url, data=data, headers=headers, method="GET" if data is None else "POST"
-    )
     try:
+        asked = urllib_request.Request(
+            url, data=data, headers=headers, method="GET" if data is None else "POST"
+        )
         with _OPENER.open(asked, timeout=timeout) as response:
-            raw = response.read()
+            raw = response.read(MAX_RESPONSE_BYTES + 1)
     except error.HTTPError as exc:
         try:
             detail = exc.read().decode("utf-8", "replace").strip()[:200]
-        except http.client.HTTPException:
+        except (http.client.HTTPException, OSError):
             detail = ""
         raise InferenceEndpointUnavailable(
             f"endpoint {url} answered {exc.code}" + (f": {detail}" if detail else "")
         ) from exc
-    except (error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
+    except (error.URLError, TimeoutError, OSError, http.client.HTTPException, ValueError) as exc:
         reason = exc.reason if isinstance(exc, error.URLError) else exc
         raise InferenceEndpointUnavailable(
             f"endpoint {url} could not be reached: {reason}"
         ) from exc
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise InferenceEndpointUnavailable(
+            f"endpoint {url} answered more than {MAX_RESPONSE_BYTES} bytes; an answer is never "
+            "that large"
+        )
     try:
         return json.loads(raw)
     except ValueError as exc:
@@ -378,19 +387,21 @@ def _rows_of(encoded: str, *, url: str, size: tuple[int, int]) -> list[bytes]:
     """
     try:
         with Image.open(BytesIO(base64.b64decode(encoded, validate=True))) as image:
+            width, height = image.size
+            if (width, height) != size:
+                raise InferenceEndpointUnavailable(
+                    f"endpoint {url} answered a {width} by {height} mask for a {size[0]} by "
+                    f"{size[1]} asset; a mask is the asset's own size"
+                )
             lit = image.convert("L").point(lambda value: 1 if value else 0)
-            width, height = lit.size
             flat = lit.tobytes()
+    except InferenceEndpointUnavailable:
+        raise
     except Exception as exc:  # anything Pillow or base64 raises is one answer
         raise InferenceEndpointUnavailable(
             f"endpoint {url} answered a mask this build cannot decode; a mask is a base64 "
             f"PNG ({exc})"
         ) from exc
-    if (width, height) != size:
-        raise InferenceEndpointUnavailable(
-            f"endpoint {url} answered a {width} by {height} mask for a {size[0]} by {size[1]} "
-            "asset; a mask is the asset's own size"
-        )
     return [flat[row * width : (row + 1) * width] for row in range(height)]
 
 

@@ -41,6 +41,7 @@ from visionset.inference import (
     prompt_plan,
     require_detectable_schema,
     unsupported_prompt_message,
+    with_families,
 )
 from visionset.inference import require as require_local_inference
 from visionset.jobs.prelabel import JOB_TYPE as pre_label_job_type
@@ -407,6 +408,7 @@ def pre_label_batch(
     # run is an answer about a setup somebody is part-way through, independent
     # of this batch's state, and a caller most needs it first.
     connection = InferenceConnectionService(workspace).get(body.connection_id)
+    (connection,) = with_families(workspace, [connection])
     # Before the job exists, on the download route's terms: a refusal a request
     # can make is a refusal the request makes. Discovering a missing install
     # inside a worker would put an install command on a failed row somebody has

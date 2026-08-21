@@ -12,6 +12,7 @@ import base64
 import json
 import socket
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -44,6 +45,7 @@ class Endpoint:
         self.predict_body: Any = None  # None derives one answer per target
         self.requests: list[dict[str, Any]] = []
         self.truncate_body = False  # sends a short body under the declared Content-Length
+        self.stall_error_body = False  # sends a partial body then stalls, on a non-2xx status
         self.url = ""
 
 
@@ -119,6 +121,11 @@ class _Handler(BaseHTTPRequestHandler):
         if location is not None:
             self.send_header("Location", location)
         self.end_headers()
+        if self.endpoint.stall_error_body and status >= 400:
+            self.wfile.write(payload[: len(payload) // 2])
+            self.wfile.flush()
+            time.sleep(2)
+            return
         if self.endpoint.truncate_body:
             payload = payload[:-5]
         self.wfile.write(payload)

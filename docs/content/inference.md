@@ -664,6 +664,8 @@ connection up, you should hear about the connection rather than about an asset t
 problem. A connection whose weights are not here yet is `INFERENCE_CONNECTION_NOT_SET_UP` and
 names `download` as the remedy - an `http` connection nobody has asked yet gets the same code,
 naming `test-endpoint`; one whose model answers words rather than places is `UNSUPPORTED_PROMPT`.
+An `http` connection whose endpoint does not answer the contract - unreachable, slow, or a body
+outside it - is `INFERENCE_ENDPOINT_UNAVAILABLE`, a 502.
 
 That last one is still the law and is still enforced on every call. It is simply no longer how a
 person finds out: a client with `capabilities` in hand can decline to ask, which is why the

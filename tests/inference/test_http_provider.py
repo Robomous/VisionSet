@@ -5,16 +5,19 @@ and the one sentence every failure becomes."""
 from __future__ import annotations
 
 import base64
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from tests.fixtures.endpoint import closed_port, serving_endpoint
+from tests.fixtures.endpoint import closed_port, mask_png, serving_endpoint
 from tests.fixtures.media import write_image
 
+from visionset.inference import http_provider
 from visionset.inference.http_provider import (
     HTTP_PROVIDER_ID,
+    MAX_RESPONSE_BYTES,
     HttpProvider,
     RemoteDetector,
     RemoteSegmenter,
@@ -139,6 +142,36 @@ def test_an_endpoint_nothing_listens_on_is_unreachable_not_a_traceback() -> None
     with pytest.raises(InferenceEndpointUnavailable, match="could not be reached") as refused:
         describe(hosted(url))
     assert url in str(refused.value)
+
+
+def test_an_unparseable_ipv6_url_is_unreachable_not_a_traceback() -> None:
+    url = "http://[::1"
+    with pytest.raises(InferenceEndpointUnavailable, match="could not be reached") as refused:
+        describe(hosted(url))
+    assert url in str(refused.value)
+
+
+def test_a_stalled_error_body_times_out_rather_than_hanging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(http_provider, "DESCRIBE_TIMEOUT", 0.5)
+    with serving_endpoint() as endpoint:
+        endpoint.describe_status = 500
+        endpoint.stall_error_body = True
+        started = time.monotonic()
+        with pytest.raises(InferenceEndpointUnavailable, match="answered 500") as refused:
+            describe(hosted(endpoint.url))
+        elapsed = time.monotonic() - started
+    assert endpoint.url in str(refused.value)
+    assert elapsed < 1.5
+
+
+def test_a_response_over_the_ceiling_is_refused_not_buffered_whole() -> None:
+    with serving_endpoint() as endpoint:
+        endpoint.describe_body = "x" * (MAX_RESPONSE_BYTES + 10)
+        with pytest.raises(InferenceEndpointUnavailable, match="more than") as refused:
+            describe(hosted(endpoint.url))
+    assert endpoint.url in str(refused.value)
 
 
 def test_only_http_and_https_are_ever_opened() -> None:
@@ -271,8 +304,6 @@ def test_an_answer_outside_the_contract_is_one_sentence_naming_the_endpoint(
 
 
 def test_a_mask_of_the_wrong_size_is_refused(tmp_path: Path) -> None:
-    from tests.fixtures.endpoint import mask_png
-
     with serving_endpoint() as endpoint:
         runner = RemoteSegmenter(hosted(endpoint.url))
         request = a_request(tmp_path, POINTS)
@@ -286,6 +317,23 @@ def test_a_mask_of_the_wrong_size_is_refused(tmp_path: Path) -> None:
             ]
         }
         with pytest.raises(InferenceEndpointUnavailable, match="20 by 16"):
+            list(runner.segment(request))
+
+
+def test_a_mask_that_is_not_base64_is_refused(tmp_path: Path) -> None:
+    with serving_endpoint() as endpoint:
+        runner = RemoteSegmenter(hosted(endpoint.url))
+        request = a_request(tmp_path, POINTS)
+        endpoint.predict_body = {
+            "answers": [
+                {
+                    "asset_id": str(request.targets[0].asset_id),
+                    "model_ref": "r",
+                    "segments": [{"score": 0.5, "mask": "not base64"}],
+                }
+            ]
+        }
+        with pytest.raises(InferenceEndpointUnavailable, match="cannot decode"):
             list(runner.segment(request))
 
 
