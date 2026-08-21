@@ -10,7 +10,7 @@
  *
  * Astro's `glob()` loader will happily take `base: "./content"`, and that was the
  * first thing tried. Two things in Starlight's content model refuse it, and neither
- * is worth bending `docs/` around:
+ * is worth bending `content/` around:
  *
  *   1. `docsSchema()` **requires** a `title`. Adding `title:` frontmatter to
  *      forty-two files would put a YAML table at the top of every page GitHub
@@ -79,7 +79,7 @@ export const DOCS_DIR = path.join(REPO_ROOT, CORPUS);
 export const CONTENT_DIR = path.join(SITE_ROOT, "src", "content", "docs");
 
 /**
- * Where a link that leaves `docs/` is sent instead.
+ * Where a link that leaves the corpus is sent instead.
  *
  * `main` rather than a tag: these point at code, and a reader following one wants
  * the code as it is now, not as it was when a release was cut.
@@ -87,7 +87,7 @@ export const CONTENT_DIR = path.join(SITE_ROOT, "src", "content", "docs");
 const GITHUB = "https://github.com/Robomous/VisionSet";
 const GITHUB_BRANCH = "main";
 
-/** Every Markdown file under `docs/`, relative to it, in a stable order. */
+/** Every Markdown file under `content/`, relative to it, in a stable order. */
 export function documentPaths(dir = DOCS_DIR, prefix = "") {
   const found = [];
   const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1));

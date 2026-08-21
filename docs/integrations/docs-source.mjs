@@ -7,7 +7,7 @@
  *   `astro:config:setup`  every `dev`, `build` and `preview` starts from a current
  *                         projection, so a clean checkout needs no `pnpm sync`
  *                         first and CI cannot build a stale site
- *   `astro:server:setup`  the dev server watches `../docs` as well as its own tree
+ *   `astro:server:setup`  the dev server re-projects `content/` on every change
  *
  * `content/` sits inside this project's root, so Vite already watches it — but a
  * change there has to be *projected* before Astro sees a page move, and that is
