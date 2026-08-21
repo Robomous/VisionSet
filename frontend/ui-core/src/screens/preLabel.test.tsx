@@ -816,6 +816,9 @@ it("on reopen after a complete run, disables Start with its reason adjacent and 
 
   const start = (await screen.findByTestId("prelabel-submit")) as HTMLButtonElement;
   expect(start.disabled).toBe(true);
+  // Nothing is pre-labeled here, so there is no replace to offer and the press
+  // stays a dead `Start` — the other half of the distinction the test below pins.
+  expect(screen.queryByTestId("prelabel-replace")).toBeNull();
   const reason = await screen.findByTestId("prelabel-blocked-reason");
   expect(reason.textContent).toMatch(/pre-labeled/i);
   expect((await screen.findByTestId("prelabel-summary")).textContent).toContain(
@@ -825,4 +828,33 @@ it("on reopen after a complete run, disables Start with its reason adjacent and 
   const edit = await screen.findByRole("button", { name: /edit these frames/i });
   await userEvent.click(edit);
   expect(screen.getByTestId("segment-pre_labeled").getAttribute("aria-pressed")).toBe("true");
+});
+
+it("offers the replacing re-run when a completed run left nothing untouched", async () => {
+  renderGallery(
+    {
+      allowed_actions: ["pre_label"],
+      pre_label_run: preLabelRunOf({
+        state: "succeeded",
+        assets_processed: 48,
+        assets_total: 48,
+        error: null,
+        stopped_early: false,
+        assets_labeled: 48,
+      }),
+    },
+    { counts: { unannotated: 0, pre_labeled: 48, total: 48 } },
+  );
+
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  const replace = (await screen.findByTestId("prelabel-replace")) as HTMLInputElement;
+  expect(replace.checked).toBe(false);
+  const again = (await screen.findByTestId("prelabel-run-again")) as HTMLButtonElement;
+  expect(again.disabled).toBe(true);
+  expect((await screen.findByTestId("prelabel-blocked-reason")).textContent).toMatch(/replace/i);
+
+  await userEvent.click(replace);
+  await waitFor(() => expect(again.disabled).toBe(false));
+  expect(screen.queryByTestId("prelabel-blocked-reason")).toBeNull();
 });

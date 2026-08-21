@@ -64,8 +64,12 @@
  * `untouched === 0` a launch is a guaranteed no-op. That reason renders next to
  * the disabled press rather than at the bottom of the form, and the config
  * fields collapse to one line of context once they stop being live choices.
- * The one exception is *Replace*: ticked over pre-labeled frames, a run has
- * somewhere to write again, so `Start` is live with nothing untouched left.
+ *
+ * The one exception is *Replace*: ticked over pre-labeled frames a run has
+ * somewhere to write again, so every verb is live with nothing untouched left.
+ * That is why the configuration fields belong to no single mode — they follow
+ * whichever summary the mode wrote, in all five, wherever a launch could still
+ * do something.
  */
 
 import { useEffect, useState, type JSX } from "react";
@@ -361,30 +365,15 @@ function PromptClasses({ plan }: { readonly plan: PreLabelPlan | null }): JSX.El
 }
 
 /**
- * `Start`, disabled, with `Edit these frames` beside it where there is
- * something to edit. The shared shape for `stopped` and `failed`, the two modes
- * that have nothing left to launch and no replace to offer; `configure` builds
- * its own because the press has to survive the tick that enables it, and `done`
- * because `Edit` is offered there unconditionally.
+ * `Start`, dead. What every mode but `configure` shows when there is nothing a
+ * launch could reach and no replace to offer either — which also means no
+ * pre-labeled frame to send anybody to.
  */
-function BlockedActions({
-  preLabeled,
-  onEdit,
-}: {
-  readonly preLabeled: number;
-  readonly onEdit: () => void;
-}): JSX.Element {
+function DeadStart(): JSX.Element {
   return (
-    <>
-      <Button variant="secondary" data-testid="prelabel-submit" disabled>
-        Start
-      </Button>
-      {preLabeled > 0 && (
-        <Button variant="primary" data-testid="prelabel-edit" onClick={onEdit}>
-          Edit these frames
-        </Button>
-      )}
-    </>
+    <Button variant="secondary" data-testid="prelabel-submit" disabled>
+      Start
+    </Button>
   );
 }
 
@@ -543,6 +532,11 @@ function PreLabelDialog({
   // which reaches the pre-labeled frames an earlier run wrote and nobody edited.
   const replacing = replace && preLabeled > 0;
   const blocked = untouched === 0 && !replacing;
+  // Whether a launch could still do anything at all, ticked or not: the
+  // configuration block renders on this, and each settled mode offers its own
+  // verb on it rather than a dead `Start`, so the tick can enable that verb in
+  // place.
+  const offering = !blocked || preLabeled > 0;
   const confidenceValue = Number(confidence);
   // `confidence.trim() !== ""` first: `Number("")` is `0`, a value inside the
   // valid range, so an emptied field would otherwise read as a valid `0` and
@@ -616,50 +610,6 @@ function PreLabelDialog({
         </DialogDescription>
 
         <div className="flex flex-col gap-3">
-          {/* Live where a replace could still reach something, blocked or not:
-              the tick that unblocks a run lives among these fields. */}
-          {(mode === "configure" || mode === "running") && (!blocked || preLabeled > 0) && (
-            <>
-              <PreLabelSettings
-                candidates={candidates}
-                activeId={active?.id ?? ""}
-                onConnectionChange={setConnectionId}
-                confidence={confidence}
-                onConfidenceChange={setConfidence}
-                disabled={mode === "running"}
-              />
-
-              <PromptClasses plan={plan.data ?? null} />
-
-              {preLabeled > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  <label className="flex items-start gap-2 text-sm text-foreground">
-                    <input
-                      type="checkbox"
-                      className="accent-primary mt-0.5"
-                      data-testid="prelabel-replace"
-                      checked={replace}
-                      disabled={mode === "running"}
-                      onChange={(event) => setReplace(event.target.checked)}
-                    />
-                    <span>
-                      Replace the model labels on {preLabeled} pre-labeled frame
-                      {preLabeled === 1 ? "" : "s"}
-                    </span>
-                  </label>
-                  <FieldHint>
-                    Frames a person has edited, confirmed or skipped are never touched. This
-                    cannot be undone.
-                  </FieldHint>
-                </div>
-              )}
-
-              <p className="text-xs text-muted-foreground" data-testid="prelabel-count">
-                {untouchedSummary(untouched, total, replacing ? preLabeled : 0)}
-              </p>
-            </>
-          )}
-
           {mode === "configure" && blocked && preLabeled === 0 && active !== undefined && (
             // Model and threshold are context here, not choices: nothing is
             // about to run, so one line replaces the two live fields above.
@@ -716,6 +666,53 @@ function PreLabelDialog({
             </>
           )}
 
+          {/* Below whichever summary the mode wrote, in every mode: a settled
+              run's story reads first, and the controls for the next one follow.
+              Live wherever a launch could still do something — with nothing
+              untouched left, that is the tick this block carries. */}
+          {offering && (
+            <>
+              <PreLabelSettings
+                candidates={candidates}
+                activeId={active?.id ?? ""}
+                onConnectionChange={setConnectionId}
+                confidence={confidence}
+                onConfidenceChange={setConfidence}
+                disabled={mode === "running"}
+              />
+
+              {/* `done` renders these beside its own summary already. */}
+              {mode !== "done" && <PromptClasses plan={plan.data ?? null} />}
+
+              {preLabeled > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="flex items-start gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      className="accent-primary mt-0.5"
+                      data-testid="prelabel-replace"
+                      checked={replace}
+                      disabled={mode === "running"}
+                      onChange={(event) => setReplace(event.target.checked)}
+                    />
+                    <span>
+                      Replace the model labels on {preLabeled} pre-labeled frame
+                      {preLabeled === 1 ? "" : "s"}
+                    </span>
+                  </label>
+                  <FieldHint>
+                    Frames a person has edited, confirmed or skipped are never touched. This
+                    cannot be undone.
+                  </FieldHint>
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground" data-testid="prelabel-count">
+                {untouchedSummary(untouched, total, replacing ? preLabeled : 0)}
+              </p>
+            </>
+          )}
+
           {blocked && mode !== "running" && (
             <Alert data-testid="prelabel-blocked-reason">
               {blockedReason(view, preLabeled)}
@@ -769,11 +766,7 @@ function PreLabelDialog({
 
               {mode === "done" && (
                 <>
-                  {blocked ? (
-                    <Button variant="secondary" data-testid="prelabel-submit" disabled>
-                      Start
-                    </Button>
-                  ) : (
+                  {offering ? (
                     // Quiet, deliberately: the next real step is correcting what
                     // this run already produced, not launching another one over it.
                     <Button
@@ -784,6 +777,8 @@ function PreLabelDialog({
                     >
                       Run again
                     </Button>
+                  ) : (
+                    <DeadStart />
                   )}
                   <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
                     Edit these frames
@@ -792,37 +787,51 @@ function PreLabelDialog({
               )}
 
               {mode === "stopped" &&
-                (blocked ? (
-                  <BlockedActions preLabeled={preLabeled} onEdit={goToPreLabeled} />
+                (offering ? (
+                  <>
+                    <div className="flex flex-col items-end gap-1">
+                      <Button
+                        variant="primary"
+                        data-testid="prelabel-continue"
+                        disabled={launchDisabled}
+                        onClick={submit}
+                      >
+                        Continue
+                      </Button>
+                      <FieldHint data-testid="prelabel-continue-hint">
+                        Only untouched assets are eligible — this can&rsquo;t create a duplicate
+                        label.
+                      </FieldHint>
+                    </div>
+                    {blocked && preLabeled > 0 && (
+                      <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
+                        Edit these frames
+                      </Button>
+                    )}
+                  </>
                 ) : (
-                  <div className="flex flex-col items-end gap-1">
-                    <Button
-                      variant="primary"
-                      data-testid="prelabel-continue"
-                      disabled={launchDisabled}
-                      onClick={submit}
-                    >
-                      Continue
-                    </Button>
-                    <FieldHint data-testid="prelabel-continue-hint">
-                      Only untouched assets are eligible — this can&rsquo;t create a duplicate
-                      label.
-                    </FieldHint>
-                  </div>
+                  <DeadStart />
                 ))}
 
               {mode === "failed" &&
-                (blocked ? (
-                  <BlockedActions preLabeled={preLabeled} onEdit={goToPreLabeled} />
+                (offering ? (
+                  <>
+                    <Button
+                      variant="primary"
+                      data-testid="prelabel-retry"
+                      disabled={launchDisabled}
+                      onClick={submit}
+                    >
+                      Try again
+                    </Button>
+                    {blocked && preLabeled > 0 && (
+                      <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
+                        Edit these frames
+                      </Button>
+                    )}
+                  </>
                 ) : (
-                  <Button
-                    variant="primary"
-                    data-testid="prelabel-retry"
-                    disabled={launchDisabled}
-                    onClick={submit}
-                  >
-                    Try again
-                  </Button>
+                  <DeadStart />
                 ))}
             </>
           )}
