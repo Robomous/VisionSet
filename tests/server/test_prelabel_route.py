@@ -439,34 +439,99 @@ def test_the_plan_names_the_prompt_and_every_class_left_out_of_it(
     `crossing` carries two: told only that it admits no box, somebody adds one
     and watches it stay absent.
     """
-    response = client.get(f"/batches/{mixed_batch.id}/pre-label")
+    response = client.get(
+        f"/batches/{mixed_batch.id}/pre-label",
+        params={"connection_id": mixed_batch.connection_id},
+    )
 
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["schema_version"] == 1
     assert body["asked_classes"] == ["sign", "post"]
     assert body["excluded_classes"] == [
-        {"name": "lane", "reasons": ["no_bbox_geometry"]},
-        {"name": "crossing", "reasons": ["no_bbox_geometry", "required_attribute"]},
+        {"name": "lane", "reasons": ["no_producible_geometry"]},
+        {"name": "crossing", "reasons": ["no_producible_geometry", "required_attribute"]},
     ]
 
 
-def test_the_plan_needs_no_connection_to_answer(client: TestClient, mixed_batch: OpenBatch) -> None:
-    """The prompt is a property of the schema alone.
+def test_the_plan_needs_a_connection_and_names_what_it_writes(
+    client: TestClient, mixed_batch: OpenBatch
+) -> None:
+    """The narrowing is the schema read against one model's shapes, so the plan
+    says which shapes those are — and reading it still queues nothing."""
+    body = client.get(
+        f"/batches/{mixed_batch.id}/pre-label",
+        params={"connection_id": mixed_batch.connection_id},
+    ).json()
 
-    Read as a plain GET with nothing about a model in it — which is what lets a
-    dialog show the classes before anybody has chosen what to run.
-    """
-    asked = client.get(f"/batches/{mixed_batch.id}/pre-label").json()["asked_classes"]
-
-    assert asked == ["sign", "post"]
+    assert body["asked_classes"] == ["sign", "post"]
+    assert body["produces"] == ["bbox"]
     assert _pre_label_job_count(client) == 0
+
+
+def test_the_plan_without_a_connection_is_a_validation_error(
+    client: TestClient, mixed_batch: OpenBatch
+) -> None:
+    assert client.get(f"/batches/{mixed_batch.id}/pre-label").status_code == 422
+
+
+def test_the_plan_refuses_a_point_prompt_connection(
+    client: TestClient, in_annotation_batch: OpenBatch, segmenter_connection: str
+) -> None:
+    """The plan and the launch refuse on the same terms, so reading one and then
+    pressing the other gets one set of answers."""
+    response = client.get(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        params={"connection_id": segmenter_connection},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "UNSUPPORTED_PROMPT"
+
+
+def test_the_plan_refuses_a_not_set_up_connection(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    made = client.post(
+        "/inference/connections",
+        json={
+            "name": f"c-{uuid4().hex[:8]}",
+            "connection_type": "local",
+            "model_id": "some/grounding-dino",
+            "model_revision": "v1",
+            "device": "cpu",
+            "precision": "fp32",
+        },
+    ).json()
+
+    response = client.get(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        params={"connection_id": made["id"]},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_SET_UP"
+
+
+def test_the_plan_of_an_unknown_connection_is_not_found(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = client.get(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        params={"connection_id": str(uuid4())},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_FOUND"
 
 
 def test_a_wholly_askable_schema_leaves_nothing_out(
     client: TestClient, in_annotation_batch: OpenBatch
 ) -> None:
-    response = client.get(f"/batches/{in_annotation_batch.id}/pre-label")
+    response = client.get(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        params={"connection_id": in_annotation_batch.connection_id},
+    )
 
     assert response.status_code == 200, response.text
     assert response.json()["excluded_classes"] == []
@@ -481,7 +546,10 @@ def test_the_plan_refuses_a_schema_with_no_box_class(
     launch says so with this same code — so the dialog can stop before the press
     rather than after it.
     """
-    response = client.get(f"/batches/{polygon_only_batch.id}/pre-label")
+    response = client.get(
+        f"/batches/{polygon_only_batch.id}/pre-label",
+        params={"connection_id": polygon_only_batch.connection_id},
+    )
 
     assert response.status_code == 409
     body = response.json()
@@ -492,14 +560,25 @@ def test_the_plan_refuses_a_schema_with_no_box_class(
 def test_the_plan_refuses_a_batch_that_is_not_being_annotated(
     client: TestClient, draft_batch: OpenBatch
 ) -> None:
-    response = client.get(f"/batches/{draft_batch.id}/pre-label")
+    response = client.get(
+        f"/batches/{draft_batch.id}/pre-label",
+        params={"connection_id": draft_batch.connection_id},
+    )
 
     assert response.status_code == 409
     assert response.json()["code"] == "BATCH_NOT_IN_ANNOTATION"
 
 
-def test_the_plan_of_an_unknown_batch_is_not_found(client: TestClient) -> None:
-    assert client.get(f"/batches/{uuid4()}/pre-label").status_code == 404
+def test_the_plan_of_an_unknown_batch_is_not_found(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = client.get(
+        f"/batches/{uuid4()}/pre-label",
+        params={"connection_id": in_annotation_batch.connection_id},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "BATCH_NOT_FOUND"
 
 
 def test_a_point_prompt_connection_is_refused_before_a_job_exists(

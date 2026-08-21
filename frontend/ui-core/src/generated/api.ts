@@ -390,26 +390,32 @@ export interface paths {
         };
         /**
          * Pre Label Plan
-         * @description The classes a pre-labeling run over this batch would ask a model for.
+         * @description The classes a run would ask this connection's model for, and the shapes it would write.
          *
-         *     A run's prompt is the batch's pinned schema narrowed to the classes a bare
-         *     box prediction can be written as, and that narrowing is invisible once the
-         *     run has finished: a schema whose `vehicle` class requires an attribute
-         *     yields no vehicles and says nothing about why. Read this before launching to
-         *     say which classes are in the prompt and which are not, with the reason
-         *     beside each one.
+         *     A run's prompt is the batch's pinned schema narrowed to the classes the
+         *     model can answer — a class is asked for when it admits a shape the model
+         *     produces and demands no attribute a prediction cannot supply — and that
+         *     narrowing is invisible once the run has finished. Read this before
+         *     launching to say which classes are in the prompt and which are not, with
+         *     the reason beside each, and which shapes a run will write: `produces` is
+         *     the model's declared shapes, so a schema of polygon classes is askable of a
+         *     model that answers polygons and refused for one that answers boxes.
          *
-         *     Derived, never stored, and free of the connection the launch needs — the
-         *     prompt is a property of the schema alone, so this answers the same lists
-         *     whichever model is about to be asked.
+         *     `connection_id` is required because the plan is a property of the schema
+         *     **and** the model: the same schema yields a different prompt for a detector
+         *     and for a segmenter.
          *
-         *     A batch that no run could touch is refused rather than answered with empty
-         *     lists, on the same terms the launch itself uses: an unknown batch is 404
-         *     `BATCH_NOT_FOUND`, a batch that is not `in_annotation` is 409
-         *     `BATCH_NOT_IN_ANNOTATION`, and a pinned schema with no class a box can be
-         *     written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`. A batch open for
-         *     annotation but pinning no schema version is a broken invariant and answers
-         *     500 `WORKSPACE_CORRUPT`.
+         *     Refused on the same terms the launch uses, in the same order, so reading
+         *     the plan and then launching gets one set of answers: an unknown connection
+         *     is 404 `INFERENCE_CONNECTION_NOT_FOUND`; a connection not set up yet is 409
+         *     `INFERENCE_CONNECTION_NOT_SET_UP`; one whose model answers places rather
+         *     than words is 422 `UNSUPPORTED_PROMPT`; an unknown batch is 404
+         *     `BATCH_NOT_FOUND`; a batch that is not `in_annotation` is 409
+         *     `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the model's shapes
+         *     can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`. A machine
+         *     without the optional local runtime answers 500 `LOCAL_INFERENCE_UNAVAILABLE`
+         *     with the install command, and a batch open for annotation but pinning no
+         *     schema version is a broken invariant and answers 500 `WORKSPACE_CORRUPT`.
          */
         get: operations["pre_label_plan"];
         put?: never;
@@ -437,13 +443,16 @@ export interface paths {
          *     replacing request arriving while a run is in flight joins that run,
          *     whichever flag it carries.
          *
-         *     **The batch's pinned schema is the prompt.** The model is asked for each class
-         *     the schema declares that a box can be written as; an answer naming one of
-         *     those classes, matched case-insensitively, is written under the schema's own
-         *     spelling, and an answer naming none of them is discarded. A schema whose
-         *     classes are all polygons, polylines or tags — or whose box classes each
-         *     require an attribute a prediction cannot supply — has nowhere for a
-         *     detection to land and is refused.
+         *     **The batch's pinned schema is the prompt, narrowed to what this model
+         *     writes.** The model is asked for each class the schema declares that admits
+         *     one of the model's declared shapes and demands no attribute a prediction
+         *     cannot supply; an answer naming one of those classes, matched
+         *     case-insensitively, is written under the schema's own spelling, and an
+         *     answer naming none of them is discarded. A schema with no such class has
+         *     nowhere for a prediction to land and is refused — so the same schema is
+         *     askable of a model that answers polygons and refused for one that answers
+         *     boxes. `GET` this path with the same `connection_id` to read the narrowing
+         *     before launching.
          *
          *     **202, not 200.** A batch is hundreds of forward passes, so this follows the
          *     launch-and-poll contract the export and weight-download routes use: poll `GET
@@ -460,8 +469,8 @@ export interface paths {
          *     weights not here, or its endpoint not yet asked what it answers; a
          *     connection whose model answers places rather than words is 422
          *     `UNSUPPORTED_PROMPT`; a batch that is not `in_annotation` is 409
-         *     `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class a box can be
-         *     written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+         *     `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the model's shapes
+         *     can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
          *
          *     Two failures are about this installation rather than about the request, and
          *     answer 500 carrying the message that says which: a machine without the
@@ -4153,13 +4162,14 @@ export interface components {
          * PreLabelExclusionOut
          * @description A class in a batch's pinned schema that a pre-labeling run will not ask for.
          *
-         *     Both reasons are properties of the class as the schema declares it, so the
-         *     remedy is a schema edit: give the class `bbox` among its geometries, or drop
-         *     the `required` flag from the attribute a prediction cannot supply.
+         *     Both reasons are properties of the class as the schema declares it read
+         *     against the model's `produces`, so the remedy is a schema edit or a
+         *     different model: give the class one of the shapes the model answers in, or
+         *     drop the `required` flag from the attribute a prediction cannot supply.
          *
          *     `reasons` can carry both at once, and every reason that holds is listed —
-         *     a class told only that it admits no box, then given one, would otherwise
-         *     stay silently absent from the next run's prompt.
+         *     a class told only that it admits no shape the model produces, then given
+         *     one, would otherwise stay silently absent from the next run's prompt.
          */
         PreLabelExclusionOut: {
             /** Name */
@@ -4177,16 +4187,17 @@ export interface components {
          *     names is visibly left out whether or not that client can word the reason.
          * @enum {string}
          */
-        PreLabelExclusionReason: "no_bbox_geometry" | "required_attribute" | (string & {});
+        PreLabelExclusionReason: "no_producible_geometry" | "required_attribute" | (string & {});
         /**
          * PreLabelPlanOut
-         * @description The words a pre-labeling run over this batch would ask a model for.
+         * @description The words a run would ask a model for over this batch, and the shapes it would write.
          *
-         *     A run's prompt is the batch's pinned schema, narrowed to the classes a bare
-         *     box prediction can be written as. That narrowing is invisible in the run's
-         *     result — a schema whose `vehicle` class requires a `color` attribute yields
-         *     no vehicles and no explanation — so it is published here, before a run
-         *     starts, with the left-out classes named beside the asked-for ones.
+         *     A run's prompt is the batch's pinned schema, narrowed to the classes the
+         *     model's declared shapes can be written as. That narrowing is invisible in
+         *     the run's result — a schema whose `vehicle` class requires a `color`
+         *     attribute yields no vehicles and no explanation — so it is published here,
+         *     before a run starts, with the left-out classes named beside the asked-for
+         *     ones.
          *
          *     Every class the pinned schema declares appears in exactly one of the two
          *     lists, both in the schema's own declaration order. A batch whose schema has
@@ -4198,6 +4209,8 @@ export interface components {
             asked_classes: string[];
             /** Excluded Classes */
             excluded_classes: components["schemas"]["PreLabelExclusionOut"][];
+            /** Produces */
+            produces: components["schemas"]["GeometryType"][];
             /** Schema Version */
             schema_version: number;
         };
@@ -6001,7 +6014,9 @@ export interface operations {
     };
     pre_label_plan: {
         parameters: {
-            query?: never;
+            query: {
+                connection_id: string;
+            };
             header?: never;
             path: {
                 batch_id: string;
@@ -11473,6 +11488,6 @@ export interface KnownMembers {
   ConnectionAction: "download_weights" | "check_integrity" | "test_endpoint" | "update" | "delete";
   JobAction: "start" | "complete";
   ModelCapability: "point_suggest" | "text_detect";
-  PreLabelExclusionReason: "no_bbox_geometry" | "required_attribute";
+  PreLabelExclusionReason: "no_producible_geometry" | "required_attribute";
   SuggestParameter: "detail";
 }

@@ -38,6 +38,7 @@ from visionset.inference import (
     STUB_MODEL_ID,
     capabilities_of,
     not_set_up_message,
+    produces_of,
     prompt_plan,
     require_detectable_schema,
     select_pre_labelable,
@@ -110,6 +111,50 @@ def _promoted(workspace: WorkspaceDep, project_id: UUID) -> frozenset[UUID]:
     """
     dataset = ProjectService(workspace).get_dataset(project_id)
     return DatasetService(workspace).member_asset_ids(dataset.id)
+
+
+def _text_detect_connection(workspace: WorkspaceDep, connection_id: UUID) -> InferenceConnection:
+    """The connection, once it is known to be set up and to answer words.
+
+    The gate the plan and the launch share, so the two cannot refuse
+    differently. It runs before anything about the batch, matching
+    ``pre_label``'s own order: what a build can run is an answer about a setup
+    somebody is part-way through, independent of this batch's state, and a
+    caller most needs it first.
+
+    The runtime is demanded here rather than inside a worker, on the download
+    route's terms: a refusal a request can make is a refusal the request makes,
+    and discovering a missing install mid-run would put an install command on a
+    failed row somebody has to go and find. Not for the stub, which needs
+    neither the runtime nor the network, and not for an ``http`` connection
+    either — the gate is about a model that would load here, and an endpoint
+    loads nothing here.
+
+    ``setup_state`` is checked before the capability read: ``model_family`` is
+    written only by a completed weight download or a tested ``http`` endpoint,
+    so a connection that has finished neither reads no capabilities at all, and
+    ``UNSUPPORTED_PROMPT`` for that would claim the model answers places rather
+    than words when nothing has yet said what it answers. Capabilities are
+    derived from the family rather than stored on the row, the same way the
+    connection wire model asks for them.
+
+    Raises:
+        InferenceConnectionNotFound: no such connection.
+        InferenceConnectionNotSetUp: its weights are not here, or its endpoint
+            has not been asked what it answers.
+        UnsupportedPrompt: its model answers places rather than words.
+        LocalInferenceUnavailable: a local connection on a machine without the
+            optional runtime.
+    """
+    connection = InferenceConnectionService(workspace).get(connection_id)
+    (connection,) = with_families(workspace, [connection])
+    if connection.connection_type is ConnectionType.LOCAL and connection.model_id != STUB_MODEL_ID:
+        require_local_inference()
+    if connection.setup_state is not ConnectionSetupState.READY or not connection.model_family:
+        raise InferenceConnectionNotSetUp(not_set_up_message(connection))
+    if ModelCapability.TEXT_DETECT not in capabilities_of(connection.model_family):
+        raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
+    return connection
 
 
 @project_router.post("", status_code=201, responses=documented(404))
@@ -312,61 +357,39 @@ def create_correction_batch(
 
 
 @router.get("/{batch_id}/pre-label", responses=documented(404, 409))
-def pre_label_plan(workspace: WorkspaceDep, batch_id: UUID) -> PreLabelPlanOut:
-    """The classes a pre-labeling run over this batch would ask a model for.
+def pre_label_plan(workspace: WorkspaceDep, batch_id: UUID, connection_id: UUID) -> PreLabelPlanOut:
+    """The classes a run would ask this connection's model for, and the shapes it would write.
 
-    A run's prompt is the batch's pinned schema narrowed to the classes a bare
-    box prediction can be written as, and that narrowing is invisible once the
-    run has finished: a schema whose `vehicle` class requires an attribute
-    yields no vehicles and says nothing about why. Read this before launching to
-    say which classes are in the prompt and which are not, with the reason
-    beside each one.
+    A run's prompt is the batch's pinned schema narrowed to the classes the
+    model can answer — a class is asked for when it admits a shape the model
+    produces and demands no attribute a prediction cannot supply — and that
+    narrowing is invisible once the run has finished. Read this before
+    launching to say which classes are in the prompt and which are not, with
+    the reason beside each, and which shapes a run will write: `produces` is
+    the model's declared shapes, so a schema of polygon classes is askable of a
+    model that answers polygons and refused for one that answers boxes.
 
-    Derived, never stored, and free of the connection the launch needs — the
-    prompt is a property of the schema alone, so this answers the same lists
-    whichever model is about to be asked.
+    `connection_id` is required because the plan is a property of the schema
+    **and** the model: the same schema yields a different prompt for a detector
+    and for a segmenter.
 
-    A batch that no run could touch is refused rather than answered with empty
-    lists, on the same terms the launch itself uses: an unknown batch is 404
-    `BATCH_NOT_FOUND`, a batch that is not `in_annotation` is 409
-    `BATCH_NOT_IN_ANNOTATION`, and a pinned schema with no class a box can be
-    written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`. A batch open for
-    annotation but pinning no schema version is a broken invariant and answers
-    500 `WORKSPACE_CORRUPT`.
+    Refused on the same terms the launch uses, in the same order, so reading
+    the plan and then launching gets one set of answers: an unknown connection
+    is 404 `INFERENCE_CONNECTION_NOT_FOUND`; a connection not set up yet is 409
+    `INFERENCE_CONNECTION_NOT_SET_UP`; one whose model answers places rather
+    than words is 422 `UNSUPPORTED_PROMPT`; an unknown batch is 404
+    `BATCH_NOT_FOUND`; a batch that is not `in_annotation` is 409
+    `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the model's shapes
+    can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`. A machine
+    without the optional local runtime answers 500 `LOCAL_INFERENCE_UNAVAILABLE`
+    with the install command, and a batch open for annotation but pinning no
+    schema version is a broken invariant and answers 500 `WORKSPACE_CORRUPT`.
     """
+    connection = _text_detect_connection(workspace, connection_id)
     batch = BatchService(workspace).require_pre_labelable(batch_id)
-    schema = require_detectable_schema(workspace, batch)
-    return PreLabelPlanOut.of(prompt_plan(schema))
-
-
-def _require_text_detect_connection(
-    workspace: WorkspaceDep, connection_id: UUID
-) -> InferenceConnection:
-    """The connection a pre-labeling launch may use, or the refusal — shared by the
-    batch launch and the project launch so the two cannot drift."""
-    connection = InferenceConnectionService(workspace).get(connection_id)
-    (connection,) = with_families(workspace, [connection])
-    # Before the job exists, on the download route's terms: a refusal a request
-    # can make is a refusal the request makes. Discovering a missing install
-    # inside a worker would put an install command on a failed row somebody has
-    # to go and find. Not for the stub, which needs neither the runtime nor the
-    # network, and not for an `http` connection either: the gate is about a
-    # model that would load here, and an endpoint loads nothing here.
-    if connection.connection_type is ConnectionType.LOCAL and connection.model_id != STUB_MODEL_ID:
-        require_local_inference()
-    if connection.setup_state is not ConnectionSetupState.READY or not connection.model_family:
-        # Before the capability check: `model_family` is written only by a
-        # completed weight download or a tested `http` endpoint, so a
-        # connection that has not finished either yet reads no capabilities at
-        # all. Answering `UNSUPPORTED_PROMPT` for that would claim the model
-        # answers places rather than words, which is false — nothing has said
-        # what it answers yet.
-        raise InferenceConnectionNotSetUp(not_set_up_message(connection))
-    # `capabilities` is derived from the model family rather than stored on the
-    # row, so it is asked for here the same way the connection wire model asks.
-    if ModelCapability.TEXT_DETECT not in capabilities_of(connection.model_family):
-        raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
-    return connection
+    produces = produces_of(connection.model_family)
+    schema = require_detectable_schema(workspace, batch, produces)
+    return PreLabelPlanOut.of(prompt_plan(schema, produces))
 
 
 @router.post(
@@ -403,13 +426,16 @@ def pre_label_batch(
     replacing request arriving while a run is in flight joins that run,
     whichever flag it carries.
 
-    **The batch's pinned schema is the prompt.** The model is asked for each class
-    the schema declares that a box can be written as; an answer naming one of
-    those classes, matched case-insensitively, is written under the schema's own
-    spelling, and an answer naming none of them is discarded. A schema whose
-    classes are all polygons, polylines or tags — or whose box classes each
-    require an attribute a prediction cannot supply — has nowhere for a
-    detection to land and is refused.
+    **The batch's pinned schema is the prompt, narrowed to what this model
+    writes.** The model is asked for each class the schema declares that admits
+    one of the model's declared shapes and demands no attribute a prediction
+    cannot supply; an answer naming one of those classes, matched
+    case-insensitively, is written under the schema's own spelling, and an
+    answer naming none of them is discarded. A schema with no such class has
+    nowhere for a prediction to land and is refused — so the same schema is
+    askable of a model that answers polygons and refused for one that answers
+    boxes. `GET` this path with the same `connection_id` to read the narrowing
+    before launching.
 
     **202, not 200.** A batch is hundreds of forward passes, so this follows the
     launch-and-poll contract the export and weight-download routes use: poll `GET
@@ -426,8 +452,8 @@ def pre_label_batch(
     weights not here, or its endpoint not yet asked what it answers; a
     connection whose model answers places rather than words is 422
     `UNSUPPORTED_PROMPT`; a batch that is not `in_annotation` is 409
-    `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class a box can be
-    written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+    `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the model's shapes
+    can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
 
     Two failures are about this installation rather than about the request, and
     answer 500 carrying the message that says which: a machine without the
@@ -443,12 +469,9 @@ def pre_label_batch(
     watch one run instead of paying for the same inference twice.
     """
     service = BatchService(workspace)
-    # The connection first, matching `pre_label`'s own order: what a build can
-    # run is an answer about a setup somebody is part-way through, independent
-    # of this batch's state, and a caller most needs it first.
-    _require_text_detect_connection(workspace, body.connection_id)
+    connection = _text_detect_connection(workspace, body.connection_id)
     batch = service.require_pre_labelable(batch_id)
-    require_detectable_schema(workspace, batch)
+    require_detectable_schema(workspace, batch, produces_of(connection.model_family))
 
     running = service.live_job(batch_id, job_type=pre_label_job_type)
     job = running or workspace.job_queue.enqueue(
@@ -497,17 +520,19 @@ def pre_label_project_batches(
     is 404 `PROJECT_NOT_FOUND`; a named batch outside this project is 404
     `BATCH_NOT_FOUND`; a named batch not `in_annotation`, a project with no
     open batch at all, or an empty `batch_ids`, is 409 `BATCH_NOT_IN_ANNOTATION`;
-    any selected batch whose pinned schema has no class a box can be written as is 409
-    `SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message names the batch so the
-    caller can leave it out by name and ask again. A partly launched project
+    any selected batch whose pinned schema has no class the model's shapes can
+    be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message
+    names the batch so the caller can leave it out by name and ask again. A partly launched project
     would leave rows the caller was never told about, which is why the whole
     request is refused instead.
 
     What each run writes, passes over and counts is the single-batch launch's
     contract; read `POST /batches/{batch_id}/pre-label`.
     """
-    connection = _require_text_detect_connection(workspace, body.connection_id)
-    selected = select_pre_labelable(workspace, project_id, body.batch_ids)
+    connection = _text_detect_connection(workspace, body.connection_id)
+    selected = select_pre_labelable(
+        workspace, project_id, produces_of(connection.model_family), body.batch_ids
+    )
     service = BatchService(workspace)
     items: list[ProjectPreLabelItemOut] = []
     for batch in selected:

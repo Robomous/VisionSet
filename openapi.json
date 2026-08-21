@@ -3287,7 +3287,7 @@
         "type": "object"
       },
       "PreLabelExclusionOut": {
-        "description": "A class in a batch's pinned schema that a pre-labeling run will not ask for.\n\nBoth reasons are properties of the class as the schema declares it, so the\nremedy is a schema edit: give the class `bbox` among its geometries, or drop\nthe `required` flag from the attribute a prediction cannot supply.\n\n`reasons` can carry both at once, and every reason that holds is listed \u2014\na class told only that it admits no box, then given one, would otherwise\nstay silently absent from the next run's prompt.",
+        "description": "A class in a batch's pinned schema that a pre-labeling run will not ask for.\n\nBoth reasons are properties of the class as the schema declares it read\nagainst the model's `produces`, so the remedy is a schema edit or a\ndifferent model: give the class one of the shapes the model answers in, or\ndrop the `required` flag from the attribute a prediction cannot supply.\n\n`reasons` can carry both at once, and every reason that holds is listed \u2014\na class told only that it admits no shape the model produces, then given\none, would otherwise stay silently absent from the next run's prompt.",
         "properties": {
           "name": {
             "title": "Name",
@@ -3311,7 +3311,7 @@
       "PreLabelExclusionReason": {
         "description": "Why a schema's class is not among the words a run asks for.\n\nOpen because it travels as a list a client renders member by member rather\nthan switches on: a release that finds a third way a class cannot hold a\ndetection must not cost an older client the whole plan, and the class it\nnames is visibly left out whether or not that client can word the reason.",
         "enum": [
-          "no_bbox_geometry",
+          "no_producible_geometry",
           "required_attribute"
         ],
         "title": "PreLabelExclusionReason",
@@ -3319,7 +3319,7 @@
         "x-visionset-open": true
       },
       "PreLabelPlanOut": {
-        "description": "The words a pre-labeling run over this batch would ask a model for.\n\nA run's prompt is the batch's pinned schema, narrowed to the classes a bare\nbox prediction can be written as. That narrowing is invisible in the run's\nresult \u2014 a schema whose `vehicle` class requires a `color` attribute yields\nno vehicles and no explanation \u2014 so it is published here, before a run\nstarts, with the left-out classes named beside the asked-for ones.\n\nEvery class the pinned schema declares appears in exactly one of the two\nlists, both in the schema's own declaration order. A batch whose schema has\nno askable class at all is refused rather than answered with an empty\n`asked_classes`: pre-labeling it is impossible, not merely unproductive.",
+        "description": "The words a run would ask a model for over this batch, and the shapes it would write.\n\nA run's prompt is the batch's pinned schema, narrowed to the classes the\nmodel's declared shapes can be written as. That narrowing is invisible in\nthe run's result \u2014 a schema whose `vehicle` class requires a `color`\nattribute yields no vehicles and no explanation \u2014 so it is published here,\nbefore a run starts, with the left-out classes named beside the asked-for\nones.\n\nEvery class the pinned schema declares appears in exactly one of the two\nlists, both in the schema's own declaration order. A batch whose schema has\nno askable class at all is refused rather than answered with an empty\n`asked_classes`: pre-labeling it is impossible, not merely unproductive.",
         "properties": {
           "asked_classes": {
             "items": {
@@ -3335,6 +3335,13 @@
             "title": "Excluded Classes",
             "type": "array"
           },
+          "produces": {
+            "items": {
+              "$ref": "#/components/schemas/GeometryType"
+            },
+            "title": "Produces",
+            "type": "array"
+          },
           "schema_version": {
             "title": "Schema Version",
             "type": "integer"
@@ -3343,6 +3350,7 @@
         "required": [
           "schema_version",
           "asked_classes",
+          "produces",
           "excluded_classes"
         ],
         "title": "PreLabelPlanOut",
@@ -3350,7 +3358,7 @@
       },
       "PreLabelRequest": {
         "additionalProperties": false,
-        "description": "Which model should pre-label this batch, how sure it has to be, and whether it\nmay replace its own earlier labels.",
+        "description": "Which model should pre-label this batch, and how sure it has to be.",
         "properties": {
           "connection_id": {
             "format": "uuid",
@@ -3363,11 +3371,6 @@
             "minimum": 0.0,
             "title": "Minimum Confidence",
             "type": "number"
-          },
-          "replace_model_labels": {
-            "default": false,
-            "title": "Replace Model Labels",
-            "type": "boolean"
           }
         },
         "required": [
@@ -3377,19 +3380,8 @@
         "type": "object"
       },
       "PreLabelRunOut": {
-        "description": "A batch's most recent pre-labeling run: which job, how far, and what it found.\n\nPresent whenever pre-labeling has ever been asked for on this batch, and\ndescribing the most recent run \u2014 including one this session did not launch.\nA dialog reopened after a reload, in a second tab, or after a run started\nfrom the terminal reads the same state from here rather than from a job id\na component happened to keep.\n\n**Assets, where a download counts bytes and a check counts files.** The\nhandler owns a loop over the batch's untouched assets and knows the whole\nset before the first forward pass, so both its progress and its total are\ncounted in the unit its own work is over.\n\n**The outcome, once the job has one.** `stopped_early`, `assets_labeled`,\n`regions_discarded`, `regions_out_of_bounds` and `annotations_replaced` are\nthe handler's own account of what a settled run did.\nThey are `null` while the job is still `queued` or `running`, and `null`\nwhere it ended `failed` before producing one \u2014 but a `cancelled` run still\ncarries them: stopping partway is a coherent outcome for a handler whose\ncontract is to write only where nothing has been written.",
+        "description": "A batch's most recent pre-labeling run: which job, how far, and what it found.\n\nPresent whenever pre-labeling has ever been asked for on this batch, and\ndescribing the most recent run \u2014 including one this session did not launch.\nA dialog reopened after a reload, in a second tab, or after a run started\nfrom the terminal reads the same state from here rather than from a job id\na component happened to keep.\n\n**Assets, where a download counts bytes and a check counts files.** The\nhandler owns a loop over the batch's untouched assets and knows the whole\nset before the first forward pass, so both its progress and its total are\ncounted in the unit its own work is over.\n\n**The outcome, once the job has one.** `stopped_early`, `assets_labeled`,\n`regions_discarded` and `regions_out_of_bounds` are the handler's own\naccount of what a settled run did.\nThey are `null` while the job is still `queued` or `running`, and `null`\nwhere it ended `failed` before producing one \u2014 but a `cancelled` run still\ncarries them: stopping partway is a coherent outcome for a handler whose\ncontract is to write only where nothing has been written.",
         "properties": {
-          "annotations_replaced": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Annotations Replaced"
-          },
           "assets_labeled": {
             "anyOf": [
               {
@@ -3478,8 +3470,7 @@
           "stopped_early",
           "assets_labeled",
           "regions_discarded",
-          "regions_out_of_bounds",
-          "annotations_replaced"
+          "regions_out_of_bounds"
         ],
         "title": "PreLabelRunOut",
         "type": "object"
@@ -6305,7 +6296,7 @@
     },
     "/batches/{batch_id}/pre-label": {
       "get": {
-        "description": "The classes a pre-labeling run over this batch would ask a model for.\n\nA run's prompt is the batch's pinned schema narrowed to the classes a bare\nbox prediction can be written as, and that narrowing is invisible once the\nrun has finished: a schema whose `vehicle` class requires an attribute\nyields no vehicles and says nothing about why. Read this before launching to\nsay which classes are in the prompt and which are not, with the reason\nbeside each one.\n\nDerived, never stored, and free of the connection the launch needs \u2014 the\nprompt is a property of the schema alone, so this answers the same lists\nwhichever model is about to be asked.\n\nA batch that no run could touch is refused rather than answered with empty\nlists, on the same terms the launch itself uses: an unknown batch is 404\n`BATCH_NOT_FOUND`, a batch that is not `in_annotation` is 409\n`BATCH_NOT_IN_ANNOTATION`, and a pinned schema with no class a box can be\nwritten as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`. A batch open for\nannotation but pinning no schema version is a broken invariant and answers\n500 `WORKSPACE_CORRUPT`.",
+        "description": "The classes a run would ask this connection's model for, and the shapes it would write.\n\nA run's prompt is the batch's pinned schema narrowed to the classes the\nmodel can answer \u2014 a class is asked for when it admits a shape the model\nproduces and demands no attribute a prediction cannot supply \u2014 and that\nnarrowing is invisible once the run has finished. Read this before\nlaunching to say which classes are in the prompt and which are not, with\nthe reason beside each, and which shapes a run will write: `produces` is\nthe model's declared shapes, so a schema of polygon classes is askable of a\nmodel that answers polygons and refused for one that answers boxes.\n\n`connection_id` is required because the plan is a property of the schema\n**and** the model: the same schema yields a different prompt for a detector\nand for a segmenter.\n\nRefused on the same terms the launch uses, in the same order, so reading\nthe plan and then launching gets one set of answers: an unknown connection\nis 404 `INFERENCE_CONNECTION_NOT_FOUND`; a connection not set up yet is 409\n`INFERENCE_CONNECTION_NOT_SET_UP`; one whose model answers places rather\nthan words is 422 `UNSUPPORTED_PROMPT`; an unknown batch is 404\n`BATCH_NOT_FOUND`; a batch that is not `in_annotation` is 409\n`BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the model's shapes\ncan be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`. A machine\nwithout the optional local runtime answers 500 `LOCAL_INFERENCE_UNAVAILABLE`\nwith the install command, and a batch open for annotation but pinning no\nschema version is a broken invariant and answers 500 `WORKSPACE_CORRUPT`.",
         "operationId": "pre_label_plan",
         "parameters": [
           {
@@ -6315,6 +6306,16 @@
             "schema": {
               "format": "uuid",
               "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
               "type": "string"
             }
           }
@@ -6402,7 +6403,7 @@
         ]
       },
       "post": {
-        "description": "Ask a model to label every untouched asset in this batch, and answer at once.\n\nThe `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:\nnobody judged them, so they arrive editable and correctable rather than\nclaiming to be somebody's work \u2014 and, being unjudged, they never reach the\nDataset until a person has taken them over.\n\n**Only assets nothing has touched \u2014 which is stronger than reading\n`unannotated`.** An asset already `pre_labeled`, annotated, skipped,\nawaiting review or accepted is passed over, and so is an `unannotated` one\nthat still carries annotations from an earlier round that was skipped and\nthen restored: that sequence deletes no labels, so progress alone does not\nprove an asset untouched. A run never writes over what a person did in this\nbatch, and never writes twice over what a model did \u2014 a plain second run\nextends an earlier one onto whatever is still untouched.\n`replace_model_labels` widens it to every frame still `pre_labeled` and\nsupersedes those labels with this run's answer, one frame per transaction;\na frame anyone edited, confirmed or skipped in this batch is never touched,\nand a frame the model now finds nothing on returns to `unannotated`. A\nreplacing request arriving while a run is in flight joins that run,\nwhichever flag it carries.\n\n**The batch's pinned schema is the prompt.** The model is asked for each class\nthe schema declares that a box can be written as; an answer naming one of\nthose classes, matched case-insensitively, is written under the schema's own\nspelling, and an answer naming none of them is discarded. A schema whose\nclasses are all polygons, polylines or tags \u2014 or whose box classes each\nrequire an attribute a prediction cannot supply \u2014 has nowhere for a\ndetection to land and is refused.\n\n**202, not 200.** A batch is hundreds of forward passes, so this follows the\nlaunch-and-poll contract the export and weight-download routes use: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state` is\n`succeeded`, then re-read the batch's assets. Progress on the row is counted\nin assets.\n\n**Everything a caller can be told now is told now**, and no refusal creates a\njob \u2014 so a caller holding a job id holds one that will run. These refusals\nare about the request, and the caller can act on each. They are checked in\nthis order, and it is the order `pre_label` itself checks in, so a request\nwrong about the connection and the batch both always names the connection:\na connection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` \u2014 its\nweights not here, or its endpoint not yet asked what it answers; a\nconnection whose model answers places rather than words is 422\n`UNSUPPORTED_PROMPT`; a batch that is not `in_annotation` is 409\n`BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class a box can be\nwritten as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.\n\nTwo failures are about this installation rather than about the request, and\nanswer 500 carrying the message that says which: a machine without the\noptional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the\nexact command that installs it, and a workspace whose records no longer\nhold together \u2014 a batch pinned to a schema version that is not stored \u2014 is\n`WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no\nstate here a caller can change, so the remedy is the one the message names.\n\n**Asking twice joins the run already in flight rather than starting a second\none.** A request arriving while this batch has a pre-labeling run queued or\nrunning is answered with that run's id, so a double-click and a second tab\nwatch one run instead of paying for the same inference twice.",
+        "description": "Ask a model to label every untouched asset in this batch, and answer at once.\n\nThe `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:\nnobody judged them, so they arrive editable and correctable rather than\nclaiming to be somebody's work \u2014 and, being unjudged, they never reach the\nDataset until a person has taken them over.\n\n**Only assets nothing has touched \u2014 which is stronger than reading\n`unannotated`.** An asset already `pre_labeled`, annotated, skipped,\nawaiting review or accepted is passed over, and so is an `unannotated` one\nthat still carries annotations from an earlier round that was skipped and\nthen restored: that sequence deletes no labels, so progress alone does not\nprove an asset untouched. A run never writes over what a person did, and\nnever writes twice over what a model did \u2014 a second run extends an earlier\none onto whatever is still untouched rather than refreshing the labels it\nleft, so re-running with a lower confidence does not re-ask about a frame\nalready carrying a guess.\n\n**The batch's pinned schema is the prompt, narrowed to what this model\nwrites.** The model is asked for each class the schema declares that admits\none of the model's declared shapes and demands no attribute a prediction\ncannot supply; an answer naming one of those classes, matched\ncase-insensitively, is written under the schema's own spelling, and an\nanswer naming none of them is discarded. A schema with no such class has\nnowhere for a prediction to land and is refused \u2014 so the same schema is\naskable of a model that answers polygons and refused for one that answers\nboxes. `GET` this path with the same `connection_id` to read the narrowing\nbefore launching.\n\n**202, not 200.** A batch is hundreds of forward passes, so this follows the\nlaunch-and-poll contract the export and weight-download routes use: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state` is\n`succeeded`, then re-read the batch's assets. Progress on the row is counted\nin assets.\n\n**Everything a caller can be told now is told now**, and no refusal creates a\njob \u2014 so a caller holding a job id holds one that will run. These refusals\nare about the request, and the caller can act on each. They are checked in\nthis order, and it is the order `pre_label` itself checks in, so a request\nwrong about the connection and the batch both always names the connection:\na connection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` \u2014 its\nweights not here, or its endpoint not yet asked what it answers; a\nconnection whose model answers places rather than words is 422\n`UNSUPPORTED_PROMPT`; a batch that is not `in_annotation` is 409\n`BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the model's shapes\ncan be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.\n\nTwo failures are about this installation rather than about the request, and\nanswer 500 carrying the message that says which: a machine without the\noptional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the\nexact command that installs it, and a workspace whose records no longer\nhold together \u2014 a batch pinned to a schema version that is not stored \u2014 is\n`WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no\nstate here a caller can change, so the remedy is the one the message names.\n\n**Asking twice joins the run already in flight rather than starting a second\none.** A request arriving while this batch has a pre-labeling run queued or\nrunning is answered with that run's id, so a double-click and a second tab\nwatch one run instead of paying for the same inference twice.",
         "operationId": "pre_label_batch",
         "parameters": [
           {
