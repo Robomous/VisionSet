@@ -283,7 +283,7 @@ function canonical(classes: readonly LabelClassBody[]): string {
  * this attribute mid-typed; defaulting it to `"string"` keeps the editor open on
  * it rather than refusing to render somebody else's unfinished work.
  */
-export function fromDraft(classes: readonly DraftLabelClassBody[]): LabelClassBody[] {
+function fromDraft(classes: readonly DraftLabelClassBody[]): LabelClassBody[] {
   return classes.map((declared) => ({
     ...declared,
     attributes: declared.attributes.map((attribute) => ({
@@ -291,6 +291,97 @@ export function fromDraft(classes: readonly DraftLabelClassBody[]): LabelClassBo
       kind: attribute.kind ?? "string",
     })),
   }));
+}
+
+/**
+ * A held draft, but only while it names this project.
+ *
+ * `ProjectScreen` is *re-rendered* rather than remounted when the route's
+ * `:projectId` changes, so the draft it holds outlives the project it was typed
+ * in. Every read of it goes through this guard: a read without it asks project
+ * B's API about project A's classes.
+ */
+function heldDraft(projectId: string, draft: SchemaDraft | null): SchemaDraft | null {
+  return draft !== null && draft.projectId === projectId ? draft : null;
+}
+
+/**
+ * A fresh draft naming nothing but the active contract — the target every
+ * "load v{moved}" reload actually promises, regardless of which tier of
+ * `shownDraft` it is reloading away from. A published version's message
+ * belongs to that version, so `note` empties rather than carrying the last
+ * one into the next save.
+ *
+ * `revision` is the caller's to name, and the two call sites mean it
+ * differently. Defaulting to `null` is right for `shownDraft`'s fallback tier —
+ * a project with neither a held nor a server draft has none for this to
+ * describe. It is **wrong** for "Load v{moved}": that button only ever renders
+ * over a draft the server still holds, and a write naming no revision against
+ * one that exists is refused as `STALE_WRITE` — the exact refusal this draft was
+ * never actually stale for. That reload passes `showing.revision` so the write
+ * that follows overwrites the draft actually there, instead of asking to create
+ * a second one on top of it.
+ */
+function freshFromActive(
+  projectId: string,
+  active: SchemaVersion | null,
+  revision: number | null = null,
+): SchemaDraft {
+  return {
+    projectId,
+    classes: active?.classes ?? [],
+    seed: active?.classes ?? [],
+    basedOn: active?.version ?? null,
+    note: "",
+    revision,
+  };
+}
+
+/**
+ * The draft the Schema tab is showing, from the three places one can come from.
+ *
+ * Seeding is **derived, not an effect**. An effect that re-seeds has to be told
+ * when not to, and one that is not told lets a version published underneath
+ * replace whatever had been typed. Deriving states the rule once, in priority
+ * order: a held draft is what somebody is typing right now, and it is shown
+ * while it still describes this project and either still describes the active
+ * version or has something in it worth keeping. Failing that, the server's own
+ * draft — a stored copy of what somebody typed a moment ago, possibly in another
+ * tab — outranks `active` because it is closer to what is actually being worked
+ * on. Only a project with neither seeds fresh from the published contract.
+ *
+ * **Exported because the editor is not the only thing that has to know.** The
+ * "Frames in the way" panel below the editor asks the API what *this* class list
+ * would orphan, and a second spelling of these tiers is a panel answering about a
+ * proposal nobody is looking at — at worst one project's dirty draft, posted to
+ * another project's API.
+ */
+export function shownDraft({
+  projectId,
+  active,
+  draft,
+  serverDraft,
+}: {
+  readonly projectId: string;
+  readonly active: SchemaVersion | null;
+  readonly draft: SchemaDraft | null;
+  readonly serverDraft: ServerSchemaDraft | null;
+}): SchemaDraft {
+  const held = heldDraft(projectId, draft);
+  if (held !== null && (held.basedOn === (active?.version ?? null) || !same(held.classes, held.seed))) {
+    return held;
+  }
+  if (serverDraft !== null) {
+    return {
+      projectId,
+      classes: fromDraft(serverDraft.classes),
+      seed: fromDraft(serverDraft.classes),
+      basedOn: serverDraft.based_on,
+      note: serverDraft.note,
+      revision: serverDraft.revision,
+    };
+  }
+  return freshFromActive(projectId, active);
 }
 
 export function SchemaEditor({
@@ -328,59 +419,9 @@ export function SchemaEditor({
   // this tab after that one costs no request.
   const stats = useProjectStats(projectId);
 
-  // Seeding is **derived, not an effect**. An effect that re-seeds has to be told
-  // when not to, and one that is not told lets a version published underneath
-  // replace whatever had been typed. Deriving states the rule once, in the place the
-  // value is read, in priority order: a held draft is what somebody is typing
-  // right now, and it is shown while it still describes this project and either
-  // still describes the active version or has something in it worth keeping.
-  // Failing that, the server's own draft — a stored copy of what somebody typed
-  // a moment ago, possibly in another tab — outranks `active` because it is
-  // closer to what is actually being worked on. Only a project with neither
-  // seeds fresh from the published contract.
   const version = active?.version ?? null;
-  /**
-   * A fresh draft naming nothing but the active contract — the target every
-   * "load v{moved}" reload actually promises, regardless of which tier of
-   * `showing` it is reloading away from. A published version's message
-   * belongs to that version, so `note` empties rather than carrying the last
-   * one into the next save.
-   *
-   * `revision` is the caller's to name, and the two call sites mean it
-   * differently. Defaulting to `null` is right for the fallback tier of
-   * `showing` below — a project with neither a held nor a server draft has
-   * none for this to describe. It is **wrong** for "Load v{moved}": that
-   * button only ever renders over a draft the server still holds, and a
-   * write naming no revision against one that exists is refused as
-   * `STALE_WRITE` — the exact refusal this draft was never actually stale
-   * for. That reload passes `showing.revision` so the write that follows
-   * overwrites the draft actually there, instead of asking to create a
-   * second one on top of it.
-   */
-  function freshFromActive(revision: number | null = null): SchemaDraft {
-    return {
-      projectId,
-      classes: active?.classes ?? [],
-      seed: active?.classes ?? [],
-      basedOn: version,
-      note: "",
-      revision,
-    };
-  }
-  const held = draft !== null && draft.projectId === projectId ? draft : null;
-  const showing: SchemaDraft =
-    held !== null && (held.basedOn === version || !same(held.classes, held.seed))
-      ? held
-      : serverDraft !== null
-        ? {
-            projectId,
-            classes: fromDraft(serverDraft.classes),
-            seed: fromDraft(serverDraft.classes),
-            basedOn: serverDraft.based_on,
-            note: serverDraft.note,
-            revision: serverDraft.revision,
-          }
-        : freshFromActive();
+  const held = heldDraft(projectId, draft);
+  const showing = shownDraft({ projectId, active, draft, serverDraft });
 
   const classes = showing.classes;
   const note = showing.note;
@@ -712,7 +753,7 @@ export function SchemaEditor({
           the new active version means discarding what they typed, which is
           exactly the choice a re-seeding effect makes for them.
 
-          `onDraftChange(freshFromActive(showing.revision))` rather than
+          `onDraftChange(freshFromActive(…, showing.revision))` rather than
           `onDraftChange(null)`: `showing` can be `held` *or* the server draft,
           and passing `null` only ever clears the first of those — over a draft
           seeded from the server, with nothing local held, it is a no-op that
@@ -749,7 +790,7 @@ export function SchemaEditor({
             disabled={draftLocked}
             onClick={() => {
               if (saveInFlight.current || preview.isPending) return;
-              onDraftChange(freshFromActive(showing.revision));
+              onDraftChange(freshFromActive(projectId, active, showing.revision));
             }}
           >
             {held !== null ? <>Discard mine and load v{moved}</> : <>Load v{moved}</>}

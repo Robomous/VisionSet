@@ -83,7 +83,15 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ComponentType, type FormEvent, type JSX } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type FormEvent,
+  type JSX,
+} from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
 import { Async } from "../data/Async";
@@ -116,7 +124,7 @@ import { BatchesScreen } from "./BatchesScreen";
 import { DatasetScreen } from "./DatasetScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
-import { fromDraft, same, SchemaEditor, type SchemaDraft } from "./SchemaEditor";
+import { same, SchemaEditor, shownDraft, type SchemaDraft } from "./SchemaEditor";
 import { groupByProvenance } from "./schemaHistory";
 import {
   useActiveSchema,
@@ -1065,19 +1073,22 @@ function SchemaSection({
   const failure = schema.isError ? asApiError(schema.error) : null;
   const schemaless = failure?.code === SCHEMA_NOT_FOUND;
   /*
-   * The class list `BlockingAssets` asks about: the one the editor is showing,
-   * resolved in the editor's own order of preference — the held draft, then the
-   * draft the server holds, then the active version. A panel answering about a
-   * different list than the one on screen answers the wrong question, and the
-   * active version is what an untouched editor is proposing.
+   * The class list `BlockingAssets` asks about: the very one the editor below is
+   * showing, from `shownDraft` — the editor's own derivation, shared rather than
+   * repeated. A second spelling of those tiers is a panel answering about a
+   * proposal nobody is looking at, and its `projectId` guard is what keeps a
+   * dirty draft typed in one project from being asked about in another.
    *
-   * `null` while the server draft is still unknown, and for a project with no
-   * schema and no draft: nothing is proposed, so there is nothing to ask.
+   * `null` while the server draft is unknown, and for a project with no
+   * published version: there is no contract to narrow, so nothing to ask.
    */
-  const proposed: readonly LabelClassBody[] | null = serverDraft.isPending
-    ? null
-    : (draft?.classes ??
-      (serverDraft.data == null ? (schema.data?.classes ?? null) : fromDraft(serverDraft.data.classes)));
+  const proposed: readonly LabelClassBody[] | null = useMemo(() => {
+    // A project with no published version has nothing to narrow — its first save
+    // *creates* the contract — so there is no question to ask on its behalf.
+    const active = schemaless ? null : (schema.data ?? null);
+    if (active === null || serverDraft.isPending) return null;
+    return shownDraft({ projectId, active, draft, serverDraft: serverDraft.data ?? null }).classes;
+  }, [projectId, draft, schema.data, schemaless, serverDraft.data, serverDraft.isPending]);
 
   if (schema.isPending) return <LoadingState rows={3} />;
   if (failure !== null && !schemaless) {
@@ -1120,10 +1131,48 @@ function SchemaSection({
       */}
       <VersionHistory projectId={projectId} />
       {onOpenBatch !== undefined && proposed !== null && (
-        <BlockingAssets projectId={projectId} classes={proposed} onOpenBatch={onOpenBatch} />
+        // Keyed by project, because the panel *settles* its proposal: this
+        // screen is re-rendered rather than remounted on a route change, and a
+        // held value carrying the previous project's classes is precisely the
+        // cross-project question `shownDraft`'s guard exists to prevent.
+        <BlockingAssets
+          key={projectId}
+          projectId={projectId}
+          classes={proposed}
+          onOpenBatch={onOpenBatch}
+        />
       )}
     </div>
   );
+}
+
+/**
+ * How many blocking frames the panel shows before it says how many more there are.
+ *
+ * The route's limit defaults to *everything*, and `AssetThumbnail` fetches on
+ * mount — so an unwindowed page for a narrowing that orphans five thousand frames
+ * is five thousand rows firing five thousand credentialed requests at once.
+ */
+const BLOCKING_ASSET_WINDOW = 12;
+
+/** The draft autosave's settle point, reused so one pause answers both. */
+const DRAFT_SETTLE_MS = 400;
+
+/**
+ * `value`, once it has held still for `ms`.
+ *
+ * For a read whose cost is a server-side walk rather than a render: the value it
+ * follows changes per keystroke, and every intermediate one is a question nobody
+ * asked. Identity is what settles, so a caller passing a derived array memoises
+ * it — otherwise every render restarts the timer and nothing ever settles.
+ */
+function useSettled<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(timer);
+  }, [value, ms]);
+  return settled;
 }
 
 /**
@@ -1147,7 +1196,13 @@ function BlockingAssets({
   readonly classes: readonly LabelClassBody[];
   readonly onOpenBatch: (batchId: string) => void;
 }): JSX.Element {
-  const query = useSchemaBlockingAssets(projectId, classes);
+  // Answering costs the server a walk over every annotation in the project, and
+  // `ClassFields` emits an edit per character typed into a class name — so the
+  // panel reads the proposal only once it has stopped changing, at the same 400ms
+  // the draft's own autosave settles on. A half-typed class name is a narrowing
+  // nobody proposed, and asking about it is an N+1 over the whole dataset.
+  const settled = useSettled(classes, DRAFT_SETTLE_MS);
+  const query = useSchemaBlockingAssets(projectId, settled, BLOCKING_ASSET_WINDOW);
   // The header above already read this list under the same key, so naming the
   // batches costs no request — and three links all reading "Open batch" would
   // name no destination between them.
@@ -1171,41 +1226,65 @@ function BlockingAssets({
         }}
       >
         {(page) => (
-          <ul className="flex flex-col gap-2" data-testid="blocking-asset-list">
-            {page.items.map((item) => (
-              <li key={item.asset.id} className="flex items-center gap-3">
-                <div className="size-12 shrink-0 overflow-hidden rounded-sm bg-muted">
-                  <AssetThumbnail
-                    projectId={projectId}
-                    assetId={item.asset.id}
-                    thumbnailHash={item.asset.thumbnail_hash}
-                    alt=""
-                    className="size-full object-cover"
-                  />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm">
-                    <span className="tabular-nums">{formatCount(item.annotations)}</span>{" "}
-                    {item.annotations === 1 ? "label" : "labels"} under{" "}
-                    {item.label_classes.join(", ")}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {item.batch_ids.map((batchId) => (
-                      <Button
-                        key={batchId}
-                        variant="link"
-                        className="h-auto p-0 text-xs"
-                        data-testid="blocking-asset-batch"
-                        onClick={() => onOpenBatch(batchId)}
-                      >
-                        Open {names.get(batchId) ?? "batch"}
-                      </Button>
-                    ))}
+          <div className="flex flex-col gap-2">
+            {/* `total` is every blocking frame, never this page's size, so the
+                count is the honest one and the overflow is what the window did
+                not show. There is no "see all" route to offer, so the remainder
+                is text rather than a control leading nowhere. */}
+            <p className="text-xs text-muted-foreground" data-testid="blocking-asset-count">
+              <span className="tabular-nums">{formatCount(page.total)}</span>{" "}
+              {page.total === 1 ? "frame is" : "frames are"} in the way
+              {page.total > page.items.length
+                ? `, showing the first ${formatCount(page.items.length)}`
+                : ""}
+              .
+            </p>
+            <ul className="flex flex-col gap-2" data-testid="blocking-asset-list">
+              {page.items.map((item) => (
+                <li key={item.asset.id} className="flex items-center gap-3">
+                  <div className="size-12 shrink-0 overflow-hidden rounded-sm bg-muted">
+                    <AssetThumbnail
+                      projectId={projectId}
+                      assetId={item.asset.id}
+                      thumbnailHash={item.asset.thumbnail_hash}
+                      alt=""
+                      className="size-full object-cover"
+                    />
                   </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+                  <div className="min-w-0 flex-1">
+                    {/* Named, because two rows reading "12 labels under lane" are
+                        one row to a screen reader, and the thumbnail is the only
+                        thing telling them apart for everybody else. `frame_index`
+                        is what a clip's frames carry; a still has none and falls
+                        back to the short id the API's own errors quote. */}
+                    <p className="truncate text-sm">
+                      <span className="font-medium">
+                        Frame{" "}
+                        {item.asset.frame_index ?? item.asset.id.slice(0, 8)}
+                      </span>{" "}
+                      ·{" "}
+                      <span className="tabular-nums">{formatCount(item.annotations)}</span>{" "}
+                      {item.annotations === 1 ? "label" : "labels"} under{" "}
+                      {item.label_classes.join(", ")}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {item.batch_ids.map((batchId) => (
+                        <Button
+                          key={batchId}
+                          variant="link"
+                          className="h-auto p-0 text-xs"
+                          data-testid="blocking-asset-batch"
+                          onClick={() => onOpenBatch(batchId)}
+                        >
+                          Open {names.get(batchId) ?? "batch"}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </Async>
     </div>

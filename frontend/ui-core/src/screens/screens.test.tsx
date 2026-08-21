@@ -38,6 +38,8 @@ type BatchState = capComponents["schemas"]["BatchState"];
 /** See `dataShell.test.tsx`: undici's `Request` needs an absolute URL. */
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
+/** A second project, for the draft that must not follow somebody into it. */
+const OTHER_PROJECT = "77777777-7777-4777-8777-777777777777";
 
 /** One route table, matched in order. A miss is a loud 500 rather than a hang. */
 type HandlerAnswer = { status: number; body: unknown } | undefined;
@@ -470,17 +472,35 @@ describe("the schema editor", () => {
     const BATCH = "33333333-3333-4333-8333-333333333333";
     const CORRECTION = "44444444-4444-4444-8444-444444444444";
     projectWithSchema();
+    // The full wire shape: `useBatches` validates the response, and a listing
+    // that fails validation is a query with no data — which reads here as every
+    // link falling back to "Open batch".
+    const batch = (id: string, name: string): Record<string, unknown> => ({
+      id,
+      project_id: PROJECT,
+      name,
+      state: "in_annotation",
+      asset_count: 4,
+      schema_version: 3,
+      progress: {
+        unannotated: 4,
+        pre_labeled: 0,
+        annotated: 0,
+        skipped: 0,
+        review_pending: 0,
+        accepted: 0,
+        total: 4,
+      },
+      allowed_actions: batchActions("in_annotation"),
+      promoted_asset_count: 0,
+      parent_batch_id: null,
+      pre_label_run: null,
+    });
     on("GET", /\/batches$/, {
       status: 200,
-      body: {
-        items: [
-          { id: BATCH, project_id: PROJECT, name: "survey", state: "in_annotation" },
-          { id: CORRECTION, project_id: PROJECT, name: "fixes", state: "in_annotation" },
-        ],
-        total: 2,
-      },
+      body: { items: [batch(BATCH, "survey"), batch(CORRECTION, "fixes")], total: 2 },
     });
-    on("POST", /\/schema\/blocking-assets$/, {
+    on("POST", /\/schema\/blocking-assets/, {
       status: 200,
       body: {
         items: [
@@ -493,7 +513,7 @@ describe("the schema editor", () => {
               format: "jpeg",
               width: 1920,
               height: 1080,
-              frame_index: null,
+              frame_index: 42,
               frame_timestamp: null,
               source_id: null,
               thumbnail_hash: null,
@@ -504,7 +524,9 @@ describe("the schema editor", () => {
             batch_ids: [BATCH, CORRECTION],
           },
         ],
-        total: 1,
+        // Every blocking frame, not this page's size: the panel says how many
+        // there are and how many of them it is showing.
+        total: 30,
       },
     });
     const opened = vi.fn();
@@ -515,18 +537,97 @@ describe("the schema editor", () => {
     await within(panel).findByTestId("blocking-asset-list");
     expect(panel.textContent).toContain("12");
     expect(panel.textContent).toContain("lane");
+    // Two rows reading "12 labels under lane" would be one row to a screen
+    // reader, so the frame names itself.
+    expect(panel.textContent).toContain("Frame 42");
+    // `total` counts every blocking frame and the request is windowed, so the
+    // panel states the whole number and how much of it is on screen.
+    expect(screen.getByTestId("blocking-asset-count").textContent).toContain("30");
+    const asked = sent.find((request) =>
+      new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
+    );
+    expect(new URL(asked?.url ?? "").searchParams.get("limit")).toBe("12");
     // An asset is held by many batches — `batches_holding` returns a list, and an
     // annotation names no batch at all — so the row offers all of them rather
     // than picking one there is no stored fact to prefer.
     const links = within(panel).getAllByTestId("blocking-asset-batch");
     expect(links).toHaveLength(2);
+    // Named from the batch listing the header already read: three links all
+    // reading "Open batch" would name no destination between them.
+    expect(links[0].textContent).toContain("survey");
+    expect(links[1].textContent).toContain("fixes");
     await userEvent.click(links[0]);
     expect(opened).toHaveBeenCalledWith(BATCH);
   });
 
+  it("asks once the class name stops changing, not once per keystroke", async () => {
+    projectWithSchema();
+    on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={vi.fn()} />));
+    await screen.findByTestId("schema-editor");
+    const asks = (): number =>
+      sent.filter((request) =>
+        new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
+      ).length;
+    await waitFor(() => expect(asks()).toBe(1));
+
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
+    // Ten characters, and the server walks every annotation in the project for
+    // each answer — so the panel asks about the name somebody meant, once the
+    // typing settles, and not about the nine prefixes of it.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(asks()).toBe(2);
+  });
+
+  /**
+   * `ProjectScreen` is *re-rendered* rather than remounted when the route's
+   * `:projectId` changes, and nothing clears the draft it holds — so a draft
+   * typed in one project is still in hand while another one is on screen. Every
+   * read of it goes through `shownDraft`'s project guard, and this panel is the
+   * one that would otherwise POST project A's classes to project B's API and
+   * invite somebody to go clear real annotations over a narrowing nobody
+   * proposed there.
+   */
+  it("never asks one project's API about another project's draft", async () => {
+    projectWithSchema();
+    on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrap = (node: ReactNode): JSX.Element => (
+      <ApiProvider baseUrl={API} queryClient={queryClient}>
+        {node}
+      </ApiProvider>
+    );
+
+    const view = render(
+      wrap(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={vi.fn()} />),
+    );
+    await screen.findByTestId("schema-editor");
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
+
+    view.rerender(wrap(<ProjectScreen projectId={OTHER_PROJECT} tab="schema" onOpenBatch={vi.fn()} />));
+
+    const under = (projectId: string): Request[] =>
+      sent.filter((request) => {
+        const path = new URL(request.url).pathname;
+        return path.startsWith(`/projects/${projectId}/`) && path.endsWith("/schema/blocking-assets");
+      });
+    // The panel does ask on the project now showing…
+    await waitFor(() => expect(under(OTHER_PROJECT).length).toBeGreaterThan(0), { timeout: 2000 });
+    // …and long enough for the settle to have fired the departing project's
+    // proposal too, had anything been holding it.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    // …and never about the class somebody typed in the project they left.
+    for (const request of under(OTHER_PROJECT)) {
+      expect(bodies.get(request) ?? "").not.toContain("pedestrian");
+    }
+  });
+
   it("offers no frames-in-the-way section to a host that cannot open a batch", async () => {
     projectWithSchema();
-    on("POST", /\/schema\/blocking-assets$/, { status: 200, body: { items: [], total: 0 } });
+    on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
 
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
 

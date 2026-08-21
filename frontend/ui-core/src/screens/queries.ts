@@ -129,8 +129,8 @@ export const queryKeys = {
     ["projects", projectId, "schema", "draft", kind] as const,
   // The proposal is part of the key: two class lists are two answers, and sharing
   // one key would make editing the draft a cache overwrite rather than a new read.
-  schemaBlockingAssets: (projectId: string, classes: readonly LabelClassBody[]) =>
-    ["projects", projectId, "schema", "blocking-assets", classes] as const,
+  schemaBlockingAssets: (projectId: string, classes: readonly LabelClassBody[], limit?: number) =>
+    ["projects", projectId, "schema", "blocking-assets", classes, limit ?? "all"] as const,
 };
 
 /**
@@ -389,19 +389,28 @@ export function usePreviewSchemaChange(projectId: string) {
  * server-side walk over the whole proposed class list — the client sends no
  * filter of its own. Disabled while `classes` is null, because a panel with
  * nothing proposed has nothing to ask.
+ *
+ * `limit` windows the page, and a screen showing rows wants one: the route's
+ * limit defaults to everything, so a narrowing that orphans five thousand frames
+ * answers with five thousand items. `total` counts them all either way, which is
+ * what lets a windowed caller still say how many there are.
  */
 export function useSchemaBlockingAssets(
   projectId: string,
   classes: readonly LabelClassBody[] | null,
+  limit?: number,
 ): UseQueryResult<BlockingAssetPage, Error> {
   const client = useApiClient();
   return useQuery({
-    queryKey: queryKeys.schemaBlockingAssets(projectId, classes ?? []),
+    queryKey: queryKeys.schemaBlockingAssets(projectId, classes ?? [], limit),
     enabled: classes !== null,
     queryFn: async () =>
       unwrap(
         await client.POST("/projects/{project_id}/schema/blocking-assets", {
-          params: { path: { project_id: projectId } },
+          params: {
+            path: { project_id: projectId },
+            ...(limit === undefined ? {} : { query: { limit } }),
+          },
           body: { classes: [...(classes ?? [])] },
         }),
         checkListBlockingAssets,
