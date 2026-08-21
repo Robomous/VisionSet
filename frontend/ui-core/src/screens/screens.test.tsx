@@ -1881,6 +1881,51 @@ describe("the schema editor's two panels", () => {
     expect(screen.getByTestId("class-name-1")).toHaveProperty("value", "lane");
   });
 
+  it("sends the refusal to the section that lists the frames behind it", async () => {
+    withClasses(CLASSES);
+    on("POST", /\/schema\/preview$/, {
+      status: 200,
+      body: {
+        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+        blockers: [{ label_class: "lane", annotations: 12, assets: 3 }],
+        is_refused: true,
+      },
+    });
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={vi.fn()} />));
+    await screen.findByTestId("class-list");
+
+    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
+    await userEvent.click(screen.getByTestId("remove-class-1"));
+
+    // The count without a destination is what this flow was refused for. The
+    // sentence names the section by the heading it actually renders under.
+    const dialog = await screen.findByTestId("orphan-dialog");
+    expect(dialog.textContent).toContain("Frames in the way");
+  });
+
+  it("names no section to a host that cannot open a batch, because none is shown", async () => {
+    withClasses(CLASSES);
+    on("POST", /\/schema\/preview$/, {
+      status: 200,
+      body: {
+        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
+        blockers: [{ label_class: "lane", annotations: 12, assets: 3 }],
+        is_refused: true,
+      },
+    });
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-list");
+
+    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
+    await userEvent.click(screen.getByTestId("remove-class-1"));
+
+    // The section is offered only where a batch can be opened, so pointing at it
+    // here would name a place that is not on the page.
+    const dialog = await screen.findByTestId("orphan-dialog");
+    expect(dialog.textContent).toContain("Keep the class");
+    expect(dialog.textContent).not.toContain("Frames in the way");
+  });
+
   it("removes a clear candidate from the local draft without publishing", async () => {
     withClasses(CLASSES);
     on("POST", /\/schema\/preview$/, {
