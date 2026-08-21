@@ -468,6 +468,10 @@ def pre_label_project(
     is the total. Every batch of the project that is `in_annotation` is run,
     or exactly `batch_ids`.
 
+    The connection is checked first: an unknown connection, one not set up
+    yet, or one whose model answers places rather than words is refused
+    before the selection is even read.
+
     Refused whole before anything runs, so a call that started has a selection
     every batch of which can run: a named batch outside the project, a named
     batch that is not open, an empty `batch_ids`, a project with no open

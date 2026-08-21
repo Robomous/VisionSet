@@ -336,16 +336,16 @@ earlier run's own labels only where it is asked to - the second-run paragraph be
 batch is `in_annotation`, so that is the ordinary case rather than a race: the run skips it and
 keeps going, and the outcome's `assets_skipped` says how many.
 
-**The batch's pinned schema is the prompt.** The model is asked for each class the schema
-declares that the model's answer can be written as — a class admitting a shape the model
-produces - the same class names an annotator would use. A
-text-prompted detector answers with text decoded from spans over that prompt rather than a
-choice from the list, so an answer naming one of the classes, matched case-insensitively, is
-written under the schema's own spelling, and an answer naming none of them - a span that
-crossed the boundary between two phrases, most often - is discarded rather than guessed onto
-either half; the outcome's `regions_discarded` says how many. A mapped region whose geometry has
-no overlap with a measured asset is discarded separately, and `regions_out_of_bounds` says how
-many; unmeasured assets remain eligible. A schema with no such class is refused up front; see
+**The batch's pinned schema is the prompt.** The model is asked for each class the schema declares
+that the model's answer can be written as - a class admitting a shape the model produces - the same
+class names an annotator would use. A text-prompted detector answers with text decoded from spans
+over that prompt rather than a choice from the list, so an answer naming one of the classes,
+matched case-insensitively, is written under the schema's own spelling, and an answer naming none
+of them - a span that crossed the boundary between two phrases, most often - is discarded rather
+than guessed onto either half; the outcome's `regions_discarded` says how many. A mapped region
+whose geometry has no overlap with a measured asset is discarded separately, and
+`regions_out_of_bounds` says how many; unmeasured assets remain eligible. A schema with no such
+class is refused up front; see
 [inference.md](inference.md#what-a-connection-can-be-asked-for).
 
 **A class is left out of the prompt for either of two reasons, and both are published.** It admits

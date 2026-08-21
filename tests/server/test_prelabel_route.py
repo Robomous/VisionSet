@@ -945,6 +945,31 @@ def test_one_undetectable_pin_refuses_the_whole_request_naming_the_batch(
     assert _pre_label_job_count(client) == before
 
 
+def test_a_polygon_only_pin_is_accepted_by_a_model_that_also_produces_polygons(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pin `test_one_undetectable_pin_refuses_the_whole_request_naming_the_batch`
+    refuses against a box-only model is accepted here against one that also
+    produces polygons — the fan-out reads the connection's own `produces`,
+    not a shape every other fixture in this file happens to share."""
+    batch = _open_batch(
+        client,
+        runner,
+        tmp_path,
+        monkeypatch,
+        classes=[POLYGON_ONLY],
+        family="text_detect",
+        capability="text_detect",
+    )
+    before = _pre_label_job_count(client)
+
+    response = _launch(client, batch.project_id, batch.connection_id)
+
+    assert response.status_code == 202, response.text
+    assert [item["batch_id"] for item in response.json()["items"]] == [batch.id]
+    assert _pre_label_job_count(client) == before + 1
+
+
 def test_the_project_launch_shares_the_connection_gate(
     client: TestClient, in_annotation_batch: OpenBatch, segmenter_connection: str
 ) -> None:

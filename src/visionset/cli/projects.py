@@ -120,10 +120,12 @@ def project_pre_label(
     """Ask a model to label every untouched asset across a project's open batches.
 
     One batch after another, each the same run `batch pre-label` makes; blocks
-    because a terminal has no dispatcher. The selection is refused whole before
-    the first forward pass: a batch outside the project, a named batch that is
-    not open, a project with no open batch, or a pinned schema with no class a
-    shape this model produces can be written as.
+    because a terminal has no dispatcher. The connection is checked first: an
+    unknown connection, one not set up yet, or one whose model answers places
+    rather than words is refused before the selection is read. The selection
+    is refused whole before the first forward pass: a batch outside the
+    project, a named batch that is not open, a project with no open batch, or
+    a pinned schema with no class a shape this model produces can be written as.
     """
     with opened_workspace(workspace) as service:
         resolved = resolve_project(service, project)

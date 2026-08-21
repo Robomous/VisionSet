@@ -21,6 +21,7 @@ from visionset.inference.prelabel import (
     pre_label,
     prompt_plan,
     select_pre_labelable,
+    served_for,
 )
 from visionset.kernel import (
     BatchNotFound,
@@ -1045,6 +1046,23 @@ def test_a_region_in_a_shape_the_model_never_declared_is_discarded(tmp_path: Pat
         fixture.close()
 
 
+def test_served_for_returns_the_connections_declared_family(prelabel_fixture: Fixture) -> None:
+    declared = served_for(
+        prelabel_fixture.workspace, prelabel_fixture.connection.id, pool=prelabel_fixture.pool
+    )
+
+    assert declared == ServedFamily(capability=ModelCapability.TEXT_DETECT, produces=BOXES)
+
+
+def test_served_for_refuses_a_point_prompt_connection(segmenter_fixture: Fixture) -> None:
+    with pytest.raises(UnsupportedPrompt):
+        served_for(
+            segmenter_fixture.workspace,
+            segmenter_fixture.connection.id,
+            pool=segmenter_fixture.pool,
+        )
+
+
 def test_planned_answers_the_plan_a_run_would_prompt_with(prelabel_fixture: Fixture) -> None:
     plan = planned(
         prelabel_fixture.workspace,
@@ -1172,6 +1190,16 @@ def test_a_selected_batch_with_no_detectable_class_is_refused_by_name(
 
     with pytest.raises(SchemaHasNoDetectableClass, match="batch 'lanes'"):
         select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, BOXES)
+
+
+def test_a_polygon_only_schema_is_selected_for_a_model_that_produces_polygons(
+    polygon_only_fixture: Fixture,
+) -> None:
+    selected = select_pre_labelable(
+        polygon_only_fixture.workspace, polygon_only_fixture.project.id, POLYGONS
+    )
+
+    assert [one.id for one in selected] == [polygon_only_fixture.batch.id]
 
 
 def test_a_replacing_run_rewrites_every_pre_labeled_frame_and_counts_what_it_replaced(
