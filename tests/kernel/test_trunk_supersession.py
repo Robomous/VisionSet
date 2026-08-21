@@ -163,6 +163,18 @@ def _box(asset_id: UUID, label_class: str = "sign", *, x: float = 0.0) -> Annota
     )
 
 
+def _model_box(asset_id: UUID, *, x: float = 0.0) -> Annotation:
+    return Annotation(
+        asset_id=asset_id,
+        label_class="sign",
+        schema_version=1,
+        geometry=BboxGeometry(x=x, y=0.0, width=10.0, height=10.0),
+        provenance="model",
+        model_ref="acme/detector@abc123",
+        confidence=0.6,
+    )
+
+
 # --- the domain rule ----------------------------------------------------------
 
 
@@ -267,6 +279,36 @@ def test_an_ordinary_batch_over_labeled_assets_is_seeded_the_same_way(
 
     assert fixture.batches.get(fixture.batch_of(plain_job)).parent_batch_id is None
     assert fixture.progress_of(plain_job, first) is ANNOTATED
+    fixture.close()
+
+
+def test_a_batch_cut_over_a_model_only_asset_opens_it_pre_labeled(tmp_path: Path) -> None:
+    """Nobody judged those labels, so being cut into a second batch must not
+    make them promotable — the rule still reads the asset, and the asset says
+    'a model wrote everything here'."""
+    fixture = Fixture(tmp_path)
+    first, _ = fixture.assets
+    first_job = fixture.open_batch("first", [first])
+    fixture.annotations.enter_unreviewed(first_job.id, [_model_box(first)])
+
+    second_job = fixture.open_batch("second", [first])
+
+    assert fixture.progress_of(second_job, first) is PRE_LABELED
+    fixture.close()
+
+
+def test_a_batch_cut_over_an_asset_with_any_human_label_opens_it_annotated(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    first, _ = fixture.assets
+    first_job = fixture.open_batch("first", [first])
+    fixture.annotations.enter_unreviewed(first_job.id, [_model_box(first)])
+    fixture.annotations.add(first_job.id, [_box(first, x=20)])
+
+    second_job = fixture.open_batch("second", [first])
+
+    assert fixture.progress_of(second_job, first) is ANNOTATED
     fixture.close()
 
 
