@@ -239,9 +239,9 @@ seeded exactly the same way, because a rule that asked "is this a correction?" w
 about whichever case it had not been written for.
 
 One asset reads differently, and the rule still reads the asset: an asset whose every label is
-a model's — nobody edited, confirmed or skipped it — opens `pre_labeled`, because a second batch
-must not be the thing that turns unreviewed predictions promotable. A frame confirmed in one
-batch is therefore confirmed again in a later one cut over it.
+a model's — whatever an earlier batch made of them — opens `pre_labeled`, because a second batch
+must not be the thing that turns unreviewed predictions promotable. Provenance is the whole
+question here; what an earlier round's progress said about the frame is not read at all.
 
 The honest consequence: `annotated` is in `SETTLED_PROGRESS`, so **a correction whose every
 asset seeded `annotated` can be completed with no edits at all**. That is the intended reading -
@@ -321,12 +321,12 @@ declaring differently depending on which endpoint answered - is worse than one h
 ## Pre-labeling
 
 A batch that is `in_annotation` can ask a text-prompt model to label its **untouched** assets -
-`unannotated`, and carrying no annotations at all. An asset already `pre_labeled`, `annotated`,
-`skipped`, `review_pending` or `accepted` is passed over, and so is an `unannotated` one that
-still carries a person's boxes from an earlier round that was skipped and then restored - progress
-alone does not prove untouched, since that sequence deletes nothing. Either way, a run never
-writes over what a person did, and it supersedes an earlier run's own labels only where it is
-asked to - the second-run paragraph below.
+`unannotated`, and carrying no annotations at all. An asset already `pre_labeled` - unless the run
+is asked to replace, below - `annotated`, `skipped`, `review_pending` or `accepted` is passed over,
+and so is an `unannotated` one that still carries a person's boxes from an earlier round that was
+skipped and then restored - progress alone does not prove untouched, since that sequence deletes
+nothing. Either way, a run never writes over what a person did, and it supersedes an earlier
+run's own labels only where it is asked to - the second-run paragraph below.
 
 **An asset somebody starts working while a run is still going is passed over too, not fatal.** The
 batch is `in_annotation`, so that is the ordinary case rather than a race: the run skips it and
@@ -368,7 +368,7 @@ move to `pre_labeled` commit together, so a run that stops midway has either not
 or fully entered it.
 
 **A second run extends the first, and can be asked to redo it.** A plain run is a continuation
-and nothing else: since the entry rule only ever writes onto `unannotated`, running it again
+and nothing else: since without the flag it only writes onto `unannotated`, running it again
 after a partial run, an interruption, or a person handling some assets in the meantime costs
 nothing on what already landed. `replace_model_labels` - the request field, the MCP parameter,
 and `--replace-model-labels` at a terminal - widens that reach to every frame still
@@ -394,9 +394,9 @@ most recent `annotation.pre_label` job naming this batch - live or settled - and
 reload, a second tab or a run started at a terminal can only be shown by the batch itself saying
 so. Counted in assets, the unit this handler works in, and carrying the outcome
 `prelabel.py`'s `run` returns once the job has settled - `stopped_early`, `assets_labeled`,
-`regions_discarded`, `regions_out_of_bounds` - so a client can tell a cancelled run from an
-untouched batch. Derived, never stored, and published on `BatchOut` as `pre_label_run`, `null`
-where none ever ran.
+`annotations_replaced`, `regions_discarded`, `regions_out_of_bounds` - so a client can tell a
+cancelled run from an untouched batch. Derived, never stored, and published on `BatchOut` as
+`pre_label_run`, `null` where none ever ran.
 
 **Beyond one batch, the batch is still the unit.** `POST /projects/{id}/batches/pre-label` fans a
 launch out over the project's batches that are `in_annotation` - every one of them, or exactly
