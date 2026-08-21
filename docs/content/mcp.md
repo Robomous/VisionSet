@@ -122,6 +122,7 @@ page groups them by what they are for.
 | `start_batch` | Open it for annotation. |
 | `get_pre_label_plan` | Which classes a run would ask about, and which it would leave out. |
 | `pre_label_batch` | Ask a model to label every untouched asset. Blocks until it is done. |
+| `pre_label_project` | The same, over every open batch of a project or the named ones; one outcome per batch. Blocks until done. |
 | `repin_batch` | Move its schema pin onto the current active version. |
 | `list_batch_assets` | What is in it, paged, with each asset's job and progress. |
 | `complete_batch` | Close it, once every job is complete. |
@@ -304,7 +305,9 @@ guard is that a batch which is no longer `in_annotation` refuses every write.
 stdio server has no background worker: something has to do the decode, and an agent driving a
 "resume" loop would block for exactly as long as doing the work in the first place. A long video
 makes `ingest` a long call, a large model makes `download_connection_weights` one, and a batch of
-untouched assets makes `pre_label_batch` one — minutes, with nothing to poll from here. A cut-off
+untouched assets makes `pre_label_batch` one — minutes, with nothing to poll from here;
+`pre_label_project` runs the same over every open batch of a project, so the wait is that many
+batches' worth of minutes. A cut-off
 download changed nothing (the connection is only marked ready once every file is here) and the
 retry resumes the cache rather than starting over; a cut-off pre-labeling call has written only
 the assets it fully entered, one commit per asset, so calling it again resumes with whatever is

@@ -48,10 +48,12 @@ from pydantic import Field
 from visionset import wire
 from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
+    PreLabelOutcome,
     PreLabelPlan,
     pre_label,
     prompt_plan,
     require_detectable_schema,
+    select_pre_labelable,
 )
 from visionset.kernel.domain import AssetProgress, AssetSort, BySize, Partition
 from visionset.kernel.services import (
@@ -305,6 +307,20 @@ def get_pre_label_plan(batch_id: BatchRef) -> dict[str, Any]:
         return wire.pre_label_plan(prompt_plan(schema))
 
 
+def _pre_label_outcome(outcome: PreLabelOutcome, plan: PreLabelPlan) -> dict[str, Any]:
+    """The one outcome shape ``pre_label_batch`` and ``pre_label_project`` both report."""
+    return {
+        "assets_considered": outcome.assets_considered,
+        "assets_labeled": outcome.assets_labeled,
+        "annotations_written": outcome.annotations_written,
+        "model_ref": outcome.model_ref,
+        "assets_skipped": outcome.assets_skipped,
+        "regions_discarded": outcome.regions_discarded,
+        "regions_out_of_bounds": outcome.regions_out_of_bounds,
+        "plan": wire.pre_label_plan(plan),
+    }
+
+
 def pre_label_batch(
     batch_id: BatchRef,
     connection: ConnectionRef,
@@ -392,15 +408,77 @@ def pre_label_batch(
             minimum_confidence=minimum_confidence,
             on_plan=seen.append,
         )
+    return _pre_label_outcome(outcome, seen[0])
+
+
+def pre_label_project(
+    project: ProjectRef,
+    connection: ConnectionRef,
+    minimum_confidence: Annotated[
+        float,
+        Field(
+            ge=0.0,
+            le=1.0,
+            description="The floor a prediction must clear to be written, in [0, 1] — prompt "
+            "affinity.",
+        ),
+    ] = DEFAULT_MINIMUM_CONFIDENCE,
+    batch_ids: Annotated[
+        list[str] | None,
+        Field(
+            description="Only these batches, in this order. Omit for every batch open for "
+            "annotation."
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Ask a model to label untouched assets across a project's open batches. Blocks until done.
+
+    `pre_label_batch`, one batch after another: the batch stays the unit, each
+    run writes what that tool writes and reports what it reports, and `items`
+    holds one such outcome per batch with its `plan`; `annotations_written`
+    is the total. Every batch of the project that is `in_annotation` is run,
+    or exactly `batch_ids`.
+
+    Refused whole before anything runs, so a call that started has a selection
+    every batch of which can run: a named batch outside the project, a named
+    batch that is not open, a project with no open batch, or any selected
+    batch whose pinned schema has no class a box can be written as — the
+    message names that batch so it can be left out by name. Assets in no batch
+    are not reached; cut a batch first (`create_batch`, `approve_batch`,
+    `start_batch`).
+
+    Interrupting is as safe as it is for one batch: some prefix of the
+    selection is entered, asset by asset, and calling again resumes over what is
+    still untouched.
+    """
+    with opened_workspace() as workspace:
+        resolved = resolve_project(workspace, project)
+        resolved_connection = resolve_connection(workspace, connection)
+        selected = select_pre_labelable(
+            workspace,
+            resolved.id,
+            None if batch_ids is None else [identifier(one, what="batch_id") for one in batch_ids],
+        )
+        items: list[dict[str, Any]] = []
+        for batch in selected:
+            seen: list[PreLabelPlan] = []
+            outcome = pre_label(
+                workspace,
+                batch_id=batch.id,
+                connection_id=resolved_connection.id,
+                minimum_confidence=minimum_confidence,
+                on_plan=seen.append,
+            )
+            items.append(
+                {
+                    "batch_id": str(batch.id),
+                    "batch_name": batch.name,
+                    **_pre_label_outcome(outcome, seen[0]),
+                }
+            )
     return {
-        "assets_considered": outcome.assets_considered,
-        "assets_labeled": outcome.assets_labeled,
-        "annotations_written": outcome.annotations_written,
-        "model_ref": outcome.model_ref,
-        "assets_skipped": outcome.assets_skipped,
-        "regions_discarded": outcome.regions_discarded,
-        "regions_out_of_bounds": outcome.regions_out_of_bounds,
-        "plan": wire.pre_label_plan(seen[0]),
+        "items": items,
+        "annotations_written": sum(item["annotations_written"] for item in items),
     }
 
 
