@@ -768,13 +768,15 @@ are shown again under a settled run's summary, which is where a run that labeled
 actually read. A schema with no askable class at all refuses this read, and the dialog renders
 that refusal and leaves `Start` dead rather than waiting for the press to produce it.
 
-**Replacing an earlier pass is a tick, off by default.** Where the batch holds pre-labeled
-frames, every mode of the dialog that is not a live run - configure, done, stopped, failed -
-carries the live configuration below that mode's own summary: the model, the minimum prompt
-affinity, the prompt classes, and the count of what a run would consider. Under it sits
-**Replace the model labels on N pre-labeled frame(s)**, unticked, saying that frames a person
-has edited, confirmed or skipped are never touched and that this cannot be undone. Ticked, the
-count line adds that the run also replaces the model labels on those N frames, and the launch -
+**Replacing an earlier pass is a tick, off by default.** The live configuration - the model,
+the minimum prompt affinity, the prompt classes, and the count of what a run would consider -
+sits below whichever summary the mode wrote, in every mode: during a run too, with its fields
+and the tick disabled, and under a `done`, `stopped` or `failed` summary whenever the batch has
+an untouched asset left, whether or not anything here is pre-labeled. Where the batch holds
+pre-labeled frames, under it sits **Replace the model labels on N pre-labeled frame(s)**,
+unticked, saying that frames anyone has edited, confirmed or skipped in this batch are never
+touched and that this cannot be undone. Ticked, the count line adds that the run also replaces
+the model labels on those N frames, and the launch -
 `Start`, `Run again`, `Continue` or `Try again` - goes live. A batch with nothing untouched left
 and the box unticked has no run to launch at all, so the press is disabled and the notice names
 the tick as what would give the run something to do. A settled run's summary reports how many

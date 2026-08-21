@@ -243,7 +243,9 @@ a model's — whatever an earlier batch made of them — opens `pre_labeled`, be
 must not be the thing that turns unreviewed predictions promotable. Provenance is the whole
 question here; what an earlier round's progress said about the frame is not read at all. A frame
 confirmed in one batch therefore opens `pre_labeled` in a later one cut over it, and is
-confirmed again there.
+confirmed again there. An edit keeps a label's provenance — a box a person moved is still a
+model's box — so an asset whose labels are all model-made, adjusted or not, opens `pre_labeled`
+in a later batch and is within reach of a replacing run there.
 
 The honest consequence: `annotated` is in `SETTLED_PROGRESS`, so **a correction whose every
 asset seeded `annotated` can be completed with no edits at all**. That is the intended reading -
@@ -327,8 +329,8 @@ A batch that is `in_annotation` can ask a text-prompt model to label its **untou
 is asked to replace, below - `annotated`, `skipped`, `review_pending` or `accepted` is passed over,
 and so is an `unannotated` one that still carries a person's boxes from an earlier round that was
 skipped and then restored - progress alone does not prove untouched, since that sequence deletes
-nothing. Either way, a run never writes over what a person did, and it supersedes an earlier
-run's own labels only where it is asked to - the second-run paragraph below.
+nothing. Either way, a run never writes over what a person did in this batch, and it supersedes an
+earlier run's own labels only where it is asked to - the second-run paragraph below.
 
 **An asset somebody starts working while a run is still going is passed over too, not fatal.** The
 batch is `in_annotation`, so that is the ordinary case rather than a race: the run skips it and
@@ -376,9 +378,10 @@ nothing on what already landed. `replace_model_labels` - the request field, the 
 and `--replace-model-labels` at a terminal - widens that reach to every frame still
 `pre_labeled`: the model's earlier labels there are deleted and the new ones land in the same
 transaction, one frame at a time, so no frame is ever briefly bare. A frame anybody edited,
-confirmed or skipped is passed over whatever the flag says, and a `pre_labeled` frame the second
-run finds nothing on returns to `unannotated`. Both the outcome and `pre_label_run` carry
-`annotations_replaced`, the count of earlier model labels the run superseded.
+confirmed or skipped in this batch is passed over whatever the flag says, and a `pre_labeled`
+frame the second run finds nothing on returns to `unannotated`. Both the outcome and
+`pre_label_run` carry `annotations_replaced`, the count of earlier model labels the run
+superseded.
 
 `visionset.inference.pre_label` is the one implementation an SDK caller, the API and MCP
 all run - see [background-jobs.md](background-jobs.md) for the `annotation.pre_label` job type

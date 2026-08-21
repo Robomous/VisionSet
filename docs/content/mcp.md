@@ -311,12 +311,13 @@ batches' worth of minutes. A cut-off
 download changed nothing (the connection is only marked ready once every file is here) and the
 retry resumes the cache rather than starting over; a cut-off pre-labeling call has written only
 the assets it fully entered, one commit per asset, so calling it again resumes with whatever is
-still untouched.
+still untouched - plus, where `replace_model_labels` is set, the frames still `pre_labeled`.
 
-`pre_label_batch` reports unmappable model labels as `regions_discarded` and mapped regions
-without overlap with a measured asset as `regions_out_of_bounds`, and the prompt it ran under
-as `plan` — `asked_classes` beside `excluded_classes`, so a run that labeled nothing says
-which classes it never asked about rather than leaving that to a second call.
+`pre_label_batch` reports unmappable model labels as `regions_discarded`, mapped regions
+without overlap with a measured asset as `regions_out_of_bounds`, the model labels a replacing
+run superseded as `annotations_replaced`, and the prompt it ran under as `plan` —
+`asked_classes` beside `excluded_classes`, so a run that labeled nothing says which classes it
+never asked about rather than leaving that to a second call.
 `get_pre_label_plan` answers the same thing before the wait.
 
 There is therefore no ingest polling, and no `resume_ingest`. If a call is cut off part way, call
