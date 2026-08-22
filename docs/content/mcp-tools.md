@@ -33,7 +33,7 @@ error envelope, and the three gate words.
 | `get_batch` | `batch_id` | Read one batch: its state, its schema pin, its progress and its jobs. |
 | `approve_batch` | `batch_id`, `jobs_of`? | Freeze a batch, pin the project's active schema, and cut it into jobs. |
 | `start_batch` | `batch_id` | Open an approved batch for annotation. |
-| `get_pre_label_plan` | `batch_id` | Which classes a pre-labeling run over this batch would ask a model about. |
+| `get_pre_label_plan` | `batch_id`, `connection` | Which classes a pre-labeling run of that connection over this batch would ask about, which it would leave out, and what shapes it would write. |
 | `pre_label_batch` | `batch_id`, `connection`, `minimum_confidence`?, `replace_model_labels`? | Ask a model to label every untouched asset in a batch. This blocks until it is done. |
 | `pre_label_project` | `project`, `connection`, `minimum_confidence`?, `batch_ids`? | Ask a model to label untouched assets across a project's open batches. Blocks until done. |
 | `repin_batch` | `batch_id`, `allow_destructive`? | Move a batch's schema pin onto the project's *current* active version. |

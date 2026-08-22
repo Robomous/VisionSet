@@ -27,7 +27,7 @@ from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 
 from visionset import __version__
-from visionset.kernel.domain import ModelCapability
+from visionset.kernel.domain import ModelCapability, ServedFamily
 from visionset.kernel.errors import InferenceConnectionNotRunnable
 from visionset.kernel.ports import Provider
 
@@ -147,21 +147,27 @@ def _incompatible(entry: Registration) -> str | None:
     return None
 
 
-def capabilities(providers: Mapping[str, Provider]) -> Mapping[str, ModelCapability]:
-    """Which prompt each served family takes, merged across drivers.
+def served(providers: Mapping[str, Provider]) -> Mapping[str, ServedFamily]:
+    """What each served family takes and answers in, merged across drivers.
 
     Derived and written nowhere else, so an adapter and its declaration are one
-    edit. A family two drivers disagree about is left out: there is no honest
-    answer where the build cannot say which one would run it.
+    edit. A family two drivers declare differently — in capability or in shape —
+    is left out: there is no honest answer where the build cannot say which one
+    would run it.
     """
-    seen: dict[str, ModelCapability] = {}
+    seen: dict[str, ServedFamily] = {}
     contested: set[str] = set()
     for provider in providers.values():
-        for family, capability in provider.families.items():
-            if family in seen and seen[family] is not capability:
+        for family, declared in provider.families.items():
+            if family in seen and seen[family] != declared:
                 contested.add(family)
-            seen.setdefault(family, capability)
-    return {family: capability for family, capability in seen.items() if family not in contested}
+            seen.setdefault(family, declared)
+    return {family: declared for family, declared in seen.items() if family not in contested}
+
+
+def capabilities(providers: Mapping[str, Provider]) -> Mapping[str, ModelCapability]:
+    """Which prompt each served family takes — :func:`served`, read for one axis."""
+    return {family: declared.capability for family, declared in served(providers).items()}
 
 
 def families_served(providers: Mapping[str, Provider]) -> frozenset[str]:

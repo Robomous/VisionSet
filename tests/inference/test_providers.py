@@ -13,7 +13,12 @@ from pathlib import Path
 import pytest
 
 from visionset.inference import providers as providers_module
-from visionset.inference.http_provider import RemoteDetector, RemoteSegmenter
+from visionset.inference.http_provider import (
+    HTTP_FAMILIES,
+    HTTP_PROVIDER_ID,
+    RemoteDetector,
+    RemoteSegmenter,
+)
 from visionset.inference.providers import ProviderPool, driver_for, provider_for, resident
 from visionset.inference.registry import families_served, registered, serving
 from visionset.inference.sam_provider import LocalSamProvider
@@ -21,8 +26,10 @@ from visionset.inference.transformers_provider import LocalTransformersProvider
 from visionset.kernel.domain import (
     ConnectionType,
     CuratedModel,
+    GeometryType,
     InferenceConnection,
     ModelCapability,
+    ServedFamily,
 )
 from visionset.kernel.errors import (
     InferenceConnectionNotRunnable,
@@ -249,14 +256,17 @@ def test_an_unsupported_model_leaves_nothing_behind_for_the_next_request(
 # --- which driver answers, once one is recorded --------------------------------
 
 
-POINT = ModelCapability.POINT_SUGGEST
-TEXT = ModelCapability.TEXT_DETECT
+POINT = ServedFamily(
+    capability=ModelCapability.POINT_SUGGEST,
+    produces=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+)
+TEXT = ServedFamily(capability=ModelCapability.TEXT_DETECT, produces=frozenset({GeometryType.BBOX}))
 
 
 class _Driver:
     """A provider built by hand, so a test needs no installed distribution."""
 
-    def __init__(self, provider_id: str, families: Mapping[str, ModelCapability]) -> None:
+    def __init__(self, provider_id: str, families: Mapping[str, ServedFamily]) -> None:
         self.provider_id = provider_id
         self.families = families
         self.curated: tuple[CuratedModel, ...] = ()
@@ -381,3 +391,41 @@ def test_a_refused_connection_leaves_nothing_behind_for_the_next_request(
 
 def test_the_process_wide_pool_is_one_object() -> None:
     assert resident() is resident()
+
+
+# --- what the pool answers about a family, without building ------------------
+
+
+def test_the_pool_answers_the_declaration_a_connection_resolves_to(
+    connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Through the same resolution that builds the runner — a recorded http
+    connection resolves on its recorded capability, and that family's declaration
+    is what comes back."""
+    connection = connections.create(
+        "remote",
+        connection_type=ConnectionType.HTTP,
+        model_id="acme/detector",
+        model_revision="abc",
+        endpoint_url="http://localhost:9",
+    )
+    connection = connections.record_endpoint_answer(
+        connection.id, model_family="text_detect", provider_id=HTTP_PROVIDER_ID
+    )
+    pool = ProviderPool()
+    declared = pool.served(connection, workspace_root=tmp_path)
+    assert declared == HTTP_FAMILIES["text_detect"]
+    assert pool.builds == 0
+
+
+def test_a_recorded_provider_resolving_to_no_family_is_refused_not_keyerror(
+    connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A recorded provider tolerates a family of ``""`` — ``driver_for``'s own
+    check only fires when family is truthy — so a ready connection whose
+    snapshot config went missing resolves to a family no driver declares, and
+    ``served`` must refuse it rather than index ``driver.families[""]``."""
+    no_extra_needed(monkeypatch, "")
+    connection = a_local(connections, provider_id="sam")
+    with pytest.raises(InferenceConnectionNotRunnable):
+        ProviderPool().served(connection, workspace_root=tmp_path)

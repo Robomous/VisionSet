@@ -35,7 +35,12 @@ from visionset.cli._resolve import resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.cli.batches import announce_plan
 from visionset.cli.inference import ConnectionArgument, _resolve
-from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, pre_label, select_pre_labelable
+from visionset.inference import (
+    DEFAULT_MINIMUM_CONFIDENCE,
+    pre_label,
+    select_pre_labelable,
+    served_for,
+)
 from visionset.kernel.services import InferenceConnectionService, ProjectService
 
 project_app = typer.Typer(help="Create and list projects.", no_args_is_help=True)
@@ -115,15 +120,18 @@ def project_pre_label(
     """Ask a model to label every untouched asset across a project's open batches.
 
     One batch after another, each the same run `batch pre-label` makes; blocks
-    because a terminal has no dispatcher. The selection is refused whole before
-    the first forward pass: a batch outside the project, a named batch that is
-    not open, a project with no open batch, or a pinned schema with no class a
-    box can be written as.
+    because a terminal has no dispatcher. The connection is checked first: an
+    unknown connection, one not set up yet, or one whose model answers places
+    rather than words is refused before the selection is read. The selection
+    is refused whole before the first forward pass: a batch outside the
+    project, a named batch that is not open, a project with no open batch, or
+    a pinned schema with no class a shape this model produces can be written as.
     """
     with opened_workspace(workspace) as service:
         resolved = resolve_project(service, project)
         connection_id = _resolve(InferenceConnectionService(service), connection)
-        selected = select_pre_labelable(service, resolved.id, batch)
+        declared = served_for(service, connection_id)
+        selected = select_pre_labelable(service, resolved.id, declared.produces, batch)
         outcomes = []
         for one in selected:
             note(f"Batch {one.name!r}:")

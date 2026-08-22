@@ -14,18 +14,23 @@ from pathlib import Path
 import pytest
 
 from visionset.inference import registry
-from visionset.kernel.domain import CuratedModel, ModelCapability
+from visionset.kernel.domain import CuratedModel, GeometryType, ModelCapability, ServedFamily
 from visionset.kernel.errors import InferenceConnectionNotRunnable
 from visionset.kernel.ports import Provider
 
-POINT = ModelCapability.POINT_SUGGEST
-TEXT = ModelCapability.TEXT_DETECT
+BOXES = frozenset({GeometryType.BBOX})
+POLYGONS = frozenset({GeometryType.POLYGON})
+POINT = ServedFamily(
+    capability=ModelCapability.POINT_SUGGEST,
+    produces=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+)
+TEXT = ServedFamily(capability=ModelCapability.TEXT_DETECT, produces=BOXES)
 
 
 class Driver:
     """A provider built by hand, so a test needs no installed distribution."""
 
-    def __init__(self, provider_id: str, families: Mapping[str, ModelCapability]) -> None:
+    def __init__(self, provider_id: str, families: Mapping[str, ServedFamily]) -> None:
         self.provider_id = provider_id
         self.families = families
         self.curated: tuple[CuratedModel, ...] = ()
@@ -233,9 +238,9 @@ class TestMergingCapabilities:
             "dino": Driver("dino", {"grounding-dino": TEXT}),
         }
         assert registry.capabilities(drivers) == {
-            "sam2": POINT,
-            "sam3_video": POINT,
-            "grounding-dino": TEXT,
+            "sam2": POINT.capability,
+            "sam3_video": POINT.capability,
+            "grounding-dino": TEXT.capability,
         }
 
     def test_a_family_two_drivers_disagree_about_declares_nothing(self) -> None:
@@ -254,4 +259,20 @@ class TestMergingCapabilities:
             "acme": Driver("acme", {"sam2": POINT}),
             "zeta": Driver("zeta", {"sam2": POINT}),
         }
-        assert registry.capabilities(drivers) == {"sam2": POINT}
+        assert registry.capabilities(drivers) == {"sam2": POINT.capability}
+
+    def test_a_family_two_drivers_declare_in_different_shapes_is_left_out(self) -> None:
+        """Same capability, different ``produces`` — still no honest answer."""
+        drivers: dict[str, Provider] = {
+            "one": Driver("one", {"dino": TEXT}),
+            "two": Driver(
+                "two",
+                {"dino": ServedFamily(capability=ModelCapability.TEXT_DETECT, produces=POLYGONS)},
+            ),
+        }
+        assert "dino" not in registry.served(drivers)
+        assert "dino" not in registry.capabilities(drivers)
+
+    def test_served_carries_both_axes(self) -> None:
+        drivers: dict[str, Provider] = {"one": Driver("one", {"dino": TEXT})}
+        assert registry.served(drivers) == {"dino": TEXT}

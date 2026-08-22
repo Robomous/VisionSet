@@ -25,8 +25,10 @@ from visionset.kernel.domain import (
     ConnectionType,
     GeometryType,
     LabelClass,
+    ModelCapability,
     PredictedRegion,
     PredictionRequest,
+    ServedFamily,
 )
 from visionset.kernel.services import (
     BatchService,
@@ -245,6 +247,11 @@ class _FakePool:
 
     def get(self, connection: object, *, workspace_root: Path) -> _FakeRunner:
         return _FakeRunner()
+
+    def served(self, connection: object, *, workspace_root: Path) -> ServedFamily:
+        return ServedFamily(
+            capability=ModelCapability.TEXT_DETECT, produces=frozenset({GeometryType.BBOX})
+        )
 
 
 @pytest.fixture()

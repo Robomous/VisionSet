@@ -53,12 +53,14 @@ from visionset.kernel.domain import (
     AssetSegmentation,
     CuratedModel,
     DownloadSize,
+    GeometryType,
     InferenceConnection,
     ModelCapability,
     PointPrompt,
     PredictionRequest,
     PredictionTarget,
     SegmentedMask,
+    ServedFamily,
 )
 from visionset.kernel.errors import UnsupportedPrompt
 
@@ -491,12 +493,20 @@ class LocalSamProvider:
             return processor, model.to(device).eval(), device, half
 
 
-SAM_FAMILIES: Final[Mapping[str, ModelCapability]] = {
-    "sam2": ModelCapability.POINT_SUGGEST,
-    "sam2_video": ModelCapability.POINT_SUGGEST,
-    "sam3_video": ModelCapability.POINT_SUGGEST,
+# A mask is turned into an outline or into the box around it — ``masks.py`` does
+# both — so a caller may write either shape from one answer.
+_SEGMENTS: Final = ServedFamily(
+    capability=ModelCapability.POINT_SUGGEST,
+    produces=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+)
+
+SAM_FAMILIES: Final[Mapping[str, ServedFamily]] = {
+    "sam2": _SEGMENTS,
+    "sam2_video": _SEGMENTS,
+    "sam3_video": _SEGMENTS,
 }
-"""``model_type`` values this driver serves, and what each can be asked.
+"""``model_type`` values this driver serves, what each can be asked, and the
+shapes each answers in.
 
 **Every entry is a string a published checkpoint actually declares**, read out of
 its config rather than reasoned about from a class name. The published SAM 2

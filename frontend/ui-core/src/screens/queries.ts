@@ -910,11 +910,12 @@ export const batchKeys = {
   assetsView: (batchId: string, view: AssetView) =>
     ["batches", batchId, "assets", view.progress ?? "all", view.sort] as const,
   jobs: (batchId: string) => ["batches", batchId, "jobs"] as const,
-  // The pinned version is part of the key because the plan is a function of it
-  // and of nothing else: a re-pin must not leave a dialog naming the classes of
-  // a schema this batch no longer carries.
-  preLabelPlan: (batchId: string, schemaVersion: number | null) =>
-    ["batches", batchId, "pre-label-plan", schemaVersion] as const,
+  // The pinned version and the model are both part of the key because the plan
+  // is a function of both: a re-pin must not leave a dialog naming the classes
+  // of a schema this batch no longer carries, and a change of model must not
+  // leave it naming classes that model cannot answer.
+  preLabelPlan: (batchId: string, schemaVersion: number | null, connectionId: string | null) =>
+    ["batches", batchId, "pre-label-plan", schemaVersion, connectionId] as const,
 };
 
 /** One request's worth. `docs/content/api.md`: paging bounds the response, not the read. */
@@ -1250,7 +1251,8 @@ export function usePreLabelProject(projectId: string) {
 }
 
 /**
- * The classes a pre-labeling run would ask for, and the ones it would not.
+ * The classes a pre-labeling run would ask this model for, the ones it would
+ * not, and the shapes it would write.
  *
  * Served rather than derived here, though every input is on the wire: the same
  * narrowing decides what a run actually prompts with, and a browser-side copy of
@@ -1258,22 +1260,27 @@ export function usePreLabelProject(projectId: string) {
  * surfaces `SCHEMA_HAS_NO_DETECTABLE_CLASS` as a refusal like any other — the
  * dialog renders its prose and stops offering the launch.
  *
- * Read only while a dialog is open, and keyed by the pinned version so a re-pin
- * asks again instead of answering from the previous schema's classes.
+ * Read only while a dialog is open, and keyed by the pinned version *and the
+ * connection*, because the prompt is a property of both — the same schema is a
+ * different prompt for a detector and a segmenter.
  */
 export function usePreLabelPlan(
   batchId: string | undefined,
   schemaVersion: number | null | undefined,
+  connectionId: string | undefined,
   enabled: boolean,
 ): UseQueryResult<PreLabelPlan, Error> {
   const client = useApiClient();
   return useQuery({
-    queryKey: batchKeys.preLabelPlan(batchId ?? "none", schemaVersion ?? null),
-    enabled: enabled && batchId !== undefined,
+    queryKey: batchKeys.preLabelPlan(batchId ?? "none", schemaVersion ?? null, connectionId ?? null),
+    enabled: enabled && batchId !== undefined && connectionId !== undefined,
     queryFn: async () =>
       unwrap(
         await client.GET("/batches/{batch_id}/pre-label", {
-          params: { path: { batch_id: batchId ?? "" } },
+          params: {
+            path: { batch_id: batchId ?? "" },
+            query: { connection_id: connectionId ?? "" },
+          },
         }),
         checkPreLabelPlan,
       ),

@@ -20,9 +20,21 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.server._api import api_client
 
-from visionset.kernel.domain import CuratedModel, InferenceConnection, ModelCapability
+from visionset.kernel.domain import (
+    CuratedModel,
+    GeometryType,
+    InferenceConnection,
+    ModelCapability,
+    ServedFamily,
+)
 from visionset.kernel.ports import Provider, Runner
 from visionset.server.dependencies import get_providers
+
+POINT = ServedFamily(
+    capability=ModelCapability.POINT_SUGGEST,
+    produces=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+)
+TEXT = ServedFamily(capability=ModelCapability.TEXT_DETECT, produces=frozenset({GeometryType.BBOX}))
 
 
 class FakeProvider:
@@ -36,7 +48,7 @@ class FakeProvider:
     def __init__(
         self,
         provider_id: str,
-        families: Mapping[str, ModelCapability],
+        families: Mapping[str, ServedFamily],
         curated: tuple[CuratedModel, ...] = (),
     ) -> None:
         self.provider_id = provider_id
@@ -105,9 +117,9 @@ def test_a_driver_publishes_which_families_it_serves(client: TestClient) -> None
         FakeProvider(
             "acme",
             {
-                "acme_seg": ModelCapability.POINT_SUGGEST,
-                "acme_det": ModelCapability.TEXT_DETECT,
-                "acme_track": ModelCapability.POINT_SUGGEST,
+                "acme_seg": POINT,
+                "acme_det": TEXT,
+                "acme_track": POINT,
             },
         ),
     )
@@ -130,7 +142,7 @@ def test_a_curated_entry_carries_the_capability_its_family_resolves_to(
         client,
         FakeProvider(
             "acme",
-            {"acme_seg": ModelCapability.POINT_SUGGEST},
+            {"acme_seg": POINT},
             (entry("acme/seg-small", "acme_seg"),),
         ),
     )
@@ -154,7 +166,7 @@ def test_an_entry_naming_a_family_its_own_driver_does_not_serve_is_left_out(
         client,
         FakeProvider(
             "acme",
-            {"acme_seg": ModelCapability.POINT_SUGGEST},
+            {"acme_seg": POINT},
             (entry("acme/seg-small", "acme_seg"), entry("acme/ghost", "not_declared")),
         ),
     )
@@ -173,7 +185,7 @@ def test_curated_entries_keep_the_order_their_driver_declared_them_in(
         client,
         FakeProvider(
             "acme",
-            {"acme_seg": ModelCapability.POINT_SUGGEST},
+            {"acme_seg": POINT},
             (
                 entry("acme/seg-tiny", "acme_seg"),
                 entry("acme/seg-large", "acme_seg"),
@@ -195,8 +207,8 @@ def test_drivers_come_back_in_provider_id_order(client: TestClient) -> None:
     """A listing whose order depended on entry-point scan order would not be stable."""
     with_providers(
         client,
-        FakeProvider("zeta", {"zeta_det": ModelCapability.TEXT_DETECT}),
-        FakeProvider("acme", {"acme_seg": ModelCapability.POINT_SUGGEST}),
+        FakeProvider("zeta", {"zeta_det": TEXT}),
+        FakeProvider("acme", {"acme_seg": POINT}),
     )
 
     ids = [row["provider_id"] for row in client.get("/inference/providers").json()["items"]]
@@ -219,7 +231,7 @@ def test_the_listing_uses_the_envelope_like_every_other_collection(
         client,
         FakeProvider(
             "acme",
-            {"acme_seg": ModelCapability.POINT_SUGGEST},
+            {"acme_seg": POINT},
             (
                 entry(
                     "acme/seg-gated",
