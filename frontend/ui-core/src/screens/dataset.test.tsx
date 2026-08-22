@@ -752,10 +752,10 @@ describe("curating the trunk", () => {
     // Every clause read off `DatasetService.remove_asset`, not assumed. The
     // release clause is the one a curator would otherwise have to guess at: a
     // release is a snapshot, so curating the trunk does not reach back into it.
-    expect(consequence.textContent).toContain("annotations leave with it");
-    expect(consequence.textContent).toContain("Nothing is deleted");
-    expect(consequence.textContent).toContain("releases already published");
-    expect(consequence.textContent).toContain("Promoting its batch again puts it back");
+    expect(consequence.textContent).toContain("together with its annotations");
+    expect(consequence.textContent).toContain("is not deleted");
+    expect(consequence.textContent).toContain("release already published is unaffected");
+    expect(consequence.textContent).toContain("Promoting the batch again will restore it");
   });
 
   it("takes no action until the confirmation is answered", async () => {

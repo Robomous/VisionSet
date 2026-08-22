@@ -480,10 +480,10 @@ function RemoveAssetDialog({
       <DialogContent data-testid="remove-asset-dialog">
         <DialogTitle>Remove {trunkAssetLabel(asset)} from the dataset?</DialogTitle>
         <DialogDescription data-testid="remove-asset-consequence">
-          It leaves the dataset, and its annotations leave with it — membership is by asset, so
-          nothing labelled on this one stays behind. Nothing is deleted: the image, its
-          annotations and its stored bytes all remain, and releases already published are
-          snapshots and are untouched. Promoting its batch again puts it back.
+          This removes the image from the dataset, together with its annotations. The image itself
+          is not deleted: the file, its annotations and its stored data remain in the project, and
+          any release already published is unaffected. Promoting the batch again will restore it to
+          the dataset.
         </DialogDescription>
         {remove.isError && (
           <FieldError data-testid="remove-asset-error">{refusalProse(remove.error)}</FieldError>
