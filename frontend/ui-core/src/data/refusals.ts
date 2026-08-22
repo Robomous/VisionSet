@@ -258,3 +258,26 @@ export function describeClassCount(blocker: ClassCount): string {
     `${formatCount(blocker.assets)} ${blocker.assets === 1 ? "asset" : "assets"}.`
   );
 }
+
+/** One class judged against one format. A `ClassCount` with a verdict and its reason. */
+export type ClassCompatibility = components["schemas"]["ClassCompatibilityOut"];
+
+/**
+ * The classes a format would drop or degrade, read off a
+ * `LOSSY_EXPORT_NOT_CONSENTED` refusal's `detail.compatibility`, or null when
+ * the refusal carries no report.
+ *
+ * Supported classes are left out: the consent is about what is lost, and a
+ * list that also names what survives makes a person read it to find out.
+ */
+export function lostClasses(detail: Record<string, unknown> | null): readonly ClassCompatibility[] | null {
+  const compatibility = detail?.["compatibility"];
+  if (typeof compatibility !== "object" || compatibility === null) return null;
+  const classes = (compatibility as Record<string, unknown>)["classes"];
+  if (!Array.isArray(classes) || !classes.every(isClassCompatibility)) return null;
+  return classes.filter((one) => one.status !== "supported");
+}
+
+function isClassCompatibility(value: unknown): value is ClassCompatibility {
+  return isClassCount(value) && typeof (value as Record<string, unknown>)["status"] === "string";
+}
