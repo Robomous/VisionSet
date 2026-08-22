@@ -77,9 +77,11 @@
  * A `Badge` is not on that list because it is not a refusal surface: a
  * code in a badge beside the sentence is the code rendered, not kept, and a
  * `FieldError` that once carried one now carries the prose alone. A settled
- * background job's error string arrives with no code at all, so a screen
- * showing one renders the string as it is — there is no key for this map to
- * look up, and inventing one client-side is a fiction a bug report would quote.
+ * background job's failure arrives as its sentence and, where the failure was
+ * a declared error, the same `error_code` the request path answers — so
+ * `jobFailureProse` serves it from this map too, and a job with no code shows
+ * its sentence as it is. A code is never invented client-side: that is a
+ * fiction a bug report would quote.
  *
  * A code as an `Alert` heading is the shape this map exists to end.
  */
@@ -188,6 +190,23 @@ export function refusalProse(cause: unknown): string {
   if (known !== undefined) return known;
   if (error.message.length > 0) return error.message;
   return `The server refused this (${error.code}).`;
+}
+
+/**
+ * What to show a person for a background job that failed.
+ *
+ * A failed job carries its `error_code` where the failure was a declared error
+ * — the same code a request refused for that reason answers — so the map is
+ * consulted exactly as for a refusal. With no code, or none the map names, the
+ * handler's own sentence stands; `fallback` is for a row that failed without
+ * even that.
+ */
+export function jobFailureProse(
+  job: { readonly error: string | null; readonly error_code: string | null },
+  fallback: string,
+): string {
+  const known = job.error_code === null ? undefined : REFUSAL_PROSE[job.error_code];
+  return known ?? job.error ?? fallback;
 }
 
 /** One refusal, kept with the thing it happened to. */

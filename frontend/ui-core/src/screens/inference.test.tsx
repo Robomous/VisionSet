@@ -262,6 +262,7 @@ function checkOf(
   read: number,
   total: number | null,
   error: string | null = null,
+  errorCode: string | null = null,
 ): IntegrityCheck {
   return {
     job_id: "55555555-5555-4555-8555-555555555555",
@@ -269,6 +270,7 @@ function checkOf(
     files_read: read,
     files_total: total,
     error,
+    error_code: errorCode,
   };
 }
 
@@ -277,6 +279,7 @@ function downloadOf(
   done: number,
   total: number | null,
   error: string | null = null,
+  errorCode: string | null = null,
 ): WeightDownload {
   return {
     job_id: "44444444-4444-4444-8444-444444444444",
@@ -284,6 +287,7 @@ function downloadOf(
     bytes_done: done,
     bytes_total: total,
     error,
+    error_code: errorCode,
   };
 }
 
@@ -296,6 +300,7 @@ function job(state: string, processed = 0, total: number | null = null): unknown
     total,
     failures: [],
     error: null,
+    error_code: null,
     result: {},
     cancel_requested: false,
     attempt: 1,
@@ -1359,6 +1364,28 @@ it("follows a transfer to its end with no reload and no click", async () => {
   const settled = reads;
   await new Promise((done) => setTimeout(done, CONNECTION_POLL_MS * 1.5));
   expect(reads).toBe(settled);
+});
+
+it("shows a download that failed on a declared error as its sentence, never its code", async () => {
+  // The job settled under the same code the request path answers, and that code
+  // is withheld from the vocabulary on purpose — the kernel's own sentence is
+  // the remedy — so the sentence shows and the identifier does not.
+  listing([
+    connection({
+      download: downloadOf(
+        "failed",
+        0,
+        null,
+        'running a model locally needs the local-inference extra. Install it with: pip install "visionset[local-inference]"',
+        "LOCAL_INFERENCE_UNAVAILABLE",
+      ),
+    }),
+  ]);
+  render(mount(<InferenceScreen />));
+
+  const shown = await screen.findByTestId("download-error");
+  expect(shown.textContent).toContain('pip install "visionset[local-inference]"');
+  expect(shown.textContent).not.toContain("LOCAL_INFERENCE_UNAVAILABLE");
 });
 
 it("surfaces a failed download as prose, and leaves the same action as the retry", async () => {

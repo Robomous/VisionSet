@@ -155,7 +155,7 @@ import {
   type IntegrityCheck,
   type WeightDownload,
 } from "../data/inferenceQueries";
-import { refusalProse } from "../data/refusals";
+import { jobFailureProse, refusalProse } from "../data/refusals";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
@@ -602,12 +602,10 @@ function useDownloadRun(connection: Connection): {
     // the queued job back, which is the one moment the wire has not caught up.
     running: mutation.isPending || live,
     live: live ? download : null,
-    // A settled job carries its sentence and no code, so only the launch's own
-    // refusal has an entry in the vocabulary to go through.
     failure: mutation.isError
       ? refusalProse(mutation.error)
       : download?.state === "failed"
-        ? (download.error ?? "The download did not finish.")
+        ? jobFailureProse(download, "The download did not finish.")
         : null,
   };
 }
@@ -641,7 +639,7 @@ function useIntegrityRun(connection: Connection): {
     failure: mutation.isError
       ? refusalProse(mutation.error)
       : check?.state === "failed"
-        ? (check.error ?? "The check did not finish.")
+        ? jobFailureProse(check, "The check did not finish.")
         : null,
   };
 }

@@ -495,6 +495,7 @@ describe("export, and the third gate word", () => {
       started_at: "2026-08-06T09:00:01Z",
       finished_at: null,
       error: null,
+      error_code: null,
       failures: [],
       processed: 3,
       total: 12,
@@ -503,7 +504,10 @@ describe("export, and the third gate word", () => {
     };
   }
 
-  async function exportWith(state: string): Promise<HTMLElement> {
+  async function exportWith(
+    state: string,
+    overrides: Record<string, unknown> = {},
+  ): Promise<HTMLElement> {
     baseline();
     // The launch is answered with a whole `BackgroundJobOut`, because
     // `checkExportRelease` validates it — a stub missing a required field makes
@@ -516,7 +520,10 @@ describe("export, and the third gate word", () => {
     );
     // Anchored, so the artifact download under `/artifact` is not answered with
     // a job document.
-    on("GET", /\/background-jobs\/[^/]+$/, { status: 200, body: backgroundJob({ state }) });
+    on("GET", /\/background-jobs\/[^/]+$/, {
+      status: 200,
+      body: backgroundJob({ state, ...overrides }),
+    });
 
     render(mount(<DatasetScreen projectId={PROJECT} />));
     await userEvent.click(await screen.findByTestId("export-v1"));
@@ -545,6 +552,27 @@ describe("export, and the third gate word", () => {
     expect(badge.className).toContain("text-destructive");
     // The badge is the glance; the sentence is still the answer.
     expect(screen.getByTestId("export-job-error")).not.toBeNull();
+  });
+
+  it("says a failed export's declared refusal in the vocabulary's sentence", async () => {
+    // The job carries the same code the request path would have answered, so
+    // the map serves it — the raw sentence, with its id, stays off the screen.
+    await exportWith("failed", {
+      error: `no release ${RELEASE} in project ${PROJECT}`,
+      error_code: "RELEASE_NOT_FOUND",
+    });
+    const shown = screen.getByTestId("export-job-error");
+    expect(shown.textContent).toContain("That release is no longer on record.");
+    expect(shown.textContent).not.toContain(RELEASE);
+    expect(shown.textContent).not.toContain("RELEASE_NOT_FOUND");
+  });
+
+  it("keeps a failed export's own sentence when its code has no entry, or it has no code", async () => {
+    await exportWith("failed", {
+      error: "the archive could not be written: disk full",
+      error_code: "EXPORT_SOURCE_UNREADABLE",
+    });
+    expect(screen.getByTestId("export-job-error").textContent).toContain("disk full");
   });
 
   it("calls a cancelled export cancelled, neutrally — nothing failed (#391)", async () => {

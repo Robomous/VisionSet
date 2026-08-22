@@ -156,12 +156,14 @@ const PROVIDERS = {
 // the pair below spelt `state` as `string` and would have gone on accepting a
 // job state the server can never send. `job_id` and `error` are supplied by
 // `connection` for every caller, so a scenario names neither.
-type Download = Omit<Wire["WeightDownloadOut"], "job_id" | "error"> & {
+type Download = Omit<Wire["WeightDownloadOut"], "job_id" | "error" | "error_code"> & {
   readonly error?: string | null;
+  readonly error_code?: string | null;
 };
 
-type Check = Omit<Wire["IntegrityCheckOut"], "job_id" | "error"> & {
+type Check = Omit<Wire["IntegrityCheckOut"], "job_id" | "error" | "error_code"> & {
   readonly error?: string | null;
+  readonly error_code?: string | null;
 };
 
 /**
@@ -191,8 +193,10 @@ function connection(
     setup_state: setup,
     allowed_actions: ["download_weights", "update", "delete"],
     capabilities,
-    download: download === null ? null : { job_id: JOB, error: null, ...download },
-    integrity_check: check === null ? null : { job_id: CHECK_JOB, error: null, ...check },
+    download:
+      download === null ? null : { job_id: JOB, error: null, error_code: null, ...download },
+    integrity_check:
+      check === null ? null : { job_id: CHECK_JOB, error: null, error_code: null, ...check },
     created_at: "2026-08-08T00:00:00Z",
     updated_at: "2026-08-08T00:00:00Z",
   };
