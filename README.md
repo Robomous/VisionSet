@@ -182,12 +182,14 @@ The browser never needs either. If the page *does* ask for a token, the stack is
 README describes — check that `VISIONSET_UI_SESSION: always` is set on the `api` service and that
 you are reaching it through port 8080.
 
-> **Why `always` here, and why every port is published on `127.0.0.1`.** The default,
-> `VISIONSET_UI_SESSION=auto`, issues a session only to a client on this machine — and behind a
-> proxy no request ever looks like one, because the peer is nginx. So the compose stack says
-> `always` and pays for it by binding all three ports to loopback. The two lines belong together:
-> `always` on a port open to every interface would hand the workspace to the local network. Set
-> `VISIONSET_UI_SESSION: never` to turn the whole thing off and go back to typing a token.
+> **Why `always` here, and what it costs.** The default, `VISIONSET_UI_SESSION=auto`, issues a
+> session only to a client on this machine — and behind a proxy no request ever looks like one,
+> because the peer is nginx. So the compose stack says `always`. The front door on 8080 is
+> published on every interface, so another device on your network — a phone, a tablet — can open
+> the dev stack at `http://<your address>:8080`; the api and vite ports stay on loopback. The
+> consequence is that whoever reaches 8080 is signed in, so the stack trusts the network it runs
+> on. On one that is not yours, set `VISIONSET_UI_SESSION: never` to go back to typing a token,
+> or bind the nginx port to `127.0.0.1` in `docker/compose.yaml`.
 
 Everything it stores lands in **`workspace-data/`** (git-ignored): SQLite for metadata, a local
 directory for the files, one workspace holding both — the shape MLflow's default mode has, and the
