@@ -187,10 +187,7 @@ class TokenService:
         wanted = normalized.casefold()
         for token in uow.tokens.list(self._workspace.workspace_id):
             if token.name.casefold() == wanted:
-                raise TokenNameTaken(
-                    f"a token named {token.name!r} already exists in workspace "
-                    f"{self._workspace.workspace.name!r}"
-                )
+                raise TokenNameTaken(f"a token named {token.name!r} already exists")
         return normalized
 
     def _as_name_collision(
@@ -205,10 +202,7 @@ class TokenService:
         constraint is not this service's to reinterpret and travels on unchanged.
         """
         if _NAME_INDEX_MESSAGE in str(exc):
-            return TokenNameTaken(
-                f"a token named {name!r} already exists in workspace "
-                f"{self._workspace.workspace.name!r}"
-            )
+            return TokenNameTaken(f"a token named {name!r} already exists")
         return exc
 
     # ``list`` shadows the builtin for every annotation below it, so it is last.

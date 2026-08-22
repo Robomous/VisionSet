@@ -294,8 +294,9 @@ def test_listing_answers_with_every_connection_in_the_workspace(connections) -> 
 
 def test_a_name_is_taken_case_insensitively(connections) -> None:  # noqa: ANN001
     connections.create("Local", **LOCAL)
-    with pytest.raises(InferenceConnectionNameTaken):
+    with pytest.raises(InferenceConnectionNameTaken, match="'Local'") as refusal:
         connections.create("local", **HTTP)
+    assert "workspace" not in str(refusal.value)
 
 
 def test_a_blank_name_is_an_invalid_name_not_a_collision(connections) -> None:  # noqa: ANN001

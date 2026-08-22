@@ -565,10 +565,7 @@ class WorkspaceService:
         wanted = normalized.casefold()
         for project in uow.projects.list(self._workspace.id):
             if project.id != exclude and project.name.casefold() == wanted:
-                raise ProjectNameTaken(
-                    f"a project named {project.name!r} already exists in workspace "
-                    f"{self._workspace.name!r}"
-                )
+                raise ProjectNameTaken(f"a project named {project.name!r} already exists")
         return normalized
 
     # --- lifecycle ---------------------------------------------------------

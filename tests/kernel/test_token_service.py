@@ -87,8 +87,9 @@ def test_a_blank_name_is_refused(fixture: Fixture) -> None:
 
 def test_a_duplicate_name_is_refused_case_insensitively(fixture: Fixture) -> None:
     fixture.tokens.create("ci")
-    with pytest.raises(TokenNameTaken, match="ci"):
+    with pytest.raises(TokenNameTaken, match="'ci'") as refusal:
         fixture.tokens.create("CI")
+    assert "workspace" not in str(refusal.value)
 
 
 def test_a_name_taken_refusal_writes_nothing(fixture: Fixture) -> None:

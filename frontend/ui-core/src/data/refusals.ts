@@ -26,7 +26,7 @@
  * context*: the kernel says what rule was broken, and the product says what the
  * person can do about it.
  *
- * ## Seven codes are withheld on purpose
+ * ## Nine codes are withheld on purpose
  *
  * Six carry their remedy in the message itself, and each message says
  * something a static sentence here would have to drop:
@@ -49,6 +49,13 @@
  *
  * A sentence written here would be shorter and would say less, so these
  * fall through by decision rather than by omission.
+ *
+ * `PROJECT_NAME_TAKEN` and `INFERENCE_CONNECTION_NAME_TAKEN` name the thing
+ * in the way in its *stored* casing — `Highway` collides with `highway`, and
+ * a person reading "a name like that exists" beside a list that shows no such
+ * name needs the one that does. Both messages once also named the workspace,
+ * a leak the entries here were written to remove; the kernel dropped it, so
+ * the message is now all fact and falls through.
  *
  * `DUPLICATE_CLASSIFICATION_TAG` is withheld for a different reason: its
  * message mixes a leak (an asset id) with a fact (the class name), and a
@@ -88,7 +95,6 @@ import { formatCount } from "../lib/format.js";
 export const REFUSAL_PROSE: Record<string, string> = {
   // Projects.
   PROJECT_NOT_FOUND: "That project is no longer on record.",
-  PROJECT_NAME_TAKEN: "A project with that name already exists.",
 
   // The batch-state family. These three are the ones a capability declaration
   // now pre-empts, so reaching one means the batch moved under the press —
@@ -148,7 +154,6 @@ export const REFUSAL_PROSE: Record<string, string> = {
 
   // Inference connections.
   INFERENCE_CONNECTION_NOT_FOUND: "That model connection is no longer on record.",
-  INFERENCE_CONNECTION_NAME_TAKEN: "A model connection with that name already exists.",
   INFERENCE_CONNECTION_NOT_DOWNLOADABLE:
     "This connection's model runs elsewhere, so there are no weights to fetch.",
   INFERENCE_CONNECTION_NOT_SET_UP:
