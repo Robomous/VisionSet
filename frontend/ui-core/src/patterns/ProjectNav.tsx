@@ -55,11 +55,11 @@ import {
   IconStack2,
   IconTrash,
   IconUpload,
+  type Icon,
 } from "@tabler/icons-react";
 import { cva } from "class-variance-authority";
-import type { ComponentType, JSX, MouseEvent, ReactNode } from "react";
+import type { JSX, MouseEvent, ReactNode } from "react";
 
-import { cn } from "../lib/cn";
 import { Button } from "../primitives/Button";
 import {
   DropdownMenu,
@@ -87,7 +87,7 @@ export const DEFAULT_PROJECT_SECTION: ProjectSection = "overview";
 
 interface SectionLabel {
   readonly label: string;
-  readonly icon: ComponentType<{ readonly className?: string; readonly "aria-hidden"?: boolean | "true" }>;
+  readonly icon: Icon;
 }
 
 /**
@@ -169,7 +169,7 @@ function Column(props: ProjectNavProps): JSX.Element {
           const shared = {
             "data-testid": `nav-${section}`,
             "aria-current": current ? ("page" as const) : undefined,
-            className: cn(navItemVariants({ current })),
+            className: navItemVariants({ current }),
           };
           return (
             <li key={section}>

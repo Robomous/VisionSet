@@ -90,7 +90,7 @@ import {
   IconLayoutSidebarLeftExpand,
   IconLogout,
 } from "@tabler/icons-react";
-import { PaddedContent, readRailCollapsed, useApiSession, writeRailCollapsed } from "@visionset/ui-core";
+import { cn, PaddedContent, readRailCollapsed, useApiSession, writeRailCollapsed } from "@visionset/ui-core";
 import { useState, type JSX, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router";
 
@@ -114,16 +114,16 @@ export function AppShell(): JSX.Element {
         aria-label="Main"
         data-testid="app-rail"
         data-collapsed={collapsed ? "true" : "false"}
-        className={`flex shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-2 text-sidebar-foreground ${
-          collapsed ? "w-sidebar-collapsed" : "w-sidebar"
-        }`}
+        className={cn(
+          "flex shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-2 text-sidebar-foreground",
+          collapsed ? "w-sidebar-collapsed" : "w-sidebar",
+        )}
       >
         <div
-          className={
-            collapsed
-              ? "flex items-center justify-center py-2"
-              : "flex items-center justify-between gap-2 px-1 py-2"
-          }
+          className={cn(
+            "flex items-center py-2",
+            collapsed ? "justify-center" : "justify-between gap-2 px-1",
+          )}
         >
           {!collapsed && (
             <span className="truncate text-base font-semibold">
@@ -269,11 +269,13 @@ function RailLink({
       // light-on-dark contrast — and an inactive one is the rail's own
       // foreground at reduced opacity, `sidebar-foreground/70`.
       className={({ isActive }) =>
-        `flex items-center gap-2 rounded-md px-2 py-2 text-sm ${collapsed ? "justify-center" : ""} ${
+        cn(
+          "flex items-center gap-2 rounded-md px-2 py-2 text-sm",
+          collapsed && "justify-center",
           isActive
             ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        }`
+            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        )
       }
     >
       {children}
@@ -305,9 +307,10 @@ function RailButton({
       // `sidebar-foreground/70` like an inactive link: the collapse toggle and
       // sign-out are chrome, and nothing on the rail is permanently at full
       // contrast except the item you are on.
-      className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${
-        wide === true ? "w-full" : ""
-      }`}
+      className={cn(
+        "flex items-center gap-2 rounded-md px-2 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        wide === true && "w-full",
+      )}
     >
       {children}
     </button>
