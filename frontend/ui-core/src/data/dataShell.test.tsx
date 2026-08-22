@@ -102,7 +102,7 @@ function Projects(): JSX.Element {
 describe("the client carries the credential", () => {
   it("sends the token as a bearer header, and nothing when there is none", async () => {
     writeToken("secret-token");
-    const stub = stubFetch([[200, { items: [{ id: "p1", name: "highway", description: null }], total: 1 }]]);
+    const stub = stubFetch([[200, { items: [{ id: "p1", name: "highway", description: null, thumbnail_asset_id: null, thumbnail_hash: null }], total: 1 }]]);
     vi.stubGlobal("fetch", stub.fetch);
 
     render(
@@ -124,7 +124,7 @@ describe("the client carries the credential", () => {
 
 describe("the browser session", () => {
   it("signs in with no token at all when the server issues one", async () => {
-    const stub = stubFetch([[200, { items: [{ id: "p1", name: "highway", description: null }], total: 1 }]], {
+    const stub = stubFetch([[200, { items: [{ id: "p1", name: "highway", description: null, thumbnail_asset_id: null, thumbnail_hash: null }], total: 1 }]], {
       session: true,
     });
     vi.stubGlobal("fetch", stub.fetch);
@@ -294,7 +294,7 @@ describe("the token form", () => {
   it("adopts a token the server accepts and shows the app", async () => {
     const stub = stubFetch([
       [200, { items: [], total: 0 }],
-      [200, { items: [{ id: "p1", name: "highway", description: null }], total: 1 }],
+      [200, { items: [{ id: "p1", name: "highway", description: null, thumbnail_asset_id: null, thumbnail_hash: null }], total: 1 }],
     ]);
     vi.stubGlobal("fetch", stub.fetch);
 

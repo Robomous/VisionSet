@@ -235,7 +235,18 @@ describe("the project list", () => {
   it("lists projects and opens one through the callback, never a router", async () => {
     on("GET", /^\/projects$/, {
       status: 200,
-      body: { items: [{ id: PROJECT, name: "highway", description: "M4 survey" }], total: 1 },
+      body: {
+        items: [
+          {
+            id: PROJECT,
+            name: "highway",
+            description: "M4 survey",
+            thumbnail_asset_id: null,
+            thumbnail_hash: null,
+          },
+        ],
+        total: 1,
+      },
     });
     const opened = vi.fn();
 
@@ -246,6 +257,48 @@ describe("the project list", () => {
     // The screen navigates by asking, which is what keeps `ui-core` free of a
     // router it would then only work inside.
     expect(opened).toHaveBeenCalledWith(PROJECT);
+  });
+
+  it("fetches a pictured project's thumbnail and gives an imageless one a placeholder", async () => {
+    const ASSET = "22222222-2222-4222-8222-222222222222";
+    on("GET", /^\/projects$/, {
+      status: 200,
+      body: {
+        items: [
+          {
+            id: PROJECT,
+            name: "highway",
+            description: null,
+            thumbnail_asset_id: ASSET,
+            thumbnail_hash: "ab".repeat(32),
+          },
+          {
+            id: OTHER_PROJECT,
+            name: "unstocked",
+            description: null,
+            thumbnail_asset_id: null,
+            thumbnail_hash: null,
+          },
+        ],
+        total: 2,
+      },
+    });
+    on("GET", /^\/projects\/[^/]+\/assets\/[^/]+\/thumbnail$/, { status: 200, body: "bytes" });
+
+    render(mount(<ProjectsScreen onOpenProject={vi.fn()} />));
+
+    await waitFor(() => expect(screen.queryByTestId("projects-table")).not.toBeNull());
+    // The pictured row asks for the asset the wire named — and only that row
+    // asks: a null preview is "known absent", not a fetch that comes back empty.
+    await waitFor(() =>
+      expect(
+        sent.some((r) => new URL(r.url).pathname === `/projects/${PROJECT}/assets/${ASSET}/thumbnail`),
+      ).toBe(true),
+    );
+    expect(sent.filter((r) => r.url.includes("/thumbnail")).length).toBe(1);
+    // The imageless project states its own situation, not the backfill remedy
+    // `AssetThumbnail` offers for an asset whose preview was never cached.
+    expect(screen.getByTitle("No images in this project yet.")).not.toBeNull();
   });
 
   it("shows the empty state rather than an empty table", async () => {
@@ -259,7 +312,13 @@ describe("the project list", () => {
     on("GET", /^\/projects$/, { status: 200, body: { items: [], total: 0 } });
     on("POST", /^\/projects$/, {
       status: 201,
-      body: { id: PROJECT, name: "highway", description: null },
+      body: {
+        id: PROJECT,
+        name: "highway",
+        description: null,
+        thumbnail_asset_id: null,
+        thumbnail_hash: null,
+      },
     });
     const opened = vi.fn();
 
@@ -304,7 +363,18 @@ describe("the project list", () => {
   it("sends confirm=true on a delete, because the API will not act without it", async () => {
     on("GET", /^\/projects$/, {
       status: 200,
-      body: { items: [{ id: PROJECT, name: "highway", description: null }], total: 1 },
+      body: {
+        items: [
+          {
+            id: PROJECT,
+            name: "highway",
+            description: null,
+            thumbnail_asset_id: null,
+            thumbnail_hash: null,
+          },
+        ],
+        total: 1,
+      },
     });
     on("DELETE", /^\/projects\//, { status: 204 });
 
@@ -324,7 +394,13 @@ describe("the schema editor", () => {
   function projectWithSchema(): void {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
-      body: { id: PROJECT, name: "highway", description: null },
+      body: {
+        id: PROJECT,
+        name: "highway",
+        description: null,
+        thumbnail_asset_id: null,
+        thumbnail_hash: null,
+      },
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, {
       status: 200,
@@ -727,7 +803,13 @@ describe("the schema editor", () => {
   it("treats a schema-less project as an empty draft, not as an error", async () => {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
-      body: { id: PROJECT, name: "fresh", description: null },
+      body: {
+        id: PROJECT,
+        name: "fresh",
+        description: null,
+        thumbnail_asset_id: null,
+        thumbnail_hash: null,
+      },
     });
     // A project starts schema-less on purpose. This 404 is the normal state
     // of a project three seconds old, and an error surface here would tell a new
@@ -1488,7 +1570,13 @@ describe("the schema version history", () => {
   function withHistory(items: unknown[] = VERSIONS, active: unknown = VERSIONS[2]): void {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
-      body: { id: PROJECT, name: "highway", description: null },
+      body: {
+        id: PROJECT,
+        name: "highway",
+        description: null,
+        thumbnail_asset_id: null,
+        thumbnail_hash: null,
+      },
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, { status: 200, body: active });
     on("GET", /schema\/versions$/, { status: 200, body: { items, total: items.length } });
@@ -1769,7 +1857,13 @@ describe("the schema editor's two panels", () => {
   function withClasses(classes: unknown[]): void {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
-      body: { id: PROJECT, name: "highway", description: null },
+      body: {
+        id: PROJECT,
+        name: "highway",
+        description: null,
+        thumbnail_asset_id: null,
+        thumbnail_hash: null,
+      },
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, {
       status: 200,
@@ -2079,7 +2173,13 @@ describe("the project view's tabs", () => {
   function project(): void {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
-      body: { id: PROJECT, name: "highway", description: null },
+      body: {
+        id: PROJECT,
+        name: "highway",
+        description: null,
+        thumbnail_asset_id: null,
+        thumbnail_hash: null,
+      },
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, {
       status: 200,
@@ -2251,7 +2351,13 @@ describe("version history", () => {
   it("renders every version, marks the active one, and offers no way to edit a past one", async () => {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
-      body: { id: PROJECT, name: "highway", description: null },
+      body: {
+        id: PROJECT,
+        name: "highway",
+        description: null,
+        thumbnail_asset_id: null,
+        thumbnail_hash: null,
+      },
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, {
       status: 200,
@@ -2294,7 +2400,13 @@ describe("version history", () => {
     // "not recorded" rather than go blank, which reads as a rendering bug.
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
-      body: { id: PROJECT, name: "highway", description: null },
+      body: {
+        id: PROJECT,
+        name: "highway",
+        description: null,
+        thumbnail_asset_id: null,
+        thumbnail_hash: null,
+      },
     });
     on("GET", /schema\/versions$/, {
       status: 200,
@@ -2342,7 +2454,13 @@ describe("version history", () => {
     function withRun(): void {
       on("GET", /^\/projects\/[^/]+$/, {
         status: 200,
-        body: { id: PROJECT, name: "highway", description: null },
+        body: {
+          id: PROJECT,
+          name: "highway",
+          description: null,
+          thumbnail_asset_id: null,
+          thumbnail_hash: null,
+        },
       });
       on("GET", /^\/projects\/[^/]+\/schema$/, {
         status: 200,
@@ -2443,7 +2561,13 @@ describe("version history", () => {
       // project untouched since then reads exactly as it did before this rule.
       on("GET", /^\/projects\/[^/]+$/, {
         status: 200,
-        body: { id: PROJECT, name: "highway", description: null },
+        body: {
+          id: PROJECT,
+          name: "highway",
+          description: null,
+          thumbnail_asset_id: null,
+          thumbnail_hash: null,
+        },
       });
       on("GET", /^\/projects\/[^/]+\/schema$/, {
         status: 200,
@@ -2536,7 +2660,13 @@ describe("the project header", () => {
   }): void {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
-      body: { id: PROJECT, name: "highway", description: options.description ?? null },
+      body: {
+        id: PROJECT,
+        name: "highway",
+        description: options.description ?? null,
+        thumbnail_asset_id: null,
+        thumbnail_hash: null,
+      },
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, {
       status: options.schema === false ? 404 : 200,
