@@ -96,6 +96,17 @@ def inference_create(
             ),
         ),
     ] = None,
+    credential_env: Annotated[
+        str | None,
+        typer.Option(
+            "--credential-env",
+            help=(
+                "HTTP only. The NAME of an environment variable holding the endpoint's "
+                "credential; the value is read where VisionSet runs, never stored, and "
+                "sent as a bearer token."
+            ),
+        ),
+    ] = None,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -110,6 +121,7 @@ def inference_create(
             precision=precision,
             endpoint_url=endpoint_url,
             provider_id=provider_id,
+            credential_env=credential_env,
         )
     if json_out:
         document(wire.connection(created))
@@ -165,6 +177,17 @@ def inference_update(
             ),
         ),
     ] = None,
+    credential_env: Annotated[
+        str | None,
+        typer.Option(
+            "--credential-env",
+            help=(
+                "HTTP only. The NAME of an environment variable holding the endpoint's "
+                "credential; the value is read where VisionSet runs, never stored, and "
+                "sent as a bearer token."
+            ),
+        ),
+    ] = None,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -180,6 +203,7 @@ def inference_update(
             precision=precision,
             endpoint_url=endpoint_url,
             provider_id=provider_id,
+            credential_env=credential_env,
         )
     if json_out:
         document(wire.connection(edited))

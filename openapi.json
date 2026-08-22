@@ -1815,6 +1815,17 @@
           "connection_type": {
             "$ref": "#/components/schemas/ConnectionType"
           },
+          "credential_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Env"
+          },
           "device": {
             "anyOf": [
               {
@@ -1904,6 +1915,17 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "credential_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Env"
           },
           "device": {
             "anyOf": [
@@ -2005,6 +2027,7 @@
           "endpoint_url",
           "setup_state",
           "provider_id",
+          "credential_env",
           "allowed_actions",
           "capabilities",
           "download",
@@ -2057,8 +2080,19 @@
       },
       "ConnectionUpdate": {
         "additionalProperties": false,
-        "description": "A partial edit. Every field omitted or null means *leave this alone*.\n\n``connection_type`` is absent because the kind is not editable \u2014 see\n``InferenceConnectionService.update``. A field cannot be *cleared* through\nthis shape, which is the honest consequence of null meaning \"unchanged\": the\nparameters that could be cleared are exactly the ones the kind requires, so\nclearing one would produce a row the domain refuses anyway.",
+        "description": "A partial edit. Every field omitted or null means *leave this alone*.\n\n``connection_type`` is absent because the kind is not editable \u2014 see\n``InferenceConnectionService.update``. A field cannot be *cleared* through\nthis shape, which is the honest consequence of null meaning \"unchanged\": the\nparameters that could be cleared are exactly the ones the kind requires, so\nclearing one would produce a row the domain refuses anyway. The one\nexception is ``credential_env``, the one optional parameter a person removes\nas readily as sets: the empty string clears it.",
         "properties": {
+          "credential_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Env"
+          },
           "device": {
             "anyOf": [
               {

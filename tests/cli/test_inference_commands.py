@@ -235,6 +235,13 @@ def test_update_changes_only_what_is_named(root: Path) -> None:
     assert shown["model_id"] == "some/model"
 
 
+def test_create_and_update_name_the_credential_variable(root: Path) -> None:
+    ok(root, *HTTP, "--credential-env", "ACME_TOKEN")
+    assert payload(root, "inference", "show", "remote")["credential_env"] == "ACME_TOKEN"
+    ok(root, "inference", "update", "remote", "--credential-env", "")
+    assert payload(root, "inference", "show", "remote")["credential_env"] is None
+
+
 def test_an_edit_the_kind_refuses_exits_one(root: Path) -> None:
     ok(root, *LOCAL)
     result = run(root, "inference", "update", "local-gd", "--endpoint", "https://example.invalid")
