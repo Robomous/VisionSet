@@ -213,28 +213,35 @@ async function openCold(page: Page, url: string): Promise<void> {
 const SUBVIEWS = [
   {
     name: "the project",
-    url: `/projects/${PROJECT}`,
+    url: `/projects/${PROJECT}/overview`,
     ready: "project-screen",
+    // The project's one ancestor is the list, and that single level is the
+    // navigation column's own `← Projects` rather than a breadcrumb.
+    control: "project-back",
     parent: /\/projects$/,
   },
   {
     name: "ingest",
     url: `/projects/${PROJECT}/ingest`,
     ready: "ingest-screen",
-    parent: new RegExp(`/projects/${PROJECT}$`),
+    control: "breadcrumb-parent",
+    // The project's default section outright, not the bare project URL: the
+    // crumb lands in one hop rather than bouncing through the redirect.
+    parent: new RegExp(`/projects/${PROJECT}/overview$`),
   },
   {
     name: "the batch gallery",
     url: `/projects/${PROJECT}/batches/${BATCH}`,
     ready: "gallery",
-    // Back to the tab the batch was on, not to the project's default section:
+    control: "breadcrumb-parent",
+    // Back to the section the batch was on, not to the project's default one:
     // landing on Schema after leaving a batch is landing somewhere you were not.
-    parent: new RegExp(`/projects/${PROJECT}\\?tab=batches$`),
+    parent: new RegExp(`/projects/${PROJECT}/batches$`),
   },
   // **The dataset is not here any more, and its absence is the change.** It was a
-  // route with its own way out; it is a project *tab* now, so its way out is the
-  // tab bar and the crumbs above it belong to the project. Its old URL still
-  // works — see the redirect scenario below.
+  // route with its own way out; it is a project *section* now, so its way out is
+  // the project's navigation and the crumbs above it belong to the project. Its
+  // old URL is the section's own address now — see the scenario below.
 ] as const;
 
 for (const view of SUBVIEWS) {
@@ -242,7 +249,7 @@ for (const view of SUBVIEWS) {
     await openCold(page, view.url);
     await expect(page.getByTestId(view.ready)).toBeVisible();
 
-    await page.getByTestId("breadcrumb-parent").click();
+    await page.getByTestId(view.control).click();
     await expect(page).toHaveURL(view.parent);
   });
 }
@@ -310,8 +317,8 @@ test("the way out names the project it goes to", async ({ page }) => {
 test("the project's own way out names the list, not a project", async ({ page }) => {
   // One level up from a project is `Projects`, and it is the one sub-view whose
   // parent has a fixed name rather than one that has to load.
-  await openCold(page, `/projects/${PROJECT}`);
-  await expect(page.getByTestId("breadcrumb-parent")).toContainText("Projects");
+  await openCold(page, `/projects/${PROJECT}/overview`);
+  await expect(page.getByTestId("project-back")).toContainText("Projects");
 });
 
 /**
@@ -333,7 +340,7 @@ test("the batch gallery names its whole chain, and every crumb goes where it say
   // The middle crumb: the project itself, which is not where the immediate parent
   // goes and never had a control of its own.
   await crumbs.nth(1).click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}$`));
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
 
   await page.goBack();
   await expect(page.getByTestId("gallery")).toBeVisible();
@@ -343,15 +350,15 @@ test("the batch gallery names its whole chain, and every crumb goes where it say
   await expect(page).toHaveURL(/\/projects$/);
 });
 
-test("the Batches crumb lands with the Batches tab actually selected", async ({ page }) => {
-  // A `?tab=` in the URL and a tab bar showing something else is the failure this
-  // asserts against — the redirect-that-moved-only-the-URL shape. A tab in the
-  // query string is a place, which is what makes it a legitimate crumb level.
+test("the Batches crumb lands with the Batches section actually open", async ({ page }) => {
+  // A section in the URL and a navigation showing something else is the failure
+  // this asserts against — the redirect-that-moved-only-the-URL shape. A section
+  // is a place, which is what makes it a legitimate crumb level.
   await openCold(page, `/projects/${PROJECT}/batches/${BATCH}`);
   await page.getByTestId("breadcrumb-parent").click();
 
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}\\?tab=batches$`));
-  await expect(page.getByTestId("tab-batches")).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches$`));
+  await expect(page.getByTestId("nav-batches")).toHaveAttribute("aria-current", "page");
 });
 
 test("below lg the chain collapses to the immediate parent, on one line", async ({ page }) => {
@@ -384,22 +391,22 @@ test("below lg the chain collapses to the immediate parent, on one line", async 
 
 
 /**
- * The dataset's old address, kept as a promise.
+ * The dataset's old address, kept as a promise — and now its own again.
  *
  * It was `/projects/:id/dataset` — a route reachable only through an overflow
  * menu, an Overview link, and the last step of an onboarding checklist. That is
  * three indirect doors onto the product's central object, which is what made it
- * a first-class thing nobody could find. It is a tab now, and the old URL
- * redirects rather than 404s, because a URL somebody bookmarked is a promise.
+ * a first-class thing nobody could find. It became a tab behind `?tab=dataset`
+ * with the old URL redirecting; with sections as path segments the old URL *is*
+ * the section, and the promise is kept by the route rather than by a bounce.
  */
-test("the dataset's old URL lands on its tab", async ({ page }) => {
+test("the dataset's old URL is the Dataset section itself", async ({ page }) => {
   await openCold(page, `/projects/${PROJECT}/dataset`);
 
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}\\?tab=dataset$`));
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/dataset$`));
   await expect(page.getByTestId("dataset-screen")).toBeVisible();
-  // And the tab bar knows where it is, which a redirect that only changed the
-  // URL would not have achieved.
-  await expect(page.getByTestId("tab-dataset")).toHaveAttribute("aria-selected", "true");
+  // And the navigation knows where it is.
+  await expect(page.getByTestId("nav-dataset")).toHaveAttribute("aria-current", "page");
 });
 
 test("a bookmarked ?tab=versions lands on Schema, with the history under the editor", async ({
@@ -407,28 +414,36 @@ test("a bookmarked ?tab=versions lands on Schema, with the history under the edi
 }) => {
   // The history was a fourth tab — a read-only view *of* the second, offered as
   // a peer of it, which is how "Schema history" and "Releases" became confusable
-  // enough that one of them had to be renamed. It nests inside Schema.
+  // enough that one of them had to be renamed. It nests inside Schema. And
+  // `?tab=` itself is an old address now: the section is a path segment, so the
+  // whole query form redirects, old links being the promise they always were.
   await openCold(page, `/projects/${PROJECT}?tab=versions`);
 
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}\\?tab=schema$`));
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/schema$`));
   await expect(page.getByTestId("schema-editor")).toBeVisible();
   await expect(page.getByTestId("version-history")).toBeVisible();
-  // The tab is gone from the bar, which is the half that matters: a redirect
-  // that left the tab in place would have moved nothing.
-  await expect(page.getByTestId("tab-versions")).toHaveCount(0);
+  // Versions is gone from the navigation, which is the half that matters: a
+  // redirect that left the entry in place would have moved nothing.
+  await expect(page.getByTestId("nav-versions")).toHaveCount(0);
 });
 
-test("the dataset is one press from every other tab", async ({ page }) => {
+test("a ?tab= address keeps its other query parameters across the redirect", async ({ page }) => {
+  await openCold(page, `/projects/${PROJECT}?tab=batches&ref=mail`);
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches\\?ref=mail$`));
+  await expect(page.getByTestId("batches-screen")).toBeVisible();
+});
+
+test("the dataset is one press from every other section", async ({ page }) => {
   // The `information-architecture` rule this task exists for: the trunk is the
   // product's central object and must be reachable in one click from any project
-  // tab. It used to take an overflow menu.
+  // section. It used to take an overflow menu.
   await openCold(page, `/projects/${PROJECT}`);
   await expect(page.getByTestId("project-screen")).toBeVisible();
 
-  for (const from of ["tab-overview", "tab-schema", "tab-batches"]) {
+  for (const from of ["nav-overview", "nav-schema", "nav-batches"]) {
     await page.getByTestId(from).click();
-    await expect(page.getByTestId("tab-dataset")).toBeVisible();
+    await expect(page.getByTestId("nav-dataset")).toBeVisible();
   }
-  await page.getByTestId("tab-dataset").click();
+  await page.getByTestId("nav-dataset").click();
   await expect(page.getByTestId("dataset-screen")).toBeVisible();
 });

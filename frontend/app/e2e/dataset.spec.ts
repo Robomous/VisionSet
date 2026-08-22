@@ -182,7 +182,7 @@ async function serveApi(page: Page): Promise<void> {
 
 async function openDataset(page: Page): Promise<void> {
   await serveApi(page);
-  await page.goto(`/projects/${PROJECT}?tab=dataset`);
+  await page.goto(`/projects/${PROJECT}/dataset`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
   await expect(page.getByTestId("dataset-screen")).toBeVisible();

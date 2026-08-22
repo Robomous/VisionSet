@@ -1982,14 +1982,15 @@ test("every other route keeps the padded, capped container", async ({ page }) =>
   const main = page.locator("main");
   await expect(main).toBeVisible();
   const box = (await main.boundingBox())!;
-  const inner = (await main.locator("> div").first().boundingBox())!;
+  const inner = (await main.locator(".max-w-\\[96rem\\]").first().boundingBox())!;
 
   // The pane is still the full width beside the rail…
   expect(box.width).toBeCloseTo(await paneWidth(page), 0);
-  // …and the *content* inside it is capped at 7xl and inset on both axes, which
-  // is right for a list and is what must not move. Measured against the pane's
-  // own origin, because the padding lives inside `<main>` rather than above it.
-  expect(inner.width).toBeLessThanOrEqual(1280);
+  // …and the *content* inside it is capped at `96rem` and inset on both axes,
+  // which is right for a list and is what must not move. Measured against the
+  // pane's own origin, because the padding lives inside `<main>` rather than
+  // above it.
+  expect(inner.width).toBeLessThanOrEqual(1536);
   expect(inner.x - box.x).toBeGreaterThan(0);
   expect(inner.y - box.y).toBeGreaterThan(0);
 });
@@ -2020,7 +2021,7 @@ test("the rail keeps its collapsed state when the pane changes", async ({ page }
   // Full-bleed → padded, by a client-side navigation. A reload would remount
   // everything and prove nothing about the route tree.
   await page.getByTestId("rail-projects").click();
-  await expect(page.locator("main .max-w-7xl")).toBeVisible();
+  await expect(page.locator("main .max-w-\\[96rem\\]")).toBeVisible();
   await expect(page.getByTestId("annotation-page")).toHaveCount(0);
   await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
 
@@ -2353,6 +2354,9 @@ async function tabGap(page: Page, root: string): Promise<number> {
 test("the project view's tabs use the same one rule", async ({ page }) => {
   const sent: Request[] = [];
   await serveApi(page, sent);
+  // The project's sections are a tab strip only below `lg`; at the suite's
+  // default width they are a navigation column with no tab bar at all.
+  await page.setViewportSize({ width: 900, height: 800 });
   await page.goto(`/projects/${PROJECT}`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();

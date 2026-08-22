@@ -274,25 +274,27 @@ test("a deep link inside the product resolves to its screen", async ({ page }) =
  * The project view's section is in the URL, and this is the only place that
  * wiring exists.
  *
- * `ui-core` is deliberately router-free — it takes the tab as a prop and hands one
- * back — so a component test can prove the tabs switch and prove the callback
- * fires, and it cannot prove the two halves are connected. A reload is the whole
- * point of putting the section in the URL, and a reload is a browser fact.
+ * `ui-core` is deliberately router-free — it takes the section as a prop and
+ * hands one back — so a component test can prove the navigation moves and prove
+ * the callback fires, and it cannot prove the two halves are connected. A reload
+ * is the whole point of putting the section in the URL, and a reload is a
+ * browser fact.
  */
-test("the project view's tab is in the URL, and survives a reload", async ({ page }) => {
+test("the project view's section is in the URL, and survives a reload", async ({ page }) => {
   await serveApi(page);
   await page.goto(`/projects/${PROJECT}?tab=versions`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
 
-  // The link opened on the section it named, not on the default — which is
-  // Overview is the default.
+  // The old link opened on the section it named, not on the default — Overview
+  // is the default — and the address is the section's own now.
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/schema$`));
   await expect(page.getByTestId("version-history")).toBeVisible();
   await expect(page.getByTestId("overview-panel")).toHaveCount(0);
   await expect(page.getByTestId("overview-empty")).toHaveCount(0);
 
-  await page.getByTestId("tab-batches").click();
-  await expect(page).toHaveURL(/\?tab=batches$/);
+  await page.getByTestId("nav-batches").click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches$`));
   await expect(page.getByTestId("batches-screen")).toBeVisible();
 
   await page.reload();
