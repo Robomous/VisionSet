@@ -307,11 +307,7 @@ function Resume({
             <AssetThumbnail
               projectId={resume.project_id}
               assetId={resume.thumbnail_asset_id}
-              // The summary carries no hash — it names the asset and the bytes
-              // are fetched by id, which is how every thumbnail in the product is
-              // addressed. `undefined` is "not stated", which this component
-              // already renders as a placeholder rather than as a failure.
-              thumbnailHash={undefined}
+              thumbnailHash={resume.thumbnail_hash}
               alt=""
               className="size-16 object-cover"
             />
