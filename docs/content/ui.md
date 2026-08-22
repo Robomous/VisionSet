@@ -37,7 +37,7 @@ handler is not an operation.
 | route | what | behind the token gate |
 | --- | --- | --- |
 | `/` | Home - the workspace dashboard | yes |
-| `/projects`, `/projects/:id` (`?tab=overview\|schema\|batches\|dataset`), `/projects/:id/ingest`, `/projects/:id/batches/:id`, `/projects/:id/dataset` | the product | yes |
+| `/projects`, `/projects/:id/overview\|schema\|batches\|dataset`, `/projects/:id/ingest`, `/projects/:id/batches/:id` | the product | yes |
 | `/inference` | model connections, workspace-scoped | yes |
 | `/jobs/:jobId` (`?asset=<id>`) | the annotation page | yes |
 | `/demo` | the annotator showcase (`?scene=bench` for #49's benchmark) | **no** |
@@ -48,21 +48,24 @@ URI and the styleguide is pure CSS - so putting them behind the gate would ask f
 token to look at a page that cannot use one. They are also what lets the browser
 suite run with no backend.
 
-Two of the tab values are not in that list. `?tab=versions` is honoured and lands on
-Schema, because version history lives inside that tab and a URL somebody bookmarked is a
-promise; and `/projects/:id/dataset` is the Dataset tab's old address, kept as a redirect
-for the same reason. Neither appears in the tab bar. The
+Two addresses in that region are redirects kept as promises. `/projects/:id` lands on
+the project's default section, Overview; and `/projects/:id?tab=X` - the form the
+sections had before they were path segments - lands on `/projects/:id/X` with every other
+query parameter kept, `versions` going to Schema because the history lives inside it and
+an unknown value going to Overview, because a URL somebody bookmarked is a promise. An
+unknown *segment* is a 404: nothing ever linked to one. The
 [`information-architecture`](../../.agents/skills/frontend/information-architecture/SKILL.md)
 skill is the canonical sitemap.
 
-Two of those query parameters are kept true rather than only read, and it is the same
-rule twice: `?tab=` on the project page (#171) and `?asset=` on the annotator (#353)
-are both **rewritten** as the page moves, with `replace` rather than `push`. A URL
-that no longer describes what is on screen is not a place you can send somebody, and
-`replace` is what stops Back from walking back through tabs - or, in the annotator,
-one picture at a time through an annotation session. `ui-core` imports no router, so
-in both cases the screen reports and `routes.tsx` spells: `resolveProjectTab` and
-`assetParamFor` are those two decisions, pure and testable without a browser.
+The section segment and the annotator's `?asset=` (#353) are both kept true rather than
+only read, and it is the same rule twice: each is **rewritten** as the page moves, with
+`replace` rather than `push`. A URL that no longer describes what is on screen is not a
+place you can send somebody, and `replace` is what stops Back from walking back through
+sections - or, in the annotator, one picture at a time through an annotation session.
+`ui-core` imports no router, so in both cases the screen reports and `routes.tsx`
+spells: `resolveProjectTab` (what a stale `?tab=` became) and `assetParamFor` are those
+two decisions, pure and testable without a browser; `projectRedirectTarget` in
+`routes.tsx` turns the first into an address and `src/routes.test.tsx` holds every row.
 
 The router's basename is `import.meta.env.BASE_URL`, which is what vite substitutes
 for its `base` option - so the router and the bundle cannot disagree about the `/app`
@@ -84,7 +87,8 @@ composition-only.
 
 | pane | routes | treatment |
 | --- | --- | --- |
-| `PaddedPane` | everything else | `px-4 py-6 md:px-6`, content capped at `max-w-7xl` |
+| `PaddedPane` | everything else | `ui-core`'s `PaddedContent`: `px-4 py-6 md:px-6`, content capped at `max-w-[96rem]` |
+| `ProjectPane` | `/projects/:id/<section>`, `/projects/:id/ingest`, `/projects/:id/batches/:id` | the whole width beside the rail, no padding of its own: `ProjectFrame` lays out the project's navigation column and the same padded, capped content column |
 | `FullBleedPane` | `/jobs/:jobId` | the whole viewport beside the rail, `h-screen`, `overflow-hidden` |
 
 A padded, capped column is right for a list or a form and wrong for the one screen
@@ -177,33 +181,36 @@ which would be a second spelling of a fact the response already carries.
 
 ### The project view, and the one screen whose section is in the URL
 
-A project has three sections - its schema, its batches, its version history - and
-they are **tabs**, not four things stacked in one column (#171). The header is not a
-tab: the project's name and the actions that apply to all of it (ingest, dataset,
-rename) sit above the tab list, and the tab list is what says the rest are
-alternatives rather than a sequence. `Schema` is the default, because a project
-starts schema-less on purpose and nothing downstream can be approved without one.
+A project has four sections - Overview, Schema, Batches, Dataset - and they are
+**navigation**, not four things stacked in one column (#171): at `lg` and above a
+column between the rail and the content, below `lg` a tab strip above it, one
+component (`ProjectNav`) drawing whichever layout `ProjectShell`'s `matchMedia`
+answer hands it. The project's identity travels with the navigation rather than
+heading the content - `← Projects`, the name, the description, the active-version
+chip, the one filled control (Annotate, or Ingest in its place), and the overflow -
+and the content opens under the section's own header: its title as the page `h1`, one
+line of meta, and its `secondary` actions. Overview is the default, because a schema
+editor is configuration and renders the same for an empty project and a full one;
+the rules are in [navigation.md](ui/navigation.md), *Inside a project*.
 
-The section travels as **`?tab=`**, so it survives a reload and can be linked to -
-which is most of the point of giving the version history a place of its own. That
-does not put a router inside `ui-core`: `ProjectScreen` takes `tab` as a raw string
-and hands a normalised one back through `onTabChange`, exactly as every other screen
-takes navigation. Normalising is the screen's job, so an unknown value opens on the
-default rather than on nothing. With `onTabChange` absent the tabs are uncontrolled
-and still work, which is what lets a component test - or a host with no router -
+The section travels as the URL's **last path segment**, so it survives a reload and can
+be linked to. That does not put a router inside `ui-core`: `ProjectScreen` takes `tab`
+as a raw string and hands a normalised one back through `onTabChange`, and takes
+`hrefFor` so its items are real links, exactly as every other screen takes navigation.
+Normalising is the screen's job, so an unknown value opens on the default rather than
+on nothing. With `onTabChange` absent the screen holds the section itself and the
+navigation still works, which is what lets a component test - or a host with no router -
 render the screen unchanged.
 
-**Each tab owns its query.** Radix unmounts inactive content, so a query living in
-the section that renders it follows the tab: the version list is read when Versions
+**Each section owns its query.** Only the open section is mounted, so a query living in
+the section that renders it follows the section: the version list is read when Schema
 is opened rather than on every visit to a project, and the batch table stops polling
-while another tab is showing. Only `useProject` runs at the top, because the header
-is outside the tabs and always drawn.
+while another section is showing. What runs at the top is what the navigation and the
+page header always draw - the project, its active schema, its stats and its batches -
+shared by key with the sections that also want them.
 
-No panel repeats its own tab's name as a heading. Radix labels each panel with its
-trigger, so an `<h2>` saying "Batches" under a tab saying "Batches" is a stutter for
-a reader and for a screen reader both; what stays is the line the tab cannot carry -
-where a batch comes from, which version a save would create, why a past version has
-no edit controls.
+A section's header names it, and says the one line the name cannot carry - how many
+images and when they last arrived, where a batch comes from, what the trunk holds.
 
 ### The dataset, its releases, and getting the data out
 

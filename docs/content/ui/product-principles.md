@@ -140,7 +140,10 @@ primitive owns it because that is the direction nobody can forget. Asserted by m
 rather than by a class string.
 
 No panel repeats its own tab's name as a heading: the tab already labels the panel, so a
-heading saying the same word is a stutter for a reader and for a screen reader both.
+heading saying the same word is a stutter for a reader and for a screen reader both. The
+one exception is a tab bar that is the narrow-viewport form of a navigation column — a
+project's sections below `lg` — where each section is a page with its own `h1`, and the
+strip is how the column collapses rather than a set of panels.
 
 ## Screen rules
 
@@ -195,23 +198,26 @@ pointer, and pressing it goes to the screen that owns the thing.
 
 The project view is the face of a project, and principle 1 is the rule it exists to keep.
 
-**The header** is four lines and two buttons, in this order: the breadcrumb (per
-[navigation.md](navigation.md)); the project name at the page-title role; the description
+**The project's identity lives in its navigation** ([navigation.md](navigation.md), *Inside
+a project*), top to bottom: the way out (`← Projects`); the project name; the description
 **if there is one** — if not, render *nothing*, because "No description." spends a line
-telling somebody about a field rather than about their project; metadata chips (task type,
-sensor modality, active schema version, last ingest). **A chip with no data is omitted,
-never rendered as a placeholder** — inventing a field to fill a chip, or rendering
-`Unknown`, is the "No description." mistake with a border around it.
+telling somebody about a field rather than about their project; the active-version chip.
+**A chip with no data is omitted, never rendered as a placeholder** — inventing a field to
+fill a chip, or rendering `Unknown`, is the "No description." mistake with a border around
+it. How much data the project holds, and when it last arrived, is the Overview header's
+one line (`11 images · ingested Aug 7, 2026`) rather than a chip.
 
-Actions are right-aligned: one dominant action, one secondary, and an overflow menu (`⋯`)
-for the rest — never more than two visible buttons plus the overflow. On the project page
-the dominant action is **Annotate**, because principle 3 asks what the user came to do and
-the answer is never "rename this".
+The navigation carries the one dominant action and the overflow menu (`⋯`) for the rest;
+each section's own header carries that section's actions as `secondary`, right-aligned.
+On the project page the dominant action is **Annotate**, because principle 3 asks what the
+user came to do and the answer is never "rename this".
 
 **Annotate has three shapes, and the cost of the choice tracks the ambiguity.** With no
 batch open for annotation there is nowhere to send anybody, so the button is absent and
 Ingest takes the dominant slot — principle 4, rather than a disabled control that never
-says what would enable it. With exactly one, it jumps straight there. With two or more it
+says what would enable it. While Annotate holds the slot, Ingest stays reachable as a
+`secondary` action on the sections ingest feeds (Overview, Batches); it is never in both
+places at once. With exactly one, it jumps straight there. With two or more it
 reads `Annotate ▾` and opens a menu of those batches, each row carrying the batch name, its
 remaining count, and the schema version it is pinned to. The chevron is not decoration: a
 button that opens a choice must not be shaped like one that jumps. The pinned version earns
@@ -224,8 +230,8 @@ and no images invites the classes (naming the other order beneath it as prose, b
 are legitimate); classes and no images invites the ingest; images and no classes invites
 the classes again. A project with both gets no invitation and is the dashboard. **It guides
 and never gates** — Ingest and Schema stay independently reachable throughout, and where
-the invitation holds the page's dominant action the header steps its own Ingest back to a
-secondary treatment.
+the invitation holds the page's dominant action the navigation steps its own Ingest back
+to a secondary treatment.
 
 ### Versioning is ambient, not modal
 
@@ -233,7 +239,8 @@ Schema version state is a persistent status line — `Version 1 active · unsave
 create v2` — never a tooltip, a dialog, or a disabled save button. The user should never
 have to press something to discover what pressing it would do. Its corollary, from
 principle 4: **Save Version is always enabled.** Pressing it with no changes shows a toast
-and issues no request.
+and issues no request. It is a `secondary` control: the project's navigation holds the
+page's filled one.
 
 ## Component contracts
 
@@ -272,8 +279,10 @@ The visual foundation defines layout *principles* ([`DESIGN.md`](../../../DESIGN
 exact values below are screen-level decisions of the current implementation and are owned
 here.
 
-- **Page widths**: lists/dashboards/detail `max-w-7xl`; forms/settings `max-w-3xl`;
-  centered, `px-4 md:px-6 py-6`.
+- **Page widths**: lists/dashboards/detail `max-w-[96rem]` (`ui-core`'s `PaddedContent`,
+  the one declaration the padded pane and the project shell share); forms/settings
+  `max-w-3xl`; centered, `px-4 md:px-6 py-6`. Inside a project the content keeps that
+  column beside a `220px` navigation column (`--spacing-project-nav`) at `lg` and above.
 - **Dialog widths**: the primitive's default `max-w-lg` for a confirmation or a form of
   stacked single fields; `max-w-2xl` for a form whose fields sit side by side (its grid
   splits on a *viewport* breakpoint, so the box must be wide enough for a split it cannot

@@ -27,9 +27,10 @@ without knowing the URL scheme.
 - **Ancestors only. The current page is the `<h1>`, never a crumb** — which is also why no
   crumb carries `aria-current`. A breadcrumb repeating the heading beneath it spends a line
   telling somebody what they are already reading.
-- **A tab in the query string is a level.** Tabs live in the URL because somebody links to
-  one and returns to it — that makes it somewhere you were, so it is somewhere you can be
-  sent back to.
+- **A project's section is a level.** Sections are path segments
+  (`/projects/:id/batches`) because somebody links to one and returns to it — that makes it
+  somewhere you were, so it is somewhere you can be sent back to. The gallery's chain ends
+  at the Batches section for that reason.
 - **The affordance names its destinations.** "Back" alone is a promise about history;
   "Projects", or a project's own name, is a promise about structure — the one the control
   can keep. A name that has not loaded yet falls back to the noun (`parentLabel`) rather
@@ -38,11 +39,13 @@ without knowing the URL scheme.
   wraps to a second line at any width.
 - **Placement follows the pane.** On a padded page it is `patterns/Breadcrumb.tsx` directly
   above the page header: meta-size, muted, `/` separators and no arrow, pulled left by the
-  gutter so the first crumb aligns with the `<h1>` beneath it. On the full-bleed annotation
-  editor there is **no chain** — the way out is the first control in the top bar, a ghost
-  back-arrow meaning *up*, because that bar's left zone is already truncating to hold the
-  navigation cluster on the bar's centre, and crumbs there would be paid for out of the
-  frame's identity readout.
+  gutter so the first crumb aligns with the `<h1>` beneath it. Inside a project the one
+  ancestor is the list, and that single level is drawn as the navigation column's own
+  `← Projects` rather than as a chain of one (see *Inside a project*). On the full-bleed
+  annotation editor there is **no chain** — the way out is the first control in the top
+  bar, a ghost back-arrow meaning *up*, because that bar's left zone is already truncating
+  to hold the navigation cluster on the bar's centre, and crumbs there would be paid for
+  out of the frame's identity readout.
 - **Below `lg` the same chain collapses to `← <immediate parent>`.** One component, one
   items array, one set of destinations, two presentations — and the collapse is CSS on one
   DOM node per crumb, never a second list, so nothing is read twice by a screen reader and
@@ -52,6 +55,36 @@ without knowing the URL scheme.
   than a dead one. A screen omits a level it has no callback for, which is what makes an
   empty chain mean *nothing to offer*. The host spells every URL; the screen supplies every
   label.
+
+## Inside a project
+
+- **The sections are a navigation column, not a tab bar.** At `lg` and above, every route
+  under `/projects/:id/` — the four sections (Overview, Schema, Batches, Dataset), the
+  ingest flow and the batch gallery — renders inside a `220px` column between the rail and
+  the content (`patterns/ProjectNav.tsx`, laid out by `ProjectShell`, composed by
+  `screens/ProjectFrame.tsx`). It renders nowhere else: not on the project list, Home,
+  Inference, or the annotator — the one page of a project that stands outside its frame,
+  because an editor needs the whole screen. A sub-view lights the section it belongs to
+  (the gallery lights Batches; an ingest, which is the project's rather than any one
+  section's, lights nothing) and keeps its own breadcrumb chain, which is still its
+  statement of ancestry.
+- **The column carries the project's identity and, on a section, its one filled control.**
+  Top to bottom: `← Projects`; the project's name (an `h2` — the page's `h1` is the open
+  section's title) and its description if there is one; the active-version chip, omitted
+  when there is no schema; **Annotate** as the one `primary` control of the project shell,
+  or Ingest in its place when no batch is open for annotation; one item per section, a
+  real link with `aria-current="page"` on the open one; the overflow (rename, delete) at
+  the bottom. Every section's own header uses `secondary` actions — Ingest beside Annotate
+  on Overview and Batches, Publish on Dataset, Save version on Schema. On a sub-view (the
+  gallery, the ingest flow) the column draws no filled control at all: that page owns its
+  dominant action, and a second one beside it would be two answers to "what now?".
+- **Below `lg` the same component collapses to the tab strip.** The identity row sits above
+  a horizontal tab bar over the content; the switch is a `matchMedia` answer, so one
+  navigation is in the DOM at a time and nothing is read twice. Same items, same data, two
+  layouts.
+- **The column's surface is `background` with a hairline**, not the rail's `sidebar-*`
+  tokens: it belongs to one project and reads as part of the page, where the rail belongs
+  to the workspace.
 
 ## The rail
 
@@ -71,19 +104,19 @@ without knowing the URL scheme.
 
 - **The browser's Back button stays correct, and is never the only way out.** Nothing here
   replaces it; a `replace` navigation is still right where a change is a view of the same
-  resource rather than a place (a tab, or the annotator's current asset). A URL that no
-  longer describes what is on screen is not a place you can send somebody, and `replace` is
-  what stops Back from walking back through tabs — or one picture at a time through an
-  annotation session.
+  resource rather than a place (a project's section, or the annotator's current asset). A
+  URL that no longer describes what is on screen is not a place you can send somebody, and
+  `replace` is what stops Back from walking back through sections — or one picture at a
+  time through an annotation session.
 - **A control that means "show me more of what I am already in" does not navigate.** The
   annotation page's arrow means *up*: it exits to the batch, saving first. Its grid button
   means *switch frames* — so it opens a gallery overlay inside the editor and the URL does
   not move. Going up and looking at your own frames are different intentions, and only one
   of them is a reason to leave. The overlay is a switcher and nothing else: no batch
   actions, no selection, no route change.
-- **Not everything selectable is a place.** A tab is in the query string because somebody
-  links to it and returns to it; the schema version somebody is glancing at is component
-  state, because it is a lens on the tab they are already in. The test is whether the thing
+- **Not everything selectable is a place.** A project's section is a path segment because
+  somebody links to it and returns to it; the schema version somebody is glancing at is
+  component state, because it is a lens on the section they are already in. The test is whether the thing
   survives being pasted to a colleague as a destination — if the answer is "they would want
   the current one instead", it is view state and the URL should not carry it. Getting this
   wrong in the other direction is worse than it looks: `ui-core` has no router, so every
