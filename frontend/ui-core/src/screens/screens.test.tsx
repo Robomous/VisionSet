@@ -276,11 +276,11 @@ describe("the project list", () => {
     expect(screen.queryByTestId("create-project-dialog")).toBeNull();
   });
 
-  it("renders a refusal as a sentence, not as the identifier a client branches on", async () => {
+  it("renders a name collision as the server's sentence, which names the name in the way", async () => {
     on("GET", /^\/projects$/, { status: 200, body: { items: [], total: 0 } });
     on("POST", /^\/projects$/, {
       status: 409,
-      body: { code: "PROJECT_NAME_TAKEN", message: "A project called highway already exists." },
+      body: { code: "PROJECT_NAME_TAKEN", message: "a project named 'Highway' already exists" },
     });
     const opened = vi.fn();
 
@@ -290,7 +290,9 @@ describe("the project list", () => {
     await userEvent.click(screen.getByTestId("create-submit"));
 
     const error = await screen.findByTestId("create-error");
-    expect(error.textContent).toContain("A project with that name already exists.");
+    // The stored casing is the fact: the typed `highway` is not the name in
+    // the list, `Highway` is, and no static sentence could say so.
+    expect(error.textContent).toContain("a project named 'Highway' already exists");
     expect(error.textContent).not.toContain("PROJECT_NAME_TAKEN");
     // The failure path is untouched: the dialog stays open with what was
     // typed still in it, and nothing navigates anywhere.

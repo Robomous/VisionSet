@@ -833,14 +833,14 @@ it("keeps what was typed when a create is refused", async () => {
   expect(value(screen.getByTestId("connection-name"))).toBe("remote");
 });
 
-it("says a taken connection name in words, not as an identifier", async () => {
+it("says which connection name is taken, in its stored casing, not as an identifier", async () => {
   listing([]);
   catalog();
   on("POST", /^\/inference\/connections$/, {
     status: 409,
     body: {
       code: "INFERENCE_CONNECTION_NAME_TAKEN",
-      message: "inference connection 'remote' already exists in workspace /tmp/ws",
+      message: "an inference connection named 'Remote' already exists",
     },
   });
   render(mount(<InferenceScreen />));
@@ -852,9 +852,8 @@ it("says a taken connection name in words, not as an identifier", async () => {
   await userEvent.type(screen.getByTestId("connection-endpoint"), "https://example.invalid");
   await userEvent.click(screen.getByTestId("connection-submit"));
   const shown = await screen.findByTestId("connection-error");
-  expect(shown.textContent).toContain("A model connection with that name already exists.");
+  expect(shown.textContent).toContain("an inference connection named 'Remote' already exists");
   expect(shown.textContent).not.toContain("INFERENCE_CONNECTION_NAME_TAKEN");
-  expect(shown.textContent).not.toContain("workspace");
 });
 
 it("has no credential field, because where a secret lives is still open", async () => {
