@@ -2676,7 +2676,13 @@ class WorkspaceTotalsOut(BaseModel):
 
 
 class ResumeTargetOut(BaseModel):
-    """The batch to carry on with, what for, and where inside it to land."""
+    """The batch to carry on with, what for, and where inside it to land.
+
+    `thumbnail_asset_id` names the frame that stands for the batch on the card
+    and `thumbnail_hash` is that asset's cached preview. Both are null for a
+    batch with no assets; the id set with a null hash means the asset has no
+    cached preview, so there is nothing to fetch.
+    """
 
     # What the batch is being offered for. Resolved by the kernel because the
     # order between the three is a decision rather than a fact the rest of this
@@ -2698,6 +2704,7 @@ class ResumeTargetOut(BaseModel):
     # review and unlabeled frames at once.
     review_pending: int
     thumbnail_asset_id: UUID | None
+    thumbnail_hash: str | None
 
     @classmethod
     def of(cls, resume: ResumeTarget) -> Self:
@@ -2713,6 +2720,7 @@ class ResumeTargetOut(BaseModel):
             total=resume.total,
             review_pending=resume.review_pending,
             thumbnail_asset_id=resume.thumbnail_asset_id,
+            thumbnail_hash=resume.thumbnail_hash,
         )
 
 

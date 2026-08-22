@@ -59,6 +59,7 @@ class Fixture:
         self.batches = BatchService(self.workspace)
         self.jobs = JobService(self.workspace)
         self.schemas = SchemaService(self.workspace)
+        self.previews: dict[UUID, str] = {}
         self._seed = 0
 
     def project(self, name: str) -> UUID:
@@ -66,23 +67,26 @@ class Fixture:
         self.schemas.create_version(project.id, [SIGN])
         return project.id
 
-    def assets(self, project_id: UUID, count: int) -> list[UUID]:
+    def assets(self, project_id: UUID, count: int, *, cached: bool = False) -> list[UUID]:
         made = []
         for _ in range(count):
             self._seed += 1
             seed = f"asset-{self._seed}"
             content_hash = self.workspace.blob_store.put(BytesIO(seed.encode()))
+            thumbnail_hash = f"{self._seed:064x}" if cached else None
             with self.workspace.unit_of_work() as uow:
-                made.append(
-                    uow.assets.add(
-                        Asset(
-                            project_id=project_id,
-                            content_hash=content_hash,
-                            uri=f"/tmp/{seed}.png",
-                            ingested_at=datetime.now(UTC),
-                        )
-                    ).id
+                added = uow.assets.add(
+                    Asset(
+                        project_id=project_id,
+                        content_hash=content_hash,
+                        thumbnail_hash=thumbnail_hash,
+                        uri=f"/tmp/{seed}.png",
+                        ingested_at=datetime.now(UTC),
+                    )
                 )
+            made.append(added.id)
+            if thumbnail_hash is not None:
+                self.previews[added.id] = thumbnail_hash
         return made
 
     def open_batch(self, project_id: UUID, name: str, assets: list[UUID]) -> tuple[UUID, UUID]:
@@ -741,6 +745,39 @@ def test_a_finished_batch_still_shows_a_picture(tmp_path: Path) -> None:
         assert resume is not None
         assert resume.next_asset_id is None
         assert resume.thumbnail_asset_id == assets[0]
+    finally:
+        fixture.close()
+
+
+def test_the_cards_picture_carries_its_own_cached_preview(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        assets = fixture.assets(project, 3, cached=True)
+        _, job = fixture.open_batch(project, "b", assets)
+        fixture.annotate(job, [assets[0]])
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.thumbnail_asset_id == assets[1]
+        assert resume.thumbnail_hash == fixture.previews[assets[1]]
+    finally:
+        fixture.close()
+
+
+def test_an_uncached_cards_picture_has_no_hash(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        assets = fixture.assets(project, 2)
+        fixture.open_batch(project, "b", assets)
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.thumbnail_asset_id == assets[0]
+        assert resume.thumbnail_hash is None
     finally:
         fixture.close()
 

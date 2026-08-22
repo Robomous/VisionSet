@@ -104,6 +104,11 @@ def test_a_partly_labeled_batch_reports_where_to_land(
 
     assert resume["next_asset_id"] == assets[2]
     assert resume["thumbnail_asset_id"] == assets[2]
+    # Ingest cached a preview for every frame, and the card's picture carries
+    # its hash — a client with the id alone cannot tell "fetch and see" from
+    # "known absent" (the placeholder Home shipped with).
+    asset = client.get(f"/projects/{resume['project_id']}/assets/{assets[2]}").json()
+    assert resume["thumbnail_hash"] == asset["thumbnail_hash"] is not None
     assert resume["batch_name"]
     assert resume["project_name"]
 
