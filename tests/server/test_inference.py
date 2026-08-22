@@ -1014,6 +1014,7 @@ def test_the_download_is_on_the_connection_before_a_worker_touches_it(
             "bytes_done": 0,
             "bytes_total": None,
             "error": None,
+            "error_code": None,
         }
         assert row["setup_state"] == "not_set_up"
 
@@ -1175,6 +1176,7 @@ def test_a_queued_check_is_visible_with_nobody_polling_the_job(
             "files_read": 0,
             "files_total": None,
             "error": None,
+            "error_code": None,
         }
         # The connection is still `ready`: a check in flight is not a setup state.
         assert row["setup_state"] == "ready"
@@ -1465,8 +1467,22 @@ def test_the_two_runs_are_separate_records_on_one_row(
 
     assert row["download"]["bytes_total"] == FETCHED_BYTES
     assert row["integrity_check"]["job_id"] != row["download"]["job_id"]
-    assert set(row["integrity_check"]) == {"job_id", "state", "files_read", "files_total", "error"}
-    assert set(row["download"]) == {"job_id", "state", "bytes_done", "bytes_total", "error"}
+    assert set(row["integrity_check"]) == {
+        "job_id",
+        "state",
+        "files_read",
+        "files_total",
+        "error",
+        "error_code",
+    }
+    assert set(row["download"]) == {
+        "job_id",
+        "state",
+        "bytes_done",
+        "bytes_total",
+        "error",
+        "error_code",
+    }
 
 
 # --- asking an endpoint what it answers -----------------------------------------

@@ -33,6 +33,7 @@ from typing import Any
 
 from visionset.jobs import JobRunner
 from visionset.server.dependencies import WorkspaceHandle
+from visionset.server.errors import code_for
 
 #: Long enough that a loaded CI runner does not trip it, short enough that a
 #: genuine deadlock fails the suite rather than hanging it.
@@ -129,6 +130,9 @@ class ManualDispatcher:
                 # assertion about progress depend on how fast the test ran.
                 progress_min_interval_s=0,
                 executor_factory=lambda _: InlineExecutor(),
+                # Production's wiring, so a route test reads the code a failed
+                # job really settles under rather than the harness's silence.
+                error_code=code_for,
             )
         return self._runner
 

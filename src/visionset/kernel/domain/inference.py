@@ -493,6 +493,9 @@ class ConnectionJob(BaseModel):
     #: Why it failed, in the sentence the handler wrote. ``None`` unless
     #: :attr:`state` is ``failed``.
     error: str | None = None
+    #: That sentence's stable identifier, where the row has one. See
+    #: ``BackgroundJob.error_code``.
+    error_code: str | None = None
 
     @classmethod
     def of(cls, job: BackgroundJob) -> Self:
@@ -516,6 +519,7 @@ class ConnectionJob(BaseModel):
             job_id=job.id,
             state=job.state,
             error=job.error,
+            error_code=job.error_code,
             **cls._counts(job),
         )
 
@@ -672,6 +676,9 @@ class PreLabelRun(BaseModel):
     #: Why it failed, in the handler's own sentence. ``None`` unless
     #: :attr:`state` is ``failed``.
     error: str | None = None
+    #: That sentence's stable identifier, where the row has one. See
+    #: ``BackgroundJob.error_code``.
+    error_code: str | None = None
     #: Whether the run stopped before reaching every eligible asset —
     #: cancelled, or an orphan a crash left behind. ``None`` until the job
     #: settles with a result.
@@ -731,6 +738,7 @@ class PreLabelRun(BaseModel):
             assets_processed=_at_most(job.processed, job.total),
             assets_total=job.total,
             error=job.error,
+            error_code=job.error_code,
             stopped_early=stopped_early if isinstance(stopped_early, bool) else None,
             assets_labeled=_result_int(assets_labeled),
             regions_discarded=_result_int(regions_discarded),

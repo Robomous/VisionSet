@@ -219,6 +219,31 @@ def test_a_failed_outcome_must_say_why(queue: JobQueue) -> None:
         BackgroundJobOutcome(state=BackgroundJobState.FAILED)
 
 
+def test_a_failure_keeps_the_code_it_settled_under_and_a_reread_returns_it(
+    queue: JobQueue,
+) -> None:
+    job = queue.enqueue(spec())
+    queue.claim("a")
+
+    queue.finish(
+        job.id,
+        BackgroundJobOutcome(
+            state=BackgroundJobState.FAILED,
+            error="no batch called that",
+            error_code="BATCH_NOT_FOUND",
+        ),
+    )
+
+    stored = queue.get(job.id)
+    assert stored is not None
+    assert (stored.error, stored.error_code) == ("no batch called that", "BATCH_NOT_FOUND")
+
+
+def test_a_succeeded_outcome_carries_no_code_either(queue: JobQueue) -> None:
+    with pytest.raises(ValueError, match="carries no error"):
+        BackgroundJobOutcome(state=BackgroundJobState.SUCCEEDED, error_code="BATCH_NOT_FOUND")
+
+
 def test_an_outcome_must_be_terminal(queue: JobQueue) -> None:
     with pytest.raises(ValueError, match="terminal"):
         BackgroundJobOutcome(state=BackgroundJobState.RUNNING)

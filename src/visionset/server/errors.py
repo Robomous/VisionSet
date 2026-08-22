@@ -524,6 +524,19 @@ def rule_for(exc: BaseException) -> ErrorRule | None:
     return None
 
 
+def code_for(exc: BaseException) -> str | None:
+    """The code ``exc`` would be answered under, or ``None`` if the table has none.
+
+    What the job runner is handed, so a refusal settles under the same code
+    whether it was answered to the request or happened inside the job the
+    request queued. ``None`` rather than ``UNMAPPED_CODE`` for an unmapped
+    exception: on the request path that is a 500 with an incident id, and on a
+    job row a code nobody declared would be a fiction a client branched on.
+    """
+    rule = rule_for(exc)
+    return None if rule is None else rule.code
+
+
 def _detail_for(exc: BaseException) -> dict[str, Any] | None:
     if isinstance(exc, MediaError):
         # ``reason`` only. ``name`` is "a path for a file on disk" from a

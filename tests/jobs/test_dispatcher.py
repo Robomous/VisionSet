@@ -28,6 +28,7 @@ from visionset.kernel.domain import (
     BackgroundJobSucceeded,
     DomainEvent,
 )
+from visionset.kernel.errors import BatchNotFound
 from visionset.kernel.services import WorkspaceService
 
 #: What the handler below was asked to do, per job id. A module global because a
@@ -41,6 +42,8 @@ def spy(workspace_root: Path, payload: dict[str, Any], reporter: Any) -> dict[st
     CALLS.append({"root": workspace_root, "payload": payload})
     if payload.get("explode"):
         raise RuntimeError("the handler said no")
+    if payload.get("refuse"):
+        raise BatchNotFound("no batch called that")
     if payload.get("check_cancel") and reporter.is_cancelled():
         return {}
     reporter.report(processed=2, total=2)
@@ -145,6 +148,44 @@ def test_a_handler_that_raises_fails_the_job_and_carries_its_words(
     assert stored is not None
     assert stored.state is BackgroundJobState.FAILED
     assert stored.error == "the handler said no"
+
+
+def test_a_declared_error_settles_under_the_code_the_runner_was_handed(
+    workspace: WorkspaceService,
+) -> None:
+    runner = JobRunner(
+        workspace.job_queue,
+        workspace.root,
+        workers=1,
+        progress_min_interval_s=0,
+        executor_factory=lambda _: InlineExecutor(),
+        error_code=lambda exc: "BATCH_NOT_FOUND" if isinstance(exc, BatchNotFound) else None,
+    )
+    refused = queued(workspace, refuse=True)
+    exploded = queued(workspace, explode=True)
+
+    runner.drain()
+
+    for job_id, expected in ((refused.id, "BATCH_NOT_FOUND"), (exploded.id, None)):
+        stored = workspace.job_queue.get(job_id)
+        assert stored is not None
+        assert (stored.state, stored.error_code) == (BackgroundJobState.FAILED, expected)
+
+
+def test_a_runner_handed_no_namer_settles_a_failure_with_no_code(
+    workspace: WorkspaceService, runner: JobRunner
+) -> None:
+    job = queued(workspace, refuse=True)
+
+    runner.drain()
+
+    stored = workspace.job_queue.get(job.id)
+    assert stored is not None
+    assert (stored.state, stored.error, stored.error_code) == (
+        BackgroundJobState.FAILED,
+        "no batch called that",
+        None,
+    )
 
 
 def test_a_job_nothing_can_run_is_failed_without_reaching_a_worker(

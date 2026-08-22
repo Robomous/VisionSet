@@ -316,6 +316,19 @@ def _add_provider_id(connection: Connection) -> None:
     _add_column(connection, "inference_connection", "provider_id")
 
 
+def _add_job_error_code(connection: Connection) -> None:
+    """``job.error_code``: the stable identifier of a failed job's ``error``.
+
+    Nothing is backfilled. A settled row carries only the sentence its exception
+    was rendered to, and the class that sentence came from was discarded at the
+    settle — so there is nothing on disk to derive a code from, and guessing one
+    from the wording would couple the store to the kernel's prose. Existing
+    failures stay NULL, which reads as *no code was recorded*, and rows settled
+    from now on carry the one the runner was handed.
+    """
+    _add_column(connection, "job", "error_code")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -328,6 +341,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=9, name="job_assignee", upgrade=_add_job_assignee),
     Migration(version=10, name="schema_drafts", upgrade=_add_schema_drafts),
     Migration(version=11, name="provider_id", upgrade=_add_provider_id),
+    Migration(version=12, name="job_error_code", upgrade=_add_job_error_code),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

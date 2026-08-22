@@ -104,10 +104,16 @@ class JobRunner:
         poll_interval_s: float = DEFAULT_POLL_INTERVAL_S,
         progress_min_interval_s: float = 0.5,
         executor_factory: Callable[[int], Executor] | None = None,
+        error_code: Callable[[BaseException], str | None] | None = None,
     ) -> None:
         self._queue = queue
         self._root = workspace_root
         self._events = event_bus
+        #: Names the code a failure settles under — the same one the request
+        #: path would answer for that exception. Handed in rather than looked
+        #: up, because the table lives with the surface that publishes codes
+        #: and this package imports no surface. ``None`` means nothing is named.
+        self._error_code = error_code
         self._workers = max(1, workers)
         self._poll_interval_s = poll_interval_s
         self._progress_min_interval_s = progress_min_interval_s
@@ -322,7 +328,7 @@ class JobRunner:
             # ``BrokenProcessPool`` lands here too, which is the whole crash story
             # for a worker killed mid-flight: the future raises, and the job is
             # failed on its own row rather than left claiming to run.
-            self._settle_failure(job, str(exc) or exc.__class__.__name__)
+            self._settle_failure(job, str(exc) or exc.__class__.__name__, self._code_for(exc))
             return
 
         state = BackgroundJobState.CANCELLED if outcome.cancelled else BackgroundJobState.SUCCEEDED
@@ -346,8 +352,13 @@ class JobRunner:
                 )
             )
 
-    def _settle_failure(self, job: BackgroundJob, error: str) -> None:
-        self._finish(job, BackgroundJobOutcome(state=BackgroundJobState.FAILED, error=error))
+    def _code_for(self, exc: BaseException) -> str | None:
+        return None if self._error_code is None else self._error_code(exc)
+
+    def _settle_failure(self, job: BackgroundJob, error: str, code: str | None = None) -> None:
+        self._finish(
+            job, BackgroundJobOutcome(state=BackgroundJobState.FAILED, error=error, error_code=code)
+        )
         self._announce(
             BackgroundJobFailed(job_id=job.id, job_type=job.type, error=error, attempt=job.attempt)
         )

@@ -198,11 +198,17 @@ class BackgroundJobOutcome(BaseModel):
     processed: int = Field(default=0, ge=0)
     total: int | None = Field(default=None, ge=0)
     failures: tuple[ItemFailure, ...] = ()
+    #: The stable identifier of ``error``, where the failure was a declared
+    #: error and whoever settled the job knew how to name it. See
+    #: ``BackgroundJob.error_code``.
+    error_code: str | None = None
 
     def model_post_init(self, _: object, /) -> None:
         if self.state not in SETTLED_JOB_STATES:
             raise ValueError(f"an outcome must be terminal, not {self.state}")
-        if self.state is BackgroundJobState.SUCCEEDED and self.error is not None:
+        if self.state is BackgroundJobState.SUCCEEDED and (
+            self.error is not None or self.error_code is not None
+        ):
             raise ValueError("a succeeded outcome carries no error")
         if self.state is BackgroundJobState.FAILED and not self.error:
             raise ValueError("a failed outcome must say why")
@@ -254,6 +260,13 @@ class BackgroundJob(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    #: The machine-readable identifier of ``error`` — the same code the request
+    #: path answers for that error class — or NULL where the failure was not a
+    #: declared error, or nobody settling the job could name it. The kernel
+    #: stores it and never assigns it: codes are a delivery vocabulary, handed
+    #: to the runner by whoever owns that table. Declared last because it
+    #: arrived by ``ALTER TABLE``.
+    error_code: str | None = None
 
     @property
     def settled(self) -> bool:

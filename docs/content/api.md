@@ -321,7 +321,10 @@ The two surfaces are separate because they describe different things. An ingest 
 is *about* - a source, a batch - and publishes those as fields a client can navigate. A background
 job is about whatever its payload says, so it publishes `type` and `result` instead. What they
 share is the progress shape, deliberately: `processed`, `total`, `failures` and `error` mean the
-same thing on both, so a progress bar written against one renders the other unchanged.
+same thing on both, so a progress bar written against one renders the other unchanged. A
+background job that failed on a declared error also carries `error_code` — the code the same
+refusal answers under when it happens to a request — and `null` where the failure was anything
+else; branch on it exactly as you would on an error body's `code`, never on the sentence.
 
 **There is no `POST /background-jobs`.** What work means belongs to the resource it is about, so
 every launch is on that resource. A generic route taking a type and a payload would be a

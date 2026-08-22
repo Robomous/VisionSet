@@ -101,6 +101,7 @@ class SqliteJobQueue:
                     update={
                         "state": outcome.state,
                         "error": outcome.error,
+                        "error_code": outcome.error_code,
                         "result": dict(outcome.result),
                         "processed": outcome.processed,
                         "total": outcome.total if outcome.total is not None else job.total,

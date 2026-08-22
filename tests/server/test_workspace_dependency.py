@@ -16,7 +16,14 @@ from fastapi.testclient import TestClient
 from tests.server._probe import PROBE_PATH, counting_handle, handle_for, probe_app, workspace_app
 
 from visionset.kernel.services import TokenService, WorkspaceService
-from visionset.server.dependencies import WORKSPACE_ENV_VAR, WorkspaceHandle, resolve_workspace_root
+from visionset.server import dependencies
+from visionset.server.dependencies import (
+    WORKSPACE_ENV_VAR,
+    DispatcherHandle,
+    WorkspaceHandle,
+    resolve_workspace_root,
+)
+from visionset.server.errors import code_for
 from visionset.server.main import create_app
 
 
@@ -212,3 +219,27 @@ def test_a_server_pointed_at_a_non_workspace_answers_500_not_a_workspace(
     assert body["detail"]["incident_id"]
     assert "nothing-here" not in response.text
     assert "nothing-here" in caplog.text
+
+
+def test_the_dispatcher_settles_failures_under_the_request_paths_codes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One table for both paths: the runner is handed `code_for`, not a copy of it."""
+    built: dict[str, object] = {}
+
+    class Recorder:
+        def __init__(self, *_: object, **kwargs: object) -> None:
+            built.update(kwargs)
+
+        def start(self) -> None:
+            pass
+
+    monkeypatch.setattr(dependencies, "JobRunner", Recorder)
+    WorkspaceService.init(tmp_path / "ws").close()
+    handle = handle_for(tmp_path / "ws")
+    try:
+        DispatcherHandle(handle).start()
+    finally:
+        handle.close()
+
+    assert built["error_code"] is code_for
