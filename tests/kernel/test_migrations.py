@@ -183,6 +183,7 @@ def _at_generation_one(path: Path) -> None:
         connection.execute(text("ALTER TABLE annotation_job DROP COLUMN assignee"))
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN provider_id"))
         connection.execute(text("ALTER TABLE job DROP COLUMN error_code"))
+        connection.execute(text("ALTER TABLE inference_connection DROP COLUMN credential_env"))
         connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 1"))
     store.close()
 
@@ -252,7 +253,7 @@ _DECLARED_TAILS = {
     # Migration 7 then migration 11, in that order — the second appended column
     # is what gives this table an order to get wrong, which is why it earns an
     # entry only now.
-    "inference_connection": ["model_family", "provider_id"],
+    "inference_connection": ["model_family", "provider_id", "credential_env"],
     "job": ["error_code"],
 }
 

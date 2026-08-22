@@ -442,6 +442,7 @@ def _connection_to_row(entity: InferenceConnection) -> t.Base:
         updated_at=entity.updated_at.isoformat(),
         model_family=entity.model_family,
         provider_id=entity.provider_id,
+        credential_env=entity.credential_env,
     )
 
 
@@ -462,6 +463,7 @@ def _connection_to_domain(_: Session, row: Any) -> InferenceConnection:
         # and declared nothing must not come back as one nobody has looked at.
         model_family=row.model_family,
         provider_id=row.provider_id,
+        credential_env=row.credential_env,
     )
 
 

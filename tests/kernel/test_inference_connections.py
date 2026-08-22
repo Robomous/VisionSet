@@ -753,3 +753,46 @@ def test_moving_the_endpoint_forgets_what_the_old_one_declared(connections) -> N
     moved = connections.update(hosted.id, endpoint_url="https://example.invalid/other")
     assert moved.model_family is None
     assert moved.provider_id == "http", "the driver still serves it; only the declaration is stale"
+
+
+# --- the credential: a variable's name, never the secret -----------------------
+
+
+def test_an_http_connection_names_the_variable_holding_its_credential() -> None:
+    made = InferenceConnection(name="x", **HTTP, credential_env="ACME_TOKEN")
+    assert made.credential_env == "ACME_TOKEN"
+
+
+def test_a_local_connection_cannot_carry_a_credential_variable() -> None:
+    with pytest.raises(ValidationError, match="local connection cannot carry credential_env"):
+        InferenceConnection(name="x", **LOCAL, credential_env="ACME_TOKEN")
+
+
+@pytest.mark.parametrize("written", ["", "  ", "9TOKEN", "ACME-TOKEN", "ACME TOKEN", "a.b"])
+def test_a_name_no_shell_would_accept_as_a_variable_is_refused(written: str) -> None:
+    with pytest.raises(ValidationError, match="credential_env"):
+        InferenceConnection(name="x", **HTTP, credential_env=written)
+
+
+def test_the_credential_variable_is_stored_and_cleared_by_the_empty_string(
+    connections,  # noqa: ANN001
+) -> None:
+    """`None` keeps its meaning of *leave this alone* on an edit, so the one
+    value that removes a credential is the empty string — the only shape a form
+    with a cleared input can send."""
+    hosted = connections.create("hosted", **HTTP, credential_env="ACME_TOKEN")
+    assert hosted.credential_env == "ACME_TOKEN"
+    renamed = connections.update(hosted.id, name="still-hosted")
+    assert renamed.credential_env == "ACME_TOKEN"
+    cleared = connections.update(hosted.id, credential_env="")
+    assert cleared.credential_env is None
+    blank_on_create = connections.create("bare", **HTTP, credential_env="")
+    assert blank_on_create.credential_env is None
+
+
+def test_changing_the_credential_variable_forgets_nothing(connections) -> None:  # noqa: ANN001
+    hosted = connections.create("hosted", **HTTP)
+    connections.record_endpoint_answer(hosted.id, model_family="point_suggest", provider_id="http")
+    edited = connections.update(hosted.id, credential_env="ACME_TOKEN")
+    assert (edited.model_family, edited.provider_id) == ("point_suggest", "http")
+    assert edited.setup_state is ConnectionSetupState.READY

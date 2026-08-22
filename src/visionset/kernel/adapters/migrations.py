@@ -329,6 +329,17 @@ def _add_job_error_code(connection: Connection) -> None:
     _add_column(connection, "job", "error_code")
 
 
+def _add_credential_env(connection: Connection) -> None:
+    """``inference_connection.credential_env``: the name of the environment
+    variable holding an http connection's credential.
+
+    Nothing is backfilled: no row written before this column could have named
+    one, and NULL reads as *no credential*, which is what every such connection
+    has been sending all along.
+    """
+    _add_column(connection, "inference_connection", "credential_env")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -342,6 +353,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=10, name="schema_drafts", upgrade=_add_schema_drafts),
     Migration(version=11, name="provider_id", upgrade=_add_provider_id),
     Migration(version=12, name="job_error_code", upgrade=_add_job_error_code),
+    Migration(version=13, name="credential_env", upgrade=_add_credential_env),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

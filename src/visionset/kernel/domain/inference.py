@@ -185,6 +185,9 @@ than silently rewriting it to the nearest member.
 """
 
 DEVICE_PATTERN: Final = re.compile(r"^(?:cpu|mps|cuda(?::\d+)?)$")
+#: What POSIX lets a shell name a variable. Stricter spellings exist on some
+#: platforms; none of them is one a credential is worth refusing over.
+_ENV_NAME_PATTERN: Final = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 """Every device string this build can honestly run on.
 
 A pattern rather than an enum because of the one member that is not a fixed
@@ -837,6 +840,16 @@ class InferenceConnection(BaseModel):
     #: which the kernel is forbidden to reach. A recorded provider that is not
     #: installed is refused where the registry can be seen, not here.
     provider_id: str | None = None
+    #: ``http`` only. The **name** of an environment variable whose value is the
+    #: credential the endpoint wants — never the credential itself. The workspace
+    #: is a plain SQLite file that travels in backups and copies, so a secret
+    #: stored in it would be stored wherever the file goes; a name is not a
+    #: secret, and the process that speaks to the endpoint reads the value from
+    #: its own environment at call time. Validated as a name a shell would
+    #: accept, because that is the one thing that is knowable here: whether the
+    #: variable is *set* is a fact about the process, and is judged by the driver
+    #: when it is about to need it.
+    credential_env: str | None = None
 
     @field_validator("name", "model_id", "model_revision")
     @classmethod
@@ -855,6 +868,16 @@ class InferenceConnection(BaseModel):
             raise ValueError(
                 "provider_id is a driver's own id or nothing at all; "
                 "a blank string says the same as no value and hides that it does"
+            )
+        return value
+
+    @field_validator("credential_env")
+    @classmethod
+    def _is_a_variable_name(cls, value: str | None) -> str | None:
+        if value is not None and not _ENV_NAME_PATTERN.fullmatch(value):
+            raise ValueError(
+                "credential_env is the name of an environment variable — letters, digits and "
+                "underscores, not starting with a digit — or nothing at all"
             )
         return value
 
@@ -915,7 +938,7 @@ class InferenceConnection(BaseModel):
         """
         local = self.connection_type is ConnectionType.LOCAL
         required = ("device", "precision") if local else ("endpoint_url",)
-        forbidden = ("endpoint_url",) if local else ("device", "precision")
+        forbidden = ("endpoint_url", "credential_env") if local else ("device", "precision")
         for field in required:
             value = getattr(self, field)
             if value is None or not value.strip():

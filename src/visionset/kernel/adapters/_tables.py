@@ -739,10 +739,9 @@ class InferenceConnectionRow(Base):
     already refuses the combinations that make no sense. A blob would move a rule
     the domain enforces into a shape nothing can index or inspect.
 
-    No credential column, and its absence is deliberate rather than pending:
-    where an HTTP connection's secret lives is still an open decision, and a
-    nullable column added "for later" would answer it by default, in the
-    direction nobody chose.
+    No credential column, by decision rather than omission: ``credential_env``
+    holds the *name* of an environment variable and the secret itself never
+    enters this file — see ``InferenceConnection.credential_env``.
     """
 
     __tablename__ = "inference_connection"
@@ -780,6 +779,9 @@ class InferenceConnectionRow(Base):
     #: ``InferenceConnection.provider_id`` carries why it is kept beside a family
     #: rather than instead of one.
     provider_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: After ``provider_id``, on the same rule. An environment variable's name,
+    #: never its value.
+    credential_env: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 #: Connection names are unique in the workspace, case-insensitively.
