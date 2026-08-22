@@ -1982,11 +1982,11 @@ test("every other route keeps the padded, capped container", async ({ page }) =>
   const main = page.locator("main");
   await expect(main).toBeVisible();
   const box = (await main.boundingBox())!;
-  const inner = (await main.locator(".max-w-\\[96rem\\]").first().boundingBox())!;
+  const inner = (await main.locator(".max-w-page").first().boundingBox())!;
 
   // The pane is still the full width beside the rail…
   expect(box.width).toBeCloseTo(await paneWidth(page), 0);
-  // …and the *content* inside it is capped at `96rem` and inset on both axes,
+  // …and the *content* inside it is capped at `max-w-page` (96rem) and inset on both axes,
   // which is right for a list and is what must not move. Measured against the
   // pane's own origin, because the padding lives inside `<main>` rather than
   // above it.
@@ -2021,7 +2021,7 @@ test("the rail keeps its collapsed state when the pane changes", async ({ page }
   // Full-bleed → padded, by a client-side navigation. A reload would remount
   // everything and prove nothing about the route tree.
   await page.getByTestId("rail-projects").click();
-  await expect(page.locator("main .max-w-\\[96rem\\]")).toBeVisible();
+  await expect(page.locator("main .max-w-page")).toBeVisible();
   await expect(page.getByTestId("annotation-page")).toHaveCount(0);
   await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
 

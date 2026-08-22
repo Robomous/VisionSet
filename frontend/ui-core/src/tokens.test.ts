@@ -213,10 +213,11 @@ describe("@theme inline", () => {
     expect(inline.get("--radius-4xl")).toBe("calc(var(--radius) * 2.6)");
   });
 
-  it("carries the sidebar rail's two layout widths and the project column's one", () => {
+  it("carries the sidebar rail's two layout widths, the project column's, and the page's cap", () => {
     expect(inline.get("--spacing-sidebar")).toBe("240px");
     expect(inline.get("--spacing-sidebar-collapsed")).toBe("48px");
     expect(inline.get("--spacing-project-nav")).toBe("180px");
+    expect(inline.get("--container-page")).toBe("96rem");
   });
 });
 

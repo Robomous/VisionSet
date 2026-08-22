@@ -87,7 +87,7 @@ composition-only.
 
 | pane | routes | treatment |
 | --- | --- | --- |
-| `PaddedPane` | everything else | `ui-core`'s `PaddedContent`: `px-4 py-6 md:px-6`, content capped at `max-w-[96rem]` |
+| `PaddedPane` | everything else | `ui-core`'s `PaddedContent`: `px-4 py-6 md:px-6`, content capped at `max-w-page` (`--container-page: 96rem`) |
 | `ProjectPane` | `/projects/:id/<section>`, `/projects/:id/ingest`, `/projects/:id/batches/:id` | the whole width beside the rail, no padding of its own: `ProjectFrame` lays out the project's navigation column and the same padded, capped content column |
 | `FullBleedPane` | `/jobs/:jobId` | the whole viewport beside the rail, `h-screen`, `overflow-hidden` |
 

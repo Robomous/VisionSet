@@ -191,6 +191,7 @@
   --spacing-sidebar: 240px;
   --spacing-sidebar-collapsed: 48px;
   --spacing-project-nav: 180px;
+  --container-page: 96rem;
 }
 
 @layer base {

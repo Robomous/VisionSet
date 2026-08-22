@@ -182,28 +182,22 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
             })}
         data-testid="dataset-tabs"
       >
-        {/* A row on a full-width hairline, the active tab's rule sitting on it —
-            the product's one tab shape, with the count beside the two views
-            whose size is the first thing anybody asks. */}
-        <div className="border-b">
-          <TabsList variant="line">
-            <TabsTrigger value="overview" data-testid="dataset-tab-overview">
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="assets" data-testid="dataset-tab-assets">
-              Assets
-              {stats.data !== undefined && (
-                <span className="tabular-nums text-muted-foreground">{stats.data.asset_count}</span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="releases" data-testid="dataset-tab-releases">
-              Releases
-              {releases.data !== undefined && (
-                <span className="tabular-nums text-muted-foreground">{releases.data.total}</span>
-              )}
-            </TabsTrigger>
-          </TabsList>
-        </div>
+        {/* The product's one tab shape — a row on a full-width hairline, the
+            active tab's rule sitting on it — with the count as a chip beside the
+            two views whose size is the first thing anybody asks. */}
+        <TabsList variant="line">
+          <TabsTrigger value="overview" data-testid="dataset-tab-overview">
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="assets" data-testid="dataset-tab-assets">
+            Assets
+            {stats.data !== undefined && <Badge>{stats.data.asset_count}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="releases" data-testid="dataset-tab-releases">
+            Releases
+            {releases.data !== undefined && <Badge>{releases.data.total}</Badge>}
+          </TabsTrigger>
+        </TabsList>
 
         <TabsContent value="overview">
         <Async query={stats} loadingRows={3}>

@@ -52,6 +52,7 @@ import {
   ProjectFrame,
   ProjectScreen,
   ProjectsScreen,
+  type ProjectFrameProps,
   type ProjectSection,
 } from "@visionset/ui-core";
 import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router";
@@ -360,7 +361,7 @@ function Gallery(): JSX.Element {
 function frameProps(
   projectId: string,
   navigate: ReturnType<typeof useNavigate>,
-): Omit<Parameters<typeof ProjectFrame>[0], "active" | "chain" | "children"> {
+): Omit<ProjectFrameProps, "active" | "chain" | "children"> {
   return {
     projectId,
     sections: PROJECT_SECTIONS,

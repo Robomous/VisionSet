@@ -7,8 +7,10 @@
  * `TabsList`'s `variant` prop defaults to `"default"`: a `bg-muted` pill with
  * the active tab raised onto `bg-background` behind a hairline shadow, Nova's
  * own segmented-control recipe. A caller that wants the underline shape
- * instead — a row on a transparent list, the active tab wearing a 2px accent
- * rule under it rather than a pill — passes `variant="line"`. `tabsListVariants`
+ * instead — a row on a full-width hairline, content-sized tabs, the active one
+ * wearing a 2px rule that sits on the line — passes `variant="line"`. The
+ * hairline is the variant's own, so no consumer draws one around the list
+ * (`docs/content/ui/product-principles.md`, *Tabs*). `tabsListVariants`
  * (a `cva`, unexported) holds both as data, the same shape `buttonVariants`
  * uses for its own variants, rather than as a chain of ternaries a second
  * shape would have to be threaded through by hand.
@@ -78,7 +80,7 @@ const tabsListVariants = cva(
     variants: {
       variant: {
         default: "bg-muted",
-        line: "gap-1 bg-transparent",
+        line: "w-full justify-start gap-1 border-b bg-transparent",
       },
     },
     defaultVariants: {
@@ -120,7 +122,7 @@ export const TabsTrigger = forwardRef<
           "group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm " +
           "group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none " +
           "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        "group-data-[variant=line]/tabs-list:bg-transparent " +
+        "group-data-[variant=line]/tabs-list:flex-none group-data-[variant=line]/tabs-list:bg-transparent " +
           "group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent " +
           "dark:group-data-[variant=line]/tabs-list:data-[state=active]:border-transparent " +
           "dark:group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent",

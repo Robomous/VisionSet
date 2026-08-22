@@ -56,6 +56,7 @@ import {
   IconTrash,
   IconUpload,
 } from "@tabler/icons-react";
+import { cva } from "class-variance-authority";
 import type { ComponentType, JSX, MouseEvent, ReactNode } from "react";
 
 import { cn } from "../lib/cn";
@@ -88,6 +89,24 @@ interface SectionLabel {
   readonly label: string;
   readonly icon: ComponentType<{ readonly className?: string; readonly "aria-hidden"?: boolean | "true" }>;
 }
+
+/**
+ * One item of the column, as data: the `Button` convention, so "the open
+ * section is the accent fill plus weight" is a lookup rather than a ternary.
+ */
+const navItemVariants = cva(
+  "flex h-8 w-full items-center gap-1.5 rounded-md px-2.5 text-sm outline-none " +
+    "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
+  {
+    variants: {
+      current: {
+        true: "bg-accent font-medium text-accent-foreground",
+        false: "text-muted-foreground",
+      },
+    },
+    defaultVariants: { current: false },
+  },
+);
 
 const SECTION_LABELS: Record<ProjectSection, SectionLabel> = {
   overview: { label: "Overview", icon: IconLayoutGrid },
@@ -147,15 +166,10 @@ function Column(props: ProjectNavProps): JSX.Element {
         {sections.map((section) => {
           const { label, icon: Icon } = SECTION_LABELS[section];
           const current = section === active;
-          const className = cn(
-            "flex h-8 w-full items-center gap-1.5 rounded-md px-2.5 text-sm outline-none",
-            "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
-            current ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground",
-          );
           const shared = {
             "data-testid": `nav-${section}`,
             "aria-current": current ? ("page" as const) : undefined,
-            className,
+            className: cn(navItemVariants({ current })),
           };
           return (
             <li key={section}>
@@ -181,10 +195,10 @@ function Column(props: ProjectNavProps): JSX.Element {
 }
 
 /**
- * The strip: the sections as a tab bar on the left, the filled control and the
- * overflow on the right, the content in the panel beneath. A Radix `Tabs` rather
- * than a second list of links, so the panel is labelled by its tab and the gap
- * between the two is the primitive's own.
+ * The strip: the filled control and the overflow on a row, the sections as a
+ * full-width tab bar under it, the content in the panel beneath. A Radix `Tabs`
+ * rather than a second list of links, so the panel is labelled by its tab and the
+ * gaps between the three are the primitive's own.
  */
 function Strip(props: ProjectNavProps): JSX.Element {
   const { sections, active, onNavigate, children } = props;
@@ -200,23 +214,21 @@ function Strip(props: ProjectNavProps): JSX.Element {
       }}
       data-testid="project-tabs"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <TabsList variant="line">
-          {sections.map((section) => {
-            const { label, icon: Icon } = SECTION_LABELS[section];
-            return (
-              <TabsTrigger key={section} value={section} data-testid={`nav-${section}`}>
-                <Icon className="size-4" aria-hidden="true" />
-                {label}
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
-        <div className="flex items-center gap-2">
-          <Cta {...props} />
-          <Overflow {...props} />
-        </div>
+      <div className="flex items-center justify-end gap-2">
+        <Cta {...props} />
+        <Overflow {...props} />
       </div>
+      <TabsList variant="line">
+        {sections.map((section) => {
+          const { label, icon: Icon } = SECTION_LABELS[section];
+          return (
+            <TabsTrigger key={section} value={section} data-testid={`nav-${section}`}>
+              <Icon className="size-4" aria-hidden="true" />
+              {label}
+            </TabsTrigger>
+          );
+        })}
+      </TabsList>
       <TabsContent value={active ?? ""}>{children}</TabsContent>
     </Tabs>
   );

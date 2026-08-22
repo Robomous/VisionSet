@@ -549,13 +549,15 @@ function Section({
     case "overview":
       return (
         <>
-          <SectionHeader title="Overview" meta={meta} actions={headerIngest} />
-          {/* Nothing at all when there is no description — not a placeholder. */}
-          {description !== null && description !== "" && (
-            <p className="-mt-2 text-sm text-muted-foreground" data-testid="project-description">
-              {description}
-            </p>
-          )}
+          <SectionHeader
+            title="Overview"
+            meta={meta}
+            // Nothing at all when there is no description — not a placeholder.
+            {...(description === null || description === ""
+              ? {}
+              : { description: <span data-testid="project-description">{description}</span> })}
+            actions={headerIngest}
+          />
           {/* The declared classes travel down so a distribution bar shows the
               colour the schema authored rather than only the derived hue. The
               query is shared with the Schema section, so this costs no request. */}
