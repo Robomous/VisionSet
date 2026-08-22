@@ -146,7 +146,7 @@ import {
 import { refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
 import { formatBytes, formatCount } from "../lib/format";
-import { Breadcrumb } from "../patterns/Breadcrumb";
+import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
 import { Alert, Badge } from "../primitives/Badge";
 import type { BadgeTone } from "./batchState";
@@ -254,17 +254,8 @@ export interface IngestScreenProps {
    * anybody renders the outcome without the button rather than a dead link.
    */
   readonly onOpenBatch?: (batchId: string) => void;
-  /** Up to the project this is ingesting into — the immediate parent. */
+  /** Up to the project this is ingesting into — the immediate parent, and the one way out. */
   readonly onBack?: () => void;
-  /**
-   * The project list, which is this page's grandparent.
-   *
-   * A second navigation callback rather than a walk of the route table: the
-   * breadcrumb's *destinations* belong to the host — `ui-core` imports no router
-   * — while its *labels* belong here, because a project's name is behind a query
-   * this package makes and the host does not fetch.
-   */
-  readonly onOpenProjects?: () => void;
   /** The schema tab, for the labels foreshadowing banner. */
   readonly onOpenSchema?: () => void;
 }
@@ -273,7 +264,6 @@ export function IngestScreen({
   projectId,
   onOpenBatch,
   onBack,
-  onOpenProjects,
   onOpenSchema,
 }: IngestScreenProps): JSX.Element {
   const project = useProject(projectId);
@@ -453,18 +443,11 @@ export function IngestScreen({
 
   return (
     <div className="flex flex-col gap-6" data-testid="ingest-screen">
-      {/* A level is included only when the host gave it somewhere to go, so a host
-          that wired nothing renders no control at all rather than dead text. */}
-      <Breadcrumb
-        items={[
-          ...(onOpenProjects === undefined
-            ? []
-            : [{ label: "Projects", onNavigate: onOpenProjects }]),
-          ...(onBack === undefined
-            ? []
-            : [{ label: parentLabel(project.data?.name), onNavigate: onBack }]),
-        ]}
-      />
+      {/* The one way out: up to the project, named — its noun while the name is
+          still in flight. Rendered only when the host gave it somewhere to go. */}
+      {onBack !== undefined && (
+        <BackLink label={parentLabel(project.data?.name)} onNavigate={onBack} />
+      )}
 
       <header className="border-b border-border pb-4">
         <h1 className="text-2xl font-semibold tracking-tight">Ingest</h1>

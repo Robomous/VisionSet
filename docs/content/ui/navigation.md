@@ -11,50 +11,39 @@ VisionSet is an **application**, not a website. Somebody who walks into a sub-vi
 be able to walk back out of it *from the screen*, without reaching for the browser and
 without knowing the URL scheme.
 
-## Breadcrumbs and ancestor chains
+## Ways out
 
-- **Every sub-view declares its ancestor chain, and it is rendered in full.**
-  `navigate(-1)` is not an ancestor: it means the gallery when you clicked a tile, nothing
-  at all on a fresh tab, and one asset at a time after walking forward through a job. Every
-  destination has to be the same however the page was reached — clicked through, pasted,
-  reloaded, or walked forward from a sibling. The destinations live in one `PARENT` table
-  in `app/src/routes.tsx`, because a destination is a fact about the route table and
-  `ui-core` deliberately has no router.
-
-  A single-level control is not enough. A control reading `← road-signs` — the *project's*
-  name — while landing on the project's Batches tab was right in both halves and complete
-  in neither; only the chain says both, and it reads `Projects / road-signs / Batches`.
-- **Ancestors only. The current page is the `<h1>`, never a crumb** — which is also why no
-  crumb carries `aria-current`. A breadcrumb repeating the heading beneath it spends a line
-  telling somebody what they are already reading.
+- **A sub-view inside a project carries one way out, and a section carries none.** With the
+  project's sections in a navigation column and the workspace's destinations on the rail,
+  an ancestor chain inside a project says nothing they do not. So a page that sits *below*
+  a section — the batch gallery, the ingest flow — carries one control back to the level
+  above it (`patterns/BackLink.tsx`: `← Batches`, `← <project name>`), and a section — the
+  four views of a project — carries nothing: the column is its way around and the rail's
+  *Projects* its way up. The annotation editor keeps its own arrow for the same reason —
+  it is a tool that takes the whole screen, and its arrow means *up* to the batch.
+- **Structural, never `navigate(-1)`.** History is not a parent: it means the gallery when
+  you clicked a tile, nothing at all on a fresh tab, and one asset at a time after walking
+  forward through a job. Every destination has to be the same however the page was reached
+  — clicked through, pasted, reloaded, or walked forward from a sibling. The destinations
+  live in one `PARENT` table in `app/src/routes.tsx`, because a destination is a fact about
+  the route table and `ui-core` deliberately has no router.
 - **A project's section is a level.** Sections are path segments
   (`/projects/:id/batches`) because somebody links to one and returns to it — that makes it
-  somewhere you were, so it is somewhere you can be sent back to. The gallery's chain ends
-  at the Batches section for that reason.
-- **The affordance names its destinations.** "Back" alone is a promise about history;
-  "Projects", or a project's own name, is a promise about structure — the one the control
+  somewhere you were, so it is somewhere you can be sent back to. The gallery's way out is
+  the Batches section for that reason, never the project's default one.
+- **The affordance names its destination.** "Back" alone is a promise about history;
+  "Batches", or a project's own name, is a promise about structure — the one the control
   can keep. A name that has not loaded yet falls back to the noun (`parentLabel`) rather
   than to nothing, so the control does not change width under a cursor that is already
-  aiming at it. Each crumb truncates with its full label in `title`, and the row never
-  wraps to a second line at any width.
-- **Placement follows the pane.** On a padded page it is `patterns/Breadcrumb.tsx` directly
-  above the page header: meta-size, muted, `/` separators and no arrow, pulled left by the
-  gutter so the first crumb aligns with the `<h1>` beneath it. Inside a project the one
-  ancestor is the list, and that single level is drawn as the navigation column's own
-  `← Projects` rather than as a chain of one (see *Inside a project*). On the full-bleed
-  annotation editor there is **no chain** — the way out is the first control in the top
-  bar, a ghost back-arrow meaning *up*, because that bar's left zone is already truncating
-  to hold the navigation cluster on the bar's centre, and crumbs there would be paid for
-  out of the frame's identity readout.
-- **Below `lg` the same chain collapses to `← <immediate parent>`.** One component, one
-  items array, one set of destinations, two presentations — and the collapse is CSS on one
-  DOM node per crumb, never a second list, so nothing is read twice by a screen reader and
-  the two presentations have nowhere to drift apart.
-- **A screen takes navigation as optional callbacks, never a route.** `ui-core` may not
+  aiming at it; the full label rides in `title` where the width cuts it short.
+- **Placement follows the pane.** On a padded page the control is the first thing above the
+  page header — a ghost `xs` button, pulled left by the gutter so its label aligns with the
+  `<h1>` beneath it. On the full-bleed annotation editor it is the first control in the top
+  bar, a ghost back-arrow, because that bar's left zone is already truncating to hold the
+  navigation cluster on the bar's centre.
+- **A screen takes navigation as an optional callback, never a route.** `ui-core` may not
   import a router, so a host that has nowhere to send anybody renders no control rather
-  than a dead one. A screen omits a level it has no callback for, which is what makes an
-  empty chain mean *nothing to offer*. The host spells every URL; the screen supplies every
-  label.
+  than a dead one. The host spells every URL; the screen supplies every label.
 
 ## Inside a project
 
@@ -66,8 +55,7 @@ without knowing the URL scheme.
   Inference, or the annotator — the one page of a project that stands outside its frame,
   because an editor needs the whole screen. A sub-view lights the section it belongs to
   (the gallery lights Batches; an ingest, which is the project's rather than any one
-  section's, lights nothing) and keeps its own breadcrumb chain, which is still its
-  statement of ancestry.
+  section's, lights nothing) and carries its own one way out — see *Ways out*.
 - **The column is only as wide as its controls, and carries navigation alone.** Top to
   bottom, on a section: **Annotate** as the one `primary` control of the project shell, or
   Ingest in its place when no batch is open for annotation; one item per section, a real
@@ -77,11 +65,10 @@ without knowing the URL scheme.
   gallery, the ingest flow) the column draws no filled control at all: that page owns its
   dominant action, and a second one beside it would be two answers to "what now?".
 - **The project's identity is an eyebrow above the content, not part of the column.** One
-  line above a section's `h1`, at every width: the `Projects` crumb (the breadcrumb idiom —
-  a section's one ancestor is the list), the project's name in plain ink (a section *is* the
-  project, so the name is not a crumb), and the active-version chip, omitted when there is
-  no schema. The description shows on Overview only, under its meta line. A sub-view keeps
-  its own breadcrumb chain and gets no eyebrow.
+  line above a section's `h1`, at every width: the project's name and the active-version
+  chip, omitted when there is no schema (`patterns/ProjectEyebrow.tsx`). It is identity and
+  not navigation — it carries no control. The description shows on Overview only, under its
+  meta line. A sub-view heads itself, with its own way out, and gets no eyebrow.
 - **Below `lg` the same component collapses to the tab strip.** The eyebrow stays above; the
   tab list sits on the left with the filled control and the overflow on its right, the
   content in the panel beneath; the switch is a `matchMedia` answer, so one navigation is in
@@ -93,8 +80,8 @@ without knowing the URL scheme.
 ## The rail
 
 - **The rail is for top-level destinations only.** Per-screen return navigation never lives
-  on it — that is what lets it name where it goes. A rail destination has no breadcrumb of
-  its own, for the reason a tab has none: the rail *is* its way out, and a second answer to
+  on it — that is what lets it name where it goes. A rail destination has no way out of
+  its own, for the reason a section has none: the rail *is* it, and a second answer to
   "where am I" inside the pane would contradict it.
 - **What earns a rail entry**: a workspace-level object every project uses, which has
   nowhere else to live. Model connections carry no project id, so a project tab would state

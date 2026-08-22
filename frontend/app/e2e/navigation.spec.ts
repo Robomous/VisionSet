@@ -1,5 +1,5 @@
 /**
- * Where you are, and the way back out of every sub-view.
+ * The way back out of every sub-view, and the addresses a project answers.
  *
  * ## Every scenario navigates by URL, and that is the whole method
  *
@@ -10,18 +10,17 @@
  *
  * So each one does `page.goto` straight to the sub-view, signs in there, and
  * presses the control. With an empty history there is nowhere for `navigate(-1)`
- * to go, so only a **structural** ancestor can satisfy these.
+ * to go, so only a **structural** parent can satisfy these.
  *
- * The destinations themselves are `routes.tsx`'s `PARENT` table, and `DESIGN.md`'s
- * **Navigation rules** is the prose. `ui-core`'s `navigation.test.tsx` holds the
- * half a component test can see — that each screen draws its chain and calls back.
+ * The destinations themselves are `routes.tsx`'s `PARENT` table, and
+ * `docs/content/ui/navigation.md` is the prose. `ui-core`'s `navigation.test.tsx`
+ * holds the half a component test can see — that each screen draws its way out
+ * and calls back.
  *
- * ## Two claims live here and nowhere else
+ * ## The claim that lives here and nowhere else
  *
- * That a crumb reaches the right **URL**, which `ui-core` cannot know because it
- * imports no router; and **which crumbs are visible below `lg`**, because the
- * collapse is a media query and both presentations are in the DOM either way. A
- * jsdom assertion about the second would pass whatever the CSS said.
+ * That a way out reaches the right **URL**, which `ui-core` cannot know because
+ * it imports no router.
  */
 
 import { expect, test, type Page } from "@playwright/test";
@@ -206,42 +205,27 @@ async function openCold(page: Page, url: string): Promise<void> {
 }
 
 /**
- * Every sub-view and its **immediate** parent, as data — the crumb the collapsed
- * presentation keeps, and the one every scenario below presses. One testid on
- * every padded screen.
+ * Every sub-view inside a project and the one parent it names — the control every
+ * scenario below presses. A section has none: the project's navigation is beside
+ * it and the list is on the rail, so the project itself is not here.
  */
 const SUBVIEWS = [
-  {
-    name: "the project",
-    url: `/projects/${PROJECT}/overview`,
-    ready: "project-screen",
-    // The project's one ancestor is the list: the eyebrow's one crumb, beside
-    // the project's name.
-    control: "breadcrumb-parent",
-    parent: /\/projects$/,
-  },
   {
     name: "ingest",
     url: `/projects/${PROJECT}/ingest`,
     ready: "ingest-screen",
-    control: "breadcrumb-parent",
     // The project's default section outright, not the bare project URL: the
-    // crumb lands in one hop rather than bouncing through the redirect.
+    // way out lands in one hop rather than bouncing through the redirect.
     parent: new RegExp(`/projects/${PROJECT}/overview$`),
   },
   {
     name: "the batch gallery",
     url: `/projects/${PROJECT}/batches/${BATCH}`,
     ready: "gallery",
-    control: "breadcrumb-parent",
-    // Back to the section the batch was on, not to the project's default one:
-    // landing on Schema after leaving a batch is landing somewhere you were not.
+    // Up to the section the batch was on, not to the project's default one:
+    // landing on Overview after leaving a batch is landing somewhere you were not.
     parent: new RegExp(`/projects/${PROJECT}/batches$`),
   },
-  // **The dataset is not here any more, and its absence is the change.** It was a
-  // route with its own way out; it is a project *section* now, so its way out is
-  // the project's navigation and the crumbs above it belong to the project. Its
-  // old URL is the section's own address now — see the scenario below.
 ] as const;
 
 for (const view of SUBVIEWS) {
@@ -249,7 +233,7 @@ for (const view of SUBVIEWS) {
     await openCold(page, view.url);
     await expect(page.getByTestId(view.ready)).toBeVisible();
 
-    await page.getByTestId(view.control).click();
+    await page.getByTestId("back-link").click();
     await expect(page).toHaveURL(view.parent);
   });
 }
@@ -311,90 +295,25 @@ test("the way out names the project it goes to", async ({ page }) => {
   // "Back" alone is a promise about history. Naming the destination is a promise
   // about structure, which is the one the control can keep.
   await openCold(page, `/projects/${PROJECT}/ingest`);
-  await expect(page.getByTestId("breadcrumb-parent")).toContainText("road-signs");
+  await expect(page.getByTestId("back-link")).toHaveText("road-signs");
 });
 
-test("the project's own way out names the list, not a project", async ({ page }) => {
-  // One level up from a project is `Projects`, and it is the one sub-view whose
-  // parent has a fixed name rather than one that has to load.
+test("a section has no way out of its own: the column and the rail are it", async ({ page }) => {
   await openCold(page, `/projects/${PROJECT}/overview`);
-  await expect(page.getByTestId("breadcrumb-parent")).toContainText("Projects");
+  await expect(page.getByTestId("project-screen")).toBeVisible();
+  await expect(page.getByTestId("back-link")).toHaveCount(0);
 });
 
-/**
- * The gallery's whole chain, and the disagreement it settles.
- *
- * The single-level control here read `← road-signs` — the *project's* name — while
- * landing on the project's **Batches tab**. Both halves were right on their own;
- * only the chain says both, and this is the scenario that holds it to that.
- */
-test("the batch gallery names its whole chain, and every crumb goes where it says", async ({
-  page,
-}) => {
-  await openCold(page, `/projects/${PROJECT}/batches/${BATCH}`);
-  await expect(page.getByTestId("gallery")).toBeVisible();
-
-  const crumbs = page.getByTestId("breadcrumb").getByRole("button");
-  await expect(crumbs).toHaveText(["Projects", "road-signs", "Batches"]);
-
-  // The middle crumb: the project itself, which is not where the immediate parent
-  // goes and never had a control of its own.
-  await crumbs.nth(1).click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
-
-  await page.goBack();
-  await expect(page.getByTestId("gallery")).toBeVisible();
-
-  // The root, two levels up, which the single-level control could not reach at all.
-  await page.getByTestId("breadcrumb").getByRole("button").first().click();
-  await expect(page).toHaveURL(/\/projects$/);
-});
-
-test("the Batches crumb lands with the Batches section actually open", async ({ page }) => {
+test("the gallery's way out lands with the Batches section actually open", async ({ page }) => {
   // A section in the URL and a navigation showing something else is the failure
   // this asserts against — the redirect-that-moved-only-the-URL shape. A section
-  // is a place, which is what makes it a legitimate crumb level.
+  // is a place, which is what makes it a legitimate parent.
   await openCold(page, `/projects/${PROJECT}/batches/${BATCH}`);
-  await page.getByTestId("breadcrumb-parent").click();
+  await page.getByTestId("back-link").click();
 
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches$`));
   await expect(page.getByTestId("nav-batches")).toHaveAttribute("aria-current", "page");
 });
-
-test("below lg the chain collapses to the immediate parent, on one line", async ({ page }) => {
-  // The claim jsdom structurally cannot make: every crumb is in the DOM at every
-  // width, and which ones are *shown* is a media query. A component test asserting
-  // this would pass whatever the CSS said.
-  await openCold(page, `/projects/${PROJECT}/batches/${BATCH}`);
-  await expect(page.getByTestId("gallery")).toBeVisible();
-
-  const row = page.getByTestId("breadcrumb");
-  const tall = await row.boundingBox();
-
-  await page.setViewportSize({ width: 900, height: 800 });
-  // Below `lg` the project's frame swaps its column for the tab strip and the
-  // gallery remounts inside it. The crumbs' own collapse is CSS and lands first,
-  // so waiting for the strip is what keeps every read below on the node that
-  // survives rather than on one about to be replaced.
-  await expect(page.getByTestId("project-tabs")).toBeVisible();
-  await expect(row).toBeVisible();
-
-  // `getByRole` reads the **accessibility tree**, which a `display: none` crumb is
-  // not in — so this is the whole claim in one assertion: below `lg` a screen
-  // reader is offered the immediate parent and nothing above it.
-  await expect(row.getByRole("button")).toHaveText(["Batches"]);
-
-  // And `locator` reads the **DOM**, which every crumb is still in. The two
-  // together are what says the collapse is one list presented twice rather than
-  // two lists — a duplicated chain would count six here and read twice aloud.
-  await expect(row.locator("button")).toHaveCount(3);
-
-  // Still one line. The row never wraps at any width, which is the other half of
-  // "collapses" — a chain that merely reflowed would be taller here.
-  const short = await row.boundingBox();
-  expect(short?.height).toBe(tall?.height);
-});
-
 
 /**
  * The dataset's old address, kept as a promise — and now its own again.

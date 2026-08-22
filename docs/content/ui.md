@@ -187,7 +187,7 @@ column between the rail and the content, below `lg` a tab strip above it, one
 component (`ProjectNav`) drawing whichever layout `ProjectShell`'s `matchMedia`
 answer hands it. The navigation carries the one filled control (Annotate, or Ingest in its
 place) and the overflow, and is only as wide as those; the project's identity is an
-eyebrow above the content - the `Projects` crumb, the name, the active-version chip -
+eyebrow above the content - the name and the active-version chip, identity and not navigation -
 and the content opens under the section's own header: its title as the page `h1`, one
 line of meta (the description beneath it on Overview), and its `secondary` actions. Overview is the default, because a schema
 editor is configuration and renders the same for an empty project and a full one;

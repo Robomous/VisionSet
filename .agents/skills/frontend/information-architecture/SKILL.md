@@ -76,15 +76,16 @@ Rules:
 
 - **Single route definition site**: `frontend/app/src/routes.tsx`. No routes defined elsewhere.
 - **`ui-core` stays router-free.** Screens receive navigation as callback props (the `Projects`/`Home` pattern at the top of `routes.tsx`); where a control should be a real link, the host passes the URL too (`hrefFor`, `backHref`) and the screen renders an `<a>` whose click it still hands back. Never import a router in `ui-core`.
-- **Navigation renders the whole ancestor chain, not one level.** Every destination in it is declared in the routes parent map (`PARENT` in `routes.tsx`); the labels come from the screen, because a project's name is behind a query `ui-core` makes and `routes.tsx` does not fetch. The chains, and the current page is never in its own — it is the `<h1>`:
+- **A sub-view carries one way out; a section carries none.** Every destination is declared in the routes parent map (`PARENT` in `routes.tsx`); the label comes from the screen, because a project's name is behind a query `ui-core` makes and `routes.tsx` does not fetch. The ways out (`patterns/BackLink.tsx`):
 
-  | route | chain |
+  | route | way out |
   | --- | --- |
-  | `/projects/:id/<section>` | `Projects` — one level, the eyebrow's crumb beside the project's name above the section's `h1` |
-  | `/projects/:id/ingest` | `Projects / <project>` |
-  | `/projects/:id/batches/:batchId` | `Projects / <project> / Batches` |
+  | `/projects/:id/<section>` | none — the navigation column is the way around, the rail's *Projects* the way up |
+  | `/projects/:id/ingest` | `← <project>` → `PARENT.project` (the default section, spelled outright so it lands in one hop) |
+  | `/projects/:id/batches/:batchId` | `← Batches` → `PARENT.batches` |
+  | `/jobs/:jobId` | the editor's own ghost arrow, *up* to the batch gallery |
 
-  **A project's section is a level**, which is what the batch route's third crumb is: its ancestor is `PARENT.batches` (`/projects/:id/batches`), not the project's default section — landing on Schema after leaving a batch is landing somewhere you were not. `PARENT.project` is the default section spelled outright (`/projects/:id/overview`), so a crumb lands in one hop instead of bouncing through the redirect. Below `lg` the same chain collapses to `← <immediate parent>`; one component, two presentations. **A section has no chain of its own** — its way out is the project's navigation, and one inside a section would be a second, contradictory answer to "where am I". That is why `DatasetScreen` takes no navigation prop at all: it had a vestigial optional `onBack` that no mount passed after the move into the project, and it is gone. **A rail destination has none either**, for the same reason with the rail in the tab bar's place: `InferenceScreen` takes no `onBack`, and `PARENT.inference` exists as the address other screens send people *to* (the annotator's suggest panel is the first) rather than as an ancestor anything returns from. **The annotator is the one sub-view with no chain**: its 44px bar keeps the ghost `ArrowLeft` meaning *up* to the batch, because the bar's left zone already truncates to hold its navigation cluster centred.
+  **A project's section is a level**, which is why the gallery's way out is `PARENT.batches` (`/projects/:id/batches`) and not the project's default section — landing on Overview after leaving a batch is landing somewhere you were not. **A section has no way out of its own** — its navigation is beside it, and a control inside a section would be a second, contradictory answer to "where am I". That is why `DatasetScreen` and `ProjectScreen` take no `onBack`. **A rail destination has none either**, for the same reason with the rail in the column's place: `InferenceScreen` takes no `onBack`, and `PARENT.inference` exists as the address other screens send people *to* (the annotator's suggest panel is the first) rather than as a parent anything returns from.
 - The section is the URL's last segment, written with `replace: true` (a section is a view of the same resource, not a place Back should walk through). An unknown segment is a 404 — nothing ever linked to one; an unknown `?tab=` value redirects to `overview`, because old links exist.
 
 ## Process rule

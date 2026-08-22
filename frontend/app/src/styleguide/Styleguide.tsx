@@ -20,7 +20,6 @@
 
 import {
   Badge,
-  Breadcrumb,
   Button,
   Card,
   CardContent,
@@ -53,6 +52,7 @@ import {
   LoadingState,
   Progress,
   PROJECT_SECTIONS,
+  ProjectEyebrow,
   ProjectNav,
   SectionHeader,
   Select,
@@ -443,14 +443,9 @@ export function Styleguide(): JSX.Element {
 
         <Section
           title="Section header"
-          description="The project's eyebrow — the way out, the name, the active version — then a section's page h1, one line of meta under it, and its own secondary actions on the right. The filled control lives in the navigation, never here."
+          description="The project's eyebrow — its name and active version, identity and not navigation — then a section's page h1, one line of meta under it, and its own secondary actions on the right. The filled control lives in the navigation, never here."
         >
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <Breadcrumb items={[{ label: "Projects", onNavigate: () => undefined }]} />
-            <span aria-hidden="true">·</span>
-            <span className="font-medium text-foreground">road-signs</span>
-            <Badge variant="outline">v4 active</Badge>
-          </div>
+          <ProjectEyebrow name="road-signs" version={4} />
           <SectionHeader
             as="h2"
             title="Overview"

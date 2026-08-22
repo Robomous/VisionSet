@@ -146,15 +146,6 @@ export function resolveProjectTab(raw: string | undefined): ProjectTab | null {
 
 export interface ProjectScreenProps {
   readonly projectId: string;
-  /**
-   * Up to the project list.
-   *
-   * The rail's Projects link reaches the same URL, and that is not a reason to
-   * leave this out: the rail is where you go to *start* somewhere, and a person
-   * inside a project should not have to notice that one of two top-level
-   * destinations happens to be their parent.
-   */
-  readonly onBack?: () => void;
   /** Route changes, supplied by the app. See `ProjectsScreen`'s note. */
   readonly onIngest?: () => void;
   readonly onOpenBatch?: (batchId: string) => void;
@@ -177,7 +168,6 @@ export interface ProjectScreenProps {
 
 export function ProjectScreen({
   projectId,
-  onBack,
   onIngest,
   onOpenBatch,
   onDeleted,
@@ -463,7 +453,6 @@ export function ProjectScreen({
       sections={available}
       onNavigate={go}
       {...(hrefFor === undefined ? {} : { hrefFor })}
-      {...(onBack === undefined ? {} : { onBack })}
       chain="frame"
       cta={{
         ...(onOpenBatch === undefined ? {} : { onOpenBatch }),

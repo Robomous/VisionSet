@@ -205,11 +205,12 @@ for (const section of SECTIONS) {
 
     // The navigation is only as wide as its controls: Annotate as the one filled
     // control — the project has a batch open — and the overflow. The identity is
-    // the eyebrow above the content: the way out, the name, the chip.
+    // the eyebrow above the content: the name and the chip — and no way out,
+    // because the column and the rail are it.
     await expect(nav.getByTestId("go-annotate")).toBeVisible();
     await expect(nav.getByTestId("project-menu")).toBeVisible();
     const eyebrow = page.getByTestId("project-identity");
-    await expect(eyebrow.getByTestId("breadcrumb-parent")).toContainText("Projects");
+    await expect(page.getByTestId("back-link")).toHaveCount(0);
     await expect(eyebrow.getByTestId("project-title")).toHaveText("road-signs");
     await expect(eyebrow.getByTestId("chip-version")).toHaveText("v4 active");
     // 180px, the declared width.
@@ -235,9 +236,10 @@ test("the column frames the ingest flow and the batch gallery too, without a fil
   await expect(nav).toBeVisible();
   // A batch belongs to Batches, so Batches is lit.
   await expect(page.getByTestId("nav-batches")).toHaveAttribute("aria-current", "page");
-  // The gallery brings its own chain, so the frame draws no eyebrow above it.
+  // The gallery heads itself, with its one way out — up to Batches — so the frame
+  // draws no eyebrow above it.
   await expect(page.getByTestId("project-identity")).toHaveCount(0);
-  await expect(page.getByTestId("breadcrumb")).toContainText("road-signs");
+  await expect(page.getByTestId("back-link")).toHaveText("Batches");
   // The gallery owns its dominant action; the column offers none beside it.
   await expect(nav.getByTestId("go-annotate")).toHaveCount(0);
   await expect(nav.getByTestId("go-ingest")).toHaveCount(0);
@@ -281,7 +283,6 @@ test("below lg the tab strip renders and the column does not, with nothing lost"
   // The eyebrow above the strip, and the filled control and overflow beside the
   // tabs: everything the column layout offers, in a row.
   const eyebrow = page.getByTestId("project-identity");
-  await expect(eyebrow.getByTestId("breadcrumb-parent")).toContainText("Projects");
   await expect(eyebrow.getByTestId("project-title")).toHaveText("road-signs");
   await expect(eyebrow.getByTestId("chip-version")).toHaveText("v4 active");
   await expect(page.getByTestId("go-annotate")).toBeVisible();

@@ -114,9 +114,9 @@ const LOSSY = "LOSSY_EXPORT_NOT_CONSENTED";
 const CONTENT_VIOLATES_SCHEMA = "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA";
 
 /*
- * There is no `onBack` any more, and no breadcrumb.
+ * There is no `onBack` any more, and no way out of its own.
  *
- * The trunk is a project **tab**, so its way out is the tab bar and the crumbs
+ * The trunk is a project **section**, so its way out is the navigation and the crumbs
  * above it belong to the project page this renders inside — a second answer to
  * "where am I", one panel further in, would contradict the first. The prop
  * survived the move to a tab with no caller passing it, which is the dead

@@ -203,9 +203,9 @@ test("the Inference entry goes to the section, and is current once you are on it
   await expect(page).toHaveURL(/\/inference$/);
   await expect(page.getByTestId("rail-inference")).toHaveAttribute("aria-current", "page");
   await expect(page.getByTestId("rail-projects")).not.toHaveAttribute("aria-current", "page");
-  // A rail destination has no breadcrumb: the rail is its way out, and a second
+  // A rail destination has no way out of its own: the rail is it, and a second
   // answer to "where am I" inside the pane would contradict it.
-  await expect(page.getByTestId("breadcrumb")).toHaveCount(0);
+  await expect(page.getByTestId("back-link")).toHaveCount(0);
 });
 
 test("navigation is real links, and the active one is the one you are on", async ({ page }) => {

@@ -185,31 +185,30 @@ function Home(): JSX.Element {
 }
 
 /**
- * Every ancestor of every sub-view, in one place.
+ * Every parent of every sub-view, in one place.
  *
- * A breadcrumb crumb navigates to its **declared ancestor**, never `navigate(-1)`:
- * the destination has to be the same whether the page was reached by clicking
+ * A way out navigates to its **declared parent**, never `navigate(-1)`: the
+ * destination has to be the same whether the page was reached by clicking
  * through, by pasting a URL, by reloading, or by walking forward from a sibling.
  * History cannot promise that, and on a fresh tab it leaves the application
  * entirely.
  *
- * The ancestors live here rather than in the screens because a destination is a
+ * The parents live here rather than in the screens because a destination is a
  * fact about the *route table*, and `ui-core` deliberately does not have one — the
- * note on `Projects` above is the same rule from the other side. `DESIGN.md`'s
- * **Navigation rules** is the prose half of this table.
+ * note on `Projects` above is the same rule from the other side.
+ * `docs/content/ui/navigation.md` is the prose half of this table.
  *
- * **This table is walked by hand rather than transitively, and the reason is
- * labels.** A crumb needs a name as well as a URL, and a project's name is behind
- * a query `ui-core` makes — this file holds ids and does not fetch, by the rule at
- * the top of it. So the split is: the host spells every URL, the screen supplies
- * every label and composes the chain from the callbacks it was handed. What could
- * silently drift is a URL, and a URL still has exactly one spelling.
+ * **The split is labels.** A way out needs a name as well as a URL, and a
+ * project's name is behind a query `ui-core` makes — this file holds ids and does
+ * not fetch, by the rule at the top of it. So the host spells every URL and the
+ * screen supplies every label. What could silently drift is a URL, and a URL
+ * still has exactly one spelling.
  *
- * A project's sections are path segments, and each is a place: the gallery's
- * chain ends at the Batches section, because landing on the project's default
- * section after leaving a batch is landing somewhere you were not. `project`
- * itself spells the default section outright rather than the bare project URL,
- * so a crumb lands in one hop instead of bouncing through the redirect.
+ * A project's sections are path segments, and each is a place: the gallery's way
+ * out is the Batches section, because landing on the project's default section
+ * after leaving a batch is landing somewhere you were not. `project` itself
+ * spells the default section outright rather than the bare project URL, so a
+ * way out lands in one hop instead of bouncing through the redirect.
  */
 export const PARENT = {
   //: A rail destination, like `inference` below, so nothing declares it as a
@@ -290,7 +289,6 @@ function Project(): JSX.Element {
       tab={section}
       onTabChange={(next) => void navigate(PARENT.section(projectId, next), { replace: true })}
       hrefFor={(next) => PARENT.section(projectId, next)}
-      onBack={() => void navigate(PARENT.projects)}
       onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
       onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
       // A deleted project's own URL is a 404 waiting to happen, so the parent is
@@ -330,10 +328,6 @@ function Gallery(): JSX.Element {
         projectId={projectId}
         batchId={batchId}
         onBack={() => void navigate(PARENT.batches(projectId))}
-        // The two levels above the Batches section. The gallery is the product's
-        // deepest padded page, so it is the one whose chain is three long.
-        onOpenProject={() => void navigate(PARENT.project(projectId))}
-        onOpenProjects={() => void navigate(PARENT.projects)}
         onOpenAsset={(asset) => {
           if (asset.job_id === null || asset.job_id === undefined) return;
           void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
@@ -360,7 +354,7 @@ function Gallery(): JSX.Element {
 
 /**
  * What every page inside a project hands the frame: the sections, their URLs,
- * the way out, and where to land once the project is gone. The sections' own
+ * and where to land once the project is gone. The sections' own
  * route adds the filled control's inputs; a sub-view does not.
  */
 function frameProps(
@@ -372,7 +366,6 @@ function frameProps(
     sections: PROJECT_SECTIONS,
     onNavigate: (next) => void navigate(PARENT.section(projectId, next)),
     hrefFor: (next) => PARENT.section(projectId, next),
-    onBack: () => void navigate(PARENT.projects),
     // A deleted project's own URL is a 404 waiting to happen, so the parent is
     // where to land — and `replace`, because Back should not walk into it.
     onDeleted: () => void navigate(PARENT.projects, { replace: true }),
@@ -455,7 +448,6 @@ function Ingest(): JSX.Element {
       <IngestScreen
         projectId={projectId}
         onBack={() => void navigate(PARENT.project(projectId))}
-        onOpenProjects={() => void navigate(PARENT.projects)}
         onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
         // The foreshadowing banner's link: the schema section of the project, and
         // spelling that URL is this file's job.
