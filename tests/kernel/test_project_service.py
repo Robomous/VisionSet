@@ -9,6 +9,7 @@ that must survive it.
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -735,4 +736,100 @@ def test_last_ingest_at_belongs_to_its_own_project(tmp_path: Path) -> None:
     _arrived(workspace, theirs.id, datetime(2026, 9, 9, tzinfo=UTC))
 
     assert projects.stats(mine.id).last_ingest_at == datetime(2026, 1, 1, tzinfo=UTC)
+    workspace.close()
+
+
+# --- the preview: which image stands for the project --------------------------
+
+
+def _batched(
+    workspace: WorkspaceService,
+    project_id: UUID,
+    name: str,
+    *asset_specs: tuple[str, str | None],
+) -> list[UUID]:
+    """A batch holding one ``(uri, thumbnail_hash)`` asset per spec, ids in order."""
+    with workspace.unit_of_work() as uow:
+        ids: list[UUID] = []
+        for uri, thumbnail_hash in asset_specs:
+            ids.append(
+                uow.assets.add(
+                    Asset(
+                        project_id=project_id,
+                        content_hash=sha256(uri.encode()).hexdigest(),
+                        uri=uri,
+                        thumbnail_hash=thumbnail_hash,
+                    )
+                ).id
+            )
+        uow.batches.add(Batch(project_id=project_id, name=name, asset_ids=ids))
+        return ids
+
+
+def test_a_project_with_no_batches_has_no_preview(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("fresh")
+
+    assert projects.preview(project.id) is None
+    workspace.close()
+
+
+def test_the_preview_is_the_first_asset_of_the_earliest_batch(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("stable")
+    first = _batched(workspace, project.id, "early", ("/in/a.png", "aa" * 32), ("/in/b.png", None))
+    _batched(workspace, project.id, "late", ("/in/c.png", "cc" * 32))
+
+    preview = projects.preview(project.id)
+
+    assert preview is not None
+    assert preview.asset_id == first[0]
+    assert preview.thumbnail_hash == "aa" * 32
+    workspace.close()
+
+
+def test_an_empty_earliest_batch_yields_to_the_next_one_with_assets(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("drafty")
+    _batched(workspace, project.id, "empty draft")
+    filled = _batched(workspace, project.id, "filled", ("/in/d.png", "dd" * 32))
+
+    preview = projects.preview(project.id)
+
+    assert preview is not None
+    assert preview.asset_id == filled[0]
+    workspace.close()
+
+
+def test_an_uncached_first_asset_is_still_the_preview_with_no_hash(tmp_path: Path) -> None:
+    """NULL hash travels: the client renders the placeholder without a fetch."""
+    workspace, projects = _service(tmp_path)
+    project = projects.create("uncached")
+    ids = _batched(workspace, project.id, "old rows", ("/in/e.png", None))
+
+    preview = projects.preview(project.id)
+
+    assert preview is not None
+    assert (preview.asset_id, preview.thumbnail_hash) == (ids[0], None)
+    workspace.close()
+
+
+def test_the_preview_of_an_unknown_project_is_project_not_found(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+
+    with pytest.raises(ProjectNotFound):
+        projects.preview(uuid4())
+    workspace.close()
+
+
+def test_previews_carries_only_projects_that_have_an_image(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    pictured = projects.create("pictured")
+    projects.create("bare")
+    ids = _batched(workspace, pictured.id, "only", ("/in/g.png", "99" * 32))
+
+    previews = projects.previews()
+
+    assert set(previews) == {pictured.id}
+    assert previews[pictured.id].asset_id == ids[0]
     workspace.close()

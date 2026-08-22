@@ -18,6 +18,21 @@ class Project(BaseModel):
     description: str | None = None
 
 
+class ProjectPreview(BaseModel):
+    """The image that stands for a project in a listing.
+
+    The first asset of the project's earliest-created batch that has one — a
+    picture for the row, not a claim about progress, so it does not move as
+    later batches arrive. ``thumbnail_hash`` is NULL when the preview was never
+    cached, which a client renders as a placeholder without fetching.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    asset_id: UUID
+    thumbnail_hash: str | None
+
+
 class ProjectStats(BaseModel):
     """What a project holds, counted — everything ingested, not only the trunk.
 
