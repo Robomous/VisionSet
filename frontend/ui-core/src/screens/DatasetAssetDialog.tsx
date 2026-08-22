@@ -106,8 +106,14 @@ export function DatasetAssetDialog({
         className="max-h-[92vh] gap-0 overflow-hidden p-0 sm:max-w-6xl"
         onKeyDown={onKeyDown}
       >
-        <div className="grid max-h-[calc(92vh-3.5rem)] md:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="flex items-center justify-center bg-muted/40 p-3">
+        {/*
+          The panel's height is bounded here rather than left to the grid: a grid
+          row grows to its content, so a panel with a hundred classes would stretch
+          the dialog past the viewport and `overflow-y-auto` would never engage.
+          The cap is the dialog's own ceiling less the footer.
+        */}
+        <div className="grid md:grid-cols-[minmax(0,1fr)_20rem] md:grid-rows-[minmax(0,1fr)]">
+          <div className="flex max-h-[calc(92vh-3.5rem)] items-center justify-center bg-muted/40 p-3">
             <Picture
               projectId={projectId}
               asset={asset}
@@ -116,7 +122,10 @@ export function DatasetAssetDialog({
             />
           </div>
 
-          <div className="flex min-h-0 flex-col gap-5 overflow-y-auto border-t border-border p-4 md:border-t-0 md:border-l">
+          <div
+            data-testid="preview-panel"
+            className="flex max-h-[calc(92vh-3.5rem)] min-h-0 flex-col gap-5 overflow-y-auto border-t border-border p-4 md:border-t-0 md:border-l"
+          >
             <div className="flex flex-col gap-1 pr-6">
               <DialogTitle className="font-mono">{label}</DialogTitle>
               <DialogDescription data-testid="preview-position">

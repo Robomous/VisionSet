@@ -151,7 +151,17 @@ async function serveApi(page: Page): Promise<void> {
     const labels = path.match(new RegExp(`^/datasets/${DATASET}/assets/([^/]+)/annotations$`));
     if (labels !== null) {
       const [, assetId] = labels;
-      const items = trunk.has(assetId) ? [annotationRow(assetId)] : [];
+      // The third member carries a label of every one of sixty classes, so its
+      // panel is taller than any viewport and has to scroll inside the dialog.
+      const items = !trunk.has(assetId)
+        ? []
+        : assetId === ASSETS[2].id
+          ? Array.from({ length: 60 }, (_, at) => ({
+              ...annotationRow(assetId),
+              id: `bbbbbbbb-0000-4000-8000-${String(at).padStart(12, "0")}`,
+              label_class: `class-${String(at).padStart(2, "0")}`,
+            }))
+          : [annotationRow(assetId)];
       return route.fulfill({ json: { items, total: items.length } satisfies Wire["AnnotationPage"] });
     }
     if (path === `/projects/${PROJECT}/schema`) {
@@ -236,8 +246,15 @@ test("opening a tile shows the picture with its label drawn over it, in the pict
   // The overlay is placed by the asset's dimensions and not by measuring the
   // picture, and this is the one claim jsdom cannot check: the SVG's box has to
   // be the image's box, or a coordinate lands beside the pixel it names.
-  const picture = await preview.getByTestId("preview-image").boundingBox();
-  const overlay = await preview.getByTestId("preview-overlay").boundingBox();
+  // Both rectangles read in one evaluation, so the dialog's opening animation —
+  // which scales them together — cannot put a frame between the two readings.
+  await expect(preview.getByTestId("preview-image")).toBeVisible();
+  const [picture, overlay] = await preview.evaluate((node) =>
+    ["preview-image", "preview-overlay"].map((id) => {
+      const rect = node.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect();
+      return rect === undefined ? null : { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    }),
+  );
   expect(picture).not.toBeNull();
   expect(overlay).not.toBeNull();
   for (const side of ["x", "y", "width", "height"] as const) {
@@ -262,4 +279,25 @@ test("removing from the preview takes the tile out and closes the viewer", async
   await expect(page.getByTestId("asset-preview")).toHaveCount(0);
   await expect(page.getByTestId(`trunk-asset-${first.id}`)).toHaveCount(0);
   await expect(page.getByTestId("dataset-stats")).toContainText("2");
+});
+
+test("a panel with more than fits scrolls inside the dialog rather than stretching it", async ({
+  page,
+}) => {
+  await openDataset(page);
+  const tall = ASSETS[2];
+
+  await page.getByTestId(`open-${tall.id}`).click();
+  const preview = page.getByTestId("asset-preview");
+  await expect(preview.getByTestId("preview-class-class-59")).toBeAttached();
+
+  const viewport = page.viewportSize();
+  const dialog = await preview.boundingBox();
+  expect(dialog).not.toBeNull();
+  expect(dialog?.height ?? Infinity).toBeLessThanOrEqual((viewport?.height ?? 0) * 0.92 + 1);
+  // The panel is the part that scrolls, and it has something to scroll.
+  const panel = preview.getByTestId("preview-panel");
+  const overflow = await panel.evaluate((node) => node.scrollHeight - node.clientHeight);
+  expect(overflow).toBeGreaterThan(0);
+  await expect(preview.getByTestId("preview-remove")).toBeVisible();
 });
