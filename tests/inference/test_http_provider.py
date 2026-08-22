@@ -353,6 +353,46 @@ def test_a_runner_says_what_is_configured_until_an_answer_says_what_ran() -> Non
     assert runner.model_ref == "acme/model@v1"
 
 
+# --- the credential: read from the environment, sent as a bearer token -----------
+
+
+def test_the_credential_travels_as_a_bearer_token_on_both_verbs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ACME_TOKEN", "s3cret")
+    with serving_endpoint() as endpoint:
+        connection = hosted(endpoint.url, credential_env="ACME_TOKEN")
+        describe(connection)
+        list(RemoteSegmenter(connection).segment(a_request(tmp_path, POINTS)))
+        assert endpoint.authorizations == ["Bearer s3cret", "Bearer s3cret"]
+
+
+def test_a_connection_naming_no_variable_sends_no_authorization() -> None:
+    with serving_endpoint() as endpoint:
+        describe(hosted(endpoint.url))
+        assert endpoint.authorizations == [None]
+
+
+@pytest.mark.parametrize("value", [None, ""], ids=["unset", "empty"])
+def test_a_variable_nobody_set_is_refused_before_any_request_is_made(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str | None
+) -> None:
+    """The remedy is in the environment, not at the endpoint, and the message
+    says which variable — a request sent without the credential would be
+    refused by the other end with a status that names nothing."""
+    if value is None:
+        monkeypatch.delenv("ACME_TOKEN", raising=False)
+    else:
+        monkeypatch.setenv("ACME_TOKEN", value)
+    with serving_endpoint() as endpoint:
+        connection = hosted(endpoint.url, credential_env="ACME_TOKEN")
+        with pytest.raises(InferenceEndpointUnavailable, match="ACME_TOKEN"):
+            describe(connection)
+        with pytest.raises(InferenceEndpointUnavailable, match="ACME_TOKEN"):
+            list(RemoteDetector(connection).predict(a_request(tmp_path, WORDS)))
+        assert endpoint.authorizations == []
+
+
 # --- test_endpoint: asking and recording -----------------------------------------
 
 

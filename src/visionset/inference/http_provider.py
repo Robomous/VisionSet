@@ -8,7 +8,10 @@ answering ``{"answers": [...]}`` with one answer per target, matched by
 ``asset_id``: an ``AssetPrediction`` for words, and for points the same shape
 with ``segments`` of ``{"score", "mask"}`` where the mask is a base64 PNG at the
 asset's size and any non-zero pixel is inside. No paths are joined and no
-trailing slash matters, which is the whole reason it is one URL.
+trailing slash matters, which is the whole reason it is one URL. Both carry
+``Authorization: Bearer <value>`` when the connection names a
+``credential_env`` — the value is read from this process's environment at call
+time and is never stored.
 
 **The family an http connection records is the capability the endpoint
 declared, verbatim.** A local connection's family is the ``model_type`` its
@@ -39,6 +42,7 @@ from __future__ import annotations
 import base64
 import http.client
 import json
+import os
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from io import BytesIO
@@ -175,12 +179,36 @@ class _NoForeignRedirects(urllib_request.HTTPRedirectHandler):
 _OPENER: Final = urllib_request.build_opener(_NoForeignRedirects)
 
 
-def _exchange(url: str, *, payload: dict[str, Any] | None, timeout: float) -> Any:
+def _authorization_of(connection: InferenceConnection) -> str | None:
+    """The ``Authorization`` value, read from this process's environment now.
+
+    Read at call time rather than once, because the variable is the operator's
+    to rotate. A variable the row names and the process lacks is refused
+    **before** anything is sent: the endpoint would refuse the bare request with
+    a status that names nothing, and the remedy is here, not there.
+    """
+    name = connection.credential_env
+    if name is None:
+        return None
+    value = os.environ.get(name)
+    if not value:
+        raise InferenceEndpointUnavailable(
+            f"connection {connection.name!r} reads its credential from the environment variable "
+            f"{name}, which is not set where VisionSet is running; set it there and ask again"
+        )
+    return f"Bearer {value}"
+
+
+def _exchange(
+    url: str, *, payload: dict[str, Any] | None, timeout: float, authorization: str | None
+) -> Any:
     """One round trip, as parsed JSON, or the sentence for why not."""
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     headers = {"Accept": "application/json"}
     if data is not None:
         headers["Content-Type"] = "application/json"
+    if authorization is not None:
+        headers["Authorization"] = authorization
     try:
         asked = urllib_request.Request(
             url, data=data, headers=headers, method="GET" if data is None else "POST"
@@ -227,7 +255,9 @@ def describe(connection: InferenceConnection) -> EndpointAnswer:
             itself outside the contract.
     """
     url = _url_of(connection)
-    body = _exchange(url, payload=None, timeout=DESCRIBE_TIMEOUT)
+    body = _exchange(
+        url, payload=None, timeout=DESCRIBE_TIMEOUT, authorization=_authorization_of(connection)
+    )
     try:
         described = _Description.model_validate(body)
     except ValidationError as exc:
@@ -266,7 +296,12 @@ class _Remote:
 
     def _answers(self, request: PredictionRequest) -> tuple[str, list[Any]]:
         url = _url_of(self._connection)
-        body = _exchange(url, payload=_payload(request), timeout=PREDICT_TIMEOUT)
+        body = _exchange(
+            url,
+            payload=_payload(request),
+            timeout=PREDICT_TIMEOUT,
+            authorization=_authorization_of(self._connection),
+        )
         answers = body.get("answers") if isinstance(body, dict) else None
         if not isinstance(answers, list):
             raise InferenceEndpointUnavailable(f'endpoint {url} answered without an "answers" list')
