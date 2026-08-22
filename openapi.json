@@ -3642,7 +3642,7 @@
         "type": "object"
       },
       "ProjectOut": {
-        "description": "A project.",
+        "description": "A project.\n\n`thumbnail_asset_id` names the image that stands for the project in a\nlisting \u2014 the first asset of its earliest batch that has one \u2014 and\n`thumbnail_hash` is that asset's cached preview. Both are null for a\nproject with no images; the id set with a null hash means the asset has no\ncached preview, so there is nothing to fetch.",
         "properties": {
           "description": {
             "anyOf": [
@@ -3663,12 +3663,37 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "thumbnail_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Asset Id"
+          },
+          "thumbnail_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Hash"
           }
         },
         "required": [
           "id",
           "name",
-          "description"
+          "description",
+          "thumbnail_asset_id",
+          "thumbnail_hash"
         ],
         "title": "ProjectOut",
         "type": "object"

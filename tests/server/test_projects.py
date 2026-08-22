@@ -413,3 +413,39 @@ def test_stats_for_an_unknown_project_is_404_project_not_found(client: TestClien
 
 def test_stats_for_a_malformed_project_id_is_422_not_404(client: TestClient) -> None:
     assert client.get("/projects/not-a-uuid/stats").status_code == 422
+
+
+# --- the preview each row carries ---------------------------------------------
+
+
+def test_a_fresh_project_carries_null_preview_fields(client: TestClient) -> None:
+    made = created(client, "road-signs")
+
+    assert made["thumbnail_asset_id"] is None
+    assert made["thumbnail_hash"] is None
+    listed = client.get("/projects").json()["items"][0]
+    assert (listed["thumbnail_asset_id"], listed["thumbnail_hash"]) == (None, None)
+
+
+def test_the_listing_names_the_first_ingested_asset_as_the_preview(
+    flow_client: TestClient, stats_runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    project_id = project_with_schema(flow_client)
+    batch_id = batch_from_ingest(flow_client, stats_runner, tmp_path, project_id, images=2)
+    first = asset_ids(flow_client, batch_id)[0]
+
+    row = flow_client.get("/projects").json()["items"][0]
+
+    assert row["thumbnail_asset_id"] == first
+    assert row["thumbnail_hash"] is not None
+
+
+def test_a_later_ingest_does_not_move_the_preview(
+    flow_client: TestClient, stats_runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    project_id = project_with_schema(flow_client)
+    first_batch = batch_from_ingest(flow_client, stats_runner, tmp_path, project_id, images=1)
+    kept = asset_ids(flow_client, first_batch)[0]
+    batch_from_ingest(flow_client, stats_runner, tmp_path / "again", project_id, images=1)
+
+    assert flow_client.get(f"/projects/{project_id}").json()["thumbnail_asset_id"] == kept

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from visionset.kernel.domain import ClassCount, Dataset, Project, ProjectStats
+from visionset.kernel.domain import ClassCount, Dataset, Project, ProjectPreview, ProjectStats
 from visionset.kernel.errors import (
     ConfirmationRequired,
     ConstraintViolated,
@@ -83,6 +83,44 @@ class ProjectService:
         """Every project in this workspace, in the order they were created."""
         with self._workspace.unit_of_work() as uow:
             return uow.projects.list(self._workspace.workspace_id)
+
+    def preview(self, project_id: UUID) -> ProjectPreview | None:
+        """The image that stands for this project, or ``None`` when it has none.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            self._require(uow, project_id)
+            return self._preview(uow, project_id)
+
+    def previews(self) -> dict[UUID, ProjectPreview]:
+        """Each project's preview, keyed by project id; a project with no image is absent.
+
+        One walk for a whole listing, so the caller does not open a unit of work
+        per row. The cost is one batch query per project plus one asset read per
+        previewed project — the scale ``stats`` already accepts, for its reason.
+        """
+        with self._workspace.unit_of_work() as uow:
+            found: dict[UUID, ProjectPreview] = {}
+            for project in uow.projects.list(self._workspace.workspace_id):
+                preview = self._preview(uow, project.id)
+                if preview is not None:
+                    found[project.id] = preview
+            return found
+
+    @staticmethod
+    def _preview(uow: UnitOfWork, project_id: UUID) -> ProjectPreview | None:
+        for batch in uow.batches.list(project_id):
+            if not batch.asset_ids:
+                continue
+            asset = uow.assets.get(batch.asset_ids[0])
+            if asset is None:
+                raise WorkspaceCorrupt(
+                    f"batch {batch.name!r} holds asset {batch.asset_ids[0]}, which is not stored"
+                )
+            return ProjectPreview(asset_id=asset.id, thumbnail_hash=asset.thumbnail_hash)
+        return None
 
     def get_dataset(self, project_id: UUID) -> Dataset:
         """The one dataset belonging to that project.

@@ -41,6 +41,45 @@ import { useEffect, useState, type JSX } from "react";
 
 import { useApiClient } from "../data/ApiProvider";
 
+export interface ThumbnailPlaceholderProps {
+  /** What a pointer hover should say about why there is no picture here. */
+  readonly title: string;
+  readonly alt: string;
+  /** A fetch that failed earns the crossed-out icon; an absence never does. */
+  readonly broken?: boolean;
+  readonly className?: string;
+}
+
+/**
+ * The muted stand-in every thumbnail surface shares.
+ *
+ * Extracted so a caller with *no asset at all* — a project that has never
+ * ingested an image — can render the same box with its own explanation,
+ * rather than borrowing this component's "not cached" story for a situation
+ * it does not describe.
+ */
+export function ThumbnailPlaceholder({
+  title,
+  alt,
+  broken = false,
+  className,
+}: ThumbnailPlaceholderProps): JSX.Element {
+  return (
+    <div
+      data-testid="thumbnail-placeholder"
+      title={title}
+      className={`flex items-center justify-center bg-muted text-muted-foreground ${className ?? ""}`}
+    >
+      {broken ? (
+        <ImageOff className="size-5" aria-hidden="true" />
+      ) : (
+        <ImageIcon className="size-5" aria-hidden="true" />
+      )}
+      <span className="sr-only">{alt}</span>
+    </div>
+  );
+}
+
 export interface AssetThumbnailProps {
   readonly projectId: string;
   readonly assetId: string;
@@ -100,29 +139,23 @@ export function AssetThumbnail({
   }, [client, projectId, assetId, thumbnailHash]);
 
   if (thumbnailHash === null || thumbnailHash === undefined || failed) {
+    // A preview that was never cached is not a preview that broke, and
+    // `DESIGN.md` forbids a broken-image glyph for the first. NULL is the
+    // ordinary state of an asset ingested before the cache existed or one
+    // whose bytes would not render — the asset is fine. A fetch that
+    // actually failed keeps the crossed-out icon, because that one *is* a
+    // failure.
     return (
-      <div
-        data-testid="thumbnail-placeholder"
+      <ThumbnailPlaceholder
         title={
           failed
             ? "The preview could not be loaded."
             : "No cached preview. `visionset` can backfill one; there is no button for it here."
         }
-        className={`flex items-center justify-center bg-muted text-muted-foreground ${className ?? ""}`}
-      >
-        {/* A preview that was never cached is not a preview that broke, and
-            `DESIGN.md` forbids a broken-image glyph for the first. NULL is the
-            ordinary state of an asset ingested before the cache existed or one
-            whose bytes would not render — the asset is fine. A fetch that
-            actually failed keeps the crossed-out icon, because that one *is* a
-            failure. */}
-        {failed ? (
-          <ImageOff className="size-5" aria-hidden="true" />
-        ) : (
-          <ImageIcon className="size-5" aria-hidden="true" />
-        )}
-        <span className="sr-only">{alt}</span>
-      </div>
+        alt={alt}
+        broken={failed}
+        className={className}
+      />
     );
   }
 

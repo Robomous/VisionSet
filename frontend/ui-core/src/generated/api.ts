@@ -4348,6 +4348,12 @@ export interface components {
         /**
          * ProjectOut
          * @description A project.
+         *
+         *     `thumbnail_asset_id` names the image that stands for the project in a
+         *     listing — the first asset of its earliest batch that has one — and
+         *     `thumbnail_hash` is that asset's cached preview. Both are null for a
+         *     project with no images; the id set with a null hash means the asset has no
+         *     cached preview, so there is nothing to fetch.
          */
         ProjectOut: {
             /** Description */
@@ -4359,6 +4365,10 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Thumbnail Asset Id */
+            thumbnail_asset_id: string | null;
+            /** Thumbnail Hash */
+            thumbnail_hash: string | null;
         };
         /**
          * ProjectPage

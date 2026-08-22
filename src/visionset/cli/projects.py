@@ -64,7 +64,8 @@ def project_create(
     with opened_workspace(workspace) as service:
         created = ProjectService(service).create(name, description)
     if json_out:
-        document(wire.project(created))
+        # A project created this instant has no batches, so its preview is settled.
+        document(wire.project(created, None))
         return
     note(f"Created project {created.name!r}.")
     typer.echo(str(created.id))
@@ -77,10 +78,12 @@ def project_list(
 ) -> None:
     """List this workspace's projects, oldest first."""
     with opened_workspace(workspace) as service:
-        projects = ProjectService(service).list()
+        found = ProjectService(service)
+        projects = found.list()
+        previews = found.previews() if json_out else {}
         root = service.root
     if json_out:
-        document(wire.page([wire.project(p) for p in projects]))
+        document(wire.page([wire.project(p, previews.get(p.id)) for p in projects]))
         return
     table(_COLUMNS, [(str(p.id), p.name, p.description or _NONE) for p in projects])
     if not projects:

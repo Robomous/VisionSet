@@ -46,6 +46,7 @@ from tests.fixtures.samples import (
     PARTIAL_EXTRACTION,
     POLYGON,
     PROJECT,
+    PROJECT_PREVIEW,
     RELEASE,
     SCHEMA_CHANGE_PREVIEW,
     SCHEMA_DIFF,
@@ -93,7 +94,7 @@ PRE_LABEL_PLAN = PreLabelPlan(
 # agree with. Built eagerly — every projection runs at import, so a leaf that
 # does not encode fails collection rather than one parametrized case.
 PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
-    ("project", wire.project(PROJECT), models.ProjectOut),
+    ("project", wire.project(PROJECT, PROJECT_PREVIEW), models.ProjectOut),
     ("connection", wire.connection(INFERENCE_CONNECTION), models.ConnectionOut),
     ("dataset", wire.dataset(DATASET), models.DatasetOut),
     ("schema_version", wire.schema_version(SCHEMA_VERSION), models.SchemaVersionOut),

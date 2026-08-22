@@ -53,6 +53,7 @@ from visionset.kernel.domain import (
     PolygonGeometry,
     PolylineGeometry,
     Project,
+    ProjectPreview,
     Release,
     ReleaseVerification,
     SchemaChange,
@@ -75,6 +76,8 @@ _WHEN = datetime(2026, 7, 28, 12, 34, 56, 789012, tzinfo=UTC)
 PROJECT = Project(
     id=uuid4(), workspace_id=uuid4(), name="road-signs", description="a sample project"
 )
+
+PROJECT_PREVIEW = ProjectPreview(asset_id=uuid4(), thumbnail_hash=_HASH)
 
 SCHEMA_VERSION = AnnotationSchema(
     project_id=PROJECT.id,

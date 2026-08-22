@@ -50,7 +50,8 @@ def create_project(
         projects = ProjectService(workspace)
         created = projects.create(name, description)
         dataset = projects.get_dataset(created.id)
-    return {"project": wire.project(created), "dataset": wire.dataset(dataset)}
+    # A project created this instant has no batches, so its preview is settled.
+    return {"project": wire.project(created, None), "dataset": wire.dataset(dataset)}
 
 
 def list_projects() -> dict[str, Any]:
@@ -61,8 +62,10 @@ def list_projects() -> dict[str, Any]:
     error.
     """
     with opened_workspace() as workspace:
-        projects = ProjectService(workspace).list()
-    return wire.page([wire.project(p) for p in projects])
+        found = ProjectService(workspace)
+        projects = found.list()
+        previews = found.previews()
+    return wire.page([wire.project(p, previews.get(p.id)) for p in projects])
 
 
 def get_project(project: ProjectRef) -> dict[str, Any]:
@@ -75,10 +78,12 @@ def get_project(project: ProjectRef) -> dict[str, Any]:
     """
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)
-        dataset = ProjectService(workspace).get_dataset(resolved.id)
+        projects = ProjectService(workspace)
+        dataset = projects.get_dataset(resolved.id)
+        preview = projects.preview(resolved.id)
         counts = JobService(workspace).project_progress(resolved.id)
     return {
-        "project": wire.project(resolved),
+        "project": wire.project(resolved, preview),
         "dataset": wire.dataset(dataset),
         "progress": wire.progress_counts(counts),
     }
@@ -108,5 +113,9 @@ def delete_project(
     """
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)
-        ProjectService(workspace).delete(resolved.id, confirm=confirm)
-    return {"deleted": wire.project(resolved)}
+        projects = ProjectService(workspace)
+        # Resolved before the delete, which takes the batches with it: the echo
+        # names what was destroyed, and a null read after the fact could not.
+        preview = projects.preview(resolved.id)
+        projects.delete(resolved.id, confirm=confirm)
+    return {"deleted": wire.project(resolved, preview)}

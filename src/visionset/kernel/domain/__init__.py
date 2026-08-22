@@ -156,7 +156,7 @@ from visionset.kernel.domain.prediction import (
     TextPrompt,
     require_points_on_asset,
 )
-from visionset.kernel.domain.project import Project, ProjectStats
+from visionset.kernel.domain.project import Project, ProjectPreview, ProjectStats
 from visionset.kernel.domain.release import (
     MANIFEST_VERSION,
     ClassCompatibility,
@@ -393,6 +393,7 @@ __all__ = [
     "PredictionRequest",
     "PredictionTarget",
     "Project",
+    "ProjectPreview",
     "ProjectStats",
     "Prompt",
     "Provenance",

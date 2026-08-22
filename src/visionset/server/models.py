@@ -113,6 +113,7 @@ from visionset.kernel.domain import (
     Precision,
     PreLabelRun,
     Project,
+    ProjectPreview,
     ProjectStats,
     ProjectSummary,
     Release,
@@ -225,18 +226,33 @@ def window[T](items: list[T], *, limit: int | None, offset: int) -> list[T]:
 # ``workspace_id`` is deliberately absent: the server serves exactly one
 # workspace, so it would be the same constant on every response ever sent.
 class ProjectOut(BaseModel):
-    """A project."""
+    """A project.
+
+    `thumbnail_asset_id` names the image that stands for the project in a
+    listing — the first asset of its earliest batch that has one — and
+    `thumbnail_hash` is that asset's cached preview. Both are null for a
+    project with no images; the id set with a null hash means the asset has no
+    cached preview, so there is nothing to fetch.
+    """
 
     id: UUID
     name: str
     description: str | None
+    thumbnail_asset_id: UUID | None
+    thumbnail_hash: str | None
 
     @classmethod
-    def of(cls, project: Project) -> Self:
+    def of(cls, project: Project, preview: ProjectPreview | None) -> Self:
         # Field by field, never ``model_validate(project, from_attributes=True)``:
         # a field added to ``Project`` must not widen the public contract by
         # accident. Publishing one is an edit here.
-        return cls(id=project.id, name=project.name, description=project.description)
+        return cls(
+            id=project.id,
+            name=project.name,
+            description=project.description,
+            thumbnail_asset_id=preview.asset_id if preview else None,
+            thumbnail_hash=preview.thumbnail_hash if preview else None,
+        )
 
 
 class ProjectPage(Page[ProjectOut]):

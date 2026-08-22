@@ -36,20 +36,27 @@ router = protected_router(prefix="/projects", tags=["projects"])
 @router.post("", status_code=status.HTTP_201_CREATED, responses=documented(409))
 def create_project(workspace: WorkspaceDep, body: ProjectCreate) -> ProjectOut:
     """Add a project and its empty dataset, both or neither."""
-    return ProjectOut.of(ProjectService(workspace).create(body.name, body.description))
+    # A project created this instant has no batches, so its preview is settled.
+    return ProjectOut.of(ProjectService(workspace).create(body.name, body.description), None)
 
 
 @router.get("")
 def list_projects(workspace: WorkspaceDep) -> ProjectPage:
     """Every project in this workspace, in the order they were created."""
-    found = ProjectService(workspace).list()
-    return ProjectPage(items=[ProjectOut.of(project) for project in found], total=len(found))
+    service = ProjectService(workspace)
+    found = service.list()
+    previews = service.previews()
+    return ProjectPage(
+        items=[ProjectOut.of(project, previews.get(project.id)) for project in found],
+        total=len(found),
+    )
 
 
 @router.get("/{project_id}", responses=documented(404))
 def get_project(workspace: WorkspaceDep, project_id: UUID) -> ProjectOut:
     """The project with that id."""
-    return ProjectOut.of(ProjectService(workspace).get(project_id))
+    service = ProjectService(workspace)
+    return ProjectOut.of(service.get(project_id), service.preview(project_id))
 
 
 @router.get("/{project_id}/stats", responses=documented(404))
@@ -73,7 +80,8 @@ def get_project_stats(workspace: WorkspaceDep, project_id: UUID) -> ProjectStats
 @router.patch("/{project_id}", responses=documented(404, 409))
 def rename_project(workspace: WorkspaceDep, project_id: UUID, body: ProjectRename) -> ProjectOut:
     """Rename a project, and its dataset with it. The only field that moves."""
-    return ProjectOut.of(ProjectService(workspace).rename(project_id, body.name))
+    service = ProjectService(workspace)
+    return ProjectOut.of(service.rename(project_id, body.name), service.preview(project_id))
 
 
 @router.delete(

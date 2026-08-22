@@ -39,6 +39,7 @@ import {
 } from "../primitives/Dialog";
 import { FieldError, FieldHint, Input, Label, Textarea } from "../primitives/Input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import { AssetThumbnail, ThumbnailPlaceholder } from "./AssetThumbnail";
 import { useCreateProject, useDeleteProject, useProjects, type Project } from "./queries";
 
 export interface ProjectsScreenProps {
@@ -88,6 +89,10 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
           <Table data-testid="projects-table">
             <TableHeader>
               <TableRow>
+                {/* Unlabeled like the actions column: the picture explains
+                    itself, and a "Preview" caption would label the only cell a
+                    reader never needs help with. */}
+                <TableHead className="w-20" />
                 <TableHead>Name</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead className="w-24" />
@@ -96,6 +101,26 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
             <TableBody>
               {page.items.map((project) => (
                 <TableRow key={project.id} data-testid={`project-${project.name}`}>
+                  <TableCell>
+                    {/* Decorative either way (`alt=""`): the name link beside it
+                        is the row's voice, and a screen reader should hear each
+                        project once. */}
+                    {project.thumbnail_asset_id === null ? (
+                      <ThumbnailPlaceholder
+                        title="No images in this project yet."
+                        alt=""
+                        className="size-12 rounded-md border border-border"
+                      />
+                    ) : (
+                      <AssetThumbnail
+                        projectId={project.id}
+                        assetId={project.thumbnail_asset_id}
+                        thumbnailHash={project.thumbnail_hash}
+                        alt=""
+                        className="size-12 rounded-md border border-border object-cover"
+                      />
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Button
                       variant="link"

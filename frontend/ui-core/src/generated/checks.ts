@@ -247,7 +247,7 @@ export const checkPreLabelPlanOut: Check<Schemas["PreLabelPlanOut"]> =
   /*#__PURE__*/ object({ "asked_classes": [true, arrayOf(isString)], "excluded_classes": [true, arrayOf(checkPreLabelExclusionOut)], "produces": [true, arrayOf(checkGeometryType)], "schema_version": [true, isInteger] } as const);
 
 export const checkProjectOut: Check<Schemas["ProjectOut"]> =
-  /*#__PURE__*/ object({ "description": [true, either([isString, isNull] as const)], "id": [true, isString], "name": [true, isString] } as const);
+  /*#__PURE__*/ object({ "description": [true, either([isString, isNull] as const)], "id": [true, isString], "name": [true, isString], "thumbnail_asset_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)] } as const);
 
 export const checkProjectPage: Check<Schemas["ProjectPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkProjectOut)], "total": [true, isInteger] } as const);

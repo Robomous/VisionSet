@@ -54,7 +54,14 @@ const NO_PROGRESS = {
  */
 function answer(path: string): unknown {
   if (path === `/projects/${PROJECT}`) {
-    return { id: PROJECT, name: "road-signs", description: null, created_at: NOW };
+    return {
+      id: PROJECT,
+      name: "road-signs",
+      description: null,
+      thumbnail_asset_id: null,
+      thumbnail_hash: null,
+      created_at: NOW,
+    };
   }
   if (path === `/projects/${PROJECT}/batches`) return { items: [], total: 0 };
   if (path === `/projects/${PROJECT}/sources`) return { items: [], total: 0 };
