@@ -130,6 +130,20 @@ it("renders a retryable alert when the page cannot be read", async () => {
   expect(await screen.findByRole("alert")).toBeTruthy();
 });
 
+it("says a refusal in the vocabulary's sentence, not the kernel's", async () => {
+  on("GET", /\/home$/, {
+    status: 503,
+    body: { code: "NOT_A_WORKSPACE", message: "/srv/data is not a workspace" },
+  });
+  render(mount(<HomeScreen />));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toContain("not pointed at a workspace");
+  expect(alert.textContent).not.toContain("/srv/data");
+  // The code stays where a bug report can quote it: the meta line, not the heading.
+  expect(alert.textContent).toContain("NOT_A_WORKSPACE");
+});
+
 it("invites a first project when the workspace holds none", async () => {
   on("GET", /\/home$/, {
     status: 200,

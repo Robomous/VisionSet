@@ -72,11 +72,14 @@
  *   de-duplicated against the sentence;
  * - a bare `Alert` does not carry it at all;
  * - a `FieldError` is a bare `<p role="alert">` with no code slot at all —
- *   the shape most of this file's consumers render;
- * - a visible `Badge` beside the raw message is the fourth shape, not yet
- *   settled — two `InferenceScreen` sites still do it. Each renders a
- *   union: a real wire refusal from the mutation, or a settled background
- *   job's error string, and it is the job half no code-keyed map can serve.
+ *   the shape most of this file's consumers render.
+ *
+ * A `Badge` is not on that list because it is not a refusal surface: a
+ * code in a badge beside the sentence is the code rendered, not kept, and a
+ * `FieldError` that once carried one now carries the prose alone. A settled
+ * background job's error string arrives with no code at all, so a screen
+ * showing one renders the string as it is — there is no key for this map to
+ * look up, and inventing one client-side is a fiction a bug report would quote.
  *
  * A code as an `Alert` heading is the shape this map exists to end.
  */

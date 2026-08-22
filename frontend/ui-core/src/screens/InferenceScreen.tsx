@@ -539,7 +539,7 @@ function ConnectionRow({
       */}
       {weights.failure !== null && (
         <FieldError data-testid="download-error">
-          <Badge variant="destructive">{weights.failure.code}</Badge> {weights.failure.message}{" "}
+          {weights.failure}{" "}
           {ready
             ? "The connection is still Ready — nothing was changed. Check again to re-read the cache."
             : "The connection is still Not set up: weights arrive or they do not, so there is nothing half-installed to clear up. Download weights again — an interrupted transfer resumes from what it had."}
@@ -554,7 +554,7 @@ function ConnectionRow({
       */}
       {integrity.failure !== null && (
         <FieldError data-testid="integrity-error">
-          <Badge variant="destructive">{integrity.failure.code}</Badge> {integrity.failure.message}{" "}
+          {integrity.failure}{" "}
           {ready
             ? "Nothing was removed and the connection is still Ready — a check that cannot reach the model's source is not an answer about the files here."
             : "The damaged copies have been removed and the connection is back to Not set up. Download weights again: with the bad files gone, it is a real transfer rather than a cache hit."}
@@ -591,7 +591,7 @@ function useDownloadRun(connection: Connection): {
   readonly start: () => void;
   readonly running: boolean;
   readonly live: WeightDownload | null;
-  readonly failure: { readonly code: string; readonly message: string } | null;
+  readonly failure: string | null;
 } {
   const mutation = useDownloadWeights();
   const download = connection.download ?? null;
@@ -602,10 +602,12 @@ function useDownloadRun(connection: Connection): {
     // the queued job back, which is the one moment the wire has not caught up.
     running: mutation.isPending || live,
     live: live ? download : null,
+    // A settled job carries its sentence and no code, so only the launch's own
+    // refusal has an entry in the vocabulary to go through.
     failure: mutation.isError
-      ? asApiError(mutation.error)
+      ? refusalProse(mutation.error)
       : download?.state === "failed"
-        ? { code: "DOWNLOAD_FAILED", message: download.error ?? "The download did not finish." }
+        ? (download.error ?? "The download did not finish.")
         : null,
   };
 }
@@ -627,7 +629,7 @@ function useIntegrityRun(connection: Connection): {
   readonly start: () => void;
   readonly running: boolean;
   readonly live: IntegrityCheck | null;
-  readonly failure: { readonly code: string; readonly message: string } | null;
+  readonly failure: string | null;
 } {
   const mutation = useCheckIntegrity();
   const check = connection.integrity_check ?? null;
@@ -637,9 +639,9 @@ function useIntegrityRun(connection: Connection): {
     running: mutation.isPending || live,
     live: live ? check : null,
     failure: mutation.isError
-      ? asApiError(mutation.error)
+      ? refusalProse(mutation.error)
       : check?.state === "failed"
-        ? { code: "WEIGHTS_DAMAGED", message: check.error ?? "The check did not finish." }
+        ? (check.error ?? "The check did not finish.")
         : null,
   };
 }
