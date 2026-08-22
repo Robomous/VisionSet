@@ -40,6 +40,7 @@ import type { WireAnnotation } from "../annotator/jobQueries";
 import { refusalProse } from "../data/refusals";
 import { formatWhen } from "../lib/format";
 import { classColor } from "../palette";
+import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../primitives/Dialog";
 import { useActiveSchema, useDatasetAssetAnnotations, type DatasetAsset } from "./queries";
@@ -362,20 +363,18 @@ function Labels({
       {summary.classes.length > 0 && (
         <>
           <Row term="Classes">
-            <ul className="flex flex-wrap gap-x-3 gap-y-1">
+            <ul className="flex flex-wrap gap-1.5">
               {summary.classes.map(([name, count]) => (
-                <li
-                  key={name}
-                  data-testid={`preview-class-${name}`}
-                  className="flex items-center gap-1.5"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="inline-block size-2.5 shrink-0 rounded-sm"
-                    style={{ background: colorOf(name) }}
-                  />
-                  <span>{name}</span>
-                  <span className="tabular-nums text-muted-foreground">{count}</span>
+                <li key={name} data-testid={`preview-class-${name}`} className="contents">
+                  <Badge variant="outline" className="gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className="inline-block size-2 shrink-0 rounded-full"
+                      style={{ background: colorOf(name) }}
+                    />
+                    <span className="font-normal">{name}</span>
+                    <span className="tabular-nums text-muted-foreground">{count}</span>
+                  </Badge>
                 </li>
               ))}
             </ul>
