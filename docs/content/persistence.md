@@ -163,11 +163,13 @@ MIGRATIONS: list[Migration] = [
     Migration(version=9, name="job_assignee", upgrade=_add_job_assignee),
     Migration(version=10, name="schema_drafts", upgrade=_add_schema_drafts),
     Migration(version=11, name="provider_id", upgrade=_add_provider_id),
+    Migration(version=12, name="job_error_code", upgrade=_add_job_error_code),
+    Migration(version=13, name="credential_env", upgrade=_add_credential_env),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 11
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 13
 ```
 
-**Generation 1 is the baseline, and the ten entries after it are ordinary migrations.** A long
+**Generation 1 is the baseline, and the twelve entries after it are ordinary migrations.** A long
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus
@@ -191,7 +193,10 @@ lives in a model cache the kernel is forbidden to reach. Migration 11 cannot fil
 connection's provider either, and the reason differs in a way worth keeping straight: the family
 existed and could not be read from here, while the provider did not exist to be read - writing
 whichever driver happens to serve that family today would record a decision nobody made, on rows
-created before the question was asked. Where the value is unknowable here, the
+created before the question was asked. Migrations 12 and 13 add columns no existing row could
+have a value for - a failed job's error code was never recorded, and no connection could have
+named a credential variable before the column existed - so NULL is simply the truth. Where the
+value is unknowable here, the
 column arrives NULL and something outside the kernel fills it in later - and the column's own
 docstring says which, so a reader does not mistake an honest absence for a forgotten step.
 
