@@ -280,7 +280,7 @@ The visual foundation defines layout *principles* ([`DESIGN.md`](../../../DESIGN
 exact values below are screen-level decisions of the current implementation and are owned
 here.
 
-- **Page widths**: lists/dashboards/detail `max-w-[112rem]` (`ui-core`'s `PaddedContent`,
+- **Page widths**: lists/dashboards/detail `max-w-[96rem]` (`ui-core`'s `PaddedContent`,
   the one declaration the padded pane and the project shell share); forms/settings
   `max-w-3xl`; centered, `px-4 md:px-6 py-6`. Inside a project the content keeps that
   column beside a `160px` navigation column (`--spacing-project-nav`) at `lg` and above —

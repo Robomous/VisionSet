@@ -10,7 +10,7 @@ import type { JSX, ReactNode } from "react";
 export function PaddedContent({ children }: { readonly children: ReactNode }): JSX.Element {
   return (
     <div className="px-4 py-6 md:px-6">
-      <div className="mx-auto max-w-[112rem]">{children}</div>
+      <div className="mx-auto max-w-[96rem]">{children}</div>
     </div>
   );
 }

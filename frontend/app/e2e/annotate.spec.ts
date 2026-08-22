@@ -1908,11 +1908,10 @@ async function paneWidth(page: Page): Promise<number> {
 test("the annotation page fills the viewport beside the rail, with no cap and no padding", async ({
   page,
 }) => {
-  // Wider than the padded column's cap (`112rem`), so a cap would be a real
-  // constraint rather than one that happens not to bite. At the suite's default
-  // 1440 the content area is narrower than any cap and one never engages — which
-  // is exactly how this defect survived.
-  await page.setViewportSize({ width: 2000, height: 900 });
+  // Wider than `max-w-7xl` (1280px), so the cap is a real constraint rather than
+  // one that happens not to bite. At the suite's default 1440 the content area is
+  // 1200 and the cap never engages — which is exactly how this defect survived.
+  await page.setViewportSize({ width: 1800, height: 900 });
 
   const sent: Request[] = [];
   await openJob(page, sent);
@@ -1972,9 +1971,7 @@ test("collapsing the rail reflows the annotation page to the new width", async (
 });
 
 test("every other route keeps the padded, capped container", async ({ page }) => {
-  // Wider than the cap plus the rail and the gutters, so the cap is a real
-  // constraint here rather than one that happens not to bite.
-  await page.setViewportSize({ width: 2000, height: 900 });
+  await page.setViewportSize({ width: 1800, height: 900 });
 
   const sent: Request[] = [];
   await serveApi(page, sent);
@@ -1985,15 +1982,15 @@ test("every other route keeps the padded, capped container", async ({ page }) =>
   const main = page.locator("main");
   await expect(main).toBeVisible();
   const box = (await main.boundingBox())!;
-  const inner = (await main.locator(".max-w-\\[112rem\\]").first().boundingBox())!;
+  const inner = (await main.locator(".max-w-\\[96rem\\]").first().boundingBox())!;
 
   // The pane is still the full width beside the rail…
   expect(box.width).toBeCloseTo(await paneWidth(page), 0);
-  // …and the *content* inside it is capped at `112rem` and inset on both axes,
+  // …and the *content* inside it is capped at `96rem` and inset on both axes,
   // which is right for a list and is what must not move. Measured against the
   // pane's own origin, because the padding lives inside `<main>` rather than
   // above it.
-  expect(inner.width).toBeLessThanOrEqual(1792);
+  expect(inner.width).toBeLessThanOrEqual(1536);
   expect(inner.x - box.x).toBeGreaterThan(0);
   expect(inner.y - box.y).toBeGreaterThan(0);
 });
@@ -2024,7 +2021,7 @@ test("the rail keeps its collapsed state when the pane changes", async ({ page }
   // Full-bleed → padded, by a client-side navigation. A reload would remount
   // everything and prove nothing about the route tree.
   await page.getByTestId("rail-projects").click();
-  await expect(page.locator("main .max-w-\\[112rem\\]")).toBeVisible();
+  await expect(page.locator("main .max-w-\\[96rem\\]")).toBeVisible();
   await expect(page.getByTestId("annotation-page")).toHaveCount(0);
   await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
 

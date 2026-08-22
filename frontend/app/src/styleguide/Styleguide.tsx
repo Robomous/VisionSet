@@ -115,7 +115,7 @@ const ONTOLOGY = Array.from({ length: 40 }, (_, index) => `class-${String(index 
 export function Styleguide(): JSX.Element {
   return (
     <TooltipProvider>
-      <div className="mx-auto flex max-w-[112rem] flex-col gap-6 px-6 py-6">
+      <div className="mx-auto flex max-w-[96rem] flex-col gap-6 px-6 py-6">
         <header className="flex flex-col gap-1 border-b border-border pb-4">
           <h1 className="text-2xl font-semibold tracking-tight">VisionSet design system</h1>
           <p className="text-xs text-muted-foreground">
