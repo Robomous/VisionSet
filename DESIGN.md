@@ -248,10 +248,12 @@ rather than about a class string.
   composition on the 8 `sidebar-*` tokens above — light in the light theme, dark in the
   dark theme — never a hardcoded dark surface independent of the theme switch. Its
   widths are a VisionSet layout extension in `@theme inline` (`--spacing-sidebar: 240px`,
-  `--spacing-sidebar-collapsed: 60px`), consumed by `AppShell`, its collapse toggle, and
-  the content offset, which must agree or the layout jumps on collapse. These are not the
-  same numbers as the preset's own (unused) Sidebar component widths in the geometry
-  table above — VisionSet does not consume that component.
+  `--spacing-sidebar-collapsed: 48px`), consumed by `AppShell`, its collapse toggle, and
+  the content offset, which must agree or the layout jumps on collapse. The collapsed
+  width is the preset's own icon-sidebar width (`3rem`): with the rail's `p-2` it holds
+  exactly one `size-8` control per row, so every icon is centred by construction. The
+  expanded width is not the preset's (unused) Sidebar component's — VisionSet does not
+  consume that component.
 
 ## Charts
 

@@ -1959,14 +1959,14 @@ test("collapsing the rail reflows the annotation page to the new width", async (
   await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
 
   const after = (await page.getByTestId("annotation-page").boundingBox())!;
-  // The whole 180px the rail gave back — 240px expanded, 60px collapsed, the
+  // The whole 192px the rail gave back — 240px expanded, 48px collapsed, the
   // tokens three things have to agree on.
   //
   // Before the fix this was **128**, which is the defect stating itself: at 1440
   // the expanded pane is 1200 and `max-w-7xl` never engages, but collapsing frees
   // enough width for the cap to start biting, so the page grew by less than the
   // rail released and the difference went into gutters.
-  expect(after.width - before.width).toBeCloseTo(180, 0);
+  expect(after.width - before.width).toBeCloseTo(192, 0);
   expect(after.width).toBeCloseTo(await paneWidth(page), 0);
 });
 

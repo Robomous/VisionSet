@@ -36,10 +36,12 @@
  *
  * ## Why the collapsed width is a token
  *
- * 240px / 60px / 280px are in `ui-core`'s `@theme` rather than here, because three
+ * 240px / 48px are in `ui-core`'s `@theme` rather than here, because three
  * things have to agree on them — the rail, the toggle and the content offset — and
  * `DESIGN.md` calls them "a single source of truth" for that reason. A grid
  * template reading `w-sidebar` cannot drift from a rail that *is* `w-sidebar`.
+ * Collapsed, the rail is the preset's icon-sidebar width: `p-2` around one
+ * `size-8` control per row, so an icon is centred because nothing else fits.
  *
  * ## The rail is a `<nav>` with a real list, and the links are `<NavLink>`s
  *
@@ -116,7 +118,13 @@ export function AppShell(): JSX.Element {
           collapsed ? "w-sidebar-collapsed" : "w-sidebar"
         }`}
       >
-        <div className="flex items-center justify-between gap-2 px-1 py-2">
+        <div
+          className={
+            collapsed
+              ? "flex items-center justify-center py-2"
+              : "flex items-center justify-between gap-2 px-1 py-2"
+          }
+        >
           {!collapsed && (
             <span className="truncate text-base font-semibold">
               {/* The wordmark, and one of only two places `brand` is allowed. */}
@@ -261,7 +269,7 @@ function RailLink({
       // light-on-dark contrast — and an inactive one is the rail's own
       // foreground at reduced opacity, `sidebar-foreground/70`.
       className={({ isActive }) =>
-        `flex items-center gap-2 rounded-md px-2 py-2 text-sm ${
+        `flex items-center gap-2 rounded-md px-2 py-2 text-sm ${collapsed ? "justify-center" : ""} ${
           isActive
             ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"

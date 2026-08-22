@@ -343,7 +343,7 @@ test("a fresh session opens with the rail collapsed", async ({ page }) => {
 
   const rail = page.getByTestId("app-rail");
   await expect(rail).toHaveAttribute("data-collapsed", "true");
-  // Narrow, not merely labelled narrow: 60px is the collapsed token and 240 the
+  // Narrow, not merely labelled narrow: 48px is the collapsed token and 240 the
   // expanded one, so anything under half of 240 can only be the former.
   expect((await rail.boundingBox())?.width ?? 0).toBeLessThan(120);
 });

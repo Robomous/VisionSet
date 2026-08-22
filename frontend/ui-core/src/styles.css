@@ -189,7 +189,7 @@
   /* The rail's two widths — the AppShell, its collapse toggle and the
      content offset have to agree on them or the layout jumps. */
   --spacing-sidebar: 240px;
-  --spacing-sidebar-collapsed: 60px;
+  --spacing-sidebar-collapsed: 48px;
   --spacing-project-nav: 160px;
 }
 

@@ -101,8 +101,8 @@ without knowing the URL scheme.
   a scope the object does not have. A destination that belongs to one project does not
   qualify, however often it is visited. The current entries: logo, collapse toggle, Home,
   Projects, Inference, account at the bottom — nothing else.
-- **Rail widths** (current implementation, a single source of truth): 240px, 60px
-  collapsed, 280px mobile.
+- **Rail widths** (current implementation, a single source of truth): 240px expanded, 48px
+  collapsed — the preset's icon-sidebar width, one `size-8` control per row, centred.
 
 ## The browser, and what belongs in the URL
 
