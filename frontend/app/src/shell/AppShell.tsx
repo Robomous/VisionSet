@@ -53,15 +53,16 @@
  *
  * ## The shell renders a bare `<Outlet/>`; a nested layout route decides the pane
  *
- * Most of the product is a list or a form, and a padded `max-w-7xl` column is
- * right for those. The annotator is not: it is the one screen somebody sits in
+ * Most of the product is a list or a form, and a padded, capped column is right
+ * for those. A project is that column beside its own navigation. The annotator
+ * is neither: it is the one screen somebody sits in
  * front of for an hour, and boxing it costs real pixels — `fitToViewport` derives
  * the zoom from the pane's rect, so a shrunken pane opens every asset smaller than
  * it needs to and applies the tolerance constants at a zoom nobody chose.
  *
- * So the choice is a **route**, not a prop and not a `useMatch` here. `PaddedPane`
- * and `FullBleedPane` are the two `<main>`s, and `routes.tsx` puts each screen
- * under the one it wants — which keeps this file composition-only, exactly as
+ * So the choice is a **route**, not a prop and not a `useMatch` here. `PaddedPane`,
+ * `ProjectPane` and `FullBleedPane` are the three `<main>`s, and `routes.tsx` puts
+ * each screen under the one it wants — which keeps this file composition-only, exactly as
  * the thin-app rule asks, and keeps `ui-core` from fighting the container with
  * negative margins.
  *
@@ -79,8 +80,15 @@
  * right level for it.
  */
 
-import { readRailCollapsed, useApiSession, writeRailCollapsed } from "@visionset/ui-core";
-import { Cpu, FolderGit2, Home, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import {
+  IconCpu,
+  IconFolders,
+  IconHome,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
+  IconLogout,
+} from "@tabler/icons-react";
+import { PaddedContent, readRailCollapsed, useApiSession, writeRailCollapsed } from "@visionset/ui-core";
 import { useState, type JSX, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router";
 
@@ -121,21 +129,21 @@ export function AppShell(): JSX.Element {
             onClick={toggle}
           >
             {collapsed ? (
-              <PanelLeftOpen className="size-4" aria-hidden="true" />
+              <IconLayoutSidebarLeftExpand className="size-4" aria-hidden="true" />
             ) : (
-              <PanelLeftClose className="size-4" aria-hidden="true" />
+              <IconLayoutSidebarLeftCollapse className="size-4" aria-hidden="true" />
             )}
           </RailButton>
         </div>
 
         <RailLink to="/" end collapsed={collapsed} testId="rail-home" label="Home">
-          <Home className="size-4 shrink-0" aria-hidden="true" />
+          <IconHome className="size-4 shrink-0" aria-hidden="true" />
         </RailLink>
         <RailLink to="/projects" collapsed={collapsed} testId="rail-projects" label="Projects">
-          <FolderGit2 className="size-4 shrink-0" aria-hidden="true" />
+          <IconFolders className="size-4 shrink-0" aria-hidden="true" />
         </RailLink>
         <RailLink to="/inference" collapsed={collapsed} testId="rail-inference" label="Inference">
-          <Cpu className="size-4 shrink-0" aria-hidden="true" />
+          <IconCpu className="size-4 shrink-0" aria-hidden="true" />
         </RailLink>
 
         <div className="mt-auto">
@@ -149,17 +157,34 @@ export function AppShell(): JSX.Element {
 }
 
 /**
- * The pane every list and form gets: padded, and capped at `max-w-7xl`.
+ * The pane every list and form gets: padded, and centred in a capped column.
  *
- * `min-w-0` so a wide table scrolls inside the pane instead of pushing the rail
- * off the screen — the one flex rule this layout would be wrong without.
+ * The column itself is `ui-core`'s `PaddedContent`, because the project shell
+ * draws the same column beside its navigation and the two must not disagree on
+ * how wide a page is. `min-w-0` so a wide table scrolls inside the pane instead
+ * of pushing the rail off the screen — the one flex rule this layout would be
+ * wrong without.
  */
 export function PaddedPane(): JSX.Element {
   return (
-    <main className="min-w-0 flex-1 px-4 py-6 md:px-6">
-      <div className="mx-auto max-w-7xl">
+    <main className="min-w-0 flex-1">
+      <PaddedContent>
         <Outlet />
-      </div>
+      </PaddedContent>
+    </main>
+  );
+}
+
+/**
+ * The pane a project gets: the whole width beside the rail, with no padding of
+ * its own, because the project screen lays out its navigation column and its
+ * content itself (`ProjectShell`) — the column has to start at the rail's edge,
+ * and a padded pane would hold it off by a gutter.
+ */
+export function ProjectPane(): JSX.Element {
+  return (
+    <main className="flex min-w-0 flex-1">
+      <Outlet />
     </main>
   );
 }
@@ -202,7 +227,7 @@ function SignOut({ collapsed }: { readonly collapsed: boolean }): JSX.Element {
   const label = access === "session" ? "Use a token" : "Sign out";
   return (
     <RailButton testId="rail-sign-out" label={label} onClick={signOut} wide={!collapsed}>
-      <LogOut className="size-4 shrink-0" aria-hidden="true" />
+      <IconLogout className="size-4 shrink-0" aria-hidden="true" />
       {!collapsed && <span className="truncate">{label}</span>}
     </RailButton>
   );
