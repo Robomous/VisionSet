@@ -246,7 +246,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // turned it into a URL" are two claims and only the second survives a
     // reload.
     await expect(page.getByTestId("project-screen")).toBeVisible();
-    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}(\?|$)/);
+    // A new project opens on its default section, spelled in the URL.
+    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/overview$/);
     await expect(page.getByTestId("project-title")).toHaveText(PROJECT);
   });
 
