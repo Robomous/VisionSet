@@ -4152,7 +4152,7 @@
         "type": "string"
       },
       "ResumeTargetOut": {
-        "description": "The batch to carry on with, what for, and where inside it to land.",
+        "description": "The batch to carry on with, what for, and where inside it to land.\n\n`thumbnail_asset_id` names the frame that stands for the batch on the card\nand `thumbnail_hash` is that asset's cached preview. Both are null for a\nbatch with no assets; the id set with a null hash means the asset has no\ncached preview, so there is nothing to fetch.",
         "properties": {
           "annotated": {
             "title": "Annotated",
@@ -4212,6 +4212,17 @@
             ],
             "title": "Thumbnail Asset Id"
           },
+          "thumbnail_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Hash"
+          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -4228,7 +4239,8 @@
           "annotated",
           "total",
           "review_pending",
-          "thumbnail_asset_id"
+          "thumbnail_asset_id",
+          "thumbnail_hash"
         ],
         "title": "ResumeTargetOut",
         "type": "object"

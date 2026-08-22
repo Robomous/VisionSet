@@ -83,8 +83,15 @@ export function ThumbnailPlaceholder({
 export interface AssetThumbnailProps {
   readonly projectId: string;
   readonly assetId: string;
-  /** `null` when the preview was never cached. Rendered as a placeholder. */
-  readonly thumbnailHash: string | null | undefined;
+  /**
+   * `null` when the preview was never cached. Rendered as a placeholder.
+   *
+   * Deliberately not optional and not `| undefined`: a caller must read the
+   * hash off the wire, because "I didn't say" and "known absent" would render
+   * identically — Home's resume card shipped a permanent placeholder on
+   * exactly that ambiguity.
+   */
+  readonly thumbnailHash: string | null;
   readonly alt: string;
   readonly className?: string;
 }
@@ -101,7 +108,7 @@ export function AssetThumbnail({
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (thumbnailHash === null || thumbnailHash === undefined) return;
+    if (thumbnailHash === null) return;
     // Aborted rather than raced: a fast scroll unmounts tiles mid-flight, and
     // `live = false` only discarded the result — the transfer itself ran to
     // completion for every tile scrolled past (#572). The controller cancels
@@ -138,7 +145,7 @@ export function AssetThumbnail({
     };
   }, [client, projectId, assetId, thumbnailHash]);
 
-  if (thumbnailHash === null || thumbnailHash === undefined || failed) {
+  if (thumbnailHash === null || failed) {
     // A preview that was never cached is not a preview that broke, and
     // `DESIGN.md` forbids a broken-image glyph for the first. NULL is the
     // ordinary state of an asset ingested before the cache existed or one
