@@ -389,6 +389,20 @@ test("the tab bar sits one rhythm step above its content", async ({ page }) => {
   expect(panel!.y - (list!.y + list!.height)).toBeCloseTo(8, 0);
 });
 
+test("a line tab bar sits a layout unit above its content", async ({ page }) => {
+  // The other value the one declaration knows: a `line` bar reads as navigation
+  // over a page's content, and content under navigation takes 16px rather than
+  // the switch's 8. Measured on the strip sample, which is a `line` bar.
+  await page.goto("/styleguide");
+
+  const scope = page.getByTestId("sg-project-nav-strip");
+  const list = await scope.locator('[role="tablist"]').boundingBox();
+  const panel = await scope.locator('[role="tabpanel"][data-state="active"]').boundingBox();
+  expect(list).not.toBeNull();
+  expect(panel).not.toBeNull();
+  expect(panel!.y - (list!.y + list!.height)).toBeCloseTo(16, 0);
+});
+
 /**
  * The two-line option's claim, which is a claim about pixels.
  *

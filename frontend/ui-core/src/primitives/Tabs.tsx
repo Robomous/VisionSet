@@ -17,7 +17,15 @@
  * control, and a full-width `border-b` list with a `border-primary` underline
  * — are both gone as literal recipes: Nova's `default` and `line` variants
  * replace them, and `TabsContent`'s baked `mt-3` is gone too, folded into the
- * `Tabs` root's own `gap-2` instead of living on the panel.
+ * `Tabs` root's own gap instead of living on the panel.
+ *
+ * ## The gap between the bar and the panel is the root's, and it knows the variant
+ *
+ * Nova's `gap-2` for the segmented control — a switch sitting directly on its
+ * panel. A `line` bar reads as navigation over a page's content, and content
+ * under navigation takes the layout unit, `gap-4`; the root reads which it holds
+ * through `:has()`, so the two values live in this one declaration and no consumer
+ * ever adds a margin of its own (`docs/content/ui/product-principles.md`, *Tabs*).
  *
  * ## `data-state`, not a boolean `data-active`
  *
@@ -52,7 +60,10 @@ export const Tabs = forwardRef<
     <TabsPrimitive.Root
       ref={ref}
       orientation={orientation}
-      className={cn("group/tabs flex gap-2 data-[orientation=horizontal]:flex-col", className)}
+      className={cn(
+        "group/tabs flex gap-2 has-[[data-variant=line]]:gap-4 data-[orientation=horizontal]:flex-col",
+        className,
+      )}
       {...props}
     />
   );

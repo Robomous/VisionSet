@@ -2365,7 +2365,9 @@ test("the project view's tabs use the same one rule", async ({ page }) => {
   // tidy-up from adding a gap here and rediscovering the doubling on a different
   // screen.
   await expect(page.getByTestId("project-tabs")).toBeVisible();
-  expect(await tabGap(page, "project-tabs")).toBeCloseTo(8, 0);
+  // The project's strip is a `line` bar — navigation over the page's content —
+  // so its gap is the layout unit, 16px, where the segmented switch keeps Nova's 8.
+  expect(await tabGap(page, "project-tabs")).toBeCloseTo(16, 0);
 });
 
 /**
