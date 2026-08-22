@@ -162,10 +162,15 @@ class ResumeTarget(BaseModel):
     #: at once, and a surface showing the count only in the state where it is the
     #: headline would hide the more interesting case.
     review_pending: int = Field(ge=0)
-    #: A frame to show beside the card, or NULL when the batch holds none that
-    #: records a cached preview. The caller reaches the bytes by asset id, the
-    #: way every other thumbnail in the product is addressed.
+    #: A frame to show beside the card, or NULL when the batch holds no assets
+    #: at all.
     thumbnail_asset_id: UUID | None = None
+    #: That frame's cached preview. NULL with the id set means the asset has no
+    #: cached preview, so there is nothing to fetch — the same pairing
+    #: :class:`~visionset.kernel.domain.project.ProjectPreview` carries, for the
+    #: same reason: a renderer without the hash cannot tell "fetch and see"
+    #: from "known absent".
+    thumbnail_hash: str | None = None
 
 
 class AttentionItem(BaseModel):

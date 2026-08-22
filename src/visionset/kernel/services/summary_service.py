@@ -126,6 +126,7 @@ class SummaryService:
                 assets = uow.assets.list(project.id)
                 summaries.append(_summarize(uow, project, assets, totals))
                 activity.extend(_project_activity(uow, project, assets, totals))
+                previews = {asset.id: asset.thumbnail_hash for asset in assets}
 
                 for batch in uow.batches.list(project.id):
                     if batch.state is not BatchState.IN_ANNOTATION:
@@ -144,7 +145,7 @@ class SummaryService:
                                     count=waiting,
                                 )
                             )
-                    candidate = _candidate(project, batch, jobs, _touched(uow, jobs))
+                    candidate = _candidate(project, batch, jobs, _touched(uow, jobs), previews)
                     if candidate is not None:
                         best = _preferred(best, candidate)
 
@@ -358,7 +359,11 @@ def _touched(uow: UnitOfWork, jobs: list[AnnotationJob]) -> datetime | None:
 
 
 def _candidate(
-    project: Project, batch: Batch, jobs: list[AnnotationJob], touched_at: datetime | None
+    project: Project,
+    batch: Batch,
+    jobs: list[AnnotationJob],
+    touched_at: datetime | None,
+    previews: dict[UUID, str | None],
 ) -> _Candidate | None:
     """Rank one open batch, work out what it is for, and where inside it to land.
 
@@ -397,6 +402,9 @@ def _candidate(
     if landing is None:
         landing = _landing(batch, holders, {AssetProgress.REVIEW_PENDING})
         kind = ResumeKind.OPEN if landing is None else ResumeKind.REVIEW
+    # The frame somebody is about to open, or failing that the batch's first —
+    # a picture for the card, not a claim about progress.
+    thumbnail = landing[0] if landing else (batch.asset_ids[0] if batch.asset_ids else None)
     return _Candidate(
         touched_at=touched_at,
         settled=settled,
@@ -413,13 +421,8 @@ def _candidate(
             annotated=settled,
             total=len(holders),
             review_pending=waiting,
-            # The frame somebody is about to open, or failing that the batch's
-            # first — a picture for the card, not a claim about progress. A
-            # missing preview renders as a placeholder, which every thumbnail in
-            # the product already does.
-            thumbnail_asset_id=(
-                landing[0] if landing else (batch.asset_ids[0] if batch.asset_ids else None)
-            ),
+            thumbnail_asset_id=thumbnail,
+            thumbnail_hash=None if thumbnail is None else previews.get(thumbnail),
         ),
     )
 

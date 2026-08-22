@@ -4686,6 +4686,11 @@ export interface components {
         /**
          * ResumeTargetOut
          * @description The batch to carry on with, what for, and where inside it to land.
+         *
+         *     `thumbnail_asset_id` names the frame that stands for the batch on the card
+         *     and `thumbnail_hash` is that asset's cached preview. Both are null for a
+         *     batch with no assets; the id set with a null hash means the asset has no
+         *     cached preview, so there is nothing to fetch.
          */
         ResumeTargetOut: {
             /** Annotated */
@@ -4716,6 +4721,8 @@ export interface components {
             review_pending: number;
             /** Thumbnail Asset Id */
             thumbnail_asset_id: string | null;
+            /** Thumbnail Hash */
+            thumbnail_hash: string | null;
             /** Total */
             total: number;
         };

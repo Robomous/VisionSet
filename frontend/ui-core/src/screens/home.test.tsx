@@ -27,11 +27,14 @@ const ASSET = "44444444-4444-4444-8444-444444444444";
 
 type Answer = { status: number; body?: unknown };
 let handlers: ((request: Request) => Answer | undefined)[] = [];
+let sent: Request[] = [];
 
 beforeEach(() => {
   handlers = [];
+  sent = [];
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
+    sent.push(request);
     for (const handler of handlers) {
       const answer = handler(request);
       if (answer !== undefined) {
@@ -42,12 +45,6 @@ beforeEach(() => {
           }),
         );
       }
-    }
-    // A thumbnail is bytes, and the resume card asks for one whenever it renders.
-    // Answered here rather than per test, because no assertion in this file is
-    // about the picture.
-    if (new URL(request.url).pathname.includes("/thumbnail")) {
-      return Promise.resolve(new Response(new Blob([]), { status: 200 }));
     }
     // A request nobody stubbed is a fixture that forgot something, and answering
     // it politely is how a test comes to assert against a screen the server
@@ -87,6 +84,7 @@ function resume(overrides: Record<string, unknown> = {}): Record<string, unknown
     total: 200,
     review_pending: 0,
     thumbnail_asset_id: ASSET,
+    thumbnail_hash: null,
     ...overrides,
   };
 }
@@ -185,6 +183,35 @@ it("offers the batch to carry on with, and where inside it", async () => {
   expect(card.textContent).toContain("Batch 3");
   expect(card.textContent).toContain("148 / 200 annotated");
   expect(screen.getByTestId("home-resume-cta").textContent).toContain("Continue annotating");
+});
+
+it("shows the frame it would open, fetched off the hash the wire carries", async () => {
+  // The regression this file shipped with: the card passed no hash, the
+  // component read that as "known absent", and the placeholder rendered for
+  // every workspace while a blanket stub in this file answered a request the
+  // component never made. The stub below only passes because an assertion now
+  // depends on it.
+  on("GET", /\/home$/, {
+    status: 200,
+    body: homeBody({ resume: resume({ thumbnail_hash: "cafebabe" }) }),
+  });
+  on("GET", /\/thumbnail$/, { status: 200, body: null });
+  render(mount(<HomeScreen onContinue={() => {}} />));
+
+  const image = await screen.findByTestId("thumbnail");
+  expect(image.getAttribute("src")).toContain("blob:");
+  expect(sent.some((request) => new URL(request.url).pathname.endsWith(`/assets/${ASSET}/thumbnail`))).toBe(
+    true,
+  );
+});
+
+it("draws the placeholder for a frame with no cached preview, and asks for nothing", async () => {
+  on("GET", /\/home$/, { status: 200, body: homeBody({ resume: resume() }) });
+  render(mount(<HomeScreen onContinue={() => {}} />));
+
+  await screen.findByTestId("home-resume");
+  expect(screen.getByTestId("thumbnail-placeholder")).toBeTruthy();
+  expect(sent.some((request) => request.url.includes("/thumbnail"))).toBe(false);
 });
 
 it("sends the reviewer to the frame awaiting review, on the same route", async () => {
