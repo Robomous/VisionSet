@@ -920,12 +920,14 @@ describe("looking at a member", () => {
     expect(within(preview).getByTestId("preview-overlay").getAttribute("viewBox")).toBe("0 0 640 480");
     await within(preview).findByTestId(`preview-shape-${BOX}`);
     expect(within(preview).getByTestId(`preview-shape-${LANE}`).getAttribute("data-geometry")).toBe("polygon");
-    // Grouped by class, each label saying what it is and who made it.
-    expect(within(preview).getByTestId("preview-class-vehicle").textContent).toContain("1");
-    expect(within(preview).getByTestId(`preview-annotation-${BOX}`).textContent).toBe("box · human");
-    expect(within(preview).getByTestId(`preview-annotation-${LANE}`).textContent).toBe(
-      "polygon · model · detector · 80%",
-    );
+    // A summary, not an inventory: counted by class, by who made them, by which
+    // model and how surely. The picture is the inventory.
+    expect(within(preview).getByTestId("preview-class-vehicle").textContent).toBe("vehicle1");
+    expect(within(preview).getByTestId("preview-class-lane").textContent).toBe("lane1");
+    expect(within(preview).getByTestId("preview-by").textContent).toBe("person 1 · model 1");
+    expect(within(preview).getByTestId("preview-models").textContent).toBe("detector");
+    expect(within(preview).getByTestId("preview-confidence").textContent).toBe("80%");
+    expect(within(preview).queryByTestId(`preview-annotation-${BOX}`)).toBeNull();
     // Read through the dataset — a member carries no job id to read it through.
     const asked = sent.find((r) => new URL(r.url).pathname.endsWith("/annotations"));
     expect(new URL(asked?.url ?? "").pathname).toBe(`/datasets/${DATASET}/assets/${ASSET}/annotations`);
@@ -943,6 +945,35 @@ describe("looking at a member", () => {
     expect(screen.queryByTestId(`preview-shape-${BOX}`)).toBeNull();
     expect(screen.getByTestId("preview-class-vehicle")).not.toBeNull();
     expect(screen.getByTestId("preview-toggle-labels").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("names a model by its short name and keeps the whole reference in reach", async () => {
+    on("GET", /\/annotations$/, {
+      status: 200,
+      body: {
+        items: [
+          {
+            ...ANNOTATIONS[1],
+            model_ref: "IDEA-Research/grounding-dino-tiny@a2bb814dd30d776dcf7e30523b0065",
+            confidence: 0.3,
+          },
+          { ...ANNOTATIONS[1], id: BOX, confidence: 0.75, model_ref: "IDEA-Research/grounding-dino-tiny@a2bb814dd30d776dcf7e30523b0065" },
+        ],
+        total: 2,
+      },
+    });
+    previewable();
+    baseline();
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+
+    const models = await screen.findByTestId("preview-models");
+    expect(models.textContent).toBe("grounding-dino-tiny");
+    expect(models.querySelector("li")?.getAttribute("title")).toBe(
+      "IDEA-Research/grounding-dino-tiny@a2bb814dd30d776dcf7e30523b0065",
+    );
+    expect(screen.getByTestId("preview-confidence").textContent).toBe("30% – 75%");
+    expect(screen.getByTestId("preview-by").textContent).toBe("model 2");
   });
 
   it("steps through the page with the arrows and stops at its edges", async () => {
