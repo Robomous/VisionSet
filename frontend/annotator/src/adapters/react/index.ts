@@ -34,6 +34,7 @@ export {
   HANDLE_PX,
   LABEL_PX,
   PolygonShape,
+  PolylineShape,
   SELECTED_STROKE_PX,
   STROKE_PX,
   ShapeLabel,

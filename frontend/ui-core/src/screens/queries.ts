@@ -65,6 +65,7 @@ import {
   checkListBatchJobs,
   checkListBatches,
   checkListBlockingAssets,
+  checkListDatasetAssetAnnotations,
   checkListDatasetAssets,
   checkListFormats,
   checkListProjectAssets,
@@ -94,6 +95,7 @@ import {
   checkVerifyRelease,
 } from "../generated/checks";
 import type { components } from "../generated/api";
+import type { WireAnnotation } from "../annotator/jobQueries";
 
 export type Project = components["schemas"]["ProjectOut"];
 export type ProjectPage = components["schemas"]["ProjectPage"];
@@ -110,6 +112,8 @@ export type ProjectStats = components["schemas"]["ProjectStatsOut"];
 export type { ClassCount } from "../data/refusals";
 export type Asset = components["schemas"]["AssetOut"];
 export type AssetPage = components["schemas"]["AssetPage"];
+export type DatasetAsset = components["schemas"]["DatasetAssetOut"];
+export type DatasetAssetPage = components["schemas"]["DatasetAssetPage"];
 export type BlockingAsset = components["schemas"]["BlockingAssetOut"];
 export type BlockingAssetPage = components["schemas"]["BlockingAssetPage"];
 
@@ -1620,6 +1624,8 @@ export const datasetKeys = {
   assets: (datasetId: string, offset: number) =>
     ["datasets", datasetId, "assets", offset] as const,
   allAssets: (datasetId: string) => ["datasets", datasetId, "assets"] as const,
+  annotations: (datasetId: string, assetId: string) =>
+    ["datasets", datasetId, "assets", assetId, "annotations"] as const,
   releases: (datasetId: string) => ["datasets", datasetId, "releases"] as const,
   verification: (releaseId: string) => ["releases", releaseId, "verify"] as const,
   formats: () => ["formats"] as const,
@@ -1630,7 +1636,7 @@ export const datasetKeys = {
  * read**, so `total` is the whole trunk and a client pages until it has seen
  * that many rather than until the number moves.
  */
-export const TRUNK_PAGE_SIZE = 25;
+export const TRUNK_PAGE_SIZE = 48;
 
 export function useProjectDataset(projectId: string): UseQueryResult<Dataset, Error> {
   const client = useApiClient();
@@ -1679,7 +1685,7 @@ export function useDatasetStats(datasetId: string | undefined): UseQueryResult<D
 export function useDatasetAssets(
   datasetId: string | undefined,
   offset: number,
-): UseQueryResult<AssetPage, Error> {
+): UseQueryResult<DatasetAssetPage, Error> {
   const client = useApiClient();
   return useQuery({
     queryKey: datasetKeys.assets(datasetId ?? "none", offset),
@@ -1694,6 +1700,30 @@ export function useDatasetAssets(
         }),
         checkListDatasetAssets,
       ),
+  });
+}
+
+/**
+ * Every label on one trunk member, read through the dataset and not through a
+ * job: a member carries no `job_id`, and a label outlives the work that produced
+ * it. The envelope is unwrapped to its items, as the job-scoped read is — one
+ * asset's annotations is not a collection that grows.
+ */
+export function useDatasetAssetAnnotations(
+  datasetId: string,
+  assetId: string | undefined,
+): UseQueryResult<readonly WireAnnotation[], Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: datasetKeys.annotations(datasetId, assetId ?? "none"),
+    enabled: assetId !== undefined,
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/datasets/{dataset_id}/assets/{asset_id}/annotations", {
+          params: { path: { dataset_id: datasetId, asset_id: assetId ?? "" } },
+        }),
+        checkListDatasetAssetAnnotations,
+      ).items,
   });
 }
 

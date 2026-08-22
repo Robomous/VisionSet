@@ -212,6 +212,18 @@ timeline offers no edit and no delete, because there is no `ReleaseService.delet
  - only a project's own cascade removes one, and the manifest blob survives even
 that.
 
+**The trunk is a grid of pictures, looked at one at a time.** Every promoted asset is a
+tile — the frame number over the picture and how many labels it carries underneath, both read
+off the listing itself — forty-eight to a page, in promotion order. Opening a tile shows the
+picture with its labels drawn over it in the annotator's own shapes and colours, beside a
+summary in the manner of an info panel: what the asset is (dimensions, format, frame, source,
+ingestion time, content hash), what is on it counted by class, and its provenance — who made
+the labels and which models — the picture is the inventory, and the panel does not repeat it row by
+row; the arrows step through the page. The labels are read through the dataset (`GET /datasets/{id}/assets/{asset_id}/annotations`)
+and not through a job, because a trunk member carries no job id and a label outlives the work
+that produced it. It is a viewer: the one write it offers is the same removal the tile offers,
+through the same confirmation, because correcting a label is a correction batch's job.
+
 **Verification is on demand.** `verify` re-reads and re-hashes every blob the
 manifest names - `BlobStore.exists` is `is_file()` on a path *named by* the hash and
 proves nothing - so it is not something to run because a list rendered. A broken

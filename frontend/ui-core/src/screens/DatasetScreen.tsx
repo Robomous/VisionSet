@@ -76,8 +76,8 @@ import {
 } from "../primitives/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
-import { formatWhen } from "../lib/format";
 import { AssetThumbnail } from "./AssetThumbnail";
+import { DatasetAssetDialog, trunkAssetLabel } from "./DatasetAssetDialog";
 import { saveBlob } from "./download";
 import {
   TRUNK_PAGE_SIZE,
@@ -93,7 +93,7 @@ import {
   useReleases,
   useRemoveDatasetAsset,
   useVerifyRelease,
-  type Asset,
+  type DatasetAsset,
   type BackgroundJob,
   type Release,
 } from "./queries";
@@ -239,7 +239,8 @@ export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
  * called it — the API's only curation operation over the trunk, unreachable from
  * the product. It could not be added to a listing, because there was no listing:
  * this screen showed counts and releases and never the membership those counts
- * are *of*. So the control needed a row to hang on, and this is that row.
+ * are *of*. So the control needed a tile to hang on, and this is that tile — and
+ * once there was a tile, there was something to open: the preview beside it.
  *
  * ## Paged, because the trunk is the one collection that only grows
  *
@@ -250,7 +251,7 @@ export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
  *
  * ## No capability gate, and that is a decision rather than an omission
  *
- * `AssetOut` declares no `allowed_actions`, and the route is unconditional: it
+ * `DatasetAssetOut` declares no `allowed_actions`, and the route is unconditional: it
  * answers 204 whether or not the asset was a member, refuses nothing about the
  * asset's state, and the kernel gives it no `confirm=` gate. Writing a
  * `canRemove(asset)` here would be the hand-mirrored table the `ui-capabilities`
@@ -266,8 +267,10 @@ function TrunkAssets({
 }): JSX.Element {
   const [offset, setOffset] = useState(0);
   const page = useDatasetAssets(datasetId, offset);
-  const [removing, setRemoving] = useState<Asset | null>(null);
+  const [removing, setRemoving] = useState<DatasetAsset | null>(null);
+  const [viewing, setViewing] = useState<number | null>(null);
   const total = page.data?.total ?? 0;
+  const items = page.data?.items ?? [];
 
   return (
     <section className="flex flex-col gap-3" data-testid="trunk-assets">
@@ -275,7 +278,8 @@ function TrunkAssets({
         <div>
           <h2 className="text-base font-semibold">Assets</h2>
           <p className="text-xs text-muted-foreground">
-            Every asset a completed batch has promoted, in the order they were promoted.
+            Every asset a completed batch has promoted, in the order they were promoted. Open one
+            to see its labels.
           </p>
         </div>
         {total > TRUNK_PAGE_SIZE && (
@@ -315,51 +319,34 @@ function TrunkAssets({
         }}
       >
         {(assets) => (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-20">Preview</TableHead>
-                <TableHead>Asset</TableHead>
-                <TableHead className="w-44">Ingested</TableHead>
-                <TableHead className="w-28" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {assets.items.map((asset) => (
-                <TableRow key={asset.id} data-testid={`trunk-asset-${asset.id}`}>
-                  <TableCell>
-                    <AssetThumbnail
-                      projectId={projectId}
-                      assetId={asset.id}
-                      thumbnailHash={asset.thumbnail_hash}
-                      alt={assetLabel(asset)}
-                      className="size-12 rounded-md border border-border object-cover"
-                    />
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{assetLabel(asset)}</TableCell>
-                  {/* Null means *unknown*, not "never": rows written before the
-                      column existed are legitimately unstamped, and rendering that
-                      as a date would invent one. */}
-                  <TableCell className="text-muted-foreground">
-                    {asset.ingested_at == null ? "—" : formatWhen(asset.ingested_at)}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      data-testid={`remove-${asset.id}`}
-                      onClick={() => setRemoving(asset)}
-                    >
-                      <Trash2 className="size-4" aria-hidden="true" />
-                      Remove
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div
+            data-testid="trunk-grid"
+            className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]"
+          >
+            {assets.items.map((asset, index) => (
+              <TrunkTile
+                key={asset.id}
+                projectId={projectId}
+                asset={asset}
+                onOpen={() => setViewing(index)}
+                onRemove={() => setRemoving(asset)}
+              />
+            ))}
+          </div>
         )}
       </Async>
+
+      {viewing !== null && datasetId !== undefined && (
+        <DatasetAssetDialog
+          projectId={projectId}
+          datasetId={datasetId}
+          assets={items}
+          index={viewing}
+          onIndex={setViewing}
+          onClose={() => setViewing(null)}
+          onRemove={setRemoving}
+        />
+      )}
 
       {removing !== null && datasetId !== undefined && (
         <RemoveAssetDialog
@@ -367,11 +354,15 @@ function TrunkAssets({
           asset={removing}
           onClose={() => setRemoving(null)}
           onRemoved={() => {
-            // The page this row was on may no longer exist: removing the only
+            // The viewer was looking at a page that no longer has this member,
+            // and the index it held now names the next one over — closing is
+            // the honest answer rather than silently showing a neighbour.
+            setViewing(null);
+            // The page this tile was on may no longer exist: removing the only
             // member of the last page leaves an offset past the end, which the
             // API answers 200-and-empty rather than 404. Stepping back is the
             // honest place to land.
-            if (offset > 0 && (page.data?.items.length ?? 0) === 1) {
+            if (offset > 0 && items.length === 1) {
               setOffset(Math.max(0, offset - TRUNK_PAGE_SIZE));
             }
           }}
@@ -381,9 +372,73 @@ function TrunkAssets({
   );
 }
 
-/** The frame number when there is one, and a short content hash when there is not. */
-function assetLabel(asset: Asset): string {
-  return asset.frame_index == null ? asset.content_hash.slice(0, 12) : `frame ${asset.frame_index}`;
+/**
+ * One member as a tile: the picture, the frame number over it, and how many
+ * labels it carries. The caption's word is "labels" and not the batch tile's
+ * "boxes", because the trunk holds every geometry a schema allows and the count
+ * is read off `annotation_count`, which does not say which.
+ */
+function TrunkTile({
+  projectId,
+  asset,
+  onOpen,
+  onRemove,
+}: {
+  readonly projectId: string;
+  readonly asset: DatasetAsset;
+  readonly onOpen: () => void;
+  readonly onRemove: () => void;
+}): JSX.Element {
+  const label = trunkAssetLabel(asset);
+  const pill =
+    asset.frame_index == null ? asset.content_hash.slice(0, 8) : String(asset.frame_index);
+  const count = asset.annotation_count;
+  const word = count === 0 ? "No labels" : `${count} ${count === 1 ? "label" : "labels"}`;
+
+  return (
+    <div data-testid={`trunk-asset-${asset.id}`} className="flex flex-col gap-1">
+      <button
+        type="button"
+        data-testid={`open-${asset.id}`}
+        aria-label={`Preview ${label}`}
+        onClick={onOpen}
+        className={
+          "relative aspect-[4/3] w-full overflow-hidden rounded-md border border-border bg-card p-0 " +
+          "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        }
+      >
+        <AssetThumbnail
+          projectId={projectId}
+          assetId={asset.id}
+          thumbnailHash={asset.thumbnail_hash}
+          alt={label}
+          className="size-full object-cover"
+        />
+        <span className="absolute left-1 top-1 rounded-sm bg-card/90 px-1 font-mono text-xs text-foreground">
+          {pill}
+        </span>
+      </button>
+      <span className="flex items-center justify-between gap-1 px-0.5">
+        <span
+          data-testid={`labels-${asset.id}`}
+          className="truncate text-xs text-muted-foreground"
+          {...(asset.label_classes.length === 0 ? {} : { title: asset.label_classes.join(", ") })}
+        >
+          {word}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          data-testid={`remove-${asset.id}`}
+          aria-label={`Remove ${label} from the dataset`}
+          onClick={onRemove}
+          className="text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 aria-hidden="true" />
+        </Button>
+      </span>
+    </div>
+  );
 }
 
 /**
@@ -414,7 +469,7 @@ function RemoveAssetDialog({
   onRemoved,
 }: {
   readonly datasetId: string;
-  readonly asset: Asset;
+  readonly asset: DatasetAsset;
   readonly onClose: () => void;
   readonly onRemoved: () => void;
 }): JSX.Element {
@@ -423,12 +478,12 @@ function RemoveAssetDialog({
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="remove-asset-dialog">
-        <DialogTitle>Remove {assetLabel(asset)} from the dataset?</DialogTitle>
+        <DialogTitle>Remove {trunkAssetLabel(asset)} from the dataset?</DialogTitle>
         <DialogDescription data-testid="remove-asset-consequence">
-          It leaves the dataset, and its annotations leave with it — membership is by asset, so
-          nothing labelled on this one stays behind. Nothing is deleted: the image, its
-          annotations and its stored bytes all remain, and releases already published are
-          snapshots and are untouched. Promoting its batch again puts it back.
+          This removes the image from the dataset, together with its annotations. The image itself
+          is not deleted: the file, its annotations and its stored data remain in the project, and
+          any release already published is unaffected. Promoting the batch again will restore it to
+          the dataset.
         </DialogDescription>
         {remove.isError && (
           <FieldError data-testid="remove-asset-error">{refusalProse(remove.error)}</FieldError>

@@ -315,6 +315,89 @@ def test_a_class_the_schema_declares_but_nobody_used_is_absent(
     assert [row["label_class"] for row in classes] == ["sign"]
 
 
+def test_each_member_says_how_many_labels_it_carries_and_of_which_classes(
+    client: TestClient, finished: tuple[str, str]
+) -> None:
+    """The fields a tile renders on first sight, without a second request per frame."""
+    project_id, batch_id = finished
+    client.post(f"/batches/{batch_id}/promote")
+    dataset_id = dataset_of(client, project_id)
+
+    items = client.get(f"/datasets/{dataset_id}/assets").json()["items"]
+
+    assert [(asset["annotation_count"], asset["label_classes"]) for asset in items] == [
+        (1, ["sign"])
+    ] * 3
+    assert {"id", "content_hash", "thumbnail_hash", "ingested_at"} <= set(items[0])
+
+
+def test_a_member_without_labels_counts_zero_of_no_class(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    batch_id, job_id = open_job(client, runner, tmp_path)
+    project_id = client.get(f"/batches/{batch_id}").json()["project_id"]
+    for asset_id in asset_ids(client, batch_id):
+        client.put(f"/jobs/{job_id}/assets/{asset_id}/progress", json={"progress": "annotated"})
+    client.post(f"/jobs/{job_id}/complete")
+    client.post(f"/batches/{batch_id}/complete")
+    client.post(f"/batches/{batch_id}/promote")
+    dataset_id = dataset_of(client, project_id)
+
+    items = client.get(f"/datasets/{dataset_id}/assets").json()["items"]
+
+    assert items and all(
+        (asset["annotation_count"], asset["label_classes"]) == (0, []) for asset in items
+    )
+
+
+# --- one member's labels ------------------------------------------------------
+
+
+def test_a_members_annotations_are_readable_from_the_dataset(
+    client: TestClient, finished: tuple[str, str]
+) -> None:
+    """Without naming a job: the trunk member carries no `job_id`, and a label
+    outlives the work that produced it."""
+    project_id, batch_id = finished
+    client.post(f"/batches/{batch_id}/promote")
+    dataset_id = dataset_of(client, project_id)
+    asset_id = client.get(f"/datasets/{dataset_id}/assets").json()["items"][0]["id"]
+
+    response = client.get(f"/datasets/{dataset_id}/assets/{asset_id}/annotations")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    (annotation,) = body["items"]
+    assert annotation["asset_id"] == asset_id
+    assert annotation["label_class"] == "sign"
+    assert annotation["geometry"]["type"] == "bbox"
+    assert annotation["provenance"] == "human"
+
+
+def test_the_annotations_of_an_asset_outside_the_trunk_are_404_with_their_own_code(
+    client: TestClient, finished: tuple[str, str]
+) -> None:
+    """A removed member is still an asset of the project; what it is not is in the dataset."""
+    project_id, batch_id = finished
+    client.post(f"/batches/{batch_id}/promote")
+    dataset_id = dataset_of(client, project_id)
+    asset_id = client.get(f"/datasets/{dataset_id}/assets").json()["items"][0]["id"]
+    client.delete(f"/datasets/{dataset_id}/assets/{asset_id}")
+
+    response = client.get(f"/datasets/{dataset_id}/assets/{asset_id}/annotations")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "ASSET_NOT_IN_DATASET"
+
+
+def test_the_annotations_of_an_unknown_dataset_are_404(client: TestClient) -> None:
+    response = client.get(f"/datasets/{uuid4()}/assets/{uuid4()}/annotations")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "DATASET_NOT_FOUND"
+
+
 # --- curating -----------------------------------------------------------------
 
 

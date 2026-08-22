@@ -509,3 +509,63 @@ export function ThumbnailGrid({
     </div>
   );
 }
+
+// --- description list ----------------------------------------------------------
+
+export interface DescriptionListProps {
+  /** The section's heading; an `h3`, so it sits under a dialog's or screen's title. */
+  readonly title: string;
+  /** A short note at the heading's right — a total, a state — rendered muted. */
+  readonly aside?: string;
+  readonly children: ReactNode;
+  readonly className?: string;
+  readonly "data-testid"?: string;
+}
+
+/**
+ * A titled group of term/value rows — the shape of an info panel.
+ *
+ * A real `<dl>` with the term column fixed and the value column free to wrap,
+ * so a long value (a content hash, a list of models) grows the row and never the
+ * column. Children are `DescriptionRow`s, or any `dt`/`dd` pair; a block that
+ * spans both columns (a loading or empty sentence) takes `col-span-2`.
+ */
+export function DescriptionList({
+  title,
+  aside,
+  children,
+  className,
+  "data-testid": testId,
+}: DescriptionListProps): JSX.Element {
+  return (
+    <section className={cn("flex flex-col gap-2", className)} data-testid={testId}>
+      <div className="flex items-baseline justify-between gap-2 border-b border-border pb-1">
+        <h3 className="text-xs font-semibold">{title}</h3>
+        {aside !== undefined && <span className="text-xs text-muted-foreground">{aside}</span>}
+      </div>
+      <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">{children}</dl>
+    </section>
+  );
+}
+
+export interface DescriptionRowProps {
+  readonly term: string;
+  readonly children: ReactNode;
+  readonly "data-testid"?: string;
+}
+
+/** One term and its value. The value cell is `min-w-0`, so a wrapping value stays in its column. */
+export function DescriptionRow({
+  term,
+  children,
+  "data-testid": testId,
+}: DescriptionRowProps): JSX.Element {
+  return (
+    <>
+      <dt className="text-muted-foreground">{term}</dt>
+      <dd className="min-w-0 tabular-nums" data-testid={testId}>
+        {children}
+      </dd>
+    </>
+  );
+}

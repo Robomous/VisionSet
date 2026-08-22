@@ -66,6 +66,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "InferenceConnectionNotFound": (404, "INFERENCE_CONNECTION_NOT_FOUND"),
     "AssetNotInBatch": (422, "ASSET_NOT_IN_BATCH"),
     "AssetNotInJob": (404, "ASSET_NOT_IN_JOB"),
+    "AssetNotInDataset": (404, "ASSET_NOT_IN_DATASET"),
     "NoSplitRecipe": (404, "NO_SPLIT_RECIPE"),
     "ExportFormatNotFound": (404, "EXPORT_FORMAT_NOT_FOUND"),
     # A release naming bytes an export cannot use. 409 rather than 500 for

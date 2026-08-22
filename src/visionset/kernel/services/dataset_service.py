@@ -39,9 +39,12 @@ from __future__ import annotations
 from collections.abc import Iterable
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict
+
 from visionset.kernel.domain import (
     PROMOTABLE_PROGRESS,
     PROMOTABLE_STATES,
+    Annotation,
     AnnotationJob,
     Asset,
     Batch,
@@ -54,6 +57,7 @@ from visionset.kernel.domain import (
     DatasetStats,
 )
 from visionset.kernel.errors import (
+    AssetNotInDataset,
     BatchNotComplete,
     DatasetNotFound,
     WorkspaceCorrupt,
@@ -96,6 +100,57 @@ class DatasetService:
         """
         with self._workspace.unit_of_work() as uow:
             return assets_of(uow, self.require_dataset(uow, dataset_id))
+
+    def asset_page(
+        self, dataset_id: UUID, *, limit: int | None = None, offset: int = 0
+    ) -> tuple[list[TrunkAsset], int]:
+        """A window of the trunk with each member's labels summarised, and the trunk's size.
+
+        Membership order, as :meth:`assets`. Only the window's assets are
+        hydrated and only their labels are read — the count and the class names
+        are what a gallery tile shows on first sight, and reading them for the
+        whole trunk to show one page would be the N+1 :meth:`stats` knowingly
+        pays, paid for nothing.
+
+        Raises:
+            DatasetNotFound: no such dataset in this workspace.
+            WorkspaceCorrupt: a member names an asset that is not stored.
+        """
+        with self._workspace.unit_of_work() as uow:
+            dataset = self.require_dataset(uow, dataset_id)
+            ids = [member.asset_id for member in uow.dataset_members.list(dataset.id)]
+            window = ids[offset:] if limit is None else ids[offset : offset + limit]
+            items = []
+            for asset_id in window:
+                labels = uow.annotations.list(asset_id)
+                items.append(
+                    TrunkAsset(
+                        asset=_require_asset(uow, dataset, asset_id),
+                        annotation_count=len(labels),
+                        label_classes=tuple(sorted({one.label_class for one in labels})),
+                    )
+                )
+            return items, len(ids)
+
+    def annotations_for(self, dataset_id: UUID, asset_id: UUID) -> list[Annotation]:
+        """Every label on one trunk member, in the order they were added.
+
+        Job-agnostic, because a label hangs off its asset and the trunk carries
+        assets: promotion brought everything drawn on the asset, and this reads
+        exactly that back. Empty for a member nobody labeled — legitimate, since
+        an unlabeled image is training data too.
+
+        Raises:
+            DatasetNotFound: no such dataset in this workspace.
+            AssetNotInDataset: the trunk does not hold that asset.
+        """
+        with self._workspace.unit_of_work() as uow:
+            dataset = self.require_dataset(uow, dataset_id)
+            if asset_id not in member_asset_ids_of(uow, dataset):
+                raise AssetNotInDataset(
+                    f"asset {asset_id} is not in the trunk of dataset {dataset.name!r}"
+                )
+            return uow.annotations.list(asset_id)
 
     def member_asset_ids(self, dataset_id: UUID) -> frozenset[UUID]:
         """Which assets are in the trunk right now, as a set to test against.
@@ -360,6 +415,16 @@ class DatasetService:
                 f"no dataset {dataset_id} in workspace {self._workspace.workspace.name!r}"
             )
         return dataset
+
+
+class TrunkAsset(BaseModel):
+    """One asset seen from inside the trunk: the asset, and its labels summarised."""
+
+    model_config = ConfigDict(frozen=True)
+
+    asset: Asset
+    annotation_count: int
+    label_classes: tuple[str, ...]
 
 
 def assets_of(uow: UnitOfWork, dataset: Dataset) -> list[Asset]:

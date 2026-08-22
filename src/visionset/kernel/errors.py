@@ -697,6 +697,15 @@ class DatasetNotFound(VisionSetError):
     """
 
 
+class AssetNotInDataset(VisionSetError):
+    """An asset was addressed through a dataset whose trunk does not hold it.
+
+    The asset may well exist — skipped at annotation, or taken out by a curator —
+    so this is not ``AssetNotFound``. It is the sibling of ``AssetNotInJob`` one
+    gate later: the trunk's view of an asset is only for assets in the trunk.
+    """
+
+
 class AnnotationNotFound(VisionSetError):
     """No annotation with that id lives in this workspace.
 

@@ -122,6 +122,7 @@ export const REFUSAL_PROSE: Record<string, string> = {
   ASSET_NOT_WRITABLE: "This frame's labeling is settled — its labels cannot be changed here.",
   JOB_NOT_COMPLETE: "Some frames still need annotating or skipping.",
   ASSET_NOT_IN_JOB: "This frame is not part of this job.",
+  ASSET_NOT_IN_DATASET: "That frame is no longer in the dataset.",
   ASSET_NOT_IN_BATCH: "That frame is not in the batch this one corrects.",
   ASSET_NOT_FOUND: "Some of those frames are not in this project.",
   ANNOTATION_NOT_FOUND: "That annotation is no longer on record.",

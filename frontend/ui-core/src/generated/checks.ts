@@ -147,6 +147,12 @@ export const checkConnectionOut: Check<Schemas["ConnectionOut"]> =
 export const checkConnectionPage: Check<Schemas["ConnectionPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkConnectionOut)], "total": [true, isInteger] } as const);
 
+export const checkDatasetAssetOut: Check<Schemas["DatasetAssetOut"]> =
+  /*#__PURE__*/ object({ "annotation_count": [true, isInteger], "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "label_classes": [true, arrayOf(isString)], "modality": [true, lit("image")], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
+
+export const checkDatasetAssetPage: Check<Schemas["DatasetAssetPage"]> =
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkDatasetAssetOut)], "total": [true, isInteger] } as const);
+
 export const checkDatasetChangeOut: Check<Schemas["DatasetChangeOut"]> =
   /*#__PURE__*/ object({ "actor": [true, either([isString, isNull] as const)], "dataset_id": [true, isString], "id": [true, isString], "occurred_at": [true, isString], "operation": [true, isString], "subject_ids": [true, arrayOf(isString)] } as const);
 
@@ -421,7 +427,8 @@ export const checkListBatchAssets = checkBatchAssetPage;
 export const checkListBatchJobs = checkJobPage;
 export const checkListBatches = checkBatchPage;
 export const checkListBlockingAssets = checkBlockingAssetPage;
-export const checkListDatasetAssets = checkAssetPage;
+export const checkListDatasetAssetAnnotations = checkAnnotationPage;
+export const checkListDatasetAssets = checkDatasetAssetPage;
 export const checkListDatasetChanges = checkDatasetChangePage;
 export const checkListFormats = checkFormatPage;
 export const checkListInferenceConnections = checkConnectionPage;
