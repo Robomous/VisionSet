@@ -585,6 +585,7 @@ def test_a_terminal_can_watch_a_transfer_the_server_is_running(
         "bytes_done": 0,
         "bytes_total": None,
         "error": None,
+        "error_code": None,
     }
 
 
@@ -625,6 +626,7 @@ def test_a_terminal_can_watch_a_check_the_server_is_running(root: Path) -> None:
         "files_read": 0,
         "files_total": None,
         "error": None,
+        "error_code": None,
     }
     # Files, never bytes: the two runs count different things and say so.
     assert listed["download"] is None
