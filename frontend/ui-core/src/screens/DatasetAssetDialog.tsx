@@ -9,8 +9,8 @@
  * label is a different job done in a different place (a correction batch). That
  * is also why the dialog offers Remove and nothing else that writes.
  *
- * The panel is a summary, not an inventory: what the asset is, and what is on it
- * counted by class, by who made it and by which model. The picture is the
+ * The panel is a summary, not an inventory: what the asset is, what is on it
+ * counted by class, and where the labels came from. The picture is the
  * inventory — every label is drawn there — and a list of forty rows saying
  * "box · model" beside it would repeat the overlay in words.
  *
@@ -127,6 +127,8 @@ export function DatasetAssetDialog({
             <Metadata asset={asset} />
 
             <Labels annotations={annotations} colorOf={colorOf} />
+
+            <Provenance annotations={annotations} />
           </div>
         </div>
 
@@ -321,11 +323,7 @@ function Metadata({ asset }: { readonly asset: DatasetAsset }): JSX.Element {
   );
 }
 
-/**
- * What is on the image, counted — by class, by who made it, and by which model.
- * Each answers a curation question the picture alone does not: is this class
- * over-represented, is this frame machine-labeled and unreviewed, and by what.
- */
+/** What is on the image, counted by class — is this class over-represented here. */
 function Labels({
   annotations,
   colorOf,
@@ -378,21 +376,41 @@ function Labels({
               ))}
             </ul>
           </Row>
-          <Row term="Made by" testId="preview-by">
-            {summary.by}
-          </Row>
-          {summary.models.length > 0 && (
-            <Row term={summary.models.length === 1 ? "Model" : "Models"} testId="preview-models">
-              <ul className="flex flex-col gap-0.5">
-                {summary.models.map((ref) => (
-                  <li key={ref} title={ref} className="truncate">
-                    {modelName(ref)}
-                  </li>
-                ))}
-              </ul>
-            </Row>
-          )}
         </>
+      )}
+    </Section>
+  );
+}
+
+/**
+ * Where the labels came from — a person, a model, an import — and which models.
+ * Its own section because it answers a different question from "what is on
+ * the image": a frame that is all model labels and no person is one nobody has
+ * reviewed, whatever its classes say.
+ */
+function Provenance({
+  annotations,
+}: {
+  readonly annotations: ReturnType<typeof useDatasetAssetAnnotations>;
+}): JSX.Element | null {
+  const items = annotations.data ?? [];
+  if (items.length === 0) return null;
+  const summary = summarise(items);
+  return (
+    <Section title="Provenance" testId="preview-provenance">
+      <Row term="Made by" testId="preview-by">
+        {summary.by}
+      </Row>
+      {summary.models.length > 0 && (
+        <Row term={summary.models.length === 1 ? "Model" : "Models"} testId="preview-models">
+          <ul className="flex flex-col gap-0.5">
+            {summary.models.map((ref) => (
+              <li key={ref} title={ref} className="truncate">
+                {modelName(ref)}
+              </li>
+            ))}
+          </ul>
+        </Row>
       )}
     </Section>
   );

@@ -924,7 +924,10 @@ describe("looking at a member", () => {
     // model and how surely. The picture is the inventory.
     expect(within(preview).getByTestId("preview-class-vehicle").textContent).toBe("vehicle1");
     expect(within(preview).getByTestId("preview-class-lane").textContent).toBe("lane1");
-    expect(within(preview).getByTestId("preview-by").textContent).toBe("person 1 · model 1");
+    // Where they came from is its own section, not a row among the classes.
+    const provenance = within(preview).getByTestId("preview-provenance");
+    expect(within(provenance).getByTestId("preview-by").textContent).toBe("person 1 · model 1");
+    expect(within(within(preview).getByTestId("preview-labels")).queryByTestId("preview-by")).toBeNull();
     expect(within(preview).getByTestId("preview-models").textContent).toBe("detector");
     expect(within(preview).queryByTestId("preview-confidence")).toBeNull();
     expect(within(preview).queryByTestId(`preview-annotation-${BOX}`)).toBeNull();
