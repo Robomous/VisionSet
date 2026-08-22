@@ -93,6 +93,7 @@ from visionset.kernel.domain import (
     PolylineGeometry,
     PreLabelRun,
     Project,
+    ProjectPreview,
     Release,
     ReleaseVerification,
     SchemaChange,
@@ -133,9 +134,15 @@ def page(items: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 # --- projects and schemas ----------------------------------------------------
 
 
-def project(value: Project) -> dict[str, Any]:
+def project(value: Project, preview: ProjectPreview | None) -> dict[str, Any]:
     """A project. ``workspace_id`` is absent: a command speaks for one workspace."""
-    return {"id": str(value.id), "name": value.name, "description": value.description}
+    return {
+        "id": str(value.id),
+        "name": value.name,
+        "description": value.description,
+        "thumbnail_asset_id": str(preview.asset_id) if preview else None,
+        "thumbnail_hash": preview.thumbnail_hash if preview else None,
+    }
 
 
 def dataset(value: Dataset) -> dict[str, Any]:

@@ -26,6 +26,16 @@ with WorkspaceService.open("./road-signs") as workspace:
 REST surface is a thin client of this service. See [api.md](api.md) for the conventions and
 `openapi.json` for the exact shapes.
 
+## The image that stands for a project
+
+`preview` names a project's picture for a listing - the first asset of its earliest-created
+batch that has one - and `previews` resolves every project's in one walk. The choice is
+deliberately stable: the picture does not move as later batches arrive. Over HTTP the same
+fact travels on `ProjectOut` as `thumbnail_asset_id` and `thumbnail_hash`, and the CLI's
+`--json` and the MCP project payloads carry the same two fields. Both are null for a project
+with no images; an id beside a null hash names an asset whose preview was never cached, so a
+client shows a placeholder without fetching anything.
+
 ## The project-dataset relation is 1:1
 
 The dataset **is** the curated state of the project, not a thing kept beside it. Three
