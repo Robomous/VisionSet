@@ -49,6 +49,7 @@ from visionset.kernel import (
     AnnotationNotFromModel,
     AssetNotFound,
     AssetNotInBatch,
+    AssetNotInDataset,
     AssetNotInJob,
     AssetNotWritable,
     BackgroundJobNotFound,
@@ -226,6 +227,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # a list, which is a payload problem. The `docs/content/api.md` rule, applied.
     AssetNotInBatch: ErrorRule(422, "ASSET_NOT_IN_BATCH"),
     AssetNotInJob: ErrorRule(404, "ASSET_NOT_IN_JOB"),
+    AssetNotInDataset: ErrorRule(404, "ASSET_NOT_IN_DATASET"),
     # Not a 409: a release is immutable, so its state will never change and
     # "resolve the conflict and resubmit" is a promise that cannot be kept. The
     # docstring's remedy is a *different* release. The code is what tells this

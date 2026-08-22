@@ -612,7 +612,7 @@ export interface paths {
         };
         /**
          * List Dataset Assets
-         * @description Everything in the trunk, in the order it was promoted.
+         * @description Everything in the trunk, in the order it was promoted, each with its labels summarised.
          *
          *     Paged, and the second route in the API that is — the trunk accumulates every
          *     batch a project ever completed, so it is the other collection that can hold
@@ -622,6 +622,10 @@ export interface paths {
          *
          *     Order is the stored insertion order, so reading twice gives the same sequence
          *     and promoting a new batch appends rather than reshuffles.
+         *
+         *     Each member carries `annotation_count` and `label_classes` so a gallery can
+         *     caption a tile without a request per frame; the labels themselves are one
+         *     level down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.
          */
         get: operations["list_dataset_assets"];
         put?: never;
@@ -660,6 +664,33 @@ export interface paths {
          *     back, because the trunk keeps no memory of removals.
          */
         delete: operations["remove_dataset_asset"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/datasets/{dataset_id}/assets/{asset_id}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Dataset Asset Annotations
+         * @description Every annotation on one member of the trunk, in the order they were added.
+         *
+         *     The trunk's view of an asset, so it needs no job id — a label hangs off its
+         *     asset, and promotion brought everything drawn on it. Empty for a member
+         *     nobody labeled, which is legitimate training data and not an error. An
+         *     unknown dataset is 404 `DATASET_NOT_FOUND`; an asset the trunk does not hold
+         *     — skipped, or removed by a curator — is 404 `ASSET_NOT_IN_DATASET`, which is
+         *     not a claim that the asset is gone.
+         */
+        get: operations["list_dataset_asset_annotations"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3592,6 +3623,63 @@ export interface components {
             provider_id: string;
         };
         /**
+         * DatasetAssetOut
+         * @description One member of the trunk, with its labels summarised.
+         *
+         *     `annotation_count` is every label on this asset and `label_classes` the
+         *     distinct classes among them, sorted by name — what a tile shows before anyone
+         *     asks for the labels themselves, which `GET
+         *     /datasets/{dataset_id}/assets/{asset_id}/annotations` serves.
+         */
+        DatasetAssetOut: {
+            /** Annotation Count */
+            annotation_count: number;
+            /** Content Hash */
+            content_hash: string;
+            format: components["schemas"]["ImageFormat"] | null;
+            /** Frame Index */
+            frame_index: number | null;
+            /** Frame Timestamp */
+            frame_timestamp: number | null;
+            /** Height */
+            height: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ingested At */
+            ingested_at: string | null;
+            /** Label Classes */
+            label_classes: string[];
+            /**
+             * Modality
+             * @constant
+             */
+            modality: "image";
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Source Id */
+            source_id: string | null;
+            /** Thumbnail Hash */
+            thumbnail_hash: string | null;
+            /** Width */
+            width: number | null;
+        };
+        /**
+         * DatasetAssetPage
+         * @description A page of trunk members.
+         */
+        DatasetAssetPage: {
+            /** Items */
+            items: components["schemas"]["DatasetAssetOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
          * DatasetChangeOut
          * @description One entry in the trunk's append-only log.
          */
@@ -6516,7 +6604,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AssetPage"];
+                    "application/json": components["schemas"]["DatasetAssetPage"];
                 };
             };
             /** @description Missing or invalid bearer token */
@@ -6584,6 +6672,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_dataset_asset_annotations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationPage"];
+                };
             };
             /** @description Missing or invalid bearer token */
             401: {

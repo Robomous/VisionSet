@@ -17,6 +17,7 @@ import pytest
 from sqlalchemy import text
 
 from visionset.kernel import (
+    AssetNotInDataset,
     BatchImmutable,
     BatchNotComplete,
     BatchNotFound,
@@ -811,3 +812,116 @@ def test_promoting_twice_does_not_double_the_membership(tmp_path: Path) -> None:
 
     assert again == []
     assert fixture.datasets.member_asset_ids(fixture.dataset.id) == first
+
+
+# --- reading the trunk page by page -------------------------------------------
+
+
+LANE = LabelClass(name="lane", geometries=(GeometryType.BBOX,))
+
+
+def _lane(asset_id: UUID) -> Annotation:
+    return Annotation(
+        asset_id=asset_id,
+        label_class="lane",
+        schema_version=2,
+        geometry=BboxGeometry(x=5.0, y=6.0, width=7.0, height=8.0),
+        provenance="model",
+        model_ref="detector",
+        confidence=0.5,
+    )
+
+
+def test_the_asset_page_counts_each_members_labels_and_names_their_classes(
+    tmp_path: Path,
+) -> None:
+    """Two signs and a lane on one asset is three labels of two classes, the classes
+    sorted by name; a member nobody labeled is zero of nothing."""
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+    (job,) = fixture.working()
+    first, second, third = fixture.assets
+    fixture.annotations.add(job.id, [_box(first), _box(first), _lane(first)])
+    fixture.annotations.add(job.id, [_box(second)])
+    fixture.jobs.mark(job.id, third, ANNOTATED)
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(fixture.batch.id)
+    fixture.datasets.promote(fixture.batch.id)
+
+    page, total = fixture.datasets.asset_page(fixture.dataset.id)
+
+    assert total == 3
+    assert [(one.asset.id, one.annotation_count, one.label_classes) for one in page] == [
+        (first, 3, ("lane", "sign")),
+        (second, 1, ("sign",)),
+        (third, 0, ()),
+    ]
+    fixture.close()
+
+
+def test_the_asset_page_windows_the_trunk_and_total_stays_the_whole_of_it(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.completed(ANNOTATED, ANNOTATED, ANNOTATED)
+    fixture.datasets.promote(fixture.batch.id)
+
+    page, total = fixture.datasets.asset_page(fixture.dataset.id, limit=2, offset=1)
+
+    assert total == 3
+    assert [one.asset.id for one in page] == fixture.assets[1:3]
+    assert fixture.datasets.asset_page(fixture.dataset.id, offset=99) == ([], 3)
+    fixture.close()
+
+
+def test_the_asset_page_of_an_unknown_dataset_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(DatasetNotFound):
+        fixture.datasets.asset_page(uuid4())
+    fixture.close()
+
+
+# --- reading one member's labels ---------------------------------------------
+
+
+def test_a_members_annotations_are_everything_drawn_on_it(tmp_path: Path) -> None:
+    """Job-agnostic: a label hangs off its asset, so the trunk's view of an asset
+    is every label on it, in the order they were added."""
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+    (job,) = fixture.working()
+    first, *rest = fixture.assets
+    fixture.annotations.add(job.id, [_box(first), _lane(first)])
+    for asset_id in rest:
+        fixture.jobs.mark(job.id, asset_id, ANNOTATED)
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(fixture.batch.id)
+    fixture.datasets.promote(fixture.batch.id)
+
+    found = fixture.datasets.annotations_for(fixture.dataset.id, first)
+
+    assert [one.label_class for one in found] == ["sign", "lane"]
+    assert fixture.datasets.annotations_for(fixture.dataset.id, rest[0]) == []
+    fixture.close()
+
+
+def test_the_annotations_of_an_asset_outside_the_trunk_are_refused(tmp_path: Path) -> None:
+    """An asset the project holds but the trunk does not — skipped, or removed by a
+    curator — reads as not in the dataset, not as a missing asset."""
+    fixture = Fixture(tmp_path)
+    fixture.completed(ANNOTATED, SKIPPED, ANNOTATED)
+    fixture.datasets.promote(fixture.batch.id)
+    skipped = fixture.assets[1]
+
+    with pytest.raises(AssetNotInDataset):
+        fixture.datasets.annotations_for(fixture.dataset.id, skipped)
+    with pytest.raises(AssetNotInDataset):
+        fixture.datasets.annotations_for(fixture.dataset.id, uuid4())
+    fixture.close()
+
+
+def test_the_annotations_of_an_unknown_dataset_are_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(DatasetNotFound):
+        fixture.datasets.annotations_for(uuid4(), fixture.assets[0])
+    fixture.close()

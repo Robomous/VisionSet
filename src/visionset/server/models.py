@@ -37,6 +37,7 @@ columns one at a time — applied to the wire.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from collections.abc import Set as AbstractSet
 from datetime import datetime
 from typing import Annotated, Literal, Self
@@ -1782,6 +1783,33 @@ class ClassCountOut(BaseModel):
 # nothing about what it will find. The fixed-field trick ``ProgressCounts`` uses
 # is unavailable here because the classes come from a schema somebody authored,
 # so the shape that stays honest is a row per class.
+# Inherits ``AssetOut`` for ``BatchAssetOut``'s reason: the same asset seen from
+# inside the trunk, so a field published there is published here.
+class DatasetAssetOut(AssetOut):
+    """One member of the trunk, with its labels summarised.
+
+    `annotation_count` is every label on this asset and `label_classes` the
+    distinct classes among them, sorted by name — what a tile shows before anyone
+    asks for the labels themselves, which `GET
+    /datasets/{dataset_id}/assets/{asset_id}/annotations` serves.
+    """
+
+    annotation_count: int
+    label_classes: list[str]
+
+    @classmethod
+    def in_trunk(cls, asset: Asset, *, annotation_count: int, label_classes: Iterable[str]) -> Self:
+        return cls(
+            **AssetOut.of(asset).model_dump(),
+            annotation_count=annotation_count,
+            label_classes=list(label_classes),
+        )
+
+
+class DatasetAssetPage(Page[DatasetAssetOut]):
+    """A page of trunk members."""
+
+
 class DatasetStatsOut(BaseModel):
     """What the trunk currently holds, counted."""
 

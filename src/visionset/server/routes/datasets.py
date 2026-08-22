@@ -31,15 +31,16 @@ from visionset.kernel.services import DatasetService, ProjectService
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
-    AssetOut,
-    AssetPage,
+    AnnotationOut,
+    AnnotationPage,
+    DatasetAssetOut,
+    DatasetAssetPage,
     DatasetChangeOut,
     DatasetChangePage,
     DatasetOut,
     DatasetStatsOut,
     LimitQuery,
     OffsetQuery,
-    window,
 )
 
 project_router = protected_router(prefix="/projects/{project_id}/dataset", tags=["datasets"])
@@ -89,8 +90,8 @@ def list_dataset_assets(
     dataset_id: UUID,
     limit: LimitQuery = None,
     offset: OffsetQuery = 0,
-) -> AssetPage:
-    """Everything in the trunk, in the order it was promoted.
+) -> DatasetAssetPage:
+    """Everything in the trunk, in the order it was promoted, each with its labels summarised.
 
     Paged, and the second route in the API that is — the trunk accumulates every
     batch a project ever completed, so it is the other collection that can hold
@@ -100,10 +101,40 @@ def list_dataset_assets(
 
     Order is the stored insertion order, so reading twice gives the same sequence
     and promoting a new batch appends rather than reshuffles.
+
+    Each member carries `annotation_count` and `label_classes` so a gallery can
+    caption a tile without a request per frame; the labels themselves are one
+    level down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.
     """
-    found = DatasetService(workspace).assets(dataset_id)
-    items = [AssetOut.of(asset) for asset in window(found, limit=limit, offset=offset)]
-    return AssetPage(items=items, total=len(found))
+    found, total = DatasetService(workspace).asset_page(dataset_id, limit=limit, offset=offset)
+    return DatasetAssetPage(
+        items=[
+            DatasetAssetOut.in_trunk(
+                one.asset,
+                annotation_count=one.annotation_count,
+                label_classes=one.label_classes,
+            )
+            for one in found
+        ],
+        total=total,
+    )
+
+
+@router.get("/{dataset_id}/assets/{asset_id}/annotations", responses=documented(404))
+def list_dataset_asset_annotations(
+    workspace: WorkspaceDep, dataset_id: UUID, asset_id: UUID
+) -> AnnotationPage:
+    """Every annotation on one member of the trunk, in the order they were added.
+
+    The trunk's view of an asset, so it needs no job id — a label hangs off its
+    asset, and promotion brought everything drawn on it. Empty for a member
+    nobody labeled, which is legitimate training data and not an error. An
+    unknown dataset is 404 `DATASET_NOT_FOUND`; an asset the trunk does not hold
+    — skipped, or removed by a curator — is 404 `ASSET_NOT_IN_DATASET`, which is
+    not a claim that the asset is gone.
+    """
+    found = DatasetService(workspace).annotations_for(dataset_id, asset_id)
+    return AnnotationPage(items=[AnnotationOut.of(one) for one in found], total=len(found))
 
 
 @router.delete(

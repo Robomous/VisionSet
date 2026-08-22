@@ -2236,6 +2236,170 @@
         "title": "CuratedModelOut",
         "type": "object"
       },
+      "DatasetAssetOut": {
+        "description": "One member of the trunk, with its labels summarised.\n\n`annotation_count` is every label on this asset and `label_classes` the\ndistinct classes among them, sorted by name \u2014 what a tile shows before anyone\nasks for the labels themselves, which `GET\n/datasets/{dataset_id}/assets/{asset_id}/annotations` serves.",
+        "properties": {
+          "annotation_count": {
+            "title": "Annotation Count",
+            "type": "integer"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageFormat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "frame_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame Index"
+          },
+          "frame_timestamp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame Timestamp"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ingested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingested At"
+          },
+          "label_classes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Label Classes",
+            "type": "array"
+          },
+          "modality": {
+            "const": "image",
+            "title": "Modality",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "thumbnail_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Hash"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "modality",
+          "content_hash",
+          "width",
+          "height",
+          "format",
+          "source_id",
+          "frame_index",
+          "frame_timestamp",
+          "thumbnail_hash",
+          "ingested_at",
+          "annotation_count",
+          "label_classes"
+        ],
+        "title": "DatasetAssetOut",
+        "type": "object"
+      },
+      "DatasetAssetPage": {
+        "description": "A page of trunk members.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetAssetOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "DatasetAssetPage",
+        "type": "object"
+      },
       "DatasetChangeOut": {
         "description": "One entry in the trunk's append-only log.",
         "properties": {
@@ -7032,7 +7196,7 @@
     },
     "/datasets/{dataset_id}/assets": {
       "get": {
-        "description": "Everything in the trunk, in the order it was promoted.\n\nPaged, and the second route in the API that is \u2014 the trunk accumulates every\nbatch a project ever completed, so it is the other collection that can hold\nfifty thousand items. `total` is the size of the whole trunk and not of the\npage; an offset past the end is an empty list and a 200, never a 404. The\n404 is the dataset itself: an unknown one is `DATASET_NOT_FOUND`.\n\nOrder is the stored insertion order, so reading twice gives the same sequence\nand promoting a new batch appends rather than reshuffles.",
+        "description": "Everything in the trunk, in the order it was promoted, each with its labels summarised.\n\nPaged, and the second route in the API that is \u2014 the trunk accumulates every\nbatch a project ever completed, so it is the other collection that can hold\nfifty thousand items. `total` is the size of the whole trunk and not of the\npage; an offset past the end is an empty list and a 200, never a 404. The\n404 is the dataset itself: an unknown one is `DATASET_NOT_FOUND`.\n\nOrder is the stored insertion order, so reading twice gives the same sequence\nand promoting a new batch appends rather than reshuffles.\n\nEach member carries `annotation_count` and `label_classes` so a gallery can\ncaption a tile without a request per frame; the labels themselves are one\nlevel down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.",
         "operationId": "list_dataset_assets",
         "parameters": [
           {
@@ -7083,7 +7247,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AssetPage"
+                  "$ref": "#/components/schemas/DatasetAssetPage"
                 }
               }
             },
@@ -7238,6 +7402,105 @@
           }
         ],
         "summary": "Remove Dataset Asset",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/datasets/{dataset_id}/assets/{asset_id}/annotations": {
+      "get": {
+        "description": "Every annotation on one member of the trunk, in the order they were added.\n\nThe trunk's view of an asset, so it needs no job id \u2014 a label hangs off its\nasset, and promotion brought everything drawn on it. Empty for a member\nnobody labeled, which is legitimate training data and not an error. An\nunknown dataset is 404 `DATASET_NOT_FOUND`; an asset the trunk does not hold\n\u2014 skipped, or removed by a curator \u2014 is 404 `ASSET_NOT_IN_DATASET`, which is\nnot a claim that the asset is gone.",
+        "operationId": "list_dataset_asset_annotations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnotationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Dataset Asset Annotations",
         "tags": [
           "datasets"
         ]
