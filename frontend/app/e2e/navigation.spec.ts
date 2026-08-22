@@ -372,6 +372,12 @@ test("below lg the chain collapses to the immediate parent, on one line", async 
   const tall = await row.boundingBox();
 
   await page.setViewportSize({ width: 900, height: 800 });
+  // Below `lg` the project's frame swaps its column for the tab strip and the
+  // gallery remounts inside it. The crumbs' own collapse is CSS and lands first,
+  // so waiting for the strip is what keeps every read below on the node that
+  // survives rather than on one about to be replaced.
+  await expect(page.getByTestId("project-tabs")).toBeVisible();
+  await expect(row).toBeVisible();
 
   // `getByRole` reads the **accessibility tree**, which a `display: none` crumb is
   // not in — so this is the whole claim in one assertion: below `lg` a screen
