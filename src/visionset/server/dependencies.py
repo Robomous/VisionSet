@@ -44,7 +44,7 @@ from visionset.kernel.services import (
     resolve_workspace_root as resolve_workspace_root,
 )
 from visionset.server import session
-from visionset.server.errors import ERROR_RESPONSES
+from visionset.server.errors import ERROR_RESPONSES, code_for
 from visionset.server.settings import job_settings
 
 # ``WORKSPACE_ENV_VAR`` and ``resolve_workspace_root`` are re-exported above
@@ -210,6 +210,7 @@ class DispatcherHandle:
             workers=settings.job_workers,
             poll_interval_s=settings.job_poll_interval_s,
             progress_min_interval_s=settings.job_progress_min_interval_s,
+            error_code=code_for,
         )
         runner.start()
         self._runner = runner

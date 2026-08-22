@@ -854,6 +854,17 @@
             ],
             "title": "Error"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "failures": {
             "items": {
               "$ref": "#/components/schemas/ItemFailureOut"
@@ -928,6 +939,7 @@
           "total",
           "failures",
           "error",
+          "error_code",
           "result",
           "cancel_requested",
           "attempt",
@@ -2937,6 +2949,17 @@
             ],
             "title": "Error"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "files_read": {
             "title": "Files Read",
             "type": "integer"
@@ -2966,7 +2989,8 @@
           "state",
           "files_read",
           "files_total",
-          "error"
+          "error",
+          "error_code"
         ],
         "title": "IntegrityCheckOut",
         "type": "object"
@@ -3435,6 +3459,17 @@
             ],
             "title": "Error"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "job_id": {
             "format": "uuid",
             "title": "Job Id",
@@ -3483,6 +3518,7 @@
           "assets_processed",
           "assets_total",
           "error",
+          "error_code",
           "stopped_early",
           "assets_labeled",
           "regions_discarded",
@@ -4902,6 +4938,17 @@
             ],
             "title": "Error"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "job_id": {
             "format": "uuid",
             "title": "Job Id",
@@ -4916,7 +4963,8 @@
           "state",
           "bytes_done",
           "bytes_total",
-          "error"
+          "error",
+          "error_code"
         ],
         "title": "WeightDownloadOut",
         "type": "object"

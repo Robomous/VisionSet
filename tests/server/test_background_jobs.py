@@ -79,6 +79,42 @@ def test_a_queued_job_is_readable_with_the_shape_a_progress_bar_wants(
     assert body["started_at"] is None
 
 
+def test_a_job_failed_by_a_declared_error_carries_its_code(tmp_path: Path) -> None:
+    """The same refusal, the same code, whether answered to a request or settled on a job."""
+    dispatcher = InlineDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=dispatcher) as client:
+        workspace = WorkspaceService.open(tmp_path / "ws")
+        try:
+            job_id = enqueue(workspace, release_id=str(uuid4()), format="coco", allow_lossy=False)
+        finally:
+            workspace.close()
+        dispatcher.run()
+
+        body = client.get(f"/background-jobs/{job_id}").json()
+
+    assert body["state"] == "failed"
+    assert body["error_code"] == "RELEASE_NOT_FOUND"
+    assert body["error"]
+
+
+def test_a_job_failed_by_anything_else_has_no_code(
+    client: TestClient, workspace: WorkspaceService
+) -> None:
+    job_id = enqueue(workspace)
+    workspace.job_queue.claim("w")
+    workspace.job_queue.finish(
+        UUID(job_id), BackgroundJobOutcome(state=BackgroundJobState.FAILED, error="the disk filled")
+    )
+
+    body = client.get(f"/background-jobs/{job_id}").json()
+
+    assert (body["state"], body["error"], body["error_code"]) == (
+        "failed",
+        "the disk filled",
+        None,
+    )
+
+
 def test_the_payload_is_not_on_the_wire(client: TestClient, workspace: WorkspaceService) -> None:
     """It is an internal contract between a surface and a handler, and it can name a path.
 

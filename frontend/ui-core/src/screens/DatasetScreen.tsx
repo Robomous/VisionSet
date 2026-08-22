@@ -60,7 +60,13 @@ import {
   DialogTitle,
 } from "../primitives/Dialog";
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
-import { classBlockers, describeClassCount, lostClasses, refusalProse } from "../data/refusals";
+import {
+  classBlockers,
+  describeClassCount,
+  jobFailureProse,
+  lostClasses,
+  refusalProse,
+} from "../data/refusals";
 import {
   Select,
   SelectContent,
@@ -999,14 +1005,13 @@ function ExportDialog({
             </FieldError>
           )}
 
-          {/* A job that stopped without producing anything. Its `error` is the
-              handler's own sentence, which is the only account of a failure that
-              happened after the request had already been answered. */}
+          {/* A job that stopped without producing anything: the only account of
+              a failure that happened after the request had already been answered. */}
           {stopped !== null && (
             <FieldError data-testid="export-job-error">
               {stopped.state === "cancelled"
                 ? "The export was cancelled."
-                : (stopped.error ?? "The export stopped without saying why.")}
+                : jobFailureProse(stopped, "The export stopped without saying why.")}
             </FieldError>
           )}
 

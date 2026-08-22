@@ -245,6 +245,7 @@ def _background_job_to_row(entity: BackgroundJob) -> t.Base:
         created_at=entity.created_at.isoformat(),
         started_at=None if entity.started_at is None else entity.started_at.isoformat(),
         finished_at=None if entity.finished_at is None else entity.finished_at.isoformat(),
+        error_code=entity.error_code,
     )
 
 
@@ -266,6 +267,7 @@ def _background_job_to_domain(_: Session, row: Any) -> BackgroundJob:
         created_at=datetime.fromisoformat(row.created_at),
         started_at=None if row.started_at is None else datetime.fromisoformat(row.started_at),
         finished_at=None if row.finished_at is None else datetime.fromisoformat(row.finished_at),
+        error_code=row.error_code,
     )
 
 

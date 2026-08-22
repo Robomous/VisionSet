@@ -182,6 +182,7 @@ def _at_generation_one(path: Path) -> None:
         connection.execute(text("ALTER TABLE annotation_job_asset DROP COLUMN touched_at"))
         connection.execute(text("ALTER TABLE annotation_job DROP COLUMN assignee"))
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN provider_id"))
+        connection.execute(text("ALTER TABLE job DROP COLUMN error_code"))
         connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 1"))
     store.close()
 
@@ -252,6 +253,7 @@ _DECLARED_TAILS = {
     # is what gives this table an order to get wrong, which is why it earns an
     # entry only now.
     "inference_connection": ["model_family", "provider_id"],
+    "job": ["error_code"],
 }
 
 

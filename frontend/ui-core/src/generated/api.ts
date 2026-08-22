@@ -3029,6 +3029,8 @@ export interface components {
             created_at: string;
             /** Error */
             error: string | null;
+            /** Error Code */
+            error_code: string | null;
             /** Failures */
             failures: components["schemas"]["ItemFailureOut"][];
             /** Finished At */
@@ -3975,6 +3977,8 @@ export interface components {
         IntegrityCheckOut: {
             /** Error */
             error: string | null;
+            /** Error Code */
+            error_code: string | null;
             /** Files Read */
             files_read: number;
             /** Files Total */
@@ -4271,6 +4275,8 @@ export interface components {
             assets_total: number | null;
             /** Error */
             error: string | null;
+            /** Error Code */
+            error_code: string | null;
             /**
              * Job Id
              * Format: uuid
@@ -5031,6 +5037,8 @@ export interface components {
             bytes_total: number | null;
             /** Error */
             error: string | null;
+            /** Error Code */
+            error_code: string | null;
             /**
              * Job Id
              * Format: uuid

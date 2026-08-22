@@ -854,6 +854,10 @@ class BackgroundJobOut(BaseModel):
     total: int | None
     failures: tuple[ItemFailureOut, ...]
     error: str | None
+    #: The stable code of `error` — the one a request refused for the same
+    #: reason would answer — or `null` where the failure was not a declared
+    #: error. Branch on this, never on the sentence.
+    error_code: str | None
     result: dict[str, JsonValue]
     cancel_requested: bool
     attempt: int
@@ -871,6 +875,7 @@ class BackgroundJobOut(BaseModel):
             total=job.total,
             failures=tuple(ItemFailureOut.of(failure) for failure in job.failures),
             error=job.error,
+            error_code=job.error_code,
             result=job.result,
             cancel_requested=job.cancel_requested,
             attempt=job.attempt,
@@ -1002,6 +1007,9 @@ class PreLabelRunOut(BaseModel):
     #: Why it failed, in the handler's own sentence. `null` unless `state` is
     #: `failed`.
     error: str | None
+    #: The stable code of `error`, or `null` where the failure was not a
+    #: declared error. Branch on this, never on the sentence.
+    error_code: str | None
     #: Whether the run stopped before reaching every eligible asset —
     #: cancelled, or an orphan a crash left behind. `null` until the job settles
     #: with a result.
@@ -1031,6 +1039,7 @@ class PreLabelRunOut(BaseModel):
             assets_processed=run.assets_processed,
             assets_total=run.assets_total,
             error=run.error,
+            error_code=run.error_code,
             stopped_early=run.stopped_early,
             assets_labeled=run.assets_labeled,
             regions_discarded=run.regions_discarded,
@@ -2224,6 +2233,9 @@ class WeightDownloadOut(BaseModel):
     #: Why it failed, in the handler's own sentence. `null` unless `state` is
     #: `failed`.
     error: str | None
+    #: The stable code of `error`, or `null` where the failure was not a
+    #: declared error. Branch on this, never on the sentence.
+    error_code: str | None
 
     @classmethod
     def of(cls, download: WeightDownload) -> Self:
@@ -2233,6 +2245,7 @@ class WeightDownloadOut(BaseModel):
             bytes_done=download.bytes_done,
             bytes_total=download.bytes_total,
             error=download.error,
+            error_code=download.error_code,
         )
 
 
@@ -2272,6 +2285,9 @@ class IntegrityCheckOut(BaseModel):
     #: `failed`. A check that could not reach the hub fails here and changes
     #: nothing: no verdict, no purge, no state change.
     error: str | None
+    #: The stable code of `error`, or `null` where the failure was not a
+    #: declared error. Branch on this, never on the sentence.
+    error_code: str | None
 
     @classmethod
     def of(cls, check: IntegrityCheck) -> Self:
@@ -2281,6 +2297,7 @@ class IntegrityCheckOut(BaseModel):
             files_read=check.files_read,
             files_total=check.files_total,
             error=check.error,
+            error_code=check.error_code,
         )
 
 

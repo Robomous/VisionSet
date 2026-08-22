@@ -710,6 +710,8 @@ class JobRow(Base):
     created_at: Mapped[str] = mapped_column(String, nullable=False)
     started_at: Mapped[str | None] = mapped_column(String, nullable=True)
     finished_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Migration 12, so it stays last. See ``BackgroundJob.error_code``.
+    error_code: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 #: The dispatcher's poll, in one index.

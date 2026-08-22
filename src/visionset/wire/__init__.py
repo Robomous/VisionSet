@@ -456,6 +456,7 @@ def pre_label_run(value: PreLabelRun) -> dict[str, Any]:
         "assets_processed": value.assets_processed,
         "assets_total": value.assets_total,
         "error": value.error,
+        "error_code": value.error_code,
         "stopped_early": value.stopped_early,
         "assets_labeled": value.assets_labeled,
         "regions_discarded": value.regions_discarded,
@@ -750,6 +751,7 @@ def weight_download(value: WeightDownload) -> dict[str, Any]:
         "bytes_done": value.bytes_done,
         "bytes_total": value.bytes_total,
         "error": value.error,
+        "error_code": value.error_code,
     }
 
 
@@ -766,6 +768,7 @@ def integrity_check(value: IntegrityCheck) -> dict[str, Any]:
         "files_read": value.files_read,
         "files_total": value.files_total,
         "error": value.error,
+        "error_code": value.error_code,
     }
 
 

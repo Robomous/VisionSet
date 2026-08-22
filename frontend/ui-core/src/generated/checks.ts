@@ -79,7 +79,7 @@ export const checkJsonValue: Check<Schemas["JsonValue"]> =
   /*#__PURE__*/ isJsonValue;
 
 export const checkBackgroundJobOut: Check<Schemas["BackgroundJobOut"]> =
-  /*#__PURE__*/ object({ "attempt": [true, isInteger], "cancel_requested": [true, isBoolean], "created_at": [true, isString], "error": [true, either([isString, isNull] as const)], "failures": [true, arrayOf(checkItemFailureOut)], "finished_at": [true, either([isString, isNull] as const)], "id": [true, isString], "processed": [true, isInteger], "result": [true, mapOf(checkJsonValue)], "started_at": [true, either([isString, isNull] as const)], "state": [true, checkBackgroundJobState], "total": [true, either([isInteger, isNull] as const)], "type": [true, isString] } as const);
+  /*#__PURE__*/ object({ "attempt": [true, isInteger], "cancel_requested": [true, isBoolean], "created_at": [true, isString], "error": [true, either([isString, isNull] as const)], "error_code": [true, either([isString, isNull] as const)], "failures": [true, arrayOf(checkItemFailureOut)], "finished_at": [true, either([isString, isNull] as const)], "id": [true, isString], "processed": [true, isInteger], "result": [true, mapOf(checkJsonValue)], "started_at": [true, either([isString, isNull] as const)], "state": [true, checkBackgroundJobState], "total": [true, either([isInteger, isNull] as const)], "type": [true, isString] } as const);
 
 export const checkBackgroundJobPage: Check<Schemas["BackgroundJobPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBackgroundJobOut)], "total": [true, isInteger] } as const);
@@ -100,7 +100,7 @@ export const checkBatchState: Check<Schemas["BatchState"]> =
   /*#__PURE__*/ oneOf(["draft", "approved", "in_annotation", "completed"] as const);
 
 export const checkPreLabelRunOut: Check<Schemas["PreLabelRunOut"]> =
-  /*#__PURE__*/ object({ "annotations_replaced": [true, either([isInteger, isNull] as const)], "assets_labeled": [true, either([isInteger, isNull] as const)], "assets_processed": [true, isInteger], "assets_total": [true, either([isInteger, isNull] as const)], "error": [true, either([isString, isNull] as const)], "job_id": [true, isString], "regions_discarded": [true, either([isInteger, isNull] as const)], "regions_out_of_bounds": [true, either([isInteger, isNull] as const)], "state": [true, checkBackgroundJobState], "stopped_early": [true, either([isBoolean, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "annotations_replaced": [true, either([isInteger, isNull] as const)], "assets_labeled": [true, either([isInteger, isNull] as const)], "assets_processed": [true, isInteger], "assets_total": [true, either([isInteger, isNull] as const)], "error": [true, either([isString, isNull] as const)], "error_code": [true, either([isString, isNull] as const)], "job_id": [true, isString], "regions_discarded": [true, either([isInteger, isNull] as const)], "regions_out_of_bounds": [true, either([isInteger, isNull] as const)], "state": [true, checkBackgroundJobState], "stopped_early": [true, either([isBoolean, isNull] as const)] } as const);
 
 export const checkProgressCounts: Check<Schemas["ProgressCounts"]> =
   /*#__PURE__*/ object({ "accepted": [true, isInteger], "annotated": [true, isInteger], "pre_labeled": [true, isInteger], "review_pending": [true, isInteger], "skipped": [true, isInteger], "total": [true, isInteger], "unannotated": [true, isInteger] } as const);
@@ -130,7 +130,7 @@ export const checkConnectionType: Check<Schemas["ConnectionType"]> =
   /*#__PURE__*/ oneOf(["local", "http"] as const);
 
 export const checkIntegrityCheckOut: Check<Schemas["IntegrityCheckOut"]> =
-  /*#__PURE__*/ object({ "error": [true, either([isString, isNull] as const)], "files_read": [true, isInteger], "files_total": [true, either([isInteger, isNull] as const)], "job_id": [true, isString], "state": [true, checkBackgroundJobState] } as const);
+  /*#__PURE__*/ object({ "error": [true, either([isString, isNull] as const)], "error_code": [true, either([isString, isNull] as const)], "files_read": [true, isInteger], "files_total": [true, either([isInteger, isNull] as const)], "job_id": [true, isString], "state": [true, checkBackgroundJobState] } as const);
 
 export const checkModelCapability: Check<Schemas["ModelCapability"]> =
   /*#__PURE__*/ openOneOf(["point_suggest", "text_detect"] as const);
@@ -139,7 +139,7 @@ export const checkPrecision: Check<Schemas["Precision"]> =
   /*#__PURE__*/ oneOf(["fp16", "fp32"] as const);
 
 export const checkWeightDownloadOut: Check<Schemas["WeightDownloadOut"]> =
-  /*#__PURE__*/ object({ "bytes_done": [true, isInteger], "bytes_total": [true, either([isInteger, isNull] as const)], "error": [true, either([isString, isNull] as const)], "job_id": [true, isString], "state": [true, checkBackgroundJobState] } as const);
+  /*#__PURE__*/ object({ "bytes_done": [true, isInteger], "bytes_total": [true, either([isInteger, isNull] as const)], "error": [true, either([isString, isNull] as const)], "error_code": [true, either([isString, isNull] as const)], "job_id": [true, isString], "state": [true, checkBackgroundJobState] } as const);
 
 export const checkConnectionOut: Check<Schemas["ConnectionOut"]> =
   /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkConnectionAction)], "capabilities": [true, arrayOf(checkModelCapability)], "connection_type": [true, checkConnectionType], "created_at": [true, isString], "device": [true, either([isString, isNull] as const)], "download": [true, either([checkWeightDownloadOut, isNull] as const)], "endpoint_url": [true, either([isString, isNull] as const)], "id": [true, isString], "integrity_check": [true, either([checkIntegrityCheckOut, isNull] as const)], "model_id": [true, isString], "model_revision": [true, isString], "name": [true, isString], "precision": [true, either([checkPrecision, isNull] as const)], "provider_id": [true, either([isString, isNull] as const)], "setup_state": [true, checkConnectionSetupState], "updated_at": [true, isString] } as const);
