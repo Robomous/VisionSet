@@ -1,485 +1,130 @@
-# Development environment only. The release artifact is the pip package.
+# Development stack only — the release artifact is the pip package.
 #
-#   docker compose -f docker/compose.yaml up                # api + app
-#   docker compose -f docker/compose.yaml --profile postgres up
-#   docker compose -f docker/compose.yaml --profile minio up
+#   docker compose -f docker/compose.yaml up                                               # base
+#   docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up --build            # + GPU inference
+#   docker compose -f docker/compose.yaml -f docker/compose.cpu-inference.yaml up --build  # + CPU inference
+#   docker compose -f docker/compose.yaml --profile postgres up                            # unused extras
 #
-# That stack does everything except run a model here: its api image does not carry
-# the `local-inference` runtime, so a suggestion is refused with the command that
-# would install it. Two override files add that runtime — a second file rather than a
-# profile, because a profile adds services and these amend one:
+#   App   http://localhost:8080   nginx: /api/ → api, everything else → vite
+#   Docs  http://localhost:4321
 #
-#   docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up --build
-#   docker compose -f docker/compose.yaml -f docker/compose.cpu-inference.yaml up --build
+# Everything installs at build time, nothing at run time. After a dependency, manifest,
+# config or Dockerfile change: `docker compose -f docker/compose.yaml build`. Source
+# reloads live: src/visionset (uvicorn --reload), frontend/*/src (vite + tsc --watch),
+# docs/content and docs/src (astro dev). nginx.conf needs `up --force-recreate nginx`,
+# an entry script needs `restart`.
 #
-# The first reaches the host's NVIDIA GPU and needs the NVIDIA Container Toolkit
-# installed; the second runs on the CPU and needs nothing of the host, at seconds per
-# suggestion instead of milliseconds. Each file says the rest. All three configurations
-# share this file's `workspace-data/`, so switching keeps projects, connections and
-# downloaded weights — only the api image changes, and `--build` is what changes it.
+# Data lives in ./workspace-data (git-ignored) or wherever VISIONSET_DATA points, and
+# survives `down -v`. A workspace older than the current schema is refused: delete it.
 #
-# From a clean checkout this needs nothing installed on the host — no `uv sync`,
-# no `pnpm install`, no `pnpm -r build`, no wheel. `up` builds the two images the
-# first time; after that it starts them.
-#
-# Every dependency is resolved, downloaded and installed at **build** time, in
-# docker/api.Dockerfile and docker/app.Dockerfile. Starting a container downloads
-# nothing. After changing a dependency, in either language:
-#
-#   docker compose -f docker/compose.yaml build
-#
-# That is the whole of it, and it did not used to be: a frontend dependency also
-# needed `down -v`, because `frontend/*/node_modules` lived in named volumes and
-# Docker seeds a volume only when it is **new**. No `node_modules` is mounted from
-# anywhere any more — see the `app` service's volume list — so a `build` is what
-# reaches every installed thing in this stack.
-#
-# **What reloads while the stack runs, and what does not.** Every layer of source
-# reaches the browser without restarting anything:
-#
-#   src/visionset/**        uvicorn --reload            (docker/api-dev.sh)
-#   frontend/app/src/**     vite HMR
-#   frontend/ui-core/src/** tsc --watch → dist/ → vite  (docker/app-dev.sh)
-#   frontend/annotator/…    tsc --watch → dist/ → vite  (docker/app-dev.sh)
-#   docs/content/**         astro dev                   (docker/docs-dev.sh)
-#   docs/src/**             astro dev
-#
-# The `docs/content/**` row is a projection, not a plain watch:
-# `docs/integrations/docs-source.mjs` re-projects the one file that changed into the
-# content collection, which Astro is watching — so the chain from keystroke to browser
-# closes without a restart, the same as the others.
-#
-# The residual cases, all of them changes to how a container is *built* rather
-# than to what it runs, and each with the command it needs:
-#
-#   a dependency, either language   build
-#   either Dockerfile               build
-#   a tsconfig, vite.config.ts,     build   (baked into the app image — see
-#   index.html, a package.json              docker/app.Dockerfile for why)
-#   docker/nginx.conf               up --force-recreate nginx (mounted read-only,
-#                                   nginx reads it once at start)
-#   either entry script             restart api / restart app (read once at start)
-#
-# **Only what a running service reads is mounted** — the api gets `src/`, the app
-# gets the three `src/` directories plus its static `public/`, the docs site gets
-# `docs/content/` and its own `src/` and `public/`, and all three get `docker/` for their
-# entry script.
-# The whole checkout used to be mounted into the first two, which meant a polling
-# watcher walking `tests/`, `.git/`, the host `.venv/` and the Playwright report
-# directories on every tick, for services that read none of them. A path that is
-# not in the list above does not exist inside these containers; adding one is a
-# line in this file.
-#
-#   The app is at   http://localhost:8080
-#   The docs are at http://localhost:4321
-#
-# The first is the only address anyone needs in order to *use* VisionSet, and the
-# second is this repository's `docs/` rendered — a separate service, on its own
-# port, useful with everything else switched off (`up docs`). There is nothing to
-# sign in with:
-# the server issues the browser its own session (#179), so the app opens on the
-# project list. nginx serves it: `/api/` reaches the API and everything else the
-# vite dev server, so the browser sees one origin. The two services behind it are
-# published as well (:8000 and :5173) for curl, an MCP client config, or reading a
-# vite error without the proxy in the way — they are debugging doors, not the
-# front one.
-#
-# The front door is published on every interface, so a second device on the
-# same network — a phone, a tablet, another laptop — can open the dev stack at
-# http://<this machine's address>:8080. The debugging doors (:8000, :5173) and the
-# docs site's 4321 stay on 127.0.0.1. The rule: one door to the network, the one
-# nginx guards; everything else loopback. See VISIONSET_UI_SESSION on the api
-# service for what that door costs: this stack signs in whoever reaches it, so it
-# trusts the network it runs on.
-#
-# First boot creates a workspace and mints a token, printed in the `api` logs. The
-# browser does not need it; `curl` and an MCP client do.
-#
-# Video works here too, and needs nothing on the host: ffmpeg is a binary rather
-# than a Python dependency, so docker/api.Dockerfile installs it into the api image
-# — see the comment there. After pulling a change to that file, rebuild:
-#
-#   docker compose -f docker/compose.yaml build api
-#
-# A rebuild, and nothing else — no service in this stack keeps an installed thing
-# in a volume any more, so `build` is the whole answer for every dependency here.
-#
-# Storage — the same shape MLflow's default mode has, because it is the only shape
-# VisionSet has: a local directory for files and SQLite for metadata, both inside
-# one workspace directory, no server and nothing to configure. The kernel composes
-# exactly one metadata store (`SqliteMetadataStore`, `visionset.db`) and one blob
-# store (`FilesystemBlobStore`, `blobs/`). What this file adds is a *named* host
-# directory for it, so the data is somewhere a person chose:
-#
-#   <repo>/workspace-data/          on the host   (git-ignored)
-#   /data/                          in the api container
-#   /data/dev/                      the workspace itself
-#
-# Point it elsewhere with VISIONSET_DATA, which is a host path and may be absolute:
-#
-#   VISIONSET_DATA=~/visionset docker compose -f docker/compose.yaml up
-#
-# It is a bind mount rather than a named volume precisely so `down -v` does not
-# take the data with it.
-#
-# Which is worth saying the other way round, because it is the one piece of state
-# `down -v` does *not* reset, and a reader who has been taught that command as
-# "start over" will not expect it: a workspace created by an older build outlives
-# every rebuild and every `down -v`, and a build whose schema has moved on since
-# then refuses to open it (`WORKSPACE_SCHEMA_MISMATCH`, naming the missing
-# column — see docs/content/persistence.md). There is no migration path while VisionSet
-# is unreleased, so the answer is to delete it:
-#
-#   docker compose -f docker/compose.yaml down
-#   rm -rf workspace-data/            # or "$VISIONSET_DATA", if it is set
-#   docker compose -f docker/compose.yaml up
-#
-# `docker/api-dev.sh` creates a fresh workspace and mints a token on next boot.
-#
-# **Who writes all of that, and every other file this stack leaves on the host.**
-# The three built services run as the person who ran `docker compose`, not as root.
-# They have to: each mounts part of the checkout read-write, and a root process in
-# a container writes root-owned files into it — the workspace above, a
-# `__pycache__` beside every module uvicorn imports, the documentation projection
-# the docs service generates. What follows is not a permissions error at the point
-# it appears. `pnpm -r build` dies on EACCES, `bash scripts/check.sh docs` fails
-# three stages and the middle one names documents nobody edited, and
-# `git worktree remove` gives up partway through, after it has already deleted most
-# of the tree and dropped the registration.
-#
-# It defaults to 1000:1000 — the first account on a Linux workstation, and so
-# almost everybody — which is why the command at the top of this file still needs
-# nothing set up. When 1000 is not yours, say so once and Compose reads it from
-# `docker/.env`, the directory this file lives in, whichever directory you run
-# from:
-#
+# Containers run as VISIONSET_UID:VISIONSET_GID (default 1000:1000) so bind mounts stay
+# yours. If that is not your id, then `--build`:
 #   printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env
-#
-# Changing either value needs `--build`, exactly as switching inference modes does
-# and for the same reason: the identity is baked into each image as well as
-# selected at run time, and Compose reuses whatever image it already has. Getting
-# it wrong is loud — the app container dies on its first write into a `dist/` it
-# does not own — rather than a stack that quietly stops reloading.
-#
-# `workspace-data/` is tracked as an empty directory for this arrangement's sake.
-# Docker creates a missing bind-mount source itself, as root, before any container
-# starts and therefore before any entry script could get ahead of it — so a
-# checkout that already carries the directory is one the daemon never invents.
-# `docker/api-dev.sh` still checks, and refuses with the command that fixes it, for
-# the cases a tracked directory cannot cover: a VISIONSET_DATA pointing somewhere
-# new, and a directory left root-owned by a stack that ran before any of this.
-#
-# Two hosts where the default is wrong. Under **rootless Docker** the daemon
-# already maps container-root onto you, so files are correctly owned as they are;
-# pinning a uid there maps it through the subuid range onto a host identity nobody
-# can chown back, so set both variables to 0 and get that behaviour back through
-# the same knob. `docker info --format '{{.SecurityOptions}}'` naming `rootless` is
-# the check. On **macOS and Windows** the file-sharing layer translates ownership
-# on its own: the defaults are already right there and changing them only forces a
-# rebuild.
+# Rootless Docker: set both to 0. macOS/Windows: leave the defaults.
 
-# Named, rather than inherited from the directory. Compose derives a project name
-# from the compose file's parent directory, which here is `docker` — a name any
-# other checkout with a `docker/` directory also claims, so the two would share a
-# network name and report each other's containers as orphans.
+# Not the directory name (`docker`), which any other checkout would share.
 name: visionset
 
 services:
   api:
-    # Built, not pulled: every Python dependency is installed into the image, so
-    # starting this service starts a server rather than resolving 53 packages
-    # first. `docker/api.Dockerfile` says why each layer is where it is.
     build:
       context: ..
       dockerfile: docker/api.Dockerfile
-      # The identity the image bakes a user for, and below, the identity the
-      # container runs as. Both halves are here because each answers half of it:
-      # the build decides who owns what is *in* the image, the run decides who
-      # writes what lands *on the host*, and they have to name the same id or the
-      # container cannot write its own working directory.
       args:
         VISIONSET_UID: ${VISIONSET_UID:-1000}
         VISIONSET_GID: ${VISIONSET_GID:-1000}
     working_dir: /workspace
-    # Run as the developer rather than as root. Every writable mount in this file
-    # is part of somebody's checkout, and a root process in a container writes
-    # root-owned files into it — a `__pycache__` beside every module uvicorn
-    # imports, the projection the docs service generates, the workspace under
-    # /data. The host then cannot rebuild over them or delete them without sudo,
-    # and none of the three failures that follow says so: `pnpm -r build` dies on
-    # EACCES, `check.sh docs` fails naming documents nobody edited, and
-    # `git worktree remove` gives up partway through, having already deleted most
-    # of the tree and dropped the registration.
-    #
-    # The default is the first account on a Linux workstation and therefore almost
-    # everybody, so the command at the top of this file still needs nothing set.
-    # When 1000 is not yours, say so once — Compose reads `docker/.env`, the
-    # directory this file lives in, from whichever directory you run:
-    #
-    #   printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env
-    #
-    # **Changing either value needs `--build`**, for the same reason switching
-    # inference modes does: the identity is baked into the image as well as
-    # selected here, and Compose reuses whatever image it already has under that
-    # name. Getting this one wrong is loud rather than quiet — the app container
-    # dies on its first write into a `dist/` it does not own.
-    #
-    # Not `${UID}`, which is the spelling that looks right and silently is not.
-    # Neither bash nor zsh exports UID, so Compose never receives it, `${UID}`
-    # interpolates to nothing, and the service runs as root while reading as
-    # configured. Exporting it is not available as a repair either: UID is readonly
-    # in both shells.
-    #
-    # **Under rootless Docker, set both to 0.** There the daemon already maps
-    # container-root onto the invoking user, so files are correctly owned exactly
-    # as they are, and pinning a uid instead maps it through the subuid range onto
-    # a host identity nobody can chown back. `docker info --format
-    # '{{.SecurityOptions}}'` naming `rootless` is the one-line check. On macOS and
-    # Windows the file-sharing layer translates ownership itself, so the defaults
-    # are already right and are best left alone.
+    # Not `${UID}`: no shell exports it, so the service would silently run as root.
     user: "${VISIONSET_UID:-1000}:${VISIONSET_GID:-1000}"
     volumes:
-      # What a running API reads, and nothing else — see the header for why the
-      # whole checkout is no longer mounted here.
-      #
-      # `src` is both halves of how this container reaches the code: it is what
-      # PYTHONPATH names and what the editable install's record points at (see
-      # docker/api.Dockerfile), and it is uvicorn's `--reload-dir`. The
-      # `.dist-info` that carries the version and the exporter entry points lives
-      # in /opt/venv, outside the mount, and is unaffected by any of this.
       - ../src:/workspace/src
-      # The entry script, read once at container start. Read-only because nothing
-      # inside the container has any business rewriting how it boots.
       - ../docker:/workspace/docker:ro
-      # The backend's storage, and the only mount here holding anything a person
-      # would miss. Its default is inside the checkout, and `**/workspace-data/`
-      # is git-ignored so nothing written here can be committed by accident.
-      # Under the old whole-tree mount the same host directory was visible twice
-      # in this container, once as /data and once under /workspace; now it has
-      # exactly one name. /data is the one to think in, and the one that moves
-      # when VISIONSET_DATA is set.
       - ${VISIONSET_DATA:-../workspace-data}:/data
     environment:
-      # Which workspace this server serves, inside the storage mount above.
-      # `docker/api-dev.sh` creates it on first boot, because a stack whose every
-      # protected route answers 500 until the reader knows to run `visionset init`
-      # is not a dev environment.
+      # Created by docker/api-dev.sh on first boot.
       VISIONSET_WORKSPACE: /data/dev
-      # Sign the browser in without a token (#179). The default, `auto`, issues a
-      # session only to a loopback peer — and behind a proxy no request is ever
-      # from loopback, because the peer is nginx. So this stack says `always` —
-      # and because the nginx front door is published on every interface, that
-      # hands the workspace to whoever is on this machine's network. A dev stack
-      # on a network that is not yours sets `never` here, or binds the front door
-      # back to 127.0.0.1; the api's own port below stays loopback either way.
+      # Sign the browser in without a token. `auto` only trusts a loopback peer, and
+      # behind nginx the peer is never loopback. With the front door on every interface
+      # this trusts the whole network; set `never` on one you do not trust.
       VISIONSET_UI_SESSION: always
-      # Forwarded from whoever ran `docker compose`, empty when they have none.
-      # Some published weights are served only to accounts that have been granted
-      # them, and the refusal for fetching one without that names `HF_TOKEN` as
-      # the remedy. Without this line the remedy is unreachable from this stack:
-      # the reader sets the variable on the host, the container never sees it, and
-      # the same refusal comes back with nothing about it changed. A refusal
-      # naming a remedy nobody in that position can take is the mistake
-      # `NotAWorkspace` is the standing example of.
-      #
-      # It carries no default and belongs to no mode: a stack without the
-      # inference runtime never fetches anything, and one with it fetches ungated
-      # weights exactly as before, because the hub client treats an empty value
-      # as no token at all.
+      # For gated model weights; empty means no token.
       HF_TOKEN: ${HF_TOKEN:-}
-    # Raw uvicorn rather than `visionset server`, and deliberately so: that
-    # command also serves the compiled bundle at /app, which in development is
-    # vite's job on :5173 — and building that bundle is exactly what this stack
-    # exists to avoid needing.
+    # Raw uvicorn rather than `visionset server`, which would also serve the compiled
+    # bundle that vite replaces here.
     command: sh /workspace/docker/api-dev.sh
     ports:
-      # Loopback only: a debugging door. The one network-facing decision is the
-      # nginx front door, and this server signs any client in, so the raw port it
-      # does that on is not a second one. A bare "8000:8000" publishes on every
-      # interface.
+      # Loopback only: nginx and docs are the doors to the network.
       - "127.0.0.1:8000:8000"
 
   app:
-    # Built, not pulled, for the reason `api` is: `pnpm install` belongs to a
-    # build. See docker/app.Dockerfile.
     build:
       context: ..
       dockerfile: docker/app.Dockerfile
-      # The identity the image bakes a user for, and below, the identity the
-      # container runs as. Both halves are here because each answers half of it:
-      # the build decides who owns what is *in* the image, the run decides who
-      # writes what lands *on the host*, and they have to name the same id or the
-      # container cannot write its own working directory.
       args:
         VISIONSET_UID: ${VISIONSET_UID:-1000}
         VISIONSET_GID: ${VISIONSET_GID:-1000}
     working_dir: /workspace
-    # As the developer, not root; see the api service for the whole reasoning and
-    # for what to do when your uid is not 1000.
     user: "${VISIONSET_UID:-1000}:${VISIONSET_GID:-1000}"
-    # Not for ordering — vite serves fine before the API answers, and the proxy
-    # reconnects per request. It is so that `up app` alone still brings up the
-    # thing the app is useless without.
+    # So `up app` alone still brings up the API.
     depends_on:
       - api
     volumes:
-      # The source directories, and nothing wider. This list is deliberately not
-      # `../frontend`, and the difference is what keeps this stack working across a
-      # dependency change.
-      #
-      # pnpm's workspace layout puts a `node_modules/` at the root *and* inside
-      # every package, so mounting a package **directory** buries the install the
-      # image made — with the host's own `frontend/*/node_modules/`, or, on a clean
-      # checkout, with nothing at all. That used to be answered with a named volume
-      # per package, and it is exactly the wrong tool: Docker seeds a named volume
-      # only when it is **new**, so the first `up` filled three volumes and every
-      # later `build` was invisible to them. A dependency bump then left the
-      # container holding symlinks into a virtual store the image no longer had —
-      # `lucide-react 1.28.0 → 1.29.0` was one — and the app died at exit 2 naming a
-      # package that is plainly in `package.json`, which reads as a broken checkout
-      # rather than as a stale mount. It happened at least twice.
-      #
-      # Mounting `src/` leaves every `node_modules/` the image's own. So `build` is
-      # sufficient by itself, `down -v` is no longer part of any frontend workflow,
-      # and the container cannot reach the host's darwin-only native packages
-      # (esbuild, rollup, @tailwindcss/oxide, lightningcss) either — the second job
-      # the volumes used to do, now done by construction.
-      #
-      # These are the paths a person edits and expects to see reload. Everything
-      # else the app needs — the four package.json files, pnpm-lock.yaml,
-      # pnpm-workspace.yaml, the tsconfigs, vite.config.ts, index.html — is baked
-      # into the image by docker/app.Dockerfile, so editing one of those needs a
-      # `build`, the same rule a dependency change has.
-      #
-      # Consequence worth knowing: `frontend/{annotator,ui-core}/dist` is now built
-      # inside the container rather than into the checkout, so the two `tsc
-      # --watch` builds no longer write to the host at all.
+      # Source directories, never package roots: mounting a package root buries the
+      # image's node_modules. Manifests, tsconfigs, vite.config.ts and index.html are
+      # baked into the image, so editing one needs `build`.
       - ../frontend/annotator/src:/workspace/frontend/annotator/src
       - ../frontend/ui-core/src:/workspace/frontend/ui-core/src
       - ../frontend/app/src:/workspace/frontend/app/src
-      # Vite's static directory — a directory rather than the one file in it, so
-      # adding an asset needs no rebuild.
       - ../frontend/app/public:/workspace/frontend/app/public
-      # The entry script, read once at container start; read-only for the reason
-      # the api service states.
       - ../docker:/workspace/docker:ro
     environment:
-      # Where vite's own `/api` proxy points. Requests arriving through nginx
-      # never reach it — nginx has already routed `/api/` to the API by then — so
-      # this is what makes http://localhost:5173 work as well as :8080. Without it
-      # the config falls back to `http://127.0.0.1:8000`, which inside this
-      # container is this container, and every API call dies at the proxy with a
-      # connection refused that appears nowhere in the api logs.
+      # Vite's own /api proxy, so http://localhost:5173 works without nginx.
       VISIONSET_API: http://api:8000
-      # A bind mount does not deliver inotify events across the host boundary on
-      # macOS or Windows, and vite's watcher is silent when it receives none:
-      # edits simply never reach the browser, which reads as "HMR is broken"
-      # rather than as a mount problem. Polling costs CPU, and is one reason
-      # running the app on the host is still faster.
+      # Bind mounts deliver no inotify events on macOS/Windows.
       CHOKIDAR_USEPOLLING: "true"
     command: sh /workspace/docker/app-dev.sh
     ports:
-      # Loopback only, for the reason the api service states.
       - "127.0.0.1:5173:5173"
 
-  # The documentation site: http://localhost:4321
-  #
-  # Deliberately *beside* nginx rather than behind it. The application's front door
-  # serves one origin so the browser sees `/api/` and the app as one thing; the
-  # documentation is not part of that origin — it deploys on its own, to its own
-  # host (see amplify.yml) — and putting it on a path of :8080 would invent a URL
-  # shape production does not have. 4321 is Astro's own default, and nothing else
-  # in this stack claims it (:8000, :5173, :8080, and :5432/:9000/:9001 behind
-  # profiles).
+  # Beside nginx, not behind it: the docs deploy to their own host (see amplify.yml),
+  # so they get their own port here too.
   docs:
-    # Built, not pulled, for the reason `api` and `app` are: `pnpm install` belongs
-    # to a build. See docker/docs.Dockerfile — and note the install it makes is
-    # `docs/`'s own, so nothing about Astro reaches the application image.
     build:
       context: ..
       dockerfile: docker/docs.Dockerfile
-      # The identity the image bakes a user for, and below, the identity the
-      # container runs as. Both halves are here because each answers half of it:
-      # the build decides who owns what is *in* the image, the run decides who
-      # writes what lands *on the host*, and they have to name the same id or the
-      # container cannot write its own working directory.
       args:
         VISIONSET_UID: ${VISIONSET_UID:-1000}
         VISIONSET_GID: ${VISIONSET_GID:-1000}
     working_dir: /workspace/docs
-    # As the developer, not root; see the api service for the whole reasoning and
-    # for what to do when your uid is not 1000.
     user: "${VISIONSET_UID:-1000}:${VISIONSET_GID:-1000}"
-    # Nothing. The docs site reads no API and shares no storage — it is the one
-    # service here that is useful with the rest of the stack switched off.
     volumes:
-      # **The canonical documentation.** This is the mount that matters:
-      # `docs/content/` is the source of truth, the Astro integration projects it
-      # into the content collection on every change, and that projection is what
-      # reloads the browser. Read-only, because the site renders the documentation
-      # and never writes it.
       - ../docs/content:/workspace/docs/content:ro
-      # The site's own source — its components, styles, sidebar and content config.
-      # `src/` rather than the whole of `docs/`, and for exactly the reason the app
-      # service gives at length: mounting the package root would bury the `node_modules/`
-      # the image installed. It also keeps the generated `src/content/docs/` inside
-      # the container, where it belongs.
-      #
-      # Consequence, stated: `src/content/` is *below* this mount, so the projection
-      # is written to the host too. It is git-ignored, and it is the same directory
-      # `pnpm --dir docs dev` would write.
+      # `src/`, not `docs/`, for the reason the app service gives; the projection into
+      # src/content/ lands on the host too (git-ignored).
       - ../docs/src:/workspace/docs/src
-      # Astro's static directory — a directory rather than the one file in it, so
-      # adding an asset needs no rebuild, exactly as the app service mounts its own
-      # `public/`. It is not optional and its absence is not quiet: the site config
-      # declares `favicon: "/favicon.ico"`, so without this line every page in this
-      # container asks for a file nothing serves — a 404 in the browser console, a
-      # tab with no icon, and a `getStaticPaths()` warning in this service's log on
-      # every request. None of that is visible to `curl http://localhost:4321/`,
-      # which is why it survived: the page itself is a perfectly good 200.
+      # Without it every page 404s on the favicon, invisibly to curl.
       - ../docs/public:/workspace/docs/public:ro
-      # The entry script, read once at container start; read-only for the reason
-      # the api service states.
       - ../docker:/workspace/docker:ro
     environment:
-      # A bind mount delivers no inotify events across the host boundary on macOS
-      # or Windows, and a watcher that receives none is silent rather than
-      # broken-looking — the same reason, and the same setting, as the app service.
-      # Astro's watcher is Vite's, which is chokidar, so this is the switch that
-      # makes an edit under `docs/content/` reach the browser.
       CHOKIDAR_USEPOLLING: "true"
     command: sh /workspace/docker/docs-dev.sh
     ports:
-      # Loopback only. This service publishes no data and signs nobody in, so the
-      # reasoning is weaker here than it is for the api — but the rule is one
-      # door to the network, the front one, and the next service copies
-      # whichever line it lands next to.
-      - "127.0.0.1:4321:4321"
+      # Every interface, like nginx: the docs are tested from other devices too.
+      - "0.0.0.0:4321:4321"
 
-  # The front door, and the only port anybody needs: http://localhost:8080
   nginx:
     image: nginx:1.31-alpine
     depends_on:
       - api
       - app
     volumes:
-      # Read-only, because nothing should be able to rewrite the routing from
-      # inside the container.
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
-      # 8080 rather than 80: 80 needs root on Linux to publish, and a dev stack
-      # that has to be started with sudo is one nobody starts. Every interface,
-      # not loopback: this is the one door published to the network, so another
-      # device on it can open the dev stack. It is also the door the browser is
-      # signed in through — see VISIONSET_UI_SESSION on the api service for what
-      # that means on a network that is not yours.
+      # 8080 because 80 needs root. Every interface, so another device on the network
+      # can open the stack — and it is signed in too; see VISIONSET_UI_SESSION.
       - "0.0.0.0:8080:80"
 
-  # Neither of the two below is wired to anything. The kernel composes exactly one
-  # metadata store (`SqliteMetadataStore`) and one blob store
-  # (`FilesystemBlobStore`), and no code anywhere reads a `DATABASE_URL` or an S3
-  # endpoint — these exist to have somewhere to point a future adapter, which is
-  # why they sit behind profiles and are off by default.
+  # Neither is wired to anything yet; somewhere to point a future adapter.
   postgres:
     profiles: ["postgres"]
     image: postgres:18
@@ -490,24 +135,13 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      # The whole directory, not the `data/` beneath it. From 18 the image keeps its
-      # cluster in a major-version subdirectory and refuses to start at all — exit 1
-      # before any server — when it finds a mount on the old path, so bumping the tag
-      # without moving this line takes the profile down. A cluster written by 16 is
-      # unreadable to 18 wherever it is mounted: `docker volume rm
-      # visionset_postgres-data` is the way through, and costs nothing while nothing
-      # is wired to this service.
+      # The whole directory: from 18 the image keeps the cluster in a version
+      # subdirectory and refuses a mount on the old `data/` path.
       - postgres-data:/var/lib/postgresql
 
   minio:
     profiles: ["minio"]
-    # A named release rather than `:latest`, and it is the one image here that
-    # needed changing. `latest` is the single thing a cool-down structurally
-    # cannot cover: there is no version to be three days old, the tag is
-    # re-pointed by its publisher, and `docker compose pull` on the morning of a
-    # compromise fetches it with nothing in between. Every other service in this
-    # file already names a version. Dependabot's `docker-compose` entry now
-    # proposes the bumps, under the same three days as everything else.
+    # A release, never `latest`: a floating tag has no version to cool down.
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
