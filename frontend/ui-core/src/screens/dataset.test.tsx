@@ -97,7 +97,7 @@ const RELEASE_ROW = {
 const ASSET = "55555555-5555-4555-8555-555555555555";
 
 /**
- * One trunk member, with every field `AssetOut` declares.
+ * One trunk member, with every field `DatasetAssetOut` declares.
  *
  * Present rather than omitted, including the nulls: the generated shape check
  * runs at `unwrap` and rejects a body missing a required field before the screen
@@ -116,7 +116,48 @@ const ASSET_ROW = {
   frame_timestamp: null,
   thumbnail_hash: null,
   ingested_at: "2026-07-31T09:00:00.000000Z",
+  annotation_count: 2,
+  label_classes: ["lane", "vehicle"],
 };
+
+const BOX = "66666666-6666-4666-8666-666666666666";
+const LANE = "77777777-7777-4777-8777-777777777777";
+
+/** Two labels of two classes and two provenances, every field `AnnotationOut` declares. */
+const ANNOTATIONS = [
+  {
+    id: BOX,
+    asset_id: ASSET,
+    label_class: "vehicle",
+    schema_version: 3,
+    geometry: { type: "bbox", x: 10, y: 20, width: 100, height: 50 },
+    attributes: {},
+    provenance: "human",
+    model_ref: null,
+    confidence: null,
+    job_id: null,
+  },
+  {
+    id: LANE,
+    asset_id: ASSET,
+    label_class: "lane",
+    schema_version: 3,
+    geometry: { type: "polygon", points: [[0, 0], [50, 0], [25, 40]] },
+    attributes: {},
+    provenance: "model",
+    model_ref: "detector",
+    confidence: 0.8,
+    job_id: null,
+  },
+];
+
+/** What opening a preview asks for, beyond the listing: the bytes, the labels, the schema. */
+function previewable(): void {
+  on("GET", /\/content$/, { status: 200, body: "not-really-png" });
+  on("GET", /\/annotations$/, { status: 200, body: { items: ANNOTATIONS, total: 2 } });
+  // A schema-less project is a real answer, and the overlay colours itself.
+  on("GET", /\/schema$/, { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none" } });
+}
 
 function baseline(): void {
   on("GET", /\/dataset$/, {
@@ -692,10 +733,14 @@ describe("curating the trunk", () => {
     baseline();
     render(mount(<DatasetScreen projectId={PROJECT} />));
 
-    const row = await screen.findByTestId(`trunk-asset-${ASSET}`);
-    // The frame number when there is one: `frame 7`, not a content hash nobody
-    // can act on.
-    expect(row.textContent).toContain("frame 7");
+    const tile = await screen.findByTestId(`trunk-asset-${ASSET}`);
+    // The frame number when there is one, as the pill over the picture — not a
+    // content hash nobody can act on — and how many labels it carries, read off
+    // the listing itself rather than fetched per tile.
+    expect(tile.textContent).toContain("7");
+    expect(screen.getByTestId(`labels-${ASSET}`).textContent).toBe("2 labels");
+    expect(screen.getByTestId(`labels-${ASSET}`).getAttribute("title")).toBe("lane, vehicle");
+    expect(screen.getByTestId(`open-${ASSET}`).getAttribute("aria-label")).toBe("Preview frame 7");
   });
 
   it("says what removal costs, and is honest that almost nothing is destroyed", async () => {
@@ -844,8 +889,136 @@ describe("curating the trunk", () => {
     await userEvent.click(screen.getByTestId("trunk-next"));
 
     await waitFor(() =>
-      expect(sent.some((r) => new URL(r.url).searchParams.get("offset") === "25")).toBe(true),
+      expect(sent.some((r) => new URL(r.url).searchParams.get("offset") === "48")).toBe(true),
     );
     expect(screen.getByTestId("trunk-previous")).toHaveProperty("disabled", false);
+  });
+});
+
+/**
+ * Looking at a member.
+ *
+ * The preview is a viewer and not an editor: the annotator's own shapes, drawn
+ * over the picture in the asset's pixel frame, beside what the asset is and
+ * what is on it. The claims worth the block are that the overlay is placed by
+ * the asset's own dimensions, that the labels are read through the dataset and
+ * not through a job, and that removal from the viewer is the same decision as
+ * removal from the tile.
+ */
+describe("looking at a member", () => {
+  it("opens a preview with the picture, the metadata and the labels drawn over it", async () => {
+    previewable();
+    baseline();
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+
+    const preview = await screen.findByTestId("asset-preview");
+    expect(within(preview).getByTestId("preview-metadata").textContent).toContain("640 × 480");
+    expect(within(preview).getByTestId("preview-metadata").textContent).toContain("png");
+    // The overlay speaks the asset's pixel frame, which is what makes a stored
+    // coordinate land on the pixel it names at every dialog width.
+    expect(within(preview).getByTestId("preview-overlay").getAttribute("viewBox")).toBe("0 0 640 480");
+    await within(preview).findByTestId(`preview-shape-${BOX}`);
+    expect(within(preview).getByTestId(`preview-shape-${LANE}`).getAttribute("data-geometry")).toBe("polygon");
+    // Grouped by class, each label saying what it is and who made it.
+    expect(within(preview).getByTestId("preview-class-vehicle").textContent).toContain("1");
+    expect(within(preview).getByTestId(`preview-annotation-${BOX}`).textContent).toBe("box · human");
+    expect(within(preview).getByTestId(`preview-annotation-${LANE}`).textContent).toBe(
+      "polygon · model · detector · 80%",
+    );
+    // Read through the dataset — a member carries no job id to read it through.
+    const asked = sent.find((r) => new URL(r.url).pathname.endsWith("/annotations"));
+    expect(new URL(asked?.url ?? "").pathname).toBe(`/datasets/${DATASET}/assets/${ASSET}/annotations`);
+  });
+
+  it("hides the overlay on request, and the list stays", async () => {
+    previewable();
+    baseline();
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+    await screen.findByTestId(`preview-shape-${BOX}`);
+
+    await userEvent.click(screen.getByTestId("preview-toggle-labels"));
+
+    expect(screen.queryByTestId(`preview-shape-${BOX}`)).toBeNull();
+    expect(screen.getByTestId("preview-class-vehicle")).not.toBeNull();
+    expect(screen.getByTestId("preview-toggle-labels").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("steps through the page with the arrows and stops at its edges", async () => {
+    const ids = [
+      "55555555-5555-4555-8555-555555555550",
+      "55555555-5555-4555-8555-555555555551",
+      "55555555-5555-4555-8555-555555555552",
+    ];
+    on("GET", /\/assets$/, {
+      status: 200,
+      body: { items: ids.map((id, at) => ({ ...ASSET_ROW, id, frame_index: at })), total: 3 },
+    });
+    previewable();
+    baseline();
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId(`open-${ids[0]}`));
+
+    expect(screen.getByTestId("preview-position").textContent).toBe("1 of 3 on this page");
+    expect(screen.getByTestId("preview-previous")).toHaveProperty("disabled", true);
+
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByTestId("preview-position").textContent).toBe("2 of 3 on this page");
+
+    await userEvent.click(screen.getByTestId("preview-next"));
+    expect(screen.getByTestId("preview-position").textContent).toBe("3 of 3 on this page");
+    expect(screen.getByTestId("preview-next")).toHaveProperty("disabled", true);
+    // The edge is the edge: the key does nothing past it.
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByTestId("preview-position").textContent).toBe("3 of 3 on this page");
+  });
+
+  it("removes from the preview through the same confirmation, and closes the viewer", async () => {
+    previewable();
+    baseline();
+    on("DELETE", /\/assets\//, { status: 204 });
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+    await userEvent.click(await screen.findByTestId("preview-remove"));
+
+    // The same dialog as the tile's, so the same sentence about what removal costs.
+    await screen.findByTestId("remove-asset-consequence");
+    expect(sent.some((r) => r.method === "DELETE")).toBe(false);
+    await userEvent.click(screen.getByTestId("remove-asset-submit"));
+
+    await waitFor(() => expect(sent.some((r) => r.method === "DELETE")).toBe(true));
+    await waitFor(() => expect(screen.queryByTestId("asset-preview")).toBeNull());
+  });
+
+  it("says when the labels cannot be read, as a sentence", async () => {
+    on("GET", /\/content$/, { status: 200, body: "not-really-png" });
+    on("GET", /\/annotations$/, {
+      status: 404,
+      body: { code: "ASSET_NOT_IN_DATASET", message: "asset x is not in the trunk of dataset 'y'" },
+    });
+    on("GET", /\/schema$/, { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none" } });
+    baseline();
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+
+    const failure = await screen.findByTestId("preview-labels-error");
+    expect(failure.textContent).toBe("That frame is no longer in the dataset.");
+    expect(screen.queryByTestId(`preview-shape-${BOX}`)).toBeNull();
+  });
+
+  it("shows the picture without an overlay when the asset does not record its dimensions", async () => {
+    on("GET", /\/assets$/, {
+      status: 200,
+      body: { items: [{ ...ASSET_ROW, width: null, height: null }], total: 1 },
+    });
+    previewable();
+    baseline();
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+
+    await screen.findByTestId("preview-no-overlay");
+    expect(screen.queryByTestId("preview-overlay")).toBeNull();
+    expect(screen.getByTestId("preview-metadata").textContent).toContain("—");
   });
 });

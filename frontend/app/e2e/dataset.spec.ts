@@ -43,10 +43,26 @@ const ASSETS = [
   { id: "aaaaaaaa-0000-4000-8000-000000000003", frame_index: 2 },
 ] as const;
 
-function assetRow(asset: { id: string; frame_index: number }): Wire["AssetOut"] {
-  // Every field `AssetOut` declares, nulls included. The generated shape check
-  // runs before any screen renders, so an omitted field is a runtime rejection
-  // and a stub answering a shape the endpoint never sends tests nothing.
+/** One label on every member: a box, so the overlay has something to draw. */
+function annotationRow(assetId: string): Wire["AnnotationOut"] {
+  return {
+    id: `bbbbbbbb-0000-4000-8000-${assetId.slice(-12)}`,
+    asset_id: assetId,
+    label_class: "sign",
+    schema_version: 1,
+    geometry: { type: "bbox", x: 64, y: 48, width: 320, height: 240 },
+    attributes: {},
+    provenance: "human",
+    model_ref: null,
+    confidence: null,
+    job_id: null,
+  };
+}
+
+function assetRow(asset: { id: string; frame_index: number }): Wire["DatasetAssetOut"] {
+  // Every field `DatasetAssetOut` declares, nulls included. The generated shape
+  // check runs before any screen renders, so an omitted field is a runtime
+  // rejection and a stub answering a shape the endpoint never sends tests nothing.
   return {
     id: asset.id,
     project_id: PROJECT,
@@ -60,6 +76,8 @@ function assetRow(asset: { id: string; frame_index: number }): Wire["AssetOut"] 
     frame_timestamp: null,
     thumbnail_hash: null,
     ingested_at: "2026-07-31T09:00:00.000000Z",
+    annotation_count: 1,
+    label_classes: ["sign"],
   };
 }
 
@@ -126,9 +144,24 @@ async function serveApi(page: Page): Promise<void> {
     }
     if (path === `/datasets/${DATASET}/assets`) {
       const items = ASSETS.filter((asset) => trunk.has(asset.id)).map(assetRow);
-      return route.fulfill({ json: { items, total: items.length } satisfies Wire["AssetPage"] });
+      return route.fulfill({
+        json: { items, total: items.length } satisfies Wire["DatasetAssetPage"],
+      });
     }
-    if (path.endsWith("/thumbnail")) {
+    const labels = path.match(new RegExp(`^/datasets/${DATASET}/assets/([^/]+)/annotations$`));
+    if (labels !== null) {
+      const [, assetId] = labels;
+      const items = trunk.has(assetId) ? [annotationRow(assetId)] : [];
+      return route.fulfill({ json: { items, total: items.length } satisfies Wire["AnnotationPage"] });
+    }
+    if (path === `/projects/${PROJECT}/schema`) {
+      // A schema-less project is a real answer: the overlay colours itself.
+      return route.fulfill({
+        status: 404,
+        json: { code: "SCHEMA_NOT_FOUND", message: "no active schema" },
+      });
+    }
+    if (path.endsWith("/thumbnail") || path.endsWith("/content")) {
       return route.fulfill({ contentType: "image/png", body: PIXEL });
     }
     // Everything else the screen may ask for. An empty collection is a legal
@@ -187,4 +220,46 @@ test("cancelling takes no action at all", async ({ page }) => {
   // The decision is the confirmation, not the press that opened it.
   await expect(page.getByTestId(`trunk-asset-${first.id}`)).toBeVisible();
   await expect(page.getByTestId("dataset-stats")).toContainText("3");
+});
+
+test("opening a tile shows the picture with its label drawn over it, in the picture's own frame", async ({
+  page,
+}) => {
+  await openDataset(page);
+  const [first] = ASSETS;
+
+  await page.getByTestId(`open-${first.id}`).click();
+  const preview = page.getByTestId("asset-preview");
+  await expect(preview).toBeVisible();
+  await expect(preview.getByTestId(`preview-shape-${annotationRow(first.id).id}`)).toBeVisible();
+
+  // The overlay is placed by the asset's dimensions and not by measuring the
+  // picture, and this is the one claim jsdom cannot check: the SVG's box has to
+  // be the image's box, or a coordinate lands beside the pixel it names.
+  const picture = await preview.getByTestId("preview-image").boundingBox();
+  const overlay = await preview.getByTestId("preview-overlay").boundingBox();
+  expect(picture).not.toBeNull();
+  expect(overlay).not.toBeNull();
+  for (const side of ["x", "y", "width", "height"] as const) {
+    expect(Math.abs((picture?.[side] ?? 0) - (overlay?.[side] ?? 0))).toBeLessThanOrEqual(1);
+  }
+  // And the box keeps the asset's 4:3 whatever the dialog's width.
+  expect(Math.abs((picture?.width ?? 0) / (picture?.height ?? 1) - 640 / 480)).toBeLessThan(0.02);
+
+  await page.keyboard.press("ArrowRight");
+  await expect(preview.getByTestId("preview-position")).toHaveText("2 of 3 on this page");
+});
+
+test("removing from the preview takes the tile out and closes the viewer", async ({ page }) => {
+  await openDataset(page);
+  const [first] = ASSETS;
+
+  await page.getByTestId(`open-${first.id}`).click();
+  await page.getByTestId("preview-remove").click();
+  await expect(page.getByTestId("remove-asset-dialog")).toBeVisible();
+  await page.getByTestId("remove-asset-submit").click();
+
+  await expect(page.getByTestId("asset-preview")).toHaveCount(0);
+  await expect(page.getByTestId(`trunk-asset-${first.id}`)).toHaveCount(0);
+  await expect(page.getByTestId("dataset-stats")).toContainText("2");
 });

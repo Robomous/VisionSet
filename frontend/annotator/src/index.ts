@@ -308,6 +308,7 @@ export {
   HANDLE_PX,
   LABEL_PX,
   PolygonShape,
+  PolylineShape,
   SELECTED_STROKE_PX,
   ESCALATE_MS,
   MIN_VISIBLE_MS,
