@@ -129,6 +129,7 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     precision: "fp16",
     endpoint_url: null,
     provider_id: "sam",
+    credential_env: null,
     setup_state: "not_set_up",
     allowed_actions: ["download_weights", "update", "delete"],
     // Not optional on the wire, so not optional here: the generated runtime
@@ -824,6 +825,7 @@ it("sends only the fields the chosen kind carries", async () => {
   await userEvent.type(screen.getByTestId("connection-custom-model"), "some/model");
   await userEvent.type(screen.getByTestId("connection-revision"), "abc123");
   await userEvent.type(screen.getByTestId("connection-endpoint"), "https://example.invalid");
+  await userEvent.type(screen.getByTestId("connection-credential-env"), "ACME_TOKEN");
   await userEvent.click(screen.getByTestId("connection-submit"));
   await waitFor(() =>
     expect(sent.filter((one) => one.method === "POST").length).toBeGreaterThan(0),
@@ -836,6 +838,23 @@ it("sends only the fields the chosen kind carries", async () => {
   expect(body.device).toBeNull();
   expect(body.precision).toBeNull();
   expect(body.endpoint_url).toBe("https://example.invalid");
+  expect(body.credential_env).toBe("ACME_TOKEN");
+});
+
+it("says the credential field takes a variable's name and never the secret", async () => {
+  listing([]);
+  catalog();
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-http"));
+  await screen.findByTestId("connection-credential-env");
+  expect(screen.getByText(/The name of an environment variable, not the secret/)).not.toBeNull();
+  // No field takes the secret itself: the decision is a variable's name, and a
+  // password input here would be the plain-storage option nobody chose.
+  expect(screen.queryByLabelText(/token|api key|secret/i)).toBeNull();
+  expect(screen.queryByTestId("connection-credential-env")?.getAttribute("type")).not.toBe(
+    "password",
+  );
 });
 
 it("keeps what was typed when a create is refused", async () => {
@@ -878,16 +897,6 @@ it("says which connection name is taken, in its stored casing, not as an identif
   const shown = await screen.findByTestId("connection-error");
   expect(shown.textContent).toContain("an inference connection named 'Remote' already exists");
   expect(shown.textContent).not.toContain("INFERENCE_CONNECTION_NAME_TAKEN");
-});
-
-it("has no credential field, because where a secret lives is still open", async () => {
-  listing([]);
-  catalog();
-  render(mount(<InferenceScreen />));
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-http"));
-  await screen.findByTestId("connection-endpoint");
-  expect(screen.queryByLabelText(/credential|token|api key|secret/i)).toBeNull();
 });
 
 // --- the served catalog, and the fields that are closed sets --------------------
@@ -1846,6 +1855,7 @@ it("sends an edit carrying only the fields ConnectionUpdate declares", async () 
     return found!;
   });
   expect(Object.keys(await patch.clone().json()).sort()).toEqual([
+    "credential_env",
     "device",
     "endpoint_url",
     "model_id",
@@ -1935,12 +1945,24 @@ function hosted(overrides: Partial<Connection> = {}): Connection {
     precision: null,
     endpoint_url: "https://models.example/predict",
     provider_id: null,
+    credential_env: null,
     setup_state: "ready",
     allowed_actions: HTTP_ACTIONS,
     capabilities: [],
     ...overrides,
   });
 }
+
+it("opens an http edit on the credential variable the row names", async () => {
+  listing([hosted({ credential_env: "ACME_TOKEN" })]);
+  catalog();
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-remote-seg"));
+  await userEvent.click(await screen.findByTestId("action-edit"));
+  expect((await screen.findByTestId("connection-credential-env")).getAttribute("value")).toBe(
+    "ACME_TOKEN",
+  );
+});
 
 it("offers Test endpoint exactly where the wire declares it", async () => {
   listing([hosted(), connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);

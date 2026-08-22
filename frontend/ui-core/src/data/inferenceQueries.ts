@@ -237,6 +237,11 @@ export interface ConnectionInput {
   readonly precision?: Precision | null;
   readonly endpointUrl?: string | null;
   /**
+   * `http` only: the name of the environment variable holding the endpoint's
+   * credential — never the credential. On an edit the empty string clears it.
+   */
+  readonly credentialEnv?: string | null;
+  /**
    * Which installed driver serves this connection.
    *
    * Read off the catalog entry the form picked, never worked out here: which
@@ -476,6 +481,7 @@ function bodyOf(input: ConnectionInput) {
     device: local ? (input.device ?? null) : null,
     precision: local ? (input.precision ?? null) : null,
     endpoint_url: local ? null : (input.endpointUrl ?? null),
+    credential_env: local ? null : (input.credentialEnv ?? null),
     // Travels on both bodies. On a create it records the driver; on an edit
     // `null` means *leave this alone*, and the server clears a recorded driver
     // by itself when the model reference moves — so switching a connection to a

@@ -77,6 +77,7 @@ function connection(
     precision: "fp16",
     endpoint_url: null,
     provider_id: "sam",
+    credential_env: null,
     setup_state: setup,
     allowed_actions: [],
     // Resolved by the server from the model's own config, and empty until

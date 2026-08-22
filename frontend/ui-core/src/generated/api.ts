@@ -3442,6 +3442,8 @@ export interface components {
          */
         ConnectionCreate: {
             connection_type: components["schemas"]["ConnectionType"];
+            /** Credential Env */
+            credential_env?: string | null;
             /** Device */
             device?: string | null;
             /** Endpoint Url */
@@ -3471,6 +3473,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Credential Env */
+            credential_env: string | null;
             /** Device */
             device: string | null;
             download: components["schemas"]["WeightDownloadOut"] | null;
@@ -3544,9 +3548,13 @@ export interface components {
          *     ``InferenceConnectionService.update``. A field cannot be *cleared* through
          *     this shape, which is the honest consequence of null meaning "unchanged": the
          *     parameters that could be cleared are exactly the ones the kind requires, so
-         *     clearing one would produce a row the domain refuses anyway.
+         *     clearing one would produce a row the domain refuses anyway. The one
+         *     exception is ``credential_env``, the one optional parameter a person removes
+         *     as readily as sets: the empty string clears it.
          */
         ConnectionUpdate: {
+            /** Credential Env */
+            credential_env?: string | null;
             /** Device */
             device?: string | null;
             /** Endpoint Url */

@@ -841,6 +841,7 @@ function ConnectionForm({
   const [device, setDevice] = useState<string>(editing?.device ?? "cpu");
   const [precision, setPrecision] = useState<Precision>(editing?.precision ?? "fp32");
   const [endpoint, setEndpoint] = useState(editing?.endpoint_url ?? "");
+  const [credentialEnv, setCredentialEnv] = useState(editing?.credential_env ?? "");
   /**
    * Whether the sentinel on screen was seeded here rather than chosen.
    *
@@ -975,6 +976,7 @@ function ConnectionForm({
       device: device.trim(),
       precision,
       endpointUrl: endpoint.trim(),
+      credentialEnv: credentialEnv.trim(),
       providerId,
     };
     // Only on success: a refusal leaves the dialog open with what was typed
@@ -1232,6 +1234,20 @@ function ConnectionForm({
                     value={endpoint}
                     onChange={(event) => setEndpoint(event.target.value)}
                   />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="connection-credential-env">Credential variable</Label>
+                  <Input
+                    id="connection-credential-env"
+                    data-testid="connection-credential-env"
+                    value={credentialEnv}
+                    onChange={(event) => setCredentialEnv(event.target.value)}
+                  />
+                  <FieldHint>
+                    The name of an environment variable, not the secret itself. VisionSet reads
+                    it where the server runs, sends it as a bearer token, and never stores the
+                    value. Leave empty if the endpoint wants none.
+                  </FieldHint>
                 </div>
               </>
             )}
