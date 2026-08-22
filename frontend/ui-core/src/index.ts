@@ -320,6 +320,7 @@ export {
   type ProjectShellProps,
 } from "./patterns/ProjectShell.js";
 export { SectionHeader, type SectionHeaderProps } from "./patterns/SectionHeader.js";
+export { ProjectFrame, type ProjectFrameProps } from "./screens/ProjectFrame.js";
 export { PaddedContent } from "./patterns/PaddedContent.js";
 
 // The floating tool palette. Reports the derived tool; never stores one.

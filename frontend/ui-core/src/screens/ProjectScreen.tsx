@@ -66,15 +66,7 @@
  */
 
 import { IconChevronDown, IconChevronRight, IconUpload } from "@tabler/icons-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-  type JSX,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
 import { Async } from "../data/Async";
@@ -83,39 +75,23 @@ import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/Dialog";
 import { formatCount, formatWhen } from "../lib/format";
-import { FieldError, Input, Label } from "../primitives/Input";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
-import {
-  DEFAULT_PROJECT_SECTION,
-  PROJECT_SECTIONS,
-  type AnnotateTarget,
-  type ProjectSection,
-} from "../patterns/ProjectNav";
-import { ProjectShell, type ProjectNavData } from "../patterns/ProjectShell";
+import { DEFAULT_PROJECT_SECTION, PROJECT_SECTIONS, type ProjectSection } from "../patterns/ProjectNav";
 import { SectionHeader } from "../patterns/SectionHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { BatchesScreen } from "./BatchesScreen";
 import { DatasetScreen } from "./DatasetScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
+import { openForAnnotation, ProjectFrame } from "./ProjectFrame";
 import { same, SchemaEditor, shownDraft, type SchemaDraft } from "./SchemaEditor";
 import { groupByProvenance } from "./schemaHistory";
 import {
   useActiveSchema,
   useBatches,
-  useDeleteProject,
-  useProject,
   useProjectReadiness,
   useProjectStats,
-  useRenameProject,
   saveSchemaDraftRequest,
   useSaveSchemaDraft,
   useSchemaBlockingAssets,
@@ -211,14 +187,13 @@ export function ProjectScreen({
   onTabChange,
   hrefFor,
 }: ProjectScreenProps): JSX.Element {
-  const project = useProject(projectId);
-  // Already read by the navigation; naming it here too costs nothing (one query
-  // key, one request) and is what lets the Overview colour its bars from the schema.
+  // Already read by the frame's navigation; naming them here too costs nothing
+  // (one query key, one request) and is what lets the Overview colour its bars
+  // from the schema, head itself with the counts, and say whether Annotate holds
+  // the navigation's slot.
   const schema = useActiveSchema(projectId);
   const stats = useProjectStats(projectId);
   const batches = useBatches(projectId);
-  const [renaming, setRenaming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   // The section, for a host that wired no `onTabChange`: held here rather than
   // nowhere, so the navigation still moves and a test can walk the sections.
   const [held, setHeld] = useState<ProjectTab | undefined>(undefined);
@@ -476,104 +451,45 @@ export function ProjectScreen({
   const overviewOwnsTheAction =
     current === "overview" && readiness !== null && invitationOwnsTheAction(firstRunInvitation(readiness));
 
-  // The batches work can actually happen in. `in_annotation` is the only state an
-  // annotation may be written into, so this is not a preference — anything
-  // else would send somebody to a gallery that refuses every save.
-  //
-  // Newest first, and that is the wire's own order **reversed** rather than a
-  // timestamp read: `BatchOut` carries no timestamp of any kind, and the metadata
-  // store lists by `rowid`, so what arrives is creation order, oldest first.
-  // Inventing a field to sort on would be the "No description." mistake in the
-  // other direction. The copy is not decoration — the array belongs to the query
-  // cache, and `reverse` mutates in place.
-  const open: readonly AnnotateTarget[] = [...(batches.data?.items ?? [])]
-    .filter((batch) => batch.state === "in_annotation")
-    .reverse()
-    .map((batch) => ({
-      id: batch.id,
-      name: batch.name,
-      remaining: batch.progress.unannotated,
-      schemaVersion: batch.schema_version ?? null,
-    }));
-  const holdsAnnotate = open.length > 0 && onOpenBatch !== undefined;
+  const holdsAnnotate = openForAnnotation(batches.data?.items).length > 0 && onOpenBatch !== undefined;
   // Ingest is reachable from every section: in the navigation's slot while
   // nothing is open for annotation, and as a `secondary` header action on the
   // sections that ingest feeds once Annotate has taken the slot. Never both.
   const ingestInHeader = holdsAnnotate && onIngest !== undefined ? onIngest : undefined;
 
-  const nav: ProjectNavData = {
-    name: project.data?.name ?? "",
-    description: project.data?.description ?? null,
-    activeVersion: schema.data?.version ?? null,
-    sections: available,
-    active: current,
-    onNavigate: go,
-    ...(hrefFor === undefined ? {} : { hrefFor }),
-    ...(backHref === undefined ? {} : { backHref }),
-    ...(onBack === undefined ? {} : { onBack }),
-    ...(holdsAnnotate && onOpenBatch !== undefined ? { annotate: { targets: open, onOpen: onOpenBatch } } : {}),
-    ...(onIngest === undefined ? {} : { onIngest }),
-    contentOwnsTheAction: overviewOwnsTheAction,
-    onRename: () => setRenaming(true),
-    onDelete: () => setDeleting(true),
-  };
-
   return (
-    <div className="flex min-h-full flex-1 flex-col" data-testid="project-screen">
-      <ProjectShell nav={nav}>
-        <div className="flex flex-col gap-6">
-          {/* The project itself failing to load is said here, above the section
-              rather than instead of it: the sections read their own queries and
-              stand on their own, and the navigation has no room for an error. */}
-          {project.isError && (
-            <ErrorState
-              code={asApiError(project.error).code}
-              message={refusalProse(project.error)}
-              onRetry={() => void project.refetch()}
-            />
-          )}
-          {
-            <Section
-              current={current}
-              projectId={projectId}
-              overviewMeta={overviewMeta(stats.data)}
-              ingestInHeader={ingestInHeader}
-              classes={schema.data?.classes}
-              go={go}
-              onIngest={onIngest}
-              onOpenBatch={onOpenBatch}
-              schema={{
-                draft: schemaDraft,
-                onDraftChange: setSchemaDraft,
-                draftSaveError: saveSchemaDraft.error,
-                onFlushDraft: flushSchemaDraft,
-              }}
-            />
-          }
-        </div>
-      </ProjectShell>
-
-      <RenameDialog
+    <ProjectFrame
+      projectId={projectId}
+      active={current}
+      sections={available}
+      onNavigate={go}
+      {...(hrefFor === undefined ? {} : { hrefFor })}
+      {...(backHref === undefined ? {} : { backHref })}
+      {...(onBack === undefined ? {} : { onBack })}
+      cta={{
+        ...(onOpenBatch === undefined ? {} : { onOpenBatch }),
+        ...(onIngest === undefined ? {} : { onIngest }),
+        contentOwnsTheAction: overviewOwnsTheAction,
+      }}
+      {...(onDeleted === undefined ? {} : { onDeleted })}
+    >
+      <Section
+        current={current}
         projectId={projectId}
-        current={project.data?.name ?? ""}
-        open={renaming}
-        onClose={() => setRenaming(false)}
+        overviewMeta={overviewMeta(stats.data)}
+        ingestInHeader={ingestInHeader}
+        classes={schema.data?.classes}
+        go={go}
+        onIngest={onIngest}
+        onOpenBatch={onOpenBatch}
+        schema={{
+          draft: schemaDraft,
+          onDraftChange: setSchemaDraft,
+          draftSaveError: saveSchemaDraft.error,
+          onFlushDraft: flushSchemaDraft,
+        }}
       />
-
-      {/* Mounted only while it is open. Radix portals its content when open, but
-          the children of `DialogContent` are an *argument* and are therefore
-          evaluated on every render of this screen regardless — so a closed
-          dialog was formatting counts it did not have, and one `undefined` took
-          the whole page down. Not rendering it is cheaper than guarding it. */}
-      {deleting && (
-        <DeleteDialog
-          projectId={projectId}
-          name={project.data?.name ?? ""}
-          onClose={() => setDeleting(false)}
-          {...(onDeleted === undefined ? {} : { onDeleted })}
-        />
-      )}
-    </div>
+    </ProjectFrame>
   );
 }
 
@@ -683,89 +599,6 @@ function Section({
     case "dataset":
       return <DatasetScreen projectId={projectId} />;
   }
-}
-
-/**
- * Deleting a project, with the blast radius counted rather than gestured at.
- *
- * `DESIGN.md`: a confirmation names what will be destroyed. "Are you sure?" with
- * no number is a speed bump, not a confirmation — and this cascade is the largest
- * in the product, taking every batch, job, annotation, dataset member and release
- * with it.
- *
- * The numbers come from the project's stats, which is the reason this dialog can
- * be written at all: without them there is no way to say how much a delete costs
- * short of walking the API. While they are still loading the dialog says so and
- * the button waits, because a confirmation that understates what it destroys is
- * worse than one that takes a moment.
- *
- * **Blobs are not destroyed and the dialog says so.** Content is shared by hash
- * across projects, so no project can know it is the last owner — the wording
- * exists to stop somebody believing this reclaims disk.
- */
-function DeleteDialog({
-  projectId,
-  name,
-  onClose,
-  onDeleted,
-}: {
-  readonly projectId: string;
-  readonly name: string;
-  readonly onClose: () => void;
-  readonly onDeleted?: () => void;
-}): JSX.Element {
-  const stats = useProjectStats(projectId);
-  const remove = useDeleteProject();
-
-  return (
-    <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="delete-dialog">
-        <DialogTitle>Delete {name}?</DialogTitle>
-        <DialogDescription data-testid="delete-blast-radius">
-          {/* `stats.data === undefined` means the query has not answered yet — not
-              that the body might be missing a field. Asking about the
-              field instead would be defending against a wrong document arriving with
-              the count absent, which `formatCount(undefined)` white-screens on. The check at `unwrap`
-              is what lets this ask the question it actually means. */}
-          {stats.data === undefined
-            ? "Counting what this would destroy…"
-            : `Deletes the project, ${formatCount(stats.data.asset_count)} ${
-                stats.data.asset_count === 1 ? "image" : "images"
-              } and ${formatCount(stats.data.annotation_count)} ${
-                stats.data.annotation_count === 1 ? "annotation" : "annotations"
-              }, with every batch, job and release under it. The stored image files are shared by
-              content and are not removed.`}
-        </DialogDescription>
-        {remove.isError && (
-          <FieldError data-testid="delete-error">
-            {refusalProse(remove.error)}
-          </FieldError>
-        )}
-        <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="destructive"
-            data-testid="delete-submit"
-            // Waiting on a count is not the same as being disabled with no
-            // explanation: the description above says what it is waiting for.
-            disabled={stats.data === undefined || remove.isPending}
-            onClick={() =>
-              remove.mutate(projectId, {
-                onSuccess: () => {
-                  onClose();
-                  onDeleted?.();
-                },
-              })
-            }
-          >
-            {remove.isPending ? "Deleting…" : "Delete project"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 /**
@@ -1220,70 +1053,4 @@ function summarise(version: SchemaVersion): string {
   return version.classes
     .map((declared) => `${declared.name} (${formatGeometries(declared.geometries)})`)
     .join(", ");
-}
-
-function RenameDialog({
-  projectId,
-  current,
-  open,
-  onClose,
-}: {
-  readonly projectId: string;
-  readonly current: string;
-  readonly open: boolean;
-  readonly onClose: () => void;
-}): JSX.Element {
-  const rename = useRenameProject(projectId);
-  const [name, setName] = useState(current);
-
-  function submit(event: FormEvent): void {
-    event.preventDefault();
-    rename.mutate(name.trim(), { onSuccess: onClose });
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) onClose();
-        // Seeded on open rather than held in sync: the field is the draft, and a
-        // rename that failed should keep what was typed.
-        else setName(current);
-      }}
-    >
-      <DialogContent data-testid="rename-dialog">
-        <DialogTitle>Rename project</DialogTitle>
-        <form className="flex flex-col gap-3" onSubmit={submit}>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="rename-input">Name</Label>
-            <Input
-              id="rename-input"
-              data-testid="rename-input"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              autoFocus
-            />
-          </div>
-          {rename.isError && (
-            <FieldError data-testid="rename-error">
-              {refusalProse(rename.error)}
-            </FieldError>
-          )}
-          <DialogFooter>
-            <Button variant="secondary" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              data-testid="rename-submit"
-              disabled={name.trim() === "" || rename.isPending}
-            >
-              {rename.isPending ? "Renaming…" : "Rename"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
 }

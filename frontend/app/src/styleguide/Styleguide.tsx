@@ -347,6 +347,59 @@ export function Styleguide(): JSX.Element {
         </Section>
 
         <Section
+          title="Cards, tabs and tables"
+          description="The screens are made of these. A tab bar is a segmented control; the line variant is the other shape."
+        >
+          <Tabs defaultValue="batches" data-testid="tabs-segmented">
+            <TabsList>
+              <TabsTrigger value="batches">Batches</TabsTrigger>
+              <TabsTrigger value="about">About</TabsTrigger>
+            </TabsList>
+            <TabsContent value="batches">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Batch</TableHead>
+                    <TableHead>State</TableHead>
+                    <TableHead>Assets</TableHead>
+                    <TableHead>Annotated</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {BATCHES.map((batch) => (
+                    <TableRow key={batch.name}>
+                      <TableCell className="font-medium">{batch.name}</TableCell>
+                      <TableCell>
+                        <Badge variant={batch.state === "in_annotation" ? "accent" : "neutral"}>
+                          {batch.state}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{batch.assets}</TableCell>
+                      <TableCell>{batch.done}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TabsContent>
+            <TabsContent value="about">
+              <Card className="max-w-md">
+                <CardHeader>
+                  <CardTitle>highway-survey</CardTitle>
+                  <CardDescription>Created 2026-07-31 · schema v3</CardDescription>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground">
+                  A card is a border and a 16px radius. The shadow is resting-only.
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+
+          {/* There is no second specimen: the `segmented` variant is gone
+              along with the Objects | Labels switch that was its only caller, so
+              every shape that ships has one specimen and that is this one. */}
+        </Section>
+
+        <Section
           title="Project navigation"
           description="Inside a project: the way out, the identity, the one filled control, one link per section with the open one marked, and the overflow. Column at lg and above; the same data as a strip below."
         >
@@ -399,6 +452,7 @@ export function Styleguide(): JSX.Element {
           description="A section's page h1, one line of meta under it, and its own secondary actions on the right. The filled control lives in the navigation, never here."
         >
           <SectionHeader
+            as="h2"
             title="Overview"
             meta="11 images · ingested Aug 7, 2026"
             actions={
@@ -408,59 +462,6 @@ export function Styleguide(): JSX.Element {
               </Button>
             }
           />
-        </Section>
-
-        <Section
-          title="Cards, tabs and tables"
-          description="The screens are made of these. A tab bar is a segmented control; the line variant is the other shape."
-        >
-          <Tabs defaultValue="batches" data-testid="tabs-segmented">
-            <TabsList>
-              <TabsTrigger value="batches">Batches</TabsTrigger>
-              <TabsTrigger value="about">About</TabsTrigger>
-            </TabsList>
-            <TabsContent value="batches">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Batch</TableHead>
-                    <TableHead>State</TableHead>
-                    <TableHead>Assets</TableHead>
-                    <TableHead>Annotated</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {BATCHES.map((batch) => (
-                    <TableRow key={batch.name}>
-                      <TableCell className="font-medium">{batch.name}</TableCell>
-                      <TableCell>
-                        <Badge variant={batch.state === "in_annotation" ? "accent" : "neutral"}>
-                          {batch.state}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{batch.assets}</TableCell>
-                      <TableCell>{batch.done}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TabsContent>
-            <TabsContent value="about">
-              <Card className="max-w-md">
-                <CardHeader>
-                  <CardTitle>highway-survey</CardTitle>
-                  <CardDescription>Created 2026-07-31 · schema v3</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  A card is a border and a 16px radius. The shadow is resting-only.
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-
-          {/* There is no second specimen: the `segmented` variant is gone
-              along with the Objects | Labels switch that was its only caller, so
-              every shape that ships has one specimen and that is this one. */}
         </Section>
 
         <Section

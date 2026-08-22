@@ -48,6 +48,8 @@ import {
   isProjectSection,
   resolveProjectTab,
   IngestScreen,
+  PROJECT_SECTIONS,
+  ProjectFrame,
   ProjectScreen,
   ProjectsScreen,
   type ProjectSection,
@@ -88,19 +90,22 @@ export function AppRoutes(): JSX.Element {
               would put a workspace-scoped object inside one project's URL.
             */}
             <Route path="inference" element={<InferenceScreen />} />
-            <Route path="projects/:projectId/ingest" element={<Ingest />} />
-            <Route path="projects/:projectId/batches/:batchId" element={<Gallery />} />
             <Route path="*" element={<NotFound />} />
           </Route>
 
           {/*
-            The project: its navigation column beside the content, so the pane
-            is the shell's own rather than the padded one. The bare project URL
-            and the old `?tab=` addresses both land on a section, because a URL
-            somebody bookmarked is a promise.
+            Everything that belongs to one project: its navigation column beside
+            the content, so the pane is the shell's own rather than the padded
+            one. The four sections, the ingest flow and the batch gallery all
+            render inside the same column — only the annotator, which needs the
+            whole screen, stands outside it. The bare project URL and the old
+            `?tab=` addresses both land on a section, because a URL somebody
+            bookmarked is a promise.
           */}
           <Route element={<ProjectPane />}>
             <Route path="projects/:projectId" element={<ProjectRedirect />} />
+            <Route path="projects/:projectId/ingest" element={<Ingest />} />
+            <Route path="projects/:projectId/batches/:batchId" element={<Gallery />} />
             <Route path="projects/:projectId/:section" element={<Project />} />
           </Route>
 
@@ -318,35 +323,61 @@ function Gallery(): JSX.Element {
   const navigate = useNavigate();
   if (projectId === undefined || batchId === undefined) return <NotFound />;
   return (
-    <GalleryScreen
-      projectId={projectId}
-      batchId={batchId}
-      onBack={() => void navigate(PARENT.batches(projectId))}
-      // The two levels above the Batches section. The gallery is the product's
-      // deepest padded page, so it is the one whose chain is three long.
-      onOpenProject={() => void navigate(PARENT.project(projectId))}
-      onOpenProjects={() => void navigate(PARENT.projects)}
-      onOpenAsset={(asset) => {
-        if (asset.job_id === null || asset.job_id === undefined) return;
-        void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
-      }}
-      // The approve dialog's SCHEMA_NOT_FOUND remedy: the schema section of
-      // the project, and spelling that URL is this file's job.
-      onOpenSchema={() => void navigate(PARENT.schema(projectId))}
-      // Where a promotion from this screen lands (F18). The gallery is where a
-      // batch is finished, and it had no way to reach the one screen that shows
-      // what finishing it produced — a section of the project now, not a route.
-      onOpenDataset={() => void navigate(PARENT.dataset(projectId))}
-      // A correction just cut, or this batch's own parent (audit G6). Same
-      // route the batch table's rows use — a batch is a batch, whichever screen
-      // named it.
-      onOpenBatch={(next) => void navigate(`/projects/${projectId}/batches/${next}`)}
-      // This screen's whole subject has just stopped existing, so its own
-      // URL is a 404 waiting to happen — the Batches section is where to land,
-      // and `replace` so Back does not walk into the gone batch.
-      onDeleted={() => void navigate(PARENT.batches(projectId), { replace: true })}
-    />
+    // Inside the project's frame, with Batches lit: a batch belongs to that
+    // section. No `cta` — the gallery owns its own dominant action.
+    <ProjectFrame {...frameProps(projectId, navigate)} active="batches">
+      <GalleryScreen
+        projectId={projectId}
+        batchId={batchId}
+        onBack={() => void navigate(PARENT.batches(projectId))}
+        // The two levels above the Batches section. The gallery is the product's
+        // deepest padded page, so it is the one whose chain is three long.
+        onOpenProject={() => void navigate(PARENT.project(projectId))}
+        onOpenProjects={() => void navigate(PARENT.projects)}
+        onOpenAsset={(asset) => {
+          if (asset.job_id === null || asset.job_id === undefined) return;
+          void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
+        }}
+        // The approve dialog's SCHEMA_NOT_FOUND remedy: the schema section of
+        // the project, and spelling that URL is this file's job.
+        onOpenSchema={() => void navigate(PARENT.schema(projectId))}
+        // Where a promotion from this screen lands (F18). The gallery is where a
+        // batch is finished, and it had no way to reach the one screen that shows
+        // what finishing it produced — a section of the project now, not a route.
+        onOpenDataset={() => void navigate(PARENT.dataset(projectId))}
+        // A correction just cut, or this batch's own parent (audit G6). Same
+        // route the batch table's rows use — a batch is a batch, whichever screen
+        // named it.
+        onOpenBatch={(next) => void navigate(`/projects/${projectId}/batches/${next}`)}
+        // This screen's whole subject has just stopped existing, so its own
+        // URL is a 404 waiting to happen — the Batches section is where to land,
+        // and `replace` so Back does not walk into the gone batch.
+        onDeleted={() => void navigate(PARENT.batches(projectId), { replace: true })}
+      />
+    </ProjectFrame>
   );
+}
+
+/**
+ * What every page inside a project hands the frame: the sections, their URLs,
+ * the way out, and where to land once the project is gone. The sections' own
+ * route adds the filled control's inputs; a sub-view does not.
+ */
+function frameProps(
+  projectId: string,
+  navigate: ReturnType<typeof useNavigate>,
+): Omit<Parameters<typeof ProjectFrame>[0], "active" | "children"> {
+  return {
+    projectId,
+    sections: PROJECT_SECTIONS,
+    onNavigate: (next) => void navigate(PARENT.section(projectId, next)),
+    hrefFor: (next) => PARENT.section(projectId, next),
+    backHref: PARENT.projects,
+    onBack: () => void navigate(PARENT.projects),
+    // A deleted project's own URL is a 404 waiting to happen, so the parent is
+    // where to land — and `replace`, because Back should not walk into it.
+    onDeleted: () => void navigate(PARENT.projects, { replace: true }),
+  };
 }
 
 /**
@@ -419,14 +450,18 @@ function Ingest(): JSX.Element {
   const navigate = useNavigate();
   if (projectId === undefined) return <NotFound />;
   return (
-    <IngestScreen
-      projectId={projectId}
-      onBack={() => void navigate(PARENT.project(projectId))}
-      onOpenProjects={() => void navigate(PARENT.projects)}
-      onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
-      // The foreshadowing banner's link: the schema section of the project, and
-      // spelling that URL is this file's job.
-      onOpenSchema={() => void navigate(PARENT.schema(projectId))}
-    />
+    // Inside the project's frame with no section lit: an ingest is the project's,
+    // not any one section's. No `cta` — the flow owns its own dominant action.
+    <ProjectFrame {...frameProps(projectId, navigate)} active={null}>
+      <IngestScreen
+        projectId={projectId}
+        onBack={() => void navigate(PARENT.project(projectId))}
+        onOpenProjects={() => void navigate(PARENT.projects)}
+        onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
+        // The foreshadowing banner's link: the schema section of the project, and
+        // spelling that URL is this file's job.
+        onOpenSchema={() => void navigate(PARENT.schema(projectId))}
+      />
+    </ProjectFrame>
   );
 }

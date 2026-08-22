@@ -117,7 +117,8 @@ export interface ProjectNavProps {
   readonly activeVersion?: number | null;
   /** The sections on offer, in display order — a host with no batch route omits `batches`. */
   readonly sections: readonly ProjectSection[];
-  readonly active: ProjectSection;
+  /** The open section, or the one the page belongs to; `null` lights nothing. */
+  readonly active: ProjectSection | null;
   /** The URL of a section, spelled by the host. Absent renders the items as buttons. */
   readonly hrefFor?: (section: ProjectSection) => string;
   readonly onNavigate: (section: ProjectSection) => void;
@@ -209,10 +210,14 @@ function Strip(props: ProjectNavProps): JSX.Element {
         </div>
       </div>
       <Tabs
-        value={active}
-        // Radix only ever emits a value this file rendered, so the cast is safe
-        // and the fallback unreachable; it keeps the callback's type honest.
-        onValueChange={(next) => onNavigate(isProjectSection(next) ? next : active)}
+        // A page that belongs to no section selects no tab; Radix takes the
+        // empty string as "none of these" and the panel still holds the content.
+        value={active ?? ""}
+        // Radix only ever emits a value this file rendered, so the guard is
+        // unreachable; it keeps the callback's type honest without a cast.
+        onValueChange={(next) => {
+          if (isProjectSection(next)) onNavigate(next);
+        }}
         data-testid="project-tabs"
       >
         <TabsList variant="line">
@@ -226,7 +231,7 @@ function Strip(props: ProjectNavProps): JSX.Element {
             );
           })}
         </TabsList>
-        <TabsContent value={active}>{children}</TabsContent>
+        <TabsContent value={active ?? ""}>{children}</TabsContent>
       </Tabs>
     </div>
   );

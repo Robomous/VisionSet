@@ -14,16 +14,18 @@ export interface SectionHeaderProps {
   /** `11 images · ingested Aug 7, 2026`, or the one sentence the title cannot carry. */
   readonly meta?: ReactNode;
   readonly actions?: ReactNode;
+  /** The page's `h1` by default; `h2` only where a page already has one — the styleguide. */
+  readonly as?: "h1" | "h2";
 }
 
-export function SectionHeader({ title, meta, actions }: SectionHeaderProps): JSX.Element {
+export function SectionHeader({ title, meta, actions, as: Heading = "h1" }: SectionHeaderProps): JSX.Element {
   return (
     <header
       data-testid="section-header"
       className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-4"
     >
       <div className="flex min-w-0 flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <Heading className="text-2xl font-semibold tracking-tight">{title}</Heading>
         {meta !== undefined && meta !== null && <p className="text-xs text-muted-foreground" data-testid="section-meta">
             {meta}
           </p>}
