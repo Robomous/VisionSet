@@ -212,8 +212,8 @@ for (const section of SECTIONS) {
     await expect(eyebrow.getByTestId("breadcrumb-parent")).toContainText("Projects");
     await expect(eyebrow.getByTestId("project-title")).toHaveText("road-signs");
     await expect(eyebrow.getByTestId("chip-version")).toHaveText("v4 active");
-    // 160px, the declared width.
-    expect((await nav.boundingBox())?.width).toBe(160);
+    // 180px, the declared width.
+    expect((await nav.boundingBox())?.width).toBe(180);
 
     // The section's own header, with its secondary actions. Measured rather than
     // class-asserted: the claim is about what is painted.

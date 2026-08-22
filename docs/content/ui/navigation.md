@@ -60,7 +60,7 @@ without knowing the URL scheme.
 
 - **The sections are a navigation column, not a tab bar.** At `lg` and above, every route
   under `/projects/:id/` — the four sections (Overview, Schema, Batches, Dataset), the
-  ingest flow and the batch gallery — renders inside a `160px` column between the rail and
+  ingest flow and the batch gallery — renders inside a `180px` column between the rail and
   the content (`patterns/ProjectNav.tsx`, laid out by `ProjectShell`, composed by
   `screens/ProjectFrame.tsx`). It renders nowhere else: not on the project list, Home,
   Inference, or the annotator — the one page of a project that stands outside its frame,

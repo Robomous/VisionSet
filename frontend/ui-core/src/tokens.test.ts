@@ -216,7 +216,7 @@ describe("@theme inline", () => {
   it("carries the sidebar rail's two layout widths and the project column's one", () => {
     expect(inline.get("--spacing-sidebar")).toBe("240px");
     expect(inline.get("--spacing-sidebar-collapsed")).toBe("48px");
-    expect(inline.get("--spacing-project-nav")).toBe("160px");
+    expect(inline.get("--spacing-project-nav")).toBe("180px");
   });
 });
 

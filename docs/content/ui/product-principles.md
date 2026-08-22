@@ -283,8 +283,9 @@ here.
 - **Page widths**: lists/dashboards/detail `max-w-[96rem]` (`ui-core`'s `PaddedContent`,
   the one declaration the padded pane and the project shell share); forms/settings
   `max-w-3xl`; centered, `px-4 md:px-6 py-6`. Inside a project the content keeps that
-  column beside a `160px` navigation column (`--spacing-project-nav`) at `lg` and above —
-  as wide as its widest control (`Annotate ▾`), since the identity is not in it.
+  column beside a `180px` navigation column (`--spacing-project-nav`) at `lg` and above —
+  navigation only, since the identity is not in it; the width is the widest control
+  (`Annotate ▾`, ~122px) plus room to breathe.
 - **Dialog widths**: the primitive's default `max-w-lg` for a confirmation or a form of
   stacked single fields; `max-w-2xl` for a form whose fields sit side by side (its grid
   splits on a *viewport* breakpoint, so the box must be wide enough for a split it cannot
