@@ -1403,6 +1403,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // blob and its hash is the contract, so a correction cannot reach back into
     // one already published — checked through `verify`, which re-reads and
     // re-hashes every blob rather than trusting the row it is compared against.
+    // Re-entered through the navigation, so the dataset opened on Overview; the
+    // release's controls live on its Releases view.
+    await page.getByTestId("dataset-tab-releases").click();
     await page.getByTestId(`verify-${TAG}`).click();
     await expect(page.getByTestId(`verified-${TAG}`)).toContainText("Intact");
   });
