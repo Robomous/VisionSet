@@ -159,9 +159,11 @@ behalf. Vite keeps its own host allow-list for exactly this reason, and that is 
 hop - the same one `docker/nginx.conf` documents from the other side.
 
 `always` gives up both checks, and exists for a deployment whose front door is a proxy - behind
-one, no request is ever from loopback, because the peer is the proxy. It is only safe when the
-port that reaches the server is not itself open to the world. The compose stack sets it and
-publishes every port on `127.0.0.1` in the same change; the two lines belong together.
+one, no request is ever from loopback, because the peer is the proxy. It is only safe when
+whoever can reach the port that reaches the server is somebody you would sign in. The compose
+stack sets it and publishes its front door on every interface, so a second device on the same
+network can open the dev stack - which means that stack trusts its network; the api's own port
+stays on `127.0.0.1`, and `never` is the switch for a network you do not trust.
 
 ### Why a cookie, and why it is not weaker than what it replaced
 
