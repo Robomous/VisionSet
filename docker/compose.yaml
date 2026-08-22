@@ -84,12 +84,13 @@
 # vite error without the proxy in the way — they are debugging doors, not the
 # front one.
 #
-# Every port this file publishes — those three, and the docs site's 4321 — is
-# published on **127.0.0.1 only**. See VISIONSET_UI_SESSION on the api service:
-# this stack signs in whoever asks, which is safe exactly as long as "whoever
-# asks" is somebody on this machine. The docs site has nothing to sign in to, and
-# is bound the same way anyway: a stack with one port open to the LAN and four
-# closed is a stack whose rule nobody can state.
+# The front door is published on every interface, so a second device on the
+# same network — a phone, a tablet, another laptop — can open the dev stack at
+# http://<this machine's address>:8080. The debugging doors (:8000, :5173) and the
+# docs site's 4321 stay on 127.0.0.1. The rule: one door to the network, the one
+# nginx guards; everything else loopback. See VISIONSET_UI_SESSION on the api
+# service for what that door costs: this stack signs in whoever reaches it, so it
+# trusts the network it runs on.
 #
 # First boot creates a workspace and mints a token, printed in the `api` logs. The
 # browser does not need it; `curl` and an MCP client do.
@@ -266,10 +267,11 @@ services:
       VISIONSET_WORKSPACE: /data/dev
       # Sign the browser in without a token (#179). The default, `auto`, issues a
       # session only to a loopback peer — and behind a proxy no request is ever
-      # from loopback, because the peer is nginx. So this stack says `always`, and
-      # pays for it by publishing every port below on 127.0.0.1: `always` on a
-      # port open to every interface would hand the workspace to the LAN. The two
-      # lines belong together and neither is safe alone.
+      # from loopback, because the peer is nginx. So this stack says `always` —
+      # and because the nginx front door is published on every interface, that
+      # hands the workspace to whoever is on this machine's network. A dev stack
+      # on a network that is not yours sets `never` here, or binds the front door
+      # back to 127.0.0.1; the api's own port below stays loopback either way.
       VISIONSET_UI_SESSION: always
       # Forwarded from whoever ran `docker compose`, empty when they have none.
       # Some published weights are served only to accounts that have been granted
@@ -291,9 +293,10 @@ services:
     # exists to avoid needing.
     command: sh /workspace/docker/api-dev.sh
     ports:
-      # Loopback only. See VISIONSET_UI_SESSION above: this server signs any
-      # client in, so the port it does that on must not be reachable from the
-      # network. A bare "8000:8000" publishes on every interface.
+      # Loopback only: a debugging door. The one network-facing decision is the
+      # nginx front door, and this server signs any client in, so the raw port it
+      # does that on is not a second one. A bare "8000:8000" publishes on every
+      # interface.
       - "127.0.0.1:8000:8000"
 
   app:
@@ -448,9 +451,9 @@ services:
     command: sh /workspace/docker/docs-dev.sh
     ports:
       # Loopback only. This service publishes no data and signs nobody in, so the
-      # reasoning is weaker here than it is for the api — but a dev stack with one
-      # port open to the LAN and three closed is a stack whose rule nobody can
-      # state, and the next service copies whichever line it lands next to.
+      # reasoning is weaker here than it is for the api — but the rule is one
+      # door to the network, the front one, and the next service copies
+      # whichever line it lands next to.
       - "127.0.0.1:4321:4321"
 
   # The front door, and the only port anybody needs: http://localhost:8080
@@ -465,10 +468,12 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
       # 8080 rather than 80: 80 needs root on Linux to publish, and a dev stack
-      # that has to be started with sudo is one nobody starts. Loopback only, for
-      # the reason the api service states — this is the door the browser is
-      # signed in through.
-      - "127.0.0.1:8080:80"
+      # that has to be started with sudo is one nobody starts. Every interface,
+      # not loopback: this is the one door published to the network, so another
+      # device on it can open the dev stack. It is also the door the browser is
+      # signed in through — see VISIONSET_UI_SESSION on the api service for what
+      # that means on a network that is not yours.
+      - "0.0.0.0:8080:80"
 
   # Neither of the two below is wired to anything. The kernel composes exactly one
   # metadata store (`SqliteMetadataStore`) and one blob store

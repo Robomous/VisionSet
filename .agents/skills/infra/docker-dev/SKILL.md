@@ -34,7 +34,10 @@ signs the browser in itself (`VISIONSET_UI_SESSION: always`).
 | `api` | `docker/api-dev.sh` — creates the workspace on first boot, then uvicorn `--reload` | 8000 |
 | `app` | `docker/app-dev.sh` — builds annotator + ui-core, watches both, then vite | 5173 |
 
-All three publish on **127.0.0.1 only**, because the API signs in whoever asks.
+Only `nginx` publishes on every interface — so a phone or another laptop on the same network can
+open `http://<this machine>:8080` — and it signs that device in too, because the API signs in
+whoever asks. `api` and `app` stay on **127.0.0.1**; on a network you do not trust, set
+`VISIONSET_UI_SESSION: never` or bind 8080 back to loopback.
 
 Optional profiles (off unless requested): `--profile postgres`, `--profile minio` (console on
 9001). A `postgres` that exits 1 naming `pg_ctlcluster` and a major-version directory found a
