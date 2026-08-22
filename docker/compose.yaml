@@ -53,7 +53,7 @@ services:
     # bundle that vite replaces here.
     command: sh /workspace/docker/api-dev.sh
     ports:
-      # Loopback only: nginx is the one door to the network.
+      # Loopback only: nginx and docs are the doors to the network.
       - "127.0.0.1:8000:8000"
 
   app:
@@ -109,7 +109,8 @@ services:
       CHOKIDAR_USEPOLLING: "true"
     command: sh /workspace/docker/docs-dev.sh
     ports:
-      - "127.0.0.1:4321:4321"
+      # Every interface, like nginx: the docs are tested from other devices too.
+      - "0.0.0.0:4321:4321"
 
   nginx:
     image: nginx:1.31-alpine
