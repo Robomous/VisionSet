@@ -170,8 +170,9 @@ def test_creating_a_project_with_a_blank_name_is_rejected(tmp_path: Path, blank:
 def test_creating_a_project_under_a_taken_name_is_rejected(tmp_path: Path, duplicate: str) -> None:
     workspace, projects = _service(tmp_path)
     projects.create("signs")
-    with pytest.raises(ProjectNameTaken, match="signs"):
+    with pytest.raises(ProjectNameTaken, match="'signs'") as refusal:
         projects.create(duplicate)
+    assert "workspace" not in str(refusal.value)
     assert len(projects.list()) == 1
     workspace.close()
 

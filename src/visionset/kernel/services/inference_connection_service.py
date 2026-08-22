@@ -609,8 +609,7 @@ class InferenceConnectionService:
         for connection in uow.inference_connections.list():
             if connection.id != exclude and connection.name.casefold() == wanted:
                 raise InferenceConnectionNameTaken(
-                    f"an inference connection named {connection.name!r} already exists in "
-                    f"workspace {self._workspace.workspace.name!r}"
+                    f"an inference connection named {connection.name!r} already exists"
                 )
         return normalized
 
@@ -625,8 +624,7 @@ class InferenceConnectionService:
         """
         if _NAME_INDEX_MESSAGE in str(exc):
             return InferenceConnectionNameTaken(
-                f"an inference connection named {name!r} already exists in workspace "
-                f"{self._workspace.workspace.name!r}"
+                f"an inference connection named {name!r} already exists"
             )
         return exc
 

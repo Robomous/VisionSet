@@ -309,8 +309,5 @@ class ProjectService:
         constraint is not this service's to reinterpret and travels on unchanged.
         """
         if _NAME_INDEX_MESSAGE in str(exc):
-            return ProjectNameTaken(
-                f"a project named {name!r} already exists in workspace "
-                f"{self._workspace.workspace.name!r}"
-            )
+            return ProjectNameTaken(f"a project named {name!r} already exists")
         return exc

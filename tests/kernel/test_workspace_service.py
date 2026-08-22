@@ -507,10 +507,14 @@ def test_a_duplicate_project_name_is_rejected(tmp_path: Path) -> None:
 
 
 def test_project_names_collide_regardless_of_case(tmp_path: Path) -> None:
+    """The refusal names the project in the way, in its stored casing — that is
+    how a person finds it in a list that shows no name like the one they typed.
+    The workspace is not named: it is implicit, and its name can be a path."""
     workspace = _init(tmp_path)
     _add_project(workspace, "Road Signs")
-    with pytest.raises(ProjectNameTaken):
+    with pytest.raises(ProjectNameTaken, match="'Road Signs'") as refusal:
         _add_project(workspace, "road signs")
+    assert "workspace" not in str(refusal.value)
     workspace.close()
 
 
