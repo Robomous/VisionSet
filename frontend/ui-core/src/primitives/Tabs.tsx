@@ -7,8 +7,10 @@
  * `TabsList`'s `variant` prop defaults to `"default"`: a `bg-muted` pill with
  * the active tab raised onto `bg-background` behind a hairline shadow, Nova's
  * own segmented-control recipe. A caller that wants the underline shape
- * instead — a row on a transparent list, the active tab wearing a 2px accent
- * rule under it rather than a pill — passes `variant="line"`. `tabsListVariants`
+ * instead — a row on a full-width hairline, content-sized tabs, the active one
+ * wearing a 2px rule that sits on the line — passes `variant="line"`. The
+ * hairline is the variant's own, so no consumer draws one around the list
+ * (`docs/content/ui/product-principles.md`, *Tabs*). `tabsListVariants`
  * (a `cva`, unexported) holds both as data, the same shape `buttonVariants`
  * uses for its own variants, rather than as a chain of ternaries a second
  * shape would have to be threaded through by hand.
@@ -17,7 +19,15 @@
  * control, and a full-width `border-b` list with a `border-primary` underline
  * — are both gone as literal recipes: Nova's `default` and `line` variants
  * replace them, and `TabsContent`'s baked `mt-3` is gone too, folded into the
- * `Tabs` root's own `gap-2` instead of living on the panel.
+ * `Tabs` root's own gap instead of living on the panel.
+ *
+ * ## The gap between the bar and the panel is the root's, and it knows the variant
+ *
+ * Nova's `gap-2` for the segmented control — a switch sitting directly on its
+ * panel. A `line` bar reads as navigation over a page's content, and content
+ * under navigation takes the layout unit, `gap-4`; the root reads which it holds
+ * through `:has()`, so the two values live in this one declaration and no consumer
+ * ever adds a margin of its own (`docs/content/ui/product-principles.md`, *Tabs*).
  *
  * ## `data-state`, not a boolean `data-active`
  *
@@ -52,7 +62,10 @@ export const Tabs = forwardRef<
     <TabsPrimitive.Root
       ref={ref}
       orientation={orientation}
-      className={cn("group/tabs flex gap-2 data-[orientation=horizontal]:flex-col", className)}
+      className={cn(
+        "group/tabs flex gap-2 has-[[data-variant=line]]:gap-4 data-[orientation=horizontal]:flex-col",
+        className,
+      )}
       {...props}
     />
   );
@@ -67,7 +80,7 @@ const tabsListVariants = cva(
     variants: {
       variant: {
         default: "bg-muted",
-        line: "gap-1 bg-transparent",
+        line: "w-full justify-start gap-1 border-b bg-transparent",
       },
     },
     defaultVariants: {
@@ -109,7 +122,7 @@ export const TabsTrigger = forwardRef<
           "group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm " +
           "group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none " +
           "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        "group-data-[variant=line]/tabs-list:bg-transparent " +
+        "group-data-[variant=line]/tabs-list:flex-none group-data-[variant=line]/tabs-list:bg-transparent " +
           "group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent " +
           "dark:group-data-[variant=line]/tabs-list:data-[state=active]:border-transparent " +
           "dark:group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent",

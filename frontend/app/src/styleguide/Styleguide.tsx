@@ -51,6 +51,10 @@ import {
   LIGHT_THEME,
   LoadingState,
   Progress,
+  PROJECT_SECTIONS,
+  ProjectEyebrow,
+  ProjectNav,
+  SectionHeader,
   Select,
   SelectContent,
   SelectItem,
@@ -76,7 +80,7 @@ import {
   formatGeometries,
   toast,
 } from "@visionset/ui-core";
-import { MousePointer2, Plus, Square, Trash2 } from "lucide-react";
+import { IconPlus, IconPointer, IconSquare, IconTrash } from "@tabler/icons-react";
 import type { JSX, ReactNode } from "react";
 
 /** The demo schema, borrowed so the swatches show the real palette rule. */
@@ -111,7 +115,7 @@ const ONTOLOGY = Array.from({ length: 40 }, (_, index) => `class-${String(index 
 export function Styleguide(): JSX.Element {
   return (
     <TooltipProvider>
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-6">
+      <div className="mx-auto flex max-w-page flex-col gap-6 px-6 py-6">
         <header className="flex flex-col gap-1 border-b border-border pb-4">
           <h1 className="text-2xl font-semibold tracking-tight">VisionSet design system</h1>
           <p className="text-xs text-muted-foreground">
@@ -197,13 +201,13 @@ export function Styleguide(): JSX.Element {
         <Section title="Buttons" description="Five variants, four sizes.">
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary" data-testid="button-primary">
-              <Plus className="size-4" aria-hidden="true" />
+              <IconPlus className="size-4" aria-hidden="true" />
               New project
             </Button>
             <Button variant="secondary">Cancel</Button>
             <Button variant="ghost">Ghost</Button>
             <Button variant="destructive">
-              <Trash2 className="size-4" aria-hidden="true" />
+              <IconTrash className="size-4" aria-hidden="true" />
               Delete
             </Button>
             <Button variant="link">Learn more</Button>
@@ -213,7 +217,7 @@ export function Styleguide(): JSX.Element {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="primary" size="icon" aria-label="Select (V)">
-                  <MousePointer2 className="size-4" aria-hidden="true" />
+                  <IconPointer className="size-4" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right">Select (V)</TooltipContent>
@@ -221,7 +225,7 @@ export function Styleguide(): JSX.Element {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="Box (B)">
-                  <Square className="size-4" aria-hidden="true" />
+                  <IconSquare className="size-4" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right">Box (B)</TooltipContent>
@@ -394,6 +398,65 @@ export function Styleguide(): JSX.Element {
           {/* There is no second specimen: the `segmented` variant is gone
               along with the Objects | Labels switch that was its only caller, so
               every shape that ships has one specimen and that is this one. */}
+        </Section>
+
+        <Section
+          title="Project navigation"
+          description="Inside a project: the one filled control, one link per section with the open one marked, and the overflow — as wide as its widest control. Column at lg and above; the same data as a strip below. The project's identity is the eyebrow above the content (see Section header)."
+        >
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+            <div className="flex h-[22rem] overflow-hidden rounded-lg border border-border" data-testid="sg-project-nav-column">
+              <ProjectNav
+                layout="column"
+                sections={PROJECT_SECTIONS}
+                active="overview"
+                hrefFor={(section) => `#${section}`}
+                onNavigate={() => undefined}
+                annotate={{
+                  targets: [
+                    { id: "b2", name: "drive-02", remaining: 7, schemaVersion: 4 },
+                    { id: "b1", name: "drive-01", remaining: 240, schemaVersion: 3 },
+                  ],
+                  onOpen: () => undefined,
+                }}
+                onIngest={() => undefined}
+                onRename={() => undefined}
+                onDelete={() => undefined}
+              />
+              <div className="flex-1 bg-background p-6 text-xs text-muted-foreground">the section</div>
+            </div>
+            <div className="min-w-0 flex-1 rounded-lg border border-border p-4" data-testid="sg-project-nav-strip">
+              <ProjectNav
+                layout="strip"
+                sections={PROJECT_SECTIONS}
+                active="batches"
+                onNavigate={() => undefined}
+                onIngest={() => undefined}
+                onRename={() => undefined}
+                onDelete={() => undefined}
+              >
+                <p className="text-xs text-muted-foreground">the section</p>
+              </ProjectNav>
+            </div>
+          </div>
+        </Section>
+
+        <Section
+          title="Section header"
+          description="The project's eyebrow — its name and active version, identity and not navigation — then a section's page h1, one line of meta under it, and its own secondary actions on the right. The filled control lives in the navigation, never here."
+        >
+          <ProjectEyebrow name="road-signs" version={4} />
+          <SectionHeader
+            as="h2"
+            title="Overview"
+            meta="11 images · ingested Aug 7, 2026"
+            actions={
+              <Button variant="secondary">
+                <IconPlus className="size-4" aria-hidden="true" />
+                Ingest
+              </Button>
+            }
+          />
         </Section>
 
         <Section

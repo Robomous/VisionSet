@@ -12,7 +12,7 @@
  *
  * | region | routes | inside `TokenGate`? |
  * | --- | --- | --- |
- * | the product | `/`, `/projects`, `/projects/:projectId`, … | yes |
+ * | the product | `/`, `/projects`, `/projects/:projectId/:section`, … | yes |
  * | the annotator showcase | `/demo` | **no** |
  * | the design system | `/styleguide` | **no** |
  *
@@ -41,13 +41,19 @@
 import {
   AnnotationPage,
   assetParamFor,
+  DEFAULT_PROJECT_SECTION,
   GalleryScreen,
   HomeScreen,
   InferenceScreen,
+  isProjectSection,
   resolveProjectTab,
   IngestScreen,
+  PROJECT_SECTIONS,
+  ProjectFrame,
   ProjectScreen,
   ProjectsScreen,
+  type ProjectFrameProps,
+  type ProjectSection,
 } from "@visionset/ui-core";
 import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router";
 import type { JSX } from "react";
@@ -55,7 +61,7 @@ import type { JSX } from "react";
 import { AnnotatorDemo } from "./demo/AnnotatorDemo";
 import { BenchmarkHost } from "./demo/BenchmarkHost";
 import { ShowcaseFrame } from "./demo/ShowcaseFrame";
-import { AppShell, FullBleedPane, PaddedPane } from "./shell/AppShell";
+import { AppShell, FullBleedPane, PaddedPane, ProjectPane } from "./shell/AppShell";
 import { Gated } from "./shell/Gated";
 import { NotFound } from "./shell/NotFound";
 import { Styleguide } from "./styleguide/Styleguide";
@@ -66,7 +72,7 @@ export function AppRoutes(): JSX.Element {
       {/* The product. Everything under here needs a workspace token. */}
       <Route element={<Gated />}>
         <Route element={<AppShell />}>
-          {/* Lists and forms: the padded, `max-w-7xl` column. */}
+          {/* Lists and forms: the padded, centred column. */}
           <Route element={<PaddedPane />}>
             {/* Home was a redirect to the project list, on the reasoning that
                 there was nothing else a workspace's front page could honestly be
@@ -85,16 +91,23 @@ export function AppRoutes(): JSX.Element {
               would put a workspace-scoped object inside one project's URL.
             */}
             <Route path="inference" element={<InferenceScreen />} />
-            <Route path="projects/:projectId" element={<Project />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+
+          {/*
+            Everything that belongs to one project: its navigation column beside
+            the content, so the pane is the shell's own rather than the padded
+            one. The four sections, the ingest flow and the batch gallery all
+            render inside the same column — only the annotator, which needs the
+            whole screen, stands outside it. The bare project URL and the old
+            `?tab=` addresses both land on a section, because a URL somebody
+            bookmarked is a promise.
+          */}
+          <Route element={<ProjectPane />}>
+            <Route path="projects/:projectId" element={<ProjectRedirect />} />
             <Route path="projects/:projectId/ingest" element={<Ingest />} />
             <Route path="projects/:projectId/batches/:batchId" element={<Gallery />} />
-            {/* The dataset is a project *tab* now, not a route of its own — it
-                is the product's central object and it was reachable only through
-                an overflow menu, an Overview link, and the last step of an
-                onboarding checklist. The old URL stays as a redirect, because a
-                URL somebody bookmarked is a promise. */}
-            <Route path="projects/:projectId/dataset" element={<DatasetRedirect />} />
-            <Route path="*" element={<NotFound />} />
+            <Route path="projects/:projectId/:section" element={<Project />} />
           </Route>
 
           {/*
@@ -144,7 +157,7 @@ function Showcase(): JSX.Element {
  */
 function Projects(): JSX.Element {
   const navigate = useNavigate();
-  return <ProjectsScreen onOpenProject={(projectId) => void navigate(`/projects/${projectId}`)} />;
+  return <ProjectsScreen onOpenProject={(projectId) => void navigate(PARENT.project(projectId))} />;
 }
 
 /**
@@ -173,31 +186,32 @@ function Home(): JSX.Element {
 }
 
 /**
- * Every ancestor of every sub-view, in one place.
+ * Every parent of every sub-view, in one place.
  *
- * A breadcrumb crumb navigates to its **declared ancestor**, never `navigate(-1)`:
- * the destination has to be the same whether the page was reached by clicking
+ * A way out navigates to its **declared parent**, never `navigate(-1)`: the
+ * destination has to be the same whether the page was reached by clicking
  * through, by pasting a URL, by reloading, or by walking forward from a sibling.
  * History cannot promise that, and on a fresh tab it leaves the application
  * entirely.
  *
- * The ancestors live here rather than in the screens because a destination is a
+ * The parents live here rather than in the screens because a destination is a
  * fact about the *route table*, and `ui-core` deliberately does not have one — the
- * note on `Projects` above is the same rule from the other side. `DESIGN.md`'s
- * **Navigation rules** is the prose half of this table.
+ * note on `Projects` above is the same rule from the other side.
+ * `docs/content/ui/navigation.md` is the prose half of this table.
  *
- * **This table is walked by hand rather than transitively, and the reason is
- * labels.** A crumb needs a name as well as a URL, and a project's name is behind
- * a query `ui-core` makes — this file holds ids and does not fetch, by the rule at
- * the top of it. So the split is: the host spells every URL, the screen supplies
- * every label and composes the chain from the callbacks it was handed. What could
- * silently drift is a URL, and a URL still has exactly one spelling.
+ * **The split is labels.** A way out needs a name as well as a URL, and a
+ * project's name is behind a query `ui-core` makes — this file holds ids and does
+ * not fetch, by the rule at the top of it. So the host spells every URL and the
+ * screen supplies every label. What could silently drift is a URL, and a URL
+ * still has exactly one spelling.
  *
- * The gallery's chain ends at `?tab=batches`, because landing on the project's
- * default Schema tab after leaving a batch is landing somewhere you were not — a
- * tab in the query string (#171) is a place, so it is a level.
+ * A project's sections are path segments, and each is a place: the gallery's way
+ * out is the Batches section, because landing on the project's default section
+ * after leaving a batch is landing somewhere you were not. `project` itself
+ * spells the default section outright rather than the bare project URL, so a
+ * way out lands in one hop instead of bouncing through the redirect.
  */
-const PARENT = {
+export const PARENT = {
   //: A rail destination, like `inference` below, so nothing declares it as a
   //: parent either. It is here because this table is the route map's own index.
   home: "/",
@@ -206,49 +220,76 @@ const PARENT = {
   //: this table is the route map's own index, and an entry point missing from it
   //: is exactly the drift this table exists to prevent. Its own way out is the rail.
   inference: "/inference",
-  project: (projectId: string) => `/projects/${projectId}`,
-  batches: (projectId: string) => `/projects/${projectId}?tab=batches`,
-  dataset: (projectId: string) => `/projects/${projectId}?tab=dataset`,
+  section: (projectId: string, section: ProjectSection) => `/projects/${projectId}/${section}`,
+  project: (projectId: string) => PARENT.section(projectId, DEFAULT_PROJECT_SECTION),
+  batches: (projectId: string) => PARENT.section(projectId, "batches"),
+  dataset: (projectId: string) => PARENT.section(projectId, "dataset"),
+  schema: (projectId: string) => PARENT.section(projectId, "schema"),
 } as const;
 
 /**
- * The project, and the one screen whose *section* is part of the URL.
+ * Where a project URL without a section goes: its default section, or the
+ * section a `?tab=` named when the address is an old one.
  *
- * The project page is tabs, and a tab that lives only in component state is
- * lost on reload and cannot be linked to — which was half of what the split was
- * meant to fix. So `?tab=` is the section, and turning it into a tab is this
- * file's job the same way turning a callback into a route change is.
+ * Pure and exported so the route test can hold every row of it without a
+ * browser: `?tab=` is dropped, every other query parameter is kept, a value
+ * that has moved (`versions`) lands where it went, and an unknown one lands on
+ * the default rather than on a 404 — old links exist, and a stale one is still
+ * a promise about the project.
+ */
+export function projectRedirectTarget(projectId: string, search: string): string {
+  const query = new URLSearchParams(search);
+  const tab = query.get("tab");
+  query.delete("tab");
+  const section: ProjectSection =
+    tab === null
+      ? DEFAULT_PROJECT_SECTION
+      : (resolveProjectTab(tab) ?? (isProjectSection(tab) ? tab : DEFAULT_PROJECT_SECTION));
+  const rest = query.toString();
+  return `${PARENT.section(projectId, section)}${rest === "" ? "" : `?${rest}`}`;
+}
+
+/**
+ * The bare project URL, and every `?tab=` address that used to be one.
  *
- * `replace` on the write: a tab is a view of the same resource, not a place, so
- * clicking through all three and pressing Back should leave the project rather
- * than walk back through Schema.
+ * `replace`, so Back does not walk into a URL that only ever bounces — a
+ * redirect in the history is a trap the second time somebody presses it.
+ */
+function ProjectRedirect(): JSX.Element {
+  const { projectId } = useParams();
+  const [query] = useSearchParams();
+  if (projectId === undefined) return <NotFound />;
+  return <Navigate to={projectRedirectTarget(projectId, query.toString())} replace />;
+}
+
+/**
+ * The project, and the one screen whose *section* is a path segment.
+ *
+ * A section that lives only in component state is lost on reload and cannot be
+ * linked to — which was half of what the split was meant to fix. So the section
+ * is the URL's last segment, and turning a navigation callback into that route
+ * change is this file's job the same way it is for every other screen. The
+ * screen is handed the spelling too, so its items are real links.
+ *
+ * `replace` on the write: a section is a view of the same resource, not a
+ * place, so clicking through all four and pressing Back should leave the
+ * project rather than walk back through Schema.
+ *
+ * An unknown segment is a 404 rather than a quiet Overview: unlike a `?tab=`
+ * value, nothing ever linked to `/projects/:id/anything`, so there is no promise
+ * to keep and a typo should say so.
  */
 function Project(): JSX.Element {
-  const { projectId } = useParams();
-  const [query, setQuery] = useSearchParams();
+  const { projectId, section } = useParams();
   const navigate = useNavigate();
-  // The router guarantees the segment exists for this path; the type does not.
-  if (projectId === undefined) return <NotFound />;
-  const tab = query.get("tab");
-  /**
-   * A `?tab=` value that has moved is rewritten in the URL, not only resolved.
-   *
-   * `?tab=versions` still lands on Schema — the history nested inside it — and a
-   * screen that quietly rendered the right panel under the wrong query string
-   * would leave the address bar lying, and would hand the next person who copies
-   * that link the same stale value again. `ui-core` cannot do this itself: it
-   * imports no router, so it can only *say* what a value resolves to.
-   */
-  const settled = resolveProjectTab(tab ?? undefined);
-  if (settled !== null && tab !== null) {
-    return <Navigate to={`/projects/${projectId}?tab=${settled}`} replace />;
-  }
+  // The router guarantees the segments exist for this path; the type does not.
+  if (projectId === undefined || !isProjectSection(section)) return <NotFound />;
   return (
     <ProjectScreen
       projectId={projectId}
-      onBack={() => void navigate(PARENT.projects)}
-      {...(tab === null ? {} : { tab })}
-      onTabChange={(next) => setQuery({ tab: next }, { replace: true })}
+      tab={section}
+      onTabChange={(next) => void navigate(PARENT.section(projectId, next), { replace: true })}
+      hrefFor={(next) => PARENT.section(projectId, next)}
       onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
       onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
       // A deleted project's own URL is a 404 waiting to happen, so the parent is
@@ -280,47 +321,56 @@ function Gallery(): JSX.Element {
   const navigate = useNavigate();
   if (projectId === undefined || batchId === undefined) return <NotFound />;
   return (
-    <GalleryScreen
-      projectId={projectId}
-      batchId={batchId}
-      onBack={() => void navigate(PARENT.batches(projectId))}
-      // The two levels above the Batches tab. The gallery is the product's
-      // deepest padded page, so it is the one whose chain is three long.
-      onOpenProject={() => void navigate(PARENT.project(projectId))}
-      onOpenProjects={() => void navigate(PARENT.projects)}
-      onOpenAsset={(asset) => {
-        if (asset.job_id === null || asset.job_id === undefined) return;
-        void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
-      }}
-      // The approve dialog's SCHEMA_NOT_FOUND remedy: the schema section
-      // is a `?tab=` on the project page, and spelling that URL is this file's job.
-      onOpenSchema={() => void navigate(`/projects/${projectId}?tab=schema`)}
-      // Where a promotion from this screen lands (F18). The gallery is where a
-      // batch is finished, and it had no way to reach the one screen that shows
-      // what finishing it produced — a tab of the project now, not a route.
-      onOpenDataset={() => void navigate(PARENT.dataset(projectId))}
-      // A correction just cut, or this batch's own parent (audit G6). Same
-      // route the batch table's rows use — a batch is a batch, whichever screen
-      // named it.
-      onOpenBatch={(next) => void navigate(`/projects/${projectId}/batches/${next}`)}
-      // This screen's whole subject has just stopped existing, so its own
-      // URL is a 404 waiting to happen — the Batches tab is where to land, and
-      // `replace` so Back does not walk into the gone batch.
-      onDeleted={() => void navigate(PARENT.batches(projectId), { replace: true })}
-    />
+    // Inside the project's frame, with Batches lit: a batch belongs to that
+    // section. No `cta` — the gallery owns its own dominant action — and the
+    // chain is the gallery's own, so the frame draws no eyebrow above it.
+    <ProjectFrame {...frameProps(projectId, navigate)} active="batches" chain="page">
+      <GalleryScreen
+        projectId={projectId}
+        batchId={batchId}
+        onBack={() => void navigate(PARENT.batches(projectId))}
+        onOpenAsset={(asset) => {
+          if (asset.job_id === null || asset.job_id === undefined) return;
+          void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
+        }}
+        // The approve dialog's SCHEMA_NOT_FOUND remedy: the schema section of
+        // the project, and spelling that URL is this file's job.
+        onOpenSchema={() => void navigate(PARENT.schema(projectId))}
+        // Where a promotion from this screen lands (F18). The gallery is where a
+        // batch is finished, and it had no way to reach the one screen that shows
+        // what finishing it produced — a section of the project now, not a route.
+        onOpenDataset={() => void navigate(PARENT.dataset(projectId))}
+        // A correction just cut, or this batch's own parent (audit G6). Same
+        // route the batch table's rows use — a batch is a batch, whichever screen
+        // named it.
+        onOpenBatch={(next) => void navigate(`/projects/${projectId}/batches/${next}`)}
+        // This screen's whole subject has just stopped existing, so its own
+        // URL is a 404 waiting to happen — the Batches section is where to land,
+        // and `replace` so Back does not walk into the gone batch.
+        onDeleted={() => void navigate(PARENT.batches(projectId), { replace: true })}
+      />
+    </ProjectFrame>
   );
 }
 
 /**
- * The dataset's old address, kept as a promise rather than as a screen.
- *
- * `replace`, so Back does not walk into a URL that only ever bounces — a
- * redirect in the history is a trap the second time somebody presses it.
+ * What every page inside a project hands the frame: the sections, their URLs,
+ * and where to land once the project is gone. The sections' own
+ * route adds the filled control's inputs; a sub-view does not.
  */
-function DatasetRedirect(): JSX.Element {
-  const { projectId } = useParams();
-  if (projectId === undefined) return <NotFound />;
-  return <Navigate to={PARENT.dataset(projectId)} replace />;
+function frameProps(
+  projectId: string,
+  navigate: ReturnType<typeof useNavigate>,
+): Omit<ProjectFrameProps, "active" | "chain" | "children"> {
+  return {
+    projectId,
+    sections: PROJECT_SECTIONS,
+    onNavigate: (next) => void navigate(PARENT.section(projectId, next)),
+    hrefFor: (next) => PARENT.section(projectId, next),
+    // A deleted project's own URL is a 404 waiting to happen, so the parent is
+    // where to land — and `replace`, because Back should not walk into it.
+    onDeleted: () => void navigate(PARENT.projects, { replace: true }),
+  };
 }
 
 /**
@@ -344,12 +394,12 @@ function DatasetRedirect(): JSX.Element {
  * because the annotator's parent is the grid.
  *
  * The parameter is kept true rather than only read. The page says which
- * frame it is showing and this route writes it, which is the split `?tab=` is on
- * one screen over — `ui-core` imports no router, so spelling a URL is this file's
- * job. `replace` rather than `push`, for the tabs' reason applied to frames: with
- * `push`, Back would walk an annotation session backwards one picture at a time,
- * turning the browser's own button into an undo nobody asked for — and the
- * annotator has a real one two keys away.
+ * frame it is showing and this route writes it, which is the split the project's
+ * section is on one screen over — `ui-core` imports no router, so spelling a URL
+ * is this file's job. `replace` rather than `push`, for the sections' reason
+ * applied to frames: with `push`, Back would walk an annotation session backwards
+ * one picture at a time, turning the browser's own button into an undo nobody
+ * asked for — and the annotator has a real one two keys away.
  */
 function Annotate(): JSX.Element {
   const { jobId } = useParams();
@@ -393,15 +443,17 @@ function Ingest(): JSX.Element {
   const navigate = useNavigate();
   if (projectId === undefined) return <NotFound />;
   return (
-    <IngestScreen
-      projectId={projectId}
-      onBack={() => void navigate(PARENT.project(projectId))}
-      onOpenProjects={() => void navigate(PARENT.projects)}
-      onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
-      // The foreshadowing banner's link: the schema section is a `?tab=`
-      // on the project page, and spelling that URL is this file's job.
-      onOpenSchema={() => void navigate(`/projects/${projectId}?tab=schema`)}
-    />
+    // Inside the project's frame with no section lit: an ingest is the project's,
+    // not any one section's. No `cta` — the flow owns its own dominant action.
+    <ProjectFrame {...frameProps(projectId, navigate)} active={null} chain="page">
+      <IngestScreen
+        projectId={projectId}
+        onBack={() => void navigate(PARENT.project(projectId))}
+        onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
+        // The foreshadowing banner's link: the schema section of the project, and
+        // spelling that URL is this file's job.
+        onOpenSchema={() => void navigate(PARENT.schema(projectId))}
+      />
+    </ProjectFrame>
   );
 }
-

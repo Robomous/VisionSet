@@ -30,13 +30,14 @@
  * UUIDs. A program has the SDK and the API.
  */
 
-import { Layers, Play } from "lucide-react";
+import { IconPlayerPlay, IconStack2, IconUpload } from "@tabler/icons-react";
 import { useState, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import { Badge } from "../primitives/Badge";
+import { SectionHeader } from "../patterns/SectionHeader";
 import { Button } from "../primitives/Button";
 import { FieldError } from "../primitives/Input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
@@ -61,6 +62,12 @@ export interface BatchesScreenProps {
    * from here, so a person was told something had happened and left to find it.
    */
   readonly onOpenDataset?: () => void;
+  /**
+   * Ingest, as a `secondary` header action. Passed only while the project's
+   * navigation holds Annotate in its slot — otherwise the slot is Ingest already,
+   * and two of them would be one control spelled twice.
+   */
+  readonly onIngest?: () => void;
 }
 
 export function BatchesScreen({
@@ -68,28 +75,34 @@ export function BatchesScreen({
   onOpenBatch,
   onOpenSchema,
   onOpenDataset,
+  onIngest,
 }: BatchesScreenProps): JSX.Element {
   const batches = useBatches(projectId);
   const [approving, setApproving] = useState<Batch | null>(null);
 
   return (
     <div className="flex flex-col gap-4" data-testid="batches-screen">
-      <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
-        <div>
-          {/* The tab is the heading. What is left is the sentence that
-              explains where a batch comes from, which the tab cannot say. */}
-          <p className="text-xs text-muted-foreground">
-            A batch is born from an ingest. Approving it pins the schema and cuts the jobs.
-          </p>
-        </div>
-        {batches.data && (
-          <ProjectPreLabelButton
-            projectId={projectId}
-            batches={batches.data.items}
-            onOpenBatch={onOpenBatch}
-          />
-        )}
-      </header>
+      <SectionHeader
+        title="Batches"
+        meta="A batch is born from an ingest. Approving it pins the schema and cuts the jobs."
+        actions={
+          <>
+            {onIngest !== undefined && (
+              <Button variant="secondary" data-testid="go-ingest" onClick={onIngest}>
+                <IconUpload className="size-4" aria-hidden="true" />
+                Ingest
+              </Button>
+            )}
+            {batches.data && (
+              <ProjectPreLabelButton
+                projectId={projectId}
+                batches={batches.data.items}
+                onOpenBatch={onOpenBatch}
+              />
+            )}
+          </>
+        }
+      />
 
       {/* Approval is where the schema gate refuses — this is the same
           fact, said while there is still time to act on it cheaply. */}
@@ -273,7 +286,7 @@ function Lifecycle({
       // several filled buttons down the same column, under a page header whose
       // "Annotate" is the actual forward action.
       <Button variant="secondary" size="sm" data-testid={`approve-${batch.name}`} onClick={onApprove}>
-        <Layers className="size-4" aria-hidden="true" />
+        <IconStack2 className="size-4" aria-hidden="true" />
         Approve
       </Button>
     );
@@ -288,7 +301,7 @@ function Lifecycle({
           disabled={start.isPending}
           onClick={() => start.mutate()}
         >
-          <Play className="size-4" aria-hidden="true" />
+          <IconPlayerPlay className="size-4" aria-hidden="true" />
           Start
         </Button>
         {start.isError && (

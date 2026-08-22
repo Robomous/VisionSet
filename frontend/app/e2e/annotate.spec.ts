@@ -1959,14 +1959,14 @@ test("collapsing the rail reflows the annotation page to the new width", async (
   await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
 
   const after = (await page.getByTestId("annotation-page").boundingBox())!;
-  // The whole 180px the rail gave back — 240px expanded, 60px collapsed, the
+  // The whole 192px the rail gave back — 240px expanded, 48px collapsed, the
   // tokens three things have to agree on.
   //
   // Before the fix this was **128**, which is the defect stating itself: at 1440
   // the expanded pane is 1200 and `max-w-7xl` never engages, but collapsing frees
   // enough width for the cap to start biting, so the page grew by less than the
   // rail released and the difference went into gutters.
-  expect(after.width - before.width).toBeCloseTo(180, 0);
+  expect(after.width - before.width).toBeCloseTo(192, 0);
   expect(after.width).toBeCloseTo(await paneWidth(page), 0);
 });
 
@@ -1982,14 +1982,15 @@ test("every other route keeps the padded, capped container", async ({ page }) =>
   const main = page.locator("main");
   await expect(main).toBeVisible();
   const box = (await main.boundingBox())!;
-  const inner = (await main.locator("> div").first().boundingBox())!;
+  const inner = (await main.locator(".max-w-page").first().boundingBox())!;
 
   // The pane is still the full width beside the rail…
   expect(box.width).toBeCloseTo(await paneWidth(page), 0);
-  // …and the *content* inside it is capped at 7xl and inset on both axes, which
-  // is right for a list and is what must not move. Measured against the pane's
-  // own origin, because the padding lives inside `<main>` rather than above it.
-  expect(inner.width).toBeLessThanOrEqual(1280);
+  // …and the *content* inside it is capped at `max-w-page` (96rem) and inset on both axes,
+  // which is right for a list and is what must not move. Measured against the
+  // pane's own origin, because the padding lives inside `<main>` rather than
+  // above it.
+  expect(inner.width).toBeLessThanOrEqual(1536);
   expect(inner.x - box.x).toBeGreaterThan(0);
   expect(inner.y - box.y).toBeGreaterThan(0);
 });
@@ -2020,7 +2021,7 @@ test("the rail keeps its collapsed state when the pane changes", async ({ page }
   // Full-bleed → padded, by a client-side navigation. A reload would remount
   // everything and prove nothing about the route tree.
   await page.getByTestId("rail-projects").click();
-  await expect(page.locator("main .max-w-7xl")).toBeVisible();
+  await expect(page.locator("main .max-w-page")).toBeVisible();
   await expect(page.getByTestId("annotation-page")).toHaveCount(0);
   await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
 
@@ -2353,6 +2354,9 @@ async function tabGap(page: Page, root: string): Promise<number> {
 test("the project view's tabs use the same one rule", async ({ page }) => {
   const sent: Request[] = [];
   await serveApi(page, sent);
+  // The project's sections are a tab strip only below `lg`; at the suite's
+  // default width they are a navigation column with no tab bar at all.
+  await page.setViewportSize({ width: 900, height: 800 });
   await page.goto(`/projects/${PROJECT}`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
@@ -2361,7 +2365,9 @@ test("the project view's tabs use the same one rule", async ({ page }) => {
   // tidy-up from adding a gap here and rediscovering the doubling on a different
   // screen.
   await expect(page.getByTestId("project-tabs")).toBeVisible();
-  expect(await tabGap(page, "project-tabs")).toBeCloseTo(8, 0);
+  // The project's strip is a `line` bar — navigation over the page's content —
+  // so its gap is the layout unit, 16px, where the segmented switch keeps Nova's 8.
+  expect(await tabGap(page, "project-tabs")).toBeCloseTo(16, 0);
 });
 
 /**

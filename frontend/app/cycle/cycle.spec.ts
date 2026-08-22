@@ -246,7 +246,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // turned it into a URL" are two claims and only the second survives a
     // reload.
     await expect(page.getByTestId("project-screen")).toBeVisible();
-    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}(\?|$)/);
+    // A new project opens on its default section, spelled in the URL.
+    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/overview$/);
     await expect(page.getByTestId("project-title")).toHaveText(PROJECT);
   });
 
@@ -274,7 +275,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("journey-checklist")).toHaveCount(0);
 
     await page.getByTestId("first-run-cta").click();
-    await expect(page.getByTestId("tab-schema")).toHaveAttribute("data-state", "active");
+    await expect(page.getByTestId("nav-schema")).toHaveAttribute("aria-current", "page");
 
     // A project starts schema-less on purpose, so the editor opens on an empty
     // draft rather than an error.
@@ -317,18 +318,18 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("class-geometry-0-polygon")).toBeChecked();
 
     /*
-     * The draft survives leaving the tab, in a real DOM.
+     * The draft survives leaving the section, in a real DOM.
      *
-     * jsdom cannot carry this claim on its own: the mechanism is Radix
-     * unmounting inactive `TabsContent`, and "the component really was destroyed
-     * and rebuilt" is a statement about a browser's own reconciliation. Four
-     * unsaved classes is also the largest thing this cycle ever has to lose, and
-     * losing it here would be silent — the run would carry on and publish
-     * version 1 with whatever survived.
+     * jsdom cannot carry this claim on its own: the mechanism is the open
+     * section being the only one mounted, and "the component really was
+     * destroyed and rebuilt" is a statement about a browser's own
+     * reconciliation. Four unsaved classes is also the largest thing this cycle
+     * ever has to lose, and losing it here would be silent — the run would carry
+     * on and publish version 1 with whatever survived.
      */
-    await page.getByTestId("tab-overview").click();
+    await page.getByTestId("nav-overview").click();
     await expect(page.getByTestId("schema-editor")).toHaveCount(0);
-    await page.getByTestId("tab-schema").click();
+    await page.getByTestId("nav-schema").click();
     for (const name of ["vehicle", "lane", "daytime", "centerline"]) {
       await expect(page.getByTestId("class-list")).toContainText(name);
     }
@@ -1249,7 +1250,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // which is where a destination goes when the navigation has no room for it —
     // and the trunk is the product's central object, so that was the wrong shape
     // rather than a tidy one.
-    await page.getByTestId("tab-dataset").click();
+    await page.getByTestId("nav-dataset").click();
     await expect(page.getByTestId("dataset-stats")).toContainText("3");
     await expect(page.getByTestId("dataset-screen")).toBeVisible();
 
@@ -1262,6 +1263,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("publish-release").click();
     await page.getByTestId("release-tag").fill(TAG);
     await page.getByTestId("publish-submit").click();
+    // The new release lands on the Releases view; the dialog was opened from
+    // the header, which every view shares.
+    await page.getByTestId("dataset-tab-releases").click();
     await expect(page.getByTestId(`release-${TAG}`)).toBeVisible();
   });
 
@@ -1381,7 +1385,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       { timeout: 30_000 },
     );
 
-    await page.getByTestId("tab-dataset").click();
+    await page.getByTestId("nav-dataset").click();
     await expect(page.getByTestId("dataset-screen")).toBeVisible();
     // (2) The deleted box is gone from the trunk — and `vehicle` was the only one
     // of its class, so the row goes with it. `DatasetStats.per_class` lists only
@@ -1399,6 +1403,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // blob and its hash is the contract, so a correction cannot reach back into
     // one already published — checked through `verify`, which re-reads and
     // re-hashes every blob rather than trusting the row it is compared against.
+    // Re-entered through the navigation, so the dataset opened on Overview; the
+    // release's controls live on its Releases view.
+    await page.getByTestId("dataset-tab-releases").click();
     await page.getByTestId(`verify-${TAG}`).click();
     await expect(page.getByTestId(`verified-${TAG}`)).toContainText("Intact");
   });
@@ -1630,21 +1637,21 @@ async function columnsOf(page: Page): Promise<{ rendered: number; expected: numb
 /**
  * The walk back to a project, and to one of its sections.
  *
- * The schema, the batches and the version history are behind tabs, so
+ * The schema, the batches and the dataset are sections of the project, so
  * "reach the batch table" is two clicks rather than one. It is clicked rather
- * than reached by `?tab=`, for the same reason nothing here types a URL: a step
+ * than reached by its URL, for the same reason nothing here types a URL: a step
  * that navigates by address cannot notice that the control is missing.
  */
 async function openProject(
   page: Page,
   project: string,
-  tab: "schema" | "batches" | "dataset",
+  section: "schema" | "batches" | "dataset",
 ): Promise<void> {
   await page.getByTestId("rail-projects").click();
   await expect(page.getByTestId(`open-${project}`)).toBeVisible();
   await page.getByTestId(`open-${project}`).click();
   await expect(page.getByTestId("project-screen")).toBeVisible();
-  if (tab !== "schema") await page.getByTestId(`tab-${tab}`).click();
+  await page.getByTestId(`nav-${section}`).click();
 }
 
 /*

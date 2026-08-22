@@ -96,7 +96,7 @@
  * omission.
  */
 
-import { Plus, Trash2 } from "lucide-react";
+import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
@@ -732,11 +732,14 @@ export function SchemaEditor({
             disabled={draftLocked}
             onClick={addClass}
           >
-            <Plus className="size-4" aria-hidden="true" />
+            <IconPlus className="size-4" aria-hidden="true" />
             Add class
           </Button>
           <Button
-            variant="primary"
+            // `secondary`: the project's navigation holds the one filled
+            // control of the project shell, and a section's own actions sit
+            // a weight below it. Still never disabled for "nothing to save".
+            variant="secondary"
             data-testid="save-schema"
             // Never disabled for "nothing to save" — `save` answers that with a
             // toast. It is also disabled while a removal preview, flush, or
@@ -1241,7 +1244,7 @@ function ClassDetail({
               disabled={locked}
               onClick={onRemove}
             >
-              {checking ? "Checking…" : <Trash2 className="size-4" aria-hidden="true" />}
+              {checking ? "Checking…" : <IconTrash className="size-4" aria-hidden="true" />}
             </Button>
           </div>
         </CardAction>

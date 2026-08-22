@@ -36,10 +36,12 @@
  *
  * ## Why the collapsed width is a token
  *
- * 240px / 60px / 280px are in `ui-core`'s `@theme` rather than here, because three
+ * 240px / 48px are in `ui-core`'s `@theme` rather than here, because three
  * things have to agree on them — the rail, the toggle and the content offset — and
  * `DESIGN.md` calls them "a single source of truth" for that reason. A grid
  * template reading `w-sidebar` cannot drift from a rail that *is* `w-sidebar`.
+ * Collapsed, the rail is the preset's icon-sidebar width: `p-2` around one
+ * `size-8` control per row, so an icon is centred because nothing else fits.
  *
  * ## The rail is a `<nav>` with a real list, and the links are `<NavLink>`s
  *
@@ -53,15 +55,16 @@
  *
  * ## The shell renders a bare `<Outlet/>`; a nested layout route decides the pane
  *
- * Most of the product is a list or a form, and a padded `max-w-7xl` column is
- * right for those. The annotator is not: it is the one screen somebody sits in
+ * Most of the product is a list or a form, and a padded, capped column is right
+ * for those. A project is that column beside its own navigation. The annotator
+ * is neither: it is the one screen somebody sits in
  * front of for an hour, and boxing it costs real pixels — `fitToViewport` derives
  * the zoom from the pane's rect, so a shrunken pane opens every asset smaller than
  * it needs to and applies the tolerance constants at a zoom nobody chose.
  *
- * So the choice is a **route**, not a prop and not a `useMatch` here. `PaddedPane`
- * and `FullBleedPane` are the two `<main>`s, and `routes.tsx` puts each screen
- * under the one it wants — which keeps this file composition-only, exactly as
+ * So the choice is a **route**, not a prop and not a `useMatch` here. `PaddedPane`,
+ * `ProjectPane` and `FullBleedPane` are the three `<main>`s, and `routes.tsx` puts
+ * each screen under the one it wants — which keeps this file composition-only, exactly as
  * the thin-app rule asks, and keeps `ui-core` from fighting the container with
  * negative margins.
  *
@@ -79,8 +82,15 @@
  * right level for it.
  */
 
-import { readRailCollapsed, useApiSession, writeRailCollapsed } from "@visionset/ui-core";
-import { Cpu, FolderGit2, Home, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import {
+  IconCpu,
+  IconFolders,
+  IconHome,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
+  IconLogout,
+} from "@tabler/icons-react";
+import { cn, PaddedContent, readRailCollapsed, useApiSession, writeRailCollapsed } from "@visionset/ui-core";
 import { useState, type JSX, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router";
 
@@ -104,11 +114,17 @@ export function AppShell(): JSX.Element {
         aria-label="Main"
         data-testid="app-rail"
         data-collapsed={collapsed ? "true" : "false"}
-        className={`flex shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-2 text-sidebar-foreground ${
-          collapsed ? "w-sidebar-collapsed" : "w-sidebar"
-        }`}
+        className={cn(
+          "flex shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-2 text-sidebar-foreground",
+          collapsed ? "w-sidebar-collapsed" : "w-sidebar",
+        )}
       >
-        <div className="flex items-center justify-between gap-2 px-1 py-2">
+        <div
+          className={cn(
+            "flex items-center py-2",
+            collapsed ? "justify-center" : "justify-between gap-2 px-1",
+          )}
+        >
           {!collapsed && (
             <span className="truncate text-base font-semibold">
               {/* The wordmark, and one of only two places `brand` is allowed. */}
@@ -121,21 +137,21 @@ export function AppShell(): JSX.Element {
             onClick={toggle}
           >
             {collapsed ? (
-              <PanelLeftOpen className="size-4" aria-hidden="true" />
+              <IconLayoutSidebarLeftExpand className="size-4" aria-hidden="true" />
             ) : (
-              <PanelLeftClose className="size-4" aria-hidden="true" />
+              <IconLayoutSidebarLeftCollapse className="size-4" aria-hidden="true" />
             )}
           </RailButton>
         </div>
 
         <RailLink to="/" end collapsed={collapsed} testId="rail-home" label="Home">
-          <Home className="size-4 shrink-0" aria-hidden="true" />
+          <IconHome className="size-4 shrink-0" aria-hidden="true" />
         </RailLink>
         <RailLink to="/projects" collapsed={collapsed} testId="rail-projects" label="Projects">
-          <FolderGit2 className="size-4 shrink-0" aria-hidden="true" />
+          <IconFolders className="size-4 shrink-0" aria-hidden="true" />
         </RailLink>
         <RailLink to="/inference" collapsed={collapsed} testId="rail-inference" label="Inference">
-          <Cpu className="size-4 shrink-0" aria-hidden="true" />
+          <IconCpu className="size-4 shrink-0" aria-hidden="true" />
         </RailLink>
 
         <div className="mt-auto">
@@ -149,17 +165,34 @@ export function AppShell(): JSX.Element {
 }
 
 /**
- * The pane every list and form gets: padded, and capped at `max-w-7xl`.
+ * The pane every list and form gets: padded, and centred in a capped column.
  *
- * `min-w-0` so a wide table scrolls inside the pane instead of pushing the rail
- * off the screen — the one flex rule this layout would be wrong without.
+ * The column itself is `ui-core`'s `PaddedContent`, because the project shell
+ * draws the same column beside its navigation and the two must not disagree on
+ * how wide a page is. `min-w-0` so a wide table scrolls inside the pane instead
+ * of pushing the rail off the screen — the one flex rule this layout would be
+ * wrong without.
  */
 export function PaddedPane(): JSX.Element {
   return (
-    <main className="min-w-0 flex-1 px-4 py-6 md:px-6">
-      <div className="mx-auto max-w-7xl">
+    <main className="min-w-0 flex-1">
+      <PaddedContent>
         <Outlet />
-      </div>
+      </PaddedContent>
+    </main>
+  );
+}
+
+/**
+ * The pane a project gets: the whole width beside the rail, with no padding of
+ * its own, because the project screen lays out its navigation column and its
+ * content itself (`ProjectShell`) — the column has to start at the rail's edge,
+ * and a padded pane would hold it off by a gutter.
+ */
+export function ProjectPane(): JSX.Element {
+  return (
+    <main className="flex min-w-0 flex-1">
+      <Outlet />
     </main>
   );
 }
@@ -202,7 +235,7 @@ function SignOut({ collapsed }: { readonly collapsed: boolean }): JSX.Element {
   const label = access === "session" ? "Use a token" : "Sign out";
   return (
     <RailButton testId="rail-sign-out" label={label} onClick={signOut} wide={!collapsed}>
-      <LogOut className="size-4 shrink-0" aria-hidden="true" />
+      <IconLogout className="size-4 shrink-0" aria-hidden="true" />
       {!collapsed && <span className="truncate">{label}</span>}
     </RailButton>
   );
@@ -236,11 +269,13 @@ function RailLink({
       // light-on-dark contrast — and an inactive one is the rail's own
       // foreground at reduced opacity, `sidebar-foreground/70`.
       className={({ isActive }) =>
-        `flex items-center gap-2 rounded-md px-2 py-2 text-sm ${
+        cn(
+          "flex items-center gap-2 rounded-md px-2 py-2 text-sm",
+          collapsed && "justify-center",
           isActive
             ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        }`
+            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        )
       }
     >
       {children}
@@ -272,9 +307,10 @@ function RailButton({
       // `sidebar-foreground/70` like an inactive link: the collapse toggle and
       // sign-out are chrome, and nothing on the rail is permanently at full
       // contrast except the item you are on.
-      className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${
-        wide === true ? "w-full" : ""
-      }`}
+      className={cn(
+        "flex items-center gap-2 rounded-md px-2 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        wide === true && "w-full",
+      )}
     >
       {children}
     </button>

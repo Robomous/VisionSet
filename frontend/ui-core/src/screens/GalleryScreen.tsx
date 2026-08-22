@@ -52,8 +52,7 @@ import {
 } from "../primitives/Dialog";
 import { FieldError, Input } from "../primitives/Input";
 import { AssetThumbnail } from "./AssetThumbnail";
-import { Breadcrumb } from "../patterns/Breadcrumb";
-import { parentLabel } from "../patterns/parentLabel";
+import { BackLink } from "../patterns/BackLink";
 import {
   ApproveDialog,
   BatchProgressBar,
@@ -100,7 +99,6 @@ import {
   useBatches,
   useBulkDiscardModelLabels,
   useBulkSetProgress,
-  useProject,
   useRemoveBatchAssets,
   useSource,
   type AssetSort,
@@ -161,24 +159,12 @@ export interface GalleryScreenProps {
    */
   readonly onOpenAsset?: (asset: BatchAsset) => void;
   /**
-   * Up to the **Batches tab** of the project this batch belongs to, which is this
-   * page's immediate parent.
-   *
-   * The label used to say `road-signs` and the destination used to be the tab, so
-   * the control named one place and went to another. Both halves were right — the
-   * tab is where somebody leaving a batch belongs, and the project is the most a
-   * one-level control could name — and only the chain says both.
+   * Up to the **Batches section** of the project this batch belongs to — this
+   * page's parent, and its one way out. The section, never the project's default
+   * view: landing on Overview after leaving a batch is landing somewhere you were
+   * not.
    */
   readonly onBack?: () => void;
-  /**
-   * The project's own page, this batch's grandparent, and the project list above
-   * it. Two more navigation callbacks rather than a walk of the route table: the
-   * breadcrumb's *destinations* belong to the host — `ui-core` imports no router —
-   * while its *labels* belong here, because a project's name is behind a query
-   * this package makes and the host does not fetch.
-   */
-  readonly onOpenProject?: () => void;
-  readonly onOpenProjects?: () => void;
   /** The project's schema tab, for the approve dialog's `SCHEMA_NOT_FOUND` remedy. */
   readonly onOpenSchema?: () => void;
   /**
@@ -211,14 +197,11 @@ export function GalleryScreen({
   batchId,
   onOpenAsset,
   onBack,
-  onOpenProject,
-  onOpenProjects,
   onOpenSchema,
   onOpenDataset,
   onOpenBatch,
   onDeleted,
 }: GalleryScreenProps): JSX.Element {
-  const project = useProject(projectId);
   const batch = useBatch(batchId);
   const [segment, setSegment] = useState<Segment>("all");
   const [sort, setSort] = useState<AssetSort>("membership");
@@ -411,21 +394,11 @@ export function GalleryScreen({
 
   return (
     <div className="flex flex-col gap-4" data-testid="gallery">
-      {/* The product's deepest padded page, and the whole reason the chain exists:
-          `Projects / road-signs / Batches`. A level is included only when the host
-          gave it somewhere to go, so a host that wired nothing renders no control
-          at all rather than dead text. */}
-      <Breadcrumb
-        items={[
-          ...(onOpenProjects === undefined
-            ? []
-            : [{ label: "Projects", onNavigate: onOpenProjects }]),
-          ...(onOpenProject === undefined
-            ? []
-            : [{ label: parentLabel(project.data?.name), onNavigate: onOpenProject }]),
-          ...(onBack === undefined ? [] : [{ label: "Batches", onNavigate: onBack }]),
-        ]}
-      />
+      {/* The one way out: up to the Batches section this batch belongs to. The
+          project's sections are in the column beside this page and the list is
+          on the rail, so nothing above the section needs naming here. Rendered
+          only when the host gave it somewhere to go. */}
+      {onBack !== undefined && <BackLink label="Batches" onNavigate={onBack} />}
 
       <BatchHeader
         batch={batch.data}

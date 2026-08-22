@@ -2169,7 +2169,12 @@ describe("the schema editor's two panels", () => {
   });
 });
 
-describe("the project view's tabs", () => {
+describe("the project view's sections", () => {
+  /** The items of the project's navigation, in display order. */
+  function sectionItems(): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>('[data-testid^="nav-"]')];
+  }
+
   function project(): void {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
@@ -2218,14 +2223,14 @@ describe("the project view's tabs", () => {
     // editor is rather than for one of its own.
     expect(screen.queryByTestId("version-history")).toBeNull();
 
-    await userEvent.click(screen.getByTestId("tab-batches"));
+    await userEvent.click(screen.getByTestId("nav-batches"));
     await screen.findByTestId("batches-screen");
     expect(screen.queryByTestId("overview-panel")).toBeNull();
     expect(screen.queryByTestId("schema-editor")).toBeNull();
     expect(screen.queryByTestId("version-history")).toBeNull();
   });
 
-  it("presents the sections as tabs, with the open one selected and the others not", async () => {
+  it("presents the sections as navigation, with the open one marked and the others not", async () => {
     project();
     render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
     await screen.findByTestId("overview-panel");
@@ -2233,18 +2238,16 @@ describe("the project view's tabs", () => {
     // Structural, never a class string: the styling changed once already
     // and will again, but "this section is the open one" is what the keyboard and
     // a screen reader read, and it is what a restyle must not lose.
-    expect(screen.getAllByRole("tab")).toHaveLength(4);
-    expect(screen.getByTestId("tab-overview").getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByTestId("tab-overview").dataset.state).toBe("active");
-    for (const other of ["tab-schema", "tab-batches", "tab-dataset"]) {
-      expect(screen.getByTestId(other).getAttribute("aria-selected")).toBe("false");
-      expect(screen.getByTestId(other).dataset.state).toBe("inactive");
+    expect(sectionItems()).toHaveLength(4);
+    expect(screen.getByTestId("nav-overview").getAttribute("aria-current")).toBe("page");
+    for (const other of ["nav-schema", "nav-batches", "nav-dataset"]) {
+      expect(screen.getByTestId(other).hasAttribute("aria-current")).toBe(false);
     }
 
-    await userEvent.click(screen.getByTestId("tab-batches"));
+    await userEvent.click(screen.getByTestId("nav-batches"));
     await screen.findByTestId("batches-screen");
-    expect(screen.getByTestId("tab-batches").getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByTestId("tab-overview").getAttribute("aria-selected")).toBe("false");
+    expect(screen.getByTestId("nav-batches").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("nav-overview").hasAttribute("aria-current")).toBe(false);
   });
 
   it("opens on the section the URL named, and on the default when it names nothing valid", async () => {
@@ -2268,7 +2271,7 @@ describe("the project view's tabs", () => {
     render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
 
     await screen.findByTestId("overview-panel");
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    expect(sectionItems().map((item) => item.textContent)).toEqual([
       "Overview",
       "Schema",
       "Batches",
@@ -2286,7 +2289,7 @@ describe("the project view's tabs", () => {
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
     await screen.findByTestId("overview-panel");
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    expect(sectionItems().map((item) => item.textContent)).toEqual([
       "Overview",
       "Schema",
       "Dataset",
@@ -2301,7 +2304,7 @@ describe("the project view's tabs", () => {
     render(mount(<ProjectScreen projectId={PROJECT} tab="overview" onTabChange={changed} />));
 
     await screen.findByTestId("overview-panel");
-    await userEvent.click(screen.getByTestId("tab-dataset"));
+    await userEvent.click(screen.getByTestId("nav-dataset"));
     expect(changed).toHaveBeenCalledWith("dataset");
   });
 
@@ -2311,17 +2314,17 @@ describe("the project view's tabs", () => {
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" onTabChange={changed} />));
 
     await screen.findByTestId("schema-editor");
-    await userEvent.click(screen.getByTestId("tab-overview"));
+    await userEvent.click(screen.getByTestId("nav-overview"));
     expect(changed).toHaveBeenCalledWith("overview");
     // Controlled: the host owns the value, so the section does not move until the
     // URL does. Anything else would make the back button lie.
     expect(screen.queryByTestId("overview-panel")).toBeNull();
   });
 
-  it("does not read the version list until somebody opens the Schema tab", async () => {
-    // The history moved *inside* Schema, so the query moved with it — Radix
-    // unmounts an inactive tab's content, which is what makes "requests follow
-    // the open tab" true by construction rather than by every panel remembering.
+  it("does not read the version list until somebody opens Schema", async () => {
+    // The history moved *inside* Schema, so the query moved with it — only the
+    // open section is mounted, which is what makes "requests follow the open
+    // section" true by construction rather than by every panel remembering.
     project();
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
@@ -2330,7 +2333,7 @@ describe("the project view's tabs", () => {
       sent.filter((request) => new URL(request.url).pathname.endsWith("/schema/versions")).length;
     expect(versionRequests()).toBe(0);
 
-    await userEvent.click(screen.getByTestId("tab-schema"));
+    await userEvent.click(screen.getByTestId("nav-schema"));
     await waitFor(() => expect(versionRequests()).toBe(1));
   });
 
@@ -2595,7 +2598,7 @@ describe("version history", () => {
   });
 });
 
-describe("the project header", () => {
+describe("the project's identity and its one filled control", () => {
   const STATS = {
     project_id: PROJECT,
     asset_count: 1248,
@@ -2732,65 +2735,68 @@ describe("the project header", () => {
     headerFor({ schema: false });
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
-    await screen.findByTestId("project-chips");
-    // Wait on the *counted* chip, whose request also settles the schema one, so
-    // the assertion below is about an answer rather than about a pending query.
-    await waitFor(() => expect(screen.queryByTestId("chip-images")).not.toBeNull());
+    // Wait on the Overview's *counted* line, whose request also settles the
+    // schema one, so the assertion below is about an answer rather than about a
+    // pending query.
+    await screen.findByTestId("section-meta");
     expect(screen.queryByTestId("chip-version")).toBeNull();
   });
 
-  it("omits the image chip when the count cannot be read", async () => {
+  /**
+   * The Overview's one line under its title: how much data the project holds,
+   * and when it last grew. What the header's chips used to say, in one sentence.
+   */
+  it("says nothing under the Overview title while the count cannot be read", async () => {
     headerFor({ stats: false });
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
-    await screen.findByTestId("project-chips");
     await waitFor(() => expect(screen.queryByTestId("chip-version")).not.toBeNull());
-    expect(screen.queryByTestId("chip-images")).toBeNull();
+    expect(screen.queryByTestId("section-meta")).toBeNull();
   });
 
   it("formats the image count rather than printing a bare integer", async () => {
     headerFor({});
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
-    expect((await screen.findByTestId("chip-images")).textContent).toContain(
-      (1248).toLocaleString(undefined),
+    expect((await screen.findByTestId("section-meta")).textContent).toContain(
+      `${(1248).toLocaleString(undefined)} images`,
     );
   });
 
-  it("chips when data last arrived, relative inside a week", async () => {
+  it("says when data last arrived, relative inside a week", async () => {
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
     headerFor({ lastIngest: twoDaysAgo });
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
-    expect((await screen.findByTestId("chip-ingested")).textContent).toBe("Ingested 2d ago");
+    expect((await screen.findByTestId("section-meta")).textContent).toMatch(/ · ingested 2d ago$/);
   });
 
-  it("chips an absolute date once the ingest is older than a week", async () => {
+  it("writes an absolute date once the ingest is older than a week", async () => {
     const longAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
     headerFor({ lastIngest: longAgo.toISOString() });
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
     // The date the browser would write, not a hardcoded format: `formatWhen`
     // deliberately follows the viewer's locale.
-    expect((await screen.findByTestId("chip-ingested")).textContent).toBe(
-      `Ingested ${longAgo.toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })}`,
+    const date = longAgo.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+    expect((await screen.findByTestId("section-meta")).textContent).toMatch(
+      new RegExp(` · ingested ${date.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
     );
   });
 
-  it("omits the ingest chip when nothing records an arrival", async () => {
+  it("omits the ingest moment when nothing records an arrival", async () => {
     // Null is not "never ingested" — it is *unknown*, because every asset in
     // this project predates the column and cannot be backfilled. Same
     // rule as a missing description: omitted, never placeheld.
     headerFor({});
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
-    await screen.findByTestId("project-chips");
-    await waitFor(() => expect(screen.queryByTestId("chip-images")).not.toBeNull());
-    expect(screen.queryByTestId("chip-ingested")).toBeNull();
+    const meta = await screen.findByTestId("section-meta");
+    expect(meta.textContent).not.toContain("ingested");
     expect(document.body.textContent).not.toContain("Ingested");
   });
 
@@ -2799,21 +2805,20 @@ describe("the project header", () => {
     // is simply absent", which was the *symptom* of a document nobody had checked:
     // the same wrong body white-screened three surfaces once, and the
     // fix was a hand-written guard at each render site. Now the check runs at
-    // `unwrap`, so the query fails, both chips stay away, and the page still stands.
+    // `unwrap`, so the query fails, the line stays away, and the page still stands.
     headerFor({ lastIngest: 1_754_000_000 });
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
     await waitFor(() => expect(screen.getByTestId("project-title").textContent).toBe("highway"));
-    expect(screen.queryByTestId("chip-images")).toBeNull();
-    expect(screen.queryByTestId("chip-ingested")).toBeNull();
+    expect(screen.queryByTestId("section-meta")).toBeNull();
   });
 
-  it("omits the ingest chip when the timestamp will not parse", async () => {
+  it("omits the ingest moment when the timestamp will not parse", async () => {
     headerFor({ lastIngest: "not-a-date" });
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
-    await waitFor(() => expect(screen.queryByTestId("chip-images")).not.toBeNull());
-    expect(screen.queryByTestId("chip-ingested")).toBeNull();
+    const meta = await screen.findByTestId("section-meta");
+    expect(meta.textContent).not.toContain("ingested");
   });
 
   it("offers Annotate when a batch is open for annotation, and opens that batch", async () => {
@@ -2949,17 +2954,18 @@ describe("the project header", () => {
     expect(screen.getByTestId("go-ingest").className).not.toContain("bg-primary");
   });
 
-  it("does not stand back for an invitation that has nowhere to send anybody", async () => {
-    // With no `onTabChange` the tabs are uncontrolled, so the panel is handed no
-    // way into Schema and renders the invitation as prose. A header that stepped
-    // back for that would leave the page with no filled button at all — which is
-    // the same failure as two, counted the other way.
+  it("lets the invitation act for a host with no onTabChange, by holding the section itself", async () => {
+    // The section is held here when the host does not wire it, so the panel
+    // always has a way into Schema and the invitation always has its button. A
+    // page that rendered the invitation as prose and kept Ingest filled would be
+    // the right count reached by leaving the person nothing to press.
     headerFor({ schema: false, assets: 0 });
     render(mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />));
 
-    await screen.findByTestId("first-run");
-    expect(screen.queryByTestId("first-run-cta")).toBeNull();
-    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+    const cta = await screen.findByTestId("first-run-cta");
+    expect(filled()).toEqual([cta]);
+    await userEvent.click(cta);
+    await screen.findByTestId("schema-editor");
   });
 
   it("keeps the filled Ingest when the invitation is the ingest one", async () => {
@@ -2981,10 +2987,10 @@ describe("the project header", () => {
     expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
   });
 
-  it("hands the filled button back the moment another tab is showing", async () => {
-    // The invitation is the *Overview's*. Radix unmounts inactive content, so a
-    // header still standing back on the Batches tab would be a page with no
-    // forward action at all.
+  it("hands the filled button back the moment another section is showing", async () => {
+    // The invitation is the *Overview's*. Only the open section is mounted, so a
+    // navigation still standing back on the Dataset section would be a page with
+    // no forward action at all.
     headerFor({ schema: false, assets: 0 });
     render(
       mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} tab="dataset" />),

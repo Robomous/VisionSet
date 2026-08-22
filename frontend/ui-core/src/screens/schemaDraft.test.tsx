@@ -272,11 +272,11 @@ describe("the schema draft survives the tab", () => {
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
 
-    await userEvent.click(screen.getByTestId("tab-overview"));
+    await userEvent.click(screen.getByTestId("nav-overview"));
     // Radix really did unmount it — otherwise this test proves nothing about the
     // boundary it exists for.
     await waitFor(() => expect(screen.queryByTestId("schema-editor")).toBeNull());
-    await userEvent.click(screen.getByTestId("tab-schema"));
+    await userEvent.click(screen.getByTestId("nav-schema"));
 
     const editor = await screen.findByTestId("schema-editor");
     expect(editor.textContent).toContain("pedestrian");

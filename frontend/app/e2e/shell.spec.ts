@@ -203,9 +203,9 @@ test("the Inference entry goes to the section, and is current once you are on it
   await expect(page).toHaveURL(/\/inference$/);
   await expect(page.getByTestId("rail-inference")).toHaveAttribute("aria-current", "page");
   await expect(page.getByTestId("rail-projects")).not.toHaveAttribute("aria-current", "page");
-  // A rail destination has no breadcrumb: the rail is its way out, and a second
+  // A rail destination has no way out of its own: the rail is it, and a second
   // answer to "where am I" inside the pane would contradict it.
-  await expect(page.getByTestId("breadcrumb")).toHaveCount(0);
+  await expect(page.getByTestId("back-link")).toHaveCount(0);
 });
 
 test("navigation is real links, and the active one is the one you are on", async ({ page }) => {
@@ -274,25 +274,27 @@ test("a deep link inside the product resolves to its screen", async ({ page }) =
  * The project view's section is in the URL, and this is the only place that
  * wiring exists.
  *
- * `ui-core` is deliberately router-free — it takes the tab as a prop and hands one
- * back — so a component test can prove the tabs switch and prove the callback
- * fires, and it cannot prove the two halves are connected. A reload is the whole
- * point of putting the section in the URL, and a reload is a browser fact.
+ * `ui-core` is deliberately router-free — it takes the section as a prop and
+ * hands one back — so a component test can prove the navigation moves and prove
+ * the callback fires, and it cannot prove the two halves are connected. A reload
+ * is the whole point of putting the section in the URL, and a reload is a
+ * browser fact.
  */
-test("the project view's tab is in the URL, and survives a reload", async ({ page }) => {
+test("the project view's section is in the URL, and survives a reload", async ({ page }) => {
   await serveApi(page);
   await page.goto(`/projects/${PROJECT}?tab=versions`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
 
-  // The link opened on the section it named, not on the default — which is
-  // Overview is the default.
+  // The old link opened on the section it named, not on the default — Overview
+  // is the default — and the address is the section's own now.
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/schema$`));
   await expect(page.getByTestId("version-history")).toBeVisible();
   await expect(page.getByTestId("overview-panel")).toHaveCount(0);
   await expect(page.getByTestId("overview-empty")).toHaveCount(0);
 
-  await page.getByTestId("tab-batches").click();
-  await expect(page).toHaveURL(/\?tab=batches$/);
+  await page.getByTestId("nav-batches").click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches$`));
   await expect(page.getByTestId("batches-screen")).toBeVisible();
 
   await page.reload();
@@ -341,7 +343,7 @@ test("a fresh session opens with the rail collapsed", async ({ page }) => {
 
   const rail = page.getByTestId("app-rail");
   await expect(rail).toHaveAttribute("data-collapsed", "true");
-  // Narrow, not merely labelled narrow: 60px is the collapsed token and 240 the
+  // Narrow, not merely labelled narrow: 48px is the collapsed token and 240 the
   // expanded one, so anything under half of 240 can only be the former.
   expect((await rail.boundingBox())?.width ?? 0).toBeLessThan(120);
 });
