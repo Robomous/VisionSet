@@ -44,6 +44,7 @@ class Endpoint:
         self.predict_status = 200
         self.predict_body: Any = None  # None derives one answer per target
         self.requests: list[dict[str, Any]] = []
+        self.authorizations: list[str | None] = []  # Authorization header per request, both verbs
         self.truncate_body = False  # sends a short body under the declared Content-Length
         self.stall_error_body = False  # sends a partial body then stalls, on a non-2xx status
         self.url = ""
@@ -97,12 +98,14 @@ class _Handler(BaseHTTPRequestHandler):
     endpoint: Endpoint
 
     def do_GET(self) -> None:  # the stdlib's spelling
+        self.endpoint.authorizations.append(self.headers.get("Authorization"))
         body = self.endpoint.describe_body
         if body is None:
             body = {"model_ref": self.endpoint.model_ref, "capability": self.endpoint.capability}
         self._send(self.endpoint.describe_status, body, location=self.endpoint.describe_location)
 
     def do_POST(self) -> None:
+        self.endpoint.authorizations.append(self.headers.get("Authorization"))
         length = int(self.headers.get("Content-Length", "0"))
         request = json.loads(self.rfile.read(length))
         self.endpoint.requests.append(request)

@@ -14,8 +14,10 @@ Two kinds exist today:
   born **not set up**, because the weights are not here yet. Fetching them is an explicit action
   you take later, with the size shown before you agree to it.
 - **`http`** - an endpoint that answers this project's own inference contract (below). It carries
-  an `endpoint_url`, it is born **ready** because there is nothing to set up on this machine, and
-  it declares what it answers once its endpoint has been asked - see [Asking an endpoint what it
+  an `endpoint_url` and, when the endpoint wants a credential, the **name** of the environment
+  variable holding it - see [Authenticating to an endpoint](#authenticating-to-an-endpoint). It
+  is born **ready** because there is nothing to set up on this machine, and it declares what it
+  answers once its endpoint has been asked - see [Asking an endpoint what it
   answers](#asking-an-endpoint-what-it-answers).
 
 The model reference is a pair - an id and a **pinned revision**, both required. A moving pointer
@@ -51,10 +53,10 @@ at a background job.
 
 ## Each kind carries its own parameters, and only its own
 
-A local connection needs a device and a precision; an HTTP one needs an endpoint. Both halves of
-that rule are enforced: a local connection may not carry an `endpoint_url` either. A row holding
-both would leave a later reader - and a later adapter - with no way to tell which field to
-believe.
+A local connection needs a device and a precision; an HTTP one needs an endpoint and may name a
+`credential_env`. Both halves of that rule are enforced: a local connection may not carry an
+`endpoint_url` or a `credential_env` either. A row holding both would leave a later reader - and
+a later adapter - with no way to tell which field to believe.
 
 The kind itself cannot be changed after creation. Switching `local` to `http` would empty every
 parameter the row carries and keep only its name, which is a new connection wearing an old id.
@@ -499,7 +501,55 @@ the endpoint itself judged worth reporting.
 **A redirect that leaves `http` or `https` is refused**, never followed - a scheme this driver
 never promised to open is not one it will silently trust because the endpoint pointed at it.
 
-There is no credential in the contract yet; an endpoint that needs one is its own open question.
+**Both requests carry `Authorization: Bearer <value>`** when the connection names a
+`credential_env`, and no `Authorization` header at all when it does not - the next section says
+where the value comes from.
+
+## Authenticating to an endpoint
+
+An endpoint that wants a credential gets one by **indirection**: the connection stores the
+**name of an environment variable**, never the secret, and the process that speaks to the
+endpoint reads the variable from its own environment each time it does. The value is sent as a
+bearer token and is written nowhere - not to the workspace, not to the wire, not to a log.
+
+This was a decision among three, and it is worth knowing what was not chosen. A **plain column**
+would put the secret in `visionset.db`, which is a file that travels in every backup and copy of
+the workspace, and would need a write-only field, a masked display and redaction in every
+listing to keep it from coming back out. The **OS keyring** is a dependency this package does not
+otherwise carry, and is absent exactly where a hosted endpoint is most likely to be spoken to
+from - a container, a headless machine, a CI runner. A variable's name costs nothing, round-trips
+freely because it is not a secret, and works the same way for the server, the worker process it
+spawns for a pre-label run, the CLI and the MCP server, which all read the environment they were
+started in.
+
+**Setting it.** Export the variable where VisionSet runs, before starting it:
+
+```bash
+export ACME_TOKEN=…            # the secret, in the shell that starts the server
+visionset ui
+visionset inference create remote --type http --model acme/detector --revision v3 \
+    --endpoint https://models.example/predict --credential-env ACME_TOKEN
+```
+
+In the browser, the same field is **Credential variable** on an HTTP connection's form, and the
+hint beside it says what it is: a variable's name, not the secret. Over MCP it is
+`credential_env` on `create_inference_connection` and `update_inference_connection`. Under Docker
+it is an `environment:` entry on the service that runs the server. Restart the process after
+changing the variable's value; it is read at call time, so a new value is used on the next
+request, but a process never sees a variable exported after it started.
+
+**What is refused, and when.** The name is checked when it is stored - letters, digits and
+underscores, not starting with a digit, the spelling every shell accepts - and a `local`
+connection may not carry one at all. Whether the variable is **set** is checked when it is about
+to be needed: a connection naming a variable the process cannot find is refused **before any
+request is made**, as `INFERENCE_ENDPOINT_UNAVAILABLE` naming the variable, from **Test endpoint**
+and from every prediction alike. The remedy is in the environment, not at the endpoint, and the
+message says so; a request sent without the credential would have been refused by the other end
+with a status that names nothing.
+
+**Clearing it.** On an edit, `null` leaves the field alone as it does every other; the **empty
+string** clears it, so an endpoint that stops wanting a credential can be told so. An emptied
+field in the form sends exactly that.
 
 ## Suggesting a shape from a click
 
@@ -692,9 +742,9 @@ This is the same decision as the `dummy` export format, and taken for the same r
 
 ## What a connection is not
 
-It is **not a credential store**, yet. An HTTP connection carries no secret today, and the field
-is absent rather than nullable: where such a secret should live is an open decision, and a column
-added "for later" would answer it by default.
+It is **not a credential store**. An HTTP connection names the environment variable holding its
+credential and never the credential itself - see [Authenticating to an
+endpoint](#authenticating-to-an-endpoint).
 
 It is **not a model runner**. This layer knows the configuration; running a model is an adapter's
 job, and the kernel imports no inference stack at all. A connection can be configured on a
@@ -744,10 +794,10 @@ form.
   later. If this machine has no `local-inference` extra the size cannot be read, and the form says
   so, in the server's own words, with the install command. **It stays usable**: creating a
   connection downloads nothing, so not knowing the size is information rather than a barrier.
-- **HTTP** asks for the endpoint URL. Once created, **Test endpoint** in the row's menu asks the
-  endpoint what it answers and moves the row under that ability. There is no credential field;
-  where a secret would live is still open (#421), and a field added ahead of that answer
-  would be answering it.
+- **HTTP** asks for the endpoint URL and, optionally, the **Credential variable** - the name of
+  an environment variable holding the endpoint's credential, never the secret itself, which the
+  hint beside the field says. Once created, **Test endpoint** in the row's menu asks the endpoint
+  what it answers and moves the row under that ability.
 
 Because that list is a request rather than a constant, the model field has four states and says
 which one it is in. While the answer is in flight it says it is reading, and puts nothing else in
@@ -805,6 +855,7 @@ visionset inference create local-detector \
     --type local --model some/model --revision abc123 --device cuda --precision fp16
 # --device takes cpu, mps, cuda or cuda:N; --precision takes fp16 or fp32, and fp16 needs a cuda device
 # --provider names the installed driver that serves it; omitted, the model's declared type decides
+# --credential-env names the environment variable holding an http endpoint's credential; "" clears it
 visionset inference list
 visionset inference show local-detector --json
 visionset inference update local-detector --revision def456
@@ -841,7 +892,7 @@ workspace, compared without regard to case, so `local` and `Local` cannot name t
 | `LOCAL_INFERENCE_UNAVAILABLE` | 500 | The `local-inference` extra is not installed; the message carries the command |
 | `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | Nothing installed here runs that connection - a model family no installed driver serves; a recorded provider that is not installed here; or one that does not serve the family the downloaded config declares. The message names what is served or installed instead |
 | `INFERENCE_OUT_OF_MEMORY` | 500 | The device ran out of memory loading or running the model; the message names the device and what to do about it |
-| `INFERENCE_ENDPOINT_UNAVAILABLE` | 502 | The endpoint named by an `http` connection could not be reached, did not answer in time, or answered outside the contract; the message names it and what happened |
+| `INFERENCE_ENDPOINT_UNAVAILABLE` | 502 | The endpoint named by an `http` connection could not be reached, did not answer in time, or answered outside the contract - or the environment variable the connection names for its credential is not set where VisionSet runs, refused before anything is sent; the message names it and what happened |
 
 The 5xx rows are conditions of the *machine* or of the *other end* rather than of the request.
 `LOCAL_INFERENCE_UNAVAILABLE` and `INFERENCE_CONNECTION_NOT_RUNNABLE` never succeed until

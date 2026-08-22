@@ -2196,10 +2196,6 @@ class ProviderPage(Page[ProviderOut]):
 # --- inference connections ----------------------------------------------------
 
 
-# No credential field, and its absence is a decision rather than an oversight:
-# where an HTTP connection's secret lives is still open, and a nullable field
-# added here "for later" would answer it by publishing a shape. A wire model is
-# the hardest thing in this repo to take back.
 class WeightDownloadOut(BaseModel):
     """A connection's weight transfer: which job, how far it has got, how it ended.
 
@@ -2331,6 +2327,12 @@ class ConnectionOut(BaseModel):
     #: it will run — the refusal, if there is one, arrives when something asks
     #: it to predict.
     provider_id: str | None
+    #: `http` only. The **name** of the environment variable holding the
+    #: credential this connection's endpoint wants, or null where the endpoint
+    #: wants none. The secret itself is never stored and never published: the
+    #: server reads the variable from its own environment each time it speaks to
+    #: the endpoint, and sends the value as `Authorization: Bearer <value>`.
+    credential_env: str | None
     allowed_actions: list[ConnectionAction]
     #: What this connection's model can be asked for, and empty where nothing is
     #: known yet: a connection whose weights have never been fetched, one whose
@@ -2391,6 +2393,7 @@ class ConnectionOut(BaseModel):
             endpoint_url=connection.endpoint_url,
             setup_state=connection.setup_state,
             provider_id=connection.provider_id,
+            credential_env=connection.credential_env,
             allowed_actions=connection_actions(
                 connection.setup_state, connection_type=connection.connection_type
             ),
@@ -2441,6 +2444,14 @@ class ConnectionCreate(BaseModel):
     #: recorded as given and refused when something tries to run it, which is the
     #: same treatment a model id pointing at nothing gets.
     provider_id: str | None = None
+    #: `http` only. The name of an environment variable — letters, digits and
+    #: underscores, not starting with a digit — whose value is the credential the
+    #: endpoint wants. **The secret itself is not sent here and is never
+    #: stored**: set the variable where VisionSet runs, and the server reads it
+    #: from its own environment each time it speaks to the endpoint, sending it
+    #: as `Authorization: Bearer <value>`. A variable the server cannot find when
+    #: it is needed is refused then, naming the variable.
+    credential_env: str | None = None
 
 
 class ConnectionUpdate(BaseModel):
@@ -2450,7 +2461,9 @@ class ConnectionUpdate(BaseModel):
     ``InferenceConnectionService.update``. A field cannot be *cleared* through
     this shape, which is the honest consequence of null meaning "unchanged": the
     parameters that could be cleared are exactly the ones the kind requires, so
-    clearing one would produce a row the domain refuses anyway.
+    clearing one would produce a row the domain refuses anyway. The one
+    exception is ``credential_env``, the one optional parameter a person removes
+    as readily as sets: the empty string clears it.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -2469,6 +2482,11 @@ class ConnectionUpdate(BaseModel):
     #: carries the new owner across — that answer is newer than the rule that
     #: clears it.
     provider_id: str | None = None
+    #: `http` only. The name of the environment variable holding the endpoint's
+    #: credential — see `ConnectionCreate.credential_env`. Null leaves it alone;
+    #: **the empty string clears it**, so an endpoint that stops wanting a
+    #: credential can be told so.
+    credential_env: str | None = None
 
 
 class DownloadSizeOut(BaseModel):

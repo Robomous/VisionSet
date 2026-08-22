@@ -111,6 +111,7 @@ function connectionRow(
     precision: "fp16",
     endpoint_url: null,
     provider_id: "sam",
+    credential_env: null,
     setup_state: setup,
     allowed_actions: [],
     // What the server resolved from this model's own config. A row that has

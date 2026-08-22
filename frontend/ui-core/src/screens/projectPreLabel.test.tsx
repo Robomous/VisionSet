@@ -96,6 +96,7 @@ function connectionOf(overrides: Partial<Connection> = {}): Connection {
     precision: "fp16",
     endpoint_url: null,
     provider_id: "sam",
+    credential_env: null,
     setup_state: "ready",
     allowed_actions: ["update", "delete"],
     capabilities: ["text_detect"],

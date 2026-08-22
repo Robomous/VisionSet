@@ -195,6 +195,30 @@ def test_an_http_connection_is_ready_on_arrival(client: TestClient) -> None:
     assert created(client, HTTP)["setup_state"] == "ready"
 
 
+def test_an_http_connection_publishes_the_variable_naming_its_credential(
+    client: TestClient,
+) -> None:
+    """The name travels on the wire; the value never does — there is no field
+    to carry it, by design rather than omission."""
+    made = created(client, HTTP | {"credential_env": "ACME_TOKEN"})
+    assert made["credential_env"] == "ACME_TOKEN"
+    assert created(client, HTTP | {"name": "bare"})["credential_env"] is None
+
+
+def test_a_local_connection_naming_a_credential_variable_is_refused(client: TestClient) -> None:
+    response = client.post("/inference/connections", json=LOCAL | {"credential_env": "X"})
+    assert response.status_code == 422, response.text
+
+
+def test_the_empty_string_clears_the_credential_variable_on_an_edit(client: TestClient) -> None:
+    made = created(client, HTTP | {"credential_env": "ACME_TOKEN"})
+    kept = client.patch(f"/inference/connections/{made['id']}", json={"name": "still-remote"})
+    assert kept.json()["credential_env"] == "ACME_TOKEN"
+    cleared = client.patch(f"/inference/connections/{made['id']}", json={"credential_env": ""})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["credential_env"] is None
+
+
 def test_parameters_that_do_not_match_the_kind_are_refused(client: TestClient) -> None:
     """A 422: the payload itself is wrong, rather than the resource's state."""
     response = client.post("/inference/connections", json=LOCAL | {"endpoint_url": "https://x"})

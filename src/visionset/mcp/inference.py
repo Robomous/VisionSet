@@ -84,6 +84,16 @@ def create_inference_connection(
             )
         ),
     ] = None,
+    credential_env: Annotated[
+        str | None,
+        Field(
+            description=(
+                "HTTP only. The NAME of an environment variable holding the endpoint's "
+                "credential. The value is read from the server's environment when the "
+                "endpoint is spoken to and sent as a bearer token; it is never stored."
+            )
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Configure a connection. Nothing is downloaded and nothing is contacted.
 
@@ -103,6 +113,7 @@ def create_inference_connection(
             precision=precision,
             endpoint_url=endpoint_url,
             provider_id=provider_id,
+            credential_env=credential_env,
         )
     return wire.connection(created)
 
@@ -121,6 +132,15 @@ def update_inference_connection(
         Field(description="Local only. fp16 needs a cuda device; cpu and mps run in fp32."),
     ] = None,
     endpoint_url: Annotated[str | None, Field(description="HTTP only.")] = None,
+    credential_env: Annotated[
+        str | None,
+        Field(
+            description=(
+                "HTTP only. The NAME of the environment variable holding the endpoint's "
+                "credential; the empty string clears it."
+            )
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Edit a connection. Parameters you omit are left alone; the type cannot change.
 
@@ -138,6 +158,7 @@ def update_inference_connection(
             device=device,
             precision=precision,
             endpoint_url=endpoint_url,
+            credential_env=credential_env,
         )
     return wire.connection(edited)
 

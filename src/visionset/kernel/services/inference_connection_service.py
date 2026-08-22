@@ -189,6 +189,7 @@ class InferenceConnectionService:
         precision: str | None = None,
         endpoint_url: str | None = None,
         provider_id: str | None = None,
+        credential_env: str | None = None,
     ) -> InferenceConnection:
         """Configure a connection. Nothing is fetched and nothing is contacted.
 
@@ -228,6 +229,7 @@ class InferenceConnectionService:
                         precision=precision,
                         endpoint_url=endpoint_url,
                         provider_id=provider_id,
+                        credential_env=credential_env or None,
                         setup_state=_born_in(connection_type),
                     )
                 )
@@ -245,9 +247,14 @@ class InferenceConnectionService:
         precision: str | None = None,
         endpoint_url: str | None = None,
         provider_id: str | None = None,
+        credential_env: str | None = None,
     ) -> InferenceConnection:
         """Edit a connection in place. Every argument is optional; ``None`` means
         *leave this alone*.
+
+        ``credential_env`` is the one field a person removes as readily as sets,
+        and ``None`` already means *leave this alone* — so the empty string
+        clears it, being the one shape a form with an emptied input can send.
 
         Pointing a connection at a different model or revision **undoes its
         setup**: it forgets what kind of model it was, and a connection whose
@@ -289,6 +296,8 @@ class InferenceConnectionService:
                 ):
                     if value is not None:
                         changes[field] = value
+                if credential_env is not None:
+                    changes["credential_env"] = credential_env or None
                 # Everything this row had learned was learned from the weights of
                 # the model it used to name, so moving the reference drops all of
                 # it: the family, because that answer was read out of the old

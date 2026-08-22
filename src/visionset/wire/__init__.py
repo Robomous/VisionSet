@@ -779,9 +779,9 @@ def connection(
 ) -> dict[str, Any]:
     """One configured place a model can be asked to predict.
 
-    No credential key, because the entity carries no credential — where an HTTP
-    connection's secret lives is still open, and a key published here would be one
-    every consumer starts parsing.
+    ``credential_env`` is the name of an environment variable, never its value:
+    the secret is read by the process that speaks to the endpoint and is not the
+    entity's to publish.
 
     ``download`` and ``check`` are the runs this connection most recently asked
     for, and they are parameters rather than something read here for the reason
@@ -803,6 +803,7 @@ def connection(
         # recorded, which resolves by the model's declared type instead — see
         # ``InferenceConnection.provider_id``.
         "provider_id": value.provider_id,
+        "credential_env": value.credential_env,
         "allowed_actions": [
             a.value
             for a in connection_actions(value.setup_state, connection_type=value.connection_type)

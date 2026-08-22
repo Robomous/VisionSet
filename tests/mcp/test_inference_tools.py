@@ -98,6 +98,13 @@ def test_create_records_the_driver_an_agent_names(root: Path) -> None:
     assert document["provider_id"] == "sam"
 
 
+def test_create_and_update_name_the_credential_variable(root: Path) -> None:
+    made = payload(call("create_inference_connection", **HTTP, credential_env="ACME_TOKEN"))
+    assert made["credential_env"] == "ACME_TOKEN"
+    edited = payload(call("update_inference_connection", connection=made["id"], credential_env=""))
+    assert edited["credential_env"] is None
+
+
 def test_create_answers_the_connection_document(root: Path) -> None:
     document = payload(call("create_inference_connection", **LOCAL))
     assert document["name"] == "local-gd"

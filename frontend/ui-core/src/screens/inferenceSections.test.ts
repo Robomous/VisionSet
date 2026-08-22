@@ -35,6 +35,7 @@ function connection(
     precision: "fp32",
     endpoint_url: null,
     provider_id: "sam",
+    credential_env: null,
     setup_state: "ready",
     allowed_actions: [],
     capabilities,
