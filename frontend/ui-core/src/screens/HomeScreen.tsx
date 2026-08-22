@@ -60,6 +60,8 @@ import {
 } from "lucide-react";
 import { useState, type JSX, type ReactNode } from "react";
 
+import { asApiError } from "../data/errors";
+import { refusalProse } from "../data/refusals";
 import { formatCount, formatPercent, formatWhen } from "../lib/format";
 import { ErrorState } from "../patterns/AsyncStates";
 import { StatCard } from "../patterns/DataDisplay";
@@ -103,7 +105,13 @@ export function HomeScreen({
 
   if (home.isPending) return <HomeSkeleton />;
   if (home.isError) {
-    return <ErrorState message={home.error.message} onRetry={() => void home.refetch()} />;
+    return (
+      <ErrorState
+        message={refusalProse(home.error)}
+        code={asApiError(home.error).code}
+        onRetry={() => void home.refetch()}
+      />
+    );
   }
 
   const page = home.data;

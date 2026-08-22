@@ -410,6 +410,36 @@ describe("export, and the third gate word", () => {
             body: {
               code: "LOSSY_EXPORT_NOT_CONSENTED",
               message: "yolo cannot express polygon annotations.",
+              detail: {
+                compatibility: {
+                  release_id: RELEASE,
+                  format: "yolo",
+                  compatible: false,
+                  format_is_lossy: true,
+                  excluded_annotations: 0,
+                  excluded_assets: 0,
+                  degraded_annotations: 12,
+                  degraded_assets: 3,
+                  classes: [
+                    {
+                      label_class: "car",
+                      geometry: "bbox",
+                      status: "supported",
+                      annotations: 40,
+                      assets: 9,
+                      reason: null,
+                    },
+                    {
+                      label_class: "lane",
+                      geometry: "polygon",
+                      status: "degraded",
+                      annotations: 12,
+                      assets: 3,
+                      reason: "yolo writes a polygon as its bounding box; the shape is lost",
+                    },
+                  ],
+                },
+              },
             },
           };
     });
@@ -426,6 +456,12 @@ describe("export, and the third gate word", () => {
     const consent = await screen.findByTestId("lossy-consent");
     expect(consent.textContent).toContain("cannot express every shape");
     expect(consent.textContent).not.toContain("LOSSY_EXPORT_NOT_CONSENTED");
+    // What is being consented to, from the refusal's own report: the classes the
+    // format loses, each with how much, and not the ones it keeps.
+    const lost = within(consent).getByTestId("lossy-classes");
+    expect(lost.textContent).toContain("lane: 12 annotations across 3 assets.");
+    expect(lost.textContent).toContain("the shape is lost");
+    expect(lost.textContent).not.toContain("car");
     // Shut until the box is ticked — the gate is the consent, not the click.
     expect(screen.getByTestId("export-submit")).toHaveProperty("disabled", true);
 

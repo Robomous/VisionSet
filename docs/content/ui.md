@@ -238,7 +238,10 @@ three questions.
 There is no pre-export validation route, so consent here is attempt-shaped: attempt → read
 `LOSSY_EXPORT_NOT_CONSENTED` off the 409 → ask → retry with the flag. The schema editor does
 not have this shape - it previews first - and the difference is exactly the routed preview
-that export lacks.
+that export lacks. The 409 carries the compatibility report as `detail.compatibility`, and the
+consent banner lists from it the classes the format drops or degrades - each with its
+annotation and asset counts and the format's own reason - so the question names what is lost
+rather than only that something is.
 `FormatOut.lossy` makes the question predictable in advance, because lossiness is
 declared by the **format** - a bbox-only format loses a polygon whether or not
 today's dataset holds one.

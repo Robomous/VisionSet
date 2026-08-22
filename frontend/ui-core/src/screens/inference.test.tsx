@@ -597,8 +597,27 @@ it("renders a refused download as prose carrying the install command", async () 
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("download-weights"));
   const shown = await screen.findByTestId("download-error");
-  expect(shown.textContent).toContain("LOCAL_INFERENCE_UNAVAILABLE");
+  // Withheld from the vocabulary on purpose, so the kernel's sentence is the
+  // prose — and the code is not rendered beside it.
   expect(shown.textContent).toContain('pip install "visionset[local-inference]"');
+  expect(shown.textContent).not.toContain("LOCAL_INFERENCE_UNAVAILABLE");
+});
+
+it("says a mapped download refusal in the vocabulary's sentence, with no code beside it", async () => {
+  listing([connection()]);
+  on("POST", /\/download$/, {
+    status: 409,
+    body: {
+      code: "INFERENCE_CONNECTION_NOT_DOWNLOADABLE",
+      message: "inference connection 11111111-1111-4111-8111-111111111111 is http; nothing to download",
+    },
+  });
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("download-weights"));
+  const shown = await screen.findByTestId("download-error");
+  expect(shown.textContent).toContain("runs elsewhere, so there are no weights to fetch");
+  expect(shown.textContent).not.toContain("INFERENCE_CONNECTION_NOT_DOWNLOADABLE");
+  expect(shown.textContent).not.toContain("11111111-1111-4111-8111-111111111111");
 });
 
 it("shows a transfer nobody on this page started", async () => {
@@ -1453,6 +1472,25 @@ it("sends the integrity check to its own route, not to the download", async () =
   // Two actions, two requests: a check that fell through to the download route
   // would look identical on screen and prove nothing about the files.
   expect(sent.some((one) => one.url.endsWith("/download"))).toBe(false);
+});
+
+it("says a refused integrity check in the vocabulary's sentence, with no code beside it", async () => {
+  listing([connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);
+  on("POST", /\/check-integrity$/, {
+    status: 409,
+    body: {
+      code: "INFERENCE_CONNECTION_NOT_SET_UP",
+      message: "inference connection 11111111-1111-4111-8111-111111111111 has no weights to check",
+    },
+  });
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-check-integrity"));
+
+  const shown = await screen.findByTestId("integrity-error");
+  expect(shown.textContent).toContain("not set up yet");
+  expect(shown.textContent).not.toContain("INFERENCE_CONNECTION_NOT_SET_UP");
+  expect(shown.textContent).not.toContain("11111111-1111-4111-8111-111111111111");
 });
 
 it("does not offer the integrity check when the wire withholds it", async () => {

@@ -72,11 +72,14 @@
  *   de-duplicated against the sentence;
  * - a bare `Alert` does not carry it at all;
  * - a `FieldError` is a bare `<p role="alert">` with no code slot at all —
- *   the shape most of this file's consumers render;
- * - a visible `Badge` beside the raw message is the fourth shape, not yet
- *   settled — two `InferenceScreen` sites still do it. Each renders a
- *   union: a real wire refusal from the mutation, or a settled background
- *   job's error string, and it is the job half no code-keyed map can serve.
+ *   the shape most of this file's consumers render.
+ *
+ * A `Badge` is not on that list because it is not a refusal surface: a
+ * code in a badge beside the sentence is the code rendered, not kept, and a
+ * `FieldError` that once carried one now carries the prose alone. A settled
+ * background job's error string arrives with no code at all, so a screen
+ * showing one renders the string as it is — there is no key for this map to
+ * look up, and inventing one client-side is a fiction a bug report would quote.
  *
  * A code as an `Alert` heading is the shape this map exists to end.
  */
@@ -254,4 +257,27 @@ export function describeClassCount(blocker: ClassCount): string {
     `${blocker.annotations === 1 ? "annotation" : "annotations"} across ` +
     `${formatCount(blocker.assets)} ${blocker.assets === 1 ? "asset" : "assets"}.`
   );
+}
+
+/** One class judged against one format. A `ClassCount` with a verdict and its reason. */
+export type ClassCompatibility = components["schemas"]["ClassCompatibilityOut"];
+
+/**
+ * The classes a format would drop or degrade, read off a
+ * `LOSSY_EXPORT_NOT_CONSENTED` refusal's `detail.compatibility`, or null when
+ * the refusal carries no report.
+ *
+ * Supported classes are left out: the consent is about what is lost, and a
+ * list that also names what survives makes a person read it to find out.
+ */
+export function lostClasses(detail: Record<string, unknown> | null): readonly ClassCompatibility[] | null {
+  const compatibility = detail?.["compatibility"];
+  if (typeof compatibility !== "object" || compatibility === null) return null;
+  const classes = (compatibility as Record<string, unknown>)["classes"];
+  if (!Array.isArray(classes) || !classes.every(isClassCompatibility)) return null;
+  return classes.filter((one) => one.status !== "supported");
+}
+
+function isClassCompatibility(value: unknown): value is ClassCompatibility {
+  return isClassCount(value) && typeof (value as Record<string, unknown>)["status"] === "string";
 }

@@ -60,7 +60,7 @@ import {
   DialogTitle,
 } from "../primitives/Dialog";
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
-import { classBlockers, describeClassCount, refusalProse } from "../data/refusals";
+import { classBlockers, describeClassCount, lostClasses, refusalProse } from "../data/refusals";
 import {
   Select,
   SelectContent,
@@ -840,6 +840,7 @@ function ExportDialog({
   // before export was queued.
   const failure = exportRelease.isError ? asApiError(exportRelease.error) : null;
   const needsConsent = failure?.code === LOSSY;
+  const lost = failure !== null && needsConsent ? lostClasses(failure.detail) : null;
   const running = exportRelease.isPending || (job.data !== undefined && !isSettled(job.data));
   const stopped =
     job.data !== undefined && job.data.state !== "succeeded" ? job.data : null;
@@ -967,6 +968,18 @@ function ExportDialog({
               data-testid="lossy-consent"
             >
               <p>{refusalProse(failure)}</p>
+              {lost !== null && lost.length > 0 && (
+                <ul className="mt-2 list-disc pl-5 text-sm" data-testid="lossy-classes">
+                  {lost.map((one) => (
+                    <li key={one.label_class}>
+                      {describeClassCount(one)}
+                      {one.reason != null && (
+                        <span className="text-muted-foreground"> {one.reason}.</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
               <label className="mt-2 flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
