@@ -1,14 +1,16 @@
 /**
- * Where you are inside a project, and the project's own identity beside it.
+ * Where you are inside a project — the sections, the one filled control, and the
+ * overflow. Nothing else: the project's identity (its name, its active version,
+ * the way out) is an eyebrow above the content, drawn by `ProjectFrame`, so the
+ * column is only as wide as its widest control.
  *
  * ## One component, two layouts
  *
  * At `lg` and above the sections are a **column** between the rail and the
- * content: a real `<nav>` with one link per section, the project's name and
- * active version above them, the one filled action of the project shell, and
- * the overflow below. Below `lg` the same data is a **strip** — an identity row
- * and a horizontal tab bar above the content, which is the shape the project
- * view had before the column. The breakpoint is not decided here: `ProjectShell`
+ * content: a real `<nav>` with the filled control on top, one link per section,
+ * and the overflow at the bottom. Below `lg` the same data is a **strip** — the
+ * tab list on the left, the filled control and the overflow on the right, the
+ * content in the panel beneath. The breakpoint is not decided here: `ProjectShell`
  * picks the layout, and this component draws whichever it is handed, so there is
  * one place the items, the icons and the labels are spelled.
  *
@@ -44,7 +46,6 @@
  */
 
 import {
-  IconArrowLeft,
   IconChevronDown,
   IconDatabase,
   IconDots,
@@ -58,7 +59,6 @@ import {
 import type { ComponentType, JSX, MouseEvent, ReactNode } from "react";
 
 import { cn } from "../lib/cn";
-import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import {
   DropdownMenu,
@@ -109,12 +109,6 @@ export interface AnnotateTarget {
 
 export interface ProjectNavProps {
   readonly layout: "column" | "strip";
-  /** The project's name. Wraps; never truncates. */
-  readonly name: string;
-  /** The project's description. Absent or empty renders nothing — not "No description." */
-  readonly description?: string | null;
-  /** The active schema version. `null` or absent renders no chip at all. */
-  readonly activeVersion?: number | null;
   /** The sections on offer, in display order — a host with no batch route omits `batches`. */
   readonly sections: readonly ProjectSection[];
   /** The open section, or the one the page belongs to; `null` lights nothing. */
@@ -122,9 +116,6 @@ export interface ProjectNavProps {
   /** The URL of a section, spelled by the host. Absent renders the items as buttons. */
   readonly hrefFor?: (section: ProjectSection) => string;
   readonly onNavigate: (section: ProjectSection) => void;
-  /** Up to the project list. Both absent renders no way out rather than a dead one. */
-  readonly backHref?: string;
-  readonly onBack?: () => void;
   /** The batches open for annotation, newest first. Absent or empty: no Annotate. */
   readonly annotate?: {
     readonly targets: readonly AnnotateTarget[];
@@ -149,13 +140,10 @@ function Column(props: ProjectNavProps): JSX.Element {
     <nav
       aria-label="Project"
       data-testid="project-nav"
-      className="flex w-project-nav shrink-0 flex-col gap-1 border-r bg-background px-3 py-4"
+      className="flex w-project-nav shrink-0 flex-col gap-1 border-r bg-background px-2 py-3"
     >
-      <Identity {...props} />
-      <div className="mt-3 flex flex-col gap-2">
-        <Cta {...props} />
-      </div>
-      <ul className="mt-3 flex flex-col gap-1">
+      <Cta {...props} />
+      <ul className="mt-2 flex flex-col gap-1">
         {sections.map((section) => {
           const { label, icon: Icon } = SECTION_LABELS[section];
           const current = section === active;
@@ -193,33 +181,26 @@ function Column(props: ProjectNavProps): JSX.Element {
 }
 
 /**
- * The strip: the same identity and the same filled control on one row, then the
- * sections as a tab bar over the content. A Radix `Tabs` rather than a second
- * list of links, so the panel beneath is labelled by its tab and the gap between
- * the two is the primitive's own.
+ * The strip: the sections as a tab bar on the left, the filled control and the
+ * overflow on the right, the content in the panel beneath. A Radix `Tabs` rather
+ * than a second list of links, so the panel is labelled by its tab and the gap
+ * between the two is the primitive's own.
  */
 function Strip(props: ProjectNavProps): JSX.Element {
   const { sections, active, onNavigate, children } = props;
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <Identity {...props} />
-        <div className="flex items-center gap-2">
-          <Cta {...props} />
-          <Overflow {...props} />
-        </div>
-      </div>
-      <Tabs
-        // A page that belongs to no section selects no tab; Radix takes the
-        // empty string as "none of these" and the panel still holds the content.
-        value={active ?? ""}
-        // Radix only ever emits a value this file rendered, so the guard is
-        // unreachable; it keeps the callback's type honest without a cast.
-        onValueChange={(next) => {
-          if (isProjectSection(next)) onNavigate(next);
-        }}
-        data-testid="project-tabs"
-      >
+    <Tabs
+      // A page that belongs to no section selects no tab; Radix takes the
+      // empty string as "none of these" and the panel still holds the content.
+      value={active ?? ""}
+      // Radix only ever emits a value this file rendered, so the guard is
+      // unreachable; it keeps the callback's type honest without a cast.
+      onValueChange={(next) => {
+        if (isProjectSection(next)) onNavigate(next);
+      }}
+      data-testid="project-tabs"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <TabsList variant="line">
           {sections.map((section) => {
             const { label, icon: Icon } = SECTION_LABELS[section];
@@ -231,66 +212,13 @@ function Strip(props: ProjectNavProps): JSX.Element {
             );
           })}
         </TabsList>
-        <TabsContent value={active ?? ""}>{children}</TabsContent>
-      </Tabs>
-    </div>
-  );
-}
-
-function Identity({ name, description, activeVersion, backHref, onBack, layout }: ProjectNavProps): JSX.Element {
-  const back =
-    backHref === undefined && onBack === undefined ? null : (
-      <BackLink href={backHref} onNavigate={onBack} />
-    );
-  return (
-    <div className={cn("flex min-w-0 flex-col gap-1.5", layout === "column" && "px-1")}>
-      {back}
-      {name !== "" && (
-        <h2 className="text-base font-semibold break-words" data-testid="project-title">
-          {name}
-        </h2>
-      )}
-      {description !== undefined && description !== null && description !== "" && (
-        <p className="text-xs text-muted-foreground" data-testid="project-description">
-          {description}
-        </p>
-      )}
-      {activeVersion !== null && activeVersion !== undefined && (
-        <Badge variant="outline" data-testid="chip-version" className="w-fit">
-          v{activeVersion} active
-        </Badge>
-      )}
-    </div>
-  );
-}
-
-/**
- * `← Projects`, the shortest chain in the product. A project's parent is the list
- * and nothing sits above it, so the one-crumb chain is drawn as the way out
- * itself — the arrow that the breadcrumb keeps only below `lg` is right at every
- * width here, because inside a navigation column a bare word reads as a label.
- */
-function BackLink({ href, onNavigate }: { readonly href?: string; readonly onNavigate?: () => void }): JSX.Element {
-  const className =
-    "-ml-1 flex w-fit items-center gap-1 rounded-md px-1 py-0.5 text-xs text-muted-foreground " +
-    "hover:bg-muted hover:text-foreground focus-visible:bg-muted";
-  const body = (
-    <>
-      <IconArrowLeft className="size-3.5 shrink-0" aria-hidden="true" />
-      Projects
-    </>
-  );
-  if (href === undefined) {
-    return (
-      <button type="button" data-testid="project-back" className={className} onClick={onNavigate}>
-        {body}
-      </button>
-    );
-  }
-  return (
-    <a data-testid="project-back" href={href} className={className} onClick={(event) => routed(event, onNavigate)}>
-      {body}
-    </a>
+        <div className="flex items-center gap-2">
+          <Cta {...props} />
+          <Overflow {...props} />
+        </div>
+      </div>
+      <TabsContent value={active ?? ""}>{children}</TabsContent>
+    </Tabs>
   );
 }
 

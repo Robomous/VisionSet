@@ -215,9 +215,9 @@ const SUBVIEWS = [
     name: "the project",
     url: `/projects/${PROJECT}/overview`,
     ready: "project-screen",
-    // The project's one ancestor is the list, and that single level is the
-    // navigation column's own `← Projects` rather than a breadcrumb.
-    control: "project-back",
+    // The project's one ancestor is the list: the eyebrow's one crumb, beside
+    // the project's name.
+    control: "breadcrumb-parent",
     parent: /\/projects$/,
   },
   {
@@ -318,7 +318,7 @@ test("the project's own way out names the list, not a project", async ({ page })
   // One level up from a project is `Projects`, and it is the one sub-view whose
   // parent has a fixed name rather than one that has to load.
   await openCold(page, `/projects/${PROJECT}/overview`);
-  await expect(page.getByTestId("project-back")).toContainText("Projects");
+  await expect(page.getByTestId("breadcrumb-parent")).toContainText("Projects");
 });
 
 /**

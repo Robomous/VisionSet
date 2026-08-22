@@ -90,6 +90,7 @@ import { groupByProvenance } from "./schemaHistory";
 import {
   useActiveSchema,
   useBatches,
+  useProject,
   useProjectReadiness,
   useProjectStats,
   saveSchemaDraftRequest,
@@ -151,11 +152,9 @@ export interface ProjectScreenProps {
    * The rail's Projects link reaches the same URL, and that is not a reason to
    * leave this out: the rail is where you go to *start* somewhere, and a person
    * inside a project should not have to notice that one of two top-level
-   * destinations happens to be their parent. `backHref` is the same destination
-   * as a URL, so the control is a real link.
+   * destinations happens to be their parent.
    */
   readonly onBack?: () => void;
-  readonly backHref?: string;
   /** Route changes, supplied by the app. See `ProjectsScreen`'s note. */
   readonly onIngest?: () => void;
   readonly onOpenBatch?: (batchId: string) => void;
@@ -179,7 +178,6 @@ export interface ProjectScreenProps {
 export function ProjectScreen({
   projectId,
   onBack,
-  backHref,
   onIngest,
   onOpenBatch,
   onDeleted,
@@ -187,10 +185,11 @@ export function ProjectScreen({
   onTabChange,
   hrefFor,
 }: ProjectScreenProps): JSX.Element {
-  // Already read by the frame's navigation; naming them here too costs nothing
-  // (one query key, one request) and is what lets the Overview colour its bars
-  // from the schema, head itself with the counts, and say whether Annotate holds
-  // the navigation's slot.
+  // Already read by the frame; naming them here too costs nothing (one query
+  // key, one request) and is what lets the Overview colour its bars from the
+  // schema, head itself with the counts and the description, and say whether
+  // Annotate holds the navigation's slot.
+  const project = useProject(projectId);
   const schema = useActiveSchema(projectId);
   const stats = useProjectStats(projectId);
   const batches = useBatches(projectId);
@@ -464,8 +463,8 @@ export function ProjectScreen({
       sections={available}
       onNavigate={go}
       {...(hrefFor === undefined ? {} : { hrefFor })}
-      {...(backHref === undefined ? {} : { backHref })}
       {...(onBack === undefined ? {} : { onBack })}
+      chain="frame"
       cta={{
         ...(onOpenBatch === undefined ? {} : { onOpenBatch }),
         ...(onIngest === undefined ? {} : { onIngest }),
@@ -477,6 +476,7 @@ export function ProjectScreen({
         current={current}
         projectId={projectId}
         overviewMeta={overviewMeta(stats.data)}
+        description={project.data?.description ?? null}
         ingestInHeader={ingestInHeader}
         classes={schema.data?.classes}
         go={go}
@@ -524,6 +524,7 @@ function Section({
   current,
   projectId,
   overviewMeta: meta,
+  description,
   ingestInHeader,
   classes,
   go,
@@ -534,6 +535,8 @@ function Section({
   readonly current: ProjectTab;
   readonly projectId: string;
   readonly overviewMeta: string | undefined;
+  /** Shown on Overview only, under its meta line — the project's face is where a description belongs. */
+  readonly description: string | null;
   readonly ingestInHeader: (() => void) | undefined;
   readonly classes: readonly LabelClassBody[] | undefined;
   readonly go: (tab: ProjectTab) => void;
@@ -558,6 +561,12 @@ function Section({
       return (
         <>
           <SectionHeader title="Overview" meta={meta} actions={headerIngest} />
+          {/* Nothing at all when there is no description — not a placeholder. */}
+          {description !== null && description !== "" && (
+            <p className="-mt-2 text-sm text-muted-foreground" data-testid="project-description">
+              {description}
+            </p>
+          )}
           {/* The declared classes travel down so a distribution bar shows the
               colour the schema authored rather than only the derived hue. The
               query is shared with the Schema section, so this costs no request. */}

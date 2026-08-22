@@ -22,17 +22,25 @@ export type ProjectNavData = Omit<ProjectNavProps, "layout" | "children">;
 
 export interface ProjectShellProps {
   readonly nav: ProjectNavData;
+  /**
+   * The project's identity — where you are, above the content and above the
+   * strip — drawn by the frame, so the navigation stays as wide as its controls.
+   */
+  readonly eyebrow?: ReactNode;
   readonly children: ReactNode;
 }
 
-export function ProjectShell({ nav, children }: ProjectShellProps): JSX.Element {
+export function ProjectShell({ nav, eyebrow, children }: ProjectShellProps): JSX.Element {
   const wide = useViewportAtLeast(PROJECT_NAV_MIN_VIEWPORT_PX);
   if (!wide) {
     return (
       <PaddedContent>
-        <ProjectNav layout="strip" {...nav}>
-          {children}
-        </ProjectNav>
+        <div className="flex flex-col gap-6">
+          {eyebrow}
+          <ProjectNav layout="strip" {...nav}>
+            {children}
+          </ProjectNav>
+        </div>
       </PaddedContent>
     );
   }
@@ -40,7 +48,12 @@ export function ProjectShell({ nav, children }: ProjectShellProps): JSX.Element 
     <div className="flex min-h-full flex-1" data-testid="project-shell">
       <ProjectNav layout="column" {...nav} />
       <div className="min-w-0 flex-1">
-        <PaddedContent>{children}</PaddedContent>
+        <PaddedContent>
+          <div className="flex flex-col gap-6">
+            {eyebrow}
+            {children}
+          </div>
+        </PaddedContent>
       </div>
     </div>
   );

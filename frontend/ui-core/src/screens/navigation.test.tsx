@@ -213,11 +213,17 @@ describe("the control itself", () => {
  * The dataset is deliberately absent: it is a project **section** now, so its way
  * out is the project's navigation and the crumbs above it belong to the project
  * page it renders inside. Its `onBack` outlived that move with nobody passing it
- * and is gone. The project itself is absent too — its one ancestor is the list,
- * and that single level is drawn as the navigation column's own `← Projects`
- * rather than as a chain; see the describe below.
+ * and is gone.
  */
 const SUBVIEWS = [
+  {
+    name: "the project",
+    // One level, drawn as the eyebrow's crumb beside the project's name.
+    chain: ["Projects"],
+    sentinel: "project-screen",
+    render: (nav?: () => void) =>
+      <ProjectScreen projectId={PROJECT} {...(nav === undefined ? {} : { onBack: nav })} />,
+  },
   {
     name: "ingest",
     chain: ["Projects", "road-signs"],
@@ -282,31 +288,6 @@ describe.each(SUBVIEWS)("$name", ({ chain, sentinel, render: renderScreen }) => 
     // however the screen behaved afterwards.
     await screen.findByTestId(sentinel);
     expect(screen.queryByTestId("breadcrumb")).toBeNull();
-  });
-});
-
-/**
- * The project's way out is the shortest chain in the product, and it lives in
- * the project's navigation: `← Projects`, a real control, or nothing at all
- * when the host has nowhere to send anybody.
- */
-describe("the project", () => {
-  it("names the list as its way out, and calls back from it", async () => {
-    const onBack = vi.fn();
-    render(mount(<ProjectScreen projectId={PROJECT} onBack={onBack} />));
-
-    const back = await screen.findByTestId("project-back");
-    expect(back.textContent).toBe("Projects");
-    await userEvent.click(screen.getByTestId("project-back"));
-    expect(onBack).toHaveBeenCalledTimes(1);
-    // One level, so no chain: a breadcrumb of one crumb would say the same thing twice.
-    expect(screen.queryByTestId("breadcrumb")).toBeNull();
-  });
-
-  it("draws no way out when the host has nowhere to send anybody", async () => {
-    render(mount(<ProjectScreen projectId={PROJECT} />));
-    await screen.findByTestId("project-screen");
-    expect(screen.queryByTestId("project-back")).toBeNull();
   });
 });
 

@@ -78,7 +78,7 @@ Rules:
 
   | route | chain |
   | --- | --- |
-  | `/projects/:id/<section>` | `Projects` — one level, drawn as the navigation column's `← Projects` rather than as a breadcrumb |
+  | `/projects/:id/<section>` | `Projects` — one level, the eyebrow's crumb beside the project's name above the section's `h1` |
   | `/projects/:id/ingest` | `Projects / <project>` |
   | `/projects/:id/batches/:batchId` | `Projects / <project> / Batches` |
 

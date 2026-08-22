@@ -60,7 +60,7 @@ without knowing the URL scheme.
 
 - **The sections are a navigation column, not a tab bar.** At `lg` and above, every route
   under `/projects/:id/` — the four sections (Overview, Schema, Batches, Dataset), the
-  ingest flow and the batch gallery — renders inside a `220px` column between the rail and
+  ingest flow and the batch gallery — renders inside a `160px` column between the rail and
   the content (`patterns/ProjectNav.tsx`, laid out by `ProjectShell`, composed by
   `screens/ProjectFrame.tsx`). It renders nowhere else: not on the project list, Home,
   Inference, or the annotator — the one page of a project that stands outside its frame,
@@ -68,20 +68,24 @@ without knowing the URL scheme.
   (the gallery lights Batches; an ingest, which is the project's rather than any one
   section's, lights nothing) and keeps its own breadcrumb chain, which is still its
   statement of ancestry.
-- **The column carries the project's identity and, on a section, its one filled control.**
-  Top to bottom: `← Projects`; the project's name (an `h2` — the page's `h1` is the open
-  section's title) and its description if there is one; the active-version chip, omitted
-  when there is no schema; **Annotate** as the one `primary` control of the project shell,
-  or Ingest in its place when no batch is open for annotation; one item per section, a
-  real link with `aria-current="page"` on the open one; the overflow (rename, delete) at
-  the bottom. Every section's own header uses `secondary` actions — Ingest beside Annotate
-  on Overview and Batches, Publish on Dataset, Save version on Schema. On a sub-view (the
+- **The column is only as wide as its controls, and carries navigation alone.** Top to
+  bottom, on a section: **Annotate** as the one `primary` control of the project shell, or
+  Ingest in its place when no batch is open for annotation; one item per section, a real
+  link with `aria-current="page"` on the open one; the overflow (rename, delete) at the
+  bottom. Every section's own header uses `secondary` actions — Ingest beside Annotate on
+  Overview and Batches, Publish on Dataset, Save version on Schema. On a sub-view (the
   gallery, the ingest flow) the column draws no filled control at all: that page owns its
   dominant action, and a second one beside it would be two answers to "what now?".
-- **Below `lg` the same component collapses to the tab strip.** The identity row sits above
-  a horizontal tab bar over the content; the switch is a `matchMedia` answer, so one
-  navigation is in the DOM at a time and nothing is read twice. Same items, same data, two
-  layouts.
+- **The project's identity is an eyebrow above the content, not part of the column.** One
+  line above a section's `h1`, at every width: the `Projects` crumb (the breadcrumb idiom —
+  a section's one ancestor is the list), the project's name in plain ink (a section *is* the
+  project, so the name is not a crumb), and the active-version chip, omitted when there is
+  no schema. The description shows on Overview only, under its meta line. A sub-view keeps
+  its own breadcrumb chain and gets no eyebrow.
+- **Below `lg` the same component collapses to the tab strip.** The eyebrow stays above; the
+  tab list sits on the left with the filled control and the overflow on its right, the
+  content in the panel beneath; the switch is a `matchMedia` answer, so one navigation is in
+  the DOM at a time and nothing is read twice. Same items, same data, two layouts.
 - **The column's surface is `background` with a hairline**, not the rail's `sidebar-*`
   tokens: it belongs to one project and reads as part of the page, where the rail belongs
   to the workspace.

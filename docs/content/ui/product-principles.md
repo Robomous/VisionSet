@@ -198,14 +198,15 @@ pointer, and pressing it goes to the screen that owns the thing.
 
 The project view is the face of a project, and principle 1 is the rule it exists to keep.
 
-**The project's identity lives in its navigation** ([navigation.md](navigation.md), *Inside
-a project*), top to bottom: the way out (`← Projects`); the project name; the description
-**if there is one** — if not, render *nothing*, because "No description." spends a line
-telling somebody about a field rather than about their project; the active-version chip.
-**A chip with no data is omitted, never rendered as a placeholder** — inventing a field to
-fill a chip, or rendering `Unknown`, is the "No description." mistake with a border around
-it. How much data the project holds, and when it last arrived, is the Overview header's
-one line (`11 images · ingested Aug 7, 2026`) rather than a chip.
+**The project's identity is one eyebrow line above each section's title**
+([navigation.md](navigation.md), *Inside a project*): the way out (`Projects`), the project
+name, the active-version chip. **A chip with no data is omitted, never rendered as a
+placeholder** — inventing a field to fill a chip, or rendering `Unknown`, is the "No
+description." mistake with a border around it. The description shows on Overview only,
+under its meta line, **if there is one** — if not, render *nothing*, because "No
+description." spends a line telling somebody about a field rather than about their
+project. How much data the project holds, and when it last arrived, is the Overview
+header's one line (`11 images · ingested Aug 7, 2026`) rather than a chip.
 
 The navigation carries the one dominant action and the overflow menu (`⋯`) for the rest;
 each section's own header carries that section's actions as `secondary`, right-aligned.
@@ -282,7 +283,8 @@ here.
 - **Page widths**: lists/dashboards/detail `max-w-[96rem]` (`ui-core`'s `PaddedContent`,
   the one declaration the padded pane and the project shell share); forms/settings
   `max-w-3xl`; centered, `px-4 md:px-6 py-6`. Inside a project the content keeps that
-  column beside a `220px` navigation column (`--spacing-project-nav`) at `lg` and above.
+  column beside a `160px` navigation column (`--spacing-project-nav`) at `lg` and above —
+  as wide as its widest control (`Annotate ▾`), since the identity is not in it.
 - **Dialog widths**: the primitive's default `max-w-lg` for a confirmation or a form of
   stacked single fields; `max-w-2xl` for a form whose fields sit side by side (its grid
   splits on a *viewport* breakpoint, so the box must be wide enough for a split it cannot

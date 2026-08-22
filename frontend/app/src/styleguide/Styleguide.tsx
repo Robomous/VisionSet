@@ -20,6 +20,7 @@
 
 import {
   Badge,
+  Breadcrumb,
   Button,
   Card,
   CardContent,
@@ -401,20 +402,16 @@ export function Styleguide(): JSX.Element {
 
         <Section
           title="Project navigation"
-          description="Inside a project: the way out, the identity, the one filled control, one link per section with the open one marked, and the overflow. Column at lg and above; the same data as a strip below."
+          description="Inside a project: the one filled control, one link per section with the open one marked, and the overflow — as wide as its widest control. Column at lg and above; the same data as a strip below. The project's identity is the eyebrow above the content (see Section header)."
         >
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-            <div className="flex h-[28rem] overflow-hidden rounded-lg border border-border" data-testid="sg-project-nav-column">
+            <div className="flex h-[22rem] overflow-hidden rounded-lg border border-border" data-testid="sg-project-nav-column">
               <ProjectNav
                 layout="column"
-                name="road-signs"
-                description="Highway survey, spring run."
-                activeVersion={4}
                 sections={PROJECT_SECTIONS}
                 active="overview"
                 hrefFor={(section) => `#${section}`}
                 onNavigate={() => undefined}
-                backHref="#projects"
                 annotate={{
                   targets: [
                     { id: "b2", name: "drive-02", remaining: 7, schemaVersion: 4 },
@@ -431,12 +428,9 @@ export function Styleguide(): JSX.Element {
             <div className="min-w-0 flex-1 rounded-lg border border-border p-4" data-testid="sg-project-nav-strip">
               <ProjectNav
                 layout="strip"
-                name="road-signs"
-                activeVersion={4}
                 sections={PROJECT_SECTIONS}
                 active="batches"
                 onNavigate={() => undefined}
-                backHref="#projects"
                 onIngest={() => undefined}
                 onRename={() => undefined}
                 onDelete={() => undefined}
@@ -449,8 +443,14 @@ export function Styleguide(): JSX.Element {
 
         <Section
           title="Section header"
-          description="A section's page h1, one line of meta under it, and its own secondary actions on the right. The filled control lives in the navigation, never here."
+          description="The project's eyebrow — the way out, the name, the active version — then a section's page h1, one line of meta under it, and its own secondary actions on the right. The filled control lives in the navigation, never here."
         >
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <Breadcrumb items={[{ label: "Projects", onNavigate: () => undefined }]} />
+            <span aria-hidden="true">·</span>
+            <span className="font-medium text-foreground">road-signs</span>
+            <Badge variant="outline">v4 active</Badge>
+          </div>
           <SectionHeader
             as="h2"
             title="Overview"

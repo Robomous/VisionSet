@@ -203,13 +203,17 @@ for (const section of SECTIONS) {
     // The tab strip is not merely hidden at this width; it is not rendered.
     await expect(page.getByTestId("project-tabs")).toHaveCount(0);
 
-    // The identity travels with the navigation: the way out, the name, the chip,
-    // and Annotate as the one filled control — the project has a batch open.
-    await expect(nav.getByTestId("project-back")).toContainText("Projects");
-    await expect(nav.getByTestId("project-title")).toHaveText("road-signs");
-    await expect(nav.getByTestId("chip-version")).toHaveText("v4 active");
+    // The navigation is only as wide as its controls: Annotate as the one filled
+    // control — the project has a batch open — and the overflow. The identity is
+    // the eyebrow above the content: the way out, the name, the chip.
     await expect(nav.getByTestId("go-annotate")).toBeVisible();
     await expect(nav.getByTestId("project-menu")).toBeVisible();
+    const eyebrow = page.getByTestId("project-identity");
+    await expect(eyebrow.getByTestId("breadcrumb-parent")).toContainText("Projects");
+    await expect(eyebrow.getByTestId("project-title")).toHaveText("road-signs");
+    await expect(eyebrow.getByTestId("chip-version")).toHaveText("v4 active");
+    // 160px, the declared width.
+    expect((await nav.boundingBox())?.width).toBe(160);
 
     // The section's own header, with its secondary actions. Measured rather than
     // class-asserted: the claim is about what is painted.
@@ -231,7 +235,9 @@ test("the column frames the ingest flow and the batch gallery too, without a fil
   await expect(nav).toBeVisible();
   // A batch belongs to Batches, so Batches is lit.
   await expect(page.getByTestId("nav-batches")).toHaveAttribute("aria-current", "page");
-  await expect(nav.getByTestId("project-title")).toHaveText("road-signs");
+  // The gallery brings its own chain, so the frame draws no eyebrow above it.
+  await expect(page.getByTestId("project-identity")).toHaveCount(0);
+  await expect(page.getByTestId("breadcrumb")).toContainText("road-signs");
   // The gallery owns its dominant action; the column offers none beside it.
   await expect(nav.getByTestId("go-annotate")).toHaveCount(0);
   await expect(nav.getByTestId("go-ingest")).toHaveCount(0);
@@ -272,10 +278,12 @@ test("below lg the tab strip renders and the column does not, with nothing lost"
   await expect(page.getByTestId("project-tabs")).toBeVisible();
   await expect(page.getByTestId("nav-batches")).toHaveAttribute("aria-selected", "true");
 
-  // The identity row above the strip: what the column showed, in a row.
-  await expect(page.getByTestId("project-back")).toContainText("Projects");
-  await expect(page.getByTestId("project-title")).toHaveText("road-signs");
-  await expect(page.getByTestId("chip-version")).toHaveText("v4 active");
+  // The eyebrow above the strip, and the filled control and overflow beside the
+  // tabs: everything the column layout offers, in a row.
+  const eyebrow = page.getByTestId("project-identity");
+  await expect(eyebrow.getByTestId("breadcrumb-parent")).toContainText("Projects");
+  await expect(eyebrow.getByTestId("project-title")).toHaveText("road-signs");
+  await expect(eyebrow.getByTestId("chip-version")).toHaveText("v4 active");
   await expect(page.getByTestId("go-annotate")).toBeVisible();
   await expect(page.getByTestId("project-menu")).toBeVisible();
   expect(await filledControls(page)).toBe(1);

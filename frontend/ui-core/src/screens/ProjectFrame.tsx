@@ -22,8 +22,10 @@ import { refusalProse } from "../data/refusals";
 import { asApiError } from "../data/errors";
 import { formatCount } from "../lib/format";
 import { ErrorState } from "../patterns/AsyncStates";
+import { Breadcrumb } from "../patterns/Breadcrumb";
 import type { AnnotateTarget, ProjectSection } from "../patterns/ProjectNav";
 import { ProjectShell, type ProjectNavData } from "../patterns/ProjectShell";
+import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import {
   Dialog,
@@ -52,8 +54,15 @@ export interface ProjectFrameProps {
   readonly sections: readonly ProjectSection[];
   readonly onNavigate: (section: ProjectSection) => void;
   readonly hrefFor?: (section: ProjectSection) => string;
-  readonly backHref?: string;
+  /** Up to the project list — the one crumb of the eyebrow. Absent renders no way out. */
   readonly onBack?: () => void;
+  /**
+   * Who draws the ancestor chain. A section has none of its own, so the frame
+   * draws the eyebrow — `Projects · <name> · v4 active` — above its header; a
+   * sub-view (the gallery, the ingest flow) brings its own breadcrumb and the
+   * frame adds nothing above it.
+   */
+  readonly chain: "frame" | "page";
   /**
    * The filled control's inputs. Absent means the navigation draws none and the
    * page inside owns the dominant action; present, the slot shows Annotate when a
@@ -104,8 +113,8 @@ export function ProjectFrame({
   sections,
   onNavigate,
   hrefFor,
-  backHref,
   onBack,
+  chain,
   cta,
   onDeleted,
   children,
@@ -118,15 +127,10 @@ export function ProjectFrame({
 
   const open = cta?.onOpenBatch === undefined ? [] : openForAnnotation(batches.data?.items);
   const nav: ProjectNavData = {
-    name: project.data?.name ?? "",
-    description: project.data?.description ?? null,
-    activeVersion: schema.data?.version ?? null,
     sections,
     active,
     onNavigate,
     ...(hrefFor === undefined ? {} : { hrefFor }),
-    ...(backHref === undefined ? {} : { backHref }),
-    ...(onBack === undefined ? {} : { onBack }),
     ...(open.length > 0 && cta?.onOpenBatch !== undefined
       ? { annotate: { targets: open, onOpen: cta.onOpenBatch } }
       : {}),
@@ -136,9 +140,16 @@ export function ProjectFrame({
     onDelete: () => setDeleting(true),
   };
 
+  const name = project.data?.name ?? "";
+  const version = schema.data?.version ?? null;
+  const eyebrow =
+    chain === "page" || (onBack === undefined && name === "" && version === null) ? undefined : (
+      <Eyebrow name={name} version={version} onBack={onBack} />
+    );
+
   return (
     <div className="flex min-h-full flex-1 flex-col" data-testid="project-screen">
-      <ProjectShell nav={nav}>
+      <ProjectShell nav={nav} {...(eyebrow === undefined ? {} : { eyebrow })}>
         <div className="flex flex-col gap-6">
           {/* The project itself failing to load is said here, above the page
               rather than instead of it: the pages read their own queries and
@@ -173,6 +184,44 @@ export function ProjectFrame({
           onClose={() => setDeleting(false)}
           {...(onDeleted === undefined ? {} : { onDeleted })}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Where you are, in one line above a section's title: the way out, the project's
+ * name, its active version. `Projects` is the existing breadcrumb idiom — a
+ * section's one ancestor is the list — and the name is plain, because a section
+ * is not below the project, it *is* the project; a crumb that reloaded the page
+ * you are on would be a promise about structure it cannot keep. The chip is
+ * omitted, never placeheld, while there is no schema.
+ */
+function Eyebrow({
+  name,
+  version,
+  onBack,
+}: {
+  readonly name: string;
+  readonly version: number | null;
+  readonly onBack: (() => void) | undefined;
+}): JSX.Element {
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+      data-testid="project-identity"
+    >
+      {onBack !== undefined && <Breadcrumb items={[{ label: "Projects", onNavigate: onBack }]} />}
+      {onBack !== undefined && name !== "" && <span aria-hidden="true">·</span>}
+      {name !== "" && (
+        <span className="font-medium text-foreground" data-testid="project-title">
+          {name}
+        </span>
+      )}
+      {version !== null && (
+        <Badge variant="outline" data-testid="chip-version">
+          v{version} active
+        </Badge>
       )}
     </div>
   );

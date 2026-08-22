@@ -290,7 +290,6 @@ function Project(): JSX.Element {
       tab={section}
       onTabChange={(next) => void navigate(PARENT.section(projectId, next), { replace: true })}
       hrefFor={(next) => PARENT.section(projectId, next)}
-      backHref={PARENT.projects}
       onBack={() => void navigate(PARENT.projects)}
       onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
       onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
@@ -324,8 +323,9 @@ function Gallery(): JSX.Element {
   if (projectId === undefined || batchId === undefined) return <NotFound />;
   return (
     // Inside the project's frame, with Batches lit: a batch belongs to that
-    // section. No `cta` — the gallery owns its own dominant action.
-    <ProjectFrame {...frameProps(projectId, navigate)} active="batches">
+    // section. No `cta` — the gallery owns its own dominant action — and the
+    // chain is the gallery's own, so the frame draws no eyebrow above it.
+    <ProjectFrame {...frameProps(projectId, navigate)} active="batches" chain="page">
       <GalleryScreen
         projectId={projectId}
         batchId={batchId}
@@ -366,13 +366,12 @@ function Gallery(): JSX.Element {
 function frameProps(
   projectId: string,
   navigate: ReturnType<typeof useNavigate>,
-): Omit<Parameters<typeof ProjectFrame>[0], "active" | "children"> {
+): Omit<Parameters<typeof ProjectFrame>[0], "active" | "chain" | "children"> {
   return {
     projectId,
     sections: PROJECT_SECTIONS,
     onNavigate: (next) => void navigate(PARENT.section(projectId, next)),
     hrefFor: (next) => PARENT.section(projectId, next),
-    backHref: PARENT.projects,
     onBack: () => void navigate(PARENT.projects),
     // A deleted project's own URL is a 404 waiting to happen, so the parent is
     // where to land — and `replace`, because Back should not walk into it.
@@ -452,7 +451,7 @@ function Ingest(): JSX.Element {
   return (
     // Inside the project's frame with no section lit: an ingest is the project's,
     // not any one section's. No `cta` — the flow owns its own dominant action.
-    <ProjectFrame {...frameProps(projectId, navigate)} active={null}>
+    <ProjectFrame {...frameProps(projectId, navigate)} active={null} chain="page">
       <IngestScreen
         projectId={projectId}
         onBack={() => void navigate(PARENT.project(projectId))}
