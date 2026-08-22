@@ -926,7 +926,7 @@ describe("looking at a member", () => {
     expect(within(preview).getByTestId("preview-class-lane").textContent).toBe("lane1");
     expect(within(preview).getByTestId("preview-by").textContent).toBe("person 1 · model 1");
     expect(within(preview).getByTestId("preview-models").textContent).toBe("detector");
-    expect(within(preview).getByTestId("preview-confidence").textContent).toBe("80%");
+    expect(within(preview).queryByTestId("preview-confidence")).toBeNull();
     expect(within(preview).queryByTestId(`preview-annotation-${BOX}`)).toBeNull();
     // Read through the dataset — a member carries no job id to read it through.
     const asked = sent.find((r) => new URL(r.url).pathname.endsWith("/annotations"));
@@ -972,7 +972,6 @@ describe("looking at a member", () => {
     expect(models.querySelector("li")?.getAttribute("title")).toBe(
       "IDEA-Research/grounding-dino-tiny@a2bb814dd30d776dcf7e30523b0065",
     );
-    expect(screen.getByTestId("preview-confidence").textContent).toBe("30% – 75%");
     expect(screen.getByTestId("preview-by").textContent).toBe("model 2");
   });
 

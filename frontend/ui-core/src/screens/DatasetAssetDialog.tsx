@@ -10,9 +10,9 @@
  * is also why the dialog offers Remove and nothing else that writes.
  *
  * The panel is a summary, not an inventory: what the asset is, and what is on it
- * counted by class, by who made it, by which model and how surely. The picture
- * is the inventory — every label is drawn there — and a list of forty rows
- * saying "box · model" beside it would repeat the overlay in words.
+ * counted by class, by who made it and by which model. The picture is the
+ * inventory — every label is drawn there — and a list of forty rows saying
+ * "box · model" beside it would repeat the overlay in words.
  *
  * The overlay is exact by construction rather than by measurement. The picture
  * box is given the asset's own aspect ratio, the `<img>` fills it and the `<svg>`
@@ -322,10 +322,9 @@ function Metadata({ asset }: { readonly asset: DatasetAsset }): JSX.Element {
 }
 
 /**
- * What is on the image, counted — by class, by who made it, by which model, and
- * how surely. Each answers a curation question the picture alone does not: is
- * this class over-represented, is this frame machine-labeled and unreviewed,
- * which model, and was it sure.
+ * What is on the image, counted — by class, by who made it, and by which model.
+ * Each answers a curation question the picture alone does not: is this class
+ * over-represented, is this frame machine-labeled and unreviewed, and by what.
  */
 function Labels({
   annotations,
@@ -393,11 +392,6 @@ function Labels({
               </ul>
             </Row>
           )}
-          {summary.confidence !== null && (
-            <Row term="Confidence" testId="preview-confidence">
-              {summary.confidence}
-            </Row>
-          )}
         </>
       )}
     </Section>
@@ -408,34 +402,23 @@ interface LabelSummary {
   readonly classes: readonly (readonly [string, number])[];
   readonly by: string;
   readonly models: readonly string[];
-  readonly confidence: string | null;
 }
 
 function summarise(items: readonly WireAnnotation[]): LabelSummary {
   const perClass = new Map<string, number>();
   const perProvenance = new Map<string, number>();
   const models = new Set<string>();
-  const scores: number[] = [];
   for (const one of items) {
     perClass.set(one.label_class, (perClass.get(one.label_class) ?? 0) + 1);
     perProvenance.set(one.provenance, (perProvenance.get(one.provenance) ?? 0) + 1);
     if (one.model_ref !== null) models.add(one.model_ref);
-    if (one.confidence !== null) scores.push(one.confidence);
   }
   const classes = [...perClass.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const by = ["human", "model", "import"]
     .filter((provenance) => perProvenance.has(provenance))
     .map((provenance) => `${PROVENANCE_WORD[provenance] ?? provenance} ${perProvenance.get(provenance)}`)
     .join(" · ");
-  const lowest = Math.min(...scores);
-  const highest = Math.max(...scores);
-  const confidence =
-    scores.length === 0
-      ? null
-      : lowest === highest
-        ? percent(lowest)
-        : `${percent(lowest)} – ${percent(highest)}`;
-  return { classes, by, models: [...models].sort(), confidence };
+  return { classes, by, models: [...models].sort() };
 }
 
 const PROVENANCE_WORD: Readonly<Record<string, string>> = {
@@ -443,10 +426,6 @@ const PROVENANCE_WORD: Readonly<Record<string, string>> = {
   model: "model",
   import: "import",
 };
-
-function percent(value: number): string {
-  return `${Math.round(value * 100)}%`;
-}
 
 /** `IDEA-Research/grounding-dino-tiny@a2bb…` reads as `grounding-dino-tiny`; the whole reference rides on `title`. */
 export function modelName(ref: string): string {

@@ -217,8 +217,8 @@ tile — the frame number over the picture and how many labels it carries undern
 off the listing itself — forty-eight to a page, in promotion order. Opening a tile shows the
 picture with its labels drawn over it in the annotator's own shapes and colours, beside a
 summary in the manner of an info panel: what the asset is (dimensions, format, frame, source,
-ingestion time, content hash) and what is on it, counted by class, by who made it, by which
-model and how surely — the picture is the inventory, and the panel does not repeat it row by
+ingestion time, content hash) and what is on it, counted by class, by who made it and by which
+model — the picture is the inventory, and the panel does not repeat it row by
 row; the arrows step through the page. The labels are read through the dataset (`GET /datasets/{id}/assets/{asset_id}/annotations`)
 and not through a job, because a trunk member carries no job id and a label outlives the work
 that produced it. It is a viewer: the one write it offers is the same removal the tile offers,
