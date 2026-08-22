@@ -22,7 +22,13 @@
  * because coordinates without a frame cannot be placed.
  */
 
-import { IconChevronLeft, IconChevronRight, IconTrash } from "@tabler/icons-react";
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconEye,
+  IconEyeOff,
+  IconTrash,
+} from "@tabler/icons-react";
 import { useState, type CSSProperties, type JSX, type KeyboardEvent } from "react";
 import {
   BboxShape,
@@ -177,6 +183,7 @@ export function DatasetAssetDialog({
               aria-pressed={showLabels}
               onClick={() => setShowLabels((value) => !value)}
             >
+              {showLabels ? <IconEye aria-hidden="true" /> : <IconEyeOff aria-hidden="true" />}
               {showLabels ? "Hide labels" : "Show labels"}
             </Button>
           </div>
