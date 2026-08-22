@@ -36,8 +36,10 @@ from visionset.kernel.domain import (
     ConnectionType,
     CuratedModel,
     DownloadSize,
+    GeometryType,
     InferenceConnection,
     ModelCapability,
+    ServedFamily,
 )
 from visionset.kernel.errors import (
     InferenceConnectionNotDownloadable,
@@ -393,7 +395,10 @@ def test_recording_an_unknown_connection_ready_is_not_found(
 # until a connection could record one, nothing ever called them.
 
 
-POINT = ModelCapability.POINT_SUGGEST
+POINT = ServedFamily(
+    capability=ModelCapability.POINT_SUGGEST,
+    produces=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+)
 
 
 class _SourceDriver:
@@ -401,7 +406,7 @@ class _SourceDriver:
 
     def __init__(self, provider_id: str = "acme", family: str = DOWNLOADED_FAMILY) -> None:
         self.provider_id = provider_id
-        self.families: Mapping[str, ModelCapability] = {family: POINT}
+        self.families: Mapping[str, ServedFamily] = {family: POINT}
         self.curated: tuple[CuratedModel, ...] = ()
         self._family = family
         self.asked: list[str] = []
@@ -436,7 +441,7 @@ class _SourceDriver:
 class _Hosted:
     """A driver that declares no weights source: its model answers from elsewhere."""
 
-    def __init__(self, provider_id: str, families: Mapping[str, ModelCapability]) -> None:
+    def __init__(self, provider_id: str, families: Mapping[str, ServedFamily]) -> None:
         self.provider_id = provider_id
         self.families = families
         self.curated: tuple[CuratedModel, ...] = ()

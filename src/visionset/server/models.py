@@ -1010,9 +1010,10 @@ class PreLabelRunOut(BaseModel):
     #: `assets_processed`: an asset a person started working on mid-run is
     #: passed over, not labeled. `null` until the job settles with a result.
     assets_labeled: int | None
-    #: Regions the model answered with a class the schema's prompt never asked
-    #: for, discarded rather than written. `null` until the job settles with a
-    #: result.
+    #: Regions that could not be written as the class they named — a label the
+    #: prompt never asked for, or a shape the class does not admit or the
+    #: model never declared — discarded rather than written. `null` until the
+    #: job settles with a result.
     regions_discarded: int | None
     #: Regions whose mapped geometry had no overlap with a measured asset,
     #: discarded rather than written. `null` until the job settles with a
@@ -1041,13 +1042,14 @@ class PreLabelRunOut(BaseModel):
 class PreLabelExclusionOut(BaseModel):
     """A class in a batch's pinned schema that a pre-labeling run will not ask for.
 
-    Both reasons are properties of the class as the schema declares it, so the
-    remedy is a schema edit: give the class `bbox` among its geometries, or drop
-    the `required` flag from the attribute a prediction cannot supply.
+    Both reasons are properties of the class as the schema declares it read
+    against the model's `produces`, so the remedy is a schema edit or a
+    different model: give the class one of the shapes the model answers in, or
+    drop the `required` flag from the attribute a prediction cannot supply.
 
     `reasons` can carry both at once, and every reason that holds is listed —
-    a class told only that it admits no box, then given one, would otherwise
-    stay silently absent from the next run's prompt.
+    a class told only that it admits no shape the model produces, then given
+    one, would otherwise stay silently absent from the next run's prompt.
     """
 
     #: The class name, exactly as the pinned schema declares it.
@@ -1058,13 +1060,14 @@ class PreLabelExclusionOut(BaseModel):
 
 
 class PreLabelPlanOut(BaseModel):
-    """The words a pre-labeling run over this batch would ask a model for.
+    """The words a run would ask a model for over this batch, and the shapes it would write.
 
-    A run's prompt is the batch's pinned schema, narrowed to the classes a bare
-    box prediction can be written as. That narrowing is invisible in the run's
-    result — a schema whose `vehicle` class requires a `color` attribute yields
-    no vehicles and no explanation — so it is published here, before a run
-    starts, with the left-out classes named beside the asked-for ones.
+    A run's prompt is the batch's pinned schema, narrowed to the classes the
+    model's declared shapes can be written as. That narrowing is invisible in
+    the run's result — a schema whose `vehicle` class requires a `color`
+    attribute yields no vehicles and no explanation — so it is published here,
+    before a run starts, with the left-out classes named beside the asked-for
+    ones.
 
     Every class the pinned schema declares appears in exactly one of the two
     lists, both in the schema's own declaration order. A batch whose schema has
@@ -1076,6 +1079,9 @@ class PreLabelPlanOut(BaseModel):
     schema_version: int
     #: The prompt itself — the classes a run will ask the model about.
     asked_classes: list[str]
+    #: The shapes the model answers in, sorted. What a run writes — a class is
+    #: asked for only when it admits one of these.
+    produces: list[GeometryType]
     #: The rest, each with why. Empty when the whole schema is askable.
     excluded_classes: list[PreLabelExclusionOut]
 
@@ -1084,6 +1090,7 @@ class PreLabelPlanOut(BaseModel):
         return cls(
             schema_version=plan.schema_version,
             asked_classes=list(plan.asked),
+            produces=sorted(plan.produces, key=lambda shape: shape.value),
             excluded_classes=[
                 PreLabelExclusionOut(name=one.name, reasons=list(one.reasons))
                 for one in plan.excluded
@@ -2154,7 +2161,8 @@ class ProviderOut(BaseModel):
         return cls(
             provider_id=provider.provider_id,
             families={
-                family: capability.value for family, capability in sorted(provider.families.items())
+                family: declared.capability.value
+                for family, declared in sorted(provider.families.items())
             },
             # An entry naming a family its own driver does not serve has no
             # capability to publish, and one such entry must not cost a reader
@@ -2162,7 +2170,9 @@ class ProviderOut(BaseModel):
             # source; this is what keeps a third party's mistake local to itself.
             curated=[
                 CuratedModelOut.of(
-                    entry, provider.families[entry.family].value, provider.provider_id
+                    entry,
+                    provider.families[entry.family].capability.value,
+                    provider.provider_id,
                 )
                 for entry in provider.curated
                 if entry.family in provider.families

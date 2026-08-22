@@ -120,7 +120,7 @@ page groups them by what they are for.
 | `remove_batch_assets` | Take assets out of a draft. Deletes nothing. |
 | `approve_batch` | Freeze it, pin the schema, cut it into jobs. |
 | `start_batch` | Open it for annotation. |
-| `get_pre_label_plan` | Which classes a run would ask about, and which it would leave out. |
+| `get_pre_label_plan` | Which classes a run of a connection would ask about, which it would leave out, and what shapes it writes. |
 | `pre_label_batch` | Ask a model to label every untouched asset. Blocks until it is done. |
 | `pre_label_project` | The same, over every open batch of a project or the named ones; one outcome per batch. Blocks until done. |
 | `repin_batch` | Move its schema pin onto the current active version. |
@@ -316,9 +316,10 @@ still untouched - plus, where `replace_model_labels` is set, the frames still `p
 `pre_label_batch` reports unmappable model labels as `regions_discarded`, mapped regions
 without overlap with a measured asset as `regions_out_of_bounds`, the model labels a replacing
 run superseded as `annotations_replaced`, and the prompt it ran under as `plan` —
-`asked_classes` beside `excluded_classes`, so a run that labeled nothing says which classes it
-never asked about rather than leaving that to a second call.
-`get_pre_label_plan` answers the same thing before the wait.
+`asked_classes` beside `excluded_classes` and `produces`, so a run that labeled nothing says
+which classes it never asked about, and what shapes it was answering in, rather than leaving
+that to a second call. `get_pre_label_plan` takes the same connection and answers the same
+thing before the wait.
 
 There is therefore no ingest polling, and no `resume_ingest`. If a call is cut off part way, call
 `ingest` again - registration is idempotent on `(kind, path, extraction_fps)` and content

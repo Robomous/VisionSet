@@ -12,8 +12,19 @@ a provider nobody can construct without weights.
 
 from __future__ import annotations
 
-from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, intersection_over_union, suppressed
-from visionset.kernel.domain import BboxGeometry, ClassificationGeometry, PredictedRegion
+from visionset.inference.nms import (
+    DEFAULT_IOU_THRESHOLD,
+    extent_of,
+    intersection_over_union,
+    suppressed,
+)
+from visionset.kernel.domain import (
+    BboxGeometry,
+    ClassificationGeometry,
+    PolygonGeometry,
+    PolylineGeometry,
+    PredictedRegion,
+)
 
 
 def box(x: float, y: float, size: float = 10.0) -> BboxGeometry:
@@ -142,3 +153,40 @@ def test_suppression_is_on_by_default() -> None:
         [region("dog", 0.9), region("dog", 0.4)], iou_threshold=DEFAULT_IOU_THRESHOLD
     )
     assert len(suppressed([region("dog", 0.9), region("dog", 0.4)])) == 1
+
+
+# --- every shape, through its extent -------------------------------------------
+
+
+def square(x: float, y: float, size: float = 10.0) -> PolygonGeometry:
+    return PolygonGeometry(points=[(x, y), (x + size, y), (x + size, y + size), (x, y + size)])
+
+
+def test_a_polygon_s_extent_is_its_axis_aligned_box() -> None:
+    assert extent_of(square(2, 3)) == box(2, 3)
+
+
+def test_a_box_is_its_own_extent() -> None:
+    assert extent_of(box(1, 1)) == box(1, 1)
+
+
+def test_a_degenerate_polyline_has_no_extent_and_passes_through() -> None:
+    line = PolylineGeometry(points=[(0.0, 0.0), (0.0, 10.0)])
+    assert extent_of(line) is None
+    kept = suppressed((region("a", 0.9, line), region("b", 0.8, line)))
+    assert len(kept) == 2
+
+
+def test_two_duplicate_polygons_keep_the_more_confident_one() -> None:
+    kept = suppressed((region("dog", 0.7, square(0, 0)), region("animal", 0.9, square(1, 1))))
+    assert [one.label for one in kept] == ["animal"]
+
+
+def test_a_box_and_a_polygon_over_one_object_are_one_answer() -> None:
+    kept = suppressed((region("dog", 0.9, box(0, 0)), region("dog", 0.6, square(0, 0))))
+    assert [one.confidence for one in kept] == [0.9]
+
+
+def test_disjoint_polygons_are_both_kept() -> None:
+    kept = suppressed((region("a", 0.9, square(0, 0)), region("b", 0.8, square(100, 100))))
+    assert len(kept) == 2

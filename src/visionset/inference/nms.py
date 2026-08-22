@@ -20,12 +20,15 @@ what lets the rule be tested with three literal boxes instead of a GPU, and it
 is why this is a module of its own rather than four lines inside a provider that
 cannot be constructed without weights.
 
-Only :class:`~visionset.kernel.domain.BboxGeometry` participates. A polygon or a
-polyline has no cheap IoU and no evidence that it needs one — the duplication
-this was measured against is a detector's, and a mask-producing model is
-prompted per instance. Anything that is not a box passes through untouched
-rather than being silently dropped, because "I do not know how to compare these"
-must never read as "these were duplicates".
+Every shape participates, through its extent. A polygon or a polyline is compared
+by the axis-aligned box around its points — ``extent_of`` — and a box by itself,
+so a text-prompted segmenter that answers many masks from one call is suppressed
+exactly as a detector is, and a box and a mask over one object are one answer.
+On duplicates of one instance, which is the failure mode this was measured
+against, extent IoU is the true IoU; on two thin shapes crossing it is exactly as
+wrong as box NMS already is for boxes, and no worse. A shape with no extent — a
+degenerate path, a classification tag — passes through untouched, because "I
+cannot compare these" must never read as "these were duplicates".
 """
 
 from __future__ import annotations
@@ -33,7 +36,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Final
 
-from visionset.kernel.domain import BboxGeometry, PredictedRegion
+from visionset.kernel.domain import (
+    BboxGeometry,
+    Geometry,
+    PolygonGeometry,
+    PolylineGeometry,
+    PredictedRegion,
+)
 
 DEFAULT_IOU_THRESHOLD: Final = 0.5
 """Two boxes overlapping by more than this are the same object.
@@ -64,6 +73,28 @@ def intersection_over_union(one: BboxGeometry, other: BboxGeometry) -> float:
     return overlap / union
 
 
+# ponytail: extent IoU; exact polygon IoU when a measurement shows the extent wrong.
+def extent_of(geometry: Geometry) -> BboxGeometry | None:
+    """The axis-aligned box a shape occupies, or ``None`` for a shape with no area.
+
+    A box is its own extent; a polygon or polyline is the box around its points.
+    A zero-width or zero-height path — a vertical polyline — has no box
+    ``BboxGeometry`` will construct and answers ``None``, as does a
+    classification tag, which occupies nothing.
+    """
+    if isinstance(geometry, BboxGeometry):
+        return geometry
+    if not isinstance(geometry, PolygonGeometry | PolylineGeometry):
+        return None
+    xs = [x for x, _ in geometry.points]
+    ys = [y for _, y in geometry.points]
+    width = max(xs) - min(xs)
+    height = max(ys) - min(ys)
+    if width <= 0.0 or height <= 0.0:
+        return None
+    return BboxGeometry(x=min(xs), y=min(ys), width=width, height=height)
+
+
 def suppressed(
     regions: Sequence[PredictedRegion], *, iou_threshold: float = DEFAULT_IOU_THRESHOLD
 ) -> tuple[PredictedRegion, ...]:
@@ -85,16 +116,16 @@ def suppressed(
     wants.
     """
     ranked = sorted(regions, key=lambda region: -region.confidence)
-    kept: list[PredictedRegion] = []
+    kept: list[tuple[PredictedRegion, BboxGeometry | None]] = []
     for region in ranked:
-        if not isinstance(region.geometry, BboxGeometry):
-            kept.append(region)
+        mine = extent_of(region.geometry)
+        if mine is None:
+            kept.append((region, mine))
             continue
         if any(
-            isinstance(other.geometry, BboxGeometry)
-            and intersection_over_union(region.geometry, other.geometry) > iou_threshold
-            for other in kept
+            extent is not None and intersection_over_union(mine, extent) > iou_threshold
+            for _, extent in kept
         ):
             continue
-        kept.append(region)
-    return tuple(kept)
+        kept.append((region, mine))
+    return tuple(region for region, _ in kept)

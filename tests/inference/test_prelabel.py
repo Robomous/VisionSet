@@ -16,9 +16,12 @@ from visionset.inference.prelabel import (
     PreLabelExclusionReason,
     PreLabelPlan,
     detectable_classes,
+    no_detectable_class_message,
+    planned,
     pre_label,
     prompt_plan,
     select_pre_labelable,
+    served_for,
 )
 from visionset.kernel import (
     BatchNotFound,
@@ -40,9 +43,12 @@ from visionset.kernel.domain import (
     GeometryType,
     InferenceConnection,
     LabelClass,
+    ModelCapability,
+    PolygonGeometry,
     PredictedRegion,
     PredictionRequest,
     Prompt,
+    ServedFamily,
 )
 from visionset.kernel.services import (
     AnnotationService,
@@ -72,14 +78,22 @@ LANE = LabelClass(name="lane", geometries=(GeometryType.POLYGON,))
 
 #: The real schema the bug report was filed against: five classes, each
 #: declaring both ``bbox`` and ``polygon`` and no attributes. Multi-geometry on
-#: purpose — ``detectable_classes`` tests for ``bbox`` membership rather than
-#: equality, and this is the shape that actually reached the failing run.
+#: purpose — ``detectable_classes`` intersects a class's geometries with what
+#: the model produces rather than comparing them, and this is the shape that
+#: actually reached the failing run.
 CAR = LabelClass(name="car", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
 TRUCK = LabelClass(name="truck", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
 MOTORCYCLE = LabelClass(name="motorcycle", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
 PEDESTRIAN = LabelClass(name="pedestrian", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
 BUS = LabelClass(name="bus", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
 VEHICLE_CLASSES: Final = (CAR, TRUCK, MOTORCYCLE, PEDESTRIAN, BUS)
+
+#: The shapes a model declares it answers in, which is what a plan is derived
+#: against — a detector that draws boxes, one that traces polygons, one that does
+#: both.
+BOXES: Final = frozenset({GeometryType.BBOX})
+POLYGONS: Final = frozenset({GeometryType.POLYGON})
+EITHER: Final = BOXES | POLYGONS
 
 DEFAULT_REGIONS: Final = (
     PredictedRegion(
@@ -145,8 +159,10 @@ class FakeProviderPool:
         model_ref: str = "acme/detector@abc123",
         regions: tuple[PredictedRegion, ...] = DEFAULT_REGIONS,
         on_asset: Callable[[UUID], None] | None = None,
+        produces: frozenset[GeometryType] = BOXES,
     ) -> None:
         self.calls = 0
+        self.produces = produces
         self.last_prompt: Prompt | None = None
         self.model_ref = model_ref
         self.regions = regions
@@ -160,6 +176,14 @@ class FakeProviderPool:
         if self._kind == "segmenter":
             return FakeSegmenter()
         return FakeModelProvider(self)
+
+    def served(self, connection: InferenceConnection, *, workspace_root: Path) -> ServedFamily:
+        if self._kind == "segmenter":
+            return ServedFamily(
+                capability=ModelCapability.POINT_SUGGEST,
+                produces=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+            )
+        return ServedFamily(capability=ModelCapability.TEXT_DETECT, produces=self.produces)
 
 
 def _box(asset_id: UUID, **overrides: object) -> Annotation:
@@ -194,6 +218,7 @@ class Fixture:
         regions: tuple[PredictedRegion, ...] = DEFAULT_REGIONS,
         asset_count: int = 3,
         asset_size: tuple[int, int] | None = None,
+        produces: frozenset[GeometryType] = BOXES,
     ) -> None:
         self.workspace = WorkspaceService.init(tmp_path / name)
         self.batches = BatchService(self.workspace)
@@ -223,7 +248,7 @@ class Fixture:
             model_revision="abc123",
             endpoint_url="http://localhost:9",
         )
-        self.pool = FakeProviderPool(kind=pool_kind, regions=regions)
+        self.pool = FakeProviderPool(kind=pool_kind, regions=regions, produces=produces)
 
     def _asset(self, seed: str, *, width: int | None = None, height: int | None = None) -> UUID:
         content_hash = self.workspace.blob_store.put(BytesIO(seed.encode()))
@@ -516,7 +541,7 @@ def test_every_written_label_carries_its_provenance(prelabel_fixture: Fixture) -
         assert annotation.confidence is not None
 
 
-def test_the_phrases_are_the_schema_s_box_classes(prelabel_fixture: Fixture) -> None:
+def test_the_phrases_are_the_schema_s_askable_classes(prelabel_fixture: Fixture) -> None:
     """The schema is the prompt, so nothing comes back that cannot be written."""
     pre_label(
         prelabel_fixture.workspace,
@@ -528,7 +553,7 @@ def test_the_phrases_are_the_schema_s_box_classes(prelabel_fixture: Fixture) -> 
     assert prelabel_fixture.pool.last_prompt.phrases == ("post",)
 
 
-def test_a_schema_with_no_box_class_is_refused_before_anything_loads(
+def test_a_schema_with_no_producible_class_is_refused_before_anything_loads(
     polygon_only_fixture: Fixture,
 ) -> None:
     with pytest.raises(SchemaHasNoDetectableClass):
@@ -551,7 +576,7 @@ def test_the_filter_excludes_a_class_a_prediction_cannot_satisfy() -> None:
     the one name that survives. ``LANE`` never admitted bbox at all.
     """
     schema = AnnotationSchema(project_id=uuid4(), version=1, classes=(SIGN, POST, LANE))
-    assert detectable_classes(schema) == ("post",)
+    assert detectable_classes(schema, BOXES) == ("post",)
 
 
 def test_the_plan_names_every_left_out_class_with_its_reason() -> None:
@@ -563,12 +588,14 @@ def test_the_plan_names_every_left_out_class_with_its_reason() -> None:
     """
     schema = AnnotationSchema(project_id=uuid4(), version=1, classes=(SIGN, POST, LANE))
 
-    plan = prompt_plan(schema)
+    plan = prompt_plan(schema, BOXES)
 
     assert plan.asked == ("post",)
     assert plan.excluded == (
         PreLabelExcludedClass(name="sign", reasons=(PreLabelExclusionReason.REQUIRED_ATTRIBUTE,)),
-        PreLabelExcludedClass(name="lane", reasons=(PreLabelExclusionReason.NO_BBOX_GEOMETRY,)),
+        PreLabelExcludedClass(
+            name="lane", reasons=(PreLabelExclusionReason.NO_PRODUCIBLE_GEOMETRY,)
+        ),
     )
 
 
@@ -586,14 +613,14 @@ def test_a_class_failing_both_tests_reports_both_reasons() -> None:
     )
     schema = AnnotationSchema(project_id=uuid4(), version=1, classes=(POST, crossing))
 
-    plan = prompt_plan(schema)
+    plan = prompt_plan(schema, BOXES)
 
     assert plan.asked == ("post",)
     assert plan.excluded == (
         PreLabelExcludedClass(
             name="crossing",
             reasons=(
-                PreLabelExclusionReason.NO_BBOX_GEOMETRY,
+                PreLabelExclusionReason.NO_PRODUCIBLE_GEOMETRY,
                 PreLabelExclusionReason.REQUIRED_ATTRIBUTE,
             ),
         ),
@@ -606,7 +633,7 @@ def test_the_prompt_is_the_plan_and_not_a_second_derivation() -> None:
         project_id=uuid4(), version=1, classes=(SIGN, POST, LANE, *VEHICLE_CLASSES)
     )
 
-    assert detectable_classes(schema) == prompt_plan(schema).asked
+    assert detectable_classes(schema, BOXES) == prompt_plan(schema, BOXES).asked
 
 
 def test_a_run_announces_the_plan_it_is_about_to_prompt_with(
@@ -899,6 +926,167 @@ def test_stopping_after_an_off_frame_region_keeps_its_count(
     assert job.progress[early_stop_off_frame_fixture.assets[1]] is AssetProgress.UNANNOTATED
 
 
+def test_a_polygon_class_is_asked_of_a_model_that_answers_polygons() -> None:
+    """A schema is not a box schema; the model's declaration is what narrows it."""
+    schema = AnnotationSchema(project_id=uuid4(), version=1, classes=(POST, LANE))
+    assert detectable_classes(schema, POLYGONS) == ("lane",)
+    assert prompt_plan(schema, POLYGONS).excluded == (
+        PreLabelExcludedClass(
+            name="post", reasons=(PreLabelExclusionReason.NO_PRODUCIBLE_GEOMETRY,)
+        ),
+    )
+
+
+def test_a_class_admitting_either_shape_is_asked_whichever_the_model_produces() -> None:
+    schema = AnnotationSchema(project_id=uuid4(), version=1, classes=(CAR,))
+    assert detectable_classes(schema, BOXES) == ("car",)
+    assert detectable_classes(schema, POLYGONS) == ("car",)
+
+
+def test_the_plan_carries_the_shapes_it_was_derived_against() -> None:
+    schema = AnnotationSchema(project_id=uuid4(), version=1, classes=(POST,))
+    assert prompt_plan(schema, EITHER).produces == EITHER
+
+
+def test_the_refusal_names_the_shapes_the_model_produces() -> None:
+    assert "a box or a polygon can be written as" in no_detectable_class_message(3, EITHER)
+    assert "a polygon can be written as" in no_detectable_class_message(3, POLYGONS)
+
+
+def test_a_polygon_only_schema_runs_against_a_polygon_producing_model(tmp_path: Path) -> None:
+    """The bug this round closes: the schema that used to be refused outright."""
+    fixture = Fixture(
+        tmp_path,
+        "polygons",
+        classes=(LANE,),
+        produces=POLYGONS,
+        regions=(
+            PredictedRegion(
+                label="lane",
+                confidence=0.9,
+                geometry=PolygonGeometry(points=[(1.0, 1.0), (5.0, 1.0), (5.0, 5.0)]),
+            ),
+        ),
+    )
+    try:
+        outcome = pre_label(
+            fixture.workspace,
+            batch_id=fixture.batch.id,
+            connection_id=fixture.connection.id,
+            pool=fixture.pool,
+        )
+
+        assert outcome.annotations_written == 3
+        assert fixture.pool.last_prompt.phrases == ("lane",)
+    finally:
+        fixture.close()
+
+
+def test_a_region_in_a_shape_its_class_does_not_admit_is_discarded(tmp_path: Path) -> None:
+    """The model declares both shapes, the class admits one; the other shape is
+    dropped before the atomic write and counted, so one wrong region cannot
+    refuse the whole asset."""
+    fixture = Fixture(
+        tmp_path,
+        "mixed",
+        classes=(POST,),
+        produces=EITHER,
+        regions=(
+            _region("post"),
+            PredictedRegion(
+                label="post",
+                confidence=0.8,
+                geometry=PolygonGeometry(points=[(1.0, 1.0), (5.0, 1.0), (5.0, 5.0)]),
+            ),
+        ),
+    )
+    try:
+        outcome = pre_label(
+            fixture.workspace,
+            batch_id=fixture.batch.id,
+            connection_id=fixture.connection.id,
+            pool=fixture.pool,
+        )
+
+        assert outcome.annotations_written == 3
+        assert outcome.regions_discarded == 3
+    finally:
+        fixture.close()
+
+
+def test_a_region_in_a_shape_the_model_never_declared_is_discarded(tmp_path: Path) -> None:
+    """The class admits both shapes, the model declares only one; the shape it
+    never declared is dropped before the atomic write and counted, exactly as
+    a shape the class does not admit is."""
+    fixture = Fixture(
+        tmp_path,
+        "undeclared",
+        classes=(CAR,),
+        produces=BOXES,
+        regions=(
+            _region("car"),
+            PredictedRegion(
+                label="car",
+                confidence=0.8,
+                geometry=PolygonGeometry(points=[(1.0, 1.0), (5.0, 1.0), (5.0, 5.0)]),
+            ),
+        ),
+    )
+    try:
+        outcome = pre_label(
+            fixture.workspace,
+            batch_id=fixture.batch.id,
+            connection_id=fixture.connection.id,
+            pool=fixture.pool,
+        )
+
+        assert outcome.annotations_written == 3
+        assert outcome.regions_discarded == 3
+    finally:
+        fixture.close()
+
+
+def test_served_for_returns_the_connections_declared_family(prelabel_fixture: Fixture) -> None:
+    declared = served_for(
+        prelabel_fixture.workspace, prelabel_fixture.connection.id, pool=prelabel_fixture.pool
+    )
+
+    assert declared == ServedFamily(capability=ModelCapability.TEXT_DETECT, produces=BOXES)
+
+
+def test_served_for_refuses_a_point_prompt_connection(segmenter_fixture: Fixture) -> None:
+    with pytest.raises(UnsupportedPrompt):
+        served_for(
+            segmenter_fixture.workspace,
+            segmenter_fixture.connection.id,
+            pool=segmenter_fixture.pool,
+        )
+
+
+def test_planned_answers_the_plan_a_run_would_prompt_with(prelabel_fixture: Fixture) -> None:
+    plan = planned(
+        prelabel_fixture.workspace,
+        batch_id=prelabel_fixture.batch.id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert plan.asked == ("post",)
+    assert plan.produces == BOXES
+    assert prelabel_fixture.pool.calls == 0
+
+
+def test_planned_refuses_a_point_prompt_connection(segmenter_fixture: Fixture) -> None:
+    """The same refusal, in the same order, as a run of that connection."""
+    with pytest.raises(UnsupportedPrompt):
+        planned(
+            segmenter_fixture.workspace,
+            batch_id=segmenter_fixture.batch.id,
+            connection_id=segmenter_fixture.connection.id,
+            pool=segmenter_fixture.pool,
+        )
+
+
 # --- selecting a project's batches -------------------------------------------
 
 
@@ -917,7 +1105,7 @@ def test_the_default_selection_is_every_open_batch_in_listing_order(
     second = _second_open_batch(prelabel_fixture, "second", seeds=range(10, 12))
     draft = prelabel_fixture.batches.create(prelabel_fixture.project.id, "draft", [])
 
-    selected = select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id)
+    selected = select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, BOXES)
 
     assert [one.id for one in selected] == [prelabel_fixture.batch.id, second]
     assert draft.id not in {one.id for one in selected}
@@ -931,6 +1119,7 @@ def test_a_named_selection_keeps_its_order_and_collapses_duplicates(
     selected = select_pre_labelable(
         prelabel_fixture.workspace,
         prelabel_fixture.project.id,
+        BOXES,
         [second, prelabel_fixture.batch.id, second],
     )
 
@@ -952,14 +1141,18 @@ def test_a_named_batch_of_another_project_is_not_found(prelabel_fixture: Fixture
     theirs = prelabel_fixture.batches.create(other.id, "theirs", [asset])
 
     with pytest.raises(BatchNotFound, match="in project"):
-        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, [theirs.id])
+        select_pre_labelable(
+            prelabel_fixture.workspace, prelabel_fixture.project.id, BOXES, [theirs.id]
+        )
 
 
 def test_a_named_batch_that_is_not_open_is_refused(prelabel_fixture: Fixture) -> None:
     draft = prelabel_fixture.batches.create(prelabel_fixture.project.id, "draft", [])
 
     with pytest.raises(BatchNotInAnnotation, match="draft"):
-        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, [draft.id])
+        select_pre_labelable(
+            prelabel_fixture.workspace, prelabel_fixture.project.id, BOXES, [draft.id]
+        )
 
 
 def test_a_project_with_no_open_batch_is_refused_by_name(prelabel_fixture: Fixture) -> None:
@@ -970,19 +1163,19 @@ def test_a_project_with_no_open_batch_is_refused_by_name(prelabel_fixture: Fixtu
     prelabel_fixture.batches.complete(prelabel_fixture.batch.id)
 
     with pytest.raises(BatchNotInAnnotation, match="has no batch open for annotation"):
-        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id)
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, BOXES)
 
 
 def test_an_explicitly_empty_selection_is_refused_by_its_own_sentence(
     prelabel_fixture: Fixture,
 ) -> None:
     with pytest.raises(BatchNotInAnnotation, match="no batch named"):
-        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, [])
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, BOXES, [])
 
 
 def test_an_unknown_project_is_not_found(prelabel_fixture: Fixture) -> None:
     with pytest.raises(ProjectNotFound):
-        select_pre_labelable(prelabel_fixture.workspace, uuid4())
+        select_pre_labelable(prelabel_fixture.workspace, uuid4(), BOXES)
 
 
 def test_a_selected_batch_with_no_detectable_class_is_refused_by_name(
@@ -996,7 +1189,17 @@ def test_a_selected_batch_with_no_detectable_class_is_refused_by_name(
     _second_open_batch(prelabel_fixture, "lanes", seeds=range(20, 22))
 
     with pytest.raises(SchemaHasNoDetectableClass, match="batch 'lanes'"):
-        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id)
+        select_pre_labelable(prelabel_fixture.workspace, prelabel_fixture.project.id, BOXES)
+
+
+def test_a_polygon_only_schema_is_selected_for_a_model_that_produces_polygons(
+    polygon_only_fixture: Fixture,
+) -> None:
+    selected = select_pre_labelable(
+        polygon_only_fixture.workspace, polygon_only_fixture.project.id, POLYGONS
+    )
+
+    assert [one.id for one in selected] == [polygon_only_fixture.batch.id]
 
 
 def test_a_replacing_run_rewrites_every_pre_labeled_frame_and_counts_what_it_replaced(

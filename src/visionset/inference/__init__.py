@@ -57,7 +57,7 @@ from visionset.inference.cache import (
     DEFAULT_PROVIDER_CAPACITY,
     BoundedCache,
 )
-from visionset.inference.families import capabilities_of, family_of
+from visionset.inference.families import capabilities_of, family_of, produces_of
 from visionset.inference.http_provider import HTTP_PROVIDER_ID, HttpProvider, ask_endpoint
 from visionset.inference.integrity import (
     READ_CHUNK,
@@ -92,13 +92,22 @@ from visionset.inference.prelabel import (
     PreLabelPlan,
     detectable_classes,
     no_detectable_class_message,
+    planned,
     pre_label,
     prompt_plan,
     require_detectable_schema,
     select_pre_labelable,
+    served_for,
+    shapes_prose,
     unsupported_prompt_message,
 )
-from visionset.inference.providers import ProviderPool, not_set_up_message, provider_for, resident
+from visionset.inference.providers import (
+    ProviderPool,
+    not_set_up_message,
+    provider_for,
+    resident,
+    resolve,
+)
 from visionset.inference.registry import (
     GROUP,
     Discovery,
@@ -186,6 +195,7 @@ __all__ = [
     "download_size",
     "family_of",
     "fetch_weights",
+    "produces_of",
     "Digest",
     "IntegrityReport",
     "PublishedDigest",
@@ -209,14 +219,18 @@ __all__ = [
     "filled",
     "polygon_at",
     "shapes_from",
+    "shapes_prose",
     "simplified",
     "tolerance_for",
+    "planned",
     "pre_label",
     "provider_for",
     "require",
     "require_detectable_schema",
     "resident",
+    "resolve",
     "select_pre_labelable",
+    "served_for",
     "suggest",
     "suppressed",
     "unsupported_prompt_message",

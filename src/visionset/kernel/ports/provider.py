@@ -7,8 +7,9 @@ describes the object a distribution registers, discovered through the
 ``visionset.formats``.
 
 **Closed capabilities, open providers.** :data:`Provider.families` maps a family
-onto a member of ``ModelCapability``, the kernel's own closed vocabulary, so a
-driver may serve a capability and can never introduce one.
+onto a :class:`ServedFamily` — a member of ``ModelCapability`` and the
+``GeometryType`` members it answers in — so a driver may serve a capability and
+can never introduce one.
 
 **Installing a driver must not let a workspace predict**, and does not: nothing is
 fetched or loaded, and a driver becomes reachable rather than a model becoming
@@ -30,7 +31,7 @@ from visionset.kernel.domain import (
     CuratedModel,
     DownloadSize,
     InferenceConnection,
-    ModelCapability,
+    ServedFamily,
 )
 from visionset.kernel.ports.model_provider import ModelProvider
 from visionset.kernel.ports.point_segmenter import PointSegmenter
@@ -61,13 +62,15 @@ class Provider(Protocol):
     #: packaging metadata: two strings, and only this one is the contract.
     provider_id: str
 
-    #: Which families this driver serves, and what each can be asked for.
+    #: Which families this driver serves — and, for each, what it can be asked
+    #: for and the shapes it answers in.
     #:
     #: A mapping rather than a set, which is the derivation guarantee: declaring
-    #: the family and its capability separately is how a family acquires an
+    #: the family and its ``ServedFamily`` separately is how a family acquires an
     #: adapter and never acquires a declaration, leaving a model that runs while
-    #: invisible to every client filtering on what a connection can be asked.
-    families: Mapping[str, ModelCapability]
+    #: invisible to every client filtering on what a connection can be asked — or
+    #: asked for shapes it will never produce.
+    families: Mapping[str, ServedFamily]
 
     #: Checkpoints offered by name. Empty is legitimate — a driver that runs
     #: whatever it is pointed at curates nothing. Each entry's ``family`` must be
@@ -88,9 +91,11 @@ class Provider(Protocol):
         **Loads nothing** — weights load lazily inside what this returns, so a
         caller may build one to find out whether a connection *could* run.
 
-        What comes back satisfies the port the declared capability implies:
-        ``point_suggest`` builds a ``PointSegmenter``, ``text_detect`` a
-        ``ModelProvider``. The conformance suite holds a driver to that.
+        What comes back satisfies the port the declared capability implies —
+        ``families[family].capability`` — so ``point_suggest`` builds a
+        ``PointSegmenter`` and ``text_detect`` a ``ModelProvider``. The
+        conformance suite holds a driver to that, and to answering only in the
+        shapes that same declaration names.
 
         Raises:
             VisionSetError: this connection cannot be run. It must raise from that

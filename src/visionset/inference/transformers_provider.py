@@ -41,11 +41,13 @@ from visionset.kernel.domain import (
     BboxGeometry,
     CuratedModel,
     DownloadSize,
+    GeometryType,
     InferenceConnection,
     ModelCapability,
     PredictedRegion,
     PredictionRequest,
     PredictionTarget,
+    ServedFamily,
     TextPrompt,
 )
 from visionset.kernel.errors import UnsupportedPrompt
@@ -312,11 +314,16 @@ def _labels_in(raw: dict[str, Any]) -> list[str]:
     return [str(label) for label in found]
 
 
-DINO_FAMILIES: Final[Mapping[str, ModelCapability]] = {
-    "grounding-dino": ModelCapability.TEXT_DETECT,
-    "mm-grounding-dino": ModelCapability.TEXT_DETECT,
+_DETECTS: Final = ServedFamily(
+    capability=ModelCapability.TEXT_DETECT, produces=frozenset({GeometryType.BBOX})
+)
+
+DINO_FAMILIES: Final[Mapping[str, ServedFamily]] = {
+    "grounding-dino": _DETECTS,
+    "mm-grounding-dino": _DETECTS,
 }
-"""``model_type`` values this driver serves, and what each can be asked.
+"""``model_type`` values this driver serves, what each can be asked, and the
+shapes each answers in.
 
 Narrower than "everything the zero-shot detector auto-class accepts", and measured
 rather than assumed. This adapter post-processes with a signature taking

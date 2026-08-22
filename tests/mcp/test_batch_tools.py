@@ -22,7 +22,14 @@ from tests.mcp._flow import (
 )
 
 from visionset.inference import prelabel as prelabel_module
-from visionset.kernel.domain import AssetPrediction, BboxGeometry, PredictedRegion
+from visionset.kernel.domain import (
+    AssetPrediction,
+    BboxGeometry,
+    GeometryType,
+    ModelCapability,
+    PredictedRegion,
+    ServedFamily,
+)
 
 
 def test_a_freshly_ingested_batch_is_a_draft_with_no_jobs_and_no_pin(
@@ -466,6 +473,15 @@ class _FakePool:
     def get(self, connection: object, *, workspace_root: Path) -> object:
         return self._runner
 
+    def served(self, connection: object, *, workspace_root: Path) -> ServedFamily:
+        if isinstance(self._runner, _FakeSegmenter):
+            return ServedFamily(
+                capability=ModelCapability.POINT_SUGGEST, produces=frozenset({GeometryType.POLYGON})
+            )
+        return ServedFamily(
+            capability=ModelCapability.TEXT_DETECT, produces=frozenset({GeometryType.BBOX})
+        )
+
 
 def _predicting(
     monkeypatch: pytest.MonkeyPatch, *, kind: str = "detector", label: str = "sign"
@@ -539,7 +555,12 @@ def test_pre_labeling_blocks_and_returns_what_it_wrote(
         "assets_skipped": 0,
         "regions_discarded": 0,
         "regions_out_of_bounds": 0,
-        "plan": {"schema_version": 1, "asked_classes": ["sign"], "excluded_classes": []},
+        "plan": {
+            "schema_version": 1,
+            "asked_classes": ["sign"],
+            "produces": ["bbox"],
+            "excluded_classes": [],
+        },
     }
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
 
@@ -586,8 +607,8 @@ def test_a_run_that_labeled_nothing_says_what_it_asked_about(
     assert outcome["assets_labeled"] == 0
     assert outcome["plan"]["asked_classes"] == ["sign"]
     assert outcome["plan"]["excluded_classes"] == [
-        {"name": "centerline", "reasons": ["no_bbox_geometry"]},
-        {"name": "crossing", "reasons": ["no_bbox_geometry", "required_attribute"]},
+        {"name": "centerline", "reasons": ["no_producible_geometry"]},
+        {"name": "crossing", "reasons": ["no_producible_geometry", "required_attribute"]},
     ]
 
 
@@ -600,34 +621,40 @@ def test_the_plan_names_the_prompt_and_every_class_left_out_of_it(
     one and watch the class stay absent from the next run's prompt.
     """
     _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2, classes=MIXED_CLASSES)
+    connection_id = _connection()
+    _predicting(monkeypatch)
 
-    plan = payload(call("get_pre_label_plan", batch_id=batch_id))
+    plan = payload(call("get_pre_label_plan", batch_id=batch_id, connection=connection_id))
 
     assert plan == {
         "schema_version": 1,
         "asked_classes": ["sign"],
+        "produces": ["bbox"],
         "excluded_classes": [
-            {"name": "centerline", "reasons": ["no_bbox_geometry"]},
-            {"name": "crossing", "reasons": ["no_bbox_geometry", "required_attribute"]},
+            {"name": "centerline", "reasons": ["no_producible_geometry"]},
+            {"name": "crossing", "reasons": ["no_producible_geometry", "required_attribute"]},
         ],
     }
 
 
-def test_the_plan_needs_no_connection_and_runs_no_model(
+def test_the_plan_runs_no_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
+    connection_id = _connection()
+    _predicting(monkeypatch)
+    plan = payload(call("get_pre_label_plan", batch_id=batch_id, connection=connection_id))
+    assert plan["asked_classes"] == ["sign"]
+    assert plan["produces"] == ["bbox"]
+    assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 0
+
+
+def test_the_plan_refuses_a_point_prompt_connection(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The prompt is a property of the pinned schema alone.
-
-    Asked with no connection configured at all, which is what makes this the
-    call an agent can afford before committing minutes of inference.
-    """
     _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
-
-    plan = payload(call("get_pre_label_plan", batch_id=batch_id))
-
-    assert plan["asked_classes"] == ["sign"]
-    assert plan["excluded_classes"] == []
-    assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 0
+    connection_id = _connection()
+    _predicting(monkeypatch, kind="segmenter")
+    refusal = error(call("get_pre_label_plan", batch_id=batch_id, connection=connection_id))
+    assert "answers places rather than words" in refusal["message"]
 
 
 def test_the_plan_refuses_a_schema_with_no_box_class(
@@ -640,8 +667,10 @@ def test_the_plan_refuses_a_schema_with_no_box_class(
     both tools instead of an empty list from one and a refusal from the other.
     """
     _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2, classes=[CENTERLINE])
+    connection_id = _connection()
+    _predicting(monkeypatch)
 
-    refusal = error(call("get_pre_label_plan", batch_id=batch_id))
+    refusal = error(call("get_pre_label_plan", batch_id=batch_id, connection=connection_id))
 
     assert "no class that a box can be written as" in refusal["message"]
 
@@ -650,8 +679,10 @@ def test_the_plan_refuses_a_batch_that_is_not_being_annotated(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _, batch_id = ingested(monkeypatch, tmp_path, count=2)
+    connection_id = _connection()
+    _predicting(monkeypatch)
 
-    refusal = error(call("get_pre_label_plan", batch_id=batch_id))
+    refusal = error(call("get_pre_label_plan", batch_id=batch_id, connection=connection_id))
 
     assert refusal["message"]
 
@@ -800,6 +831,7 @@ def test_pre_labeling_a_project_with_no_open_batch_is_refused(
 ) -> None:
     project, _batch = ingested(monkeypatch, tmp_path, count=2)
     connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
 
     refusal = error(call("pre_label_project", project=project, connection=connection_id))
 

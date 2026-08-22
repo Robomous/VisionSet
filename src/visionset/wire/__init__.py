@@ -58,8 +58,8 @@ from uuid import UUID
 # module has no way to know — which model families this build can serve. The
 # alternative is spelling that mapping a second time, which is what every other
 # rule in this file exists to prevent. ``PreLabelPlan`` arrives the same way:
-# the narrowing of a pinned schema to the classes a box can be written as is
-# derived there, and every surface publishes it.
+# the narrowing of a pinned schema to the classes a served model's shapes can
+# be written as is derived there, and every surface publishes it.
 from visionset.inference import PreLabelPlan, capabilities_of
 from visionset.kernel.domain import (
     Annotation,
@@ -471,11 +471,12 @@ def pre_label_plan(value: PreLabelPlan) -> dict[str, Any]:
     that reports the plan it ran under; two would be how an agent comes to see
     ``excluded_classes`` under one and something else under the other.
     ``schema_version`` is the pin both halves were derived from — a re-pin
-    changes both.
+    changes both. ``produces`` is the shapes the model answers in, sorted.
     """
     return {
         "schema_version": value.schema_version,
         "asked_classes": list(value.asked),
+        "produces": sorted(shape.value for shape in value.produces),
         "excluded_classes": [
             {"name": one.name, "reasons": [reason.value for reason in one.reasons]}
             for one in value.excluded
