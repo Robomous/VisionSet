@@ -1,63 +1,25 @@
-# Optional GPU passthrough for the dev stack. Development only, like everything
-# under docker/ — the release artifact is still `pip install visionset`.
+# GPU inference for the dev stack (development only):
 #
 #   docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up --build
 #
-# Without this file nothing changes: `docker compose -f docker/compose.yaml up`
-# builds and runs exactly what it did before, on the CPU, from an api image this
-# file does not touch. For the same runtime *without* a card — the third
-# configuration, for a host with no NVIDIA hardware or none available today — see
-# docker/compose.cpu-inference.yaml.
+# An override file rather than a profile: a profile adds whole services and cannot amend
+# `api`; a second `-f` merges into it. `--build` on every switch between modes, or Compose
+# reuses whichever api image it already has.
 #
-# docker/api.Dockerfile is not modified by any of this — the GPU variant is a second
-# Dockerfile with a different base, because what makes a GPU useful is torch built
-# against CUDA and that is most of an image rather than a package added to one.
-# docker/api-gpu.Dockerfile says the rest.
-#
-# **An override file rather than a profile, and the reason is what profiles are.**
-# `profiles:` selects *whole services*: a profiled service joins the run when its
-# profile is named and is absent otherwise. It cannot amend a service that is
-# already there. The nearest profile-shaped attempt — a second `api-gpu` service
-# carrying the device reservation — starts *alongside* `api` rather than instead of
-# it, and the two then collide on 127.0.0.1:8000. `postgres` and `minio` in
-# docker/compose.yaml are profiles because they genuinely are extra services; a GPU
-# is not a service, it is a property of one that already exists. Compose's mechanism
-# for that is a second `-f`, which merges into the service instead of adding one.
-#
-# **`--build` is not optional when switching either way.** Both halves below are
-# build-time facts, so without it Compose reuses whichever image it already has. The
-# symptom of getting this wrong is a stack that has the card and answers
-# LOCAL_INFERENCE_UNAVAILABLE, or one with the runtime and no device.
-#
-# **This needs the NVIDIA Container Toolkit on the host**, which is what teaches
-# Docker the `nvidia` device driver named below and injects the driver libraries and
-# `nvidia-smi` into the container. Install it from NVIDIA's own instructions —
-# https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
-# — rather than from anything reproduced here, because the steps are per-distribution
-# and they change. `docker info --format '{{json .Runtimes}}'` naming an `nvidia`
-# runtime is the one-line check that it is in place. Without it this file's `up`
-# fails at container creation with `could not select device driver "nvidia" with
-# capabilities: [[gpu]]`, and the plain compose file above still works.
+# Needs the NVIDIA Container Toolkit on the host (`docker info --format '{{json
+# .Runtimes}}'` names `nvidia`). Without it `up` fails at container creation with
+# `could not select device driver "nvidia"`.
 
 services:
   api:
     build:
-      # The only line that makes this the GPU stack rather than the CPU one. The
-      # context is inherited from docker/compose.yaml and is still the repository
-      # root, so both Dockerfiles see the same tree.
       dockerfile: docker/api-gpu.Dockerfile
     deploy:
       resources:
         reservations:
           devices:
-            # The standard Compose form, and it is honoured by plain `docker compose
-            # up` despite living under `deploy:` — that key is only swarm-specific
-            # for the scheduling fields beside this one.
-            #
-            # `count: all` rather than a number, because this is one developer's
-            # workstation and the alternative is a file that has to be edited to
-            # match whatever hardware it lands on. Pin specific cards by replacing
-            # `count` with `device_ids: ["0"]` if that is ever wanted.
+            # Honoured by plain `docker compose up` despite living under `deploy:`.
+            # `count: all` so the file fits any workstation; pin with `device_ids: ["0"]`.
             - driver: nvidia
               count: all
               capabilities: [gpu]
