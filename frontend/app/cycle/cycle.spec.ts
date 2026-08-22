@@ -1263,6 +1263,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("publish-release").click();
     await page.getByTestId("release-tag").fill(TAG);
     await page.getByTestId("publish-submit").click();
+    // The new release lands on the Releases view; the dialog was opened from
+    // the header, which every view shares.
+    await page.getByTestId("dataset-tab-releases").click();
     await expect(page.getByTestId(`release-${TAG}`)).toBeVisible();
   });
 

@@ -180,12 +180,19 @@ async function serveApi(page: Page): Promise<void> {
   });
 }
 
+/**
+ * The dataset on its Assets view, which is where every scenario here lives. The
+ * asset count rides on the tab's own label, so "off the count" is asserted
+ * there rather than on the Overview the scenarios never open.
+ */
 async function openDataset(page: Page): Promise<void> {
   await serveApi(page);
   await page.goto(`/projects/${PROJECT}/dataset`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
   await expect(page.getByTestId("dataset-screen")).toBeVisible();
+  await page.getByTestId("dataset-tab-assets").click();
+  await expect(page.getByTestId("trunk-assets")).toBeVisible();
 }
 
 test("the trunk lists what is in it, and every row offers the removal", async ({ page }) => {
@@ -201,7 +208,7 @@ test("the trunk lists what is in it, and every row offers the removal", async ({
 test("removing an asset takes it out of the listing and off the count", async ({ page }) => {
   await openDataset(page);
   const [first] = ASSETS;
-  await expect(page.getByTestId("dataset-stats")).toContainText("3");
+  await expect(page.getByTestId("dataset-tab-assets")).toContainText("3");
 
   await page.getByTestId(`remove-${first.id}`).click();
   await expect(page.getByTestId("remove-asset-dialog")).toBeVisible();
@@ -213,7 +220,7 @@ test("removing an asset takes it out of the listing and off the count", async ({
   // ...and the count above it follows, which is the half a listing-only
   // invalidation would miss. It is derived per call by the kernel, so a stale
   // cache would keep reporting the pre-removal trunk.
-  await expect(page.getByTestId("dataset-stats")).toContainText("2");
+  await expect(page.getByTestId("dataset-tab-assets")).toContainText("2");
   // The others are untouched: this removes one membership row, not a page.
   await expect(page.getByTestId(`trunk-asset-${ASSETS[1].id}`)).toBeVisible();
 });
@@ -229,7 +236,7 @@ test("cancelling takes no action at all", async ({ page }) => {
   await expect(page.getByTestId("remove-asset-dialog")).toHaveCount(0);
   // The decision is the confirmation, not the press that opened it.
   await expect(page.getByTestId(`trunk-asset-${first.id}`)).toBeVisible();
-  await expect(page.getByTestId("dataset-stats")).toContainText("3");
+  await expect(page.getByTestId("dataset-tab-assets")).toContainText("3");
 });
 
 test("opening a tile shows the picture with its label drawn over it, in the picture's own frame", async ({
@@ -278,7 +285,7 @@ test("removing from the preview takes the tile out and closes the viewer", async
 
   await expect(page.getByTestId("asset-preview")).toHaveCount(0);
   await expect(page.getByTestId(`trunk-asset-${first.id}`)).toHaveCount(0);
-  await expect(page.getByTestId("dataset-stats")).toContainText("2");
+  await expect(page.getByTestId("dataset-tab-assets")).toContainText("2");
 });
 
 test("a panel with more than fits scrolls inside the dialog rather than stretching it", async ({

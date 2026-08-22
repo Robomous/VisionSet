@@ -302,7 +302,7 @@ describe("verification", () => {
       },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await screen.findByTestId("release-v1");
     expect(sent.some((r) => r.url.endsWith("/verify"))).toBe(false);
 
@@ -326,7 +326,7 @@ describe("verification", () => {
       },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("verify-v1"));
     // `checked: 0` — every other number would be about a document that is not the
     // one its hash names.
@@ -350,7 +350,7 @@ describe("verification", () => {
       body: { code: "WORKSPACE_BUSY", message: "database is locked" },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("verify-v1"));
 
     const said = (await screen.findByTestId("verify-error-v1")).textContent ?? "";
@@ -373,7 +373,7 @@ describe("verification", () => {
         cache_mismatches: [],
       },
     });
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("verify-v1"));
     await screen.findByTestId("verified-v1");
 
@@ -408,7 +408,7 @@ describe("downloading a manifest", () => {
       body: { code: "RELEASE_NOT_FOUND", message: "no such release" },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("manifest-v1"));
 
     const said = (await screen.findByTestId("manifest-error-v1")).textContent ?? "";
@@ -426,7 +426,7 @@ describe("export, and the third gate word", () => {
         : undefined,
     );
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
     await userEvent.click(screen.getByTestId("export-format"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
@@ -485,7 +485,7 @@ describe("export, and the third gate word", () => {
           };
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
     await userEvent.click(screen.getByTestId("export-format"));
     await userEvent.click(await screen.findByRole("option", { name: /yolo/ }));
@@ -566,7 +566,7 @@ describe("export, and the third gate word", () => {
       body: backgroundJob({ state, ...overrides }),
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
     await userEvent.click(screen.getByTestId("export-format"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
@@ -651,7 +651,7 @@ describe("a format list with nothing in it", () => {
       body: { code: "WORKSPACE_BUSY", message: "Another writer holds the workspace." },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
 
     const said = (await screen.findByTestId("export-formats-error")).textContent ?? "";
@@ -665,7 +665,7 @@ describe("a format list with nothing in it", () => {
   it("does not leave a silently empty combobox where the failure is (#440)", async () => {
     formatsFail({ status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
     await screen.findByTestId("export-formats-error");
 
@@ -677,7 +677,7 @@ describe("a format list with nothing in it", () => {
   it("offers the request again, and asking again asks the server (#440)", async () => {
     formatsFail({ status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
     const failed = await screen.findByTestId("export-formats-error");
 
@@ -695,7 +695,7 @@ describe("a format list with nothing in it", () => {
     on("GET", /\/formats$/, { status: 200, body: { items: [], total: 0 } });
     baseline();
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
 
     const said = (await screen.findByTestId("export-formats-empty")).textContent ?? "";
@@ -710,7 +710,7 @@ describe("a format list with nothing in it", () => {
   it("still lists the formats when there are formats (#440)", async () => {
     baseline();
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
 
     // The success path keeps its combobox and neither of the two explanations.
@@ -731,7 +731,7 @@ describe("a format list with nothing in it", () => {
 describe("curating the trunk", () => {
   it("lists what is in the trunk, which is what the counts above are counts of", async () => {
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
 
     const tile = await screen.findByTestId(`trunk-asset-${ASSET}`);
     // The frame number when there is one, as the pill over the picture — not a
@@ -745,7 +745,7 @@ describe("curating the trunk", () => {
 
   it("says what removal costs, and is honest that almost nothing is destroyed", async () => {
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
 
     const consequence = await screen.findByTestId("remove-asset-consequence");
@@ -760,7 +760,7 @@ describe("curating the trunk", () => {
 
   it("takes no action until the confirmation is answered", async () => {
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
     await screen.findByTestId("remove-asset-dialog");
 
@@ -772,7 +772,7 @@ describe("curating the trunk", () => {
     baseline();
     on("DELETE", /\/assets\//, { status: 204 });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
     await userEvent.click(await screen.findByTestId("remove-asset-submit"));
 
@@ -785,7 +785,7 @@ describe("curating the trunk", () => {
     baseline();
     on("DELETE", /\/assets\//, { status: 204 });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await screen.findByTestId(`trunk-asset-${ASSET}`);
     const before = {
       stats: sent.filter((r) => r.url.endsWith("/stats")).length,
@@ -821,7 +821,7 @@ describe("curating the trunk", () => {
 
     render(
       <ApiProvider baseUrl={API} queryClient={client}>
-        <DatasetScreen projectId={PROJECT} />
+        <DatasetScreen projectId={PROJECT} tab="assets" />
       </ApiProvider>,
     );
     await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
@@ -839,7 +839,7 @@ describe("curating the trunk", () => {
       body: { code: "DATASET_NOT_FOUND", message: "No dataset with that id." },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
     await userEvent.click(await screen.findByTestId("remove-asset-submit"));
 
@@ -854,7 +854,7 @@ describe("curating the trunk", () => {
 
   it("offers no paging for a trunk that fits on one page", async () => {
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
 
     await screen.findByTestId(`trunk-asset-${ASSET}`);
     expect(screen.queryByTestId("trunk-paging")).toBeNull();
@@ -879,7 +879,7 @@ describe("curating the trunk", () => {
     });
     baseline();
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await screen.findByTestId("trunk-paging");
     // `total` is the whole trunk, not the page — `docs/content/api.md`: paging bounds
     // the response, not the read.
@@ -909,7 +909,7 @@ describe("looking at a member", () => {
   it("opens a preview with the picture, the metadata and the labels drawn over it", async () => {
     previewable();
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
     const preview = await screen.findByTestId("asset-preview");
@@ -939,7 +939,7 @@ describe("looking at a member", () => {
   it("hides the overlay on request, and the list stays", async () => {
     previewable();
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
     await screen.findByTestId(`preview-shape-${BOX}`);
 
@@ -967,7 +967,7 @@ describe("looking at a member", () => {
     });
     previewable();
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
     const models = await screen.findByTestId("preview-models");
@@ -990,7 +990,7 @@ describe("looking at a member", () => {
     });
     previewable();
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await userEvent.click(await screen.findByTestId(`open-${ids[0]}`));
 
     expect(screen.getByTestId("preview-position").textContent).toBe("1 of 3 on this page");
@@ -1011,7 +1011,7 @@ describe("looking at a member", () => {
     previewable();
     baseline();
     on("DELETE", /\/assets\//, { status: 204 });
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
     await userEvent.click(await screen.findByTestId("preview-remove"));
 
@@ -1032,7 +1032,7 @@ describe("looking at a member", () => {
     });
     on("GET", /\/schema$/, { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none" } });
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
     const failure = await screen.findByTestId("preview-labels-error");
@@ -1047,7 +1047,7 @@ describe("looking at a member", () => {
     });
     previewable();
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
     await screen.findByTestId("preview-no-overlay");

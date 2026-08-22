@@ -25,7 +25,9 @@ Navigation maps 1:1 to domain objects. This is the target structure; if implemen
                                        └─ frames in the way: subsection INSIDE Schema; each row links
                                           out to /projects/:id/batches/:batchId, once per holding batch
     batches                          Batches (workflow) — omitted when the host wires no batch route
-    dataset                          Dataset (trunk + releases)   ← a section, not a buried route
+    dataset                          Dataset — a section, not a buried route; three views as tabs
+                                       (component state, Overview by default): Overview (counts,
+                                       per class) · Assets (the trunk) · Releases (the timeline)
 /projects/:id/ingest               Ingest flow
 /projects/:id/batches/:batchId     Batch workspace (gallery)
 /jobs/:jobId                       Annotator (full-bleed)

@@ -219,6 +219,15 @@ timeline offers no edit and no delete, because there is no `ReleaseService.delet
  - only a project's own cascade removes one, and the manifest blob survives even
 that.
 
+**The section is three views behind one tab row** — Overview (the counts and the per-class
+table), Assets (the trunk), Releases (the timeline) — because each answers a different
+question and stacked in one column each pushed the next below the fold. The row is the
+product's one tab shape (`Tabs`' `line` variant on a full-width hairline); Assets and
+Releases carry their counts on the label. The view is component state, Overview by
+default; `DatasetScreen` takes `tab`/`onTabChange` like every other screen, so a host
+that wants the view in a URL can wire it without a router inside `ui-core`. Publish
+release stays on the section header, which every view shares.
+
 **The trunk is a grid of pictures, looked at one at a time.** Every promoted asset is a
 tile — the frame number over the picture and how many labels it carries underneath, both read
 off the listing itself — forty-eight to a page, in promotion order. Opening a tile shows the

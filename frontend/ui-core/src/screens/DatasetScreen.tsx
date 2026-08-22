@@ -61,6 +61,7 @@ import type { BadgeTone } from "./batchState";
 import { SectionHeader } from "../patterns/SectionHeader";
 import { Button } from "../primitives/Button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/Card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
 import {
   Dialog,
   DialogContent,
@@ -122,15 +123,31 @@ const CONTENT_VIOLATES_SCHEMA = "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA";
  * flexibility the `information-architecture` rule exists to prevent. Its old
  * route is a redirect, so nothing can reach this screen standalone.
  */
+/**
+ * The dataset's three views: what it holds in numbers, what it holds in pictures,
+ * what has been frozen out of it. Tabs, because each answers a different question
+ * and the page was all three at once — counts, a grid and a timeline in one
+ * column, each pushing the next below the fold.
+ */
+export type DatasetTab = "overview" | "assets" | "releases";
+
+const DATASET_TABS: readonly DatasetTab[] = ["overview", "assets", "releases"];
+const DEFAULT_DATASET_TAB: DatasetTab = "overview";
+
 export interface DatasetScreenProps {
   readonly projectId: string;
+  /** Which view to open on. Absent or unrecognised opens on Overview. */
+  readonly tab?: string;
+  /** Absent means uncontrolled: the tabs work, they just do not reach a URL. */
+  readonly onTabChange?: (tab: DatasetTab) => void;
 }
 
-export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
+export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProps): JSX.Element {
   const dataset = useProjectDataset(projectId);
   const stats = useDatasetStats(dataset.data?.id);
   const releases = useReleases(dataset.data?.id);
   const [publishing, setPublishing] = useState(false);
+  const current = DATASET_TABS.find((one) => one === tab) ?? DEFAULT_DATASET_TAB;
 
   return (
     <div className="flex flex-col gap-6" data-testid="dataset-screen">
@@ -152,78 +169,118 @@ export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
         }
       />
 
-      <Async query={stats} loadingRows={3}>
-        {(counts) => (
-          <div className="flex flex-col gap-4" data-testid="dataset-stats">
-            <div className="grid gap-4 md:grid-cols-3">
-              <Stat label="Assets" value={counts.asset_count} />
-              <Stat label="With annotations" value={counts.annotated_asset_count} />
-              <Stat label="Annotations" value={counts.annotation_count} />
-            </div>
+      <Tabs
+        // Controlled by the host when it wired one, uncontrolled otherwise — and
+        // `current` seeds the uncontrolled case too, so `tab` alone still says
+        // which view to open on.
+        {...(onTabChange === undefined
+          ? { defaultValue: current }
+          : {
+              value: current,
+              onValueChange: (next: string) =>
+                onTabChange(DATASET_TABS.find((one) => one === next) ?? DEFAULT_DATASET_TAB),
+            })}
+        data-testid="dataset-tabs"
+      >
+        {/* A row on a full-width hairline, the active tab's rule sitting on it —
+            the product's one tab shape, with the count beside the two views
+            whose size is the first thing anybody asks. */}
+        <div className="border-b">
+          <TabsList variant="line">
+            <TabsTrigger value="overview" data-testid="dataset-tab-overview">
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="assets" data-testid="dataset-tab-assets">
+              Assets
+              {stats.data !== undefined && (
+                <span className="tabular-nums text-muted-foreground">{stats.data.asset_count}</span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="releases" data-testid="dataset-tab-releases">
+              Releases
+              {releases.data !== undefined && (
+                <span className="tabular-nums text-muted-foreground">{releases.data.total}</span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Per class</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {counts.classes.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Nothing labelled yet. A class the schema declares but nobody used does
-                    not appear here — which classes exist is the schema&rsquo;s answer.
-                  </p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Class</TableHead>
-                        <TableHead className="w-32">Annotations</TableHead>
-                        <TableHead className="w-32">Assets</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {counts.classes.map((row) => (
-                        <TableRow key={row.label_class} data-testid={`class-count-${row.label_class}`}>
-                          <TableCell>{row.label_class}</TableCell>
-                          {/* Both, because a thousand labels over a thousand images
-                              and the same thousand over ten are the same total and a
-                              very different dataset. */}
-                          <TableCell>{row.annotations}</TableCell>
-                          <TableCell>{row.assets}</TableCell>
+        <TabsContent value="overview">
+        <Async query={stats} loadingRows={3}>
+          {(counts) => (
+            <div className="flex flex-col gap-4" data-testid="dataset-stats">
+              <div className="grid gap-4 md:grid-cols-3">
+                <Stat label="Assets" value={counts.asset_count} />
+                <Stat label="With annotations" value={counts.annotated_asset_count} />
+                <Stat label="Annotations" value={counts.annotation_count} />
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Per class</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {counts.classes.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Nothing labelled yet. A class the schema declares but nobody used does
+                      not appear here — which classes exist is the schema&rsquo;s answer.
+                    </p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Class</TableHead>
+                          <TableHead className="w-32">Annotations</TableHead>
+                          <TableHead className="w-32">Assets</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
-      </Async>
-
-      <TrunkAssets projectId={projectId} datasetId={dataset.data?.id} />
-
-      <section className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold">Releases</h2>
-        <Async
-          query={releases}
-          loadingRows={2}
-          empty={{
-            title: "No releases yet",
-            description:
-              "A release freezes the dataset as it is now. Publishing twice with nothing changed in between produces byte-identical documents.",
-          }}
-        >
-          {(page) => (
-            <div className="flex flex-col gap-3" data-testid="release-timeline">
-              {[...page.items]
-                .sort((a, b) => b.created_at.localeCompare(a.created_at))
-                .map((release) => (
-                  <ReleaseCard key={release.id} release={release} />
-                ))}
+                      </TableHeader>
+                      <TableBody>
+                        {counts.classes.map((row) => (
+                          <TableRow key={row.label_class} data-testid={`class-count-${row.label_class}`}>
+                            <TableCell>{row.label_class}</TableCell>
+                            {/* Both, because a thousand labels over a thousand images
+                                and the same thousand over ten are the same total and a
+                                very different dataset. */}
+                            <TableCell>{row.annotations}</TableCell>
+                            <TableCell>{row.assets}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           )}
         </Async>
-      </section>
+        </TabsContent>
+
+        <TabsContent value="assets">
+          <TrunkAssets projectId={projectId} datasetId={dataset.data?.id} />
+        </TabsContent>
+
+        <TabsContent value="releases">
+          <Async
+            query={releases}
+            loadingRows={2}
+            empty={{
+              title: "No releases yet",
+              description:
+                "A release freezes the dataset as it is now. Publishing twice with nothing changed in between produces byte-identical documents.",
+            }}
+          >
+            {(page) => (
+              <div className="flex flex-col gap-3" data-testid="release-timeline">
+                {[...page.items]
+                  .sort((a, b) => b.created_at.localeCompare(a.created_at))
+                  .map((release) => (
+                    <ReleaseCard key={release.id} release={release} />
+                  ))}
+              </div>
+            )}
+          </Async>
+        </TabsContent>
+      </Tabs>
 
       <PublishDialog
         datasetId={dataset.data?.id ?? ""}
@@ -279,13 +336,11 @@ function TrunkAssets({
   return (
     <section className="flex flex-col gap-3" data-testid="trunk-assets">
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="text-base font-semibold">Assets</h2>
-          <p className="text-xs text-muted-foreground">
-            Every asset a completed batch has promoted, in the order they were promoted. Open one
-            to see its labels.
-          </p>
-        </div>
+        {/* The tab is the heading. What is left is the sentence it cannot carry. */}
+        <p className="text-xs text-muted-foreground">
+          Every asset a completed batch has promoted, in the order they were promoted. Open one to
+          see its labels.
+        </p>
         {total > TRUNK_PAGE_SIZE && (
           <div className="flex items-center gap-2" data-testid="trunk-paging">
             <span className="text-xs tabular-nums text-muted-foreground">
