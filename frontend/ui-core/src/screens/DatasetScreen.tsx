@@ -43,13 +43,22 @@
  * button runs it.
  */
 
-import { Check, Download, FileJson, ShieldCheck, Tag, Trash2, Upload } from "lucide-react";
+import {
+  IconCheck,
+  IconDownload,
+  IconJson,
+  IconShieldCheck,
+  IconTag,
+  IconTrash,
+  IconUpload,
+} from "@tabler/icons-react";
 import { useEffect, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
 import { Alert, Badge } from "../primitives/Badge";
 import type { BadgeTone } from "./batchState";
+import { SectionHeader } from "../patterns/SectionHeader";
 import { Button } from "../primitives/Button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/Card";
 import {
@@ -125,28 +134,23 @@ export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
 
   return (
     <div className="flex flex-col gap-6" data-testid="dataset-screen">
-      <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dataset</h1>
-          <p className="text-xs text-muted-foreground">
-            Every asset a completed batch has promoted.
-          </p>
-        </div>
-        {/*
-         * `secondary`: this header renders as a *panel* under `ProjectScreen`'s
-         * own header on the dataset tab, whose "Annotate" is the page's forward
-         * action. One filled action per view.
-         */}
-        <Button
-          variant="secondary"
-          data-testid="publish-release"
-          disabled={dataset.data === undefined}
-          onClick={() => setPublishing(true)}
-        >
-          <Tag className="size-4" aria-hidden="true" />
-          Publish release
-        </Button>
-      </header>
+      <SectionHeader
+        title="Dataset"
+        meta="Every asset a completed batch has promoted."
+        actions={
+          // `secondary`: the project's navigation holds the page's filled
+          // action. One filled action per view.
+          <Button
+            variant="secondary"
+            data-testid="publish-release"
+            disabled={dataset.data === undefined}
+            onClick={() => setPublishing(true)}
+          >
+            <IconTag className="size-4" aria-hidden="true" />
+            Publish release
+          </Button>
+        }
+      />
 
       <Async query={stats} loadingRows={3}>
         {(counts) => (
@@ -434,7 +438,7 @@ function TrunkTile({
           onClick={onRemove}
           className="text-muted-foreground hover:text-destructive"
         >
-          <Trash2 aria-hidden="true" />
+          <IconTrash aria-hidden="true" />
         </Button>
       </span>
     </div>
@@ -533,7 +537,7 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
     <Card data-testid={`release-${release.tag}`}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Tag className="size-4 text-muted-foreground" aria-hidden="true" />
+          <IconTag className="size-4 text-muted-foreground" aria-hidden="true" />
           {release.tag}
           <Badge>v{release.schema_version}</Badge>
           {release.split !== null && release.split !== undefined && (
@@ -556,7 +560,7 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
 
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" size="sm" data-testid={`export-${release.tag}`} onClick={() => setExporting(true)}>
-            <Download className="size-4" aria-hidden="true" />
+            <IconDownload className="size-4" aria-hidden="true" />
             Export
           </Button>
           <Button
@@ -570,7 +574,7 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
               })
             }
           >
-            <FileJson className="size-4" aria-hidden="true" />
+            <IconJson className="size-4" aria-hidden="true" />
             Manifest
           </Button>
           <Button
@@ -580,7 +584,7 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
             disabled={verify.isFetching}
             onClick={() => void verify.refetch()}
           >
-            <ShieldCheck className="size-4" aria-hidden="true" />
+            <IconShieldCheck className="size-4" aria-hidden="true" />
             {verify.isFetching ? "Verifying…" : "Verify"}
           </Button>
         </div>
@@ -655,7 +659,7 @@ function Verification({
   if (report.ok) {
     return (
       <p className="flex items-center gap-2 text-xs text-muted-foreground" data-testid={`verified-${tag}`}>
-        <Check className="size-3.5" aria-hidden="true" />
+        <IconCheck className="size-3.5" aria-hidden="true" />
         {report.checked} blobs re-read and re-hashed. Intact.
       </p>
     );
@@ -823,7 +827,7 @@ function PublishDialog({
               data-testid="publish-submit"
               disabled={tag.trim() === "" || publish.isPending || (split && !balanced)}
             >
-              <Upload className="size-4" aria-hidden="true" />
+              <IconUpload className="size-4" aria-hidden="true" />
               {publish.isPending ? "Publishing…" : "Publish"}
             </Button>
           </DialogFooter>
@@ -1089,7 +1093,7 @@ function ExportDialog({
             disabled={format === "" || running || (needsConsent && !consented)}
             onClick={() => run(needsConsent)}
           >
-            <Download className="size-4" aria-hidden="true" />
+            <IconDownload className="size-4" aria-hidden="true" />
             {running ? "Exporting…" : needsConsent ? "Export anyway" : "Export"}
           </Button>
         </DialogFooter>

@@ -1,16 +1,16 @@
 /**
  * One project: its name, its schema, its batches, and every version it has ever had.
  *
- * ## Four things in one column is three too many
+ * ## The sections are the navigation, and the identity sits beside them
  *
  * The header, the schema editor, the batch table and the version history are four
- * separate concerns, and stacking them separated them by nothing but a card border:
- * on any project with a few classes and more than two batches the history sat below
- * the fold and the batches were reached by scrolling past a form.
- *
- * So the *sections* are tabs and the header is not. The header names the project
- * and carries the actions that apply to all of it, and a tab list under it is what
- * says the rest are alternatives rather than a sequence.
+ * separate concerns, and stacking them separated them by nothing but a card border.
+ * So the *sections* are navigation — a column beside the content at `lg` and
+ * above, a tab strip above it below — and the project's own identity (its name,
+ * its active version, the one filled action) travels with that navigation rather
+ * than heading the content. `ProjectShell` owns the breakpoint; `ProjectNav` draws
+ * whichever layout it is handed; this screen supplies the data and composes the
+ * open section under its own page header.
  *
  * ## Overview is the default
  *
@@ -18,35 +18,30 @@
  * else worth showing" — and it is only true while the alternative is an empty batch
  * table. A schema editor is *configuration*, and it renders identically for an
  * empty project and a hundred-thousand-image one, which is `DESIGN.md` principle
- * 6's own counter-example written about this page.
+ * 6's own counter-example written about this page. The three-second-old project is
+ * answered by Overview with exactly one invitation chosen from the project's real
+ * state; while that invitation holds the page's filled button, the navigation's
+ * Ingest steps back to `secondary`, for the one-filled-button-per-view reason.
  *
- * The three-second-old project is answered by Overview
- * with exactly one invitation chosen from the project's real state. While that
- * invitation holds the page's filled
- * button, the header steps its own Ingest back to `secondary` — the same
- * `panelOwnsTheAction` bargain the Schema tab already had, for the same
- * one-filled-button-per-view reason.
+ * ## The section is in the URL, and `ui-core` still imports no router
  *
- * ## The tab is in the URL, and `ui-core` still imports no router
+ * A section held only in component state is lost on reload and cannot be linked
+ * to. So it travels as a path segment, and this screen takes it the way every
+ * screen here takes navigation: as props the host wires, never as a router import.
+ * `tab` is a raw `string` because it came from a URL — normalising it is this
+ * file's job, and anything unrecognised opens on the default rather than on
+ * nothing. With `onTabChange` absent the section is held here, so a test — or a
+ * host with no router at all — renders this screen unchanged.
  *
- * A tab held in component state is lost on reload and cannot be linked to, which is
- * the same complaint the split answers. So it travels as `?tab=`, and this screen
- * takes it the way every screen here takes navigation: as props the host
- * wires, never as a router import. `tab` is a raw `string` because it comes from a
- * query parameter — normalising it is this file's job, and anything unrecognised
- * opens on the default rather than on nothing.
+ * ## Each section owns its own query
  *
- * With `onTabChange` absent the tabs are uncontrolled and still work, which is what
- * lets a test — or a host with no router at all — render this screen unchanged.
- *
- * ## Each tab owns its own query
- *
- * `useActiveSchema` and `useSchemaVersions` used to run at the top of this component,
- * so opening a project fetched the version list whether or not anybody looked at it.
- * Radix unmounts inactive content, so a query that lives in the section that renders
- * it follows the tab: the version list is read when Versions is opened, and the batch
- * table stops polling while another tab is showing. `useProject` stays here, because
- * the header is outside the tabs and always drawn.
+ * Only the open section is mounted, so a query that lives in the section that
+ * renders it follows the section: the version list is read when Schema is opened,
+ * and the batch table stops polling while another section is showing. What this
+ * screen reads at the top is what the navigation and the page header always
+ * draw: the project, its active schema, its stats and its batches — all shared
+ * by key with the sections that also want them, so a section opens against a
+ * warm cache rather than a cold one.
  *
  * ## A 404 from the schema is an answer, not a failure
  *
@@ -70,27 +65,15 @@
  * and the editor already spells that.
  */
 
-import {
-  ChevronDown,
-  ChevronRight,
-  Database,
-  Layers,
-  LayoutDashboard,
-  MoreHorizontal,
-  PenLine,
-  Pencil,
-  Shapes,
-  Trash2,
-  Upload,
-} from "lucide-react";
+import { IconChevronDown, IconChevronRight, IconUpload } from "@tabler/icons-react";
 import {
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ComponentType,
   type FormEvent,
   type JSX,
+  type ReactNode,
 } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
@@ -98,7 +81,6 @@ import { Async } from "../data/Async";
 import { useApiClient } from "../data/ApiProvider";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { Breadcrumb } from "../patterns/Breadcrumb";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import {
@@ -108,18 +90,18 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../primitives/Menu";
 import { formatCount, formatWhen } from "../lib/format";
 import { FieldError, Input, Label } from "../primitives/Input";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
+import {
+  DEFAULT_PROJECT_SECTION,
+  PROJECT_SECTIONS,
+  type AnnotateTarget,
+  type ProjectSection,
+} from "../patterns/ProjectNav";
+import { ProjectShell, type ProjectNavData } from "../patterns/ProjectShell";
+import { SectionHeader } from "../patterns/SectionHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
 import { BatchesScreen } from "./BatchesScreen";
 import { DatasetScreen } from "./DatasetScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
@@ -139,9 +121,7 @@ import {
   useSchemaBlockingAssets,
   useSchemaDraft,
   useSchemaVersions,
-  type Batch,
   type LabelClassBody,
-  type Project,
   type SchemaVersion,
 } from "./queries";
 
@@ -149,7 +129,7 @@ import {
 const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
 
 /**
- * The four sections, and the tab a `?tab=` value has to name to reach one.
+ * The four sections, and the name a URL has to carry to reach one.
  *
  * **`versions` is gone and `dataset` has taken its place**, which is two moves in
  * one union and each has its own reason.
@@ -160,16 +140,16 @@ const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
  * object behind three indirect doors is an information-architecture bug, not a
  * navigation preference.
  *
- * `versions` was never a sibling of Schema; it is a *view of* Schema. A tab bar
- * whose fourth entry is a read-only history of its second is offering a
+ * `versions` was never a sibling of Schema; it is a *view of* Schema. A section
+ * list whose fourth entry is a read-only history of its second is offering a
  * subsection as a peer, which is how "Schema history" and "Releases" came to be
  * confusable enough that one of them had to be renamed. The history nests
- * inside the Schema tab, where the `VersionNavigator` seam already lives.
+ * inside Schema, where the `VersionNavigator` seam already lives.
  *
  * `?tab=versions` is still honoured and lands on Schema — see `resolveProjectTab`.
  * A URL somebody bookmarked is a promise.
  */
-export type ProjectTab = "overview" | "schema" | "batches" | "dataset";
+export type ProjectTab = ProjectSection;
 
 /**
  * What a raw `?tab=` value resolves to, including the ones that have moved.
@@ -184,38 +164,8 @@ export type ProjectTab = "overview" | "schema" | "batches" | "dataset";
 export function resolveProjectTab(raw: string | undefined): ProjectTab | null {
   if (raw === undefined) return null;
   if (raw === "versions") return "schema";
-  return TABS.includes(raw as ProjectTab) ? null : DEFAULT_TAB;
+  return PROJECT_SECTIONS.includes(raw as ProjectTab) ? null : DEFAULT_PROJECT_SECTION;
 }
-
-/**
- * The one a project opens on, and where an unrecognised `?tab=` lands.
- *
- * **Overview**, deliberately. Schema reads as the right default — "a project
- * three seconds old has nothing else worth showing" — and that is only true while
- * the alternative is an empty batch table. A schema editor is *configuration*, and
- * a project page opening on configuration is `DESIGN.md` principle 6's own
- * counter-example.
- *
- * A three-second-old project is still handled: Overview's empty state invites the
- * first ingest, which is the next thing to do, where an empty schema form is a
- * question about an ontology nobody has data for yet.
- */
-const DEFAULT_TAB: ProjectTab = "overview";
-
-interface TabLabel {
-  readonly label: string;
-  readonly icon: ComponentType<{ readonly className?: string }>;
-}
-
-const TAB_LABELS: Record<ProjectTab, TabLabel> = {
-  overview: { label: "Overview", icon: LayoutDashboard },
-  schema: { label: "Schema", icon: Shapes },
-  batches: { label: "Batches", icon: Layers },
-  dataset: { label: "Dataset", icon: Database },
-};
-
-/** Declaration order is display order, and it is the order work happens in. */
-const TABS: readonly ProjectTab[] = ["overview", "schema", "batches", "dataset"];
 
 export interface ProjectScreenProps {
   readonly projectId: string;
@@ -225,18 +175,14 @@ export interface ProjectScreenProps {
    * The rail's Projects link reaches the same URL, and that is not a reason to
    * leave this out: the rail is where you go to *start* somewhere, and a person
    * inside a project should not have to notice that one of two top-level
-   * destinations happens to be their parent.
+   * destinations happens to be their parent. `backHref` is the same destination
+   * as a URL, so the control is a real link.
    */
   readonly onBack?: () => void;
+  readonly backHref?: string;
   /** Route changes, supplied by the app. See `ProjectsScreen`'s note. */
   readonly onIngest?: () => void;
   readonly onOpenBatch?: (batchId: string) => void;
-  /*
-   * There is no `onOpenDataset` any more. The dataset is a tab, so every link to
-   * it inside this project is a tab change — including the ones that used to be
-   * route changes. The gallery still takes one, because it is a different screen
-   * and a route is how it gets back here.
-   */
   /**
    * Where to go once the project is gone. Absent means the overflow menu still
    * deletes, and the caller is left on a screen whose subject no longer exists —
@@ -244,42 +190,51 @@ export interface ProjectScreenProps {
    */
   readonly onDeleted?: () => void;
   /**
-   * Which section to show, as it arrived from `?tab=` — a raw string, normalised
+   * Which section to show, as it arrived from the URL — a raw string, normalised
    * here, so a host never has to know what the valid values are.
    */
   readonly tab?: string;
-  /** Absent means uncontrolled: the tabs work, they just do not reach the URL. */
+  /** Absent means the section is held here: the navigation works, it just does not reach the URL. */
   readonly onTabChange?: (tab: ProjectTab) => void;
+  /** A section's URL, for the navigation's real links. Absent renders them as buttons. */
+  readonly hrefFor?: (tab: ProjectTab) => string;
 }
 
 export function ProjectScreen({
   projectId,
   onBack,
+  backHref,
   onIngest,
   onOpenBatch,
   onDeleted,
   tab,
   onTabChange,
+  hrefFor,
 }: ProjectScreenProps): JSX.Element {
   const project = useProject(projectId);
-  // Already read by the header; naming it here too costs nothing (one query key,
-  // one request) and is what lets the Overview colour its bars from the schema.
+  // Already read by the navigation; naming it here too costs nothing (one query
+  // key, one request) and is what lets the Overview colour its bars from the schema.
   const schema = useActiveSchema(projectId);
+  const stats = useProjectStats(projectId);
+  const batches = useBatches(projectId);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // The section, for a host that wired no `onTabChange`: held here rather than
+  // nowhere, so the navigation still moves and a test can walk the sections.
+  const [held, setHeld] = useState<ProjectTab | undefined>(undefined);
   /*
-   * The schema draft lives **here**, above the tabs, and that placement is the
-   * fix rather than an implementation detail.
+   * The schema draft lives **here**, above the sections, and that placement is
+   * the fix rather than an implementation detail.
    *
-   * Radix unmounts inactive content — the property the section above is built on
-   * — so a draft owned by the editor dies every time somebody looks at another
-   * tab, silently, taking whatever had been typed with it. No guard inside the
+   * Only the open section is mounted — the property the section above is built
+   * on — so a draft owned by the editor dies every time somebody looks at another
+   * section, silently, taking whatever had been typed with it. No guard inside the
    * editor can reach that: the component is gone.
    *
-   * `forceMount` was the alternative and was rejected. It would keep the editor
-   * alive at the cost of the query-follows-the-tab property this screen states
-   * two paragraphs above — the version list and the per-class counts would load
-   * for every project view, whether or not anybody opened Schema.
+   * Keeping every section mounted was the alternative and was rejected. It would
+   * keep the editor alive at the cost of the query-follows-the-section property
+   * this screen states two paragraphs above — the version list and the per-class
+   * counts would load for every project view, whether or not anybody opened Schema.
    *
    * The draft names the project it belongs to, because this component is
    * *re-rendered* rather than remounted when the route's `:projectId` changes.
@@ -287,8 +242,8 @@ export function ProjectScreen({
    * It is now also the **responsive half of a value whose durable half is on the
    * server**: the debounced write below shares this same state, for the same
    * unmount reason — a `setTimeout` scheduled inside the editor is cancelled the
-   * moment a tab switch unmounts it, and a save that never fires because
-   * somebody glanced at Overview is the tab-survival bug all over again, one
+   * moment a section switch unmounts it, and a save that never fires because
+   * somebody glanced at Overview is the section-survival bug all over again, one
    * layer down.
    */
   const [schemaDraft, setSchemaDraft] = useState<SchemaDraft | null>(null);
@@ -318,7 +273,6 @@ export function ProjectScreen({
   // that without depending on the closure's own changing identity, which would
   // restart the timer on every unrelated re-render.
   const writeSchemaDraftRef = useRef<() => Promise<number | null>>(() => Promise.resolve(null));
-
   /**
    * Write the whole held draft now, and hand back the revision it landed at.
    *
@@ -504,143 +458,100 @@ export function ProjectScreen({
   // navigate to a batch is better off not being told there is a section it cannot
   // use — which is exactly what this screen did with the section before the split.
   const available: readonly ProjectTab[] =
-    onOpenBatch === undefined ? TABS.filter((one) => one !== "batches") : TABS;
+    onOpenBatch === undefined ? PROJECT_SECTIONS.filter((one) => one !== "batches") : PROJECT_SECTIONS;
   // `find`, not a cast: an unknown value, a stale link, or `batches` on a host that
   // has no batch route all resolve to the default rather than to an empty page.
   // `?tab=versions` is the one stale value with a *destination* rather than a
   // fallback — the history moved inside Schema, so that is where it lands.
-  const asked = tab === "versions" ? "schema" : tab;
-  const current = available.find((one) => one === asked) ?? DEFAULT_TAB;
+  const asked = onTabChange === undefined && held !== undefined ? held : tab === "versions" ? "schema" : tab;
+  const current = available.find((one) => one === asked) ?? DEFAULT_PROJECT_SECTION;
+  const go = onTabChange ?? setHeld;
 
   // Costs no request: `useProjectReadiness` composes the schema and stats queries
-  // the header above already runs, and TanStack keys them identically. Read here
-  // rather than reported upward from the panel, because the header is drawn
-  // outside the tabs and a child telling its parent how to render is a render
+  // this screen already runs, and TanStack keys them identically. Read here
+  // rather than reported upward from the panel, because the navigation is drawn
+  // outside the section and a child telling its parent how to render is a render
   // cycle waiting to happen.
   const readiness = useProjectReadiness(projectId);
-  // `onTabChange` is in the condition because it is what decides whether the
-  // invitation has a button at all: an uncontrolled Radix root cannot be moved
-  // from inside the panel, so the panel is handed no `onOpenSchema` and renders
-  // prose. Standing the header back for an invitation that cannot act would
-  // leave the page with no filled button anywhere.
   const overviewOwnsTheAction =
-    current === "overview" &&
-    onTabChange !== undefined &&
-    readiness !== null &&
-    invitationOwnsTheAction(firstRunInvitation(readiness));
+    current === "overview" && readiness !== null && invitationOwnsTheAction(firstRunInvitation(readiness));
+
+  // The batches work can actually happen in. `in_annotation` is the only state an
+  // annotation may be written into, so this is not a preference — anything
+  // else would send somebody to a gallery that refuses every save.
+  //
+  // Newest first, and that is the wire's own order **reversed** rather than a
+  // timestamp read: `BatchOut` carries no timestamp of any kind, and the metadata
+  // store lists by `rowid`, so what arrives is creation order, oldest first.
+  // Inventing a field to sort on would be the "No description." mistake in the
+  // other direction. The copy is not decoration — the array belongs to the query
+  // cache, and `reverse` mutates in place.
+  const open: readonly AnnotateTarget[] = [...(batches.data?.items ?? [])]
+    .filter((batch) => batch.state === "in_annotation")
+    .reverse()
+    .map((batch) => ({
+      id: batch.id,
+      name: batch.name,
+      remaining: batch.progress.unannotated,
+      schemaVersion: batch.schema_version ?? null,
+    }));
+  const holdsAnnotate = open.length > 0 && onOpenBatch !== undefined;
+  // Ingest is reachable from every section: in the navigation's slot while
+  // nothing is open for annotation, and as a `secondary` header action on the
+  // sections that ingest feeds once Annotate has taken the slot. Never both.
+  const ingestInHeader = holdsAnnotate && onIngest !== undefined ? onIngest : undefined;
+
+  const nav: ProjectNavData = {
+    name: project.data?.name ?? "",
+    description: project.data?.description ?? null,
+    activeVersion: schema.data?.version ?? null,
+    sections: available,
+    active: current,
+    onNavigate: go,
+    ...(hrefFor === undefined ? {} : { hrefFor }),
+    ...(backHref === undefined ? {} : { backHref }),
+    ...(onBack === undefined ? {} : { onBack }),
+    ...(holdsAnnotate && onOpenBatch !== undefined ? { annotate: { targets: open, onOpen: onOpenBatch } } : {}),
+    ...(onIngest === undefined ? {} : { onIngest }),
+    contentOwnsTheAction: overviewOwnsTheAction,
+    onRename: () => setRenaming(true),
+    onDelete: () => setDeleting(true),
+  };
 
   return (
-    <div className="flex flex-col gap-6" data-testid="project-screen">
-      {/* One ancestor, and it is the shortest chain in the product: a project's
-          parent is the list and nothing sits above it. */}
-      <Breadcrumb
-        items={onBack === undefined ? [] : [{ label: "Projects", onNavigate: onBack }]}
-      />
-
-      <Async query={project} loadingRows={2}>
-        {(loaded) => (
-          <ProjectHeader
-            project={loaded}
-            onIngest={onIngest}
-            onOpenBatch={onOpenBatch}
-            // The schema tab owns a filled "Save version" of its own, and it is
-            // that view's forward action. Telling the header lets it step back,
-            // so the page still shows exactly one filled button.
-            panelOwnsTheAction={current === "schema" || overviewOwnsTheAction}
-            {...(onTabChange === undefined ? {} : { onOpenDataset: () => onTabChange("dataset") })}
-            onRename={() => setRenaming(true)}
-            onDelete={() => setDeleting(true)}
-          />
-        )}
-      </Async>
-
-      <Tabs
-        // Controlled by the URL when the host wired one, uncontrolled otherwise —
-        // and `current` seeds the uncontrolled case too, so `tab` alone still says
-        // which section to open on.
-        {...(onTabChange === undefined
-          ? { defaultValue: current }
-          : {
-              value: current,
-              // Radix only ever emits a value this file rendered, so the fallback
-              // is unreachable — and it is what keeps the callback's type honest
-              // without a cast.
-              onValueChange: (next: string) =>
-                onTabChange(available.find((one) => one === next) ?? DEFAULT_TAB),
-            })}
-        data-testid="project-tabs"
-      >
-        <TabsList>
-          {available.map((one) => {
-            const { label, icon: Icon } = TAB_LABELS[one];
-            return (
-              <TabsTrigger key={one} value={one} data-testid={`tab-${one}`}>
-                <Icon className="size-4" aria-hidden="true" />
-                {label}
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
-
-        <TabsContent value="overview">
-          {/* The declared classes travel down so a distribution bar shows the
-              colour the schema authored rather than only the derived hue. The
-              query is shared with the Schema tab, so this costs no request. */}
-          {/* The first-run invitation's destinations exist only when the host
-              controls the tabs: an uncontrolled Radix root cannot be moved from
-              here, and a link that silently does nothing is worse than plain
-              text. `overviewOwnsTheAction` reads the same condition, so the
-              header does not stand back for a button that is not there. */}
-          <OverviewPanel
-            projectId={projectId}
-            {...(schema.data === undefined ? {} : { classes: schema.data.classes })}
-            {...(onIngest === undefined ? {} : { onIngest })}
-            {...(onTabChange === undefined
-              ? {}
-              : { onBrowseDataset: () => onTabChange("dataset") })}
-            {...(onTabChange === undefined ? {} : { onOpenSchema: () => onTabChange("schema") })}
-            {...(onTabChange === undefined || onOpenBatch === undefined
-              ? {}
-              : { onOpenBatches: () => onTabChange("batches") })}
-          />
-        </TabsContent>
-
-        <TabsContent value="schema">
-          <SchemaSection
-            projectId={projectId}
-            draft={schemaDraft}
-            onDraftChange={setSchemaDraft}
-            draftSaveError={saveSchemaDraft.error}
-            onFlushDraft={flushSchemaDraft}
-            {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
-          />
-        </TabsContent>
-
-        {onOpenBatch !== undefined && (
-          <TabsContent value="batches">
-            <BatchesScreen
-              projectId={projectId}
-              onOpenBatch={onOpenBatch}
-              {...(onTabChange === undefined
-                ? {}
-                : { onOpenSchema: () => onTabChange("schema") })}
-              {...(onTabChange === undefined
-                ? {}
-                : { onOpenDataset: () => onTabChange("dataset") })}
+    <div className="flex min-h-full flex-1 flex-col" data-testid="project-screen">
+      <ProjectShell nav={nav}>
+        <div className="flex flex-col gap-6">
+          {/* The project itself failing to load is said here, above the section
+              rather than instead of it: the sections read their own queries and
+              stand on their own, and the navigation has no room for an error. */}
+          {project.isError && (
+            <ErrorState
+              code={asApiError(project.error).code}
+              message={refusalProse(project.error)}
+              onRetry={() => void project.refetch()}
             />
-          </TabsContent>
-        )}
-
-        <TabsContent value="dataset">
-          {/*
-            The trunk, as a peer of the work that fills it rather than a route
-            behind an overflow menu. No `BackLink` here — a tab's way out is the
-            tab bar, and one inside a panel would be a second, contradictory
-            answer to "where am I".
-          */}
-          <DatasetScreen projectId={projectId} />
-        </TabsContent>
-      </Tabs>
+          )}
+          {
+            <Section
+              current={current}
+              projectId={projectId}
+              overviewMeta={overviewMeta(stats.data)}
+              ingestInHeader={ingestInHeader}
+              classes={schema.data?.classes}
+              go={go}
+              onIngest={onIngest}
+              onOpenBatch={onOpenBatch}
+              schema={{
+                draft: schemaDraft,
+                onDraftChange: setSchemaDraft,
+                draftSaveError: saveSchemaDraft.error,
+                onFlushDraft: flushSchemaDraft,
+              }}
+            />
+          }
+        </div>
+      </ProjectShell>
 
       <RenameDialog
         projectId={projectId}
@@ -664,6 +575,114 @@ export function ProjectScreen({
       )}
     </div>
   );
+}
+
+/**
+ * The Overview header's one line: how much data the project holds, and when it
+ * last grew. `N images` is the count the page exists to show; the ingest moment
+ * is appended only when the wire recorded one — `last_ingest_at` is nullable
+ * forever, since rows written before the column existed cannot be backfilled —
+ * and only when it parses, because the response check validates `date-time` as
+ * a string and no further. Nothing while the stats are still loading: a
+ * placeholder would be a line about a field rather than about the project.
+ */
+function overviewMeta(
+  counted: { readonly asset_count: number; readonly last_ingest_at?: string | null } | undefined,
+): string | undefined {
+  if (counted === undefined) return undefined;
+  const images = `${formatCount(counted.asset_count)} ${counted.asset_count === 1 ? "image" : "images"}`;
+  const when = counted.last_ingest_at == null ? "" : formatWhen(counted.last_ingest_at);
+  return when === "" ? images : `${images} · ingested ${when}`;
+}
+
+/**
+ * The open section under its page header. Only one is mounted at a time, which
+ * is what makes "requests follow the open section" true by construction rather
+ * than by every panel remembering.
+ *
+ * Batches and Dataset draw their own headers, because the actions on them —
+ * pre-labelling, publishing — belong to state those screens hold. Overview and
+ * Schema are headed here, where the numbers and the draft already are.
+ */
+function Section({
+  current,
+  projectId,
+  overviewMeta: meta,
+  ingestInHeader,
+  classes,
+  go,
+  onIngest,
+  onOpenBatch,
+  schema,
+}: {
+  readonly current: ProjectTab;
+  readonly projectId: string;
+  readonly overviewMeta: string | undefined;
+  readonly ingestInHeader: (() => void) | undefined;
+  readonly classes: readonly LabelClassBody[] | undefined;
+  readonly go: (tab: ProjectTab) => void;
+  readonly onIngest: (() => void) | undefined;
+  readonly onOpenBatch: ((batchId: string) => void) | undefined;
+  readonly schema: {
+    readonly draft: SchemaDraft | null;
+    readonly onDraftChange: (draft: SchemaDraft | null) => void;
+    readonly draftSaveError: unknown;
+    readonly onFlushDraft: () => Promise<number | null>;
+  };
+}): JSX.Element | null {
+  const headerIngest: ReactNode =
+    ingestInHeader === undefined ? undefined : (
+      <Button variant="secondary" data-testid="go-ingest" onClick={ingestInHeader}>
+        <IconUpload className="size-4" aria-hidden="true" />
+        Ingest
+      </Button>
+    );
+  switch (current) {
+    case "overview":
+      return (
+        <>
+          <SectionHeader title="Overview" meta={meta} actions={headerIngest} />
+          {/* The declared classes travel down so a distribution bar shows the
+              colour the schema authored rather than only the derived hue. The
+              query is shared with the Schema section, so this costs no request. */}
+          <OverviewPanel
+            projectId={projectId}
+            {...(classes === undefined ? {} : { classes })}
+            {...(onIngest === undefined ? {} : { onIngest })}
+            onBrowseDataset={() => go("dataset")}
+            onOpenSchema={() => go("schema")}
+            {...(onOpenBatch === undefined ? {} : { onOpenBatches: () => go("batches") })}
+          />
+        </>
+      );
+    case "schema":
+      return (
+        <>
+          <SectionHeader title="Schema" meta="The classes a label may carry, and the shapes each one takes." />
+          <SchemaSection
+            projectId={projectId}
+            draft={schema.draft}
+            onDraftChange={schema.onDraftChange}
+            draftSaveError={schema.draftSaveError}
+            onFlushDraft={schema.onFlushDraft}
+            {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+          />
+        </>
+      );
+    case "batches":
+      if (onOpenBatch === undefined) return null;
+      return (
+        <BatchesScreen
+          projectId={projectId}
+          onOpenBatch={onOpenBatch}
+          onOpenSchema={() => go("schema")}
+          onOpenDataset={() => go("dataset")}
+          {...(ingestInHeader === undefined ? {} : { onIngest: ingestInHeader })}
+        />
+      );
+    case "dataset":
+      return <DatasetScreen projectId={projectId} />;
+  }
 }
 
 /**
@@ -746,291 +765,6 @@ function DeleteDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * Who the project is, and what to do about it.
- *
- * ## Four lines, two buttons, and an overflow (`DESIGN.md`)
- *
- * A title, the literal string "No description." and three equal-weight buttons —
- * Dataset, Ingest, Rename — says nothing about what kind of
- * project it is, what schema is live, or what to do next; and the one line it
- * spends on a *missing* description is a line about a field rather than about
- * anybody's project. Absent renders nothing.
- *
- * ## The chips that are here, and the two that are not
- *
- * `DESIGN.md`: **a chip with no data is omitted, never rendered as a
- * placeholder.** The design asks for task type, sensor modality, active version
- * and last ingest. Two of those have a source and two do not: `ProjectOut`
- * carries `id`, `name` and `description` and nothing else.
- *
- * So the version and last-ingest chips ship, and task type and modality do not.
- * Inventing a field to fill one, or rendering "Unknown", is the "No
- * description." mistake with a border around it.
- *
- * Last ingest is answered by `Asset.ingested_at`. `Source.registered_at` is not
- * the proxy it looks like, because registration is idempotent on
- * `(kind, path, extraction_fps)` and is never rewritten. It is **nullable
- * forever**, since rows written before the column existed cannot be backfilled
- * from anything. A null reaches the
- * same rule as a missing description: the chip is omitted, with no branch of its
- * own, which is why the omitted case needs no code beyond the guard below.
- *
- * The counted chip — `n images` — is the exception worth having, because the
- * project's stats genuinely answer it and a project page that never mentions how
- * much data it holds is the thing this layout exists to fix.
- *
- * ## Annotate is the primary action, and it is absent rather than disabled
- *
- * `DESIGN.md`'s action-forward rule: a project page's answer to "what now?" is
- * never "rename this". A project has no annotate route of its own — the annotator
- * opens a *job* — so the CTA opens the batch that is currently `in_annotation`,
- * which is the one place work can actually happen.
- *
- * With no such batch there is nowhere to send anybody, and the button is **not
- * rendered** rather than rendered grey: a disabled control that never says what
- * would enable it is forbidden.
- * Ingest becomes the primary in that state, which is also the honest next step.
- *
- * ## With more than one open batch the CTA asks which, and says that it is asking
- *
- * The button used to resolve its destination with a `find`, so a project holding
- * two batches in `in_annotation` sent everybody to whichever the wire returned
- * first and never mentioned having chosen. A batch **pins the project's active
- * schema version at approval and that pin never moves**, so the batch you land in
- * decides which schema you annotate under — the pick is a semantic one, and one
- * nobody made.
- *
- * So the cost of the choice tracks the ambiguity. One open batch is no ambiguity
- * and still jumps. Two or more renders `Annotate ▾` and opens the menu below, and
- * **the chevron is the load-bearing half**: a button that opens a choice must not
- * be shaped like one that jumps. See `AnnotateAction` for what a row carries.
- *
- * ## Two queries the header runs
- *
- * The schema queries live in the tab that shows them, so opening a
- * project does not fetch a version list nobody looked at. These two are
- * deliberately different: `useActiveSchema` and
- * `useProjectStats` are what the header *renders*, and the header is always
- * drawn. Both share their query key with the tab that also wants them, so the
- * Schema tab now opens against a warm cache rather than a cold one.
- */
-function ProjectHeader({
-  project,
-  onIngest,
-  onOpenBatch,
-  onRename,
-  onDelete,
-  panelOwnsTheAction = false,
-}: {
-  readonly project: Project;
-  readonly onIngest?: () => void;
-  readonly onOpenBatch?: (batchId: string) => void;
-  readonly onRename: () => void;
-  readonly onDelete: () => void;
-  /**
-   * The open tab carries its own filled action, so this header must not.
-   *
-   * `DESIGN.md` gives a page one filled button and the header normally owns it,
-   * which is why every panel's own header action is `secondary`. The schema
-   * editor is the exception worth making: "Save version" commits work a person
-   * has just typed, and a commit control that is not the loudest thing on the
-   * screen is the wrong trade. So the header defers instead.
-   */
-  readonly panelOwnsTheAction?: boolean;
-}): JSX.Element {
-  const schema = useActiveSchema(project.id);
-  const stats = useProjectStats(project.id);
-  const batches = useBatches(project.id);
-
-  // The batches work can actually happen in. `in_annotation` is the only state an
-  // annotation may be written into, so this is not a preference — anything
-  // else would send somebody to a gallery that refuses every save.
-  //
-  // Newest first, and that is the wire's own order **reversed** rather than a
-  // timestamp read: `BatchOut` carries no timestamp of any kind, and the metadata
-  // store lists by `rowid`, so what arrives is creation order, oldest first.
-  // Inventing a field to sort on would be the "No description." mistake in the
-  // other direction. The copy is not decoration — the array belongs to the query
-  // cache, and `reverse` mutates in place.
-  const active = [...(batches.data?.items ?? [])]
-    .filter((batch) => batch.state === "in_annotation")
-    .reverse();
-  const annotate = active.length > 0 && onOpenBatch !== undefined ? onOpenBatch : undefined;
-
-  return (
-    <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <h1 className="text-2xl font-semibold tracking-tight" data-testid="project-title">
-          {project.name}
-        </h1>
-        {/* Nothing at all when there is no description — not a placeholder. */}
-        {project.description !== null && project.description !== "" && (
-          <p className="text-sm text-muted-foreground" data-testid="project-description">
-            {project.description}
-          </p>
-        )}
-        <div className="flex flex-wrap items-center gap-1.5" data-testid="project-chips">
-          {schema.data !== undefined && (
-            <Badge variant="outline" data-testid="chip-version">
-              v{schema.data.version} active
-            </Badge>
-          )}
-          {stats.data !== undefined && stats.data.asset_count > 0 && (
-            <Badge variant="outline" data-testid="chip-images">
-              {formatCount(stats.data.asset_count)}{" "}
-              {stats.data.asset_count === 1 ? "image" : "images"}
-            </Badge>
-          )}
-          {/* Two different questions, and both still need asking. The first is
-              nullability: the field really is `string | null` — null means nothing
-              has been ingested, or was ingested before the column existed. The second
-              is the one risk the response check deliberately leaves open: at `unwrap` it
-              validates `date-time` as a *string* and no further, on purpose, so a
-              string that will not parse still reaches here and `formatWhen` answers
-              "". What is gone is the third question this used to ask — whether the
-              value was a string at all. */}
-          {stats.data?.last_ingest_at != null &&
-            formatWhen(stats.data.last_ingest_at) !== "" && (
-              <Badge variant="outline" data-testid="chip-ingested">
-                Ingested {formatWhen(stats.data.last_ingest_at)}
-              </Badge>
-            )}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        {annotate !== undefined && (
-          <AnnotateAction
-            batches={active}
-            onOpenBatch={annotate}
-            variant={panelOwnsTheAction ? "secondary" : "primary"}
-          />
-        )}
-        {onIngest !== undefined && (
-          <Button
-            // Primary only when nothing else on the page is, so there is exactly
-            // one filled action rather than two or none.
-            variant={annotate === undefined && !panelOwnsTheAction ? "primary" : "secondary"}
-            data-testid="go-ingest"
-            onClick={onIngest}
-          >
-            <Upload className="size-4" aria-hidden="true" />
-            Ingest
-          </Button>
-        )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="secondary" size="icon" aria-label="More actions" data-testid="project-menu">
-              <MoreHorizontal className="size-4" aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem data-testid="rename-project" onSelect={onRename}>
-              <Pencil className="size-4" aria-hidden="true" />
-              Rename
-            </DropdownMenuItem>
-            {/*
-              **No Dataset item.** It was here because the dataset had no tab, and
-              an overflow menu is where a destination goes when the navigation has
-              no room for it. It has room now, and the same destination in a tab
-              bar *and* a hidden menu is two answers to one question — the second
-              of which nobody finds.
-            */}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem destructive data-testid="delete-project" onSelect={onDelete}>
-              <Trash2 className="size-4" aria-hidden="true" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </header>
-  );
-}
-
-/**
- * One open batch jumps; two or more ask which, in three data points a row.
- *
- * ## What a row has to carry, and why it is exactly these three
- *
- * The **name**, which already carries the `— correction` suffix where one applies,
- * because `suggestedCorrectionName` builds that suffix before the batch exists and
- * the server stores what it was given. The **remaining count**, in the batch
- * table's own words (`N to do`, which is `unannotated` there and here — the
- * annotator's `outstandingWork` sums a second state and answers a different
- * question). And the **pinned schema version**, which is the whole reason the
- * choice is worth stopping for: it is invisible everywhere else on this page, and
- * it is what the pick actually decides.
- *
- * `schema_version` is non-null for anything that has reached `in_annotation` —
- * approval is what pins it — but the wire types it nullable, so a null renders as
- * the em dash the batch table uses rather than as `vnull`.
- *
- * ## No split button, no remembered default
- *
- * A split button would put a direct jump and a chooser in one control, which is
- * the ambiguity it was drawn to resolve. A remembered "last batch" default makes
- * the destination a function of session history, which is the same defect as the
- * `find` this replaced, only harder to see. `DropdownMenu` is the primitive the
- * `⋯` overflow beside it already uses, so `Esc`, outside-click, arrow keys and the
- * focus ring arrive with it rather than being written again.
- */
-function AnnotateAction({
-  batches,
-  onOpenBatch,
-  variant,
-}: {
-  /** Only the batches work can be written into, most recent first. */
-  readonly batches: readonly Batch[];
-  readonly onOpenBatch: (batchId: string) => void;
-  readonly variant: "primary" | "secondary";
-}): JSX.Element | null {
-  if (batches.length <= 1) {
-    const [only] = batches;
-    // Nowhere to send anybody: absent, never grey. The caller does not render
-    // this component in that state, and the branch is here so that it cannot
-    // matter which of the two says so.
-    if (only === undefined) return null;
-    return (
-      <Button variant={variant} data-testid="go-annotate" onClick={() => onOpenBatch(only.id)}>
-        <PenLine className="size-4" aria-hidden="true" />
-        Annotate
-      </Button>
-    );
-  }
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        {/* Same `data-testid` and same variant as the jumping form: it is one
-            control with two shapes, and the chevron is what tells them apart. */}
-        <Button variant={variant} data-testid="go-annotate">
-          <PenLine className="size-4" aria-hidden="true" />
-          Annotate
-          <ChevronDown className="size-4" aria-hidden="true" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {batches.map((batch) => (
-          <DropdownMenuItem
-            key={batch.id}
-            data-testid={`annotate-batch-${batch.name}`}
-            onSelect={() => onOpenBatch(batch.id)}
-          >
-            <div className="flex flex-col items-start">
-              <span>{batch.name}</span>
-              <span className="text-xs text-muted-foreground">
-                {batch.progress.unannotated} to do ·{" "}
-                {batch.schema_version == null ? "—" : `v${batch.schema_version}`}
-              </span>
-            </div>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
@@ -1452,9 +1186,9 @@ function AnnotationRun({
             onClick={() => setOpen((shown) => !shown)}
           >
             {open ? (
-              <ChevronDown className="size-4 shrink-0" aria-hidden="true" />
+              <IconChevronDown className="size-4 shrink-0" aria-hidden="true" />
             ) : (
-              <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
+              <IconChevronRight className="size-4 shrink-0" aria-hidden="true" />
             )}
             v{oldest.version}–v{newest.version}
             {newest.version === active && <Badge variant="accent">active</Badge>}

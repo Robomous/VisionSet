@@ -302,6 +302,26 @@ export {
 } from "./patterns/Breadcrumb.js";
 export { parentLabel } from "./patterns/parentLabel.js";
 
+// Inside a project: the navigation column, its strip form below `lg`, and the
+// section header every section opens with. Data-only; the host spells the URLs.
+export {
+  DEFAULT_PROJECT_SECTION,
+  isProjectSection,
+  PROJECT_SECTIONS,
+  ProjectNav,
+  type AnnotateTarget,
+  type ProjectNavProps,
+  type ProjectSection,
+} from "./patterns/ProjectNav.js";
+export {
+  PROJECT_NAV_MIN_VIEWPORT_PX,
+  ProjectShell,
+  type ProjectNavData,
+  type ProjectShellProps,
+} from "./patterns/ProjectShell.js";
+export { SectionHeader, type SectionHeaderProps } from "./patterns/SectionHeader.js";
+export { PaddedContent } from "./patterns/PaddedContent.js";
+
 // The floating tool palette. Reports the derived tool; never stores one.
 export { ToolPalette, toolChoices, type ToolPaletteProps } from "./annotator/ToolPalette.js";
 export { ZoomWidget, type ZoomWidgetProps } from "./annotator/ZoomWidget.js";

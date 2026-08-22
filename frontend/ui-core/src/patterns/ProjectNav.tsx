@@ -1,0 +1,406 @@
+/**
+ * Where you are inside a project, and the project's own identity beside it.
+ *
+ * ## One component, two layouts
+ *
+ * At `lg` and above the sections are a **column** between the rail and the
+ * content: a real `<nav>` with one link per section, the project's name and
+ * active version above them, the one filled action of the project shell, and
+ * the overflow below. Below `lg` the same data is a **strip** — an identity row
+ * and a horizontal tab bar above the content, which is the shape the project
+ * view had before the column. The breakpoint is not decided here: `ProjectShell`
+ * picks the layout, and this component draws whichever it is handed, so there is
+ * one place the items, the icons and the labels are spelled.
+ *
+ * ## It is navigation, so the items are links
+ *
+ * `ui-core` imports no router. The host spells every URL through `hrefFor` and
+ * turns the click into a route change through `onNavigate`; the `<a>` is what
+ * keeps middle-click and "open in new tab" working, and the callback is what
+ * keeps the app's history rules in the app. A host with no URLs to spell —
+ * a component test, a renderer with no router — still gets working items, as
+ * buttons, rather than anchors that go nowhere.
+ *
+ * The open section is marked with `aria-current="page"` as well as its fill,
+ * because a fill is colour and colour is never the only signal.
+ *
+ * ## The one filled control
+ *
+ * Annotate is the project's forward action, and it opens the batch that is
+ * currently `in_annotation`. With none open there is nowhere to send anybody,
+ * so the button is absent rather than grey and **Ingest takes the slot** — the
+ * honest next step. With two or more open it reads `Annotate ▾` and asks which,
+ * because the batch you pick decides which schema version you annotate under
+ * and a silent default would be a choice nobody made. A section whose own
+ * content holds the page's filled control says so through
+ * `contentOwnsTheAction`, and Ingest steps back to `secondary` for as long as
+ * that holds, so the page never shows two.
+ *
+ * ## The rail it is not
+ *
+ * The rail is the workspace's top-level destinations on the `sidebar-*` tokens.
+ * This column belongs to one project and reads as part of the page: `background`
+ * and a hairline, no `sidebar-*` token anywhere in it.
+ */
+
+import {
+  IconArrowLeft,
+  IconChevronDown,
+  IconDatabase,
+  IconDots,
+  IconLayoutGrid,
+  IconPencil,
+  IconSitemap,
+  IconStack2,
+  IconTrash,
+  IconUpload,
+} from "@tabler/icons-react";
+import type { ComponentType, JSX, MouseEvent, ReactNode } from "react";
+
+import { cn } from "../lib/cn";
+import { Badge } from "../primitives/Badge";
+import { Button } from "../primitives/Button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../primitives/Menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
+
+/**
+ * The four sections of a project, in the order work happens in: what a project
+ * *is*, what it *means*, what is *being done*, what came *out*.
+ */
+export type ProjectSection = "overview" | "schema" | "batches" | "dataset";
+
+export const PROJECT_SECTIONS: readonly ProjectSection[] = ["overview", "schema", "batches", "dataset"];
+
+export function isProjectSection(value: string | undefined): value is ProjectSection {
+  return PROJECT_SECTIONS.includes(value as ProjectSection);
+}
+
+/** The section a project opens on, and where anything unrecognised lands. */
+export const DEFAULT_PROJECT_SECTION: ProjectSection = "overview";
+
+interface SectionLabel {
+  readonly label: string;
+  readonly icon: ComponentType<{ readonly className?: string; readonly "aria-hidden"?: boolean | "true" }>;
+}
+
+const SECTION_LABELS: Record<ProjectSection, SectionLabel> = {
+  overview: { label: "Overview", icon: IconLayoutGrid },
+  schema: { label: "Schema", icon: IconSitemap },
+  batches: { label: "Batches", icon: IconStack2 },
+  dataset: { label: "Dataset", icon: IconDatabase },
+};
+
+/** One batch the annotator can be opened on: what the `Annotate ▾` menu lists. */
+export interface AnnotateTarget {
+  readonly id: string;
+  /** Already carries the `— correction` suffix where one applies. */
+  readonly name: string;
+  /** Frames still `unannotated` — the batch table's `N to do`. */
+  readonly remaining: number;
+  /** The schema version the batch is pinned to; null only for a row the wire left unpinned. */
+  readonly schemaVersion: number | null;
+}
+
+export interface ProjectNavProps {
+  readonly layout: "column" | "strip";
+  /** The project's name. Wraps; never truncates. */
+  readonly name: string;
+  /** The project's description. Absent or empty renders nothing — not "No description." */
+  readonly description?: string | null;
+  /** The active schema version. `null` or absent renders no chip at all. */
+  readonly activeVersion?: number | null;
+  /** The sections on offer, in display order — a host with no batch route omits `batches`. */
+  readonly sections: readonly ProjectSection[];
+  readonly active: ProjectSection;
+  /** The URL of a section, spelled by the host. Absent renders the items as buttons. */
+  readonly hrefFor?: (section: ProjectSection) => string;
+  readonly onNavigate: (section: ProjectSection) => void;
+  /** Up to the project list. Both absent renders no way out rather than a dead one. */
+  readonly backHref?: string;
+  readonly onBack?: () => void;
+  /** The batches open for annotation, newest first. Absent or empty: no Annotate. */
+  readonly annotate?: {
+    readonly targets: readonly AnnotateTarget[];
+    readonly onOpen: (batchId: string) => void;
+  };
+  readonly onIngest?: () => void;
+  /** The open section's content holds the page's filled control, so Ingest steps back. */
+  readonly contentOwnsTheAction?: boolean;
+  readonly onRename?: () => void;
+  readonly onDelete?: () => void;
+  /** The strip layout's content: below `lg` the tab bar owns the panel beneath it. */
+  readonly children?: ReactNode;
+}
+
+export function ProjectNav(props: ProjectNavProps): JSX.Element {
+  return props.layout === "column" ? <Column {...props} /> : <Strip {...props} />;
+}
+
+function Column(props: ProjectNavProps): JSX.Element {
+  const { sections, active, hrefFor, onNavigate } = props;
+  return (
+    <nav
+      aria-label="Project"
+      data-testid="project-nav"
+      className="flex w-project-nav shrink-0 flex-col gap-1 border-r bg-background px-3 py-4"
+    >
+      <Identity {...props} />
+      <div className="mt-3 flex flex-col gap-2">
+        <Cta {...props} />
+      </div>
+      <ul className="mt-3 flex flex-col gap-1">
+        {sections.map((section) => {
+          const { label, icon: Icon } = SECTION_LABELS[section];
+          const current = section === active;
+          const className = cn(
+            "flex h-8 w-full items-center gap-1.5 rounded-md px-2.5 text-sm outline-none",
+            "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
+            current ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground",
+          );
+          const shared = {
+            "data-testid": `nav-${section}`,
+            "aria-current": current ? ("page" as const) : undefined,
+            className,
+          };
+          return (
+            <li key={section}>
+              {hrefFor === undefined ? (
+                <button type="button" {...shared} onClick={() => onNavigate(section)}>
+                  <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  {label}
+                </button>
+              ) : (
+                <a {...shared} href={hrefFor(section)} onClick={(event) => routed(event, () => onNavigate(section))}>
+                  <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  {label}
+                </a>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <div className="flex-1" />
+      <Overflow {...props} />
+    </nav>
+  );
+}
+
+/**
+ * The strip: the same identity and the same filled control on one row, then the
+ * sections as a tab bar over the content. A Radix `Tabs` rather than a second
+ * list of links, so the panel beneath is labelled by its tab and the gap between
+ * the two is the primitive's own.
+ */
+function Strip(props: ProjectNavProps): JSX.Element {
+  const { sections, active, onNavigate, children } = props;
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <Identity {...props} />
+        <div className="flex items-center gap-2">
+          <Cta {...props} />
+          <Overflow {...props} />
+        </div>
+      </div>
+      <Tabs
+        value={active}
+        // Radix only ever emits a value this file rendered, so the cast is safe
+        // and the fallback unreachable; it keeps the callback's type honest.
+        onValueChange={(next) => onNavigate(isProjectSection(next) ? next : active)}
+        data-testid="project-tabs"
+      >
+        <TabsList variant="line">
+          {sections.map((section) => {
+            const { label, icon: Icon } = SECTION_LABELS[section];
+            return (
+              <TabsTrigger key={section} value={section} data-testid={`nav-${section}`}>
+                <Icon className="size-4" aria-hidden="true" />
+                {label}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+        <TabsContent value={active}>{children}</TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function Identity({ name, description, activeVersion, backHref, onBack, layout }: ProjectNavProps): JSX.Element {
+  const back =
+    backHref === undefined && onBack === undefined ? null : (
+      <BackLink href={backHref} onNavigate={onBack} />
+    );
+  return (
+    <div className={cn("flex min-w-0 flex-col gap-1.5", layout === "column" && "px-1")}>
+      {back}
+      {name !== "" && (
+        <h2 className="text-base font-semibold break-words" data-testid="project-title">
+          {name}
+        </h2>
+      )}
+      {description !== undefined && description !== null && description !== "" && (
+        <p className="text-xs text-muted-foreground" data-testid="project-description">
+          {description}
+        </p>
+      )}
+      {activeVersion !== null && activeVersion !== undefined && (
+        <Badge variant="outline" data-testid="chip-version" className="w-fit">
+          v{activeVersion} active
+        </Badge>
+      )}
+    </div>
+  );
+}
+
+/**
+ * `← Projects`, the shortest chain in the product. A project's parent is the list
+ * and nothing sits above it, so the one-crumb chain is drawn as the way out
+ * itself — the arrow that the breadcrumb keeps only below `lg` is right at every
+ * width here, because inside a navigation column a bare word reads as a label.
+ */
+function BackLink({ href, onNavigate }: { readonly href?: string; readonly onNavigate?: () => void }): JSX.Element {
+  const className =
+    "-ml-1 flex w-fit items-center gap-1 rounded-md px-1 py-0.5 text-xs text-muted-foreground " +
+    "hover:bg-muted hover:text-foreground focus-visible:bg-muted";
+  const body = (
+    <>
+      <IconArrowLeft className="size-3.5 shrink-0" aria-hidden="true" />
+      Projects
+    </>
+  );
+  if (href === undefined) {
+    return (
+      <button type="button" data-testid="project-back" className={className} onClick={onNavigate}>
+        {body}
+      </button>
+    );
+  }
+  return (
+    <a data-testid="project-back" href={href} className={className} onClick={(event) => routed(event, onNavigate)}>
+      {body}
+    </a>
+  );
+}
+
+/** Annotate, or Ingest in its place, or nothing — never a disabled control. */
+function Cta({ annotate, onIngest, contentOwnsTheAction = false, layout }: ProjectNavProps): JSX.Element | null {
+  const wide = layout === "column" ? "w-full" : undefined;
+  if (annotate !== undefined && annotate.targets.length > 0) {
+    return <AnnotateAction targets={annotate.targets} onOpen={annotate.onOpen} className={wide} />;
+  }
+  if (onIngest === undefined) return null;
+  return (
+    <Button
+      variant={contentOwnsTheAction ? "secondary" : "primary"}
+      data-testid="go-ingest"
+      className={wide}
+      onClick={onIngest}
+    >
+      <IconUpload className="size-4" aria-hidden="true" />
+      Ingest
+    </Button>
+  );
+}
+
+/**
+ * One open batch jumps; two or more ask which, in three data points a row: the
+ * name, the remaining count in the batch table's own words, and the pinned
+ * schema version — invisible everywhere else on this page, and what the pick
+ * actually decides. No split button and no remembered default: a control's
+ * destination may not be a function of session history.
+ */
+function AnnotateAction({
+  targets,
+  onOpen,
+  className,
+}: {
+  readonly targets: readonly AnnotateTarget[];
+  readonly onOpen: (batchId: string) => void;
+  readonly className?: string | undefined;
+}): JSX.Element {
+  const [only] = targets;
+  if (targets.length === 1 && only !== undefined) {
+    return (
+      <Button variant="primary" data-testid="go-annotate" className={className} onClick={() => onOpen(only.id)}>
+        <IconPencil className="size-4" aria-hidden="true" />
+        Annotate
+      </Button>
+    );
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        {/* Same testid and variant as the jumping form: one control with two
+            shapes, and the chevron is what tells them apart. */}
+        <Button variant="primary" data-testid="go-annotate" className={className}>
+          <IconPencil className="size-4" aria-hidden="true" />
+          Annotate
+          <IconChevronDown className="size-4" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {targets.map((batch) => (
+          <DropdownMenuItem
+            key={batch.id}
+            data-testid={`annotate-batch-${batch.name}`}
+            onSelect={() => onOpen(batch.id)}
+          >
+            <div className="flex flex-col items-start">
+              <span>{batch.name}</span>
+              <span className="text-xs text-muted-foreground">
+                {batch.remaining} to do · {batch.schemaVersion === null ? "—" : `v${batch.schemaVersion}`}
+              </span>
+            </div>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function Overflow({ onRename, onDelete }: ProjectNavProps): JSX.Element | null {
+  if (onRename === undefined && onDelete === undefined) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="More actions" data-testid="project-menu">
+          <IconDots className="size-4" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {onRename !== undefined && (
+          <DropdownMenuItem data-testid="rename-project" onSelect={onRename}>
+            <IconPencil className="size-4" aria-hidden="true" />
+            Rename
+          </DropdownMenuItem>
+        )}
+        {onRename !== undefined && onDelete !== undefined && <DropdownMenuSeparator />}
+        {onDelete !== undefined && (
+          <DropdownMenuItem destructive data-testid="delete-project" onSelect={onDelete}>
+            <IconTrash className="size-4" aria-hidden="true" />
+            Delete
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * A plain left click is the host's to route; anything else — middle click, a
+ * modifier, a right click — is the browser's, and the `href` answers it.
+ */
+function routed(event: MouseEvent<HTMLAnchorElement>, onNavigate: (() => void) | undefined): void {
+  if (onNavigate === undefined) return;
+  if (event.defaultPrevented || event.button !== 0) return;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  onNavigate();
+}

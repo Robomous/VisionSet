@@ -190,6 +190,7 @@
      content offset have to agree on them or the layout jumps. */
   --spacing-sidebar: 240px;
   --spacing-sidebar-collapsed: 60px;
+  --spacing-project-nav: 220px;
 }
 
 @layer base {
