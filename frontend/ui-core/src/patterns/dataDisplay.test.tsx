@@ -16,7 +16,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { formatCount, formatPercent, formatWhen } from "../lib/format";
-import { ClassListRow, DistributionBar, StatCard, ThumbnailGrid } from "./DataDisplay";
+import {
+  ClassListRow,
+  DescriptionList,
+  DescriptionRow,
+  DistributionBar,
+  StatCard,
+  ThumbnailGrid,
+} from "./DataDisplay";
 
 /** The rendered width of a bar's fill, as the percentage string it was given. */
 function fillWidth(container: HTMLElement): string {
@@ -315,5 +322,30 @@ describe("ThumbnailGrid", () => {
   it("ignores a negative overflow rather than rendering a minus tile", () => {
     render(<ThumbnailGrid tiles={tiles} overflow={-3} />);
     expect(screen.queryByTestId("thumbnail-overflow")).toBeNull();
+  });
+});
+
+describe("DescriptionList", () => {
+  it("is a titled, real description list whose rows pair a term with a value", () => {
+    render(
+      <DescriptionList title="General" aside="2 rows" data-testid="general">
+        <DescriptionRow term="Format" data-testid="format">
+          png
+        </DescriptionRow>
+        <DescriptionRow term="Dimensions">640 × 480</DescriptionRow>
+      </DescriptionList>,
+    );
+
+    const section = screen.getByTestId("general");
+    expect(section.querySelector("h3")?.textContent).toBe("General");
+    expect(section.textContent).toContain("2 rows");
+    const list = section.querySelector("dl");
+    expect(list).not.toBeNull();
+    expect([...(list?.querySelectorAll("dt") ?? [])].map((dt) => dt.textContent)).toEqual([
+      "Format",
+      "Dimensions",
+    ]);
+    expect(screen.getByTestId("format").tagName).toBe("DD");
+    expect(screen.getByTestId("format").textContent).toBe("png");
   });
 });

@@ -404,7 +404,7 @@ function TrunkTile({
         onClick={onOpen}
         className={
           "relative aspect-[4/3] w-full overflow-hidden rounded-md border border-border bg-card p-0 " +
-          "outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         }
       >
         <AssetThumbnail
@@ -426,15 +426,16 @@ function TrunkTile({
         >
           {word}
         </span>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-xs"
           data-testid={`remove-${asset.id}`}
           aria-label={`Remove ${label} from the dataset`}
           onClick={onRemove}
-          className="rounded-sm p-0.5 text-muted-foreground hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring"
+          className="text-muted-foreground hover:text-destructive"
         >
-          <Trash2 className="size-3.5" aria-hidden="true" />
-        </button>
+          <Trash2 aria-hidden="true" />
+        </Button>
       </span>
     </div>
   );

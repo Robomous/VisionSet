@@ -22,8 +22,8 @@
  * because coordinates without a frame cannot be placed.
  */
 
-import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
-import { useState, type CSSProperties, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { IconChevronLeft, IconChevronRight, IconTrash } from "@tabler/icons-react";
+import { useState, type CSSProperties, type JSX, type KeyboardEvent } from "react";
 import {
   BboxShape,
   PolygonShape,
@@ -42,7 +42,14 @@ import { formatWhen } from "../lib/format";
 import { classColor } from "../palette";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../primitives/Dialog";
+import { DescriptionList, DescriptionRow } from "../patterns/DataDisplay";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "../primitives/Dialog";
 import { useActiveSchema, useDatasetAssetAnnotations, type DatasetAsset } from "./queries";
 
 export interface DatasetAssetDialogProps {
@@ -141,7 +148,7 @@ export function DatasetAssetDialog({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-b-xl border-t bg-muted/50 p-3">
+        <DialogFooter className="mx-0 mb-0 flex-row flex-wrap items-center justify-between">
           <div className="flex items-center gap-1">
             <Button
               variant="secondary"
@@ -151,7 +158,7 @@ export function DatasetAssetDialog({
               disabled={!hasPrevious}
               onClick={() => onIndex(index - 1)}
             >
-              <ChevronLeft className="size-4" aria-hidden="true" />
+              <IconChevronLeft aria-hidden="true" />
             </Button>
             <Button
               variant="secondary"
@@ -161,7 +168,7 @@ export function DatasetAssetDialog({
               disabled={!hasNext}
               onClick={() => onIndex(index + 1)}
             >
-              <ChevronRight className="size-4" aria-hidden="true" />
+              <IconChevronRight aria-hidden="true" />
             </Button>
             <Button
               variant="ghost"
@@ -180,14 +187,14 @@ export function DatasetAssetDialog({
               data-testid="preview-remove"
               onClick={() => onRemove(asset)}
             >
-              <Trash2 className="size-4" aria-hidden="true" />
+              <IconTrash aria-hidden="true" />
               Remove from dataset
             </Button>
             <Button variant="secondary" size="sm" onClick={onClose}>
               Close
             </Button>
           </div>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -319,16 +326,16 @@ function Metadata({ asset }: { readonly asset: DatasetAsset }): JSX.Element {
   rows.push(["Ingested", asset.ingested_at == null ? "—" : formatWhen(asset.ingested_at)]);
 
   return (
-    <Section title="General" testId="preview-metadata">
+    <DescriptionList title="General" data-testid="preview-metadata">
       {rows.map(([term, value]) => (
-        <Row key={term} term={term}>
+        <DescriptionRow key={term} term={term}>
           {value}
-        </Row>
+        </DescriptionRow>
       ))}
-      <Row term="Content hash">
-        <span className="break-all font-mono text-[11px]">{asset.content_hash}</span>
-      </Row>
-    </Section>
+      <DescriptionRow term="Content hash">
+        <span className="break-all font-mono">{asset.content_hash}</span>
+      </DescriptionRow>
+    </DescriptionList>
   );
 }
 
@@ -344,9 +351,9 @@ function Labels({
   const summary = summarise(items);
 
   return (
-    <Section
+    <DescriptionList
       title="Labels"
-      testId="preview-labels"
+      data-testid="preview-labels"
       aside={
         annotations.isSuccess
           ? `${items.length} ${items.length === 1 ? "label" : "labels"}`
@@ -368,7 +375,7 @@ function Labels({
       )}
       {summary.classes.length > 0 && (
         <>
-          <Row term="Classes">
+          <DescriptionRow term="Classes">
             <ul className="flex flex-wrap gap-1.5">
               {summary.classes.map(([name, count]) => (
                 <li key={name} data-testid={`preview-class-${name}`} className="contents">
@@ -378,16 +385,16 @@ function Labels({
                       className="inline-block size-2 shrink-0 rounded-full"
                       style={{ background: colorOf(name) }}
                     />
-                    <span className="font-normal">{name}</span>
+                    <span>{name}</span>
                     <span className="tabular-nums text-muted-foreground">{count}</span>
                   </Badge>
                 </li>
               ))}
             </ul>
-          </Row>
+          </DescriptionRow>
         </>
       )}
-    </Section>
+    </DescriptionList>
   );
 }
 
@@ -406,22 +413,25 @@ function Provenance({
   if (items.length === 0) return null;
   const summary = summarise(items);
   return (
-    <Section title="Provenance" testId="preview-provenance">
-      <Row term="Made by" testId="preview-by">
+    <DescriptionList title="Provenance" data-testid="preview-provenance">
+      <DescriptionRow term="Made by" data-testid="preview-by">
         {summary.by}
-      </Row>
+      </DescriptionRow>
       {summary.models.length > 0 && (
-        <Row term={summary.models.length === 1 ? "Model" : "Models"} testId="preview-models">
+        <DescriptionRow
+          term={summary.models.length === 1 ? "Model" : "Models"}
+          data-testid="preview-models"
+        >
           <ul className="flex flex-col gap-0.5">
             {summary.models.map((ref) => (
-              <li key={ref} title={ref} className="truncate">
+              <li key={ref} title={ref} className="break-words">
                 {modelName(ref)}
               </li>
             ))}
           </ul>
-        </Row>
+        </DescriptionRow>
       )}
-    </Section>
+    </DescriptionList>
   );
 }
 
@@ -459,45 +469,4 @@ export function modelName(ref: string): string {
   const [path] = ref.split("@", 1);
   const segments = (path ?? ref).split("/").filter((segment) => segment.length > 0);
   return segments[segments.length - 1] ?? ref;
-}
-
-function Section({
-  title,
-  aside,
-  testId,
-  children,
-}: {
-  readonly title: string;
-  readonly aside?: string;
-  readonly testId: string;
-  readonly children: ReactNode;
-}): JSX.Element {
-  return (
-    <section className="flex flex-col gap-2" data-testid={testId}>
-      <div className="flex items-baseline justify-between gap-2 border-b border-border pb-1">
-        <h3 className="text-xs font-semibold">{title}</h3>
-        {aside !== undefined && <span className="text-xs text-muted-foreground">{aside}</span>}
-      </div>
-      <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">{children}</dl>
-    </section>
-  );
-}
-
-function Row({
-  term,
-  testId,
-  children,
-}: {
-  readonly term: string;
-  readonly testId?: string;
-  readonly children: ReactNode;
-}): JSX.Element {
-  return (
-    <>
-      <dt className="text-muted-foreground">{term}</dt>
-      <dd className="min-w-0 tabular-nums" {...(testId === undefined ? {} : { "data-testid": testId })}>
-        {children}
-      </dd>
-    </>
-  );
 }
