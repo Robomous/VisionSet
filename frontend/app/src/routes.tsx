@@ -44,7 +44,7 @@ import {
   DEFAULT_PROJECT_SECTION,
   GalleryScreen,
   HomeScreen,
-  InferenceScreen,
+  ModelsScreen,
   isProjectSection,
   resolveProjectTab,
   IngestScreen,
@@ -89,8 +89,11 @@ export function AppRoutes(): JSX.Element {
               settled decision: a connection carries no project id and
               every project uses the same ones, so nesting it under a project
               would put a workspace-scoped object inside one project's URL.
+              `/inference` was its address before the page was named for the
+              noun it catalogues; a bookmarked URL is a promise, so it redirects.
             */}
-            <Route path="inference" element={<InferenceScreen />} />
+            <Route path="models" element={<ModelsScreen />} />
+            <Route path="inference" element={<Navigate to={PARENT.models} replace />} />
             <Route path="*" element={<NotFound />} />
           </Route>
 
@@ -212,14 +215,14 @@ function Home(): JSX.Element {
  * way out lands in one hop instead of bouncing through the redirect.
  */
 export const PARENT = {
-  //: A rail destination, like `inference` below, so nothing declares it as a
+  //: A rail destination, like `models` below, so nothing declares it as a
   //: parent either. It is here because this table is the route map's own index.
   home: "/",
   projects: "/projects",
   //: A rail destination, so nothing declares it as a parent — it is here because
   //: this table is the route map's own index, and an entry point missing from it
   //: is exactly the drift this table exists to prevent. Its own way out is the rail.
-  inference: "/inference",
+  models: "/models",
   section: (projectId: string, section: ProjectSection) => `/projects/${projectId}/${section}`,
   project: (projectId: string) => PARENT.section(projectId, DEFAULT_PROJECT_SECTION),
   batches: (projectId: string) => PARENT.section(projectId, "batches"),
@@ -420,7 +423,7 @@ function Annotate(): JSX.Element {
       }}
       // The editor's no-connection panel needs somewhere to send somebody.
       // `ui-core` renders no control when this callback is absent.
-      onConfigureInference={() => void navigate(PARENT.inference)}
+      onConfigureInference={() => void navigate(PARENT.models)}
     />
   );
 }

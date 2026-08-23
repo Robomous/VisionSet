@@ -180,7 +180,7 @@ function schemaOfSize(size: SchemaSize | undefined): Wire["SchemaVersionOut"] {
  *
  * Off by default, because the interesting answer for every other test here is
  * the empty list — that is the state the tool's explanation panel exists for,
- * and it is what a workspace that has never been to the Inference section is in.
+ * and it is what a workspace that has never been to the Models page is in.
  */
 const READY_SAM = {
   id: "66666666-6666-4666-8666-666666666666",
@@ -402,7 +402,7 @@ async function serveApi(
     }
     // The suggest tool's own read. Empty is the interesting answer
     // here: it is the state the panel's explanation exists for, and it is what a workspace
-    // that has never been to the Inference section is in.
+    // that has never been to the Models page is in.
     if (path === "/inference/connections") {
       const items = suggestible ? [READY_SAM] : [];
       return route.fulfill({
@@ -2953,8 +2953,8 @@ test("the no-connection panel now has somewhere to send you (#424 D6)", async ({
   // can name a destination for it — which is why this is asserted here and not
   // in a component test.
   await page.getByTestId("suggest-configure").click();
-  await expect(page).toHaveURL(/\/inference$/);
-  await expect(page.getByTestId("inference-screen")).toBeVisible();
+  await expect(page).toHaveURL(/\/models$/);
+  await expect(page.getByTestId("models-screen")).toBeVisible();
 });
 
 /**

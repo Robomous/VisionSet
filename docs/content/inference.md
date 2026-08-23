@@ -43,7 +43,7 @@ with WorkspaceService.open("./road-signs") as workspace:
         print(one.name, one.connection_type.value, one.setup_state.value)
 ```
 
-**In the browser:** the **Inference** entry in the rail. See *The Inference section* below.
+**In the browser:** the **Models** entry in the rail. See *The Models page* below.
 
 **Over HTTP:** `GET`/`POST /inference/connections`,
 `GET`/`PATCH`/`DELETE /inference/connections/{connection_id}`, and

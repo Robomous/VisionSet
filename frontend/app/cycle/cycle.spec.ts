@@ -543,8 +543,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * action, the connection's lifecycle. Only the thing at the far end
      * predicts nothing.
      */
-    await page.getByTestId("rail-inference").click();
-    await expect(page.getByTestId("inference-screen")).toBeVisible();
+    await page.getByTestId("rail-models").click();
+    await expect(page.getByTestId("models-screen")).toBeVisible();
 
     await page.getByTestId("new-connection").click();
     await page.getByTestId("choose-local").click();
@@ -1461,8 +1461,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("export-dialog")).toHaveCount(0);
 
-    await page.getByTestId("rail-inference").click();
-    await expect(page.getByTestId("inference-screen")).toBeVisible();
+    await page.getByTestId("rail-models").click();
+    await expect(page.getByTestId("models-screen")).toBeVisible();
     // Two locators because the row's id is its name and the rename moves it.
     const before = page.getByTestId(`connection-${STAND_IN}`);
     const after = page.getByTestId(`connection-${REPINNED}`);

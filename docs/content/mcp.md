@@ -201,7 +201,7 @@ call until the end. #439 has since added a job gate, but it changes none of this
 | `update_inference_connection` | Edit one. The type cannot change. |
 
 The tools that make a workspace auto-label-ready without a browser — the SDK-first half of the
-Inference section (#421). Connections are workspace infrastructure, so nothing here takes a
+Models page (#421). Connections are workspace infrastructure, so nothing here takes a
 project, and the group sits after the cycle rather than in it. There is no `get`: a workspace
 holds a handful of connections and the listing carries the whole document.
 `test_inference_connection` asks an http connection's endpoint what it answers and records what
@@ -349,7 +349,7 @@ Fifty candidate tools were recorded across the four REST tasks; thirty of them s
 twenty did not. Twenty have been added since, each because a surface grew a capability an
 agent had no way to reach: `check_export`, the plan-before-apply half of an export on the
 `preview_schema_change` precedent; the four batch-composition tools above; the seven
-inference-connection tools, closing the Inference section's SDK-first parity; the four
+inference-connection tools, closing the Models page's SDK-first parity; the four
 schema-draft tools above, because composing a schema across several calls needs somewhere to
 hold a class before it is finished; the three deletions, which are advertised only on
 request; and `pre_label_batch`, closing the last capability declared with no consumer. That

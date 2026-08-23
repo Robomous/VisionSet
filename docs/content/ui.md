@@ -38,7 +38,7 @@ handler is not an operation.
 | --- | --- | --- |
 | `/` | Home - the workspace dashboard | yes |
 | `/projects`, `/projects/:id/overview\|schema\|batches\|dataset`, `/projects/:id/ingest`, `/projects/:id/batches/:id` | the product | yes |
-| `/inference` | model connections, workspace-scoped | yes |
+| `/models` | model connections, workspace-scoped; `/inference` redirects here | yes |
 | `/jobs/:jobId` (`?asset=<id>`) | the annotation page | yes |
 | `/demo` | the annotator showcase (`?scene=bench` for #49's benchmark) | **no** |
 | `/styleguide` | the rendered design system | **no** |
@@ -73,11 +73,12 @@ prefix the wheel serves under. A **reload** on a client route is a real request 
 path no file backs; [`api.md`](api.md#where-the-ui-lives) describes the server-side
 fallback that answers it.
 
-The rail is the whole shell: logo, collapse toggle, Home, Projects, Inference, sign
+The rail is the whole shell: logo, collapse toggle, Home, Projects, Models, sign
 out. Anything richer growing on it is what the thin-app audit exists to catch - a
-capability in `app/` is one the future enterprise UI cannot reuse. `Inference` joined by
-the decision recorded on #421 (2026-08-08): what earns an entry is a workspace-level
-object every project uses and that has nowhere else to live, never frequency of use.
+capability in `app/` is one the future enterprise UI cannot reuse. `Models` joined by
+the decision recorded on #421 (2026-08-08), as *Inference* until the page was renamed for
+the noun it lists: what earns an entry is a workspace-level object every project uses and
+that has nowhere else to live, never frequency of use.
 
 ### Two panes, and which one a route gets
 

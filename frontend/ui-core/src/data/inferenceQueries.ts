@@ -5,7 +5,7 @@
  *
  * **In `data/` rather than in `annotator/`, because two surfaces read it.** The
  * suggest tool asks which connections exist so it can explain itself; the
- * Inference section is where they are made and set up. The list, its
+ * Models page is where they are made and set up. The list, its
  * key and its invalidation are one fact, and a second copy under the screen that
  * happens to have been written second is how two callers come to disagree about
  * what "ready" means.

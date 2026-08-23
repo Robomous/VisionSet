@@ -53,9 +53,9 @@ async function serveApi(page: Page, { session = false } = {}): Promise<void> {
       } satisfies Wire["HomeOut"],
     }),
   );
-  // The Inference section's one read. Empty, because this suite is about the
+  // The Models page's one read. Empty, because this suite is about the
   // rail and the router: what the screen does with rows is `ui-core`'s
-  // `inference.test.tsx`, and an unrouted request here would leave the page
+  // `models.test.tsx`, and an unrouted request here would leave the page
   // waiting on a network that is not there.
   await page.route("**/api/inference/**", (route) =>
     route.fulfill({ status: 200, json: { items: [], total: 0 } satisfies Wire["ConnectionPage"] }),
@@ -182,30 +182,43 @@ test("the rail carries exactly what the design gives it", async ({ page }) => {
   await signIn(page);
 
   const rail = page.getByTestId("app-rail");
-  // Three, not two: `Inference` is a top-level destination, because model
+  // Three, not two: `Models` is a top-level destination, because model
   // connections are workspace infrastructure. The count is the assertion — a
   // fourth destination arriving without that decision fails here first.
   await expect(rail.getByRole("link")).toHaveCount(3);
   await expect(page.getByTestId("rail-home")).toBeVisible();
   await expect(page.getByTestId("rail-projects")).toBeVisible();
-  await expect(page.getByTestId("rail-inference")).toBeVisible();
+  await expect(page.getByTestId("rail-models")).toBeVisible();
   await expect(page.getByTestId("rail-collapse")).toBeVisible();
   await expect(page.getByTestId("rail-sign-out")).toBeVisible();
 });
 
-test("the Inference entry goes to the section, and is current once you are on it", async ({
+test("the Models entry goes to the page, and is current once you are on it", async ({
   page,
 }) => {
   await signIn(page);
-  await expect(page.getByTestId("rail-inference")).toHaveAttribute("href", "/inference");
+  await expect(page.getByTestId("rail-models")).toHaveAttribute("href", "/models");
+  await expect(page.getByTestId("rail-models")).toHaveAccessibleName("Models");
 
-  await page.getByTestId("rail-inference").click();
-  await expect(page).toHaveURL(/\/inference$/);
-  await expect(page.getByTestId("rail-inference")).toHaveAttribute("aria-current", "page");
+  await page.getByTestId("rail-models").click();
+  await expect(page).toHaveURL(/\/models$/);
+  await expect(page.getByTestId("models-screen")).toBeVisible();
+  await expect(page.getByTestId("rail-models")).toHaveAttribute("aria-current", "page");
   await expect(page.getByTestId("rail-projects")).not.toHaveAttribute("aria-current", "page");
   // A rail destination has no way out of its own: the rail is it, and a second
   // answer to "where am I" inside the pane would contradict it.
   await expect(page.getByTestId("back-link")).toHaveCount(0);
+});
+
+test("the page's old address still lands on it", async ({ page }) => {
+  // `/inference` was the route before the page was named for what it lists. A
+  // bookmark and the editor's older hand-offs are promises, so it redirects
+  // rather than answering with the 404 the catch-all gives a route nobody defined.
+  await signIn(page);
+  await page.goto("/inference");
+  await expect(page).toHaveURL(/\/models$/);
+  await expect(page.getByTestId("models-screen")).toBeVisible();
+  await expect(page.getByTestId("rail-models")).toHaveAttribute("aria-current", "page");
 });
 
 test("navigation is real links, and the active one is the one you are on", async ({ page }) => {

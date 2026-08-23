@@ -14,7 +14,7 @@ Navigation maps 1:1 to domain objects. This is the target structure; if implemen
     └─ deep-links out to: /jobs/:jobId?asset= (resume), /projects/:id/batches/:id
        (review rows and the resume fallback), /projects/:id, /projects
 /projects                          Projects list
-/inference                         Inference — model connections (workspace-scoped)
+/models                            Models — model connections as cards (workspace-scoped)
 /projects/:id                      → redirects to /projects/:id/overview
 /projects/:id/<section>            Project — sections as path segments, drawn as a navigation
                                    column beside the content at ≥lg and a tab strip below, in
@@ -35,6 +35,8 @@ Navigation maps 1:1 to domain objects. This is the target structure; if implemen
 Redirects kept as promises (a bookmarked URL is one):
 /projects/:id?tab=X             → /projects/:id/X, every other query parameter kept;
                                   `versions` → schema, an unknown X → overview
+/inference                      → /models, the page's address before it was named for
+                                  the noun it catalogues
 ```
 
 **Implemented.** The section order is work order:
@@ -58,13 +60,13 @@ Rules:
 - **"Schema history" is not a sibling section.** Version history lives inside the Schema section, below the editor and beside the `VersionNavigator` seam. The two overlap on purpose: the navigator is the *reader* (one version, with what it changed), the history is the *ledger* (every version at once). `?tab=versions` remains as a redirect; it does not appear in the navigation.
 - **The 4-step checklist is onboarding, not navigation.** It retires itself twice over: when the journey is finished (`hasReleases` makes `done` derivable) and when somebody dismisses it. Dismissal is **per project** and persisted — finishing one project does not teach you the pipeline for the next. It gates nothing and is never the sole path to a screen.
   `hasReleases` is derived in `useProjectReadiness` from the two-hop read (project → dataset → releases) rather than added to the project-stats wire model: the Overview dashboard already makes both requests for its own cards, so a third spelling of the fact on the server would be exactly the drift these rules exist to prevent.
-- **Inference is a rail destination, not a project section.** Model connections carry no `project_id`: one workspace is one SQLite file, every project uses the same connections, and navigation maps 1:1 to domain objects — so a project section would state a scope the object does not have. This **supersedes the earlier rail rule** ("logo, collapse toggle, Home, Projects, account avatar — nothing else"); the rail now carries Home, Projects, Inference and the account control, and `docs/content/ui/navigation.md` carries the same membership. What earns a rail entry is a workspace-level object with nowhere else to live, never mere frequency of use.
+- **Models is a rail destination, not a project section.** Model connections carry no `project_id`: one workspace is one SQLite file, every project uses the same connections, and navigation maps 1:1 to domain objects — so a project section would state a scope the object does not have. This **supersedes the earlier rail rule** ("logo, collapse toggle, Home, Projects, account avatar — nothing else"); the rail now carries Home, Projects, Models and the account control, and `docs/content/ui/navigation.md` carries the same membership. What earns a rail entry is a workspace-level object with nowhere else to live, never mere frequency of use. The entry is named **Models** — the stable domain noun, the thing the page catalogues — rather than *Inference*, which names one use of it: the same list serves the suggest tool, pre-labeling, and whatever asks next, and a name that survives the next consumer is the one that does not move again. The page is a card grid, one card per connection, with capability as a filter chip rather than a section; `docs/content/inference.md` carries what a card shows.
 - **Home is the workspace's dashboard, and Overview is the project's.** They do not
   overlap, because they answer different questions: Home asks *what is waiting on me,
   anywhere*, which no single project can answer, and Overview asks *what does this
   project hold*. So Home carries nothing project-scoped — no class distribution, no
   samples, no schema state — and every row on it is a deep link into the screen that
-  owns the thing. It earns its rail entry on the same test Inference passes: a
+  owns the thing. It earns its rail entry on the same test Models passes: a
   workspace-level object with nowhere else to live.
   **Its resume target is derived, never persisted**, and ranked by progress rather
   than recency because no timestamp exists on a batch, an annotation or an asset's
@@ -85,7 +87,7 @@ Rules:
   | `/projects/:id/batches/:batchId` | `← Batches` → `PARENT.batches` |
   | `/jobs/:jobId` | the editor's own ghost arrow, *up* to the batch gallery |
 
-  **A project's section is a level**, which is why the gallery's way out is `PARENT.batches` (`/projects/:id/batches`) and not the project's default section — landing on Overview after leaving a batch is landing somewhere you were not. **A section has no way out of its own** — its navigation is beside it, and a control inside a section would be a second, contradictory answer to "where am I". That is why `DatasetScreen` and `ProjectScreen` take no `onBack`. **A rail destination has none either**, for the same reason with the rail in the column's place: `InferenceScreen` takes no `onBack`, and `PARENT.inference` exists as the address other screens send people *to* (the annotator's suggest panel is the first) rather than as a parent anything returns from.
+  **A project's section is a level**, which is why the gallery's way out is `PARENT.batches` (`/projects/:id/batches`) and not the project's default section — landing on Overview after leaving a batch is landing somewhere you were not. **A section has no way out of its own** — its navigation is beside it, and a control inside a section would be a second, contradictory answer to "where am I". That is why `DatasetScreen` and `ProjectScreen` take no `onBack`. **A rail destination has none either**, for the same reason with the rail in the column's place: `ModelsScreen` takes no `onBack`, and `PARENT.models` exists as the address other screens send people *to* (the annotator's suggest panel is the first) rather than as a parent anything returns from.
 - The section is the URL's last segment, written with `replace: true` (a section is a view of the same resource, not a place Back should walk through). An unknown segment is a 404 — nothing ever linked to one; an unknown `?tab=` value redirects to `overview`, because old links exist.
 
 ## Process rule

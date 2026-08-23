@@ -260,7 +260,7 @@ test("the column is absent from every route that is not the project's", async ({
   await expect(page.getByTestId("open-road-signs")).toBeVisible();
   await expect(page.getByTestId("project-nav")).toHaveCount(0);
 
-  await page.goto("/inference");
+  await page.goto("/models");
   await expect(page.getByTestId("app-rail")).toBeVisible();
   await expect(page.getByTestId("project-nav")).toHaveCount(0);
 

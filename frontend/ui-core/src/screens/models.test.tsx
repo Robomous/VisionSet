@@ -1,5 +1,5 @@
 /**
- * The Inference section: what it offers, what it refuses to offer, and why.
+ * The Models page: what it offers, what it refuses to offer, and why.
  *
  * Five claims here that nothing else in the suite makes:
  *
@@ -37,7 +37,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
-import { CapabilitySection, InferenceScreen, bytes } from "./InferenceScreen";
+import { CapabilitySection, ModelsScreen, bytes } from "./ModelsScreen";
 import { sectionsOf, type ConnectionSection } from "./inferenceSections";
 import { CONNECTION_POLL_MS, type Connection } from "../data/inferenceQueries";
 
@@ -328,7 +328,7 @@ function sizeIs(totalBytes: number, fileCount = 3): void {
 
 it("invites a first connection rather than apologising for having none", async () => {
   listing([]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   expect(await screen.findByText("Connect a model to enable auto-labeling")).not.toBeNull();
   expect(
     screen.getByText(
@@ -342,14 +342,14 @@ it("renders a failed listing as a refusal rather than as an empty list", async (
     status: 503,
     body: { code: "SERVICE_UNAVAILABLE", message: "The workspace is busy." },
   });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await waitFor(() => expect(screen.queryByTestId("connection-sections")).toBeNull());
   expect(screen.queryByText("Connect a model to enable auto-labeling")).toBeNull();
 });
 
 it("says the status in words as well as in a token", async () => {
   listing([connection(), connection({ id: "b", name: "remote", setup_state: "ready" })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   const rows = await screen.findAllByTestId("connection-status");
   expect(rows[0].textContent).toContain("Not set up");
   expect(rows[1].textContent).toContain("Ready");
@@ -357,7 +357,7 @@ it("says the status in words as well as in a token", async () => {
 
 it("shows the model and its revision the way a person reads them", async () => {
   listing([connection()]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   expect(
     await screen.findByText(`${SAM_BASE_PLUS} @ ${SAM_BASE_PLUS_COMMIT}`),
   ).not.toBeNull();
@@ -365,7 +365,7 @@ it("shows the model and its revision the way a person reads them", async () => {
 
 it("carries no filter until a list could be long enough to need one", async () => {
   listing([connection()]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await screen.findByTestId("connection-sections");
   expect(screen.queryByTestId("connection-filter")).toBeNull();
 });
@@ -375,7 +375,7 @@ it("filters by name and keeps saying how many it hid", async () => {
     connection({ id: `id-${index}`, name: index === 3 ? "needle" : `hay-${index}` }),
   );
   listing(many);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.type(await screen.findByTestId("connection-filter"), "need");
   expect(screen.getByTestId("filter-count").textContent).toContain("1 of 24");
   expect(screen.getByTestId("connection-needle")).not.toBeNull();
@@ -391,7 +391,7 @@ it("puts a connection under the ability its weights declare", async () => {
       allowed_actions: ["update", "delete"],
     }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   const suggest = await screen.findByTestId("section-point_suggest");
   expect(within(suggest).getByTestId("connection-sam2-local")).not.toBeNull();
@@ -402,7 +402,7 @@ it("puts a connection under the ability its weights declare", async () => {
 
 it("names the surface that uses an ability, not the models that serve it", async () => {
   listing([connection({ setup_state: "ready", capabilities: ["point_suggest"] })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   expect((await screen.findByTestId("section-point_suggest")).textContent).toContain(
     "suggest tool",
   );
@@ -417,7 +417,7 @@ it("shows a connection serving two abilities under both, and edits the one conne
     }),
   ]);
   catalog();
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   const detect = await screen.findByTestId("section-text_detect");
   expect(
@@ -435,7 +435,7 @@ it("keeps a connection that has declared nothing visible, beside its remedy", as
   // connection whose download has not run declares none. A dashboard organised by
   // capability that dropped it would hide the very row whose button fixes that.
   listing([connection()]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   const waiting = await screen.findByTestId("section-undeclared");
   expect(within(waiting).getByTestId("connection-sam2-local")).not.toBeNull();
@@ -444,7 +444,7 @@ it("keeps a connection that has declared nothing visible, beside its remedy", as
 
 it("invites a first connection per ability rather than leaving a gap", async () => {
   listing([connection({ setup_state: "ready", capabilities: ["text_detect"] })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   const suggest = await screen.findByTestId("section-point_suggest");
   expect(within(suggest).getByText("Add a connection the suggest tool can use")).not.toBeNull();
@@ -497,7 +497,7 @@ it("shows a connection whose ability this build has no name for", async () => {
   // the generic section was unreachable through the network and only a unit test reached
   // it. This is that path end to end: a stubbed listing, the real client, the real check.
   listing([connection({ setup_state: "ready", capabilities: ["depth_estimate"] })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   const generic = await screen.findByTestId("section-depth_estimate");
   expect(generic.dataset.known).toBe("false");
@@ -510,7 +510,7 @@ it("answers what to do next exactly once, however many sections are on screen", 
   // The workspace below is chosen so an invitation is actually on screen — the
   // sweep says nothing about a rule whose control never rendered.
   listing([connection({ setup_state: "ready", capabilities: ["text_detect"] })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await screen.findByRole("button", { name: "Add a point-prompt connection" });
 
   expect(document.body.querySelectorAll("button.bg-primary")).toHaveLength(1);
@@ -526,7 +526,7 @@ it("says a section has no matches rather than inviting mid-filter", async () => 
     }),
   );
   listing(many);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.type(await screen.findByTestId("connection-filter"), "need");
 
   const suggest = screen.getByTestId("section-point_suggest");
@@ -570,7 +570,7 @@ it("renders an ability this build has no copy for from the value itself", async 
 
 it("offers Download weights only where the wire declares it", async () => {
   listing([connection()]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   expect(await screen.findByTestId("download-weights")).not.toBeNull();
 });
 
@@ -579,14 +579,14 @@ it("does not offer Download weights when the wire withholds it", async () => {
   // state would still render the button here. Only reading `allowed_actions`
   // gets this right.
   listing([connection({ allowed_actions: ["update", "delete"] })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await screen.findByTestId("connection-sections");
   expect(screen.queryByTestId("download-weights")).toBeNull();
 });
 
 it("offers no overflow at all when neither edit nor delete is declared", async () => {
   listing([connection({ allowed_actions: [] })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await screen.findByTestId("connection-sections");
   expect(screen.queryByTestId("actions-sam2-local")).toBeNull();
 });
@@ -601,7 +601,7 @@ it("renders a refused download as prose carrying the install command", async () 
         'running a model locally needs the local-inference extra. Install it with: pip install "visionset[local-inference]"',
     },
   });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("download-weights"));
   const shown = await screen.findByTestId("download-error");
   // Withheld from the vocabulary on purpose, so the kernel's sentence is the
@@ -619,7 +619,7 @@ it("says a mapped download refusal in the vocabulary's sentence, with no code be
       message: "inference connection 11111111-1111-4111-8111-111111111111 is http; nothing to download",
     },
   });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("download-weights"));
   const shown = await screen.findByTestId("download-error");
   expect(shown.textContent).toContain("runs elsewhere, so there are no weights to fetch");
@@ -633,7 +633,7 @@ it("shows a transfer nobody on this page started", async () => {
   // which is what a reload, a second tab, or a return visit looks like — and what
   // used to render as `Not set up` beside a button somebody had already pressed.
   listing([connection({ download: downloadOf("running", 400_000_000, 1_600_000_000) })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   const shown = await screen.findByTestId("download-progress-prose");
   expect(shown.textContent).toBe("400.0 MB of 1.6 GB · 25%");
@@ -644,7 +644,7 @@ it("shows a transfer nobody on this page started", async () => {
 
 it("names the queue rather than drawing a bar that has not moved", async () => {
   listing([connection({ download: downloadOf("queued", 0, null) })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   expect((await screen.findByTestId("download-progress-prose")).textContent).toContain("Queued");
   // A worker has not touched it, so there is no total either.
@@ -656,7 +656,7 @@ it("names the phase after the bytes rather than sitting full", async () => {
   // so every byte can be here while the job is still running. A full bar with no
   // sentence reads as a stall.
   listing([connection({ download: downloadOf("running", 1_600_000_000, 1_600_000_000) })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   expect((await screen.findByTestId("download-progress-prose")).textContent).toBe(
     "Checking what arrived…",
@@ -670,7 +670,7 @@ it("draws no bar when the published size could not be read", async () => {
   // an empty track, which would read as 0% — a lie in the one case where the
   // truth is "this is going, and nobody can say how far".
   listing([connection({ download: downloadOf("running", 700_000_000, null) })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   const shown = await screen.findByTestId("download-progress-prose");
   expect(shown.textContent).toContain("700.0 MB so far");
@@ -685,7 +685,7 @@ it("a download of nothing is settling, not a size that could not be read", async
   // succeeded. Nought of nought is every byte, so the honest phase is the one a
   // finished transfer is in.
   listing([connection({ download: downloadOf("running", 0, 0) })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   const shown = await screen.findByTestId("download-progress-prose");
   expect(shown.textContent).toContain("Checking what arrived");
@@ -711,7 +711,7 @@ it("never re-reads a list nothing is moving in", async () => {
     };
   });
 
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await waitFor(() =>
     expect(screen.getByTestId("connection-status").textContent).toContain("Ready"),
   );
@@ -728,7 +728,7 @@ it("never re-reads a list nothing is moving in", async () => {
 
 it("shows no progress for a connection that has never been downloaded", async () => {
   listing([connection()]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await screen.findByTestId("connection-sections");
   expect(screen.queryByTestId("download-progress")).toBeNull();
 });
@@ -738,7 +738,7 @@ it("shows no progress for a connection that has never been downloaded", async ()
 it("asks where the model runs before asking anything else", async () => {
   listing([]);
   catalog();
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   expect(await screen.findByTestId("choose-type")).not.toBeNull();
   expect(screen.queryByTestId("connection-name")).toBeNull();
@@ -748,7 +748,7 @@ it("pins the offered revision rather than asking anybody to type one", async () 
   listing([]);
   catalog();
   sizeIs(1_200_000_000);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
   await waitFor(() =>
@@ -765,7 +765,7 @@ it("shows the download size before anything is confirmed", async () => {
   listing([]);
   catalog();
   sizeIs(1_200_000_000, 4);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
   expect((await screen.findByTestId("size-known")).textContent).toContain("1.2 GB");
@@ -785,7 +785,7 @@ it("keeps the local form usable when the size cannot be read, quoting the refusa
         'running a model locally needs the local-inference extra. Install it with: pip install "visionset[local-inference]"',
     },
   });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
   const shown = await screen.findByTestId("size-unavailable");
@@ -803,7 +803,7 @@ it("keeps the local form usable when the size cannot be read, quoting the refusa
 it("asks for no size at all for an http connection", async () => {
   listing([]);
   catalog();
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-http"));
   await screen.findByTestId("connection-endpoint");
@@ -819,7 +819,7 @@ it("sends only the fields the chosen kind carries", async () => {
     return { status: 201, body: connection() };
   });
   on("GET", /^\/inference\/download-size$/, { status: 200, body: null });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-http"));
   await userEvent.type(await screen.findByTestId("connection-name"), "remote");
@@ -845,7 +845,7 @@ it("sends only the fields the chosen kind carries", async () => {
 it("says the credential field takes a variable's name and never the secret", async () => {
   listing([]);
   catalog();
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-http"));
   await screen.findByTestId("connection-credential-env");
@@ -865,7 +865,7 @@ it("keeps what was typed when a create is refused", async () => {
     status: 409,
     body: { code: "ENTITY_ALREADY_EXISTS", message: "That name is taken." },
   });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-http"));
   await userEvent.type(await screen.findByTestId("connection-name"), "remote");
@@ -887,7 +887,7 @@ it("says which connection name is taken, in its stored casing, not as an identif
       message: "an inference connection named 'Remote' already exists",
     },
   });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-http"));
   await userEvent.type(await screen.findByTestId("connection-name"), "remote");
@@ -905,7 +905,7 @@ it("says which connection name is taken, in its stored casing, not as an identif
 it("opens a new local connection on the model the installation offers by default", async () => {
   listing([]);
   catalog();
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(screen.getByTestId("choose-local"));
@@ -922,7 +922,7 @@ it("builds the model list from what the wire served, under this build's own head
   // driver declares which ability it serves and never how it is named on screen.
   listing([]);
   catalog();
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(screen.getByTestId("choose-local"));
@@ -939,7 +939,7 @@ it("says the catalog is being read rather than showing a dead control", async ()
   // that refused instead would be testing the refusal, and a disabled grey select
   // is precisely what neither state may render.
   catalogHangs();
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(screen.getByTestId("choose-local"));
@@ -957,7 +957,7 @@ it("says the catalog is being read rather than showing a dead control", async ()
 it("renders a refusal as prose when the catalog cannot be read, and leaves the form usable", async () => {
   listing([]);
   catalog({ code: "WORKSPACE_BUSY", message: "The workspace is busy." }, 503);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(screen.getByTestId("choose-local"));
@@ -977,7 +977,7 @@ it("renders a refusal as prose when the catalog cannot be read, and leaves the f
 it("invites an installation with nothing to offer, rather than showing an empty list", async () => {
   listing([]);
   catalog({ items: [], total: 0 });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(screen.getByTestId("choose-local"));
@@ -994,7 +994,7 @@ it("opens a reused dialog on nothing a discarded session left behind", async () 
   // id it did not ask for is one nobody typed and nothing on screen explains.
   listing([]);
   const serve = catalogOnCue();
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(screen.getByTestId("choose-local"));
@@ -1025,7 +1025,7 @@ it("lands a successful retry on the offers it just read", async () => {
         : { status: 200, body: SERVED };
     }),
   );
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(screen.getByTestId("choose-local"));
@@ -1052,7 +1052,7 @@ it("keeps a model id typed while the catalog was refusing", async () => {
         : { status: 200, body: SERVED };
     }),
   );
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(screen.getByTestId("choose-local"));
@@ -1071,7 +1071,7 @@ it("shows a stored connection as the offer it names", async () => {
   // it — and the select must land on the offer rather than on Custom.
   listing([connection({ model_id: SAM_BASE_PLUS, model_revision: SAM_BASE_PLUS_COMMIT })]);
   catalog();
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-edit"));
@@ -1084,7 +1084,7 @@ it("shows a stored connection as the offer it names", async () => {
 it("stacks each option: the id on one line, what it is for on the next", async () => {
   listing([]);
   catalog();
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
 
@@ -1122,7 +1122,7 @@ it("states a model's access requirement while it is being chosen, not when it is
   listing([]);
   catalog();
   sizeIs(1_200_000_000);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
   await waitFor(() =>
@@ -1150,7 +1150,7 @@ it("drops the access line again when the choice moves back to an open model", as
   listing([]);
   catalog();
   sizeIs(1_200_000_000);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
 
@@ -1179,7 +1179,7 @@ it("keeps saying a model needs access when it is pinned to another commit", asyn
   ]);
   catalog();
   sizeIs(1_200_000_000);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-pinned-elsewhere"));
   await userEvent.click(await screen.findByTestId("action-edit"));
 
@@ -1191,7 +1191,7 @@ it("curates without restricting: Custom reveals the free model and revision", as
   listing([]);
   catalog();
   sizeIs(1_200_000_000);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
   // Once the list is on screen, so this is the offered state hiding the free
@@ -1216,7 +1216,7 @@ it("offers half precision only where an adapter would honour it", async () => {
   listing([]);
   catalog();
   sizeIs(1_200_000_000);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
 
@@ -1243,7 +1243,7 @@ it("moves the precision with the device rather than leaving a refused pair", asy
     if (request.method !== "POST" || !request.url.endsWith("/inference/connections")) return;
     return { status: 201, body: connection() };
   });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
   await userEvent.type(await screen.findByTestId("connection-name"), "sam2");
@@ -1283,7 +1283,7 @@ it("renders the kernel's refusal of a pair it disagrees with, as prose", async (
       message: "fp16 is not available on cpu; cpu runs in fp32",
     },
   });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
   await userEvent.type(await screen.findByTestId("connection-name"), "sam2");
@@ -1305,7 +1305,7 @@ it("shows a stored device the form does not offer instead of rewriting it", asyn
   ]);
   catalog();
   sizeIs(1_200_000_000);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-edit"));
   expect((await screen.findByTestId("connection-device")).textContent).toContain("cuda:1");
@@ -1324,7 +1324,7 @@ it("shows an offered model at another revision as a custom connection", async ()
   ]);
   catalog();
   sizeIs(1_200_000_000);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-edit"));
   expect(value(await screen.findByTestId("connection-revision"))).toBe(
@@ -1358,7 +1358,7 @@ it("follows a transfer to its end with no reload and no click", async () => {
     return { status: 200, body: { items: [row], total: 1 } };
   });
 
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   expect((await screen.findByTestId("download-progress-prose")).textContent).toContain("50%");
 
   await waitFor(
@@ -1391,7 +1391,7 @@ it("shows a download that failed on a declared error as its sentence, never its 
       ),
     }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   const shown = await screen.findByTestId("download-error");
   expect(shown.textContent).toContain('pip install "visionset[local-inference]"');
@@ -1411,7 +1411,7 @@ it("surfaces a failed download as prose, and leaves the same action as the retry
       ),
     }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   const shown = await screen.findByTestId("download-error");
   expect(shown.textContent).toContain("the connection was lost");
@@ -1430,7 +1430,7 @@ it("offers the completeness check in the overflow once a connection is ready", a
   listing([
     connection({ setup_state: "ready", allowed_actions: ["download_weights", "update", "delete"] }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await screen.findByTestId("connection-sections");
   // Not the prominent control — there is nothing to fetch, only something to check.
   expect(screen.queryByTestId("download-weights")).toBeNull();
@@ -1443,7 +1443,7 @@ it("does not offer the completeness check when the wire withholds the action", a
   // The same `setup_state`, so a screen deriving the item from the row's state
   // would still render it. Only `allowed_actions` gets this right.
   listing([connection({ setup_state: "ready", allowed_actions: ["update", "delete"] })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await screen.findByTestId("action-edit");
   expect(screen.queryByTestId("action-verify-weights")).toBeNull();
@@ -1455,7 +1455,7 @@ it("runs the same request for the completeness check as for Download weights", a
   ]);
   on("POST", /\/download$/, { status: 202, body: job("queued") });
   on("GET", /^\/background-jobs\/job-1$/, { status: 200, body: job("succeeded", 1, 1) });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-verify-weights"));
   await waitFor(() =>
@@ -1481,7 +1481,7 @@ it("names the two checks by what each one proves", async () => {
   // readings and could only be honest about one. A download reads an index and
   // finds what is absent; only a full re-read finds what is present and wrong.
   listing([connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
 
   expect((await screen.findByTestId("action-verify-weights")).textContent).toContain(
@@ -1497,7 +1497,7 @@ it("sends the integrity check to its own route, not to the download", async () =
   listing([connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);
   on("POST", /\/check-integrity$/, { status: 202, body: job("queued") });
   on("GET", /^\/background-jobs\/job-1$/, { status: 200, body: job("succeeded", 4, 4) });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-check-integrity"));
 
@@ -1520,7 +1520,7 @@ it("says a refused integrity check in the vocabulary's sentence, with no code be
       message: "inference connection 11111111-1111-4111-8111-111111111111 has no weights to check",
     },
   });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-check-integrity"));
 
@@ -1536,7 +1536,7 @@ it("does not offer the integrity check when the wire withholds it", async () => 
   listing([
     connection({ setup_state: "ready", allowed_actions: ["download_weights", "update", "delete"] }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await screen.findByTestId("action-verify-weights");
   expect(screen.queryByTestId("action-check-integrity")).toBeNull();
@@ -1559,7 +1559,7 @@ it("lands the row at Not set up when a check finds damage, and says what was don
     }),
   ]);
 
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   const shown = await screen.findByTestId("integrity-error");
   expect(shown.textContent).toContain("model.safetensors");
@@ -1580,7 +1580,7 @@ it("keeps a running check from reading as a running download", async () => {
       integrity_check: checkOf("running", 2, 9),
     }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   expect((await screen.findByTestId("integrity-progress-prose")).textContent).toBe(
     "2 of 9 files · 22%",
@@ -1599,7 +1599,7 @@ it("withdraws the download while a check is reading the same files", async () =>
       integrity_check: checkOf("running", 2, 9),
     }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
 
   const verify = await screen.findByTestId("action-verify-weights");
@@ -1621,7 +1621,7 @@ it("withdraws the check while a download is running", async () => {
       download: downloadOf("running", 1, 4),
     }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
 
   const check = await screen.findByTestId("action-check-integrity");
@@ -1640,7 +1640,7 @@ it("names the transfer on the download button a check has taken out of reach", a
       integrity_check: checkOf("running", 2, 9),
     }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   const button = (await screen.findByTestId("download-weights")) as HTMLButtonElement;
   expect(button.disabled).toBe(true);
@@ -1659,7 +1659,7 @@ it("offers everything again once neither run is live", async () => {
       integrity_check: checkOf("succeeded", 9, 9),
     }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
 
   const verify = await screen.findByTestId("action-verify-weights");
@@ -1681,7 +1681,7 @@ it("shows a check nobody on this page started", async () => {
       integrity_check: checkOf("running", 400, 1_000),
     }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   expect((await screen.findByTestId("integrity-progress-prose")).textContent).toBe(
     "400 of 1,000 files · 40%",
@@ -1699,7 +1699,7 @@ it("names the queue rather than drawing a bar for a check that has not started",
       integrity_check: checkOf("queued", 0, null),
     }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   expect((await screen.findByTestId("integrity-progress-prose")).textContent).toContain("Queued");
   expect(screen.queryByTestId("integrity-progress-bar")).toBeNull();
@@ -1715,7 +1715,7 @@ it("names the listing read a check makes before its first file", async () => {
       integrity_check: checkOf("running", 0, null),
     }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
 
   expect((await screen.findByTestId("integrity-progress-prose")).textContent).toContain(
     "publishes",
@@ -1733,7 +1733,7 @@ it("stops showing a check once it has passed", async () => {
       integrity_check: checkOf("succeeded", 9, 9),
     }),
   ]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await screen.findByTestId("connection-sections");
 
   expect(screen.queryByTestId("integrity-progress")).toBeNull();
@@ -1761,7 +1761,7 @@ it("polls while a check is live, and stops when it settles", async () => {
     return { status: 200, body: { items: [row], total: 1 } };
   });
 
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   expect((await screen.findByTestId("integrity-progress-prose")).textContent).toContain("44%");
 
   await waitFor(() => expect(screen.queryByTestId("integrity-progress")).toBeNull(), {
@@ -1779,7 +1779,7 @@ it("polls while a check is live, and stops when it settles", async () => {
 it("edits without offering to change the kind", async () => {
   listing([connection({ setup_state: "ready", allowed_actions: ["update", "delete"] })]);
   catalog();
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-edit"));
   expect(value(await screen.findByTestId("connection-name"))).toBe("sam2-local");
@@ -1818,7 +1818,7 @@ it("lands an edited row at Not set up without a reload", async () => {
   catalog();
   sizeIs(1_200_000_000);
 
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   expect((await screen.findByTestId("connection-status")).textContent).toContain("Ready");
 
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
@@ -1845,7 +1845,7 @@ it("sends an edit carrying only the fields ConnectionUpdate declares", async () 
     request.method === "PATCH" ? { status: 200, body: connection() } : undefined,
   );
 
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-edit"));
   await userEvent.click(await screen.findByTestId("connection-submit"));
@@ -1877,7 +1877,7 @@ it("sends a create carrying the kind, which only the create model declares", asy
     request.method === "POST" ? { status: 201, body: connection() } : undefined,
   );
 
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
   await userEvent.type(await screen.findByTestId("connection-name"), "sam2-local");
@@ -1896,7 +1896,7 @@ it("sends a create carrying the kind, which only the create model declares", asy
 
 it("states the blast radius of a delete accurately", async () => {
   listing([connection()]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-delete"));
   expect(await screen.findByText("Annotations keep their model provenance; only this configuration is removed.")).not.toBeNull();
@@ -1911,7 +1911,7 @@ it("renders a refused delete in words, not as an identifier", async () => {
       message: "inference connection 99999999-9999-4999-8999-999999999999 not found in workspace /tmp/ws",
     },
   });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-delete"));
   await userEvent.click(await screen.findByTestId("delete-connection-submit"));
@@ -1957,7 +1957,7 @@ function hosted(overrides: Partial<Connection> = {}): Connection {
 it("opens an http edit on the credential variable the row names", async () => {
   listing([hosted({ credential_env: "ACME_TOKEN" })]);
   catalog();
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-remote-seg"));
   await userEvent.click(await screen.findByTestId("action-edit"));
   expect((await screen.findByTestId("connection-credential-env")).getAttribute("value")).toBe(
@@ -1967,7 +1967,7 @@ it("opens an http edit on the credential variable the row names", async () => {
 
 it("offers Test endpoint exactly where the wire declares it", async () => {
   listing([hosted(), connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-remote-seg"));
   expect((await screen.findByTestId("action-test-endpoint")).textContent).toContain("Test endpoint");
   await userEvent.keyboard("{Escape}");
@@ -1981,7 +1981,7 @@ it("sends the test to its own route and re-reads the list", async () => {
     status: 200,
     body: hosted({ capabilities: ["point_suggest"], provider_id: "http" }),
   });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-remote-seg"));
   await userEvent.click(await screen.findByTestId("action-test-endpoint"));
   await waitFor(() =>
@@ -2008,7 +2008,7 @@ it("says it is asking while the request is in flight, and stops once it lands", 
       ? served
       : undefined,
   );
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-remote-seg"));
   await userEvent.click(await screen.findByTestId("action-test-endpoint"));
 
@@ -2028,7 +2028,7 @@ it("renders an endpoint that did not answer as the server's sentence, not a code
       message: "endpoint https://models.example/predict could not be reached: connection refused",
     },
   });
-  render(mount(<InferenceScreen />));
+  render(mount(<ModelsScreen />));
   await userEvent.click(await screen.findByTestId("actions-remote-seg"));
   await userEvent.click(await screen.findByTestId("action-test-endpoint"));
   const notice = await screen.findByTestId("test-endpoint-error");

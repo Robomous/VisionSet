@@ -52,7 +52,7 @@ without knowing the URL scheme.
   ingest flow and the batch gallery — renders inside a `180px` column between the rail and
   the content (`patterns/ProjectNav.tsx`, laid out by `ProjectShell`, composed by
   `screens/ProjectFrame.tsx`). It renders nowhere else: not on the project list, Home,
-  Inference, or the annotator — the one page of a project that stands outside its frame,
+  Models, or the annotator — the one page of a project that stands outside its frame,
   because an editor needs the whole screen. A sub-view lights the section it belongs to
   (the gallery lights Batches; an ingest, which is the project's rather than any one
   section's, lights nothing) and carries its own one way out — see *Ways out*.
@@ -87,7 +87,9 @@ without knowing the URL scheme.
   nowhere else to live. Model connections carry no project id, so a project tab would state
   a scope the object does not have. A destination that belongs to one project does not
   qualify, however often it is visited. The current entries: logo, collapse toggle, Home,
-  Projects, Inference, account at the bottom — nothing else.
+  Projects, Models, account at the bottom — nothing else. The entry is named for the noun
+  it lists — the models a workspace can run — rather than for one use of them, and its
+  route is `/models`; `/inference`, the address it had before, redirects there.
 - **Rail widths** (current implementation, a single source of truth): 240px expanded, 48px
   collapsed — the preset's icon-sidebar width, one `size-8` control per row, centred.
 

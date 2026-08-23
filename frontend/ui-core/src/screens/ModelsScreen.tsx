@@ -1,10 +1,12 @@
 /**
- * The Inference section: where model connections are made, set up and removed.
+ * The Models page: where model connections are made, set up and removed.
  *
  * A top-level destination rather than a project tab: a connection carries no
  * project id, every project uses the same ones, and navigation maps 1:1 to domain
  * objects — so a project tab would state a scope the object does not have.
- * `DESIGN.md` carries the rail's membership.
+ * `DESIGN.md` carries the rail's membership. Named for the noun it catalogues —
+ * the models a workspace can run — rather than for one use of them, because the
+ * same list serves the suggest tool, pre-labeling and whatever asks next.
  *
  * ## Organised by what a connection enables, not by what it is
  *
@@ -199,7 +201,7 @@ import { sectionsOf, type ConnectionSection } from "./inferenceSections";
 /** Above this many rows a list carries a filter input (`DESIGN.md`). */
 const FILTER_ABOVE = 20;
 
-export function InferenceScreen(): JSX.Element {
+export function ModelsScreen(): JSX.Element {
   const connections = useConnections();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Connection | null>(null);
@@ -207,18 +209,18 @@ export function InferenceScreen(): JSX.Element {
   const [needle, setNeedle] = useState("");
 
   return (
-    <div className="flex flex-col gap-6" data-testid="inference-screen">
+    <div className="flex flex-col gap-6" data-testid="models-screen">
       <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Inference</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Models</h1>
           <p className="text-xs text-muted-foreground">
-            Where a model may be asked to predict. Connections are shared by every project
-            in this workspace.
+            The models this workspace can run, and where each one runs. Connections are shared
+            by every project in this workspace.
           </p>
         </div>
         <Button variant="primary" data-testid="new-connection" onClick={() => setCreating(true)}>
           <IconPlug aria-hidden="true" />
-          Add connection
+          Add model
         </Button>
       </header>
 

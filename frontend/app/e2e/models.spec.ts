@@ -1,13 +1,13 @@
 /**
- * The Inference section in a real browser: a dashboard of abilities, and a weight
+ * The Models page in a real browser: a dashboard of abilities, and a weight
  * download somebody watches inside one of them.
  *
- * The sections are asserted here as well as in `inference.test.tsx` because the
+ * The sections are asserted here as well as in `models.test.tsx` because the
  * two claims differ: jsdom proves the grouping is total over what the wire can
  * say, and this proves a real workspace opens on it — and that a run in flight is
  * still found, after a reload, in the section its connection belongs to.
  *
- * ## Why this is not `inference.test.tsx`
+ * ## Why this is not `models.test.tsx`
  *
  * The claim is **recovery**, and recovery is a claim about a page that did not
  * start the thing it is showing. jsdom can assert that a component renders a prop;
@@ -22,7 +22,7 @@
  * What is **not** here is the counting half — *and it stops asking once nothing is
  * moving*. That is a claim that nothing happens over an interval, and the only way
  * to make it in a browser is to wait on a clock, which `tests/scripts/e2e_discipline`
- * forbids for the reason it gives. It is asserted in `inference.test.tsx`, which
+ * forbids for the reason it gives. It is asserted in `models.test.tsx`, which
  * can count requests without a browser scheduler deciding the outcome.
  *
  * ## The wire is stubbed and the screen is not
@@ -215,7 +215,7 @@ function connection(
  * it the way it reads a server.
  */
 async function serveApi(page: Page, next: () => Wire["ConnectionOut"]): Promise<void> {
-  // These scenarios reach Inference by signing in at `/`, which is a real page
+  // These scenarios reach Models by signing in at `/`, which is a real page
   // now rather than a redirect to the project list — so it makes this request on
   // the way past. Empty totals: nothing here is about the dashboard, and an
   // unrouted request would leave the page waiting on a network that is not there.
@@ -245,19 +245,19 @@ async function serveApi(page: Page, next: () => Wire["ConnectionOut"]): Promise<
   );
 }
 
-async function openInference(page: Page): Promise<void> {
+async function openModels(page: Page): Promise<void> {
   await page.goto("/");
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
-  await page.getByTestId("rail-inference").click();
-  await expect(page.getByTestId("inference-screen")).toBeVisible();
+  await page.getByTestId("rail-models").click();
+  await expect(page.getByTestId("models-screen")).toBeVisible();
 }
 
 test("the screen is a list of abilities, and a connection sits under the one it declares", async ({
   page,
 }) => {
   await serveApi(page, () => connection("ready", null));
-  await openInference(page);
+  await openModels(page);
 
   const suggest = page.getByTestId("section-point_suggest");
   await expect(suggest.getByTestId("connection-sam2-local")).toBeVisible();
@@ -284,15 +284,15 @@ test("a transfer left running is where it got to when you come back", async ({ p
   await serveApi(page, () =>
     connection("not_set_up", { state: "running", bytes_done: done, bytes_total: 1.6 * GIGABYTE }),
   );
-  await openInference(page);
+  await openModels(page);
   await expect(page.getByTestId("download-progress-prose")).toContainText("25%");
 
   await page.getByTestId("rail-projects").click();
-  await expect(page.getByTestId("inference-screen")).toHaveCount(0);
+  await expect(page.getByTestId("models-screen")).toHaveCount(0);
   // The worker keeps going, because nothing about it was ever this browser's.
   done = 1.2 * GIGABYTE;
 
-  await page.getByTestId("rail-inference").click();
+  await page.getByTestId("rail-models").click();
   await expect(page.getByTestId("download-progress-prose")).toHaveText("1.2 GB of 1.6 GB · 75%");
 });
 
@@ -315,7 +315,7 @@ test("the bar moves on the poll alone, and stops being a bar when it lands", asy
           bytes_total: 1.6 * GIGABYTE,
         }),
   );
-  await openInference(page);
+  await openModels(page);
   await expect(page.getByTestId("download-progress-prose")).toContainText("50%");
 
   done = 1.4 * GIGABYTE;
@@ -335,14 +335,14 @@ test("a check nobody on this page started survives a reload", async ({ page }) =
   await serveApi(page, () =>
     connection("ready", null, { state: "running", files_read: 4, files_total: 9 }),
   );
-  await openInference(page);
+  await openModels(page);
 
   await expect(page.getByTestId("integrity-progress-prose")).toHaveText("4 of 9 files · 44%");
   await expect(page.getByTestId("integrity-progress-bar")).toHaveAttribute("aria-valuenow", "44");
 
   // Throw the application away. Nothing survives this that a client is holding.
   await page.reload();
-  await expect(page.getByTestId("inference-screen")).toBeVisible();
+  await expect(page.getByTestId("models-screen")).toBeVisible();
 
   await expect(page.getByTestId("integrity-progress-prose")).toHaveText("4 of 9 files · 44%");
   await expect(page.getByTestId("integrity-progress-bar")).toHaveAttribute("aria-valuenow", "44");
@@ -358,7 +358,7 @@ test("a transfer and a re-read are two records on one row", async ({ page }) => 
       { state: "running", files_read: 3, files_total: 9 },
     ),
   );
-  await openInference(page);
+  await openModels(page);
 
   // Files here, and no byte count borrowed from the settled transfer beside it.
   await expect(page.getByTestId("integrity-progress-prose")).toHaveText("3 of 9 files · 33%");
@@ -383,7 +383,7 @@ test("an http connection is asked what it answers, and moves under it", async ({
     hosted = { ...hosted, capabilities: ["point_suggest"], provider_id: "http" };
     return route.fulfill({ status: 200, json: hosted });
   });
-  await openInference(page);
+  await openModels(page);
   const undeclared = page.getByTestId("section-undeclared");
   await expect(undeclared.getByTestId("connection-remote-seg")).toBeVisible();
   await page.getByTestId("actions-remote-seg").click();
@@ -394,7 +394,7 @@ test("an http connection is asked what it answers, and moves under it", async ({
 });
 
 test("a model list taller than the window scrolls instead of running off it", async ({ page }) => {
-  // Layout under a real viewport, so it cannot live in `inference.test.tsx`:
+  // Layout under a real viewport, so it cannot live in `models.test.tsx`:
   // jsdom reports every height as zero and would pass against the implementation
   // this replaced, which clipped the list and left the options past the bottom
   // edge in the DOM, keyboard-reachable and unreachable with a pointer.
@@ -414,7 +414,7 @@ test("a model list taller than the window scrolls instead of running off it", as
   // catalog holds — the condition being tested, rather than a window size that
   // happens to provoke it today.
   await page.setViewportSize({ width: 1280, height: 600 });
-  await openInference(page);
+  await openModels(page);
   await page.getByTestId("new-connection").click();
   await page.getByTestId("choose-local").click();
   // The trigger only exists once the catalog request has answered — wait for
@@ -438,7 +438,7 @@ test("a model list taller than the window scrolls instead of running off it", as
 });
 
 test("a model the installation offers is chosen and becomes a connection", async ({ page }) => {
-  // The whole slice in one journey, and it cannot live in `inference.test.tsx`:
+  // The whole slice in one journey, and it cannot live in `models.test.tsx`:
   // the claim is that the pair sent to the server is the pair the server itself
   // served. `IDEA-Research/grounding-dino-tiny` and its revision are also what
   // the deleted frontend constant used to hold, so asserting those wouldn't tell
@@ -491,7 +491,7 @@ test("a model the installation offers is chosen and becomes a connection", async
       } satisfies Wire["DownloadSizeOut"],
     }),
   );
-  await openInference(page);
+  await openModels(page);
 
   await page.getByTestId("new-connection").click();
   await page.getByTestId("choose-local").click();

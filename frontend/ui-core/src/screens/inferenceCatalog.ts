@@ -24,7 +24,7 @@
  * what order. That is not the hand-mirror `ui-capabilities` bans — that rule is
  * about `allowed_actions`, which no field-level shape can carry — and the
  * refusal still arrives from the server and still renders as prose, which
- * `inference.test.tsx` holds.
+ * `models.test.tsx` holds.
  *
  * ## Where the retired invariants went
  *
