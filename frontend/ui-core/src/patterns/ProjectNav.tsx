@@ -219,17 +219,19 @@ function Strip(props: ProjectNavProps): JSX.Element {
         <Cta {...props} />
         <Overflow {...props} />
       </div>
-      <TabsList variant="line" className="min-w-0 overflow-x-auto">
-        {sections.map((section) => {
-          const { label, icon: Icon } = SECTION_LABELS[section];
-          return (
-            <TabsTrigger key={section} value={section} data-testid={`nav-${section}`}>
-              <Icon className="size-4" aria-hidden="true" />
-              {label}
-            </TabsTrigger>
-          );
-        })}
-      </TabsList>
+      <div className="min-w-0 overflow-x-auto pb-1.5">
+        <TabsList variant="line">
+          {sections.map((section) => {
+            const { label, icon: Icon } = SECTION_LABELS[section];
+            return (
+              <TabsTrigger key={section} value={section} data-testid={`nav-${section}`}>
+                <Icon className="size-4" aria-hidden="true" />
+                {label}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+      </div>
       <TabsContent value={active ?? ""}>{children}</TabsContent>
     </Tabs>
   );

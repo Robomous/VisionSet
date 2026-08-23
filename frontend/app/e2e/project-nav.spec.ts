@@ -282,7 +282,7 @@ test("below lg the tab strip renders and the column does not, with nothing lost"
 
   // Narrower still, the strip's own tabs can no longer all fit: it scrolls
   // within its own row instead of widening the page (#754).
-  await page.setViewportSize({ width: 500, height: 800 });
+  await page.setViewportSize({ width: 320, height: 800 });
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
   ).toBe(true);
