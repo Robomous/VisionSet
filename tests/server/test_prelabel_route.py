@@ -23,8 +23,9 @@ from tests.server._jobs import InlineDispatcher, ManualDispatcher
 
 from visionset.inference import PreLabelOutcome
 from visionset.inference import weights as weights_module
+from visionset.inference.registry import capabilities, registered, served
 from visionset.jobs import prelabel as prelabel_handler
-from visionset.kernel.domain import DownloadSize
+from visionset.kernel.domain import DownloadSize, GeometryType, ModelCapability
 from visionset.server.routes import batches as batches_routes
 from visionset.server.routes import inference as inference_routes
 
@@ -53,6 +54,15 @@ DOUBLY_EXCLUDED = {
 MIXED = [DETECTABLE, POLYGON_ONLY, DOUBLY_EXCLUDED, {"name": "post", "geometries": ["bbox"]}]
 
 FETCHED_BYTES = 4_000_000_000
+
+#: Every family this build's drivers answer words for, with the shapes each
+#: declares — what a selection is checked against, read off the registry so a
+#: driver that starts producing a second shape is covered without an edit here.
+TEXT_DETECT_FAMILIES: list[tuple[str, frozenset[GeometryType]]] = sorted(
+    (family, served(registered().providers)[family].produces)
+    for family, capability in capabilities(registered().providers).items()
+    if capability is ModelCapability.TEXT_DETECT
+)
 
 
 @pytest.fixture()
@@ -987,3 +997,202 @@ def test_the_project_launch_refuses_an_unknown_field(
     )
 
     assert response.status_code == 422, response.text
+
+
+# --- choosing which of the model's shapes a run writes ---------------------------
+
+
+def test_the_plan_reports_the_selected_shapes_and_excludes_what_they_cannot_hold(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Boxes selected of a model answering both: `produces` is the effective set,
+    and a polygon-only class is left out for want of a producible shape."""
+    batch = _open_batch(
+        client,
+        runner,
+        tmp_path,
+        monkeypatch,
+        classes=[DETECTABLE, POLYGON_ONLY],
+        family="text_detect",
+        capability="text_detect",
+    )
+
+    unselected = client.get(
+        f"/batches/{batch.id}/pre-label", params={"connection_id": batch.connection_id}
+    ).json()
+    selected = client.get(
+        f"/batches/{batch.id}/pre-label",
+        params={"connection_id": batch.connection_id, "geometries": ["bbox"]},
+    ).json()
+
+    assert unselected["produces"] == ["bbox", "polygon"]
+    assert unselected["asked_classes"] == ["sign", "lane"]
+    assert selected["produces"] == ["bbox"]
+    assert selected["asked_classes"] == ["sign"]
+    assert selected["excluded_classes"] == [{"name": "lane", "reasons": ["no_producible_geometry"]}]
+    assert _pre_label_job_count(client) == 0
+
+
+def test_the_plan_refuses_a_selection_the_model_does_not_produce(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = client.get(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        params={"connection_id": in_annotation_batch.connection_id, "geometries": ["polygon"]},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "GEOMETRY_NOT_PRODUCED"
+    assert "a polygon" in response.json()["message"]
+    assert "a box" in response.json()["message"]
+
+
+def test_a_launch_with_a_selection_outside_produces_is_refused_and_queues_nothing(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    before = _pre_label_job_count(client)
+
+    response = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id, "geometries": ["polygon"]},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "GEOMETRY_NOT_PRODUCED"
+    assert _pre_label_job_count(client) == before
+
+
+def test_a_launch_with_an_empty_selection_is_a_validation_error(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    before = _pre_label_job_count(client)
+
+    response = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id, "geometries": []},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert _pre_label_job_count(client) == before
+
+
+def test_the_selection_reaches_the_run_and_its_absence_means_every_shape(
+    client: TestClient, in_annotation_batch: OpenBatch, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, Any] = {}
+    _faking_the_run(monkeypatch, captured)
+
+    plain = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id},
+    )
+    assert plain.status_code == 202, plain.text
+    assert captured["geometries"] is None
+
+    selected = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id, "geometries": ["bbox"]},
+    )
+    assert selected.status_code == 202, selected.text
+    assert captured["geometries"] == frozenset({GeometryType.BBOX})
+
+
+@pytest.mark.parametrize(("family", "produces"), TEXT_DETECT_FAMILIES)
+def test_selecting_everything_a_family_produces_is_the_same_run_as_selecting_nothing(
+    client: TestClient,
+    runner: InlineDispatcher,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    family: str,
+    produces: frozenset[GeometryType],
+) -> None:
+    """`None` and the full declared set are one plan, for every family this
+    build answers words with — so the default is today's behaviour on each."""
+    batch = _open_batch(
+        client,
+        runner,
+        tmp_path,
+        monkeypatch,
+        classes=[DETECTABLE, POLYGON_ONLY],
+        family=family,
+        capability="text_detect",
+    )
+    every = sorted(shape.value for shape in produces)
+
+    unselected = client.get(
+        f"/batches/{batch.id}/pre-label", params={"connection_id": batch.connection_id}
+    )
+    selected = client.get(
+        f"/batches/{batch.id}/pre-label",
+        params={"connection_id": batch.connection_id, "geometries": every},
+    )
+
+    assert unselected.status_code == 200, unselected.text
+    assert selected.status_code == 200, selected.text
+    assert selected.json() == unselected.json()
+    assert selected.json()["produces"] == every
+
+
+def test_the_project_launch_carries_the_selection_to_every_row(
+    client: TestClient,
+    runner: InlineDispatcher,
+    tmp_path: Path,
+    in_annotation_batch: OpenBatch,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+    _faking_the_run(monkeypatch, captured)
+    _another_open_batch(client, runner, tmp_path, in_annotation_batch.project_id)
+
+    response = _launch(
+        client,
+        in_annotation_batch.project_id,
+        in_annotation_batch.connection_id,
+        geometries=["bbox"],
+    )
+
+    assert response.status_code == 202, response.text
+    assert response.json()["total"] == 2
+    assert captured["geometries"] == frozenset({GeometryType.BBOX})
+
+
+def test_the_project_launch_refuses_a_selection_outside_produces_whole(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    before = _pre_label_job_count(client)
+
+    response = _launch(
+        client,
+        in_annotation_batch.project_id,
+        in_annotation_batch.connection_id,
+        geometries=["polygon"],
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "GEOMETRY_NOT_PRODUCED"
+    assert _pre_label_job_count(client) == before
+
+
+def test_the_project_launch_narrows_the_selection_gate_to_the_selected_shapes(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A polygon-only pin is accepted by a two-shape model — until boxes alone
+    are selected, when the same pin has nowhere to hold an answer."""
+    batch = _open_batch(
+        client,
+        runner,
+        tmp_path,
+        monkeypatch,
+        classes=[POLYGON_ONLY],
+        family="text_detect",
+        capability="text_detect",
+    )
+    before = _pre_label_job_count(client)
+
+    response = _launch(client, batch.project_id, batch.connection_id, geometries=["bbox"])
+
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "SCHEMA_HAS_NO_DETECTABLE_CLASS"
+    assert "a box can be written as" in response.json()["message"]
+    assert _pre_label_job_count(client) == before

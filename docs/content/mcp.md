@@ -319,7 +319,10 @@ run superseded as `annotations_replaced`, and the prompt it ran under as `plan` 
 `asked_classes` beside `excluded_classes` and `produces`, so a run that labeled nothing says
 which classes it never asked about, and what shapes it was answering in, rather than leaving
 that to a second call. `get_pre_label_plan` takes the same connection and answers the same
-thing before the wait.
+thing before the wait. All three tools take an optional `geometries`: omitted, a run writes
+every shape the model produces, which is what every call did before the parameter existed;
+named, it writes only those, a region in any other shape counts as discarded, and `produces` in
+the plan is the selection. A shape the model does not produce is refused before anything runs.
 
 There is therefore no ingest polling, and no `resume_ingest`. If a call is cut off part way, call
 `ingest` again - registration is idempotent on `(kind, path, extraction_fps)` and content

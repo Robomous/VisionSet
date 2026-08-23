@@ -27,6 +27,7 @@ from visionset.kernel.domain import (
     BboxGeometry,
     GeometryType,
     ModelCapability,
+    PolygonGeometry,
     PredictedRegion,
     ServedFamily,
 )
@@ -467,8 +468,11 @@ class _FakeSegmenter:
 
 
 class _FakePool:
-    def __init__(self, runner: object) -> None:
+    def __init__(
+        self, runner: object, *, produces: frozenset[GeometryType] = frozenset({GeometryType.BBOX})
+    ) -> None:
         self._runner = runner
+        self._produces = produces
 
     def get(self, connection: object, *, workspace_root: Path) -> object:
         return self._runner
@@ -478,31 +482,49 @@ class _FakePool:
             return ServedFamily(
                 capability=ModelCapability.POINT_SUGGEST, produces=frozenset({GeometryType.POLYGON})
             )
-        return ServedFamily(
-            capability=ModelCapability.TEXT_DETECT, produces=frozenset({GeometryType.BBOX})
-        )
+        return ServedFamily(capability=ModelCapability.TEXT_DETECT, produces=self._produces)
 
 
 def _predicting(
-    monkeypatch: pytest.MonkeyPatch, *, kind: str = "detector", label: str = "sign"
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    kind: str = "detector",
+    label: str = "sign",
+    both_shapes: bool = False,
 ) -> None:
     """Stand in for what a connection resolves to, the way `pre_label`'s own
     kernel suite does through its `pool` parameter — the MCP tool exposes no
     such parameter, since an agent has no business choosing a fake one, so this
     reaches the same seam through the module-level pool `pre_label` asks for
     when none is passed.
+
+    ``both_shapes`` makes it a model declaring a box and a polygon and answering
+    one of each per asset — the shape a geometry selection is about.
     """
     regions = (
         PredictedRegion(
             label=label, confidence=0.9, geometry=BboxGeometry(x=1.0, y=2.0, width=3.0, height=4.0)
         ),
     )
+    if both_shapes:
+        regions += (
+            PredictedRegion(
+                label=label,
+                confidence=0.8,
+                geometry=PolygonGeometry(points=[(1.0, 1.0), (5.0, 1.0), (5.0, 5.0)]),
+            ),
+        )
     runner = (
         _FakeSegmenter()
         if kind == "segmenter"
         else _FakePredictor(model_ref="acme/detector@abc123", regions=regions)
     )
-    monkeypatch.setattr(prelabel_module, "resident", lambda: _FakePool(runner))
+    produces = (
+        frozenset({GeometryType.BBOX, GeometryType.POLYGON})
+        if both_shapes
+        else frozenset({GeometryType.BBOX})
+    )
+    monkeypatch.setattr(prelabel_module, "resident", lambda: _FakePool(runner, produces=produces))
 
 
 def _connection() -> str:
@@ -727,6 +749,93 @@ def test_a_schema_with_no_box_class_is_refused_and_writes_nothing(
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["review_pending"] == 0
 
 
+#: A class admitting both shapes a two-shape model answers in, beside one only
+#: a polygon could land on — what a boxes-only selection leaves out.
+BOTH_SHAPES_CLASSES: list[dict[str, Any]] = [
+    {"name": "sign", "geometries": ["bbox", "polygon"]},
+    {"name": "lane", "geometries": ["polygon"]},
+]
+
+
+def test_the_plan_reports_the_selected_shapes_and_what_they_leave_out(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2, classes=BOTH_SHAPES_CLASSES)
+    connection_id = _connection()
+    _predicting(monkeypatch, both_shapes=True)
+
+    every = payload(call("get_pre_label_plan", batch_id=batch_id, connection=connection_id))
+    boxes = payload(
+        call(
+            "get_pre_label_plan",
+            batch_id=batch_id,
+            connection=connection_id,
+            geometries=["bbox"],
+        )
+    )
+
+    assert every["produces"] == ["bbox", "polygon"]
+    assert every["asked_classes"] == ["sign", "lane"]
+    assert boxes["produces"] == ["bbox"]
+    assert boxes["asked_classes"] == ["sign"]
+    assert boxes["excluded_classes"] == [{"name": "lane", "reasons": ["no_producible_geometry"]}]
+
+
+def test_a_selection_writes_only_those_shapes_and_the_run_reports_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The round trip: `geometries` on the tool reaches the run, so a model
+    answering a box and a polygon per asset writes the boxes and counts the
+    polygons as discarded — and omitted, it writes both."""
+    project, batch_id, _job = open_batch(
+        monkeypatch, tmp_path, count=2, classes=BOTH_SHAPES_CLASSES
+    )
+    connection_id = _connection()
+    _predicting(monkeypatch, both_shapes=True)
+
+    outcome = payload(
+        call("pre_label_batch", batch_id=batch_id, connection=connection_id, geometries=["bbox"])
+    )
+
+    assert outcome["annotations_written"] == 2
+    assert outcome["regions_discarded"] == 2
+    assert outcome["plan"]["produces"] == ["bbox"]
+    assert outcome["plan"]["asked_classes"] == ["sign"]
+
+    other = _another_open_batch(monkeypatch, tmp_path, project)
+    unselected = payload(call("pre_label_batch", batch_id=other, connection=connection_id))
+    assert unselected["annotations_written"] == 4
+    assert unselected["regions_discarded"] == 0
+    assert unselected["plan"]["produces"] == ["bbox", "polygon"]
+
+
+def test_a_selection_outside_what_the_model_produces_is_refused_and_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
+    connection_id = _connection()
+    _predicting(monkeypatch)
+
+    plan = error(
+        call(
+            "get_pre_label_plan",
+            batch_id=batch_id,
+            connection=connection_id,
+            geometries=["polygon"],
+        )
+    )
+    run = error(
+        call("pre_label_batch", batch_id=batch_id, connection=connection_id, geometries=["polygon"])
+    )
+
+    # One sentence from both tools, and it names both sides: what was asked
+    # for and what the model does answer in.
+    assert plan["message"] == run["message"]
+    assert "does not answer in a polygon" in run["message"]
+    assert "only a box" in run["message"]
+    assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 0
+
+
 def test_the_batch_declares_pre_label_only_while_in_annotation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -823,6 +932,39 @@ def test_pre_labeling_a_project_narrows_to_the_named_batches(
     )
 
     assert [item["batch_id"] for item in outcome["items"]] == [second]
+    assert payload(call("get_batch", batch_id=first))["progress"]["pre_labeled"] == 0
+
+
+def test_pre_labeling_a_project_carries_the_selection_to_every_batch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project, first, _job = open_batch(monkeypatch, tmp_path, count=2, classes=BOTH_SHAPES_CLASSES)
+    second = _another_open_batch(monkeypatch, tmp_path, project)
+    connection_id = _connection()
+    _predicting(monkeypatch, both_shapes=True)
+
+    outcome = payload(
+        call("pre_label_project", project=project, connection=connection_id, geometries=["bbox"])
+    )
+
+    assert [item["batch_id"] for item in outcome["items"]] == [first, second]
+    assert all(item["annotations_written"] == 2 for item in outcome["items"])
+    assert all(item["regions_discarded"] == 2 for item in outcome["items"])
+    assert all(item["plan"]["produces"] == ["bbox"] for item in outcome["items"])
+
+
+def test_pre_labeling_a_project_refuses_a_selection_outside_what_the_model_produces(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project, first, _job = open_batch(monkeypatch, tmp_path, count=2)
+    connection_id = _connection()
+    _predicting(monkeypatch)
+
+    refusal = error(
+        call("pre_label_project", project=project, connection=connection_id, geometries=["polygon"])
+    )
+
+    assert "does not answer in a polygon" in refusal["message"]
     assert payload(call("get_batch", batch_id=first))["progress"]["pre_labeled"] == 0
 
 

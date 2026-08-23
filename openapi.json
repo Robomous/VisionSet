@@ -3595,6 +3595,21 @@
             "title": "Connection Id",
             "type": "string"
           },
+          "geometries": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GeometryType"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geometries"
+          },
           "minimum_confidence": {
             "default": 0.35,
             "maximum": 1.0,
@@ -3979,6 +3994,21 @@
             "format": "uuid",
             "title": "Connection Id",
             "type": "string"
+          },
+          "geometries": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GeometryType"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geometries"
           },
           "minimum_confidence": {
             "default": 0.35,
@@ -6617,7 +6647,7 @@
     },
     "/batches/{batch_id}/pre-label": {
       "get": {
-        "description": "The classes a run would ask this connection's model for, and the shapes it would write.\n\nA run's prompt is the batch's pinned schema narrowed to the classes the\nmodel can answer \u2014 a class is asked for when it admits a shape the model\nproduces and demands no attribute a prediction cannot supply \u2014 and that\nnarrowing is invisible once the run has finished. Read this before\nlaunching to say which classes are in the prompt and which are not, with\nthe reason beside each, and which shapes a run will write: `produces` is\nthe model's declared shapes, so a schema of polygon classes is askable of a\nmodel that answers polygons and refused for one that answers boxes.\n\n`connection_id` is required because the plan is a property of the schema\n**and** the model: the same schema yields a different prompt for a detector\nand for a segmenter.\n\nRefused on the same terms the launch uses, in the same order, so reading\nthe plan and then launching gets one set of answers: an unknown connection\nis 404 `INFERENCE_CONNECTION_NOT_FOUND`; a connection not set up yet is 409\n`INFERENCE_CONNECTION_NOT_SET_UP`; one whose model answers places rather\nthan words is 422 `UNSUPPORTED_PROMPT`; an unknown batch is 404\n`BATCH_NOT_FOUND`; a batch that is not `in_annotation` is 409\n`BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the model's shapes\ncan be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`. A machine\nwithout the optional local runtime answers 500 `LOCAL_INFERENCE_UNAVAILABLE`\nwith the install command, and a batch open for annotation but pinning no\nschema version is a broken invariant and answers 500 `WORKSPACE_CORRUPT`.",
+        "description": "The classes a run would ask this connection's model for, and the shapes it would write.\n\nA run's prompt is the batch's pinned schema narrowed to the classes the\nmodel can answer \u2014 a class is asked for when it admits a shape the run\nwrites and demands no attribute a prediction cannot supply \u2014 and that\nnarrowing is invisible once the run has finished. Read this before\nlaunching to say which classes are in the prompt and which are not, with\nthe reason beside each, and which shapes a run will write: `produces` is\nthe model's declared shapes, so a schema of polygon classes is askable of a\nmodel that answers polygons and refused for one that answers boxes.\n\n`connection_id` is required because the plan is a property of the schema\n**and** the model: the same schema yields a different prompt for a detector\nand for a segmenter. `geometries` is the launch's own restriction, read\nhere first: pass the shapes a launch would name and `produces` is that\nselection, with every class only those shapes cannot hold moved to\n`excluded_classes`. Omitted, the plan is for every shape the model produces.\n\nRefused on the same terms the launch uses, in the same order, so reading\nthe plan and then launching gets one set of answers: an unknown connection\nis 404 `INFERENCE_CONNECTION_NOT_FOUND`; a connection not set up yet is 409\n`INFERENCE_CONNECTION_NOT_SET_UP`; one whose model answers places rather\nthan words is 422 `UNSUPPORTED_PROMPT`; a `geometries` naming a shape the\nmodel does not produce is 422 `GEOMETRY_NOT_PRODUCED`; an unknown batch is\n404 `BATCH_NOT_FOUND`; a batch that is not `in_annotation` is 409\n`BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the selected shapes\ncan be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`. A machine\nwithout the optional local runtime answers 500 `LOCAL_INFERENCE_UNAVAILABLE`\nwith the install command, and a batch open for annotation but pinning no\nschema version is a broken invariant and answers 500 `WORKSPACE_CORRUPT`.",
         "operationId": "pre_label_plan",
         "parameters": [
           {
@@ -6638,6 +6668,27 @@
               "format": "uuid",
               "title": "Connection Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Which of the model's shapes the run would write \u2014 `PreLabelRequest.geometries`, for the plan. Repeat the parameter per shape. Omit for every shape the model produces.",
+            "in": "query",
+            "name": "geometries",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/GeometryType"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Which of the model's shapes the run would write \u2014 `PreLabelRequest.geometries`, for the plan. Repeat the parameter per shape. Omit for every shape the model produces.",
+              "title": "Geometries"
             }
           }
         ],
@@ -6724,7 +6775,7 @@
         ]
       },
       "post": {
-        "description": "Ask a model to label every untouched asset in this batch, and answer at once.\n\nThe `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:\nnobody judged them, so they arrive editable and correctable rather than\nclaiming to be somebody's work \u2014 and, being unjudged, they never reach the\nDataset until a person has taken them over.\n\n**Only assets nothing has touched \u2014 which is stronger than reading\n`unannotated`.** An asset already `pre_labeled`, annotated, skipped,\nawaiting review or accepted is passed over, and so is an `unannotated` one\nthat still carries annotations from an earlier round that was skipped and\nthen restored: that sequence deletes no labels, so progress alone does not\nprove an asset untouched. A run never writes over what a person did in this\nbatch, and never writes twice over what a model did \u2014 a plain second run\nextends an earlier one onto whatever is still untouched.\n`replace_model_labels` widens it to every frame still `pre_labeled` and\nsupersedes those labels with this run's answer, one frame per transaction;\na frame anyone edited, confirmed or skipped in this batch is never touched,\nand a frame the model now finds nothing on returns to `unannotated`. A\nreplacing request arriving while a run is in flight joins that run,\nwhichever flag it carries.\n\n**The batch's pinned schema is the prompt, narrowed to what this model\nwrites.** The model is asked for each class the schema declares that admits\none of the model's declared shapes and demands no attribute a prediction\ncannot supply; an answer naming one of those classes, matched\ncase-insensitively, is written under the schema's own spelling, and an\nanswer naming none of them is discarded. A schema with no such class has\nnowhere for a prediction to land and is refused \u2014 so the same schema is\naskable of a model that answers polygons and refused for one that answers\nboxes. `GET` this path with the same `connection_id` to read the narrowing\nbefore launching.\n\n**202, not 200.** A batch is hundreds of forward passes, so this follows the\nlaunch-and-poll contract the export and weight-download routes use: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state` is\n`succeeded`, then re-read the batch's assets. Progress on the row is counted\nin assets.\n\n**Everything a caller can be told now is told now**, and no refusal creates a\njob \u2014 so a caller holding a job id holds one that will run. These refusals\nare about the request, and the caller can act on each. They are checked in\nthis order, and it is the order `pre_label` itself checks in, so a request\nwrong about the connection and the batch both always names the connection:\na connection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` \u2014 its\nweights not here, or its endpoint not yet asked what it answers; a\nconnection whose model answers places rather than words is 422\n`UNSUPPORTED_PROMPT`; a batch that is not `in_annotation` is 409\n`BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the model's shapes\ncan be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.\n\nTwo failures are about this installation rather than about the request, and\nanswer 500 carrying the message that says which: a machine without the\noptional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the\nexact command that installs it, and a workspace whose records no longer\nhold together \u2014 a batch pinned to a schema version that is not stored \u2014 is\n`WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no\nstate here a caller can change, so the remedy is the one the message names.\n\n**Asking twice joins the run already in flight rather than starting a second\none.** A request arriving while this batch has a pre-labeling run queued or\nrunning is answered with that run's id, so a double-click and a second tab\nwatch one run instead of paying for the same inference twice.",
+        "description": "Ask a model to label every untouched asset in this batch, and answer at once.\n\nThe `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:\nnobody judged them, so they arrive editable and correctable rather than\nclaiming to be somebody's work \u2014 and, being unjudged, they never reach the\nDataset until a person has taken them over.\n\n**Only assets nothing has touched \u2014 which is stronger than reading\n`unannotated`.** An asset already `pre_labeled`, annotated, skipped,\nawaiting review or accepted is passed over, and so is an `unannotated` one\nthat still carries annotations from an earlier round that was skipped and\nthen restored: that sequence deletes no labels, so progress alone does not\nprove an asset untouched. A run never writes over what a person did in this\nbatch, and never writes twice over what a model did \u2014 a plain second run\nextends an earlier one onto whatever is still untouched.\n`replace_model_labels` widens it to every frame still `pre_labeled` and\nsupersedes those labels with this run's answer, one frame per transaction;\na frame anyone edited, confirmed or skipped in this batch is never touched,\nand a frame the model now finds nothing on returns to `unannotated`. A\nreplacing request arriving while a run is in flight joins that run,\nwhichever flag it carries.\n\n**The batch's pinned schema is the prompt, narrowed to what this run\nwrites.** The model is asked for each class the schema declares that admits\none of the shapes the run writes and demands no attribute a prediction\ncannot supply; an answer naming one of those classes, matched\ncase-insensitively, is written under the schema's own spelling, and an\nanswer naming none of them is discarded. A schema with no such class has\nnowhere for a prediction to land and is refused \u2014 so the same schema is\naskable of a model that answers polygons and refused for one that answers\nboxes. `GET` this path with the same `connection_id` (and the same\n`geometries`) to read the narrowing before launching.\n\n**What the run writes is every shape the model produces, unless\n`geometries` says which.** A model declaring both a box and a polygon\nwrites both for every region it answers with \u2014 the kernel writes one\nannotation per emitted region and pairs nothing \u2014 and `geometries` filters\nthat to the shapes named: a region in any other shape is discarded and\ncounted in `regions_discarded`. The selection is per run, not per class,\nand it is kept on the queued row, so a run claimed later executes what was\nasked.\n\n**202, not 200.** A batch is hundreds of forward passes, so this follows the\nlaunch-and-poll contract the export and weight-download routes use: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state` is\n`succeeded`, then re-read the batch's assets. Progress on the row is counted\nin assets.\n\n**Everything a caller can be told now is told now**, and no refusal creates a\njob \u2014 so a caller holding a job id holds one that will run. These refusals\nare about the request, and the caller can act on each. They are checked in\nthis order, and it is the order `pre_label` itself checks in, so a request\nwrong about the connection and the batch both always names the connection:\na connection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` \u2014 its\nweights not here, or its endpoint not yet asked what it answers; a\nconnection whose model answers places rather than words is 422\n`UNSUPPORTED_PROMPT`; a `geometries` naming a shape the model does not\nproduce is 422 `GEOMETRY_NOT_PRODUCED`; a batch that is not `in_annotation`\nis 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the\nselected shapes can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.\n\nTwo failures are about this installation rather than about the request, and\nanswer 500 carrying the message that says which: a machine without the\noptional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the\nexact command that installs it, and a workspace whose records no longer\nhold together \u2014 a batch pinned to a schema version that is not stored \u2014 is\n`WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no\nstate here a caller can change, so the remedy is the one the message names.\n\n**Asking twice joins the run already in flight rather than starting a second\none.** A request arriving while this batch has a pre-labeling run queued or\nrunning is answered with that run's id, so a double-click and a second tab\nwatch one run instead of paying for the same inference twice.",
         "operationId": "pre_label_batch",
         "parameters": [
           {
@@ -11565,7 +11616,7 @@
     },
     "/projects/{project_id}/batches/pre-label": {
       "post": {
-        "description": "Ask a model to label every untouched asset across this project's open batches.\n\n**One row per batch, and the batch stays the unit.** This launch fans out\nover the project's batches that are open for annotation \u2014 every one of\nthem, or exactly the `batch_ids` named \u2014 and for each one queues the same\n`annotation.pre_label` job `POST /batches/{batch_id}/pre-label` queues, or\njoins the one already queued or running for that batch (`joined`). Each\nrow is polled, cancelled and remembered per batch, exactly as a\nsingle-batch launch is: `GET /background-jobs/{id}` for progress counted\nin that batch's assets, `BatchOut.pre_label_run` afterwards. Nothing here\nreports one total across batches, because nothing here is one run.\n\n**Refused whole, up front, and no refusal creates a row.** The connection\nis checked first, as the single-batch launch checks it: an unknown\nconnection is 404 `INFERENCE_CONNECTION_NOT_FOUND`, one not set up yet is\n409 `INFERENCE_CONNECTION_NOT_SET_UP`, and a model that answers places\nrather than words is 422 `UNSUPPORTED_PROMPT`. Then the selection: an\nunknown project is 404 `PROJECT_NOT_FOUND`; a named batch outside this project is 404\n`BATCH_NOT_FOUND`; a named batch not `in_annotation`, a project with no\nopen batch at all, or an empty `batch_ids`, is 409 `BATCH_NOT_IN_ANNOTATION`;\nany selected batch whose pinned schema has no class the model's shapes can\nbe written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message\nnames the batch so the caller can leave it out by name and ask again. A\npartly launched project would leave rows the caller was never told about,\nwhich is why the whole request is refused instead.\n\nWhat each run writes, passes over and counts is the single-batch launch's\ncontract; read `POST /batches/{batch_id}/pre-label`.",
+        "description": "Ask a model to label every untouched asset across this project's open batches.\n\n**One row per batch, and the batch stays the unit.** This launch fans out\nover the project's batches that are open for annotation \u2014 every one of\nthem, or exactly the `batch_ids` named \u2014 and for each one queues the same\n`annotation.pre_label` job `POST /batches/{batch_id}/pre-label` queues, or\njoins the one already queued or running for that batch (`joined`). Each\nrow is polled, cancelled and remembered per batch, exactly as a\nsingle-batch launch is: `GET /background-jobs/{id}` for progress counted\nin that batch's assets, `BatchOut.pre_label_run` afterwards. Nothing here\nreports one total across batches, because nothing here is one run.\n\n**Refused whole, up front, and no refusal creates a row.** The connection\nis checked first, as the single-batch launch checks it: an unknown\nconnection is 404 `INFERENCE_CONNECTION_NOT_FOUND`, one not set up yet is\n409 `INFERENCE_CONNECTION_NOT_SET_UP`, a model that answers places rather\nthan words is 422 `UNSUPPORTED_PROMPT`, and a `geometries` naming a shape\nthe model does not produce is 422 `GEOMETRY_NOT_PRODUCED`. Then the\nselection: an unknown project is 404 `PROJECT_NOT_FOUND`; a named batch\noutside this project is 404 `BATCH_NOT_FOUND`; a named batch not\n`in_annotation`, a project with no open batch at all, or an empty\n`batch_ids`, is 409 `BATCH_NOT_IN_ANNOTATION`; any selected batch whose\npinned schema has no class the selected shapes can be written as is 409\n`SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message names the batch so the\ncaller can leave it out by name and ask again. A partly launched project\nwould leave rows the caller was never told about, which is why the whole\nrequest is refused instead.\n\nWhat each run writes, passes over and counts is the single-batch launch's\ncontract, `geometries` included; read `POST /batches/{batch_id}/pre-label`.",
         "operationId": "pre_label_project_batches",
         "parameters": [
           {

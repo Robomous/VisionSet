@@ -202,6 +202,16 @@ ProgressQuery = Annotated[
     list[AssetProgress] | None,
     Query(description="Keep only assets in these states. Repeat the parameter per state."),
 ]
+GeometriesQuery = Annotated[
+    list[GeometryType] | None,
+    Query(
+        description=(
+            "Which of the model's shapes the run would write — `PreLabelRequest.geometries`, "
+            "for the plan. Repeat the parameter per shape. Omit for every shape the model "
+            "produces."
+        ),
+    ),
+]
 SortQuery = Annotated[
     AssetSort,
     Query(
@@ -1111,8 +1121,9 @@ class PreLabelPlanOut(BaseModel):
     schema_version: int
     #: The prompt itself — the classes a run will ask the model about.
     asked_classes: list[str]
-    #: The shapes the model answers in, sorted. What a run writes — a class is
-    #: asked for only when it admits one of these.
+    #: The shapes a run writes, sorted: the model's declared shapes, narrowed to
+    #: the request's `geometries` when it named some. A class is asked for only
+    #: when it admits one of these.
     produces: list[GeometryType]
     #: The rest, each with why. Empty when the whole schema is askable.
     excluded_classes: list[PreLabelExclusionOut]
@@ -1361,6 +1372,15 @@ class PreLabelRequest(BaseModel):
     #: and a frame the model now finds nothing on returns to `unannotated`.
     #: Frames anyone has touched in this batch are never affected. This cannot be undone.
     replace_model_labels: bool = False
+    #: Which of the model's shapes the run writes. Absent or `null`: every shape
+    #: the model produces (`ConnectionOut.produces`), which is the behaviour a
+    #: request without this field has always had. Present: exactly these, each
+    #: one the model produces — a region the model answers in any other shape
+    #: is discarded and counted in `regions_discarded`, and a class is asked for
+    #: only when it admits one of these. Naming a shape the model does not
+    #: produce is 422 `GEOMETRY_NOT_PRODUCED`; an empty list is a validation
+    #: error, never a run that writes nothing. Per run, not per class.
+    geometries: list[GeometryType] | None = Field(default=None, min_length=1)
 
 
 class ProjectPreLabelRequest(BaseModel):
@@ -1382,6 +1402,9 @@ class ProjectPreLabelRequest(BaseModel):
     minimum_confidence: float = Field(default=DEFAULT_MINIMUM_CONFIDENCE, ge=0.0, le=1.0)
     #: Exactly these batches, in this order. Absent: every open batch.
     batch_ids: list[UUID] | None = None
+    #: Which of the model's shapes every run writes — `PreLabelRequest.geometries`,
+    #: applied to each batch. Absent or `null`: every shape the model produces.
+    geometries: list[GeometryType] | None = Field(default=None, min_length=1)
 
 
 class ProjectPreLabelItemOut(BaseModel):

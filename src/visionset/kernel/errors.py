@@ -1215,3 +1215,18 @@ class SchemaHasNoDetectableClass(VisionSetError):
     satisfy one. The run is refused rather than started, because starting it
     would spend the inference to write nothing and report success.
     """
+
+
+class GeometryNotProduced(VisionSetError):
+    """A pre-labeling run was asked to write a shape this model does not answer in.
+
+    A run may be narrowed to some of the shapes its model declares; it cannot be
+    widened past them, and it cannot be narrowed to nothing. A selection naming
+    a shape outside the declaration, or naming no shape at all, is refused
+    before anything runs — a silent run writing nothing would report success
+    over an empty batch.
+
+    ``UnsupportedPrompt``'s sibling in status: nothing about the connection needs
+    to change and no wait helps, so the remedy is a different selection, or no
+    selection, which means every shape the model produces.
+    """

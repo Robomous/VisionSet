@@ -190,3 +190,36 @@ export function geometryLabel(geometry: GeometryType): string {
 export function formatGeometries(geometries: readonly GeometryType[]): string {
   return geometries.map(geometryLabel).join(" · ");
 }
+
+/**
+ * What each geometry is called **in the plural**, for a sentence about a run.
+ *
+ * `GEOMETRY_LABELS` is the singular, tuned for a chip and for "adds polygon to
+ * it". A pre-label plan and a model card both say what a model *writes* — "boxes
+ * or polygons" — and an "s" appended to the singular gets `boxs`. Kept beside the
+ * singular so the two cannot name a member apart, and total over the union by
+ * the same `satisfies`.
+ */
+export const GEOMETRY_PLURALS = {
+  bbox: "boxes",
+  polygon: "polygons",
+  polyline: "polylines",
+  mask: "masks",
+  keypoints: "keypoints",
+  classification_tag: "tags",
+  cuboid_3d: "3D cuboids",
+  polyline_3d: "3D polylines",
+} as const satisfies Record<GeometryType, string>;
+
+/**
+ * How the shapes a model writes read: "boxes or polygons".
+ *
+ * Takes `readonly string[]` rather than the union on purpose: `produces` is
+ * a list a newer server may extend, and what it says a run will write is
+ * exactly what the reader needs, so an unknown member passes through raw
+ * rather than being dropped. "or", not the middot — a run writes one shape per
+ * label, and this goes inside a sentence where the middot has no room to mean.
+ */
+export function producesProse(produces: readonly string[]): string {
+  return produces.map((one) => (GEOMETRY_PLURALS as Record<string, string>)[one] ?? one).join(" or ");
+}

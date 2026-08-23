@@ -38,6 +38,18 @@
  * same narrowing decides what the run really prompts with, and a second copy of
  * it in the browser is how a dialog comes to name a class no run asks about.
  *
+ * ## Which of the model's shapes a run writes is a choice, when there is one
+ *
+ * A model declaring both a box and a polygon writes both for every region it
+ * answers with, unpaired — the kernel writes one annotation per emitted region
+ * and pairs nothing — so a run over such a model is offered one checkbox per
+ * shape it produces, all ticked, and sends exactly the ticked ones on the plan
+ * read and on the launch. A model writing one shape gets no control: there is
+ * nothing to choose between, and the body carries no selection. Ticking every
+ * shape off blocks the launch beside the checkboxes rather than sending a run
+ * that would write nothing. The choice lives in this component's own state, not
+ * below the plan query whose key it moves — the re-read must not unmount it.
+ *
  * ## The job is a background one, and this dialog watches it — even one it did
  * not launch
  *
@@ -77,6 +89,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { IconSparkles } from "@tabler/icons-react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
+import { producesProse } from "../data/geometryCategory";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
 import { Alert, Badge } from "../primitives/Badge";
@@ -106,6 +119,7 @@ import {
   usePreLabelPlan,
   type Batch,
   type BackgroundJob,
+  type GeometryType,
   type PreLabelExclusion,
   type PreLabelPlan,
   type PreLabelRun,
@@ -115,6 +129,9 @@ import {
 export const TEXT_DETECT = "text_detect" as const;
 
 export const DEFAULT_CONFIDENCE = "0.35";
+
+/** Nothing unticked — every shape the model produces is written. */
+export const NO_SHAPES: ReadonlySet<GeometryType> = new Set();
 
 function isSettled(state: BackgroundJob["state"]): boolean {
   return state === "succeeded" || state === "failed" || state === "cancelled";
@@ -341,28 +358,6 @@ function excludedProse(excluded: PreLabelExclusion): string {
 }
 
 /**
- * How each shape a run writes reads: "Writes boxes or polygons."
- *
- * A plain `Record`, not one over the known members: the vocabulary is open and
- * an unknown shape passes through raw rather than being dropped, because what a
- * newer server says the run will write is exactly what the reader needs.
- */
-const PRODUCES_PROSE: Record<string, string> = {
-  bbox: "boxes",
-  polygon: "polygons",
-  polyline: "polylines",
-  mask: "masks",
-  keypoints: "keypoints",
-  classification_tag: "tags",
-  cuboid_3d: "3D cuboids",
-  polyline_3d: "3D polylines",
-};
-
-function producesProse(produces: readonly string[]): string {
-  return produces.map((one) => PRODUCES_PROSE[one] ?? one).join(" or ");
-}
-
-/**
  * The prompt, named — and beside it every class of this schema that is not in it.
  *
  * The count above says how many assets a run may touch and nothing about what it
@@ -375,7 +370,7 @@ function producesProse(produces: readonly string[]): string {
  * here is `SCHEMA_HAS_NO_DETECTABLE_CLASS` — nothing in this schema is askable —
  * and the dialog says that once, beside the dead press, rather than twice.
  */
-function PromptClasses({ plan }: { readonly plan: PreLabelPlan | null }): JSX.Element | null {
+export function PromptClasses({ plan }: { readonly plan: PreLabelPlan | null }): JSX.Element | null {
   if (plan === null) return null;
   return (
     <div className="flex flex-col gap-1" data-testid="prelabel-classes">
@@ -407,24 +402,57 @@ function DeadStart(): JSX.Element {
   );
 }
 
+/** "some/model · writes boxes or polygons" — a selector row's second line. */
+function connectionMeta(connection: Connection): string {
+  return connection.produces.length === 0
+    ? connection.model_id
+    : `${connection.model_id} · writes ${producesProse(connection.produces)}`;
+}
+
+/** "Boxes" — a checkbox label, from the plural the plan prose uses. */
+function shapeLabel(shape: string): string {
+  const prose = producesProse([shape]);
+  return prose.charAt(0).toUpperCase() + prose.slice(1);
+}
+
+/**
+ * What a ticked-box state says a run writes: the shapes the model produces,
+ * less the unticked ones, or `null` when the model writes one shape and there
+ * was nothing to tick — the body then carries no selection at all.
+ */
+export function selectedShapes(
+  shapes: readonly GeometryType[],
+  unticked: ReadonlySet<GeometryType>,
+): readonly GeometryType[] | null {
+  return shapes.length > 1 ? shapes.filter((one) => !unticked.has(one)) : null;
+}
+
 export interface PreLabelSettingsProps {
   readonly candidates: readonly Connection[];
   readonly activeId: string;
   readonly onConnectionChange: (id: string) => void;
   readonly confidence: string;
   readonly onConfidenceChange: (value: string) => void;
+  /** The shapes the active model produces — one checkbox each when there are several. */
+  readonly shapes: readonly GeometryType[];
+  readonly unticked: ReadonlySet<GeometryType>;
+  readonly onToggleShape: (shape: GeometryType) => void;
   readonly disabled: boolean;
 }
 
-/** The model and affinity controls both launches share — one copy of the prose and the ids. */
+/** The model, affinity and shape controls both launches share — one copy of the prose and the ids. */
 export function PreLabelSettings({
   candidates,
   activeId,
   onConnectionChange,
   confidence,
   onConfidenceChange,
+  shapes,
+  unticked,
+  onToggleShape,
   disabled,
 }: PreLabelSettingsProps): JSX.Element {
+  const selected = selectedShapes(shapes, unticked);
   return (
     <>
       <div className="flex flex-col gap-1.5">
@@ -443,7 +471,7 @@ export function PreLabelSettings({
             </SelectTrigger>
             <SelectContent>
               {candidates.map((one) => (
-                <SelectItem key={one.id} value={one.id} meta={one.model_id}>
+                <SelectItem key={one.id} value={one.id} meta={connectionMeta(one)}>
                   {one.name}
                 </SelectItem>
               ))}
@@ -471,6 +499,37 @@ export function PreLabelSettings({
           its own rather than a bare percentage.
         </FieldHint>
       </div>
+
+      {selected !== null && (
+        <fieldset className="flex flex-col gap-1.5" data-testid="prelabel-shapes">
+          <Label asChild>
+            <legend>Shapes to write</legend>
+          </Label>
+          {shapes.map((one) => (
+            <label key={one} className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                className="accent-primary"
+                data-testid={`prelabel-shape-${one}`}
+                checked={!unticked.has(one)}
+                disabled={disabled}
+                onChange={() => onToggleShape(one)}
+              />
+              <span>{shapeLabel(one)}</span>
+            </label>
+          ))}
+          {selected.length === 0 ? (
+            <FieldError data-testid="prelabel-shapes-error">
+              Tick at least one shape — a run that writes no shape has nothing to do.
+            </FieldError>
+          ) : (
+            <FieldHint>
+              This model answers in every shape here, one region each, and writes every ticked
+              one. Untick a shape to leave it out of the run.
+            </FieldHint>
+          )}
+        </fieldset>
+      )}
     </>
   );
 }
@@ -525,6 +584,9 @@ function PreLabelDialog({
   const [connectionId, setConnectionId] = useState("");
   const [confidence, setConfidence] = useState(DEFAULT_CONFIDENCE);
   const [replace, setReplace] = useState(false);
+  // The shapes left *out*, so "everything ticked" is the empty set on every
+  // model and a change of model starts from every shape again.
+  const [unticked, setUnticked] = useState<ReadonlySet<GeometryType>>(NO_SHAPES);
   const [jobId, setJobId] = useState<string | null>(null);
   const remembered = batch?.pre_label_run ?? null;
   // Guards the second invalidation so a job polled past its own settling does
@@ -538,10 +600,22 @@ function PreLabelDialog({
   );
   const preLabel = usePreLabelBatch(batch?.id ?? "");
   const active = candidates.find((row) => row.id === connectionId) ?? candidates[0];
+  const shapes = active?.produces ?? [];
+  const selection = selectedShapes(shapes, unticked);
+  const noShape = selection !== null && selection.length === 0;
   // Read while the dialog is open and not before: the prompt is a property of
-  // the pinned schema and of the chosen model, so a gallery that never opens
-  // this never asks for it, and changing the model asks again.
-  const plan = usePreLabelPlan(batch?.id, batch?.schema_version, active?.id, batch !== null);
+  // the pinned schema, of the chosen model and of the ticked shapes, so a
+  // gallery that never opens this never asks for it, and changing the model or
+  // a tick asks again. Not read with nothing ticked — the error beside the
+  // checkboxes is the whole answer, and a read with no selection would be a
+  // plan for every shape.
+  const plan = usePreLabelPlan(
+    batch?.id,
+    batch?.schema_version,
+    active?.id,
+    batch !== null && !noShape,
+    selection,
+  );
   // The job this session launched if there is one, otherwise the batch's own
   // remembered run — watched by its id so a run still genuinely in flight,
   // started elsewhere, keeps polling here rather than sitting frozen.
@@ -584,7 +658,7 @@ function PreLabelDialog({
   // `plan.isError` covers every refusal the plan read can hit; the launch
   // refuses on the same gate, so pressing Start could only reproduce it.
   const launchDisabled =
-    running || active === undefined || !validConfidence || blocked || plan.isError;
+    running || active === undefined || !validConfidence || blocked || plan.isError || noShape;
   // The primitive the effect is actually a function of, not the object that
   // carries it — a `useBatch` refetch elsewhere on the page can mint a new
   // `Batch` with the same id, and that identity churn must not matter here.
@@ -611,9 +685,24 @@ function PreLabelDialog({
         connectionId: active.id,
         minimumConfidence: confidenceValue,
         replaceModelLabels: replacing,
+        geometries: selection,
       },
       { onSuccess: (queued) => setJobId(queued.id) },
     );
+  }
+
+  function chooseConnection(id: string): void {
+    setConnectionId(id);
+    setUnticked(NO_SHAPES);
+  }
+
+  function toggleShape(shape: GeometryType): void {
+    setUnticked((previous) => {
+      const next = new Set(previous);
+      if (next.has(shape)) next.delete(shape);
+      else next.add(shape);
+      return next;
+    });
   }
 
   function goToPreLabeled(): void {
@@ -624,6 +713,7 @@ function PreLabelDialog({
   function close(): void {
     setJobId(null);
     setReplace(false);
+    setUnticked(NO_SHAPES);
     setSettled(false);
     onClose();
   }
@@ -705,9 +795,12 @@ function PreLabelDialog({
               <PreLabelSettings
                 candidates={candidates}
                 activeId={active?.id ?? ""}
-                onConnectionChange={setConnectionId}
+                onConnectionChange={chooseConnection}
                 confidence={confidence}
                 onConfidenceChange={setConfidence}
+                shapes={shapes}
+                unticked={unticked}
+                onToggleShape={toggleShape}
                 disabled={mode === "running"}
               />
 

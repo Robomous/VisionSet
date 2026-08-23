@@ -33,8 +33,10 @@ from visionset.kernel.domain import (
     CUDA,
     MPS,
     PRE_LABEL_CONFIDENCE_KEY,
+    PRE_LABEL_GEOMETRIES_KEY,
     ConnectionSetupState,
     ConnectionType,
+    GeometryType,
     InferenceConnection,
     Precision,
     pre_label_job_payload,
@@ -591,6 +593,17 @@ def test_a_pre_label_payload_round_trips_its_three_facts() -> None:
     assert payload[BATCH_JOB_KEY] == str(batch_id)
     assert payload[CONNECTION_JOB_KEY] == str(connection_id)
     assert payload[PRE_LABEL_CONFIDENCE_KEY] == 0.35
+    assert payload[PRE_LABEL_GEOMETRIES_KEY] is None
+
+
+def test_a_pre_label_payload_keeps_the_shape_selection_sorted_and_json_plain() -> None:
+    """Sorted values, never enum members: a queue row is JSON, and two launches
+    naming the same shapes in a different order are the same selection."""
+    payload = pre_label_job_payload(
+        uuid4(), uuid4(), 0.35, geometries=frozenset({GeometryType.POLYGON, GeometryType.BBOX})
+    )
+
+    assert payload[PRE_LABEL_GEOMETRIES_KEY] == ["bbox", "polygon"]
 
 
 # --- which driver serves a connection ----------------------------------------

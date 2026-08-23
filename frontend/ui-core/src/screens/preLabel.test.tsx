@@ -495,10 +495,13 @@ it("sends the chosen model and the typed confidence, not a default nobody set", 
   await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
   const post = sent.find((r) => r.method === "POST" && r.url.endsWith("/pre-label"));
   const body = JSON.parse(await post!.clone().text());
+  // `geometries` rides along because the detector writes two shapes and both
+  // are ticked: the wire carries exactly what the person saw checked.
   expect(body).toEqual({
     connection_id: DETECTOR.id,
     minimum_confidence: 0.5,
     replace_model_labels: false,
+    geometries: ["bbox", "polygon"],
   });
 });
 
@@ -965,3 +968,164 @@ it("stops promising Continue cannot duplicate a label once replace is ticked", a
   await waitFor(() => expect(hint.textContent).not.toMatch(/duplicate label/i));
   expect(hint.textContent).toContain("rewrites the model labels on the 9 pre-labeled frames");
 });
+
+// --- choosing which of the model's shapes a run writes -------------------------
+
+/** A detector whose model writes one shape: nothing to choose between. */
+const BOX_DETECTOR = connectionOf({
+  id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+  name: "box-detector",
+  produces: ["bbox"],
+});
+
+/** The geometries a plan request named, in the order the query string carries them. */
+function geometriesOf(request: Request): string[] {
+  return new URL(request.url).searchParams.getAll("geometries");
+}
+
+/**
+ * Answer the plan from the selection the request carries, the way the server
+ * does: `produces` is the selection, and a polygon-only class is left out once
+ * polygons are.
+ */
+function planFollowsSelection(): void {
+  handlers.unshift((request) => {
+    if (request.method !== "GET" || !/\/pre-label$/.test(new URL(request.url).pathname)) {
+      return undefined;
+    }
+    const selected = geometriesOf(request);
+    const produces = selected.length === 0 ? ["bbox", "polygon"] : selected;
+    const asked = produces.includes("bbox") ? ["person", "car"] : [];
+    const lane = produces.includes("polygon") ? [] : [{ name: "lane", reasons: ["no_producible_geometry"] }];
+    return {
+      status: 200,
+      body: planOf({
+        produces,
+        asked_classes: produces.includes("polygon") ? [...asked, "lane"] : asked,
+        excluded_classes: [{ name: "vehicle", reasons: ["required_attribute"] }, ...lane],
+      }),
+    };
+  });
+}
+
+it("offers no shape control when the model writes one shape, and sends no selection", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [BOX_DETECTOR] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await screen.findByTestId("prelabel-asked-classes");
+
+  expect(screen.queryByTestId("prelabel-shapes")).toBeNull();
+  const plan = sent.find((r) => r.method === "GET" && r.url.includes("/pre-label?"));
+  expect(plan).toBeDefined();
+  expect(geometriesOf(plan!)).toEqual([]);
+
+  await userEvent.click(await screen.findByRole("button", { name: /start/i }));
+  await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
+  const post = sent.find((r) => r.method === "POST" && r.url.endsWith("/pre-label"));
+  expect(JSON.parse(await post!.clone().text())).toEqual({
+    connection_id: BOX_DETECTOR.id,
+    minimum_confidence: 0.35,
+    replace_model_labels: false,
+  });
+});
+
+it("offers one ticked checkbox per shape when the model writes several, and reads the plan for them", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  const boxes = (await screen.findByTestId("prelabel-shape-bbox")) as HTMLInputElement;
+  const polygons = screen.getByTestId("prelabel-shape-polygon") as HTMLInputElement;
+  expect(boxes.checked).toBe(true);
+  expect(polygons.checked).toBe(true);
+  expect(screen.getByLabelText("Boxes")).toBe(boxes);
+  expect(screen.getByLabelText("Polygons")).toBe(polygons);
+
+  await screen.findByTestId("prelabel-asked-classes");
+  const plan = sent.find((r) => r.method === "GET" && r.url.includes("/pre-label?"));
+  expect(geometriesOf(plan!)).toEqual(["bbox", "polygon"]);
+});
+
+it("re-reads the plan for the ticked shapes and the prose follows the selection", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR] });
+  planFollowsSelection();
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  expect((await screen.findByTestId("prelabel-produces")).textContent).toBe(
+    "Writes boxes or polygons.",
+  );
+  expect(screen.queryByTestId("prelabel-excluded-classes")?.textContent).not.toMatch(/lane/);
+
+  await userEvent.click(screen.getByTestId("prelabel-shape-polygon"));
+
+  await waitFor(() =>
+    expect(screen.getByTestId("prelabel-produces").textContent).toBe("Writes boxes."),
+  );
+  expect(screen.getByTestId("prelabel-excluded-classes").textContent).toContain(
+    "lane (no shape this model produces)",
+  );
+  const reread = sent.filter((r) => r.method === "GET" && r.url.includes("/pre-label?"));
+  expect(geometriesOf(reread[reread.length - 1]!)).toEqual(["bbox"]);
+});
+
+it("blocks the launch with an explanation when no shape is ticked, and lifts it on a tick", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  const start = (await screen.findByTestId("prelabel-submit")) as HTMLButtonElement;
+  await waitFor(() => expect(start.disabled).toBe(false));
+
+  await userEvent.click(screen.getByTestId("prelabel-shape-bbox"));
+  await userEvent.click(screen.getByTestId("prelabel-shape-polygon"));
+
+  expect(start.disabled).toBe(true);
+  expect((await screen.findByTestId("prelabel-shapes-error")).textContent).toMatch(
+    /at least one shape/i,
+  );
+
+  await userEvent.click(screen.getByTestId("prelabel-shape-polygon"));
+  await waitFor(() => expect(start.disabled).toBe(false));
+  expect(screen.queryByTestId("prelabel-shapes-error")).toBeNull();
+});
+
+it("posts exactly the ticked shapes", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await userEvent.click(await screen.findByTestId("prelabel-shape-bbox"));
+  await userEvent.click(await screen.findByTestId("prelabel-submit"));
+
+  await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
+  const post = sent.find((r) => r.method === "POST" && r.url.endsWith("/pre-label"));
+  const body = JSON.parse(await post!.clone().text()) as Record<string, unknown>;
+  expect(body.geometries).toEqual(["polygon"]);
+});
+
+it("says in the selector what each connection writes, before one is chosen", async () => {
+  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR, BOX_DETECTOR] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await userEvent.click(await screen.findByLabelText(/model/i));
+
+  expect(
+    screen.getByRole("option", { name: new RegExp(`${DETECTOR.name}.*boxes or polygons`) }),
+  ).not.toBeNull();
+  expect(
+    screen.getByRole("option", { name: new RegExp(`${BOX_DETECTOR.name}.*boxes`) }),
+  ).not.toBeNull();
+  await userEvent.keyboard("{Escape}");
+});
+
+it("forgets an unticked shape when the model changes", async () => {
+  const OTHER = connectionOf({
+    id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    name: "other-detector",
+    produces: ["bbox", "polygon"],
+  });
+  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR, OTHER] });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await userEvent.click(await screen.findByTestId("prelabel-shape-polygon"));
+  expect((screen.getByTestId("prelabel-shape-polygon") as HTMLInputElement).checked).toBe(false);
+
+  await userEvent.click(await screen.findByLabelText(/model/i));
+  await userEvent.click(screen.getByRole("option", { name: new RegExp(OTHER.name) }));
+
+  await waitFor(() =>
+    expect((screen.getByTestId("prelabel-shape-polygon") as HTMLInputElement).checked).toBe(true),
+  );
+});
+

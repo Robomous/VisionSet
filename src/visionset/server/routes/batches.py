@@ -37,6 +37,7 @@ from fastapi import Query, Response, status
 from visionset.inference import (
     STUB_MODEL_ID,
     capabilities_of,
+    effective_produces,
     not_set_up_message,
     produces_of,
     prompt_plan,
@@ -53,6 +54,7 @@ from visionset.kernel.domain import (
     BackgroundJobSpec,
     ConnectionSetupState,
     ConnectionType,
+    GeometryType,
     InferenceConnection,
     MembershipChange,
     ModelCapability,
@@ -81,6 +83,7 @@ from visionset.server.models import (
     BatchOut,
     BatchPage,
     ConfirmQuery,
+    GeometriesQuery,
     JobOut,
     JobPage,
     LimitQuery,
@@ -155,6 +158,24 @@ def _text_detect_connection(workspace: WorkspaceDep, connection_id: UUID) -> Inf
     if ModelCapability.TEXT_DETECT not in capabilities_of(connection.model_family):
         raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
     return connection
+
+
+def _selected_produces(
+    connection: InferenceConnection, geometries: list[GeometryType] | None
+) -> frozenset[GeometryType]:
+    """The shapes a run writes — the model's, narrowed to a request's selection.
+
+    Checked right after the connection and before the batch, on every pre-label
+    surface, so the plan, the launch and the project launch refuse a bad
+    selection in one place in the order and with no row queued.
+
+    Raises:
+        GeometryNotProduced: the selection names a shape the model does not produce.
+    """
+    return effective_produces(
+        produces_of(connection.model_family),
+        None if geometries is None else frozenset(geometries),
+    )
 
 
 @project_router.post("", status_code=201, responses=documented(404))
@@ -357,12 +378,17 @@ def create_correction_batch(
 
 
 @router.get("/{batch_id}/pre-label", responses=documented(404, 409))
-def pre_label_plan(workspace: WorkspaceDep, batch_id: UUID, connection_id: UUID) -> PreLabelPlanOut:
+def pre_label_plan(
+    workspace: WorkspaceDep,
+    batch_id: UUID,
+    connection_id: UUID,
+    geometries: GeometriesQuery = None,
+) -> PreLabelPlanOut:
     """The classes a run would ask this connection's model for, and the shapes it would write.
 
     A run's prompt is the batch's pinned schema narrowed to the classes the
-    model can answer — a class is asked for when it admits a shape the model
-    produces and demands no attribute a prediction cannot supply — and that
+    model can answer — a class is asked for when it admits a shape the run
+    writes and demands no attribute a prediction cannot supply — and that
     narrowing is invisible once the run has finished. Read this before
     launching to say which classes are in the prompt and which are not, with
     the reason beside each, and which shapes a run will write: `produces` is
@@ -371,23 +397,27 @@ def pre_label_plan(workspace: WorkspaceDep, batch_id: UUID, connection_id: UUID)
 
     `connection_id` is required because the plan is a property of the schema
     **and** the model: the same schema yields a different prompt for a detector
-    and for a segmenter.
+    and for a segmenter. `geometries` is the launch's own restriction, read
+    here first: pass the shapes a launch would name and `produces` is that
+    selection, with every class only those shapes cannot hold moved to
+    `excluded_classes`. Omitted, the plan is for every shape the model produces.
 
     Refused on the same terms the launch uses, in the same order, so reading
     the plan and then launching gets one set of answers: an unknown connection
     is 404 `INFERENCE_CONNECTION_NOT_FOUND`; a connection not set up yet is 409
     `INFERENCE_CONNECTION_NOT_SET_UP`; one whose model answers places rather
-    than words is 422 `UNSUPPORTED_PROMPT`; an unknown batch is 404
-    `BATCH_NOT_FOUND`; a batch that is not `in_annotation` is 409
-    `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the model's shapes
+    than words is 422 `UNSUPPORTED_PROMPT`; a `geometries` naming a shape the
+    model does not produce is 422 `GEOMETRY_NOT_PRODUCED`; an unknown batch is
+    404 `BATCH_NOT_FOUND`; a batch that is not `in_annotation` is 409
+    `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the selected shapes
     can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`. A machine
     without the optional local runtime answers 500 `LOCAL_INFERENCE_UNAVAILABLE`
     with the install command, and a batch open for annotation but pinning no
     schema version is a broken invariant and answers 500 `WORKSPACE_CORRUPT`.
     """
     connection = _text_detect_connection(workspace, connection_id)
+    produces = _selected_produces(connection, geometries)
     batch = BatchService(workspace).require_pre_labelable(batch_id)
-    produces = produces_of(connection.model_family)
     schema = require_detectable_schema(workspace, batch, produces)
     return PreLabelPlanOut.of(prompt_plan(schema, produces))
 
@@ -426,16 +456,25 @@ def pre_label_batch(
     replacing request arriving while a run is in flight joins that run,
     whichever flag it carries.
 
-    **The batch's pinned schema is the prompt, narrowed to what this model
+    **The batch's pinned schema is the prompt, narrowed to what this run
     writes.** The model is asked for each class the schema declares that admits
-    one of the model's declared shapes and demands no attribute a prediction
+    one of the shapes the run writes and demands no attribute a prediction
     cannot supply; an answer naming one of those classes, matched
     case-insensitively, is written under the schema's own spelling, and an
     answer naming none of them is discarded. A schema with no such class has
     nowhere for a prediction to land and is refused — so the same schema is
     askable of a model that answers polygons and refused for one that answers
-    boxes. `GET` this path with the same `connection_id` to read the narrowing
-    before launching.
+    boxes. `GET` this path with the same `connection_id` (and the same
+    `geometries`) to read the narrowing before launching.
+
+    **What the run writes is every shape the model produces, unless
+    `geometries` says which.** A model declaring both a box and a polygon
+    writes both for every region it answers with — the kernel writes one
+    annotation per emitted region and pairs nothing — and `geometries` filters
+    that to the shapes named: a region in any other shape is discarded and
+    counted in `regions_discarded`. The selection is per run, not per class,
+    and it is kept on the queued row, so a run claimed later executes what was
+    asked.
 
     **202, not 200.** A batch is hundreds of forward passes, so this follows the
     launch-and-poll contract the export and weight-download routes use: poll `GET
@@ -451,9 +490,10 @@ def pre_label_batch(
     a connection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` — its
     weights not here, or its endpoint not yet asked what it answers; a
     connection whose model answers places rather than words is 422
-    `UNSUPPORTED_PROMPT`; a batch that is not `in_annotation` is 409
-    `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the model's shapes
-    can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+    `UNSUPPORTED_PROMPT`; a `geometries` naming a shape the model does not
+    produce is 422 `GEOMETRY_NOT_PRODUCED`; a batch that is not `in_annotation`
+    is 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the
+    selected shapes can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
 
     Two failures are about this installation rather than about the request, and
     answer 500 carrying the message that says which: a machine without the
@@ -470,15 +510,20 @@ def pre_label_batch(
     """
     service = BatchService(workspace)
     connection = _text_detect_connection(workspace, body.connection_id)
+    produces = _selected_produces(connection, body.geometries)
     batch = service.require_pre_labelable(batch_id)
-    require_detectable_schema(workspace, batch, produces_of(connection.model_family))
+    require_detectable_schema(workspace, batch, produces)
 
     running = service.live_job(batch_id, job_type=pre_label_job_type)
     job = running or workspace.job_queue.enqueue(
         BackgroundJobSpec(
             type=pre_label_job_type,
             payload=pre_label_payload_for(
-                batch_id, body.connection_id, body.minimum_confidence, body.replace_model_labels
+                batch_id,
+                body.connection_id,
+                body.minimum_confidence,
+                body.replace_model_labels,
+                None if body.geometries is None else frozenset(body.geometries),
             ),
             idempotent=True,
         )
@@ -516,32 +561,36 @@ def pre_label_project_batches(
     **Refused whole, up front, and no refusal creates a row.** The connection
     is checked first, as the single-batch launch checks it: an unknown
     connection is 404 `INFERENCE_CONNECTION_NOT_FOUND`, one not set up yet is
-    409 `INFERENCE_CONNECTION_NOT_SET_UP`, and a model that answers places
-    rather than words is 422 `UNSUPPORTED_PROMPT`. Then the selection: an
-    unknown project is 404 `PROJECT_NOT_FOUND`; a named batch outside this project is 404
-    `BATCH_NOT_FOUND`; a named batch not `in_annotation`, a project with no
-    open batch at all, or an empty `batch_ids`, is 409 `BATCH_NOT_IN_ANNOTATION`;
-    any selected batch whose pinned schema has no class the model's shapes can
-    be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message
-    names the batch so the caller can leave it out by name and ask again. A
-    partly launched project would leave rows the caller was never told about,
-    which is why the whole request is refused instead.
+    409 `INFERENCE_CONNECTION_NOT_SET_UP`, a model that answers places rather
+    than words is 422 `UNSUPPORTED_PROMPT`, and a `geometries` naming a shape
+    the model does not produce is 422 `GEOMETRY_NOT_PRODUCED`. Then the
+    selection: an unknown project is 404 `PROJECT_NOT_FOUND`; a named batch
+    outside this project is 404 `BATCH_NOT_FOUND`; a named batch not
+    `in_annotation`, a project with no open batch at all, or an empty
+    `batch_ids`, is 409 `BATCH_NOT_IN_ANNOTATION`; any selected batch whose
+    pinned schema has no class the selected shapes can be written as is 409
+    `SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message names the batch so the
+    caller can leave it out by name and ask again. A partly launched project
+    would leave rows the caller was never told about, which is why the whole
+    request is refused instead.
 
     What each run writes, passes over and counts is the single-batch launch's
-    contract; read `POST /batches/{batch_id}/pre-label`.
+    contract, `geometries` included; read `POST /batches/{batch_id}/pre-label`.
     """
     connection = _text_detect_connection(workspace, body.connection_id)
-    selected = select_pre_labelable(
-        workspace, project_id, produces_of(connection.model_family), body.batch_ids
-    )
+    produces = _selected_produces(connection, body.geometries)
+    selected = select_pre_labelable(workspace, project_id, produces, body.batch_ids)
     service = BatchService(workspace)
+    geometries = None if body.geometries is None else frozenset(body.geometries)
     items: list[ProjectPreLabelItemOut] = []
     for batch in selected:
         running = service.live_job(batch.id, job_type=pre_label_job_type)
         job = running or workspace.job_queue.enqueue(
             BackgroundJobSpec(
                 type=pre_label_job_type,
-                payload=pre_label_payload_for(batch.id, connection.id, body.minimum_confidence),
+                payload=pre_label_payload_for(
+                    batch.id, connection.id, body.minimum_confidence, geometries=geometries
+                ),
                 idempotent=True,
             )
         )

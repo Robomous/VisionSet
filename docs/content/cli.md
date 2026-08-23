@@ -22,8 +22,8 @@ visionset schema draft publish --project P [--kind K] [--revision N] [--allow-de
 visionset ingest PATH --project P [--fps N] [--batch-name NAME]
 visionset batch list --project P
 visionset batch approve BATCH_ID [--jobs-of N]
-visionset batch pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels]
-visionset project pre-label PROJECT CONNECTION [--batch BATCH_ID]... [--minimum-confidence FLOAT]
+visionset batch pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE]...
+visionset project pre-label PROJECT CONNECTION [--batch BATCH_ID]... [--minimum-confidence FLOAT] [--geometry SHAPE]...
 visionset batch start|complete|promote BATCH_ID
 
 visionset job list --batch BATCH_ID
@@ -359,24 +359,29 @@ interrupted run. The batch id goes to stdout.
 `promote`. Each maps to the `BatchService` method of the same name, except `promote`, which is
 `DatasetService.promote` - it takes a *batch* id and derives the dataset, which is why it lives here.
 
-`pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels]` blocks and calls
-`visionset.inference.pre_label` inline because a terminal has no dispatcher. Before the first
-forward pass it names the classes it is about to ask for, and every class of the pinned schema it
-is leaving out with the reason - a class the prompt omits labels nothing, and afterwards there is
-only the silence to explain. `--replace-model-labels` widens the run to frames a previous run
-labeled and nobody has touched since, superseding those labels, and the summary then reads
-`, replaced K earlier model label(s)`. Progress and the summary are written to stderr; normal
-stdout contains `annotations_written`. With `--json`, the
-command prints the complete outcome instead, including `regions_discarded` for unmappable model
-labels and `regions_out_of_bounds` for mapped regions without overlap with a measured asset.
+`pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry
+SHAPE]...` blocks and calls `visionset.inference.pre_label` inline because a terminal has no
+dispatcher. Before the first forward pass it names the classes it is about to ask for, the shape
+or shapes what it finds will land as, and every class of the pinned schema it is leaving out with
+the reason - a class the prompt omits labels nothing, and afterwards there is only the silence to
+explain. `--replace-model-labels` widens the run to frames a previous run labeled and nobody has
+touched since, superseding those labels, and the summary then reads `, replaced K earlier model
+label(s)`. `--geometry SHAPE`, repeated for several, writes only those of the shapes the model
+produces - a model answering a box and a polygon for every region writes both unless told
+otherwise - and a shape the model does not produce is refused before anything runs; omitted, the
+run writes every shape the model produces. Progress and the summary are written to stderr; normal
+stdout contains `annotations_written`. With `--json`, the command prints the complete outcome
+instead, including `regions_discarded` for unmappable model labels and regions in a shape left
+out, and `regions_out_of_bounds` for mapped regions without overlap with a measured asset.
 
-`project pre-label PROJECT CONNECTION [--batch BATCH_ID]... [--minimum-confidence FLOAT]` is the
-same run over every batch of the project that is open for annotation - or exactly the `--batch`
-ids given - one after another, each announced and reported by name on stderr, with the total
-`annotations_written` on stdout. The selection is refused whole before the first forward pass: a
-batch outside the project, a named batch that is not open, a project with no open batch, or a pin
-with no class a shape the model produces can be written as (the message names the batch). With
-`--json`, `items` holds one outcome per batch and `annotations_written` the total.
+`project pre-label PROJECT CONNECTION [--batch BATCH_ID]... [--minimum-confidence FLOAT]
+[--geometry SHAPE]...` is the same run over every batch of the project that is open for
+annotation - or exactly the `--batch` ids given - one after another, each announced and reported
+by name on stderr, with the total `annotations_written` on stdout, and `--geometry` applying to
+every one of them. The selection is refused whole before the first forward pass: a batch outside
+the project, a named batch that is not open, a project with no open batch, or a pin with no class
+a shape the run writes can be written as (the message names the batch). With `--json`, `items`
+holds one outcome per batch and `annotations_written` the total.
 
 `--jobs-of N` is the `BySize` partition; with no flag the batch becomes one job. There is no
 `batch create` and no membership editing: a batch is born from an ingest. See

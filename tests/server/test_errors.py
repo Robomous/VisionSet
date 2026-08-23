@@ -126,6 +126,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "UnsupportedMedia": (422, "UNSUPPORTED_MEDIA"),
     "CorruptMedia": (422, "CORRUPT_MEDIA"),
     "UnsupportedPrompt": (422, "UNSUPPORTED_PROMPT"),
+    "GeometryNotProduced": (422, "GEOMETRY_NOT_PRODUCED"),
     "PromptPointOutOfBounds": (422, "PROMPT_POINT_OUT_OF_BOUNDS"),
     # 503 — transient, and a wait genuinely helps
     "WorkspaceBusy": (503, "WORKSPACE_BUSY"),

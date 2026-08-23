@@ -16,6 +16,7 @@ from visionset.inference.prelabel import (
     PreLabelExclusionReason,
     PreLabelPlan,
     detectable_classes,
+    effective_produces,
     no_detectable_class_message,
     planned,
     pre_label,
@@ -26,6 +27,7 @@ from visionset.inference.prelabel import (
 from visionset.kernel import (
     BatchNotFound,
     BatchNotInAnnotation,
+    GeometryNotProduced,
     ProjectNotFound,
     SchemaHasNoDetectableClass,
     UnsupportedPrompt,
@@ -1044,6 +1046,185 @@ def test_a_region_in_a_shape_the_model_never_declared_is_discarded(tmp_path: Pat
         assert outcome.regions_discarded == 3
     finally:
         fixture.close()
+
+
+# --- choosing which of the model's shapes a run writes ---------------------------
+
+
+def _both_shapes_fixture(tmp_path: Path, name: str) -> Fixture:
+    """A model that answers a box and a polygon for one class admitting both."""
+    return Fixture(
+        tmp_path,
+        name,
+        classes=(CAR,),
+        produces=EITHER,
+        regions=(
+            _region("car"),
+            PredictedRegion(
+                label="car",
+                confidence=0.8,
+                geometry=PolygonGeometry(points=[(1.0, 1.0), (5.0, 1.0), (5.0, 5.0)]),
+            ),
+        ),
+    )
+
+
+def test_a_selection_narrows_what_a_two_shape_model_writes(tmp_path: Path) -> None:
+    """Asked for boxes only, a run against a model answering both writes the
+    boxes and counts the polygon among what could not be written — the same
+    path a shape the model never declared takes."""
+    fixture = _both_shapes_fixture(tmp_path, "selected-boxes")
+    try:
+        outcome = pre_label(
+            fixture.workspace,
+            batch_id=fixture.batch.id,
+            connection_id=fixture.connection.id,
+            geometries=BOXES,
+            pool=fixture.pool,
+        )
+
+        assert outcome.annotations_written == 3
+        assert outcome.regions_discarded == 3
+        for asset_id in fixture.assets:
+            assert [one.geometry.type for one in fixture.annotations_on(asset_id)] == [
+                GeometryType.BBOX
+            ]
+    finally:
+        fixture.close()
+
+
+def test_no_selection_writes_every_shape_the_model_produces(tmp_path: Path) -> None:
+    """``None`` is the whole declared set — today's behaviour, unchanged."""
+    fixture = _both_shapes_fixture(tmp_path, "unselected")
+    try:
+        outcome = pre_label(
+            fixture.workspace,
+            batch_id=fixture.batch.id,
+            connection_id=fixture.connection.id,
+            geometries=None,
+            pool=fixture.pool,
+        )
+
+        assert outcome.annotations_written == 6
+        assert outcome.regions_discarded == 0
+    finally:
+        fixture.close()
+
+
+def test_a_selection_outside_what_the_model_produces_is_refused_before_anything_runs(
+    prelabel_fixture: Fixture,
+) -> None:
+    with pytest.raises(GeometryNotProduced) as refused:
+        pre_label(
+            prelabel_fixture.workspace,
+            batch_id=prelabel_fixture.batch.id,
+            connection_id=prelabel_fixture.connection.id,
+            geometries=POLYGONS,
+            pool=prelabel_fixture.pool,
+        )
+
+    assert "polygon" in str(refused.value)
+    assert "a box" in str(refused.value)
+    assert prelabel_fixture.pool.calls == 0
+
+
+def test_an_empty_selection_is_refused_rather_than_run_as_a_no_op(
+    prelabel_fixture: Fixture,
+) -> None:
+    with pytest.raises(GeometryNotProduced):
+        pre_label(
+            prelabel_fixture.workspace,
+            batch_id=prelabel_fixture.batch.id,
+            connection_id=prelabel_fixture.connection.id,
+            geometries=frozenset(),
+            pool=prelabel_fixture.pool,
+        )
+
+    assert prelabel_fixture.pool.calls == 0
+
+
+def test_the_announced_plan_carries_the_effective_shapes(tmp_path: Path) -> None:
+    """What a run announces is what it writes — the selection, not the declaration."""
+    fixture = _both_shapes_fixture(tmp_path, "announced-selection")
+    seen: list[PreLabelPlan] = []
+    try:
+        pre_label(
+            fixture.workspace,
+            batch_id=fixture.batch.id,
+            connection_id=fixture.connection.id,
+            geometries=POLYGONS,
+            on_plan=seen.append,
+            pool=fixture.pool,
+        )
+
+        assert seen[0].produces == POLYGONS
+    finally:
+        fixture.close()
+
+
+def test_a_selection_that_leaves_the_schema_nothing_to_hold_is_refused(tmp_path: Path) -> None:
+    """Boxes selected of a two-shape model over a polygon-only schema: the
+    narrowing runs before the schema gate, so the schema refusal names the
+    effective shapes."""
+    fixture = Fixture(tmp_path, "narrowed-out", classes=(LANE,), produces=EITHER)
+    try:
+        with pytest.raises(SchemaHasNoDetectableClass) as refused:
+            pre_label(
+                fixture.workspace,
+                batch_id=fixture.batch.id,
+                connection_id=fixture.connection.id,
+                geometries=BOXES,
+                pool=fixture.pool,
+            )
+
+        assert "a box can be written as" in str(refused.value)
+        assert fixture.pool.calls == 0
+    finally:
+        fixture.close()
+
+
+def test_planned_reports_the_effective_shapes(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path, "planned-selection", classes=(CAR, LANE), produces=EITHER)
+    try:
+        plan = planned(
+            fixture.workspace,
+            batch_id=fixture.batch.id,
+            connection_id=fixture.connection.id,
+            geometries=BOXES,
+            pool=fixture.pool,
+        )
+
+        assert plan.produces == BOXES
+        assert plan.asked == ("car",)
+        assert [one.name for one in plan.excluded] == ["lane"]
+        assert plan.excluded[0].reasons == (PreLabelExclusionReason.NO_PRODUCIBLE_GEOMETRY,)
+    finally:
+        fixture.close()
+
+
+def test_planned_refuses_a_selection_outside_what_the_model_produces(
+    prelabel_fixture: Fixture,
+) -> None:
+    with pytest.raises(GeometryNotProduced):
+        planned(
+            prelabel_fixture.workspace,
+            batch_id=prelabel_fixture.batch.id,
+            connection_id=prelabel_fixture.connection.id,
+            geometries=POLYGONS,
+            pool=prelabel_fixture.pool,
+        )
+
+
+def test_effective_produces_is_the_declaration_or_the_selection_inside_it() -> None:
+    assert effective_produces(EITHER, None) == EITHER
+    assert effective_produces(EITHER, BOXES) == BOXES
+    assert effective_produces(EITHER, EITHER) == EITHER
+    with pytest.raises(GeometryNotProduced):
+        effective_produces(BOXES, POLYGONS)
+    with pytest.raises(GeometryNotProduced):
+        effective_produces(BOXES, EITHER)
+    with pytest.raises(GeometryNotProduced):
+        effective_produces(EITHER, frozenset())
 
 
 def test_served_for_returns_the_connections_declared_family(prelabel_fixture: Fixture) -> None:

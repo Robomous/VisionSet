@@ -50,12 +50,13 @@ from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
     PreLabelOutcome,
     PreLabelPlan,
+    effective_produces,
     planned,
     pre_label,
     select_pre_labelable,
     served_for,
 )
-from visionset.kernel.domain import AssetProgress, AssetSort, BySize, Partition
+from visionset.kernel.domain import AssetProgress, AssetSort, BySize, GeometryType, Partition
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
@@ -275,7 +276,28 @@ def start_batch(batch_id: BatchRef) -> dict[str, Any]:
         return _batch_payload(workspace, started.id)
 
 
-def get_pre_label_plan(batch_id: BatchRef, connection: ConnectionRef) -> dict[str, Any]:
+Geometries = Annotated[
+    list[GeometryType] | None,
+    Field(
+        description=(
+            "Which of the model's shapes the run writes. Omit for every shape the model "
+            "produces (`get_inference_connection`'s `produces`), which is what a call "
+            "without it has always done. Name some to write only those: a region the model "
+            "answers in any other shape is discarded and counted, and a class is asked "
+            "about only when it admits one of them. A shape the model does not produce is "
+            "refused; the selection is per run, not per class."
+        )
+    ),
+]
+
+
+def _selection(geometries: list[GeometryType] | None) -> frozenset[GeometryType] | None:
+    return None if geometries is None else frozenset(geometries)
+
+
+def get_pre_label_plan(
+    batch_id: BatchRef, connection: ConnectionRef, geometries: Geometries = None
+) -> dict[str, Any]:
     """Which classes a pre-labeling run of that connection over this batch would ask about, \
 which it would leave out, and what shapes it would write.
 
@@ -284,11 +306,14 @@ which it would leave out, and what shapes it would write.
 
     **A run does not ask about every class the schema declares.** It asks about
     the ones the model's answer can be written as — a class admitting a shape the
-    model produces and demanding no attribute a prediction cannot supply — and
+    run writes and demanding no attribute a prediction cannot supply — and
     `asked_classes` is that list: the prompt itself, in the schema's own spelling.
-    `produces` is the shapes this connection's model answers in, so a schema of
-    polygon classes is askable of a model that answers polygons and refused for
-    one that answers boxes.
+    `produces` is the shapes the run would write: every shape this connection's
+    model answers in, or exactly `geometries` when you name some — so a schema
+    of polygon classes is askable of a model that answers polygons and refused
+    for one that answers boxes, and a boxes-only selection of a model that
+    answers both leaves every polygon-only class out. Pass the same
+    `geometries` here as to `pre_label_batch` to read what that run will do.
 
     **`excluded_classes` names the rest, each with every reason it is left out.**
     `no_producible_geometry` means the class admits no shape the model produces.
@@ -306,7 +331,10 @@ which it would leave out, and what shapes it would write.
         resolved = resolve_connection(workspace, connection)
         return wire.pre_label_plan(
             planned(
-                workspace, batch_id=identifier(batch_id, what="batch_id"), connection_id=resolved.id
+                workspace,
+                batch_id=identifier(batch_id, what="batch_id"),
+                connection_id=resolved.id,
+                geometries=_selection(geometries),
             )
         )
 
@@ -353,6 +381,7 @@ def pre_label_batch(
             )
         ),
     ] = False,
+    geometries: Geometries = None,
 ) -> dict[str, Any]:
     """Ask a model to label every untouched asset in a batch. This blocks until it is done.
 
@@ -403,12 +432,19 @@ def pre_label_batch(
     asset without dimensions remains eligible.
 
     **The batch's pinned schema is the prompt.** The model is asked for each
-    class the schema declares that the model's shapes can be written as; an
-    answer naming one of those classes, matched case-insensitively, is written
-    under the schema's own spelling. A schema whose classes admit no shape the
-    model produces — or whose askable classes each require an attribute a
+    class the schema declares that the shapes this run writes can be written
+    as; an answer naming one of those classes, matched case-insensitively, is
+    written under the schema's own spelling. A schema whose classes admit no
+    shape the run writes — or whose askable classes each require an attribute a
     prediction cannot supply — has nowhere for a detection to land and is
     refused before anything runs.
+
+    **What the run writes is every shape the model produces unless `geometries`
+    says which.** A model declaring both a box and a polygon writes both for
+    every region it answers with, unpaired; `geometries` filters that to the
+    shapes named, and a region in any other shape is counted in
+    `regions_discarded`. Naming a shape the model does not produce is refused
+    before anything runs.
 
     `plan` in the result names both halves: `asked_classes` is what this run
     actually asked about, and `excluded_classes` names every class of the pinned
@@ -435,6 +471,7 @@ def pre_label_batch(
             connection_id=resolved_connection.id,
             minimum_confidence=minimum_confidence,
             replace_model_labels=replace_model_labels,
+            geometries=_selection(geometries),
             on_plan=seen.append,
         )
     return _pre_label_outcome(outcome, seen[0])
@@ -459,18 +496,21 @@ def pre_label_project(
             "annotation."
         ),
     ] = None,
+    geometries: Geometries = None,
 ) -> dict[str, Any]:
     """Ask a model to label untouched assets across a project's open batches. Blocks until done.
 
     `pre_label_batch`, one batch after another: the batch stays the unit, each
-    run writes what that tool writes and reports what it reports, and `items`
-    holds one such outcome per batch with its `plan`; `annotations_written`
-    is the total. Every batch of the project that is `in_annotation` is run,
-    or exactly `batch_ids`.
+    run writes what that tool writes and reports what it reports — `geometries`
+    included, the same selection for every batch — and `items` holds one such
+    outcome per batch with its `plan`; `annotations_written` is the total.
+    Every batch of the project that is `in_annotation` is run, or exactly
+    `batch_ids`.
 
     The connection is checked first: an unknown connection, one not set up
-    yet, or one whose model answers places rather than words is refused
-    before the selection is even read.
+    yet, one whose model answers places rather than words, or a `geometries`
+    naming a shape it does not produce is refused before the selection is even
+    read.
 
     Refused whole before anything runs, so a call that started has a selection
     every batch of which can run: a named batch outside the project, a named
@@ -489,10 +529,11 @@ def pre_label_project(
         resolved = resolve_project(workspace, project)
         resolved_connection = resolve_connection(workspace, connection)
         declared = served_for(workspace, resolved_connection.id)
+        produces = effective_produces(declared.produces, _selection(geometries))
         selected = select_pre_labelable(
             workspace,
             resolved.id,
-            declared.produces,
+            produces,
             None if batch_ids is None else [identifier(one, what="batch_id") for one in batch_ids],
         )
         items: list[dict[str, Any]] = []
@@ -503,6 +544,7 @@ def pre_label_project(
                 batch_id=batch.id,
                 connection_id=resolved_connection.id,
                 minimum_confidence=minimum_confidence,
+                geometries=_selection(geometries),
                 on_plan=seen.append,
             )
             items.append(

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from collections.abc import Set as AbstractSet
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import ClassVar, Final, Self
@@ -428,26 +429,37 @@ PRE_LABEL_CONFIDENCE_KEY: Final = "minimum_confidence"
 PRE_LABEL_REPLACE_KEY: Final = "replace_model_labels"
 """Whether a run supersedes the model labels on ``pre_labeled`` frames, inside its payload."""
 
+PRE_LABEL_GEOMETRIES_KEY: Final = "geometries"
+"""Which of the model's shapes a run writes, inside its payload. ``None`` is every one."""
+
 
 def pre_label_job_payload(
     batch_id: UUID,
     connection_id: UUID,
     minimum_confidence: float,
     replace_model_labels: bool = False,
+    geometries: AbstractSet[GeometryType] | None = None,
 ) -> dict[str, JsonValue]:
     """The payload a pre-labeling job carries. Built here, read here.
 
-    Four facts and no more: which batch, which connection answers, the floor
-    the run applies, and whether it may supersede its own earlier labels.
-    Everything else the handler needs — the phrases, the asset set — is derived
-    on the other side from the batch itself, because a payload that carried them
-    would be a copy of state that can move underneath it.
+    Five facts and no more: which batch, which connection answers, the floor
+    the run applies, whether it may supersede its own earlier labels, and which
+    of the model's shapes it writes — a selection somebody made at launch, kept
+    so a queued run executes what was asked rather than whatever the model
+    declares by the time it is claimed. Everything else the handler needs — the
+    phrases, the asset set — is derived on the other side from the batch
+    itself, because a payload that carried them would be a copy of state that
+    can move underneath it.
     """
+    selected: JsonValue = (
+        None if geometries is None else [shape.value for shape in sorted(geometries)]
+    )
     return {
         BATCH_JOB_KEY: str(batch_id),
         CONNECTION_JOB_KEY: str(connection_id),
         PRE_LABEL_CONFIDENCE_KEY: minimum_confidence,
         PRE_LABEL_REPLACE_KEY: replace_model_labels,
+        PRE_LABEL_GEOMETRIES_KEY: selected,
     }
 
 

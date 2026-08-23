@@ -44,7 +44,13 @@ from visionset.inference import (
     pre_label,
     shapes_prose,
 )
-from visionset.kernel.domain import SETTLED_PROGRESS, AssetProgress, BySize, Partition
+from visionset.kernel.domain import (
+    SETTLED_PROGRESS,
+    AssetProgress,
+    BySize,
+    GeometryType,
+    Partition,
+)
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
@@ -61,6 +67,20 @@ BatchArgument = Annotated[UUID, typer.Argument(help="The batch, by id.")]
 
 Module-level for the ``get_type_hints`` reason ``WorkspaceOption`` is.
 """
+
+GeometryOption = Annotated[
+    list[GeometryType] | None,
+    typer.Option(
+        "--geometry",
+        help="Write only this shape of what the model answers; repeat for several. Omit for "
+        "every shape the model produces. A shape the model does not produce is refused.",
+    ),
+]
+"""Which of the model's shapes a pre-label run writes. Shared by both launches.
+
+Module-level for the ``get_type_hints`` reason ``WorkspaceOption`` is.
+"""
+
 
 _COLUMNS: Final = ("ID", "NAME", "STATE", "SCHEMA", "ASSETS", "ANNOTATED", "SETTLED")
 
@@ -202,6 +222,11 @@ _EXCLUSION_PROSE: Final = {
 }
 
 
+def selected_geometries(geometry: list[GeometryType] | None) -> frozenset[GeometryType] | None:
+    """A repeated ``--geometry`` as the selection the run takes; unrepeated, every shape."""
+    return None if geometry is None else frozenset(geometry)
+
+
 def announce_plan(plan: PreLabelPlan) -> None:
     """Say what the run is about to ask for, and what it is leaving out.
 
@@ -245,6 +270,7 @@ def batch_pre_label(
             "never affected. Cannot be undone.",
         ),
     ] = False,
+    geometry: GeometryOption = None,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -260,6 +286,7 @@ def batch_pre_label(
             connection_id=_resolve(connections, connection),
             minimum_confidence=minimum_confidence,
             replace_model_labels=replace_model_labels,
+            geometries=selected_geometries(geometry),
             on_plan=announce_plan,
             on_progress=lambda done, total: note(f"Pre-labeling {done}/{total} asset(s)."),
         )

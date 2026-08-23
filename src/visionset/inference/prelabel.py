@@ -58,6 +58,7 @@ from visionset.kernel.errors import (
     AssetNotWritable,
     BatchNotFound,
     BatchNotInAnnotation,
+    GeometryNotProduced,
     SchemaHasNoDetectableClass,
     UnsupportedPrompt,
     WorkspaceCorrupt,
@@ -158,6 +159,39 @@ def no_detectable_class_message(schema_version: int, produces: frozenset[Geometr
         f"as, so this model has nowhere to put what it finds; add a class whose "
         f"geometries include one of those, or pre-label a batch pinned to one that has"
     )
+
+
+def effective_produces(
+    declared: frozenset[GeometryType], selection: frozenset[GeometryType] | None
+) -> frozenset[GeometryType]:
+    """The shapes a run writes: the declaration, or the selection when it names a subset.
+
+    The one narrowing site. Every reader of what a run writes — the schema
+    gate, the plan, the per-class admission — takes this result, so a selection
+    cannot reach one of them and miss another. ``None`` is the whole declared
+    set, which is what every caller asked before a selection existed.
+
+    Raises:
+        GeometryNotProduced: the selection names a shape outside the
+            declaration, or names no shape at all — either would be a run
+            writing nothing and reporting success.
+    """
+    if selection is None:
+        return declared
+    shapes = shapes_prose(declared)
+    if not selection:
+        raise GeometryNotProduced(
+            f"no shape selected for this run; choose at least one of {shapes}, or omit the "
+            "selection to write every shape the model produces"
+        )
+    outside = selection - declared
+    if outside:
+        raise GeometryNotProduced(
+            f"this model does not answer in {shapes_prose(frozenset(outside))}, only "
+            f"{shapes}; choose from those, or omit the selection to write every shape "
+            "the model produces"
+        )
+    return selection
 
 
 class PreLabelExclusionReason(OpenVocabulary):
@@ -371,19 +405,24 @@ def planned(
     *,
     batch_id: UUID,
     connection_id: UUID,
+    geometries: frozenset[GeometryType] | None = None,
     pool: ProviderPool | None = None,
 ) -> PreLabelPlan:
     """The plan a run of that connection over that batch would prompt with, without running it.
 
     The same lookups in the same order as :func:`pre_label` — connection, then
-    batch, then schema — so a surface that reads this and then launches gets one
-    set of refusals, not two.
+    the selection, then batch, then schema — so a surface that reads this and
+    then launches gets one set of refusals, not two. ``geometries`` narrows the
+    plan to those of the model's shapes, exactly as it narrows the run; ``None``
+    is every shape the model produces.
 
     Raises:
         InferenceConnectionNotFound: no such connection.
         InferenceConnectionNotSetUp: a local connection whose weights are absent.
         InferenceConnectionNotRunnable: nothing here runs that kind.
         UnsupportedPrompt: that connection's model answers places, not words.
+        GeometryNotProduced: ``geometries`` names a shape the model does not
+            produce, or no shape at all.
         BatchNotFound: no such batch in this workspace.
         BatchNotInAnnotation: the batch is not open for annotation, so a model
             cannot pre-label it.
@@ -393,9 +432,10 @@ def planned(
             this model produces could be written as.
     """
     declared = served_for(workspace, connection_id, pool=pool)
+    produces = effective_produces(declared.produces, geometries)
     batch = BatchService(workspace).require_pre_labelable(batch_id)
-    schema = require_detectable_schema(workspace, batch, declared.produces)
-    return prompt_plan(schema, declared.produces)
+    schema = require_detectable_schema(workspace, batch, produces)
+    return prompt_plan(schema, produces)
 
 
 def pre_label(
@@ -405,6 +445,7 @@ def pre_label(
     connection_id: UUID,
     minimum_confidence: float = DEFAULT_MINIMUM_CONFIDENCE,
     replace_model_labels: bool = False,
+    geometries: frozenset[GeometryType] | None = None,
     on_plan: Callable[[PreLabelPlan], None] | None = None,
     on_progress: Callable[[int, int], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
@@ -443,6 +484,13 @@ def pre_label(
     labels and reads untouched again; ``PreLabelOutcome.annotations_replaced`` says how many
     labels went.
 
+    ``geometries`` narrows what the run writes to those of the shapes the model
+    declares: a region in any other shape is discarded and counted, and a class
+    is asked for only when it admits one of the selected shapes. ``None`` is
+    every shape the model produces. The selection is per run, not per class —
+    a model answering both a box and a polygon for one region writes both
+    unless one is left out here.
+
     ``on_plan`` is handed the prompt and the classes left out of it, once, after
     every refusal has passed and before the first forward pass — what a surface
     needs to say which classes a run will and will not ask for.
@@ -452,6 +500,8 @@ def pre_label(
         InferenceConnectionNotSetUp: a local connection whose weights are absent.
         InferenceConnectionNotRunnable: nothing here runs that kind.
         UnsupportedPrompt: that connection's model answers places, not words.
+        GeometryNotProduced: ``geometries`` names a shape the model does not
+            produce, or no shape at all.
         BatchNotFound: no such batch in this workspace.
         BatchNotInAnnotation: the batch is not open for annotation, so a model
             cannot pre-label it.
@@ -469,20 +519,21 @@ def pre_label(
         # ports is what makes this checkable before anything loads.
         raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
     declared = resolved.served(connection, workspace_root=workspace.root)
+    produces = effective_produces(declared.produces, geometries)
 
     batches = BatchService(workspace)
     batch = batches.require_pre_labelable(batch_id)
-    schema = require_detectable_schema(workspace, batch, declared.produces)
+    schema = require_detectable_schema(workspace, batch, produces)
     # Announced from inside the run rather than derived by the caller, so the
     # plan a surface reports is the one this run is about to prompt with and the
     # order the refusals above arrive in is left alone.
-    plan = prompt_plan(schema, declared.produces)
+    plan = prompt_plan(schema, produces)
     if on_plan is not None:
         on_plan(plan)
     phrases = plan.asked
     class_by_answer = _class_by_answer(phrases)
     admits = {
-        label_class.name: frozenset(label_class.geometries) & declared.produces
+        label_class.name: frozenset(label_class.geometries) & produces
         for label_class in schema.classes
     }
 

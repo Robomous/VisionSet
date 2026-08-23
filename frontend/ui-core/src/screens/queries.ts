@@ -24,6 +24,7 @@ import {
   keepPreviousData,
   useInfiniteQuery,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
   type UseQueryResult,
@@ -914,12 +915,26 @@ export const batchKeys = {
   assetsView: (batchId: string, view: AssetView) =>
     ["batches", batchId, "assets", view.progress ?? "all", view.sort] as const,
   jobs: (batchId: string) => ["batches", batchId, "jobs"] as const,
-  // The pinned version and the model are both part of the key because the plan
-  // is a function of both: a re-pin must not leave a dialog naming the classes
-  // of a schema this batch no longer carries, and a change of model must not
-  // leave it naming classes that model cannot answer.
-  preLabelPlan: (batchId: string, schemaVersion: number | null, connectionId: string | null) =>
-    ["batches", batchId, "pre-label-plan", schemaVersion, connectionId] as const,
+  // The pinned version, the model and the shape selection are all part of the
+  // key because the plan is a function of all three: a re-pin must not leave a
+  // dialog naming the classes of a schema this batch no longer carries, a change
+  // of model must not leave it naming classes that model cannot answer, and an
+  // unticked shape must move the classes only that shape could hold out of the
+  // prompt. The selection is sorted so two spellings of one choice share a read.
+  preLabelPlan: (
+    batchId: string,
+    schemaVersion: number | null,
+    connectionId: string | null,
+    geometries: readonly GeometryType[] | null,
+  ) =>
+    [
+      "batches",
+      batchId,
+      "pre-label-plan",
+      schemaVersion,
+      connectionId,
+      geometries === null ? null : [...geometries].sort(),
+    ] as const,
 };
 
 /** One request's worth. `docs/content/api.md`: paging bounds the response, not the read. */
@@ -1180,6 +1195,13 @@ export interface PreLabelInput {
   readonly connectionId: string;
   readonly minimumConfidence: number;
   readonly replaceModelLabels: boolean;
+  /**
+   * Which of the model's shapes the run writes — exactly the shapes the person
+   * saw ticked, sent whenever there was something to tick. `null` when the
+   * model writes one shape and there was no choice: the field is left off the
+   * body, and the server writes every shape the model produces.
+   */
+  readonly geometries: readonly GeometryType[] | null;
 }
 
 /**
@@ -1203,6 +1225,7 @@ export function usePreLabelBatch(batchId: string) {
             connection_id: input.connectionId,
             minimum_confidence: input.minimumConfidence,
             replace_model_labels: input.replaceModelLabels,
+            ...(input.geometries === null ? {} : { geometries: [...input.geometries] }),
           },
         }),
         checkPreLabelBatch,
@@ -1221,6 +1244,8 @@ export interface ProjectPreLabelInput {
   readonly minimumConfidence: number;
   /** Exactly the batches the person saw checked — always sent, never left to the server's default. */
   readonly batchIds: readonly string[];
+  /** The shapes the person saw ticked, on `PreLabelInput.geometries`'s terms. */
+  readonly geometries: readonly GeometryType[] | null;
 }
 
 /**
@@ -1241,6 +1266,7 @@ export function usePreLabelProject(projectId: string) {
             connection_id: input.connectionId,
             minimum_confidence: input.minimumConfidence,
             batch_ids: [...input.batchIds],
+            ...(input.geometries === null ? {} : { geometries: [...input.geometries] }),
           },
         }),
         checkPreLabelProjectBatches,
@@ -1254,6 +1280,26 @@ export function usePreLabelProject(projectId: string) {
   });
 }
 
+async function readPreLabelPlan(
+  client: VisionSetClient,
+  batchId: string,
+  connectionId: string,
+  geometries: readonly GeometryType[] | null,
+): Promise<PreLabelPlan> {
+  return unwrap(
+    await client.GET("/batches/{batch_id}/pre-label", {
+      params: {
+        path: { batch_id: batchId },
+        query: {
+          connection_id: connectionId,
+          ...(geometries === null ? {} : { geometries: [...geometries] }),
+        },
+      },
+    }),
+    checkPreLabelPlan,
+  );
+}
+
 /**
  * The classes a pre-labeling run would ask this model for, the ones it would
  * not, and the shapes it would write.
@@ -1264,30 +1310,58 @@ export function usePreLabelProject(projectId: string) {
  * surfaces `SCHEMA_HAS_NO_DETECTABLE_CLASS` as a refusal like any other — the
  * dialog renders its prose and stops offering the launch.
  *
- * Read only while a dialog is open, and keyed by the pinned version *and the
- * connection*, because the prompt is a property of both — the same schema is a
- * different prompt for a detector and a segmenter.
+ * Read only while a dialog is open, and keyed by the pinned version, the
+ * connection *and the shape selection*, because the prompt is a property of
+ * all three — the same schema is a different prompt for a detector and a
+ * segmenter, and a different prompt again once a shape is left out.
+ * `geometries` is sent when it is a selection (`PreLabelInput.geometries`), so
+ * what this names is what that launch writes.
  */
 export function usePreLabelPlan(
   batchId: string | undefined,
   schemaVersion: number | null | undefined,
   connectionId: string | undefined,
   enabled: boolean,
+  geometries: readonly GeometryType[] | null = null,
 ): UseQueryResult<PreLabelPlan, Error> {
   const client = useApiClient();
   return useQuery({
-    queryKey: batchKeys.preLabelPlan(batchId ?? "none", schemaVersion ?? null, connectionId ?? null),
+    queryKey: batchKeys.preLabelPlan(
+      batchId ?? "none",
+      schemaVersion ?? null,
+      connectionId ?? null,
+      geometries,
+    ),
     enabled: enabled && batchId !== undefined && connectionId !== undefined,
-    queryFn: async () =>
-      unwrap(
-        await client.GET("/batches/{batch_id}/pre-label", {
-          params: {
-            path: { batch_id: batchId ?? "" },
-            query: { connection_id: connectionId ?? "" },
-          },
-        }),
-        checkPreLabelPlan,
+    queryFn: () => readPreLabelPlan(client, batchId ?? "", connectionId ?? "", geometries),
+  });
+}
+
+/**
+ * `usePreLabelPlan` over several batches at once — one result per batch, in
+ * the order given — for the project-wide launch, where every checked batch runs
+ * under the same model and selection but against its own pin. One hook rather
+ * than one per row, so the dialog can read every result in one place and keep
+ * a launch off the table while any checked batch's plan is refused.
+ */
+export function usePreLabelPlans(
+  batches: readonly Pick<Batch, "id" | "schema_version">[],
+  connectionId: string | undefined,
+  enabled: boolean,
+  geometries: readonly GeometryType[] | null,
+): UseQueryResult<PreLabelPlan, Error>[] {
+  const client = useApiClient();
+  return useQueries({
+    queries: batches.map((batch) => ({
+      queryKey: batchKeys.preLabelPlan(
+        batch.id,
+        batch.schema_version ?? null,
+        connectionId ?? null,
+        geometries,
       ),
+      enabled: enabled && connectionId !== undefined,
+      queryFn: () => readPreLabelPlan(client, batch.id, connectionId ?? "", geometries),
+    })),
   });
 }
 

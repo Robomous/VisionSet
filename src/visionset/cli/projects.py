@@ -33,10 +33,11 @@ from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.cli.batches import announce_plan
+from visionset.cli.batches import GeometryOption, announce_plan, selected_geometries
 from visionset.cli.inference import ConnectionArgument, _resolve
 from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
+    effective_produces,
     pre_label,
     select_pre_labelable,
     served_for,
@@ -117,6 +118,7 @@ def project_pre_label(
             help="The floor a prediction must clear to be written, in [0, 1].",
         ),
     ] = DEFAULT_MINIMUM_CONFIDENCE,
+    geometry: GeometryOption = None,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -124,17 +126,20 @@ def project_pre_label(
 
     One batch after another, each the same run `batch pre-label` makes; blocks
     because a terminal has no dispatcher. The connection is checked first: an
-    unknown connection, one not set up yet, or one whose model answers places
-    rather than words is refused before the selection is read. The selection
-    is refused whole before the first forward pass: a batch outside the
-    project, a named batch that is not open, a project with no open batch, or
-    a pinned schema with no class a shape this model produces can be written as.
+    unknown connection, one not set up yet, one whose model answers places
+    rather than words, or a `--geometry` it does not produce is refused before
+    the selection is read. The selection is refused whole before the first
+    forward pass: a batch outside the project, a named batch that is not open,
+    a project with no open batch, or a pinned schema with no class a shape
+    this run writes can be written as.
     """
     with opened_workspace(workspace) as service:
         resolved = resolve_project(service, project)
         connection_id = _resolve(InferenceConnectionService(service), connection)
         declared = served_for(service, connection_id)
-        selected = select_pre_labelable(service, resolved.id, declared.produces, batch)
+        geometries = selected_geometries(geometry)
+        produces = effective_produces(declared.produces, geometries)
+        selected = select_pre_labelable(service, resolved.id, produces, batch)
         outcomes = []
         for one in selected:
             note(f"Batch {one.name!r}:")
@@ -143,6 +148,7 @@ def project_pre_label(
                 batch_id=one.id,
                 connection_id=connection_id,
                 minimum_confidence=minimum_confidence,
+                geometries=geometries,
                 on_plan=announce_plan,
                 on_progress=_progress_note(one.name),
             )
