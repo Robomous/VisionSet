@@ -3,9 +3,9 @@
  *
  * The foundation gate: `styles.css` is the shadcn preset's exact generated
  * output (`:root`, `.dark`, `@theme inline`, the base layer) plus VisionSet's
- * four justified extensions (`stage`, `brand`, `success`, `warning`, each with
- * its own `-foreground` where the preset's own status token has one) and the
- * sidebar rail's two layout widths. `tokens.ts` is the TypeScript mirror a
+ * justified extensions (`stage`, `brand`, `success`, `warning` — each with
+ * its own `-foreground` where the preset's own status token has one — and the
+ * three `origin-*` surfaces) and the sidebar rail's two layout widths. `tokens.ts` is the TypeScript mirror a
  * `<canvas>`/`<svg>` or a test reads a colour off of; this suite parses the
  * stylesheet structurally and asserts the two agree, declaration for
  * declaration, and that none of the tokens this rewrite retired have crept
@@ -103,7 +103,7 @@ const BASE_SEMANTIC_NAMES = [
 ];
 const SEMANTIC_NAMES = [...BASE_SEMANTIC_NAMES, ...CHART_NAMES, ...SIDEBAR_NAMES];
 
-// The four extensions the audit kept, spelled as their six variable names —
+// The extensions VisionSet keeps, spelled as their nine variable names —
 // the same list `tokens.ts` exports as `EXTENSIONS`, checked for drift below
 // rather than assumed equal to it.
 const EXTENSION_NAMES = [
@@ -113,6 +113,9 @@ const EXTENSION_NAMES = [
   "success-foreground",
   "warning",
   "warning-foreground",
+  "origin-hub",
+  "origin-custom",
+  "origin-robomous",
 ];
 
 const ORANGE_CHART = {
@@ -124,7 +127,7 @@ const ORANGE_CHART = {
 } as const;
 
 describe("EXTENSIONS", () => {
-  it("names exactly the six extension variables, in the order tokens.ts declares them", () => {
+  it("names exactly the nine extension variables, in the order tokens.ts declares them", () => {
     expect(EXTENSIONS).toEqual(EXTENSION_NAMES);
   });
 });
@@ -132,7 +135,7 @@ describe("EXTENSIONS", () => {
 describe(":root", () => {
   const root = declarations(blockBody(STYLESHEET, ":root {"));
 
-  it("declares every standard shadcn semantic variable, the six extensions, and --radius, and nothing else", () => {
+  it("declares every standard shadcn semantic variable, the nine extensions, and --radius, and nothing else", () => {
     expect([...root.keys()].sort()).toEqual(
       [...SEMANTIC_NAMES, ...EXTENSION_NAMES, "radius"].sort(),
     );
@@ -166,7 +169,7 @@ describe(":root", () => {
 describe(".dark", () => {
   const dark = declarations(blockBody(STYLESHEET, ".dark {"));
 
-  it("declares every standard shadcn semantic variable and the six extensions, and nothing else (no --radius)", () => {
+  it("declares every standard shadcn semantic variable and the nine extensions, and nothing else (no --radius)", () => {
     expect([...dark.keys()].sort()).toEqual([...SEMANTIC_NAMES, ...EXTENSION_NAMES].sort());
   });
 
