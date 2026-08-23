@@ -184,6 +184,7 @@ def _at_generation_one(path: Path) -> None:
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN provider_id"))
         connection.execute(text("ALTER TABLE job DROP COLUMN error_code"))
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN credential_env"))
+        connection.execute(text("ALTER TABLE project DROP COLUMN created_at"))
         connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 1"))
     store.close()
 
@@ -208,6 +209,24 @@ def test_a_fresh_database_and_a_migrated_one_have_the_same_schema(tmp_path: Path
     migrated.initialize()
     assert migrated.format_version == FORMAT_VERSION
     assert _schema(migrated) == expected
+    migrated.close()
+
+
+def test_a_project_written_before_the_column_reads_back_without_a_date(tmp_path: Path) -> None:
+    """Migration 14 backfills nothing: nothing on disk says when an old project was made."""
+    old = tmp_path / "old.db"
+    _at_generation_one(old)
+    with SqliteMetadataStore(old).engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'signs')")
+        )
+
+    migrated = SqliteMetadataStore(old)
+    migrated.initialize()
+    with migrated.engine.connect() as connection:
+        rows = connection.execute(text("select name, created_at from project")).all()
+    assert rows == [("signs", None)]
     migrated.close()
 
 
@@ -255,6 +274,7 @@ _DECLARED_TAILS = {
     # entry only now.
     "inference_connection": ["model_family", "provider_id", "credential_env"],
     "job": ["error_code"],
+    "project": ["created_at"],
 }
 
 

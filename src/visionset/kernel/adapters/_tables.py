@@ -78,6 +78,10 @@ class ProjectRow(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Arrived by ``ALTER`` (migration 14), so it stays last — see the module
+    #: docstring's ordering rule. Nullable because nothing can date a project
+    #: written before the column existed.
+    created_at: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 #: Project names are unique per workspace, case-insensitively.

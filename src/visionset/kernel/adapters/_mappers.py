@@ -138,6 +138,27 @@ def _flat_mapping[M: Entity](
 # --- Entities with nested immutable values, stored as JSON ------------------
 
 
+def _project_to_row(entity: Project) -> t.Base:
+    """Hand-written for ``created_at``, for the reason ``_schema_to_row`` gives."""
+    return t.ProjectRow(
+        id=entity.id,
+        workspace_id=entity.workspace_id,
+        name=entity.name,
+        description=entity.description,
+        created_at=None if entity.created_at is None else entity.created_at.isoformat(),
+    )
+
+
+def _project_to_domain(_: Session, row: Any) -> Project:
+    return Project(
+        id=row.id,
+        workspace_id=row.workspace_id,
+        name=row.name,
+        description=row.description,
+        created_at=None if row.created_at is None else datetime.fromisoformat(row.created_at),
+    )
+
+
 def _schema_to_row(entity: AnnotationSchema) -> t.Base:
     """Hand-written because ``classes`` and ``created_at`` both need it.
 
@@ -628,7 +649,12 @@ def _job_write_children(session: Session, entity: AnnotationJob, *, inserting: b
 
 
 WORKSPACES = _flat_mapping(Workspace, t.WorkspaceRow, None)
-PROJECTS = _flat_mapping(Project, t.ProjectRow, "workspace_id")
+PROJECTS = EntityMapping(
+    row=t.ProjectRow,
+    parent_column="workspace_id",
+    to_row=_project_to_row,
+    to_domain=_project_to_domain,
+)
 ASSETS = EntityMapping(
     row=t.AssetRow,
     parent_column="project_id",
