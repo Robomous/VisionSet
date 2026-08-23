@@ -24,6 +24,12 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./Dialog"
 import { Progress } from "./Feedback";
 import { FieldError, Input, Label } from "./Input";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./Menu";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -314,5 +320,25 @@ describe("Dialog", () => {
 
     rerender(<Described second={false} />);
     expect(describedBy(dialog)).toEqual(["one class narrows"]);
+  });
+});
+
+describe("DropdownMenu", () => {
+  it("sizes its surface to the items, not to the trigger", async () => {
+    const user = userEvent.setup();
+    render(
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label="Actions" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem>Check integrity of this connection</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    const classes = (await screen.findByRole("menu")).className.split(" ");
+    expect(classes).toContain("min-w-32");
+    expect(classes).not.toContain("w-(--radix-dropdown-menu-trigger-width)");
   });
 });
