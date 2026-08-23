@@ -365,6 +365,26 @@ forward pass. The MCP tool `get_pre_label_plan` answers the same two halves, and
 plan also travels *in* the outcome: `pre_label_batch` blocks until the run is done and returns it
 under `plan`, so an agent that asked for nothing it expected never needs a second call.
 
+**What a run writes is every shape the model produces, unless the request says which.** A model
+declares the shapes it answers in (`ConnectionOut.produces`); a model declaring both a box and a
+polygon answers one of each for every region it finds, and the run writes one annotation per
+emitted region with no pairing between them, so such a run writes both shapes for every detection.
+`geometries` - the request field on both launches, the `?geometries=` query on the plan, the MCP
+parameter, and a repeatable `--geometry` at a terminal - narrows that to the shapes named: a region
+in any other shape is discarded and counted in `regions_discarded`, and a class is asked for only
+when it admits one of the named shapes, so a polygon-only class leaves the prompt the moment
+polygons do. Omitted, every surface behaves as it did before the field existed. The selection is
+per run rather than per class, it is checked right after the connection on every surface, and it
+is kept on the queued row, so a run claimed later executes what was asked. Naming a shape the
+model does not produce is refused before anything runs - 422 `GEOMETRY_NOT_PRODUCED`, with the
+shapes it does answer in - and an empty list is a validation error; neither becomes a run that
+writes nothing and reports success. The plan reports the effective set: `produces` is the
+selection when there is one, and `excluded_classes` moves every class only the left-out shapes
+could hold under `no_producible_geometry`. In the browser a model writing several shapes gets one
+ticked checkbox per shape in both pre-label dialogs, the plan re-read on every tick; a model
+writing one shape gets no control, and the selector row says what each connection writes before
+it is chosen.
+
 **What lands enters at `pre_labeled`, never `annotated`.** Nobody judged it, so it arrives in its
 own editable state rather than claiming to be somebody's work - see
 [annotations.md](annotations.md#provenance-is-the-models-own-rule-not-the-services). It is not
@@ -472,7 +492,7 @@ otherwise loop, which is the shape `SchemaChangeWouldOrphan` already argues for.
 visionset batch list --project road-signs
 visionset batch approve "$BATCH" --jobs-of 100
 visionset batch start "$BATCH"
-visionset batch pre-label "$BATCH" CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels]
+visionset batch pre-label "$BATCH" CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE ...]
 visionset batch complete "$BATCH"
 visionset batch promote "$BATCH"
 ```
@@ -510,10 +530,12 @@ POST /batches/{id}/approve   { "partition": … }      → 200 BatchOut
 POST /batches/{id}/start                             → 200 BatchOut
 POST /batches/{id}/repin?allow_destructive=          → 200 BatchOut
 POST /batches/{id}/complete                          → 200 BatchOut
-GET  /batches/{id}/pre-label?connection_id=          → 200 PreLabelPlanOut, the prompt, every
-                                                        class left out of it, and `produces`
+GET  /batches/{id}/pre-label?connection_id=&geometries=   → 200 PreLabelPlanOut, the prompt,
+                                                        every class left out of it, and
+                                                        `produces` (the selection, if one)
 POST /batches/{id}/pre-label { "connection_id": …, "minimum_confidence": …,
-                               "replace_model_labels": … }  → 202 BackgroundJobOut
+                               "replace_model_labels": …, "geometries": … }
+                                                     → 202 BackgroundJobOut
 POST /batches/{id}/promote                           → 200 AssetPage, the assets that entered
 GET  /batches/{id}/jobs                              → 200 JobPage
 GET  /batches/{id}/assets?limit=&offset=&progress=&sort=   → 200 BatchAssetPage

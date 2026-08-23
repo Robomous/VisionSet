@@ -70,8 +70,8 @@ GET    /batches/{batch_id}
 DELETE /batches/{batch_id}                                ?confirm=true
 POST   /batches/{batch_id}/approve                        with a partition spec
 POST   /batches/{batch_id}/start
-GET    /batches/{batch_id}/pre-label?connection_id=       the classes a run would ask for
-POST   /batches/{batch_id}/pre-label                      launch; replace_model_labels redoes an earlier pass
+GET    /batches/{batch_id}/pre-label?connection_id=&geometries=   the classes a run would ask for, and the shapes it writes
+POST   /batches/{batch_id}/pre-label                      launch; replace_model_labels redoes an earlier pass, geometries narrows the shapes
 POST   /projects/{project_id}/batches/pre-label           launch over every open batch, or the named ones; one job per batch
 POST   /batches/{batch_id}/repin                          ?allow_destructive=
 POST   /batches/{batch_id}/complete
