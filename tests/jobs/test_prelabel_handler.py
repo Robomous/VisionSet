@@ -110,6 +110,7 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
         connection_id: UUID,
         minimum_confidence: float,
         replace_model_labels: bool,
+        geometries: frozenset[GeometryType] | None,
         on_progress: Any,
         should_stop: Any,
     ) -> PreLabelOutcome:
@@ -117,6 +118,7 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
         captured["connection_id"] = connection_id
         captured["minimum_confidence"] = minimum_confidence
         captured["replace_model_labels"] = replace_model_labels
+        captured["geometries"] = geometries
         captured["should_stop"] = should_stop
         on_progress(1, 2)
         on_progress(2, 2)
@@ -153,6 +155,7 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
     assert captured["connection_id"] == connection_id
     assert captured["minimum_confidence"] == 0.4
     assert captured["replace_model_labels"] is False
+    assert captured["geometries"] is None
     # The reporter's own method, not a wrapper around it — a loop can consult it
     # every iteration without this handler holding any state of its own.
     assert captured["should_stop"] == reporter.is_cancelled
@@ -177,6 +180,57 @@ def test_a_payload_written_before_the_flag_existed_runs_unflagged(
     prelabel.run(Path("/does/not/matter"), payload, Reporter())
 
     assert captured["replace_model_labels"] is False
+
+
+def test_the_payload_carries_the_shape_selection_and_omits_it_by_default() -> None:
+    batch_id, connection_id = uuid4(), uuid4()
+
+    assert prelabel.payload_for(batch_id, connection_id, 0.35)["geometries"] is None
+    assert prelabel.payload_for(
+        batch_id,
+        connection_id,
+        0.35,
+        geometries=frozenset({GeometryType.POLYGON, GeometryType.BBOX}),
+    )["geometries"] == ["bbox", "polygon"]
+
+
+def test_a_selected_payload_asks_for_exactly_those_shapes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """What was queued is what runs: a selection survives the trip through the row."""
+    captured: dict[str, Any] = {}
+
+    def fake_pre_label(workspace: object, **kwargs: Any) -> PreLabelOutcome:
+        captured.update(kwargs)
+        return PreLabelOutcome(assets_considered=0, assets_labeled=0, annotations_written=0)
+
+    monkeypatch.setattr(prelabel, "pre_label", fake_pre_label)
+    monkeypatch.setattr(prelabel, "workspace_for", lambda root: object())
+
+    prelabel.run(
+        Path("/does/not/matter"),
+        prelabel.payload_for(uuid4(), uuid4(), 0.4, geometries=frozenset({GeometryType.BBOX})),
+        Reporter(),
+    )
+
+    assert captured["geometries"] == frozenset({GeometryType.BBOX})
+
+
+def test_a_payload_written_before_the_selection_existed_writes_every_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_pre_label(workspace: object, **kwargs: Any) -> PreLabelOutcome:
+        captured.update(kwargs)
+        return PreLabelOutcome(assets_considered=0, assets_labeled=0, annotations_written=0)
+
+    monkeypatch.setattr(prelabel, "pre_label", fake_pre_label)
+    monkeypatch.setattr(prelabel, "workspace_for", lambda root: object())
+    payload = prelabel.payload_for(uuid4(), uuid4(), 0.4)
+    del payload["geometries"]
+
+    prelabel.run(Path("/does/not/matter"), payload, Reporter())
+
+    assert captured["geometries"] is None
 
 
 def test_a_flagged_payload_asks_for_a_replacing_run(monkeypatch: pytest.MonkeyPatch) -> None:

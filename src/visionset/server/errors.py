@@ -71,6 +71,7 @@ from visionset.kernel import (
     EntityNotFound,
     ExportFormatNotFound,
     ExportSourceUnreadable,
+    GeometryNotProduced,
     InferenceConnectionInvalid,
     InferenceConnectionNameTaken,
     InferenceConnectionNotCheckable,
@@ -377,6 +378,10 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # mapped anyway, because the exact-correspondence test is what keeps this
     # table honest and an unmapped kernel error answers 500 the day one appears.
     UnsupportedPrompt: ErrorRule(422, "UNSUPPORTED_PROMPT"),
+    # A pre-label selection naming a shape the model does not answer in, or no
+    # shape at all. 422 beside UNSUPPORTED_PROMPT for its reason: the request is
+    # what is wrong, and the remedy is a different selection or none.
+    GeometryNotProduced: ErrorRule(422, "GEOMETRY_NOT_PRODUCED"),
     # A click past the edge of the picture. 422 beside UNSUPPORTED_PROMPT and
     # not 404 with the asset's own code: the asset is real and was found, and
     # what is wrong is a coordinate in the body. Its own code rather than that

@@ -20,6 +20,7 @@ exactly as it found them.
 
 from __future__ import annotations
 
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from uuid import UUID
 
@@ -32,8 +33,10 @@ from visionset.kernel.domain import (
     BATCH_JOB_KEY,
     CONNECTION_JOB_KEY,
     PRE_LABEL_CONFIDENCE_KEY,
+    PRE_LABEL_GEOMETRIES_KEY,
     PRE_LABEL_JOB_TYPE,
     PRE_LABEL_REPLACE_KEY,
+    GeometryType,
     pre_label_job_payload,
 )
 from visionset.kernel.ports import ProgressReporter
@@ -54,9 +57,12 @@ def payload_for(
     connection_id: UUID,
     minimum_confidence: float,
     replace_model_labels: bool = False,
+    geometries: AbstractSet[GeometryType] | None = None,
 ) -> dict[str, JsonValue]:
     """The payload this handler expects, built where the type is known."""
-    return pre_label_job_payload(batch_id, connection_id, minimum_confidence, replace_model_labels)
+    return pre_label_job_payload(
+        batch_id, connection_id, minimum_confidence, replace_model_labels, geometries
+    )
 
 
 def run(
@@ -98,6 +104,10 @@ def run(
     and supersedes its model labels, one frame per transaction; a row enqueued
     before the key existed runs unflagged. ``annotations_replaced`` in the
     result says how many labels went.
+
+    **It writes the shapes the launch selected.** ``geometries`` in the payload
+    narrows the run to those of the model's shapes; absent, or a row enqueued
+    before the key existed, it writes every shape the model produces.
     """
     if reporter.is_cancelled():
         return {}
@@ -105,6 +115,12 @@ def run(
     connection_id = UUID(str(payload[CONNECTION_JOB_KEY]))
     minimum_confidence = float(str(payload[PRE_LABEL_CONFIDENCE_KEY]))
     replace_model_labels = bool(payload.get(PRE_LABEL_REPLACE_KEY, False))
+    selected = payload.get(PRE_LABEL_GEOMETRIES_KEY)
+    geometries = (
+        None
+        if not isinstance(selected, list)
+        else frozenset(GeometryType(str(shape)) for shape in selected)
+    )
     # Never a ``with``: the handle belongs to the worker and outlives this task.
     # See ``jobs/context.py``.
     workspace = workspace_for(workspace_root)
@@ -114,6 +130,7 @@ def run(
         connection_id=connection_id,
         minimum_confidence=minimum_confidence,
         replace_model_labels=replace_model_labels,
+        geometries=geometries,
         on_progress=lambda done, total: reporter.report(processed=done, total=total),
         should_stop=reporter.is_cancelled,
     )
