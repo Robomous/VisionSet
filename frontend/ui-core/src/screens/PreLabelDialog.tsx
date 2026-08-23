@@ -77,6 +77,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { IconSparkles } from "@tabler/icons-react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
+import { producesProse } from "../data/geometryCategory";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
 import { Alert, Badge } from "../primitives/Badge";
@@ -338,28 +339,6 @@ function excludedProse(excluded: PreLabelExclusion): string {
     .map((one) => EXCLUSION_PROSE[one as KnownMembers["PreLabelExclusionReason"]])
     .filter((one) => one !== undefined);
   return said.length === 0 ? excluded.name : `${excluded.name} (${said.join(", ")})`;
-}
-
-/**
- * How each shape a run writes reads: "Writes boxes or polygons."
- *
- * A plain `Record`, not one over the known members: the vocabulary is open and
- * an unknown shape passes through raw rather than being dropped, because what a
- * newer server says the run will write is exactly what the reader needs.
- */
-const PRODUCES_PROSE: Record<string, string> = {
-  bbox: "boxes",
-  polygon: "polygons",
-  polyline: "polylines",
-  mask: "masks",
-  keypoints: "keypoints",
-  classification_tag: "tags",
-  cuboid_3d: "3D cuboids",
-  polyline_3d: "3D polylines",
-};
-
-function producesProse(produces: readonly string[]): string {
-  return produces.map((one) => PRODUCES_PROSE[one] ?? one).join(" or ");
 }
 
 /**

@@ -26,9 +26,11 @@ import {
   GEOMETRY_CATEGORIES,
   GEOMETRY_CATEGORY,
   GEOMETRY_LABELS,
+  GEOMETRY_PLURALS,
   formatGeometries,
   geometryLabel,
   groupGeometries,
+  producesProse,
   type GeometryCategory,
 } from "./geometryCategory";
 
@@ -158,5 +160,45 @@ describe("a set of geometries, as one phrase", () => {
     // The kernel cannot produce one, but a refusal renders `?? []` while a class
     // is being typed, and " · " alone would read as damage.
     expect(formatGeometries([])).toBe("");
+  });
+});
+
+describe("what a model writes, as a phrase", () => {
+  it("is total over the wire's geometry union", () => {
+    // The same two-sided claim the labels make: the `satisfies` is the proof
+    // and this is its copy in a file that does not move with the declaration.
+    const total: Record<GeometryType, string> = GEOMETRY_PLURALS;
+    expect(Object.keys(total).length).toBeGreaterThan(0);
+  });
+
+  it("pluralises nothing the wire does not call a geometry", () => {
+    for (const geometry of Object.keys(GEOMETRY_PLURALS)) {
+      expect(firstMismatch(checkGeometryType, geometry)).toBeNull();
+    }
+  });
+
+  it("names every member the singular label names, and nothing else", () => {
+    // Both directions at runtime, between the two tables this module keeps:
+    // a plural with no singular is a geometry the screen can announce but not
+    // chip, and the reverse is a chip no sentence can name.
+    expect(Object.keys(GEOMETRY_PLURALS).sort()).toEqual(Object.keys(GEOMETRY_LABELS).sort());
+  });
+
+  it("is the plural of the display word, not the wire value", () => {
+    expect(GEOMETRY_PLURALS.bbox).toBe("boxes");
+    expect(GEOMETRY_PLURALS.classification_tag).toBe("tags");
+    expect(GEOMETRY_PLURALS.cuboid_3d).toBe("3D cuboids");
+  });
+
+  it("joins with 'or', because a run writes one shape per label", () => {
+    expect(producesProse(["bbox", "polygon"])).toBe("boxes or polygons");
+    expect(producesProse(["mask"])).toBe("masks");
+    expect(producesProse([])).toBe("");
+  });
+
+  it("passes a member this build has never seen through raw rather than dropping it", () => {
+    // The vocabulary is open on the wire: what a newer server says a run
+    // writes is exactly what the reader needs, so the unknown word stays.
+    expect(producesProse(["bbox", "depth_map"])).toBe("boxes or depth_map");
   });
 });

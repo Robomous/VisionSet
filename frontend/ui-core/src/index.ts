@@ -239,9 +239,11 @@ export {
   GEOMETRY_CATEGORIES,
   GEOMETRY_CATEGORY,
   GEOMETRY_LABELS,
+  GEOMETRY_PLURALS,
   formatGeometries,
   geometryLabel,
   groupGeometries,
+  producesProse,
   type GeometryCategory,
   type GeometryGroup,
 } from "./data/geometryCategory.js";
