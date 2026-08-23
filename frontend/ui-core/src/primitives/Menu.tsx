@@ -19,8 +19,7 @@ export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 
 const SURFACE =
-  "dark z-50 max-h-(--radix-dropdown-menu-content-available-height) " +
-  "w-(--radix-dropdown-menu-trigger-width) min-w-32 " +
+  "dark z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-32 " +
   "origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto " +
   "rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 " +
   "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 " +
