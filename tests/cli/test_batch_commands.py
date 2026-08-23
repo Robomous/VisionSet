@@ -33,6 +33,7 @@ from visionset.kernel.domain import (
     BboxGeometry,
     GeometryType,
     ModelCapability,
+    PolygonGeometry,
     PredictedRegion,
     ServedFamily,
 )
@@ -63,47 +64,72 @@ def _trunk_size(root: Path, name: str) -> int:
 
 
 class _FakePredictor:
-    """A detector that returns one confident sign box for every requested asset."""
+    """A detector that returns one confident sign box for every requested asset —
+    and, asked to, a sign polygon beside it."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, both_shapes: bool = False) -> None:
         self.minimum_confidences: list[float] = []
+        self._both_shapes = both_shapes
 
     def predict(self, request: object) -> object:
         self.minimum_confidences.append(request.minimum_confidence)  # type: ignore[attr-defined]
+        regions = (
+            PredictedRegion(
+                label="sign",
+                confidence=0.9,
+                geometry=BboxGeometry(x=1.0, y=2.0, width=3.0, height=4.0),
+            ),
+        )
+        if self._both_shapes:
+            regions += (
+                PredictedRegion(
+                    label="sign",
+                    confidence=0.8,
+                    geometry=PolygonGeometry(points=[(1.0, 1.0), (5.0, 1.0), (5.0, 5.0)]),
+                ),
+            )
         return (
             AssetPrediction(
-                asset_id=target.asset_id,
-                model_ref="acme/detector@abc123",
-                regions=(
-                    PredictedRegion(
-                        label="sign",
-                        confidence=0.9,
-                        geometry=BboxGeometry(x=1.0, y=2.0, width=3.0, height=4.0),
-                    ),
-                ),
+                asset_id=target.asset_id, model_ref="acme/detector@abc123", regions=regions
             )
             for target in request.targets  # type: ignore[attr-defined]
         )
 
 
 class _FakePool:
-    def __init__(self, predictor: _FakePredictor) -> None:
+    def __init__(self, predictor: _FakePredictor, *, produces: frozenset[GeometryType]) -> None:
         self._predictor = predictor
+        self._produces = produces
 
     def get(self, connection: object, *, workspace_root: Path) -> object:
         return self._predictor
 
     def served(self, connection: object, *, workspace_root: Path) -> ServedFamily:
-        return ServedFamily(
-            capability=ModelCapability.TEXT_DETECT, produces=frozenset({GeometryType.BBOX})
-        )
+        return ServedFamily(capability=ModelCapability.TEXT_DETECT, produces=self._produces)
 
 
 @pytest.fixture()
 def predicting(monkeypatch: pytest.MonkeyPatch) -> _FakePredictor:
     """Replace the process-wide pool at the seam the shared operation resolves."""
     predictor = _FakePredictor()
-    monkeypatch.setattr(prelabel_module, "resident", lambda: _FakePool(predictor))
+    monkeypatch.setattr(
+        prelabel_module,
+        "resident",
+        lambda: _FakePool(predictor, produces=frozenset({GeometryType.BBOX})),
+    )
+    return predictor
+
+
+@pytest.fixture()
+def predicting_both_shapes(monkeypatch: pytest.MonkeyPatch) -> _FakePredictor:
+    """The same seam, serving a model that declares a box and a polygon and
+    answers one of each per asset — what `--geometry` chooses between."""
+    predictor = _FakePredictor(both_shapes=True)
+    monkeypatch.setattr(
+        prelabel_module,
+        "resident",
+        lambda: _FakePool(predictor, produces=frozenset({GeometryType.BBOX, GeometryType.POLYGON})),
+    )
     return predictor
 
 
@@ -428,6 +454,112 @@ def test_pre_label_resolves_a_connection_name_and_passes_its_confidence(
     assert predicting.minimum_confidences == [0.5] * 6
 
 
+def _both_shapes_batch(root: Path, tmp_path: Path, project_name: str = "crossings") -> str:
+    """A started batch whose `sign` admits a box and a polygon, beside a
+    polygon-only `lane` — the schema a two-shape model's selection shows on."""
+    document = {
+        "classes": [
+            {"name": "sign", "geometries": ["bbox", "polygon"]},
+            {"name": "lane", "geometries": ["polygon"]},
+        ]
+    }
+    path = tmp_path / "both-shapes-schema.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    project(root, project_name)
+    ok(root, "schema", "apply", str(path), "--project", project_name)
+    batch = ok(
+        root, "ingest", str(stills(tmp_path)), "--project", project_name, "--batch-name", "stills"
+    )
+    ok(root, "batch", "approve", batch)
+    ok(root, "batch", "start", batch)
+    return batch
+
+
+def test_pre_label_geometry_narrows_what_a_two_shape_model_writes(
+    root: Path, tmp_path: Path, predicting_both_shapes: _FakePredictor
+) -> None:
+    """`--geometry bbox` reaches the run: the boxes land, the polygons are
+    counted as discarded, and the plan announced is the narrowed one."""
+    batch = _both_shapes_batch(root, tmp_path)
+    connection = _connection(root)
+
+    result = run(root, "batch", "pre-label", batch, connection, "--geometry", "bbox")
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == "6\n"
+    assert "Asking for 1 class(es): sign; what it finds lands as a box." in result.stderr
+    assert "Not asking for 1 class(es): lane (no shape this model produces)." in result.stderr
+
+
+def test_pre_label_without_geometry_writes_every_shape_the_model_produces(
+    root: Path, tmp_path: Path, predicting_both_shapes: _FakePredictor
+) -> None:
+    batch = _both_shapes_batch(root, tmp_path)
+
+    outcome = payload(root, "batch", "pre-label", batch, _connection(root))
+
+    assert outcome["annotations_written"] == 12
+    assert outcome["regions_discarded"] == 0
+
+
+def test_pre_label_geometry_json_counts_the_discarded_shape(
+    root: Path, tmp_path: Path, predicting_both_shapes: _FakePredictor
+) -> None:
+    batch = _both_shapes_batch(root, tmp_path)
+
+    outcome = payload(root, "batch", "pre-label", batch, _connection(root), "--geometry", "polygon")
+
+    assert outcome["annotations_written"] == 6
+    assert outcome["regions_discarded"] == 6
+
+
+def test_pre_label_geometry_repeats(
+    root: Path, tmp_path: Path, predicting_both_shapes: _FakePredictor
+) -> None:
+    batch = _both_shapes_batch(root, tmp_path)
+
+    outcome = payload(
+        root,
+        "batch",
+        "pre-label",
+        batch,
+        _connection(root),
+        "--geometry",
+        "bbox",
+        "--geometry",
+        "polygon",
+    )
+
+    assert outcome["annotations_written"] == 12
+    assert outcome["regions_discarded"] == 0
+
+
+def test_pre_label_geometry_outside_what_the_model_produces_exits_1(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    _, batch = started_batch(root, tmp_path)
+
+    result = run(root, "batch", "pre-label", batch, _connection(root), "--geometry", "polygon")
+
+    assert result.exit_code == 1, result.output
+    assert "does not answer in a polygon, only a box" in result.stderr
+    assert result.stdout == ""
+    assert predicting.minimum_confidences == []
+
+
+def test_pre_label_geometry_outside_the_vocabulary_exits_2(root: Path, tmp_path: Path) -> None:
+    _, batch = started_batch(root, tmp_path)
+
+    result = run(root, "batch", "pre-label", batch, _connection(root), "--geometry", "circle")
+
+    assert result.exit_code == 2, result.output
+
+
+def test_batch_pre_label_help_lists_the_geometry_option() -> None:
+    result = runner.invoke(app, ["batch", "pre-label", "--help"], env=RENDERING, color=True)
+    assert "--geometry" in plain(result.output)
+
+
 def test_batch_help_lists_pre_label() -> None:
     assert "pre-label" in runner.invoke(app, ["batch", "--help"]).stdout
 
@@ -562,6 +694,38 @@ def test_project_pre_label_with_no_open_batch_exits_1_naming_the_project(
 
     assert result.exit_code == 1
     assert "has no batch open for annotation" in result.stderr
+
+
+def test_project_pre_label_geometry_reaches_every_batch(
+    root: Path, tmp_path: Path, predicting_both_shapes: _FakePredictor
+) -> None:
+    first = _both_shapes_batch(root, tmp_path)
+    second = _second_started_batch(root, tmp_path, "crossings")
+
+    outcome = payload(
+        root, "project", "pre-label", "crossings", _connection(root), "--geometry", "bbox"
+    )
+
+    assert [item["batch_id"] for item in outcome["items"]] == [first, second]
+    assert [item["annotations_written"] for item in outcome["items"]] == [6, 2]
+    assert [item["regions_discarded"] for item in outcome["items"]] == [6, 2]
+
+
+def test_project_pre_label_geometry_outside_what_the_model_produces_exits_1(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    name, _first = started_batch(root, tmp_path)
+
+    result = run(root, "project", "pre-label", name, _connection(root), "--geometry", "polygon")
+
+    assert result.exit_code == 1, result.output
+    assert "does not answer in a polygon, only a box" in result.stderr
+    assert predicting.minimum_confidences == []
+
+
+def test_project_pre_label_help_lists_the_geometry_option() -> None:
+    result = runner.invoke(app, ["project", "pre-label", "--help"], env=RENDERING, color=True)
+    assert "--geometry" in plain(result.output)
 
 
 def test_project_help_lists_pre_label() -> None:
