@@ -194,6 +194,7 @@ function connection(
     setup_state: setup,
     allowed_actions: ["download_weights", "update", "delete"],
     capabilities,
+    produces: capabilities.length === 0 ? [] : ["bbox", "polygon"],
     download:
       download === null ? null : { job_id: JOB, error: null, error_code: null, ...download },
     integrity_check:
