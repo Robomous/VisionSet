@@ -67,6 +67,25 @@ describe("Button", () => {
     expect(link.tagName).toBe("A");
     expect(link.className).toContain("bg-primary");
   });
+
+  it("underlines a link button at rest, not only under the pointer", () => {
+    render(<Button variant="link">Browse dataset</Button>);
+    const classes = screen.getByRole("button").className.split(" ");
+    expect(classes).toContain("underline");
+    expect(classes).not.toContain("hover:underline");
+  });
+
+  it("collapses a link button to inline geometry, whatever size says", () => {
+    render(
+      <Button variant="link" size="sm">
+        Open batch
+      </Button>,
+    );
+    const classes = screen.getByRole("button").className.split(" ");
+    expect(classes).toContain("h-auto");
+    expect(classes).toContain("p-0");
+    expect(classes).not.toContain("h-7");
+  });
 });
 
 describe("Alert and Badge", () => {
