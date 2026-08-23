@@ -22,6 +22,7 @@ import { expect, it } from "vitest";
 
 import {
   capabilityBadge,
+  capabilityBadgeVariant,
   capabilityChips,
   inviteFor,
   underCapability,
@@ -124,6 +125,17 @@ it("says what a model does on its badge, in product prose, and passes an unknown
   expect(capabilityBadge("text_detect")).toBe("Finds what you name");
   // Display, never drop: what a newer server declares is what the reader needs.
   expect(capabilityBadge("depth_estimate")).toBe("depth_estimate");
+});
+
+it("colours each described ability's badge with its own series, and an unknown one with none", () => {
+  const point = capabilityBadgeVariant("point_suggest");
+  const text = capabilityBadgeVariant("text_detect");
+  // Series, never status: the kind of prompt a model answers is a category, and
+  // the two kinds must be told apart before the words are read.
+  expect(point).toMatch(/^series-\d$/);
+  expect(text).toMatch(/^series-\d$/);
+  expect(point).not.toBe(text);
+  expect(capabilityBadgeVariant("depth_estimate")).toBe("neutral");
 });
 
 it("invites a connection for a described ability, and has nothing to invite for one it cannot name", () => {

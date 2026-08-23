@@ -270,7 +270,9 @@ does not restyle when the page switches theme):
 
 These are **series colours, never status.** A chart never leans on `chart-2` to mean
 "warning" — status uses the status tokens below, a chart uses these to tell one series
-from another.
+from another. The badge's `series-N` variants carry them off the chart for the same
+job — a category a page needs told apart at a glance, such as the kind of prompt a
+model answers — with `foreground` ink, never a tinted one.
 
 ## VisionSet Extensions
 

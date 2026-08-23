@@ -10,6 +10,11 @@
  * action, so it is the neutral chip, and `success` / `warning` / `destructive` are
  * the three desaturated statuses.
  *
+ * The `series-N` variants take the chart palette — series colours, never status
+ * — for the one job a badge has besides state: telling members of a category
+ * apart at a glance, such as which kind of prompt a model answers. The ink stays
+ * `foreground` on all five, because a light step is not ink anybody can read.
+ *
  * `Alert` carries `role="alert"` on the destructive variant only. An informational
  * panel announced as an alert interrupts a screen reader for something nobody
  * needs to hear; an error must interrupt.
@@ -33,6 +38,11 @@ export const badgeVariants = cva(
         warning: "border-warning bg-warning/10 text-warning",
         destructive: "border-destructive bg-destructive/10 text-destructive",
         outline: "border-border bg-card text-foreground",
+        "series-1": "border-chart-1 bg-chart-1/15 text-foreground",
+        "series-2": "border-chart-2 bg-chart-2/15 text-foreground",
+        "series-3": "border-chart-3 bg-chart-3/15 text-foreground",
+        "series-4": "border-chart-4 bg-chart-4/15 text-foreground",
+        "series-5": "border-chart-5 bg-chart-5/15 text-foreground",
       },
     },
     defaultVariants: { variant: "neutral" },

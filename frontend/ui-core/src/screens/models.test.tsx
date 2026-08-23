@@ -415,6 +415,11 @@ it("renders every field a full connection carries, top to bottom", async () => {
       .getAllByTestId("capability-badge")
       .map((badge) => badge.textContent),
   ).toEqual(["Suggests from clicks", "Finds what you name"]);
+  // Each ability in its own series colour, off the chart palette.
+  const [point, text] = within(shown).getAllByTestId("capability-badge");
+  expect(point.className).toMatch(/border-chart-\d/);
+  expect(text.className).toMatch(/border-chart-\d/);
+  expect(point.className).not.toBe(text.className);
   // The shared plural prose, one chip per shape.
   expect(
     within(shown)

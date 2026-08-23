@@ -821,9 +821,10 @@ configured.
 
 The page is a grid of cards, one per connection - a connection serving two abilities is one
 card, not two. Top to bottom a card shows its name with `model @ revision` beneath; one badge
-per ability the connection declares, in a person's words - **Suggests from clicks** for
+per ability the connection declares, in a person's words and each ability in its own colour,
+so a grid reads by kind before it reads by words - **Suggests from clicks** for
 `point_suggest`, **Finds what you name** for `text_detect`, and a value this build has no words
-for printed as it arrived, because nothing the server declares is hidden; one small chip per
+for printed as it arrived, uncoloured, because nothing the server declares is hidden; one small chip per
 shape it writes (*boxes*, *polygons*, ...), read from `produces`; where it runs, in one line -
 `Local · cuda · fp16`, or `HTTP · models.example` with the endpoint's host; and its status as a
 word - **Ready** or **Not set up** - beside a colour, never as a colour alone. Every line is

@@ -219,6 +219,7 @@ import {
 } from "./inferenceCatalog";
 import {
   capabilityBadge,
+  capabilityBadgeVariant,
   capabilityChips,
   inviteFor,
   underCapability,
@@ -599,7 +600,11 @@ export function ConnectionCard({
           <ul className="flex flex-wrap gap-1.5" aria-label="What it does" data-testid="capability-badges">
             {connection.capabilities.map((capability) => (
               <li key={capability}>
-                <Badge data-testid="capability-badge" data-capability={capability}>
+                <Badge
+                  variant={capabilityBadgeVariant(capability)}
+                  data-testid="capability-badge"
+                  data-capability={capability}
+                >
                   {capabilityBadge(capability)}
                 </Badge>
               </li>

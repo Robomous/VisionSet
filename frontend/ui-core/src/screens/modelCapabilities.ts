@@ -36,6 +36,7 @@
 
 import type { KnownMembers } from "../generated/api.js";
 import type { Connection } from "../data/inferenceQueries";
+import type { BadgeProps } from "../primitives/Badge";
 
 /** The invitation a chip shows when nothing on the page serves its ability. */
 export interface CapabilityInvite {
@@ -50,6 +51,12 @@ export interface CapabilityCopy {
   readonly badge: string;
   /** The filter chip: the ability in a word or two. */
   readonly chip: string;
+  /**
+   * The badge's series colour, one per described ability so a grid of cards
+   * reads by colour before it reads by words. Series, not status: a capability
+   * is a kind, and the status intents stay for states.
+   */
+  readonly series: NonNullable<BadgeProps["variant"]>;
   readonly invite: CapabilityInvite;
 }
 
@@ -63,6 +70,7 @@ const CAPABILITY_COPY: Record<KnownMembers["ModelCapability"], CapabilityCopy> =
   point_suggest: {
     badge: "Suggests from clicks",
     chip: "Point prompts",
+    series: "series-1",
     invite: {
       title: "Add a connection the suggest tool can use",
       body: "A point-prompt model turns a click into an outline, so an annotator confirms a region instead of tracing one.",
@@ -72,6 +80,7 @@ const CAPABILITY_COPY: Record<KnownMembers["ModelCapability"], CapabilityCopy> =
   text_detect: {
     badge: "Finds what you name",
     chip: "Text prompts",
+    series: "series-4",
     invite: {
       title: "Add a connection that answers words",
       body: "A text-prompt model labels a batch before anybody opens it, so an annotator reviews a draft instead of starting from an empty frame.",
@@ -89,6 +98,11 @@ function known(capability: string): CapabilityCopy | undefined {
 /** The card badge for a declared capability: this build's prose, or the value itself. */
 export function capabilityBadge(capability: string): string {
   return known(capability)?.badge ?? capability;
+}
+
+/** The badge's colour for a declared capability: its series, or neutral for a value this build cannot name. */
+export function capabilityBadgeVariant(capability: string): NonNullable<BadgeProps["variant"]> {
+  return known(capability)?.series ?? "neutral";
 }
 
 /** The chip's invitation, for a capability this build describes; none for one it cannot. */

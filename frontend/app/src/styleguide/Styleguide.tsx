@@ -341,6 +341,13 @@ export function Styleguide(): JSX.Element {
             <Badge variant="outline">outline</Badge>
             <Badge variant="destructive">failed</Badge>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="series-1">series-1</Badge>
+            <Badge variant="series-2">series-2</Badge>
+            <Badge variant="series-3">series-3</Badge>
+            <Badge variant="series-4">series-4</Badge>
+            <Badge variant="series-5">series-5</Badge>
+          </div>
           <div className="max-w-md">
             <p className="mb-1 text-xs text-muted-foreground">Ingest — 240 of 412</p>
             <Progress value={58} aria-label="Ingest progress" />
