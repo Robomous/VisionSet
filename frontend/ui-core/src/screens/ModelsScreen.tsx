@@ -8,22 +8,31 @@
  * the models a workspace can run — rather than for one use of them, because the
  * same list serves the suggest tool, pre-labeling and whatever asks next.
  *
- * ## Organised by what a connection enables, not by what it is
+ * ## One card per connection, filtered by what it enables
  *
- * The screen is a list of sections, one per ability a model can be asked for, and
- * a connection sits under every ability it declares. That is the question
- * somebody arrives with — *what can I do in the app with this?* — and a flat
- * table of names, kinds and model ids answered none of it.
+ * The screen is a grid of cards, one per connection, and a card says what its
+ * model does as badges — *Suggests from clicks*, *Finds what you name* — rather
+ * than sitting under a heading per ability. A connection serving two abilities
+ * is one card, not two; the per-connection facts the wire already carries —
+ * what it writes, the device, the precision, the endpoint's host — are on the
+ * card rather than nowhere. Capability is a **filter chip** instead: All, plus
+ * one chip per ability this build describes and one per value the workspace
+ * declares that it does not. *What can I do in the app with this?* is still
+ * the question somebody arrives with, and the badge answers it per card.
  *
- * Which section a row lands in comes off `capabilities`, which the server derives
- * from the downloaded model's own config. The grouping and the copy live in
- * `inferenceSections.ts`; what a row may be *asked to do* is still
- * `allowed_actions` and nothing else, which is a different field answering a
- * different question.
+ * Which chip a card answers comes off `capabilities`, which the server derives
+ * from the downloaded model's own config. The chips, the badge prose and the
+ * invitation a chip shows when nothing serves it live in `modelCapabilities.ts`;
+ * what a card may be *asked to do* is still `allowed_actions` and nothing else,
+ * which is a different field answering a different question.
+ *
+ * Cards, and not a table, because the content is a handful of rich objects
+ * rather than rows of one shape — which is the one reading of `DESIGN.md`'s
+ * density principle that permits them here and nowhere a list is data.
  *
  * ## Nothing here decides what is legal
  *
- * Every row action is rendered from `allowed_actions` on `ConnectionOut` and from
+ * Every card action is rendered from `allowed_actions` on `ConnectionOut` and from
  * nothing else. `download_weights` is declared for a local connection whose
  * weights are not here yet — including on a machine with no local runtime
  * installed, deliberately, because whether *this* machine has the extra is not a
@@ -36,7 +45,7 @@
  * The obvious third is `Unreachable`, and the wire has only two:
  * `setup_state` is deliberately **not** a reachability answer — whether an
  * endpoint responds has a fresh answer every time it is asked, so it belongs to a
- * test call and its result — `test_endpoint`, in the row's menu — never to a
+ * test call and its result — `test_endpoint`, in the card's menu — never to a
  * stored row that would start lying the moment the network moved.
  *
  * ## What the form offers, and what it refuses to compute
@@ -65,7 +74,7 @@
  * ## Two actions over the same files, and each label says what it proves
  *
  * `download_weights` is declared for a local connection in either state.
- * Below `Ready` it is the row's **Download weights** button; at `Ready` it is
+ * Below `Ready` it is the card's **Download weights** button; at `Ready` it is
  * **Check for missing files** in the overflow, where it re-runs the fetch and
  * turns up anything absent. The row picks that reading from `setup_state` — a
  * field the wire states — and never from a table of its own.
@@ -84,7 +93,7 @@
  *
  * A failed integrity check is the one refusal on this screen that has already
  * acted: the damaged files are purged and the connection is back to `Not set up`
- * before the job row says so. The settle-invalidation is what makes the row
+ * before the job row says so. The settle-invalidation is what makes the card
  * agree, and the prose describes a state the workspace is already in.
  *
  * ## A run is watched, not owned
@@ -94,7 +103,7 @@
  * state. That is what makes the screen a viewport rather than the owner: arriving
  * mid-run — a reload, a second tab, a return visit, another machine, or beside a
  * terminal that started it — shows the bar and the prose on the first fetch,
- * because the row it was going to list says so anyway.
+ * because the card it was going to show says so anyway.
  *
  * The list re-reads itself while any row reports a live run of either kind and
  * stops the moment none does (`useConnections`). Nothing the browser does reaches
@@ -106,7 +115,7 @@
  * one cache: a second request of the same kind is answered by the server with the
  * run already in flight, and one of the other kind would set a transfer and a
  * full re-read against the same files. Because the flag is read off the wire, the
- * withdrawal is visible in a tab that started nothing. What the row must not do
+ * withdrawal is visible in a tab that started nothing. What the card must not do
  * is decide from this whether a control *exists* — that stays `allowed_actions`,
  * which no run changes.
  *
@@ -140,6 +149,7 @@ import { useEffect, useRef, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
+import { producesProse } from "../data/geometryCategory";
 import {
   isLive,
   useCheckIntegrity,
@@ -158,9 +168,19 @@ import {
   type WeightDownload,
 } from "../data/inferenceQueries";
 import { jobFailureProse, refusalProse } from "../data/refusals";
+import { cn } from "../lib/cn";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "../primitives/Card";
 import { Progress } from "../primitives/Feedback";
 import {
   Dialog,
@@ -197,8 +217,13 @@ import {
   precisionsFor,
   type Precision,
 } from "./inferenceCatalog";
-import { sectionsOf, type ConnectionSection } from "./inferenceSections";
-/** Above this many rows a list carries a filter input (`DESIGN.md`). */
+import {
+  capabilityBadge,
+  capabilityChips,
+  inviteFor,
+  underCapability,
+} from "./modelCapabilities";
+/** Above this many cards a list carries a filter input (`DESIGN.md`). */
 const FILTER_ABOVE = 20;
 
 export function ModelsScreen(): JSX.Element {
@@ -207,6 +232,11 @@ export function ModelsScreen(): JSX.Element {
   const [editing, setEditing] = useState<Connection | null>(null);
   const [doomed, setDoomed] = useState<Connection | null>(null);
   const [needle, setNeedle] = useState("");
+  // The chip pressed, or `null` for All. A value rather than an index, so a chip
+  // the workspace stops declaring (an endpoint re-asked, a model moved) does not
+  // leave the press pointing at its neighbour; what happens to the press then
+  // is decided below, off the chips the list actually offers.
+  const [chosen, setChosen] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col gap-6" data-testid="models-screen">
@@ -231,9 +261,8 @@ export function ModelsScreen(): JSX.Element {
           title: "Connect a model to enable auto-labeling",
           description:
             "VisionSet never downloads models on its own — you choose what runs and where.",
-          // `secondary`, not `primary`: the header's "Add connection" is on screen
-          // and is the same label calling the same handler. One filled action per
-          // view.
+          // `secondary`, not `primary`: the header's "Add model" is on screen
+          // and opens the same dialog. One filled action per view.
           action: (
             <Button variant="secondary" onClick={() => setCreating(true)}>
               Add connection
@@ -242,40 +271,104 @@ export function ModelsScreen(): JSX.Element {
         }}
       >
         {(page) => {
+          const chips = capabilityChips(page.items);
+          // A press on a chip the list no longer offers — an unnamed ability
+          // nobody declares any more — reads as All rather than as an empty
+          // page under a chip that is not there. Derived, never synced: the
+          // press survives, and lights again if the ability comes back.
+          const active = chips.some((chip) => chip.key === chosen) ? chosen : null;
           const filtering = needle.trim() !== "";
-          const shown = matching(page.items, needle);
+          const shown = matching(underCapability(page.items, active), needle);
+          const invite = active === null ? undefined : inviteFor(active);
           return (
-            <div className="flex flex-col gap-8" data-testid="connection-sections">
-              {page.items.length > FILTER_ABOVE && (
-                <div className="flex items-center gap-2">
-                  <IconFilter className="size-4 text-muted-foreground" aria-hidden="true" />
-                  <Label htmlFor="connection-filter" className="sr-only">
-                    Filter connections
-                  </Label>
-                  <Input
-                    id="connection-filter"
-                    data-testid="connection-filter"
-                    className="max-w-xs"
-                    placeholder="Filter by name"
-                    value={needle}
-                    onChange={(event) => setNeedle(event.target.value)}
-                  />
-                  {/* Never hides the count of what it filtered out (`DESIGN.md`). */}
-                  <span className="text-xs text-muted-foreground" data-testid="filter-count">
-                    {shown.length} of {page.items.length}
-                  </span>
+            <div className="flex flex-col gap-4" data-testid="models-catalog">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <div
+                  role="group"
+                  aria-label="Show models by ability"
+                  className="flex flex-wrap items-center gap-1.5"
+                  data-testid="capability-chips"
+                >
+                  <FilterChip
+                    pressed={active === null}
+                    onPress={() => setChosen(null)}
+                    testId="capability-chip-all"
+                  >
+                    All
+                  </FilterChip>
+                  {chips.map((chip) => (
+                    <FilterChip
+                      key={chip.key}
+                      pressed={active === chip.key}
+                      onPress={() => setChosen(chip.key)}
+                      testId={`capability-chip-${chip.key}`}
+                      known={chip.known}
+                    >
+                      {chip.label}
+                    </FilterChip>
+                  ))}
                 </div>
-              )}
-              {sectionsOf(shown).map((section) => (
-                <CapabilitySection
-                  key={section.key}
-                  section={section}
-                  filtering={filtering}
-                  onAdd={() => setCreating(true)}
-                  onEdit={setEditing}
-                  onDelete={setDoomed}
+                {page.items.length > FILTER_ABOVE && (
+                  <div className="flex items-center gap-2">
+                    <IconFilter className="size-4 text-muted-foreground" aria-hidden="true" />
+                    <Label htmlFor="connection-filter" className="sr-only">
+                      Filter connections
+                    </Label>
+                    <Input
+                      id="connection-filter"
+                      data-testid="connection-filter"
+                      className="max-w-xs"
+                      placeholder="Filter by name"
+                      value={needle}
+                      onChange={(event) => setNeedle(event.target.value)}
+                    />
+                    {/* Never hides the count of what it filtered out (`DESIGN.md`). */}
+                    <span className="text-xs text-muted-foreground" data-testid="filter-count">
+                      {shown.length} of {page.items.length}
+                    </span>
+                  </div>
+                )}
+              </div>
+              {shown.length > 0 ? (
+                <ul className="grid gap-6 md:grid-cols-2 xl:grid-cols-3" data-testid="models-grid">
+                  {shown.map((connection) => (
+                    <li key={connection.id} className="flex min-w-0">
+                      <ConnectionCard
+                        connection={connection}
+                        onEdit={() => setEditing(connection)}
+                        onDelete={() => setDoomed(connection)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              ) : filtering ? (
+                // What somebody typed is a fact about the filter and never an
+                // occasion to invite anything.
+                <p className="text-xs text-muted-foreground" data-testid="filtered-out">
+                  Nothing here matches the filter.
+                </p>
+              ) : invite !== undefined ? (
+                <EmptyState
+                  title={invite.title}
+                  description={invite.body}
+                  icon={<IconPlug className="size-8" />}
+                  // `secondary`, not `primary`: the header's "Add model" is on
+                  // screen and opens the same dialog. One filled action per view.
+                  action={
+                    <Button
+                      variant="secondary"
+                      data-testid="capability-invite"
+                      onClick={() => setCreating(true)}
+                    >
+                      {invite.cta}
+                    </Button>
+                  }
                 />
-              ))}
+              ) : (
+                <p className="text-xs text-muted-foreground" data-testid="filtered-out">
+                  Nothing declares this ability.
+                </p>
+              )}
             </div>
           );
         }}
@@ -300,83 +393,93 @@ function matching(rows: readonly Connection[], needle: string): readonly Connect
 }
 
 /**
- * One ability: what it is, where the app uses it, and what serves it here.
+ * One filter chip: a toggle, pressed or not, in the badge's own geometry.
  *
- * The three ways a section can be empty are three different sentences, and
- * collapsing them is how a screen starts lying. **Nothing matches the filter** is
- * a fact about what somebody typed and never an occasion to invite anything.
- * **Nothing serves this yet** is an invitation, with a CTA naming what to add.
- * **Nothing can use this yet** is prose and no control at all, because the
- * missing half is the consuming surface rather than the connection — offering a
- * button here would be offering the feature it goes to.
- *
- * Exported for the test that renders a capability this build has no copy for: the
- * generated response check refuses an unrecognised member before a connection
- * carrying one reaches the screen, so the generic section cannot be reached
- * through a stubbed listing and is asserted against directly.
+ * A real `<button>` carrying `aria-pressed`, so the chosen filter is announced
+ * as a state rather than read off a colour; the pressed fill is the badge's
+ * `accent` treatment — a tint of the action colour, never the fill itself, so
+ * the header keeps the one filled button on the view — and the ring is Nova's.
  */
-export function CapabilitySection({
-  section,
-  filtering,
-  onAdd,
-  onEdit,
-  onDelete,
+function FilterChip({
+  pressed,
+  onPress,
+  testId,
+  known = true,
+  children,
 }: {
-  readonly section: ConnectionSection;
-  readonly filtering: boolean;
-  readonly onAdd: () => void;
-  readonly onEdit: (connection: Connection) => void;
-  readonly onDelete: (connection: Connection) => void;
+  readonly pressed: boolean;
+  readonly onPress: () => void;
+  readonly testId: string;
+  readonly known?: boolean;
+  readonly children: string;
 }): JSX.Element {
   return (
-    <section
-      className="flex flex-col gap-3"
-      data-testid={`section-${section.key}`}
-      data-known={section.known}
-    >
-      <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold tracking-tight">{section.title}</h2>
-        <p className="max-w-3xl text-xs text-muted-foreground">{section.purpose}</p>
-      </div>
-      {section.connections.length > 0 ? (
-        <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
-          {section.connections.map((row) => (
-            <ConnectionRow
-              key={row.id}
-              connection={row}
-              onEdit={() => onEdit(row)}
-              onDelete={() => onDelete(row)}
-            />
-          ))}
-        </div>
-      ) : filtering ? (
-        <p className="text-xs text-muted-foreground" data-testid="section-filtered-out">
-          Nothing here matches the filter.
-        </p>
-      ) : section.empty.kind === "invite" ? (
-        <EmptyState
-          title={section.empty.title}
-          description={section.empty.body}
-          icon={<IconPlug className="size-8" />}
-          // `secondary`, not `primary`: the header's "Add connection" is on
-          // screen and opens the same dialog. One filled action per view, and a
-          // section per capability would otherwise put four on one page.
-          action={
-            <Button variant="secondary" onClick={onAdd}>
-              {section.empty.cta}
-            </Button>
-          }
-        />
-      ) : (
-        <p className="text-xs text-muted-foreground" data-testid="section-nothing">
-          {section.empty.line}
-        </p>
+    <button
+      type="button"
+      aria-pressed={pressed}
+      data-testid={testId}
+      data-known={known}
+      onClick={onPress}
+      className={cn(
+        "inline-flex h-7 items-center rounded-4xl border px-2.5 text-xs font-medium whitespace-nowrap transition-colors outline-none",
+        "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+        pressed
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
-    </section>
+    >
+      {children}
+    </button>
   );
 }
 
-function ConnectionRow({
+/** How each place a model can run reads on a card; a kind this build cannot name reads as itself. */
+const KIND_LABEL: Record<ConnectionType, string> = { local: "Local", http: "HTTP" };
+
+/**
+ * Where the model runs, in one line: `Local · cuda · fp16`, `HTTP · models.example`.
+ *
+ * Built from whichever of the four facts the connection carries rather than
+ * from a layout per kind, so a kind this build has never seen renders the same
+ * way — its raw value, then whatever it declares — with nothing rearranged.
+ * The host rather than the whole URL, because a card's width is the point and
+ * the path is re-readable in the edit form.
+ */
+export function sourceLine(connection: Connection): string {
+  const kind = (KIND_LABEL as Record<string, string>)[connection.connection_type];
+  return [
+    kind ?? connection.connection_type,
+    connection.device,
+    connection.precision,
+    hostOf(connection.endpoint_url),
+  ]
+    .filter((part): part is string => part !== null && part !== undefined && part !== "")
+    .join(" · ");
+}
+
+function hostOf(url: string | null): string | null {
+  if (url === null || url === "") return null;
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * One connection, as a card.
+ *
+ * Everything on it is read off the one `ConnectionOut` — the facts in the order
+ * a person scans them, and each line absent rather than blank when its datum is
+ * null. **Nothing here decides what is legal**: which controls exist is
+ * `allowed_actions` and nothing else; `setup_state` only picks the reading of a
+ * declared download, and a live run only disables what a second press would
+ * collide with.
+ *
+ * Exported for the card tests, which render one against a full fixture and
+ * against a bare one without a listing in the way.
+ */
+export function ConnectionCard({
   connection,
   onEdit,
   onDelete,
@@ -402,178 +505,215 @@ function ConnectionRow({
   // deciding what the connection permits.
   const busy = weights.running || integrity.running;
   // Never a bare disabled control: the label says what is happening, in the
-  // vocabulary this row's setup state gives it. At `ready` a download reads an
+  // vocabulary this card's setup state gives it. At `ready` a download reads an
   // index for files that are missing, which is "Checking…"; before setup it is
   // the transfer itself. Read only while `busy`.
   const busyLabel = weights.running ? (ready ? "Checking…" : "Downloading…") : "Reading every file…";
+  const overflow =
+    can.has("update") ||
+    can.has("delete") ||
+    can.has("check_integrity") ||
+    can.has("test_endpoint") ||
+    (can.has("download_weights") && ready);
+  const downloadable = can.has("download_weights") && !ready;
   return (
-    <div className="flex flex-col gap-2 p-4" data-testid={`connection-${connection.name}`}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">{connection.name}</span>
-            <Badge data-testid="connection-type">
-              {connection.connection_type === "local" ? "Local" : "HTTP"}
-            </Badge>
-            {/*
-              Semantic token **and** text, never colour alone: the word is what a
-              screen reader announces and what somebody who cannot tell the two
-              desaturated chips apart reads.
-            */}
-            <Badge
-              variant={ready ? "success" : "warning"}
-              data-testid="connection-status"
-              data-state={connection.setup_state}
-            >
-              {ready ? "Ready" : "Not set up"}
-            </Badge>
-          </div>
-          {/* One line, the way a person reads them — the CLI's listing agrees. */}
-          <span className="break-all text-xs text-muted-foreground">
-            {connection.model_id} @ {connection.model_revision}
-          </span>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <div className="flex items-center justify-end gap-2">
-            {/*
-              One declared action, two readings of it, and the row picks the
-              reading from `setup_state` — a field the wire states. Whether the
-              control may exist is still `allowed_actions` and nothing else.
-            */}
-            {can.has("download_weights") && !ready && (
-              <Button
-                variant="secondary"
-                size="sm"
-                data-testid="download-weights"
-                disabled={busy}
-                onClick={weights.start}
-              >
-                <IconDownload className="size-4" aria-hidden="true" />
-                {busy ? busyLabel : "Download weights"}
-              </Button>
-            )}
-            {(can.has("update") ||
-              can.has("delete") ||
-              can.has("check_integrity") ||
-              can.has("test_endpoint") ||
-              (can.has("download_weights") && ready)) && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Actions for ${connection.name}`}
-                    data-testid={`actions-${connection.name}`}
+    <Card className="w-full" data-testid={`connection-${connection.name}`}>
+      <CardHeader>
+        <CardTitle className="break-words">{connection.name}</CardTitle>
+        {/* One line, the way a person reads them — the CLI's listing agrees. */}
+        <CardDescription className="font-mono text-xs break-all" data-testid="model-reference">
+          {connection.model_id} @ {connection.model_revision}
+        </CardDescription>
+        {overflow && (
+          <CardAction>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Actions for ${connection.name}`}
+                  data-testid={`actions-${connection.name}`}
+                >
+                  <IconDots aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {/*
+                  Two checks over the same files, and each label says what its
+                  own check *proves* rather than what it is called.
+                  "Verify weights" covered both readings and could only be
+                  honest about one: a download against a set-up connection
+                  reads an index and finds a file that is absent, and no
+                  amount of it will find a file that is present and wrong.
+                  `docs/content/inference.md` carries the same two sentences.
+                */}
+                {can.has("download_weights") && ready && (
+                  <DropdownMenuItem
+                    data-testid="action-verify-weights"
+                    disabled={busy}
+                    onSelect={weights.start}
                   >
-                    <IconDots aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {/*
-                    Two checks over the same files, and each label says what its
-                    own check *proves* rather than what it is called.
-                    "Verify weights" covered both readings and could only be
-                    honest about one: a download against a set-up connection
-                    reads an index and finds a file that is absent, and no
-                    amount of it will find a file that is present and wrong.
-                    `docs/content/inference.md` carries the same two sentences.
-                  */}
-                  {can.has("download_weights") && ready && (
-                    <DropdownMenuItem
-                      data-testid="action-verify-weights"
-                      disabled={busy}
-                      onSelect={weights.start}
-                    >
-                      <IconFileSearch className="size-4" aria-hidden="true" />
-                      {busy ? busyLabel : "Check for missing files"}
-                    </DropdownMenuItem>
-                  )}
-                  {can.has("check_integrity") && (
-                    <DropdownMenuItem
-                      data-testid="action-check-integrity"
-                      disabled={busy}
-                      onSelect={integrity.start}
-                    >
-                      <IconShieldCheck className="size-4" aria-hidden="true" />
-                      {busy ? busyLabel : "Check files are undamaged"}
-                    </DropdownMenuItem>
-                  )}
-                  {can.has("test_endpoint") && (
-                    <DropdownMenuItem
-                      data-testid="action-test-endpoint"
-                      disabled={probe.isPending}
-                      onSelect={() => probe.mutate(connection.id)}
-                    >
-                      <IconBroadcast className="size-4" aria-hidden="true" />
-                      {probe.isPending ? "Asking the endpoint…" : "Test endpoint"}
-                    </DropdownMenuItem>
-                  )}
-                  {can.has("update") && (
-                    <DropdownMenuItem data-testid="action-edit" onSelect={onEdit}>
-                      <IconPencil className="size-4" aria-hidden="true" />
-                      Edit
-                    </DropdownMenuItem>
-                  )}
-                  {can.has("delete") && (
-                    <DropdownMenuItem data-testid="action-delete" onSelect={onDelete}>
-                      <IconTrash className="size-4" aria-hidden="true" />
-                      Delete
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+                    <IconFileSearch className="size-4" aria-hidden="true" />
+                    {busy ? busyLabel : "Check for missing files"}
+                  </DropdownMenuItem>
+                )}
+                {can.has("check_integrity") && (
+                  <DropdownMenuItem
+                    data-testid="action-check-integrity"
+                    disabled={busy}
+                    onSelect={integrity.start}
+                  >
+                    <IconShieldCheck className="size-4" aria-hidden="true" />
+                    {busy ? busyLabel : "Check files are undamaged"}
+                  </DropdownMenuItem>
+                )}
+                {can.has("test_endpoint") && (
+                  <DropdownMenuItem
+                    data-testid="action-test-endpoint"
+                    disabled={probe.isPending}
+                    onSelect={() => probe.mutate(connection.id)}
+                  >
+                    <IconBroadcast className="size-4" aria-hidden="true" />
+                    {probe.isPending ? "Asking the endpoint…" : "Test endpoint"}
+                  </DropdownMenuItem>
+                )}
+                {can.has("update") && (
+                  <DropdownMenuItem data-testid="action-edit" onSelect={onEdit}>
+                    <IconPencil className="size-4" aria-hidden="true" />
+                    Edit
+                  </DropdownMenuItem>
+                )}
+                {can.has("delete") && (
+                  <DropdownMenuItem data-testid="action-delete" onSelect={onDelete}>
+                    <IconTrash className="size-4" aria-hidden="true" />
+                    Delete
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </CardAction>
+        )}
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col gap-3">
+        {connection.capabilities.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5" aria-label="What it does" data-testid="capability-badges">
+            {connection.capabilities.map((capability) => (
+              <li key={capability}>
+                <Badge data-testid="capability-badge" data-capability={capability}>
+                  {capabilityBadge(capability)}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+        {connection.produces.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <span>Writes</span>
+            <ul className="flex flex-wrap gap-1.5" aria-label="Writes" data-testid="produces-chips">
+              {connection.produces.map((geometry) => (
+                <li key={geometry}>
+                  <Badge variant="outline" data-testid="produces-chip" data-geometry={geometry}>
+                    {producesProse([geometry])}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
           </div>
+        )}
+        <p className="text-xs text-muted-foreground" data-testid="connection-source">
+          {sourceLine(connection)}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
           {/*
-            Rendered off the wire and not off `weights.running`, so a page that
-            arrived mid-transfer shows it on its first fetch — the whole point of
-            the download living on the connection. It disappears when the job
-            settles, at which point the row's own status says what happened.
+            Semantic token **and** text, never colour alone: the word is what a
+            screen reader announces and what somebody who cannot tell the two
+            desaturated chips apart reads.
           */}
-          {weights.live !== null && <DownloadProgress download={weights.live} />}
-          {integrity.live !== null && <IntegrityProgress check={integrity.live} />}
+          <Badge
+            variant={ready ? "success" : "warning"}
+            data-testid="connection-status"
+            data-state={connection.setup_state}
+          >
+            {ready ? "Ready" : "Not set up"}
+          </Badge>
         </div>
-      </div>
-      {/*
-        The prose runs the width of the row rather than the action column's, so
-        an install command and a file name stay on one or two lines instead of
-        wrapping down the right-hand edge.
-      */}
-      {weights.failure !== null && (
-        <FieldError data-testid="download-error">
-          {weights.failure}{" "}
-          {ready
-            ? "The connection is still Ready — nothing was changed. Check again to re-read the cache."
-            : "The connection is still Not set up: weights arrive or they do not, so there is nothing half-installed to clear up. Download weights again — an interrupted transfer resumes from what it had."}
-        </FieldError>
+        {/*
+          Rendered off the wire and not off `weights.running`, so a page that
+          arrived mid-transfer shows it on its first fetch — the whole point of
+          the download living on the connection. It disappears when the job
+          settles, at which point the card's own status says what happened.
+        */}
+        {weights.live !== null && <DownloadProgress download={weights.live} />}
+        {integrity.live !== null && <IntegrityProgress check={integrity.live} />}
+        {weights.failure !== null && (
+          <FieldError data-testid="download-error">
+            {weights.failure}{" "}
+            {ready
+              ? "The connection is still Ready — nothing was changed. Check again to re-read the cache."
+              : "The connection is still Not set up: weights arrive or they do not, so there is nothing half-installed to clear up. Download weights again — an interrupted transfer resumes from what it had."}
+          </FieldError>
+        )}
+        {/*
+          The one failure on this screen that has already acted. A check that
+          found damage purged the bad files and stood the connection down
+          before the job row said so, so the sentence describes a state the
+          card is *already* in — and the remedy it names is the action the
+          connection now declares, in this card's own menu.
+        */}
+        {integrity.failure !== null && (
+          <FieldError data-testid="integrity-error">
+            {integrity.failure}{" "}
+            {ready
+              ? "Nothing was removed and the connection is still Ready — a check that cannot reach the model's source is not an answer about the files here."
+              : "The damaged copies have been removed and the connection is back to Not set up. Download weights again: with the bad files gone, it is a real transfer rather than a cache hit."}
+          </FieldError>
+        )}
+        {probe.isPending && (
+          <FieldHint data-testid="test-endpoint-pending">Asking the endpoint…</FieldHint>
+        )}
+        {probe.isError && (
+          <FieldError data-testid="test-endpoint-error">{refusalProse(probe.error)}</FieldError>
+        )}
+        {/*
+          Asked for per card and only before setup: what a fetch would cost is
+          the question a card at `Not set up` is about, and a card at `Ready`
+          has nothing to fetch. The list carries no size field — the same read
+          the form makes, keyed by the pair, so a pair already priced in the
+          form is not priced again.
+        */}
+        {!ready && (
+          <DownloadSizeLine
+            modelId={connection.model_id}
+            revision={connection.model_revision}
+            testId="connection-size"
+          />
+        )}
+      </CardContent>
+      {downloadable && (
+        <CardFooter>
+          {/*
+            One declared action, two readings of it, and the card picks the
+            reading from `setup_state` — a field the wire states. Whether the
+            control may exist is still `allowed_actions` and nothing else.
+          */}
+          <Button
+            variant="secondary"
+            size="sm"
+            data-testid="download-weights"
+            disabled={busy}
+            onClick={weights.start}
+          >
+            <IconDownload className="size-4" aria-hidden="true" />
+            {busy ? busyLabel : "Download weights"}
+          </Button>
+        </CardFooter>
       )}
-      {/*
-        The one failure on this screen that has already acted. A check that
-        found damage purged the bad files and stood the connection down
-        before the job row said so, so the sentence describes a state the
-        row is *already* in — and the remedy it names is the action the
-        connection now declares, in this row's own menu.
-      */}
-      {integrity.failure !== null && (
-        <FieldError data-testid="integrity-error">
-          {integrity.failure}{" "}
-          {ready
-            ? "Nothing was removed and the connection is still Ready — a check that cannot reach the model's source is not an answer about the files here."
-            : "The damaged copies have been removed and the connection is back to Not set up. Download weights again: with the bad files gone, it is a real transfer rather than a cache hit."}
-        </FieldError>
-      )}
-      {probe.isPending && (
-        <FieldHint data-testid="test-endpoint-pending">Asking the endpoint…</FieldHint>
-      )}
-      {probe.isError && (
-        <FieldError data-testid="test-endpoint-error">{refusalProse(probe.error)}</FieldError>
-      )}
-    </div>
+    </Card>
   );
 }
 
 /**
- * The connection's weight transfer, read off the row rather than followed.
+ * The connection's weight transfer, read off the card rather than followed.
  *
  * **Nothing here remembers that a download was started**, and that is the whole
  * of why leaving the screen no longer loses one. The wire says which job, what
@@ -613,7 +753,7 @@ function useDownloadRun(connection: Connection): {
 }
 
 /**
- * The connection's integrity check, read off the row rather than followed.
+ * The connection's integrity check, read off the card rather than followed.
  *
  * `useDownloadRun`'s twin over the same files, and it holds no job id for the
  * same reason: a check outlives the request that started it, so the only way a
@@ -1338,28 +1478,31 @@ function AccessLine({
 function DownloadSizeLine({
   modelId,
   revision,
+  testId = "size",
 }: {
   readonly modelId: string;
   readonly revision: string;
+  /** The form's line and a card's line can be on screen together; the ids say which is which. */
+  readonly testId?: string;
 }): JSX.Element {
   const size = useDownloadSize(modelId, revision);
   if (modelId === "" || revision === "") return <></>;
   if (size.isPending) {
     return (
-      <p className="text-xs text-muted-foreground" data-testid="size-checking">
+      <p className="text-xs text-muted-foreground" data-testid={`${testId}-checking`}>
         Reading the download size…
       </p>
     );
   }
   if (size.isError) {
     return (
-      <p className="text-xs text-muted-foreground" data-testid="size-unavailable">
+      <p className="text-xs text-muted-foreground" data-testid={`${testId}-unavailable`}>
         {refusalProse(size.error)}
       </p>
     );
   }
   return (
-    <p className="text-xs text-muted-foreground" data-testid="size-known">
+    <p className="text-xs text-muted-foreground" data-testid={`${testId}-known`}>
       Downloads {bytes(size.data.total_bytes)} across {size.data.file_count} files when you
       ask for it.
     </p>

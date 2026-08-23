@@ -14,11 +14,12 @@
  * 3. **The form stays usable when the size is unknown** (design principle 9).
  *    Creating a connection downloads nothing, so not knowing what a download
  *    would cost is not a reason to prevent one being configured.
- * 4. **Where a connection appears is the wire's too.** Sections come off
- *    `capabilities`, and the tests that matter are the ones with nowhere obvious
- *    to put a row: two abilities on one connection, an ability nothing consumes
- *    yet, and a connection that has not declared anything at all. A row in no
- *    section is a connection nobody can download, edit or delete.
+ * 4. **What a card says, and which chip shows it, is the wire's too.** Badges
+ *    and chips come off `capabilities`, and the tests that matter are the ones
+ *    with nowhere obvious to put a card: two abilities on one connection, a
+ *    value this build has no name for, and a connection that has not declared
+ *    anything at all. A card no chip reaches is a connection nobody can
+ *    download, edit or delete.
  * 5. **What the form may offer is the installation's**, served rather than
  *    compiled in — so the model field is a query, with the three states a query
  *    has. None of them is a disabled control: it says it is reading, it renders
@@ -37,8 +38,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
-import { CapabilitySection, ModelsScreen, bytes } from "./ModelsScreen";
-import { sectionsOf, type ConnectionSection } from "./inferenceSections";
+import { ConnectionCard, ModelsScreen, bytes, sourceLine } from "./ModelsScreen";
 import { CONNECTION_POLL_MS, type Connection } from "../data/inferenceQueries";
 
 const API = "http://visionset.test";
@@ -343,7 +343,7 @@ it("renders a failed listing as a refusal rather than as an empty list", async (
     body: { code: "SERVICE_UNAVAILABLE", message: "The workspace is busy." },
   });
   render(mount(<ModelsScreen />));
-  await waitFor(() => expect(screen.queryByTestId("connection-sections")).toBeNull());
+  await waitFor(() => expect(screen.queryByTestId("models-catalog")).toBeNull());
   expect(screen.queryByText("Connect a model to enable auto-labeling")).toBeNull();
 });
 
@@ -366,7 +366,7 @@ it("shows the model and its revision the way a person reads them", async () => {
 it("carries no filter until a list could be long enough to need one", async () => {
   listing([connection()]);
   render(mount(<ModelsScreen />));
-  await screen.findByTestId("connection-sections");
+  await screen.findByTestId("models-catalog");
   expect(screen.queryByTestId("connection-filter")).toBeNull();
 });
 
@@ -381,142 +381,270 @@ it("filters by name and keeps saying how many it hid", async () => {
   expect(screen.getByTestId("connection-needle")).not.toBeNull();
 });
 
-// --- organised by what a connection enables ------------------------------------
+// --- one card per connection, and what it says -------------------------------
 
-it("puts a connection under the ability its weights declare", async () => {
-  listing([
-    connection({
-      setup_state: "ready",
-      capabilities: ["point_suggest"],
-      allowed_actions: ["update", "delete"],
-    }),
-  ]);
-  render(mount(<ModelsScreen />));
+/** Every field a card can show, filled — the fixture the omission tests subtract from. */
+function full(): Connection {
+  return connection({
+    name: "sam2-full",
+    setup_state: "ready",
+    capabilities: ["point_suggest", "text_detect"],
+    produces: ["bbox", "polygon"],
+    device: "cuda",
+    precision: "fp16",
+    allowed_actions: ["download_weights", "check_integrity", "update", "delete"],
+  });
+}
 
-  const suggest = await screen.findByTestId("section-point_suggest");
-  expect(within(suggest).getByTestId("connection-sam2-local")).not.toBeNull();
-  expect(
-    within(screen.getByTestId("section-text_detect")).queryByTestId("connection-sam2-local"),
-  ).toBeNull();
-});
+function card(node: ReactNode): JSX.Element {
+  return mount(node);
+}
 
-it("names the surface that uses an ability, not the models that serve it", async () => {
-  listing([connection({ setup_state: "ready", capabilities: ["point_suggest"] })]);
-  render(mount(<ModelsScreen />));
-  expect((await screen.findByTestId("section-point_suggest")).textContent).toContain(
-    "suggest tool",
-  );
-});
-
-it("shows a connection serving two abilities under both, and edits the one connection", async () => {
-  listing([
-    connection({
-      setup_state: "ready",
-      capabilities: ["point_suggest", "text_detect"],
-      allowed_actions: ["update", "delete"],
-    }),
-  ]);
-  catalog();
-  render(mount(<ModelsScreen />));
-
-  const detect = await screen.findByTestId("section-text_detect");
-  expect(
-    within(screen.getByTestId("section-point_suggest")).getByTestId("connection-sam2-local"),
-  ).not.toBeNull();
-  // The detail surface is the screen's rather than the section's, so acting from
-  // the second copy of a row opens the dialog for the same connection.
-  await userEvent.click(within(detect).getByTestId("actions-sam2-local"));
-  await userEvent.click(await screen.findByTestId("action-edit"));
-  expect(value(await screen.findByTestId("connection-name"))).toBe("sam2-local");
-});
-
-it("keeps a connection that has declared nothing visible, beside its remedy", async () => {
-  // The commonest state on this screen: capability is read off weights, so a
-  // connection whose download has not run declares none. A dashboard organised by
-  // capability that dropped it would hide the very row whose button fixes that.
-  listing([connection()]);
-  render(mount(<ModelsScreen />));
-
-  const waiting = await screen.findByTestId("section-undeclared");
-  expect(within(waiting).getByTestId("connection-sam2-local")).not.toBeNull();
-  expect(within(waiting).getByTestId("download-weights")).not.toBeNull();
-});
-
-it("invites a first connection per ability rather than leaving a gap", async () => {
-  listing([connection({ setup_state: "ready", capabilities: ["text_detect"] })]);
-  render(mount(<ModelsScreen />));
-
-  const suggest = await screen.findByTestId("section-point_suggest");
-  expect(within(suggest).getByText("Add a connection the suggest tool can use")).not.toBeNull();
-  expect(
-    within(suggest).getByRole("button", { name: "Add a point-prompt connection" }),
-  ).not.toBeNull();
-});
-
-it("describes an ability nothing consumes yet, and offers no way into it", async () => {
-  // Principle 9 from the other side. The missing half is the surface that would
-  // ask, so there is nothing here somebody could press to get one — and an
-  // invitation to configure a connection nothing can use is that same offer.
-  //
-  // Built directly rather than through a real capability: both named abilities
-  // now have a consumer (`point_suggest` the editor's suggest tool, `text_detect`
-  // pre-labeling), so the scenario this test protects — a described ability with
-  // nowhere to be used — has no live example left in `CAPABILITY_COPY`. What is
-  // still real is `CapabilitySection`'s own rendering of the `describe` kind, and
-  // that is what stays under test.
-  const nothingYet: ConnectionSection = {
-    key: "example_ability",
-    title: "An ability with no surface yet",
-    purpose: "Nothing in the app asks for this yet.",
-    empty: { kind: "describe", line: "Nothing here could be used yet." },
-    known: true,
-    connections: [],
-  };
-
+it("renders every field a full connection carries, top to bottom", async () => {
   render(
-    mount(
-      <CapabilitySection
-        section={nothingYet}
-        filtering={false}
-        onAdd={() => undefined}
+    card(<ConnectionCard connection={full()} onEdit={() => undefined} onDelete={() => undefined} />),
+  );
+  const shown = await screen.findByTestId("connection-sam2-full");
+  expect(within(shown).getByRole("heading", { level: 3 }).textContent).toBe("sam2-full");
+  expect(within(shown).getByTestId("model-reference").textContent).toBe(
+    `${SAM_BASE_PLUS} @ ${SAM_BASE_PLUS_COMMIT}`,
+  );
+  // Product prose, one badge per declared ability — and in the wire's order.
+  expect(
+    within(shown)
+      .getAllByTestId("capability-badge")
+      .map((badge) => badge.textContent),
+  ).toEqual(["Suggests from clicks", "Finds what you name"]);
+  // The shared plural prose, one chip per shape.
+  expect(
+    within(shown)
+      .getAllByTestId("produces-chip")
+      .map((chip) => chip.textContent),
+  ).toEqual(["boxes", "polygons"]);
+  expect(within(shown).getByTestId("connection-source").textContent).toBe("Local · cuda · fp16");
+  expect(within(shown).getByTestId("connection-status").textContent).toBe("Ready");
+  // Ready, so the download reading is the overflow's check and there is no
+  // visible download control and no size line.
+  expect(within(shown).queryByTestId("download-weights")).toBeNull();
+  expect(within(shown).queryByTestId("connection-size-checking")).toBeNull();
+  expect(within(shown).getByTestId("actions-sam2-full")).not.toBeNull();
+});
+
+it("omits every line whose datum is null rather than drawing a placeholder", async () => {
+  // A fresh local connection: no ability yet, nothing it writes, no run, and a
+  // card that says so by saying nothing in those slots.
+  render(
+    card(
+      <ConnectionCard
+        connection={connection({ allowed_actions: ["update", "delete"] })}
         onEdit={() => undefined}
         onDelete={() => undefined}
       />,
     ),
   );
+  const shown = await screen.findByTestId("connection-sam2-local");
+  expect(within(shown).queryByTestId("capability-badges")).toBeNull();
+  expect(within(shown).queryByTestId("produces-chips")).toBeNull();
+  expect(within(shown).queryByTestId("download-progress")).toBeNull();
+  expect(within(shown).queryByTestId("integrity-progress")).toBeNull();
+  expect(within(shown).getByTestId("connection-status").textContent).toBe("Not set up");
+  // The one thing that only shows below Ready.
+  expect(within(shown).getByTestId("connection-size-checking")).not.toBeNull();
+});
 
-  const section = await screen.findByTestId("section-example_ability");
-  expect(within(section).getByTestId("section-nothing").textContent).toContain(
-    "Nothing here could be used yet.",
+it("reads an http connection's source as its kind and its host, with nothing invented", async () => {
+  render(
+    card(
+      <ConnectionCard
+        connection={connection({
+          name: "remote-seg",
+          connection_type: "http",
+          device: null,
+          precision: null,
+          endpoint_url: "https://models.example/v1/predict",
+          setup_state: "ready",
+          allowed_actions: ["test_endpoint", "update", "delete"],
+        })}
+        onEdit={() => undefined}
+        onDelete={() => undefined}
+      />,
+    ),
   );
-  expect(within(section).queryAllByRole("button")).toEqual([]);
+  const shown = await screen.findByTestId("connection-remote-seg");
+  expect(within(shown).getByTestId("connection-source").textContent).toBe("HTTP · models.example");
 });
 
-it("shows a connection whose ability this build has no name for", async () => {
-  // The response check used to refuse the whole listing over one unrecognised member, so
-  // the generic section was unreachable through the network and only a unit test reached
-  // it. This is that path end to end: a stubbed listing, the real client, the real check.
-  listing([connection({ setup_state: "ready", capabilities: ["depth_estimate"] })]);
+it("renders a kind this build has never seen without rearranging the line", () => {
+  // The source line is an open axis: a third member arrives as its raw value
+  // followed by whatever it declares, in the same slots the two known kinds use.
+  const newer = connection({
+    connection_type: "edge" as unknown as Connection["connection_type"],
+    device: "npu",
+    precision: null,
+    endpoint_url: null,
+  });
+  expect(sourceLine(newer)).toBe("edge · npu");
+  expect(sourceLine(connection({ endpoint_url: "not a url", device: null, precision: null }))).toBe(
+    "Local · not a url",
+  );
+});
+
+it("shows a capability this build has no name for as its raw value, never dropped", async () => {
+  render(
+    card(
+      <ConnectionCard
+        connection={connection({
+          setup_state: "ready",
+          capabilities: ["depth_estimate"],
+          produces: ["depth_map"] as unknown as Connection["produces"],
+        })}
+        onEdit={() => undefined}
+        onDelete={() => undefined}
+      />,
+    ),
+  );
+  const shown = await screen.findByTestId("connection-sam2-local");
+  expect(within(shown).getByTestId("capability-badge").textContent).toBe("depth_estimate");
+  expect(within(shown).getByTestId("produces-chip").textContent).toBe("depth_map");
+});
+
+it("asks for the download size per card, and only below Ready", async () => {
+  listing([
+    connection({ id: "a", name: "fresh" }),
+    connection({
+      id: "b",
+      name: "done",
+      setup_state: "ready",
+      model_id: "other/model",
+      model_revision: "deadbeef",
+      allowed_actions: ["update", "delete"],
+    }),
+  ]);
+  sizeIs(1_200_000_000);
   render(mount(<ModelsScreen />));
-
-  const generic = await screen.findByTestId("section-depth_estimate");
-  expect(generic.dataset.known).toBe("false");
-  expect(within(generic).getByTestId("connection-sam2-local")).not.toBeNull();
+  const fresh = await screen.findByTestId("connection-fresh");
+  expect((await within(fresh).findByTestId("connection-size-known")).textContent).toContain(
+    "Downloads 1.2 GB across 3 files",
+  );
+  const done = screen.getByTestId("connection-done");
+  expect(within(done).queryByTestId("connection-size-known")).toBeNull();
+  // One request, for the one pair a card below Ready carries.
+  const asked = sent.filter((one) => one.url.includes("download-size"));
+  expect(asked).toHaveLength(1);
+  expect(asked[0]?.url).toContain(encodeURIComponent(SAM_BASE_PLUS));
 });
 
-it("answers what to do next exactly once, however many sections are on screen", async () => {
-  // The count, from both sides (`DESIGN.md`): a section CTA shipped as `primary`
-  // would put a filled button on the page for every ability nothing serves yet.
-  // The workspace below is chosen so an invitation is actually on screen — the
+it("shows a connection serving two abilities once, and edits the one connection", async () => {
+  listing([full()]);
+  catalog();
+  render(mount(<ModelsScreen />));
+  await screen.findByTestId("models-grid");
+  expect(screen.getAllByTestId("connection-sam2-full")).toHaveLength(1);
+  await userEvent.click(screen.getByTestId("actions-sam2-full"));
+  await userEvent.click(await screen.findByTestId("action-edit"));
+  expect(value(await screen.findByTestId("connection-name"))).toBe("sam2-full");
+});
+
+// --- the chips -----------------------------------------------------------------
+
+it("offers All and a chip per ability this build describes, whatever the workspace holds", async () => {
+  listing([connection()]);
+  render(mount(<ModelsScreen />));
+  const chips = await screen.findByTestId("capability-chips");
+  expect(
+    within(chips)
+      .getAllByRole("button")
+      .map((chip) => chip.textContent),
+  ).toEqual(["All", "Point prompts", "Text prompts"]);
+  expect(screen.getByTestId("capability-chip-all").getAttribute("aria-pressed")).toBe("true");
+});
+
+it("narrows the grid to the chip pressed, and All brings everything back", async () => {
+  listing([
+    connection({ id: "a", name: "suggest", setup_state: "ready", capabilities: ["point_suggest"] }),
+    connection({ id: "b", name: "detect", setup_state: "ready", capabilities: ["text_detect"] }),
+    connection({ id: "c", name: "fresh" }),
+  ]);
+  render(mount(<ModelsScreen />));
+  await screen.findByTestId("models-grid");
+  expect(screen.getAllByTestId(/^connection-(suggest|detect|fresh)$/)).toHaveLength(3);
+
+  await userEvent.click(screen.getByTestId("capability-chip-text_detect"));
+  expect(screen.getByTestId("capability-chip-text_detect").getAttribute("aria-pressed")).toBe(
+    "true",
+  );
+  expect(screen.getByTestId("capability-chip-all").getAttribute("aria-pressed")).toBe("false");
+  expect(screen.getByTestId("connection-detect")).not.toBeNull();
+  expect(screen.queryByTestId("connection-suggest")).toBeNull();
+  // A connection that has declared nothing answers All and no other chip.
+  expect(screen.queryByTestId("connection-fresh")).toBeNull();
+
+  await userEvent.click(screen.getByTestId("capability-chip-all"));
+  expect(screen.getAllByTestId(/^connection-(suggest|detect|fresh)$/)).toHaveLength(3);
+});
+
+it("keeps a connection that has declared nothing on the page, beside its remedy", async () => {
+  // The commonest state on this screen: capability is read off weights, so a
+  // connection whose download has not run declares none. A page organised by
+  // capability that dropped it would hide the very card whose button fixes that.
+  listing([connection()]);
+  render(mount(<ModelsScreen />));
+  const waiting = await screen.findByTestId("connection-sam2-local");
+  expect(within(waiting).getByTestId("download-weights")).not.toBeNull();
+});
+
+it("invites a first connection when a described chip shows nothing", async () => {
+  listing([connection({ setup_state: "ready", capabilities: ["text_detect"] })]);
+  render(mount(<ModelsScreen />));
+  await screen.findByTestId("models-grid");
+  await userEvent.click(screen.getByTestId("capability-chip-point_suggest"));
+  expect(screen.queryByTestId("models-grid")).toBeNull();
+  expect(screen.getByText("Add a connection the suggest tool can use")).not.toBeNull();
+  expect(screen.getByRole("button", { name: "Add a point-prompt connection" })).not.toBeNull();
+});
+
+it("opens the same dialog from a chip's invitation as from the header", async () => {
+  listing([connection({ setup_state: "ready", capabilities: ["text_detect"] })]);
+  catalog();
+  render(mount(<ModelsScreen />));
+  await screen.findByTestId("models-grid");
+  await userEvent.click(screen.getByTestId("capability-chip-point_suggest"));
+  await userEvent.click(screen.getByTestId("capability-invite"));
+  expect(await screen.findByTestId("choose-type")).not.toBeNull();
+});
+
+it("raises a chip for an ability this build has no name for, from the value itself", async () => {
+  // The response check used to refuse the whole listing over one unrecognised member, so
+  // the generic rendering was unreachable through the network and only a unit test reached
+  // it. This is that path end to end: a stubbed listing, the real client, the real check.
+  listing([
+    connection({ setup_state: "ready", capabilities: ["depth_estimate"] }),
+    connection({ id: "b", name: "other", setup_state: "ready", capabilities: ["text_detect"] }),
+  ]);
+  render(mount(<ModelsScreen />));
+  const generic = await screen.findByTestId("capability-chip-depth_estimate");
+  expect(generic.textContent).toBe("depth_estimate");
+  expect(generic.dataset.known).toBe("false");
+  await userEvent.click(generic);
+  expect(screen.getByTestId("connection-sam2-local")).not.toBeNull();
+  expect(screen.queryByTestId("connection-other")).toBeNull();
+});
+
+it("answers what to do next exactly once, however many chips are on screen", async () => {
+  // The count, from both sides (`DESIGN.md`): an invitation shipped as `primary`
+  // would put a second filled button on the page beside the header's. The
+  // workspace below is chosen so an invitation is actually on screen — the
   // sweep says nothing about a rule whose control never rendered.
   listing([connection({ setup_state: "ready", capabilities: ["text_detect"] })]);
   render(mount(<ModelsScreen />));
+  await screen.findByTestId("models-grid");
+  await userEvent.click(screen.getByTestId("capability-chip-point_suggest"));
   await screen.findByRole("button", { name: "Add a point-prompt connection" });
 
   expect(document.body.querySelectorAll("button.bg-primary")).toHaveLength(1);
 });
 
-it("says a section has no matches rather than inviting mid-filter", async () => {
+it("says nothing matches rather than inviting mid-filter", async () => {
   const many = Array.from({ length: 24 }, (_, index) =>
     connection({
       id: `id-${index}`,
@@ -528,42 +656,49 @@ it("says a section has no matches rather than inviting mid-filter", async () => 
   listing(many);
   render(mount(<ModelsScreen />));
   await userEvent.type(await screen.findByTestId("connection-filter"), "need");
+  await userEvent.click(screen.getByTestId("capability-chip-point_suggest"));
 
-  const suggest = screen.getByTestId("section-point_suggest");
-  expect(within(suggest).getByTestId("section-filtered-out")).not.toBeNull();
+  expect(screen.getByTestId("filtered-out").textContent).toBe("Nothing here matches the filter.");
   // What somebody typed is not an occasion to invite them to configure anything.
-  expect(within(suggest).queryAllByRole("button")).toEqual([]);
+  expect(screen.queryByRole("button", { name: "Add a point-prompt connection" })).toBeNull();
+  // And the count is what both filters left, of everything.
+  expect(screen.getByTestId("filter-count").textContent).toContain("0 of 24");
 });
 
-it("renders an ability this build has no copy for from the value itself", async () => {
-  // It cannot arrive through a listing: the generated response check is an exact
-  // `oneOf` over the two shipped members, so a row carrying anything else is
-  // refused before a renderer sees it. The section is therefore asserted
-  // directly — the rule belongs to the layer that draws a value rather than to
-  // the one that decides whether it may arrive.
-  const row = connection({
+it("falls back to All when the chip pressed stops being declared", async () => {
+  // An endpoint re-asked, a model moved: the value a chip stood for can leave
+  // the workspace while it is pressed. The press is kept and reads as All, so
+  // the page never shows nothing under a chip that is not there.
+  let hosted = connection({
+    name: "remote-seg",
+    connection_type: "http",
+    device: null,
+    precision: null,
+    endpoint_url: "https://models.example/predict",
     setup_state: "ready",
-    capabilities: ["depth_estimate"] as unknown as Connection["capabilities"],
-    allowed_actions: ["update", "delete"],
+    capabilities: ["depth_estimate"],
+    allowed_actions: ["test_endpoint", "update", "delete"],
   });
-  const generic = sectionsOf([row]).find((section) => section.key === "depth_estimate")!;
+  handlers.push((request) => {
+    const path = new URL(request.url).pathname;
+    if (request.method === "GET" && path.endsWith("/connections")) {
+      return { status: 200, body: { items: [hosted], total: 1 } };
+    }
+    if (request.method === "POST" && path.endsWith("/test-endpoint")) {
+      hosted = { ...hosted, capabilities: ["point_suggest"] };
+      return { status: 200, body: hosted };
+    }
+    return undefined;
+  });
+  render(mount(<ModelsScreen />));
+  await userEvent.click(await screen.findByTestId("capability-chip-depth_estimate"));
+  expect(screen.getByTestId("connection-remote-seg")).not.toBeNull();
 
-  render(
-    mount(
-      <CapabilitySection
-        section={generic}
-        filtering={false}
-        onAdd={() => undefined}
-        onEdit={() => undefined}
-        onDelete={() => undefined}
-      />,
-    ),
-  );
-
-  const section = await screen.findByTestId("section-depth_estimate");
-  expect(section.getAttribute("data-known")).toBe("false");
-  expect(within(section).getByText("depth_estimate")).not.toBeNull();
-  expect(within(section).getByTestId("connection-sam2-local")).not.toBeNull();
+  await userEvent.click(screen.getByTestId("actions-remote-seg"));
+  await userEvent.click(await screen.findByTestId("action-test-endpoint"));
+  await waitFor(() => expect(screen.queryByTestId("capability-chip-depth_estimate")).toBeNull());
+  expect(screen.getByTestId("capability-chip-all").getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByTestId("connection-remote-seg")).not.toBeNull();
 });
 
 // --- what the wire declares, and only that -------------------------------------
@@ -580,14 +715,14 @@ it("does not offer Download weights when the wire withholds it", async () => {
   // gets this right.
   listing([connection({ allowed_actions: ["update", "delete"] })]);
   render(mount(<ModelsScreen />));
-  await screen.findByTestId("connection-sections");
+  await screen.findByTestId("models-catalog");
   expect(screen.queryByTestId("download-weights")).toBeNull();
 });
 
 it("offers no overflow at all when neither edit nor delete is declared", async () => {
   listing([connection({ allowed_actions: [] })]);
   render(mount(<ModelsScreen />));
-  await screen.findByTestId("connection-sections");
+  await screen.findByTestId("models-catalog");
   expect(screen.queryByTestId("actions-sam2-local")).toBeNull();
 });
 
@@ -729,7 +864,7 @@ it("never re-reads a list nothing is moving in", async () => {
 it("shows no progress for a connection that has never been downloaded", async () => {
   listing([connection()]);
   render(mount(<ModelsScreen />));
-  await screen.findByTestId("connection-sections");
+  await screen.findByTestId("models-catalog");
   expect(screen.queryByTestId("download-progress")).toBeNull();
 });
 
@@ -1431,7 +1566,7 @@ it("offers the completeness check in the overflow once a connection is ready", a
     connection({ setup_state: "ready", allowed_actions: ["download_weights", "update", "delete"] }),
   ]);
   render(mount(<ModelsScreen />));
-  await screen.findByTestId("connection-sections");
+  await screen.findByTestId("models-catalog");
   // Not the prominent control — there is nothing to fetch, only something to check.
   expect(screen.queryByTestId("download-weights")).toBeNull();
 
@@ -1734,7 +1869,7 @@ it("stops showing a check once it has passed", async () => {
     }),
   ]);
   render(mount(<ModelsScreen />));
-  await screen.findByTestId("connection-sections");
+  await screen.findByTestId("models-catalog");
 
   expect(screen.queryByTestId("integrity-progress")).toBeNull();
   expect(screen.queryByTestId("integrity-error")).toBeNull();

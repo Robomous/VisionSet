@@ -1,11 +1,11 @@
 /**
- * The Models page in a real browser: a dashboard of abilities, and a weight
- * download somebody watches inside one of them.
+ * The Models page in a real browser: a grid of connection cards filtered by
+ * ability, and a weight download somebody watches on one of them.
  *
- * The sections are asserted here as well as in `models.test.tsx` because the
- * two claims differ: jsdom proves the grouping is total over what the wire can
- * say, and this proves a real workspace opens on it — and that a run in flight is
- * still found, after a reload, in the section its connection belongs to.
+ * The cards and chips are asserted here as well as in `models.test.tsx` because
+ * the two claims differ: jsdom proves the filtering is total over what the wire
+ * can say, and this proves a real workspace opens on it — and that a run in
+ * flight is still found, after a reload, on the card its connection is.
  *
  * ## Why this is not `models.test.tsx`
  *
@@ -171,7 +171,7 @@ type Check = Omit<Wire["IntegrityCheckOut"], "job_id" | "error" | "error_code"> 
  *
  * `capabilities` defaults the way the server derives it: nothing until the
  * weights are here, because the ability is read out of the model's own config.
- * That is also why a download in flight is watched from the *undeclared* section
+ * That is also why a download in flight is watched on a card with no badge
  * below — the connection cannot say what it answers until the transfer lands.
  */
 function connection(
@@ -240,6 +240,21 @@ async function serveApi(page: Page, next: () => Wire["ConnectionOut"]): Promise<
   await page.route("**/api/inference/providers*", (route) =>
     route.fulfill({ status: 200, json: PROVIDERS }),
   );
+  // What a card below Ready asks on its own, and the form asks before a confirm.
+  // Answered here so no scenario's request escapes to whatever answers on the
+  // proxy's port — a real server there replies 401 to this suite's token, and
+  // the app signs out on any 401, which reads as the shell vanishing mid-test.
+  await page.route("**/api/inference/download-size*", (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        model_id: "facebook/sam2.1-hiera-base-plus",
+        model_revision: "b73207",
+        total_bytes: 1.6 * GIGABYTE,
+        file_count: 3,
+      } satisfies Wire["DownloadSizeOut"],
+    }),
+  );
   await page.route("**/api/projects**", (route) =>
     route.fulfill({ status: 200, json: { items: [], total: 0 } satisfies Wire["ProjectPage"] }),
   );
@@ -253,26 +268,42 @@ async function openModels(page: Page): Promise<void> {
   await expect(page.getByTestId("models-screen")).toBeVisible();
 }
 
-test("the screen is a list of abilities, and a connection sits under the one it declares", async ({
+test("the page is a grid of cards, and a chip narrows it to the ability a card declares", async ({
   page,
 }) => {
   await serveApi(page, () => connection("ready", null));
   await openModels(page);
 
-  const suggest = page.getByTestId("section-point_suggest");
-  await expect(suggest.getByTestId("connection-sam2-local")).toBeVisible();
-  // The heading answers what the connection is *for*, which the flat table of
-  // names, kinds and model ids never did.
-  await expect(suggest).toContainText("suggest tool");
+  // One card, saying what the connection is *for* — which the flat table of
+  // names, kinds and model ids never did — and what it writes, where it runs.
+  const grid = page.getByTestId("models-grid");
+  await expect(grid.getByTestId("connection-sam2-local")).toHaveCount(1);
+  const card = grid.getByTestId("connection-sam2-local");
+  await expect(card.getByTestId("capability-badge")).toHaveText(["Suggests from clicks"]);
+  await expect(card.getByTestId("produces-chip")).toHaveText(["boxes", "polygons"]);
+  await expect(card.getByTestId("connection-source")).toHaveText("Local · cuda · fp16");
 
-  // text_detect has a consumer now — pre-labeling a batch — so an ability
-  // nothing serves invites a first connection the same way point_suggest's
-  // own empty state does below, rather than reporting a surface that does
-  // not exist.
-  const detect = page.getByTestId("section-text_detect");
-  await expect(
-    detect.getByRole("button", { name: "Add a text-prompt connection" }),
-  ).toBeVisible();
+  // The chip for the ability it declares keeps it; the other's chip shows the
+  // invitation instead. text_detect has a consumer now — pre-labeling a batch —
+  // so an ability nothing serves invites a first connection rather than
+  // reporting a surface that does not exist.
+  await page.getByTestId("capability-chip-point_suggest").click();
+  await expect(grid.getByTestId("connection-sam2-local")).toBeVisible();
+  await page.getByTestId("capability-chip-text_detect").click();
+  await expect(page.getByTestId("models-grid")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add a text-prompt connection" })).toBeVisible();
+});
+
+test("a workspace with no connection invites the first one", async ({ page }) => {
+  await serveApi(page, () => connection("ready", null));
+  // Registered after `serveApi`, because the newest matching route answers first.
+  await page.route("**/api/inference/connections*", (route) =>
+    route.fulfill({ status: 200, json: { items: [], total: 0 } satisfies Wire["ConnectionPage"] }),
+  );
+  await openModels(page);
+  await expect(page.getByText("Connect a model to enable auto-labeling")).toBeVisible();
+  await expect(page.getByTestId("models-grid")).toHaveCount(0);
+  await expect(page.getByTestId("capability-chips")).toHaveCount(0);
 });
 
 test("a transfer left running is where it got to when you come back", async ({ page }) => {
@@ -384,13 +415,16 @@ test("an http connection is asked what it answers, and moves under it", async ({
     return route.fulfill({ status: 200, json: hosted });
   });
   await openModels(page);
-  const undeclared = page.getByTestId("section-undeclared");
-  await expect(undeclared.getByTestId("connection-remote-seg")).toBeVisible();
+  const card = page.getByTestId("connection-remote-seg");
+  await expect(card).toBeVisible();
+  await expect(card.getByTestId("connection-source")).toHaveText("HTTP · models.example");
+  await expect(card.getByTestId("capability-badge")).toHaveCount(0);
   await page.getByTestId("actions-remote-seg").click();
   await page.getByTestId("action-test-endpoint").click();
-  await expect(
-    page.getByTestId("section-point_suggest").getByTestId("connection-remote-seg"),
-  ).toBeVisible();
+  await expect(card.getByTestId("capability-badge")).toHaveText(["Suggests from clicks"]);
+  // And the chip for what it now declares shows it.
+  await page.getByTestId("capability-chip-point_suggest").click();
+  await expect(page.getByTestId("connection-remote-seg")).toBeVisible();
 });
 
 test("a model list taller than the window scrolls instead of running off it", async ({ page }) => {

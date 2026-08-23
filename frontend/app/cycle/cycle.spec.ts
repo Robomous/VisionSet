@@ -610,10 +610,10 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * cause is an extra row on this screen. Stated here, where the count is
      * decided, a violation names the count.
      *
-     * The type badge is what is counted because it is unconditional inside a
-     * row, while the download button appears only before setup.
+     * The source line is what is counted because it is unconditional inside a
+     * card, while the download button appears only before setup.
      */
-    await expect(page.getByTestId("connection-type")).toHaveCount(1);
+    await expect(page.getByTestId("connection-source")).toHaveCount(1);
   });
 
   await test.step("a click in the editor comes back as a shape, from a real server", async () => {
