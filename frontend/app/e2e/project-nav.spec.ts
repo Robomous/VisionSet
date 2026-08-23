@@ -280,6 +280,14 @@ test("below lg the tab strip renders and the column does not, with nothing lost"
   await expect(page.getByTestId("project-tabs")).toBeVisible();
   await expect(page.getByTestId("nav-batches")).toHaveAttribute("aria-selected", "true");
 
+  // Narrower still, the strip's own tabs can no longer all fit: it scrolls
+  // within its own row instead of widening the page (#754).
+  await page.setViewportSize({ width: 500, height: 800 });
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBe(true);
+  await page.setViewportSize({ width: 900, height: 800 });
+
   // The eyebrow above the strip, and the filled control and overflow beside the
   // tabs: everything the column layout offers, in a row.
   const eyebrow = page.getByTestId("project-identity");
