@@ -136,6 +136,7 @@
 
 import {
   IconBroadcast,
+  IconCpu,
   IconDots,
   IconDownload,
   IconFileSearch,
@@ -144,9 +145,10 @@ import {
   IconPlug,
   IconShieldCheck,
   IconTrash,
+  IconWorld,
   IconX,
 } from "@tabler/icons-react";
-import { useEffect, useRef, useState, type FormEvent, type JSX } from "react";
+import { useEffect, useRef, useState, type FormEvent, type JSX, type ReactNode } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
@@ -274,7 +276,7 @@ export function ModelsScreen(): JSX.Element {
           // and opens the same dialog. One filled action per view.
           action: (
             <Button variant="secondary" onClick={() => setCreating(true)}>
-              Add connection
+              Add model
             </Button>
           ),
         }}
@@ -933,6 +935,46 @@ function IntegrityProgress({ check }: { readonly check: IntegrityCheck }): JSX.E
  * abandoned mid-load hands its model id to the next connection, an HTTP one
  * included. No guard fixes that, because a guard reads the same stale state.
  */
+/**
+ * One way a model can run, offered as a tile: an icon, a name and a sentence.
+ *
+ * A tile rather than a labelled button because the two kinds are a choice to
+ * read before it is a choice to press — a `Button` keeps its label on one line,
+ * and a sentence long enough to say what the kind means does not fit one. A
+ * real `<button>`, with Nova's ring, so the keyboard reaches it like any control.
+ */
+function KindChoice({
+  testId,
+  icon,
+  title,
+  description,
+  onChoose,
+}: {
+  readonly testId: string;
+  readonly icon: ReactNode;
+  readonly title: string;
+  readonly description: string;
+  readonly onChoose: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onChoose}
+      className={cn(
+        "flex items-start gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors outline-none",
+        "hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+      )}
+    >
+      <span className="mt-0.5 text-muted-foreground">{icon}</span>
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="font-medium">{title}</span>
+        <span className="text-xs text-muted-foreground">{description}</span>
+      </span>
+    </button>
+  );
+}
+
 function ConnectionDialog({
   open,
   onClose,
@@ -944,8 +986,14 @@ function ConnectionDialog({
 }): JSX.Element {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="connection-dialog">
-        <DialogTitle>{editing === undefined ? "Add connection" : `Edit ${editing.name}`}</DialogTitle>
+      {/*
+        Wider than the dialog's default, and wider than it is tall: the form
+        below lays its two halves side by side — what the model is, and where
+        it runs — so a person reads it as one shape rather than scrolling a
+        column of fields.
+      */}
+      <DialogContent className="sm:max-w-2xl" data-testid="connection-dialog">
+        <DialogTitle>{editing === undefined ? "Add model" : `Edit ${editing.name}`}</DialogTitle>
         <ConnectionForm onClose={onClose} {...(editing === undefined ? {} : { editing })} />
       </DialogContent>
     </Dialog>
@@ -1154,17 +1202,21 @@ function ConnectionForm({
           <DialogDescription>
             Where does this model run? Creating a connection downloads nothing.
           </DialogDescription>
-          <div className="flex flex-col gap-2" data-testid="choose-type">
-            <Button
-              variant="secondary"
-              data-testid="choose-local"
-              onClick={() => setKind("local")}
-            >
-              Local — weights this machine runs
-            </Button>
-            <Button variant="secondary" data-testid="choose-http" onClick={() => setKind("http")}>
-              HTTP — an endpoint that answers this project&rsquo;s contract
-            </Button>
+          <div className="grid gap-3 sm:grid-cols-2" data-testid="choose-type">
+            <KindChoice
+              testId="choose-local"
+              icon={<IconCpu className="size-5" aria-hidden="true" />}
+              title="Local"
+              description="Weights this machine downloads and runs."
+              onChoose={() => setKind("local")}
+            />
+            <KindChoice
+              testId="choose-http"
+              icon={<IconWorld className="size-5" aria-hidden="true" />}
+              title="HTTP"
+              description="An endpoint that answers this project's inference contract."
+              onChoose={() => setKind("http")}
+            />
           </div>
         </>
       ) : (
@@ -1174,7 +1226,15 @@ function ConnectionForm({
               ? "Nothing is fetched until you ask for it, from the row this creates."
               : "The endpoint answers this project's own inference contract."}
           </DialogDescription>
-          <form className="flex flex-col gap-3" onSubmit={submit}>
+          <form className="flex flex-col gap-4" onSubmit={submit}>
+            {/*
+              Two columns, one question each: what the model *is* on the left,
+              where it *runs* on the right. A kind's fields keep to their column,
+              so the two forms share a shape and a person's eye lands in the same
+              place whichever kind is open.
+            */}
+            <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="connection-name">Name</Label>
               <Input
@@ -1311,6 +1371,34 @@ function ConnectionForm({
                     </div>
                   </>
                 )}
+              </>
+            ) : (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="connection-custom-model">Model</Label>
+                  <Input
+                    id="connection-custom-model"
+                    data-testid="connection-custom-model"
+                    value={modelId}
+                    onChange={(event) => setModelId(event.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="connection-revision">Revision</Label>
+                  <Input
+                    id="connection-revision"
+                    data-testid="connection-revision"
+                    value={revision}
+                    onChange={(event) => setRevision(event.target.value)}
+                  />
+                  <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
+                </div>
+              </>
+            )}
+              </div>
+              <div className="flex flex-col gap-3">
+            {local ? (
+              <>
                 <div className="flex gap-3">
                   <div className="flex flex-1 flex-col gap-1.5">
                     <Label htmlFor="connection-device">Device</Label>
@@ -1368,25 +1456,6 @@ function ConnectionForm({
             ) : (
               <>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="connection-custom-model">Model</Label>
-                  <Input
-                    id="connection-custom-model"
-                    data-testid="connection-custom-model"
-                    value={modelId}
-                    onChange={(event) => setModelId(event.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="connection-revision">Revision</Label>
-                  <Input
-                    id="connection-revision"
-                    data-testid="connection-revision"
-                    value={revision}
-                    onChange={(event) => setRevision(event.target.value)}
-                  />
-                  <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
-                </div>
-                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="connection-endpoint">Endpoint URL</Label>
                   <Input
                     id="connection-endpoint"
@@ -1411,6 +1480,8 @@ function ConnectionForm({
                 </div>
               </>
             )}
+              </div>
+            </div>
             {failure !== null && (
               <FieldError data-testid="connection-error">{refusalProse(failure)}</FieldError>
             )}
