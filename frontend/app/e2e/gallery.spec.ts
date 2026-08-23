@@ -298,7 +298,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
     }
     if (path === `/projects/${PROJECT}`) {
       return route.fulfill({
-        json: { id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null } satisfies Wire["ProjectOut"],
+        json: { id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null } satisfies Wire["ProjectOut"],
       });
     }
     if (path === `/batches/${BATCH}`) {
