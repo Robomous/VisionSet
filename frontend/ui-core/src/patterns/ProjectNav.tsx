@@ -219,7 +219,7 @@ function Strip(props: ProjectNavProps): JSX.Element {
         <Cta {...props} />
         <Overflow {...props} />
       </div>
-      <div className="min-w-0 overflow-x-auto pb-1.5">
+      <div className="min-w-0 overflow-x-auto pb-1.5 -mb-1.5">
         <TabsList variant="line">
           {sections.map((section) => {
             const { label, icon: Icon } = SECTION_LABELS[section];
