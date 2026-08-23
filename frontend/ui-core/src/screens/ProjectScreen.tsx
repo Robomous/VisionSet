@@ -847,7 +847,7 @@ function BlockingAssets({
                         <Button
                           key={batchId}
                           variant="link"
-                          className="h-auto p-0 text-xs"
+                          className="text-xs"
                           data-testid="blocking-asset-batch"
                           onClick={() => onOpenBatch(batchId)}
                         >

@@ -31,7 +31,7 @@
  * selection is a thing somebody chose.
  */
 
-import { GitBranch } from "lucide-react";
+import { IconGitBranch } from "@tabler/icons-react";
 import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
@@ -119,7 +119,7 @@ export function CorrectionButton({
         data-testid={`correct-${batch.name}`}
         onClick={() => setShowing(true)}
       >
-        <GitBranch className="size-4" aria-hidden="true" />
+        <IconGitBranch className="size-4" aria-hidden="true" />
         Create correction batch
       </Button>
       <CorrectionDialog
@@ -286,14 +286,14 @@ export function CorrectionOf({
   if (parentName === undefined) return null;
   return (
     <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid="correction-of">
-      <GitBranch className="size-3.5 shrink-0" aria-hidden="true" />
+      <IconGitBranch className="size-3.5 shrink-0" aria-hidden="true" />
       Correction of{" "}
       {onOpenParent === undefined ? (
         parentName
       ) : (
         <Button
           variant="link"
-          className="h-auto p-0 text-xs"
+          className="text-xs"
           data-testid="open-parent-batch"
           onClick={onOpenParent}
         >

@@ -40,7 +40,7 @@
  * a cursor already on its way somewhere.
  */
 
-import { ImageIcon, Tags, TriangleAlert, Upload } from "lucide-react";
+import { IconAlertTriangle, IconPhoto, IconTags, IconUpload } from "@tabler/icons-react";
 import type { JSX } from "react";
 
 import { asApiError } from "../data/errors";
@@ -357,7 +357,7 @@ function FirstRun({
       // above it is not competing with a checklist step pointing somewhere else.
       <div data-testid="first-run" data-invitation={invitation}>
         <EmptyState
-          icon={<ImageIcon className="size-8" />}
+          icon={<IconPhoto className="size-8" />}
           title="Nothing ingested yet"
           description="Ingest images or a video to see counts, class distribution and samples here."
           action={
@@ -366,7 +366,7 @@ function FirstRun({
               // above this one, same label and same handler, so a filled button
               // here would render the identical action twice.
               <Button variant="secondary" data-testid="overview-ingest" onClick={onIngest}>
-                <Upload className="size-4" aria-hidden="true" />
+                <IconUpload aria-hidden="true" />
                 Ingest
               </Button>
             )
@@ -380,7 +380,7 @@ function FirstRun({
   return (
     <div data-testid="first-run" data-invitation={invitation}>
       <EmptyState
-        icon={<Tags className="size-8" />}
+        icon={<IconTags className="size-8" />}
         title={first ? "Define your first classes" : "Define your classes"}
         description={
           first
@@ -394,7 +394,7 @@ function FirstRun({
           <div className="flex flex-col items-center gap-2">
             {onOpenSchema !== undefined && (
               <Button variant="primary" data-testid="first-run-cta" onClick={onOpenSchema}>
-                <Tags className="size-4" aria-hidden="true" />
+                <IconTags aria-hidden="true" />
                 Define classes
               </Button>
             )}
@@ -408,7 +408,7 @@ function FirstRun({
                 <Button
                   variant="link"
                   size="sm"
-                  className="h-auto p-0 text-xs"
+                  className="text-xs"
                   data-testid="first-run-alt"
                   onClick={onIngest}
                 >
@@ -489,10 +489,10 @@ function Distribution({
           </div>
           {note !== null && (
             <p
-              className="flex items-center gap-1.5 text-xs text-amber-700"
+              className="flex items-center gap-1.5 text-xs text-warning"
               data-testid="imbalance-note"
             >
-              <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
+              <IconAlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
               {note}
             </p>
           )}
@@ -548,7 +548,7 @@ function Samples({
       {onBrowseDataset !== undefined && (
         <Button
           variant="link"
-          className="self-start px-0"
+          className="self-start"
           data-testid="browse-dataset"
           onClick={onBrowseDataset}
         >

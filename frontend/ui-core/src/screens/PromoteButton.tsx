@@ -43,7 +43,7 @@
  * F18 is that it had no promote control at all.
  */
 
-import { ArrowUpFromLine, ArrowRight } from "lucide-react";
+import { IconArrowBarUp, IconArrowRight } from "@tabler/icons-react";
 import type { JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
@@ -116,7 +116,7 @@ export function PromoteButton({
         disabled={promote.isPending}
         onClick={() => promote.mutate(batch.id)}
       >
-        <ArrowUpFromLine className="size-4" aria-hidden="true" />
+        <IconArrowBarUp className="size-4" aria-hidden="true" />
         {/*
           The label no longer carries the outcome. It said "Promoted" after a
           press and that was the entire feedback — a label flip is not a report,
@@ -154,12 +154,11 @@ export function PromoteButton({
       {promote.isSuccess && onOpenDataset !== undefined && (
         <Button
           variant="link"
-          className="h-auto p-0"
           data-testid={`promoted-open-dataset-${batch.name}`}
           onClick={onOpenDataset}
         >
           Open the dataset
-          <ArrowRight className="size-3.5" aria-hidden="true" />
+          <IconArrowRight className="size-3.5" aria-hidden="true" />
         </Button>
       )}
 

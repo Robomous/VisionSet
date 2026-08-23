@@ -33,7 +33,7 @@
  * says so, and `test_batch_service.py` holds it.
  */
 
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { IconDots, IconTrash } from "@tabler/icons-react";
 import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares, withheldBecause } from "../data/capabilities";
@@ -86,11 +86,10 @@ export function BatchOverflowMenu({
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
             aria-label={`More actions for ${batch.name}`}
             data-testid={`batch-overflow-${batch.name}`}
           >
-            <MoreHorizontal className="size-4" aria-hidden="true" />
+            <IconDots aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align={align} className="w-64">
@@ -108,7 +107,7 @@ export function BatchOverflowMenu({
             data-testid={`delete-batch-${batch.name}`}
             onSelect={() => setConfirming(true)}
           >
-            <Trash2 className="size-4 shrink-0" aria-hidden="true" />
+            <IconTrash className="size-4 shrink-0" aria-hidden="true" />
             <span className="flex flex-col items-start gap-0.5">
               <span>Delete batch</span>
               {reason !== null && (
