@@ -24,7 +24,7 @@
  * rather than disk.
  */
 
-import { FolderPlus, Trash2 } from "lucide-react";
+import { IconFolderPlus, IconTrash } from "@tabler/icons-react";
 import { useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -62,7 +62,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
           </p>
         </div>
         <Button variant="primary" data-testid="new-project" onClick={() => setCreating(true)}>
-          <FolderPlus className="size-4" aria-hidden="true" />
+          <IconFolderPlus aria-hidden="true" />
           New project
         </Button>
       </header>
@@ -124,7 +124,6 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
                   <TableCell>
                     <Button
                       variant="link"
-                      className="h-auto p-0"
                       data-testid={`open-${project.name}`}
                       onClick={() => onOpenProject(project.id)}
                     >
@@ -142,7 +141,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
                       data-testid={`delete-${project.name}`}
                       onClick={() => setDoomed(project)}
                     >
-                      <Trash2 className="size-4" aria-hidden="true" />
+                      <IconTrash aria-hidden="true" />
                     </Button>
                   </TableCell>
                 </TableRow>
