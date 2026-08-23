@@ -74,7 +74,11 @@ _HASH = "0" * 64
 _WHEN = datetime(2026, 7, 28, 12, 34, 56, 789012, tzinfo=UTC)
 
 PROJECT = Project(
-    id=uuid4(), workspace_id=uuid4(), name="road-signs", description="a sample project"
+    id=uuid4(),
+    workspace_id=uuid4(),
+    name="road-signs",
+    description="a sample project",
+    created_at=datetime(2026, 7, 1, 8, 0, tzinfo=UTC),
 )
 
 PROJECT_PREVIEW = ProjectPreview(asset_id=uuid4(), thumbnail_hash=_HASH)

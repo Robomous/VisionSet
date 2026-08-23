@@ -142,6 +142,7 @@ def project(value: Project, preview: ProjectPreview | None) -> dict[str, Any]:
         "description": value.description,
         "thumbnail_asset_id": str(preview.asset_id) if preview else None,
         "thumbnail_hash": preview.thumbnail_hash if preview else None,
+        "created_at": None if value.created_at is None else _moment(value.created_at),
     }
 
 

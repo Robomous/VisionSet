@@ -234,6 +234,9 @@ class ProjectOut(BaseModel):
     `thumbnail_hash` is that asset's cached preview. Both are null for a
     project with no images; the id set with a null hash means the asset has no
     cached preview, so there is nothing to fetch.
+
+    `created_at` is when the project was made, in UTC; null for a project
+    written before the workspace recorded it.
     """
 
     id: UUID
@@ -241,6 +244,7 @@ class ProjectOut(BaseModel):
     description: str | None
     thumbnail_asset_id: UUID | None
     thumbnail_hash: str | None
+    created_at: datetime | None
 
     @classmethod
     def of(cls, project: Project, preview: ProjectPreview | None) -> Self:
@@ -253,6 +257,7 @@ class ProjectOut(BaseModel):
             description=project.description,
             thumbnail_asset_id=preview.asset_id if preview else None,
             thumbnail_hash=preview.thumbnail_hash if preview else None,
+            created_at=project.created_at,
         )
 
 

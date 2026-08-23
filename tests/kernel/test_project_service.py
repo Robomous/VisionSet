@@ -141,6 +141,17 @@ def test_a_description_is_stored_on_the_project(tmp_path: Path) -> None:
     workspace.close()
 
 
+def test_a_new_project_is_stamped_with_when_it_was_created(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    before = datetime.now(UTC)
+    project = projects.create("signs")
+    assert project.created_at is not None
+    assert project.created_at.tzinfo is not None
+    assert before <= project.created_at <= datetime.now(UTC)
+    assert projects.get(project.id).created_at == project.created_at
+    workspace.close()
+
+
 def test_a_project_name_is_stored_in_composed_unicode_form(tmp_path: Path) -> None:
     assert CAFE_DECOMPOSED != CAFE_COMPOSED
     workspace, projects = _service(tmp_path)

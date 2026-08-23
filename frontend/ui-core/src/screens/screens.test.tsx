@@ -232,6 +232,69 @@ function SchemaBlockingAssetsProbe({
 }
 
 describe("the project list", () => {
+  const THIRD_PROJECT = "99999999-9999-4999-8999-999999999999";
+  function project(id: string, name: string, created_at: string | null) {
+    return { id, name, description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at };
+  }
+  function rowNames(): string[] {
+    return screen
+      .getAllByTestId(/^project-/)
+      .map((row) => row.getAttribute("data-testid")?.replace("project-", "") ?? "");
+  }
+
+  it("orders projects newest first, and the Created header flips the order", async () => {
+    // The wire's order is creation order, oldest first; the screen inverts it.
+    on("GET", /^\/projects$/, {
+      status: 200,
+      body: {
+        items: [
+          project(PROJECT, "oldest", "2026-01-01T08:00:00Z"),
+          project(OTHER_PROJECT, "middle", "2026-03-01T08:00:00Z"),
+          project(THIRD_PROJECT, "newest", "2026-08-01T08:00:00Z"),
+        ],
+        total: 3,
+      },
+    });
+
+    render(mount(<ProjectsScreen onOpenProject={vi.fn()} />));
+
+    await waitFor(() => expect(screen.queryByTestId("projects-table")).not.toBeNull());
+    expect(rowNames()).toEqual(["newest", "middle", "oldest"]);
+    expect(screen.getByRole("columnheader", { name: /created/i }).getAttribute("aria-sort")).toBe(
+      "descending",
+    );
+
+    await userEvent.click(screen.getByTestId("sort-created"));
+    expect(rowNames()).toEqual(["oldest", "middle", "newest"]);
+    expect(screen.getByRole("columnheader", { name: /created/i }).getAttribute("aria-sort")).toBe(
+      "ascending",
+    );
+  });
+
+  it("keeps undated projects last in both directions, in the order the wire gave them", async () => {
+    on("GET", /^\/projects$/, {
+      status: 200,
+      body: {
+        items: [
+          project(PROJECT, "legacy-a", null),
+          project(OTHER_PROJECT, "legacy-b", null),
+          project(THIRD_PROJECT, "dated", "2026-08-01T08:00:00Z"),
+        ],
+        total: 3,
+      },
+    });
+
+    render(mount(<ProjectsScreen onOpenProject={vi.fn()} />));
+
+    await waitFor(() => expect(screen.queryByTestId("projects-table")).not.toBeNull());
+    expect(rowNames()).toEqual(["dated", "legacy-a", "legacy-b"]);
+    // A project the workspace never dated shows a dash, never a guessed date.
+    expect(screen.getByTestId("project-legacy-a").textContent).toContain("—");
+
+    await userEvent.click(screen.getByTestId("sort-created"));
+    expect(rowNames()).toEqual(["dated", "legacy-a", "legacy-b"]);
+  });
+
   it("lists projects and opens one through the callback, never a router", async () => {
     on("GET", /^\/projects$/, {
       status: 200,
@@ -243,6 +306,7 @@ describe("the project list", () => {
             description: "M4 survey",
             thumbnail_asset_id: null,
             thumbnail_hash: null,
+            created_at: null,
           },
         ],
         total: 1,
@@ -271,6 +335,7 @@ describe("the project list", () => {
             description: null,
             thumbnail_asset_id: ASSET,
             thumbnail_hash: "ab".repeat(32),
+            created_at: null,
           },
           {
             id: OTHER_PROJECT,
@@ -278,6 +343,7 @@ describe("the project list", () => {
             description: null,
             thumbnail_asset_id: null,
             thumbnail_hash: null,
+            created_at: null,
           },
         ],
         total: 2,
@@ -318,6 +384,7 @@ describe("the project list", () => {
         description: null,
         thumbnail_asset_id: null,
         thumbnail_hash: null,
+        created_at: null,
       },
     });
     const opened = vi.fn();
@@ -371,6 +438,7 @@ describe("the project list", () => {
             description: null,
             thumbnail_asset_id: null,
             thumbnail_hash: null,
+            created_at: null,
           },
         ],
         total: 1,
@@ -400,6 +468,7 @@ describe("the schema editor", () => {
         description: null,
         thumbnail_asset_id: null,
         thumbnail_hash: null,
+        created_at: null,
       },
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, {
@@ -809,6 +878,7 @@ describe("the schema editor", () => {
         description: null,
         thumbnail_asset_id: null,
         thumbnail_hash: null,
+        created_at: null,
       },
     });
     // A project starts schema-less on purpose. This 404 is the normal state
@@ -1576,6 +1646,7 @@ describe("the schema version history", () => {
         description: null,
         thumbnail_asset_id: null,
         thumbnail_hash: null,
+        created_at: null,
       },
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, { status: 200, body: active });
@@ -1863,6 +1934,7 @@ describe("the schema editor's two panels", () => {
         description: null,
         thumbnail_asset_id: null,
         thumbnail_hash: null,
+        created_at: null,
       },
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, {
@@ -2184,6 +2256,7 @@ describe("the project view's sections", () => {
         description: null,
         thumbnail_asset_id: null,
         thumbnail_hash: null,
+        created_at: null,
       },
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, {
@@ -2360,6 +2433,7 @@ describe("version history", () => {
         description: null,
         thumbnail_asset_id: null,
         thumbnail_hash: null,
+        created_at: null,
       },
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, {
@@ -2409,6 +2483,7 @@ describe("version history", () => {
         description: null,
         thumbnail_asset_id: null,
         thumbnail_hash: null,
+        created_at: null,
       },
     });
     on("GET", /schema\/versions$/, {
@@ -2463,6 +2538,7 @@ describe("version history", () => {
           description: null,
           thumbnail_asset_id: null,
           thumbnail_hash: null,
+          created_at: null,
         },
       });
       on("GET", /^\/projects\/[^/]+\/schema$/, {
@@ -2570,6 +2646,7 @@ describe("version history", () => {
           description: null,
           thumbnail_asset_id: null,
           thumbnail_hash: null,
+          created_at: null,
         },
       });
       on("GET", /^\/projects\/[^/]+\/schema$/, {
@@ -2669,6 +2746,7 @@ describe("the project's identity and its one filled control", () => {
         description: options.description ?? null,
         thumbnail_asset_id: null,
         thumbnail_hash: null,
+        created_at: null,
       },
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, {

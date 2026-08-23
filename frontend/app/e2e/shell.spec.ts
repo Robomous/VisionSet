@@ -77,7 +77,7 @@ async function serveApi(page: Page, { session = false } = {}): Promise<void> {
     if (/\/api\/projects\/[^/]+$/.test(path)) {
       return route.fulfill({
         status: 200,
-        json: { id: PROJECT, name: "highway", description: null, thumbnail_asset_id: null, thumbnail_hash: null } satisfies Wire["ProjectOut"],
+        json: { id: PROJECT, name: "highway", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null } satisfies Wire["ProjectOut"],
       });
     }
     // The project header counts the project, and the catch-all below answers every

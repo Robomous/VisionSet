@@ -24,11 +24,12 @@
  * rather than disk.
  */
 
-import { IconFolderPlus, IconTrash } from "@tabler/icons-react";
+import { IconArrowDown, IconArrowUp, IconFolderPlus, IconTrash } from "@tabler/icons-react";
 import { useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { refusalProse } from "../data/refusals";
+import { formatWhen } from "../lib/format";
 import { Button } from "../primitives/Button";
 import {
   Dialog,
@@ -47,10 +48,33 @@ export interface ProjectsScreenProps {
   readonly onOpenProject: (projectId: string) => void;
 }
 
+type CreatedOrder = "newest" | "oldest";
+
+/**
+ * The list in the chosen order. The wire's order is creation order, oldest
+ * first, so the default view inverts it. A project the workspace never dated
+ * goes last in both directions, in the order the wire gave it: a missing date
+ * is a missing date, never a guessed position among the dated rows.
+ */
+function orderedByCreation(
+  items: readonly Project[],
+  order: CreatedOrder,
+): readonly Project[] {
+  const dated = items.filter((project) => project.created_at !== null);
+  const undated = items.filter((project) => project.created_at === null);
+  const sign = order === "newest" ? -1 : 1;
+  dated.sort(
+    (a, b) => sign * (Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? "")),
+  );
+  return [...dated, ...undated];
+}
+
 export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Element {
   const projects = useProjects();
   const [creating, setCreating] = useState(false);
   const [doomed, setDoomed] = useState<Project | null>(null);
+  const [order, setOrder] = useState<CreatedOrder>("newest");
+  const OrderIcon = order === "newest" ? IconArrowDown : IconArrowUp;
 
   return (
     <div className="flex flex-col gap-6" data-testid="projects-screen">
@@ -95,11 +119,27 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
                 <TableHead className="w-20" />
                 <TableHead>Name</TableHead>
                 <TableHead>Description</TableHead>
+                <TableHead
+                  className="w-32"
+                  aria-sort={order === "newest" ? "descending" : "ascending"}
+                >
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="-ml-2 text-xs font-medium text-muted-foreground"
+                    data-testid="sort-created"
+                    title={order === "newest" ? "Newest first" : "Oldest first"}
+                    onClick={() => setOrder(order === "newest" ? "oldest" : "newest")}
+                  >
+                    Created
+                    <OrderIcon aria-hidden="true" />
+                  </Button>
+                </TableHead>
                 <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {page.items.map((project) => (
+              {orderedByCreation(page.items, order).map((project) => (
                 <TableRow key={project.id} data-testid={`project-${project.name}`}>
                   <TableCell>
                     {/* Decorative either way (`alt=""`): the name link beside it
@@ -132,6 +172,13 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {project.description ?? <span className="text-xs">—</span>}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {project.created_at === null ? (
+                      "—"
+                    ) : (
+                      <time dateTime={project.created_at}>{formatWhen(project.created_at)}</time>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button

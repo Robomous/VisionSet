@@ -340,6 +340,18 @@ def _add_credential_env(connection: Connection) -> None:
     _add_column(connection, "inference_connection", "credential_env")
 
 
+def _add_project_created_at(connection: Connection) -> None:
+    """``project.created_at``: when the project was made.
+
+    Nothing is backfilled, and nothing could be: a project row records no moment
+    at all, and the only order on disk is insertion order, which says *before*
+    and *after* but never *when*. Existing projects stay NULL, which reads as *the
+    workspace did not record it*, and every project created from now on carries
+    the stamp ``ProjectService.create`` writes.
+    """
+    _add_column(connection, "project", "created_at")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -354,6 +366,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=11, name="provider_id", upgrade=_add_provider_id),
     Migration(version=12, name="job_error_code", upgrade=_add_job_error_code),
     Migration(version=13, name="credential_env", upgrade=_add_credential_env),
+    Migration(version=14, name="project_created_at", upgrade=_add_project_created_at),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

@@ -73,14 +73,14 @@ async function serveApi(page: Page): Promise<void> {
     if (path === "/projects") {
       return route.fulfill({
         json: {
-          items: [{ id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null }],
+          items: [{ id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null }],
           total: 1,
         } satisfies Wire["ProjectPage"],
       });
     }
     if (path === `/projects/${PROJECT}`) {
       return route.fulfill({
-        json: { id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null } satisfies Wire["ProjectOut"],
+        json: { id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null } satisfies Wire["ProjectOut"],
       });
     }
     if (path === `/jobs/${JOB}`) {

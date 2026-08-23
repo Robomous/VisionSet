@@ -1,7 +1,7 @@
 # usage: from visionset.kernel.domain import Project
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -16,6 +16,18 @@ class Project(BaseModel):
     workspace_id: UUID
     name: str
     description: str | None = None
+    #: When the project was made. ``None`` only for a project written before the
+    #: workspace recorded it; ``ProjectService.create`` stamps every new one.
+    created_at: datetime | None = None
+
+    @field_validator("created_at")
+    @classmethod
+    def _created_at_is_timezone_aware(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError("created_at must be timezone-aware (UTC)")
+        return value.astimezone(UTC)
 
 
 class ProjectPreview(BaseModel):
