@@ -142,7 +142,7 @@ export function ProjectFrame({
     );
 
   return (
-    <div className="flex min-h-full flex-1 flex-col" data-testid="project-screen">
+    <div className="flex min-h-full min-w-0 flex-1 flex-col" data-testid="project-screen">
       <ProjectShell nav={nav} {...(eyebrow === undefined ? {} : { eyebrow })}>
         <div className="flex flex-col gap-6">
           {/* The project itself failing to load is said here, above the page

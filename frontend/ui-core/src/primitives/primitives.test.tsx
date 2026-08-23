@@ -24,6 +24,12 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./Dialog"
 import { Progress } from "./Feedback";
 import { FieldError, Input, Label } from "./Input";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./Menu";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -66,6 +72,25 @@ describe("Button", () => {
     const link = screen.getByRole("link", { name: "Projects" });
     expect(link.tagName).toBe("A");
     expect(link.className).toContain("bg-primary");
+  });
+
+  it("underlines a link button at rest, not only under the pointer", () => {
+    render(<Button variant="link">Browse dataset</Button>);
+    const classes = screen.getByRole("button").className.split(" ");
+    expect(classes).toContain("underline");
+    expect(classes).not.toContain("hover:underline");
+  });
+
+  it("collapses a link button to inline geometry, whatever size says", () => {
+    render(
+      <Button variant="link" size="sm">
+        Open batch
+      </Button>,
+    );
+    const classes = screen.getByRole("button").className.split(" ");
+    expect(classes).toContain("h-auto");
+    expect(classes).toContain("p-0");
+    expect(classes).not.toContain("h-7");
   });
 });
 
@@ -164,6 +189,16 @@ describe("Select", () => {
     await userEvent.click(screen.getByTestId("model"));
     const plain = screen.getByRole("option", { name: "org/model-large" });
     expect(plain.querySelector(".text-muted-foreground")).toBeNull();
+  });
+
+  it("floors the open list at the closed control's width", async () => {
+    render(pickOne());
+    await userEvent.click(screen.getByTestId("model"));
+    const viewport = document.querySelector("[data-radix-select-viewport]");
+    expect(viewport).not.toBeNull();
+    const classes = (viewport as HTMLElement).className.split(" ");
+    expect(classes).toContain("w-full");
+    expect(classes).toContain("min-w-(--radix-select-trigger-width)");
   });
 });
 
@@ -295,5 +330,25 @@ describe("Dialog", () => {
 
     rerender(<Described second={false} />);
     expect(describedBy(dialog)).toEqual(["one class narrows"]);
+  });
+});
+
+describe("DropdownMenu", () => {
+  it("sizes its surface to the items, not to the trigger", async () => {
+    const user = userEvent.setup();
+    render(
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label="Actions" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem>Check integrity of this connection</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    const classes = (await screen.findByRole("menu")).className.split(" ");
+    expect(classes).toContain("min-w-32");
+    expect(classes).not.toContain("w-(--radix-dropdown-menu-trigger-width)");
   });
 });

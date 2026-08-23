@@ -19,7 +19,7 @@
  * mounted.
  */
 
-import { Plus, Trash2 } from "lucide-react";
+import { IconPlus, IconTrash } from "@tabler/icons-react";
 import type { JSX } from "react";
 
 import { geometryLabel, groupGeometries } from "../data/geometryCategory";
@@ -287,7 +287,7 @@ function Attributes({
             onChange([...attributes, { name: "", kind: "string", required: false, default: null }])
           }
         >
-          <Plus className="size-4" aria-hidden="true" />
+          <IconPlus className="size-4" aria-hidden="true" />
           Add
         </Button>
       </div>
@@ -404,7 +404,7 @@ function Attributes({
                 disabled={disabled}
                 onClick={() => onChange(attributes.filter((_, i) => i !== index))}
               >
-                <Trash2 className="size-4" aria-hidden="true" />
+                <IconTrash aria-hidden="true" />
               </Button>
             </div>
           </div>

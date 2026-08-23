@@ -45,7 +45,7 @@
  * for ten minutes.
  */
 
-import { KeyRound } from "lucide-react";
+import { IconKey } from "@tabler/icons-react";
 import { useEffect, useState, type FormEvent, type JSX, type ReactNode } from "react";
 
 import { createApiClient } from "../client";
@@ -123,7 +123,7 @@ export function TokenForm(): JSX.Element {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <KeyRound className="size-4 text-primary" aria-hidden="true" />
+            <IconKey className="size-4 text-primary" aria-hidden="true" />
             Connect to a workspace
           </CardTitle>
           <CardDescription>

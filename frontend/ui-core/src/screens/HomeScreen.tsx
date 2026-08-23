@@ -46,18 +46,18 @@
  */
 
 import {
-  ArrowRight,
-  CircleAlert,
-  FolderGit2,
-  Layers,
-  Loader,
-  Play,
-  Plus,
-  Rocket,
-  Sparkles,
-  Tags,
-  Upload,
-} from "lucide-react";
+  IconAlertCircle,
+  IconArrowRight,
+  IconFolders,
+  IconLoader2,
+  IconPlayerPlay,
+  IconPlus,
+  IconRocket,
+  IconSparkles,
+  IconStack2,
+  IconTags,
+  IconUpload,
+} from "@tabler/icons-react";
 import { useState, type JSX, type ReactNode } from "react";
 
 import { asApiError } from "../data/errors";
@@ -153,7 +153,7 @@ export function HomeScreen({
           data-testid="home-new-project"
           onClick={() => setCreating(true)}
         >
-          <Plus className="size-4" aria-hidden="true" />
+          <IconPlus aria-hidden="true" />
           New project
         </Button>
       </header>
@@ -209,24 +209,24 @@ function FirstRun({ onCreate }: { readonly onCreate: () => void }): JSX.Element 
   return (
     <div className="mx-auto flex max-w-2xl flex-col items-center gap-6 py-16 text-center">
       <div className="flex flex-col items-center gap-2">
-        <FolderGit2 className="size-8 text-muted-foreground" aria-hidden="true" />
+        <IconFolders className="size-8 text-muted-foreground" aria-hidden="true" />
         <h1 className="text-2xl font-semibold text-foreground">Start your first project</h1>
         <p className="text-xs text-muted-foreground">
           A project is where a schema, its batches and its dataset live.
         </p>
       </div>
       <Button variant="primary" data-testid="home-create-project" onClick={onCreate}>
-        <Plus className="size-4" aria-hidden="true" />
+        <IconPlus aria-hidden="true" />
         Create project
       </Button>
       <div className="grid w-full gap-3 sm:grid-cols-3">
-        <Stage icon={<Upload className="size-4" />} title="Ingest">
+        <Stage icon={<IconUpload className="size-4" />} title="Ingest">
           Register images or a video and let it become frames.
         </Stage>
-        <Stage icon={<Tags className="size-4" />} title="Annotate">
+        <Stage icon={<IconTags className="size-4" />} title="Annotate">
           Declare the classes you will draw, then label a batch.
         </Stage>
-        <Stage icon={<Rocket className="size-4" />} title="Release">
+        <Stage icon={<IconRocket className="size-4" />} title="Release">
           Freeze what is finished and export it to train on.
         </Stage>
       </div>
@@ -326,7 +326,7 @@ function Resume({
         </div>
         {act !== undefined && (
           <Button variant="primary" className="ml-auto" data-testid="home-resume-cta" onClick={act}>
-            <Play className="size-4" aria-hidden="true" />
+            <IconPlayerPlay aria-hidden="true" />
             {RESUME_LABEL[resume.kind]}
           </Button>
         )}
@@ -410,15 +410,15 @@ function AttentionRow({
 function AttentionIcon({ kind }: { readonly kind: AttentionItem["kind"] }): JSX.Element {
   const shape = "size-4 shrink-0";
   if (kind === "job_failed") {
-    return <CircleAlert className={`${shape} text-destructive`} aria-hidden="true" />;
+    return <IconAlertCircle className={`${shape} text-destructive`} aria-hidden="true" />;
   }
   if (kind === "job_running") {
-    return <Loader className={`${shape} text-muted-foreground`} aria-hidden="true" />;
+    return <IconLoader2 className={`${shape} text-muted-foreground`} aria-hidden="true" />;
   }
   if (kind === "pre_labeled") {
-    return <Sparkles className={`${shape} text-muted-foreground`} aria-hidden="true" />;
+    return <IconSparkles className={`${shape} text-muted-foreground`} aria-hidden="true" />;
   }
-  return <Layers className={`${shape} text-muted-foreground`} aria-hidden="true" />;
+  return <IconStack2 className={`${shape} text-muted-foreground`} aria-hidden="true" />;
 }
 
 /** One sentence per row, in the vocabulary the wire declared. */
@@ -469,7 +469,7 @@ function Recent({
             onClick={onOpenProjects}
           >
             All projects
-            <ArrowRight className="size-3" aria-hidden="true" />
+            <IconArrowRight className="size-3" aria-hidden="true" />
           </button>
         )}
       </div>
@@ -524,10 +524,10 @@ function Activity({ entries }: { readonly entries: readonly ActivityEntry[] }): 
 
 function ActivityIcon({ kind }: { readonly kind: ActivityEntry["kind"] }): JSX.Element {
   const shape = "size-4 shrink-0 text-muted-foreground";
-  if (kind === "release_published") return <Rocket className={shape} aria-hidden="true" />;
-  if (kind === "batch_promoted") return <Layers className={shape} aria-hidden="true" />;
-  if (kind === "schema_version") return <Tags className={shape} aria-hidden="true" />;
-  return <Upload className={shape} aria-hidden="true" />;
+  if (kind === "release_published") return <IconRocket className={shape} aria-hidden="true" />;
+  if (kind === "batch_promoted") return <IconStack2 className={shape} aria-hidden="true" />;
+  if (kind === "schema_version") return <IconTags className={shape} aria-hidden="true" />;
+  return <IconUpload className={shape} aria-hidden="true" />;
 }
 
 /**

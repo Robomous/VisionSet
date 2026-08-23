@@ -41,7 +41,7 @@ export function SchemaForeshadow({
       {onOpenSchema !== undefined && (
         <Button
           variant="link"
-          className="ml-2 h-auto p-0"
+          className="ml-2"
           data-testid="foreshadow-schema"
           onClick={onOpenSchema}
         >

@@ -213,22 +213,25 @@ function Strip(props: ProjectNavProps): JSX.Element {
         if (isProjectSection(next)) onNavigate(next);
       }}
       data-testid="project-tabs"
+      className="min-w-0"
     >
       <div className="flex items-center justify-end gap-2">
         <Cta {...props} />
         <Overflow {...props} />
       </div>
-      <TabsList variant="line">
-        {sections.map((section) => {
-          const { label, icon: Icon } = SECTION_LABELS[section];
-          return (
-            <TabsTrigger key={section} value={section} data-testid={`nav-${section}`}>
-              <Icon className="size-4" aria-hidden="true" />
-              {label}
-            </TabsTrigger>
-          );
-        })}
-      </TabsList>
+      <div className="min-w-0 overflow-x-auto pb-1.5 -mb-1.5">
+        <TabsList variant="line">
+          {sections.map((section) => {
+            const { label, icon: Icon } = SECTION_LABELS[section];
+            return (
+              <TabsTrigger key={section} value={section} data-testid={`nav-${section}`}>
+                <Icon className="size-4" aria-hidden="true" />
+                {label}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+      </div>
       <TabsContent value={active ?? ""}>{children}</TabsContent>
     </Tabs>
   );

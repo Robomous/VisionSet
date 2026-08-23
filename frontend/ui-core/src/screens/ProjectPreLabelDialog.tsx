@@ -7,7 +7,7 @@
  * read here.
  */
 
-import { Sparkles } from "lucide-react";
+import { IconSparkles } from "@tabler/icons-react";
 import { useMemo, useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
@@ -52,7 +52,7 @@ export function ProjectPreLabelButton({
         data-testid="project-prelabel"
         onClick={() => setOpen(true)}
       >
-        <Sparkles className="size-4" aria-hidden="true" />
+        <IconSparkles className="size-4" aria-hidden="true" />
         Pre-label
       </Button>
       {open && (
@@ -181,7 +181,6 @@ function ProjectPreLabelDialog({
               <li key={item.batch_id} className="flex items-center justify-between gap-2">
                 <Button
                   variant="link"
-                  className="h-auto p-0"
                   onClick={() => onOpenBatch(item.batch_id)}
                 >
                   {item.batch_name}

@@ -36,7 +36,7 @@
  * gigabytes.
  */
 
-import { Image as ImageIcon, ImageOff } from "lucide-react";
+import { IconPhoto, IconPhotoOff } from "@tabler/icons-react";
 import { useEffect, useState, type JSX } from "react";
 
 import { useApiClient } from "../data/ApiProvider";
@@ -71,9 +71,9 @@ export function ThumbnailPlaceholder({
       className={`flex items-center justify-center bg-muted text-muted-foreground ${className ?? ""}`}
     >
       {broken ? (
-        <ImageOff className="size-5" aria-hidden="true" />
+        <IconPhotoOff className="size-5" aria-hidden="true" />
       ) : (
-        <ImageIcon className="size-5" aria-hidden="true" />
+        <IconPhoto className="size-5" aria-hidden="true" />
       )}
       <span className="sr-only">{alt}</span>
     </div>

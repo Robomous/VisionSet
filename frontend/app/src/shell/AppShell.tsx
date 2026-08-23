@@ -90,7 +90,15 @@ import {
   IconLayoutSidebarLeftExpand,
   IconLogout,
 } from "@tabler/icons-react";
-import { cn, PaddedContent, readRailCollapsed, useApiSession, writeRailCollapsed } from "@visionset/ui-core";
+import {
+  Button,
+  buttonVariants,
+  cn,
+  PaddedContent,
+  readRailCollapsed,
+  useApiSession,
+  writeRailCollapsed,
+} from "@visionset/ui-core";
 import { useState, type JSX, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router";
 
@@ -137,21 +145,21 @@ export function AppShell(): JSX.Element {
             onClick={toggle}
           >
             {collapsed ? (
-              <IconLayoutSidebarLeftExpand className="size-4" aria-hidden="true" />
+              <IconLayoutSidebarLeftExpand aria-hidden="true" />
             ) : (
-              <IconLayoutSidebarLeftCollapse className="size-4" aria-hidden="true" />
+              <IconLayoutSidebarLeftCollapse aria-hidden="true" />
             )}
           </RailButton>
         </div>
 
         <RailLink to="/" end collapsed={collapsed} testId="rail-home" label="Home">
-          <IconHome className="size-4 shrink-0" aria-hidden="true" />
+          <IconHome aria-hidden="true" />
         </RailLink>
         <RailLink to="/projects" collapsed={collapsed} testId="rail-projects" label="Projects">
-          <IconFolders className="size-4 shrink-0" aria-hidden="true" />
+          <IconFolders aria-hidden="true" />
         </RailLink>
         <RailLink to="/inference" collapsed={collapsed} testId="rail-inference" label="Inference">
-          <IconCpu className="size-4 shrink-0" aria-hidden="true" />
+          <IconCpu aria-hidden="true" />
         </RailLink>
 
         <div className="mt-auto">
@@ -235,7 +243,7 @@ function SignOut({ collapsed }: { readonly collapsed: boolean }): JSX.Element {
   const label = access === "session" ? "Use a token" : "Sign out";
   return (
     <RailButton testId="rail-sign-out" label={label} onClick={signOut} wide={!collapsed}>
-      <IconLogout className="size-4 shrink-0" aria-hidden="true" />
+      <IconLogout aria-hidden="true" />
       {!collapsed && <span className="truncate">{label}</span>}
     </RailButton>
   );
@@ -267,14 +275,16 @@ function RailLink({
       // `sidebar-accent`/`sidebar-accent-foreground` — a pairing chosen to
       // stay legible against `sidebar` in *either* theme, rather than a fixed
       // light-on-dark contrast — and an inactive one is the rail's own
-      // foreground at reduced opacity, `sidebar-foreground/70`.
+      // foreground at reduced opacity, `sidebar-foreground/70`. `NavLink`
+      // keeps its function `className` here — `Button asChild` cannot merge
+      // one — so the geometry comes from `buttonVariants` directly.
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-2 rounded-md px-2 py-2 text-sm",
+          buttonVariants({ variant: "ghost", size: "md" }),
+          "w-full justify-start gap-2 px-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:hover:bg-sidebar-accent",
           collapsed && "justify-center",
-          isActive
-            ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          isActive &&
+            "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
         )
       }
     >
@@ -298,21 +308,23 @@ function RailButton({
   readonly children: ReactNode;
 }): JSX.Element {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size={wide === true ? "md" : "icon"}
       data-testid={testId}
       aria-label={label}
       title={label}
       onClick={onClick}
-      // `sidebar-foreground/70` like an inactive link: the collapse toggle and
-      // sign-out are chrome, and nothing on the rail is permanently at full
-      // contrast except the item you are on.
+      // The rail keeps its own palette — sidebar tokens, not the pane's —
+      // and `/70` for chrome, exactly as before; geometry now comes from
+      // the primitive, which also brings the focus ring these controls
+      // never had.
       className={cn(
-        "flex items-center gap-2 rounded-md px-2 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        wide === true && "w-full",
+        "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:hover:bg-sidebar-accent",
+        wide === true && "w-full justify-start gap-2 px-2",
       )}
     >
       {children}
-    </button>
+    </Button>
   );
 }

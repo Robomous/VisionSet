@@ -74,7 +74,7 @@
 
 import { useEffect, useState, type JSX } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Sparkles } from "lucide-react";
+import { IconSparkles } from "@tabler/icons-react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { useConnections, type Connection } from "../data/inferenceQueries";
@@ -496,7 +496,7 @@ export function PreLabelButton({ batch, className, onSegment }: PreLabelButtonPr
         data-testid={`pre-label-${batch.name}`}
         onClick={() => setOpen(true)}
       >
-        <Sparkles className="size-4" aria-hidden="true" />
+        <IconSparkles className="size-4" aria-hidden="true" />
         Pre-label
       </Button>
       <PreLabelDialog

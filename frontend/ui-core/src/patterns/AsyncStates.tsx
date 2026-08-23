@@ -17,7 +17,7 @@
  * incident id where a person can quote it. What a retry *does* is the caller's.
  */
 
-import { AlertTriangle, Inbox } from "lucide-react";
+import { IconAlertTriangle, IconInbox } from "@tabler/icons-react";
 import type { JSX, ReactNode } from "react";
 
 import { cn } from "../lib/cn";
@@ -78,7 +78,7 @@ export function EmptyState({
       )}
     >
       <span className="text-muted-foreground" aria-hidden="true">
-        {icon ?? <Inbox className="size-8" />}
+        {icon ?? <IconInbox className="size-8" />}
       </span>
       <p className="text-base font-semibold font-heading">{title}</p>
       {description !== undefined && (
@@ -126,7 +126,7 @@ export function ErrorState({
       variant="destructive"
       title={
         <span className="flex items-center gap-2">
-          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+          <IconAlertTriangle className="size-4 shrink-0" aria-hidden="true" />
           {message}
         </span>
       }
