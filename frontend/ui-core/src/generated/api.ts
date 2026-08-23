@@ -4442,8 +4442,13 @@ export interface components {
          *     `thumbnail_hash` is that asset's cached preview. Both are null for a
          *     project with no images; the id set with a null hash means the asset has no
          *     cached preview, so there is nothing to fetch.
+         *
+         *     `created_at` is when the project was made, in UTC; null for a project
+         *     written before the workspace recorded it.
          */
         ProjectOut: {
+            /** Created At */
+            created_at: string | null;
             /** Description */
             description: string | null;
             /**

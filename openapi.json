@@ -3806,8 +3806,20 @@
         "type": "object"
       },
       "ProjectOut": {
-        "description": "A project.\n\n`thumbnail_asset_id` names the image that stands for the project in a\nlisting \u2014 the first asset of its earliest batch that has one \u2014 and\n`thumbnail_hash` is that asset's cached preview. Both are null for a\nproject with no images; the id set with a null hash means the asset has no\ncached preview, so there is nothing to fetch.",
+        "description": "A project.\n\n`thumbnail_asset_id` names the image that stands for the project in a\nlisting \u2014 the first asset of its earliest batch that has one \u2014 and\n`thumbnail_hash` is that asset's cached preview. Both are null for a\nproject with no images; the id set with a null hash means the asset has no\ncached preview, so there is nothing to fetch.\n\n`created_at` is when the project was made, in UTC; null for a project\nwritten before the workspace recorded it.",
         "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "description": {
             "anyOf": [
               {
@@ -3857,7 +3869,8 @@
           "name",
           "description",
           "thumbnail_asset_id",
-          "thumbnail_hash"
+          "thumbnail_hash",
+          "created_at"
         ],
         "title": "ProjectOut",
         "type": "object"

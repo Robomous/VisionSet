@@ -7,7 +7,7 @@ that fail together and tell you nothing extra.
 """
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -59,6 +59,16 @@ def test_a_created_project_is_then_readable_by_id(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json() == made
+
+
+def test_a_created_project_carries_when_it_was_created(client: TestClient) -> None:
+    before = datetime.now(UTC)
+    body = created(client, "road-signs")
+
+    stamped = datetime.fromisoformat(str(body["created_at"]))
+    assert stamped.tzinfo is not None
+    assert before <= stamped <= datetime.now(UTC)
+    assert client.get(f"/projects/{body['id']}").json()["created_at"] == body["created_at"]
 
 
 def test_the_description_is_optional_and_comes_back_as_null(client: TestClient) -> None:
