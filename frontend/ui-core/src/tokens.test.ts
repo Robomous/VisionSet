@@ -5,7 +5,7 @@
  * output (`:root`, `.dark`, `@theme inline`, the base layer) plus VisionSet's
  * justified extensions (`stage`, `brand`, `success`, `warning` — each with
  * its own `-foreground` where the preset's own status token has one — and the
- * three `origin-*` surfaces) and the sidebar rail's two layout widths. `tokens.ts` is the TypeScript mirror a
+ * three `origin-*` marks) and the sidebar rail's two layout widths. `tokens.ts` is the TypeScript mirror a
  * `<canvas>`/`<svg>` or a test reads a colour off of; this suite parses the
  * stylesheet structurally and asserts the two agree, declaration for
  * declaration, and that none of the tokens this rewrite retired have crept

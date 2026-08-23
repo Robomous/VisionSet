@@ -105,24 +105,29 @@ filtered out.
 
 Where the items of a list are things a person configures so that *something else* becomes
 possible, each item says which abilities it enables, in a user's words, and the list is
-filtered by ability rather than sectioned by it — one chip per ability beside an **All**, and
-the ability's own empty state behind its chip. An item enabling two abilities is one item,
-not two copies. The Models page is the specimen. Four rules make it honest:
+filtered rather than sectioned — one dropdown per dimension the items vary on, each at
+**All** until somebody chooses, combined so an item is shown only while it answers every
+choice. An item enabling two abilities is one item, not two copies. The Models page is the
+specimen. Four rules make it honest:
 
-- **The abilities come from the data's own vocabulary**, never from a client-side reading of
+- **The values come from the data's own vocabulary**, never from a client-side reading of
   what an item is. On Models that is `capabilities`, which the server derives from the
-  model's weights.
-- **A chip with a consuming surface invites; one without it only describes.** An ability
-  the product cannot yet use gets its chip, its prose and no control at all — a CTA there is
-  principle 4's dead button wearing a friendlier label.
-- **Nothing declared is invisible.** A value the build has no copy for gets a chip and a badge
-  built from the value, and an item declaring no ability at all still appears under **All**. An
-  item no chip reaches is an item nobody can act on.
-- **Invitation CTAs are secondary treatments.** The view's dominant action stays in the
-  header; otherwise a chip showing an invitation is a second primary on the page.
+  model's weights, and `origin`, which the server records.
+- **A filter offers only what is on the page, and is not offered at all until there is a
+  choice to make.** The options are the distinct values the items carry; a dimension on which
+  every item agrees is withheld, because a dropdown whose every choice shows the same items
+  is principle 4's dead control wearing a friendlier label. The set of filters on screen is
+  therefore a fact about the data, derived on every render.
+- **Nothing declared is invisible.** A value the build has no copy for is offered raw and
+  shown raw on the item, and an item declaring no ability at all still appears under **All**.
+  An item no filter reaches is an item nobody can act on.
+- **An emptied result states the fact and invites nothing.** Every choice on offer is one some
+  item answers, so what left nothing is the combination; the page says *nothing here
+  matches*, keeps the count of what it hid, and offers **Clear**. The view's dominant action
+  stays in the header.
 
-A text filter crossing such a list narrows what the chip shows, and an emptied result says
-*nothing here matches* rather than showing the chip's invitation.
+A text filter crossing such a list narrows what the dropdowns show, and is held to the same
+emptied-result rule.
 
 ## Tabs
 

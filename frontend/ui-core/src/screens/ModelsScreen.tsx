@@ -144,6 +144,7 @@ import {
   IconPlug,
   IconShieldCheck,
   IconTrash,
+  IconX,
 } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type FormEvent, type JSX } from "react";
 
@@ -169,7 +170,7 @@ import {
 } from "../data/inferenceQueries";
 import { jobFailureProse, refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
-import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
+import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import {
@@ -217,13 +218,20 @@ import {
   precisionsFor,
   type Precision,
 } from "./inferenceCatalog";
+import { capabilityProse } from "./modelCapabilities";
 import {
-  capabilityBadge,
-  capabilityBadgeVariant,
-  capabilityChips,
-  inviteFor,
-  underCapability,
-} from "./modelCapabilities";
+  DIMENSION,
+  NO_FILTERS,
+  activeFilters,
+  anyFilter,
+  applyFilters,
+  filterOptions,
+  offeredDimensions,
+  type Dimension,
+  type FilterOption,
+  type ModelFilters,
+} from "./modelFilters";
+import { originLabel, originMark } from "./modelOrigin";
 /** Above this many cards a list carries a filter input (`DESIGN.md`). */
 const FILTER_ABOVE = 20;
 
@@ -233,11 +241,11 @@ export function ModelsScreen(): JSX.Element {
   const [editing, setEditing] = useState<Connection | null>(null);
   const [doomed, setDoomed] = useState<Connection | null>(null);
   const [needle, setNeedle] = useState("");
-  // The chip pressed, or `null` for All. A value rather than an index, so a chip
-  // the workspace stops declaring (an endpoint re-asked, a model moved) does not
-  // leave the press pointing at its neighbour; what happens to the press then
-  // is decided below, off the chips the list actually offers.
-  const [chosen, setChosen] = useState<string | null>(null);
+  // One value per dimension, or `null` for All — values rather than indices, so
+  // a choice the workspace stops declaring (an endpoint re-asked, a model moved)
+  // does not point at its neighbour. What happens to such a choice is decided
+  // below, off the options the list actually offers.
+  const [chosen, setChosen] = useState<ModelFilters>(NO_FILTERS);
 
   return (
     <div className="flex flex-col gap-6" data-testid="models-screen">
@@ -272,64 +280,69 @@ export function ModelsScreen(): JSX.Element {
         }}
       >
         {(page) => {
-          const chips = capabilityChips(page.items);
-          // A press on a chip the list no longer offers — an unnamed ability
-          // nobody declares any more — reads as All rather than as an empty
-          // page under a chip that is not there. Derived, never synced: the
-          // press survives, and lights again if the ability comes back.
-          const active = chips.some((chip) => chip.key === chosen) ? chosen : null;
-          const filtering = needle.trim() !== "";
-          const shown = matching(underCapability(page.items, active), needle);
-          const invite = active === null ? undefined : inviteFor(active);
+          const options = filterOptions(page.items);
+          const dimensions = offeredDimensions(options);
+          const active = activeFilters(options, chosen);
+          const narrowed = anyFilter(active);
+          const typing = needle.trim() !== "";
+          const shown = matching(applyFilters(page.items, active), needle);
+          const pick = (dimension: Dimension) => (value: string) =>
+            setChosen((current) => ({ ...current, [dimension]: value === ALL ? null : value }));
+          const controls = dimensions.length > 0 || page.items.length > FILTER_ABOVE;
           return (
             <div className="flex flex-col gap-4" data-testid="models-catalog">
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              {controls && (
                 <div
                   role="group"
-                  aria-label="Show models by ability"
-                  className="flex flex-wrap items-center gap-1.5"
-                  data-testid="capability-chips"
+                  aria-label="Show models by"
+                  className="flex flex-wrap items-end gap-x-3 gap-y-2"
+                  data-testid="model-filters"
                 >
-                  <FilterChip
-                    pressed={active === null}
-                    onPress={() => setChosen(null)}
-                    testId="capability-chip-all"
-                  >
-                    All
-                  </FilterChip>
-                  {chips.map((chip) => (
-                    <FilterChip
-                      key={chip.key}
-                      pressed={active === chip.key}
-                      onPress={() => setChosen(chip.key)}
-                      testId={`capability-chip-${chip.key}`}
-                      known={chip.known}
-                    >
-                      {chip.label}
-                    </FilterChip>
-                  ))}
-                </div>
-                {page.items.length > FILTER_ABOVE && (
-                  <div className="flex items-center gap-2">
-                    <IconFilter className="size-4 text-muted-foreground" aria-hidden="true" />
-                    <Label htmlFor="connection-filter" className="sr-only">
-                      Filter connections
-                    </Label>
-                    <Input
-                      id="connection-filter"
-                      data-testid="connection-filter"
-                      className="max-w-xs"
-                      placeholder="Filter by name"
-                      value={needle}
-                      onChange={(event) => setNeedle(event.target.value)}
+                  {dimensions.map((dimension) => (
+                    <FilterSelect
+                      key={dimension}
+                      id={`filter-${dimension}`}
+                      label={DIMENSION[dimension].label}
+                      options={options[dimension]}
+                      value={active[dimension]}
+                      onChange={pick(dimension)}
                     />
-                    {/* Never hides the count of what it filtered out (`DESIGN.md`). */}
+                  ))}
+                  {narrowed && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid="clear-filters"
+                      onClick={() => setChosen(NO_FILTERS)}
+                    >
+                      <IconX className="size-4" aria-hidden="true" />
+                      Clear
+                    </Button>
+                  )}
+                  {page.items.length > FILTER_ABOVE && (
+                    <div className="flex items-center gap-2">
+                      <IconFilter className="size-4 text-muted-foreground" aria-hidden="true" />
+                      <Label htmlFor="connection-filter" className="sr-only">
+                        Filter connections
+                      </Label>
+                      <Input
+                        id="connection-filter"
+                        data-testid="connection-filter"
+                        className="max-w-xs"
+                        placeholder="Filter by name"
+                        value={needle}
+                        onChange={(event) => setNeedle(event.target.value)}
+                      />
+                    </div>
+                  )}
+                  {/* Never hides the count of what it filtered out (`DESIGN.md`). */}
+                  {(narrowed || typing || page.items.length > FILTER_ABOVE) && (
                     <span className="text-xs text-muted-foreground" data-testid="filter-count">
                       {shown.length} of {page.items.length}
                     </span>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
               {shown.length > 0 ? (
                 <ul className="grid gap-6 md:grid-cols-2 xl:grid-cols-3" data-testid="models-grid">
                   {shown.map((connection) => (
@@ -342,32 +355,12 @@ export function ModelsScreen(): JSX.Element {
                     </li>
                   ))}
                 </ul>
-              ) : filtering ? (
-                // What somebody typed is a fact about the filter and never an
-                // occasion to invite anything.
+              ) : (
+                // What somebody narrowed to is a fact about the filter and never
+                // an occasion to invite anything: every choice on offer is one
+                // some card answers, so an empty result is the combination.
                 <p className="text-xs text-muted-foreground" data-testid="filtered-out">
                   Nothing here matches the filter.
-                </p>
-              ) : invite !== undefined ? (
-                <EmptyState
-                  title={invite.title}
-                  description={invite.body}
-                  icon={<IconPlug className="size-8" />}
-                  // `secondary`, not `primary`: the header's "Add model" is on
-                  // screen and opens the same dialog. One filled action per view.
-                  action={
-                    <Button
-                      variant="secondary"
-                      data-testid="capability-invite"
-                      onClick={() => setCreating(true)}
-                    >
-                      {invite.cta}
-                    </Button>
-                  }
-                />
-              ) : (
-                <p className="text-xs text-muted-foreground" data-testid="filtered-out">
-                  Nothing declares this ability.
                 </p>
               )}
             </div>
@@ -393,44 +386,56 @@ function matching(rows: readonly Connection[], needle: string): readonly Connect
   return rows.filter((row) => row.name.toLowerCase().includes(wanted));
 }
 
+/** The value a dropdown shows for All — never a value the wire could carry. */
+const ALL = "__all__";
+
 /**
- * One filter chip: a toggle, pressed or not, in the badge's own geometry.
+ * One filter dropdown: a labelled `Select` whose first choice is All.
  *
- * A real `<button>` carrying `aria-pressed`, so the chosen filter is announced
- * as a state rather than read off a colour; the pressed fill is the badge's
- * `accent` treatment — a tint of the action colour, never the fill itself, so
- * the header keeps the one filled button on the view — and the ring is Nova's.
+ * A real form control with a visible label rather than a row of toggles, because
+ * four dimensions combine and a person needs to see what each is set to; the
+ * trigger reads the chosen value, so the state is announced rather than read off
+ * a colour. A value this build cannot name is offered raw, marked `data-known`.
  */
-function FilterChip({
-  pressed,
-  onPress,
-  testId,
-  known = true,
-  children,
+function FilterSelect({
+  id,
+  label,
+  options,
+  value,
+  onChange,
 }: {
-  readonly pressed: boolean;
-  readonly onPress: () => void;
-  readonly testId: string;
-  readonly known?: boolean;
-  readonly children: string;
+  readonly id: string;
+  readonly label: string;
+  readonly options: readonly FilterOption[];
+  readonly value: string | null;
+  readonly onChange: (value: string) => void;
 }): JSX.Element {
   return (
-    <button
-      type="button"
-      aria-pressed={pressed}
-      data-testid={testId}
-      data-known={known}
-      onClick={onPress}
-      className={cn(
-        "inline-flex h-7 items-center rounded-4xl border px-2.5 text-xs font-medium whitespace-nowrap transition-colors outline-none",
-        "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-        pressed
-          ? "border-primary bg-primary/10 text-primary"
-          : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
+    <div className="flex flex-col gap-1">
+      <Label htmlFor={id} className="text-xs text-muted-foreground">
+        {label}
+      </Label>
+      <Select value={value ?? ALL} onValueChange={onChange}>
+        <SelectTrigger id={id} className="h-8 min-w-36" data-testid={id}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL} data-testid={`${id}-all`}>
+            All
+          </SelectItem>
+          {options.map((option) => (
+            <SelectItem
+              key={option.key}
+              value={option.key}
+              data-testid={`${id}-${option.key}`}
+              data-known={option.known}
+            >
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
@@ -456,6 +461,17 @@ export function sourceLine(connection: Connection): string {
   ]
     .filter((part): part is string => part !== null && part !== undefined && part !== "")
     .join(" · ");
+}
+
+/**
+ * What the model does and what it writes, one label each: `Suggests from clicks`,
+ * `writes boxes or polygons`. Empty when the connection has declared neither — a
+ * card nobody has downloaded carries no label at all.
+ */
+export function abilityLabels(connection: Connection): readonly string[] {
+  const labels = connection.capabilities.map(capabilityProse);
+  if (connection.produces.length > 0) labels.push(`writes ${producesProse(connection.produces)}`);
+  return labels;
 }
 
 function hostOf(url: string | null): string | null {
@@ -517,13 +533,23 @@ export function ConnectionCard({
     can.has("test_endpoint") ||
     (can.has("download_weights") && ready);
   const downloadable = can.has("download_weights") && !ready;
+  const mark = originMark(connection.origin);
   return (
-    <Card className="w-full" data-testid={`connection-${connection.name}`}>
+    <Card
+      // The edge is the one colour on the card, and it says where the weights
+      // come from; an origin this build cannot name leaves the card unmarked.
+      className={cn("w-full", mark !== undefined && "border-l-4", mark)}
+      data-testid={`connection-${connection.name}`}
+      data-origin={connection.origin}
+    >
       <CardHeader>
         <CardTitle className="break-words">{connection.name}</CardTitle>
         {/* One line, the way a person reads them — the CLI's listing agrees. */}
         <CardDescription className="font-mono text-xs break-all" data-testid="model-reference">
           {connection.model_id} @ {connection.model_revision}
+        </CardDescription>
+        <CardDescription data-testid="connection-origin">
+          {originLabel(connection.origin)}
         </CardDescription>
         {overflow && (
           <CardAction>
@@ -596,34 +622,21 @@ export function ConnectionCard({
         )}
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-3">
-        {connection.capabilities.length > 0 && (
-          <ul className="flex flex-wrap gap-1.5" aria-label="What it does" data-testid="capability-badges">
-            {connection.capabilities.map((capability) => (
-              <li key={capability}>
-                <Badge
-                  variant={capabilityBadgeVariant(capability)}
-                  data-testid="capability-badge"
-                  data-capability={capability}
-                >
-                  {capabilityBadge(capability)}
-                </Badge>
+        {abilityLabels(connection).length > 0 && (
+          // What it does and what it writes, each a quiet square label in the
+          // card's own ink on `muted`: boxed so the eye finds them, and colourless
+          // so nothing on this card competes with the edge and the state.
+          <ul className="flex flex-wrap gap-1.5" aria-label="What it does" data-testid="connection-abilities">
+            {abilityLabels(connection).map((label) => (
+              <li
+                key={label}
+                className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-xs"
+                data-testid="ability-label"
+              >
+                {label}
               </li>
             ))}
           </ul>
-        )}
-        {connection.produces.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Writes</span>
-            <ul className="flex flex-wrap gap-1.5" aria-label="Writes" data-testid="produces-chips">
-              {connection.produces.map((geometry) => (
-                <li key={geometry}>
-                  <Badge variant="outline" data-testid="produces-chip" data-geometry={geometry}>
-                    {producesProse([geometry])}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          </div>
         )}
         <p className="text-xs text-muted-foreground" data-testid="connection-source">
           {sourceLine(connection)}

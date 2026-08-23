@@ -410,23 +410,18 @@ it("renders every field a full connection carries, top to bottom", async () => {
   expect(within(shown).getByTestId("model-reference").textContent).toBe(
     `${SAM_BASE_PLUS} @ ${SAM_BASE_PLUS_COMMIT}`,
   );
-  // Product prose, one badge per declared ability — and in the wire's order.
+  // Where the weights come from: a plain name, and the card's one colour — its edge.
+  expect(within(shown).getByTestId("connection-origin").textContent).toBe("Hugging Face");
+  expect(shown.className).toMatch(/\bborder-l-origin-hub\b/);
+  // Product prose, every declared ability in the wire's order, then what it
+  // writes in the shared plural prose — quiet square labels, no coloured chips.
   expect(
     within(shown)
-      .getAllByTestId("capability-badge")
-      .map((badge) => badge.textContent),
-  ).toEqual(["Suggests from clicks", "Finds what you name"]);
-  // Each ability in its own series colour, off the chart palette.
-  const [point, text] = within(shown).getAllByTestId("capability-badge");
-  expect(point.className).toMatch(/border-chart-\d/);
-  expect(text.className).toMatch(/border-chart-\d/);
-  expect(point.className).not.toBe(text.className);
-  // The shared plural prose, one chip per shape.
-  expect(
-    within(shown)
-      .getAllByTestId("produces-chip")
-      .map((chip) => chip.textContent),
-  ).toEqual(["boxes", "polygons"]);
+      .getAllByTestId("ability-label")
+      .map((label) => label.textContent),
+  ).toEqual(["Suggests from clicks", "Finds what you name", "writes boxes or polygons"]);
+  expect(within(shown).queryByTestId("capability-badge")).toBeNull();
+  expect(within(shown).queryByTestId("produces-chip")).toBeNull();
   expect(within(shown).getByTestId("connection-source").textContent).toBe("Local · cuda · fp16");
   expect(within(shown).getByTestId("connection-status").textContent).toBe("Ready");
   // Ready, so the download reading is the overflow's check and there is no
@@ -449,8 +444,7 @@ it("omits every line whose datum is null rather than drawing a placeholder", asy
     ),
   );
   const shown = await screen.findByTestId("connection-sam2-local");
-  expect(within(shown).queryByTestId("capability-badges")).toBeNull();
-  expect(within(shown).queryByTestId("produces-chips")).toBeNull();
+  expect(within(shown).queryByTestId("connection-abilities")).toBeNull();
   expect(within(shown).queryByTestId("download-progress")).toBeNull();
   expect(within(shown).queryByTestId("integrity-progress")).toBeNull();
   expect(within(shown).getByTestId("connection-status").textContent).toBe("Not set up");
@@ -510,8 +504,34 @@ it("shows a capability this build has no name for as its raw value, never droppe
     ),
   );
   const shown = await screen.findByTestId("connection-sam2-local");
-  expect(within(shown).getByTestId("capability-badge").textContent).toBe("depth_estimate");
-  expect(within(shown).getByTestId("produces-chip").textContent).toBe("depth_map");
+  expect(
+    within(shown)
+      .getAllByTestId("ability-label")
+      .map((label) => label.textContent),
+  ).toEqual(["depth_estimate", "writes depth_map"]);
+});
+
+it("marks a card's edge by its origin, names it plainly, and leaves one it cannot name unmarked", async () => {
+  listing([
+    connection({ id: "a", name: "hub", origin: "huggingface" }),
+    connection({ id: "b", name: "own", origin: "custom" }),
+    connection({ id: "c", name: "registry", origin: "robomous" }),
+    connection({ id: "d", name: "elsewhere", origin: "some-registry" as Connection["origin"] }),
+  ]);
+  render(mount(<ModelsScreen />));
+  const hub = await screen.findByTestId("connection-hub");
+  expect(hub.className).toMatch(/\bborder-l-origin-hub\b/);
+  expect(within(hub).getByTestId("connection-origin").textContent).toBe("Hugging Face");
+  const own = screen.getByTestId("connection-own");
+  expect(own.className).toMatch(/\bborder-l-origin-custom\b/);
+  expect(within(own).getByTestId("connection-origin").textContent).toBe("Customized");
+  const registry = screen.getByTestId("connection-registry");
+  expect(registry.className).toMatch(/\bborder-l-origin-robomous\b/);
+  expect(within(registry).getByTestId("connection-origin").textContent).toBe("Robomous");
+  // Open vocabulary: shown by its value, never dropped, never guessed a colour for.
+  const elsewhere = screen.getByTestId("connection-elsewhere");
+  expect(elsewhere.className).not.toMatch(/border-l-(4|origin-)/);
+  expect(within(elsewhere).getByTestId("connection-origin").textContent).toBe("some-registry");
 });
 
 it("asks for the download size per card, and only below Ready", async () => {
@@ -551,42 +571,141 @@ it("shows a connection serving two abilities once, and edits the one connection"
   expect(value(await screen.findByTestId("connection-name"))).toBe("sam2-full");
 });
 
-// --- the chips -----------------------------------------------------------------
+// --- the filters -----------------------------------------------------------------
 
-it("offers All and a chip per ability this build describes, whatever the workspace holds", async () => {
-  listing([connection()]);
-  render(mount(<ModelsScreen />));
-  const chips = await screen.findByTestId("capability-chips");
-  expect(
-    within(chips)
-      .getAllByRole("button")
-      .map((chip) => chip.textContent),
-  ).toEqual(["All", "Point prompts", "Text prompts"]);
-  expect(screen.getByTestId("capability-chip-all").getAttribute("aria-pressed")).toBe("true");
-});
+/** Open one filter dropdown and pick the option whose label matches. */
+async function choose(filter: string, option: string | RegExp): Promise<void> {
+  await userEvent.click(screen.getByTestId(filter));
+  await userEvent.click(await screen.findByRole("option", { name: option }));
+}
 
-it("narrows the grid to the chip pressed, and All brings everything back", async () => {
-  listing([
+/** A workspace with something to choose on every dimension. */
+function varied(): Connection[] {
+  return [
     connection({ id: "a", name: "suggest", setup_state: "ready", capabilities: ["point_suggest"] }),
     connection({ id: "b", name: "detect", setup_state: "ready", capabilities: ["text_detect"] }),
     connection({ id: "c", name: "fresh" }),
-  ]);
+    connection({
+      id: "d",
+      name: "remote",
+      connection_type: "http",
+      origin: "custom",
+      device: null,
+      precision: null,
+      endpoint_url: "https://models.example/predict",
+      setup_state: "ready",
+      capabilities: ["text_detect"],
+      allowed_actions: ["test_endpoint", "update", "delete"],
+    }),
+  ];
+}
+
+it("offers no dropdown while there is nothing to choose", async () => {
+  // One connection: one origin, one ability at most, one kind, one state. A
+  // dropdown whose every choice shows the same card is a control in a useless
+  // state, so none is on screen — and neither is the row they would sit in.
+  listing([connection()]);
   render(mount(<ModelsScreen />));
   await screen.findByTestId("models-grid");
-  expect(screen.getAllByTestId(/^connection-(suggest|detect|fresh)$/)).toHaveLength(3);
+  expect(screen.queryByTestId("model-filters")).toBeNull();
+  expect(screen.queryByRole("combobox")).toBeNull();
+});
 
-  await userEvent.click(screen.getByTestId("capability-chip-text_detect"));
-  expect(screen.getByTestId("capability-chip-text_detect").getAttribute("aria-pressed")).toBe(
-    "true",
-  );
-  expect(screen.getByTestId("capability-chip-all").getAttribute("aria-pressed")).toBe("false");
-  expect(screen.getByTestId("connection-detect")).not.toBeNull();
-  expect(screen.queryByTestId("connection-suggest")).toBeNull();
-  // A connection that has declared nothing answers All and no other chip.
+it("offers a dropdown per dimension with a choice to make, each at All, in the page's order", async () => {
+  listing(varied());
+  render(mount(<ModelsScreen />));
+  const filters = await screen.findByTestId("model-filters");
+  expect(
+    within(filters)
+      .getAllByRole("combobox")
+      .map((trigger) => trigger.textContent),
+  ).toEqual(["All", "All", "All", "All"]);
+  expect(within(filters).getByText("Origin")).not.toBeNull();
+  expect(within(filters).getByText("Ability")).not.toBeNull();
+  expect(within(filters).getByText("Runs")).not.toBeNull();
+  expect(within(filters).getByText("State")).not.toBeNull();
+  // Nothing narrowed, so nothing to clear and no count to read.
+  expect(screen.queryByTestId("clear-filters")).toBeNull();
+  expect(screen.queryByTestId("filter-count")).toBeNull();
+});
+
+it("offers only the dimensions the workspace varies on", async () => {
+  // Two abilities, everything else alike: one dropdown, and it is Ability.
+  listing([
+    connection({ id: "a", name: "suggest", setup_state: "ready", capabilities: ["point_suggest"] }),
+    connection({ id: "b", name: "detect", setup_state: "ready", capabilities: ["text_detect"] }),
+  ]);
+  render(mount(<ModelsScreen />));
+  const filters = await screen.findByTestId("model-filters");
+  expect(within(filters).getAllByRole("combobox")).toHaveLength(1);
+  expect(screen.getByTestId("filter-capability")).not.toBeNull();
+  expect(screen.queryByTestId("filter-origin")).toBeNull();
+  expect(screen.queryByTestId("filter-kind")).toBeNull();
+  expect(screen.queryByTestId("filter-state")).toBeNull();
+});
+
+it("lists only the values on the page, named in a person's words", async () => {
+  listing(varied());
+  render(mount(<ModelsScreen />));
+  await userEvent.click(await screen.findByTestId("filter-capability"));
+  expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+    "All",
+    "Point prompts",
+    "Text prompts",
+  ]);
+  await userEvent.keyboard("{Escape}");
+  await userEvent.click(screen.getByTestId("filter-origin"));
+  // Robomous is a name this build knows and nothing on the page carries: not offered.
+  expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+    "All",
+    "Hugging Face",
+    "Customized",
+  ]);
+  await userEvent.keyboard("{Escape}");
+});
+
+it("narrows the grid to the ability chosen, and All brings everything back", async () => {
+  listing(varied());
+  render(mount(<ModelsScreen />));
+  await screen.findByTestId("models-grid");
+  const cards = /^connection-(suggest|detect|fresh|remote)$/;
+  expect(screen.getAllByTestId(cards)).toHaveLength(4);
+
+  await choose("filter-capability", "Point prompts");
+  expect(screen.getByTestId("filter-capability").textContent).toBe("Point prompts");
+  expect(screen.getByTestId("connection-suggest")).not.toBeNull();
+  expect(screen.queryByTestId("connection-detect")).toBeNull();
+  // A connection that has declared nothing answers All and no other choice.
   expect(screen.queryByTestId("connection-fresh")).toBeNull();
+  // The count says what the filter left, of everything.
+  expect(screen.getByTestId("filter-count").textContent).toContain("1 of 4");
 
-  await userEvent.click(screen.getByTestId("capability-chip-all"));
-  expect(screen.getAllByTestId(/^connection-(suggest|detect|fresh)$/)).toHaveLength(3);
+  await choose("filter-capability", "All");
+  expect(screen.getAllByTestId(cards)).toHaveLength(4);
+});
+
+it("combines the dropdowns, and Clear puts every one back to All", async () => {
+  listing(varied());
+  render(mount(<ModelsScreen />));
+  await screen.findByTestId("models-grid");
+  const cards = /^connection-(suggest|detect|fresh|remote)$/;
+
+  await choose("filter-capability", "Text prompts");
+  expect(screen.getAllByTestId(cards)).toHaveLength(2);
+  await choose("filter-kind", "HTTP");
+  expect(screen.getAllByTestId(cards).map((card) => card.dataset.testid)).toEqual([
+    "connection-remote",
+  ]);
+  await choose("filter-state", "Not set up");
+  // No endpoint is waiting for weights: the combination, not any one choice,
+  // is what left nothing — and every choice on offer is one some card answers,
+  // so an empty result is only ever the combination.
+  expect(screen.getByTestId("filtered-out").textContent).toBe("Nothing here matches the filter.");
+  expect(screen.getByTestId("filter-count").textContent).toContain("0 of 4");
+
+  await userEvent.click(screen.getByTestId("clear-filters"));
+  expect(screen.getAllByTestId(cards)).toHaveLength(4);
+  expect(screen.queryByTestId("clear-filters")).toBeNull();
 });
 
 it("keeps a connection that has declared nothing on the page, beside its remedy", async () => {
@@ -599,27 +718,7 @@ it("keeps a connection that has declared nothing on the page, beside its remedy"
   expect(within(waiting).getByTestId("download-weights")).not.toBeNull();
 });
 
-it("invites a first connection when a described chip shows nothing", async () => {
-  listing([connection({ setup_state: "ready", capabilities: ["text_detect"] })]);
-  render(mount(<ModelsScreen />));
-  await screen.findByTestId("models-grid");
-  await userEvent.click(screen.getByTestId("capability-chip-point_suggest"));
-  expect(screen.queryByTestId("models-grid")).toBeNull();
-  expect(screen.getByText("Add a connection the suggest tool can use")).not.toBeNull();
-  expect(screen.getByRole("button", { name: "Add a point-prompt connection" })).not.toBeNull();
-});
-
-it("opens the same dialog from a chip's invitation as from the header", async () => {
-  listing([connection({ setup_state: "ready", capabilities: ["text_detect"] })]);
-  catalog();
-  render(mount(<ModelsScreen />));
-  await screen.findByTestId("models-grid");
-  await userEvent.click(screen.getByTestId("capability-chip-point_suggest"));
-  await userEvent.click(screen.getByTestId("capability-invite"));
-  expect(await screen.findByTestId("choose-type")).not.toBeNull();
-});
-
-it("raises a chip for an ability this build has no name for, from the value itself", async () => {
+it("offers an ability this build has no name for, from the value itself", async () => {
   // The response check used to refuse the whole listing over one unrecognised member, so
   // the generic rendering was unreachable through the network and only a unit test reached
   // it. This is that path end to end: a stubbed listing, the real client, the real check.
@@ -628,26 +727,13 @@ it("raises a chip for an ability this build has no name for, from the value itse
     connection({ id: "b", name: "other", setup_state: "ready", capabilities: ["text_detect"] }),
   ]);
   render(mount(<ModelsScreen />));
-  const generic = await screen.findByTestId("capability-chip-depth_estimate");
-  expect(generic.textContent).toBe("depth_estimate");
+  await screen.findByTestId("models-grid");
+  await userEvent.click(screen.getByTestId("filter-capability"));
+  const generic = await screen.findByRole("option", { name: "depth_estimate" });
   expect(generic.dataset.known).toBe("false");
   await userEvent.click(generic);
   expect(screen.getByTestId("connection-sam2-local")).not.toBeNull();
   expect(screen.queryByTestId("connection-other")).toBeNull();
-});
-
-it("answers what to do next exactly once, however many chips are on screen", async () => {
-  // The count, from both sides (`DESIGN.md`): an invitation shipped as `primary`
-  // would put a second filled button on the page beside the header's. The
-  // workspace below is chosen so an invitation is actually on screen — the
-  // sweep says nothing about a rule whose control never rendered.
-  listing([connection({ setup_state: "ready", capabilities: ["text_detect"] })]);
-  render(mount(<ModelsScreen />));
-  await screen.findByTestId("models-grid");
-  await userEvent.click(screen.getByTestId("capability-chip-point_suggest"));
-  await screen.findByRole("button", { name: "Add a point-prompt connection" });
-
-  expect(document.body.querySelectorAll("button.bg-primary")).toHaveLength(1);
 });
 
 it("says nothing matches rather than inviting mid-filter", async () => {
@@ -656,28 +742,29 @@ it("says nothing matches rather than inviting mid-filter", async () => {
       id: `id-${index}`,
       name: index === 3 ? "needle" : `hay-${index}`,
       setup_state: "ready",
-      capabilities: ["text_detect"],
+      capabilities: [index % 2 === 0 ? "text_detect" : "point_suggest"],
     }),
   );
   listing(many);
   render(mount(<ModelsScreen />));
   await userEvent.type(await screen.findByTestId("connection-filter"), "need");
-  await userEvent.click(screen.getByTestId("capability-chip-point_suggest"));
+  // `needle` is index 3: a point-prompt model. Text prompts leaves nothing.
+  await choose("filter-capability", "Text prompts");
 
   expect(screen.getByTestId("filtered-out").textContent).toBe("Nothing here matches the filter.");
-  // What somebody typed is not an occasion to invite them to configure anything.
-  expect(screen.queryByRole("button", { name: "Add a point-prompt connection" })).toBeNull();
+  expect(screen.queryByRole("button", { name: /add a .* connection/i })).toBeNull();
   // And the count is what both filters left, of everything.
   expect(screen.getByTestId("filter-count").textContent).toContain("0 of 24");
 });
 
-it("falls back to All when the chip pressed stops being declared", async () => {
-  // An endpoint re-asked, a model moved: the value a chip stood for can leave
-  // the workspace while it is pressed. The press is kept and reads as All, so
-  // the page never shows nothing under a chip that is not there.
+it("falls back to All when the value chosen stops being declared", async () => {
+  // An endpoint re-asked, a model moved: the value a choice stood for can leave
+  // the workspace while it is chosen. The choice is kept and reads as All, so
+  // the page never shows nothing under a choice that is not there.
   let hosted = connection({
     name: "remote-seg",
     connection_type: "http",
+    origin: "custom",
     device: null,
     precision: null,
     endpoint_url: "https://models.example/predict",
@@ -685,10 +772,11 @@ it("falls back to All when the chip pressed stops being declared", async () => {
     capabilities: ["depth_estimate"],
     allowed_actions: ["test_endpoint", "update", "delete"],
   });
+  const other = connection({ id: "b", name: "other", setup_state: "ready", capabilities: ["point_suggest"] });
   handlers.push((request) => {
     const path = new URL(request.url).pathname;
     if (request.method === "GET" && path.endsWith("/connections")) {
-      return { status: 200, body: { items: [hosted], total: 1 } };
+      return { status: 200, body: { items: [hosted, other], total: 2 } };
     }
     if (request.method === "POST" && path.endsWith("/test-endpoint")) {
       hosted = { ...hosted, capabilities: ["point_suggest"] };
@@ -697,14 +785,18 @@ it("falls back to All when the chip pressed stops being declared", async () => {
     return undefined;
   });
   render(mount(<ModelsScreen />));
-  await userEvent.click(await screen.findByTestId("capability-chip-depth_estimate"));
+  await screen.findByTestId("models-grid");
+  await choose("filter-capability", "depth_estimate");
   expect(screen.getByTestId("connection-remote-seg")).not.toBeNull();
+  expect(screen.queryByTestId("connection-other")).toBeNull();
 
   await userEvent.click(screen.getByTestId("actions-remote-seg"));
   await userEvent.click(await screen.findByTestId("action-test-endpoint"));
-  await waitFor(() => expect(screen.queryByTestId("capability-chip-depth_estimate")).toBeNull());
-  expect(screen.getByTestId("capability-chip-all").getAttribute("aria-pressed")).toBe("true");
+  // Both now answer point prompts: one ability, so the dropdown itself is gone,
+  // and the choice it held reads as All.
+  await waitFor(() => expect(screen.queryByTestId("filter-capability")).toBeNull());
   expect(screen.getByTestId("connection-remote-seg")).not.toBeNull();
+  expect(screen.getByTestId("connection-other")).not.toBeNull();
 });
 
 // --- what the wire declares, and only that -------------------------------------

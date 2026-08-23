@@ -832,26 +832,35 @@ no list at all - a catalog that could not be read is no reason to stop a connect
 configured.
 
 The page is a grid of cards, one per connection - a connection serving two abilities is one
-card, not two. Top to bottom a card shows its name with `model @ revision` beneath; one badge
-per ability the connection declares, in a person's words and each ability in its own colour,
-so a grid reads by kind before it reads by words - **Suggests from clicks** for
-`point_suggest`, **Finds what you name** for `text_detect`, and a value this build has no words
-for printed as it arrived, uncoloured, because nothing the server declares is hidden; one small chip per
-shape it writes (*boxes*, *polygons*, ...), read from `produces`; where it runs, in one line -
-`Local · cuda · fp16`, or `HTTP · models.example` with the endpoint's host; and its status as a
-word - **Ready** or **Not set up** - beside a colour, never as a colour alone. Every line is
-absent rather than blank when the connection has nothing to put in it: a card whose weights have
-not been downloaded carries no badge and no chips yet, because what a model answers is read out
-of its own config.
+card, not two. Each card carries one colour, and it is where the weights come from: a narrow
+accent along the card's left edge - amber for a hub checkpoint, blue for the user's own, the
+brand's orange for the Robomous registry - with the origin named in plain words beneath the
+model reference (**Hugging Face**, **Customized**, **Robomous**). An origin this build cannot
+name is printed as it arrived on an unmarked card, because nothing the server declares is hidden
+and nothing is guessed a colour for. Top to bottom a card shows its name with `model @ revision`
+beneath; the origin; one quiet square label per ability the connection declares, in a person's
+words - **Suggests from clicks** for `point_suggest`, **Finds what you name** for `text_detect`,
+a value this build has no words for printed as it arrived - and one more for what it writes
+(*writes boxes or polygons*), read from `produces`; where it runs, in one line - `Local · cuda ·
+fp16`, or `HTTP · models.example` with the endpoint's host; and its status as a word - **Ready**
+or **Not set up** - beside a colour, never as a colour alone, the one badge on the card. Every
+line is absent rather than blank when the connection has nothing to put in it: a card whose
+weights have not been downloaded carries no ability labels yet, because what a model answers is
+read out of its own config.
 
-Above the grid sit filter chips: **All**, one chip per ability this build describes - **Point
-prompts**, **Text prompts** - whether or not anything serves it, and one per value the workspace
-declares that this build cannot name. A chip narrows the grid to the connections declaring that
-ability; a connection that has declared nothing appears under **All** only. A described chip
-with nothing under it shows an invitation naming what to add rather than an empty grid, because
-an ability the app consumes is a thing to invite a connection for. Above twenty connections the
-page also grows a text filter, which matches a name substring and keeps saying how many it hid;
-while it is in use an empty result says *nothing here matches the filter* and invites nothing.
+Above the grid sit dropdown filters, one per dimension the workspace varies on - **Origin**,
+**Ability**, **Runs** (local or HTTP), **State** (ready or not set up) - each at **All** until
+somebody chooses, and combined: a card is shown only while it answers every chosen value. A
+filter offers only the values on the page, named in a person's words where this build knows
+them and printed raw where it does not; and a dimension on which every connection agrees is not
+offered at all, because a dropdown whose every choice shows the same cards is a control in a
+useless state - a workspace with one connection shows no filter, and one whose connections
+differ only in ability shows exactly one. A connection that has declared no ability answers
+**All** only. While anything is chosen a **Clear** control puts every filter back and the page
+says how many cards the choice left of how many there are; an empty result says *nothing here
+matches the filter* and invites nothing, because every choice on offer is one some card
+answers, so what left nothing is the combination. Above twenty connections the page also grows
+a text filter, which matches a name substring.
 
 A local card that is not set up also says what fetching its weights would cost - the same size
 read the form shows before a confirm, asked per card and only while there is something to

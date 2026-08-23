@@ -269,30 +269,52 @@ async function openModels(page: Page): Promise<void> {
   await expect(page.getByTestId("models-screen")).toBeVisible();
 }
 
-test("the page is a grid of cards, and a chip narrows it to the ability a card declares", async ({
+test("the page is a grid of cards, and a dropdown narrows it to the ability a card declares", async ({
   page,
 }) => {
   await serveApi(page, () => connection("ready", null));
+  // A second card, so there is a choice to make: one ability per connection
+  // would leave the page with nothing to offer and no dropdown at all.
+  const detector: Wire["ConnectionOut"] = {
+    ...connection("ready", null, null, ["text_detect"]),
+    id: "detector-1",
+    name: "grounding-dino",
+    model_id: "IDEA-Research/grounding-dino-tiny",
+    produces: ["bbox"],
+  };
+  await page.route("**/api/inference/connections*", (route) =>
+    route.fulfill({
+      status: 200,
+      json: { items: [connection("ready", null), detector], total: 2 } satisfies Wire["ConnectionPage"],
+    }),
+  );
   await openModels(page);
 
-  // One card, saying what the connection is *for* — which the flat table of
-  // names, kinds and model ids never did — and what it writes, where it runs.
+  // One card per connection, saying where its weights come from, what it is
+  // *for* — which the flat table of names, kinds and model ids never did — what
+  // it writes, and where it runs.
   const grid = page.getByTestId("models-grid");
   await expect(grid.getByTestId("connection-sam2-local")).toHaveCount(1);
   const card = grid.getByTestId("connection-sam2-local");
-  await expect(card.getByTestId("capability-badge")).toHaveText(["Suggests from clicks"]);
-  await expect(card.getByTestId("produces-chip")).toHaveText(["boxes", "polygons"]);
+  await expect(card.getByTestId("connection-origin")).toHaveText("Hugging Face");
+  await expect(card.getByTestId("ability-label")).toHaveText([
+    "Suggests from clicks",
+    "writes boxes or polygons",
+  ]);
   await expect(card.getByTestId("connection-source")).toHaveText("Local · cuda · fp16");
+  await expect(card).toHaveCSS("border-left-width", "4px");
 
-  // The chip for the ability it declares keeps it; the other's chip shows the
-  // invitation instead. text_detect has a consumer now — pre-labeling a batch —
-  // so an ability nothing serves invites a first connection rather than
-  // reporting a surface that does not exist.
-  await page.getByTestId("capability-chip-point_suggest").click();
+  // Two abilities on the page, so Ability is offered — and nothing else is,
+  // because the two cards agree on origin, kind and state.
+  await expect(page.getByTestId("filter-capability")).toBeVisible();
+  await expect(page.getByTestId("filter-origin")).toHaveCount(0);
+  await page.getByTestId("filter-capability").click();
+  await page.getByRole("option", { name: "Text prompts" }).click();
+  await expect(grid.getByTestId("connection-grounding-dino")).toBeVisible();
+  await expect(grid.getByTestId("connection-sam2-local")).toHaveCount(0);
+  await expect(page.getByTestId("filter-count")).toHaveText("1 of 2");
+  await page.getByTestId("clear-filters").click();
   await expect(grid.getByTestId("connection-sam2-local")).toBeVisible();
-  await page.getByTestId("capability-chip-text_detect").click();
-  await expect(page.getByTestId("models-grid")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Add a text-prompt connection" })).toBeVisible();
 });
 
 test("a workspace with no connection invites the first one", async ({ page }) => {
@@ -304,7 +326,7 @@ test("a workspace with no connection invites the first one", async ({ page }) =>
   await openModels(page);
   await expect(page.getByText("Connect a model to enable auto-labeling")).toBeVisible();
   await expect(page.getByTestId("models-grid")).toHaveCount(0);
-  await expect(page.getByTestId("capability-chips")).toHaveCount(0);
+  await expect(page.getByTestId("model-filters")).toHaveCount(0);
 });
 
 test("a transfer left running is where it got to when you come back", async ({ page }) => {
@@ -413,20 +435,26 @@ test("an http connection is asked what it answers, and moves under it", async ({
   };
   await serveApi(page, () => hosted);
   await page.route("**/api/inference/connections/hosted-1/test-endpoint", (route) => {
-    hosted = { ...hosted, capabilities: ["point_suggest"], provider_id: "http" };
+    hosted = {
+      ...hosted,
+      capabilities: ["point_suggest"],
+      produces: ["bbox", "polygon"],
+      provider_id: "http",
+    };
     return route.fulfill({ status: 200, json: hosted });
   });
   await openModels(page);
   const card = page.getByTestId("connection-remote-seg");
   await expect(card).toBeVisible();
   await expect(card.getByTestId("connection-source")).toHaveText("HTTP · models.example");
-  await expect(card.getByTestId("capability-badge")).toHaveCount(0);
+  await expect(card.getByTestId("connection-origin")).toHaveText("Customized");
+  await expect(card.getByTestId("ability-label")).toHaveCount(0);
   await page.getByTestId("actions-remote-seg").click();
   await page.getByTestId("action-test-endpoint").click();
-  await expect(card.getByTestId("capability-badge")).toHaveText(["Suggests from clicks"]);
-  // And the chip for what it now declares shows it.
-  await page.getByTestId("capability-chip-point_suggest").click();
-  await expect(page.getByTestId("connection-remote-seg")).toBeVisible();
+  await expect(card.getByTestId("ability-label")).toHaveText([
+    "Suggests from clicks",
+    "writes boxes or polygons",
+  ]);
 });
 
 test("a model list taller than the window scrolls instead of running off it", async ({ page }) => {

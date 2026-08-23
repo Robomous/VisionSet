@@ -7,7 +7,7 @@
  * exact generated output, transcribed verbatim from a Docker scratch project
  * built with `shadcn` 4.18.0. The preset is the source of truth for every
  * name below except nine: `stage`, `brand`, `success`/`success-foreground`,
- * `warning`/`warning-foreground` and the three `origin-*` surfaces are
+ * `warning`/`warning-foreground` and the three `origin-*` marks are
  * VisionSet's own, each justified in
  * `DESIGN.md` and each following shadcn's own extension convention — a value
  * in `:root`, a dark counterpart in `.dark`, exposure through `@theme
@@ -95,15 +95,16 @@
   --warning: oklch(0.646 0.13 80);
   --warning-foreground: oklch(0.205 0 0);
   /*
-   * Where a model's weights come from, as a card's fill on the Models page:
-   * the hub, the user's own, the Robomous registry. Surfaces only — ink stays
-   * `foreground` — and never status: an origin is a kind, not a state. Kept
-   * near the page's own lightness in each theme so a card reads as a card
-   * that happens to be tinted, not as a filled block.
+   * Where a model's weights come from, as a card's accent edge on the Models
+   * page: the hub, the user's own, the Robomous registry. A mark, never a
+   * surface or ink — a few pixels of colour on the plain card — and never
+   * status: an origin is a kind, not a state. Identical in both themes, like
+   * the chart palette, because a mark this small must read the same wherever
+   * the card is.
    */
-  --origin-hub: oklch(0.97 0.045 95);
-  --origin-custom: oklch(0.965 0.03 240);
-  --origin-robomous: oklch(0.965 0.035 32.3);
+  --origin-hub: oklch(0.8 0.16 85);
+  --origin-custom: oklch(0.65 0.15 250);
+  --origin-robomous: oklch(0.68 0.17 35);
 }
 
 .dark {
@@ -145,9 +146,9 @@
   --success-foreground: oklch(0.205 0 0);
   --warning: oklch(0.75 0.14 80);
   --warning-foreground: oklch(0.205 0 0);
-  --origin-hub: oklch(0.27 0.04 95);
-  --origin-custom: oklch(0.26 0.04 240);
-  --origin-robomous: oklch(0.27 0.04 32.3);
+  --origin-hub: oklch(0.8 0.16 85);
+  --origin-custom: oklch(0.65 0.15 250);
+  --origin-robomous: oklch(0.68 0.17 35);
 }
 
 @theme inline {

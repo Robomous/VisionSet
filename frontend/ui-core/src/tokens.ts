@@ -13,8 +13,8 @@
  * 4.18.0 scratch generated it, plus VisionSet's justified extensions:
  * `stage` (the annotator's surround), `brand` (Robomous coral — identity
  * only), the `success`/`warning` status pair, each with its own
- * `-foreground`, and the three `origin-*` surfaces a Models card is tinted
- * with. Everything else is shadcn's own vocabulary.
+ * `-foreground`, and the three `origin-*` marks a Models card's accent edge
+ * takes. Everything else is shadcn's own vocabulary.
  */
 
 export const LIGHT_THEME: Readonly<Record<string, string>> = Object.freeze({
@@ -63,11 +63,11 @@ export const LIGHT_THEME: Readonly<Record<string, string>> = Object.freeze({
   "success-foreground": "oklch(1 0 0)",
   warning: "oklch(0.646 0.13 80)",
   "warning-foreground": "oklch(0.205 0 0)",
-  // Where a model's weights come from, as a card's fill: surfaces, never ink
-  // or status.
-  "origin-hub": "oklch(0.97 0.045 95)",
-  "origin-custom": "oklch(0.965 0.03 240)",
-  "origin-robomous": "oklch(0.965 0.035 32.3)",
+  // Where a model's weights come from, as a card's accent edge: a mark,
+  // never a surface, ink or status. Theme-stable, like the chart palette.
+  "origin-hub": "oklch(0.8 0.16 85)",
+  "origin-custom": "oklch(0.65 0.15 250)",
+  "origin-robomous": "oklch(0.68 0.17 35)",
 });
 
 export const DARK_THEME: Readonly<Record<string, string>> = Object.freeze({
@@ -109,9 +109,9 @@ export const DARK_THEME: Readonly<Record<string, string>> = Object.freeze({
   "success-foreground": "oklch(0.205 0 0)",
   warning: "oklch(0.75 0.14 80)",
   "warning-foreground": "oklch(0.205 0 0)",
-  "origin-hub": "oklch(0.27 0.04 95)",
-  "origin-custom": "oklch(0.26 0.04 240)",
-  "origin-robomous": "oklch(0.27 0.04 32.3)",
+  "origin-hub": "oklch(0.8 0.16 85)",
+  "origin-custom": "oklch(0.65 0.15 250)",
+  "origin-robomous": "oklch(0.68 0.17 35)",
 });
 
 /** The two provenance facts a colour string alone cannot carry. */
