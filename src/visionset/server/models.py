@@ -2410,8 +2410,8 @@ class ConnectionOut(BaseModel):
     #: Where this connection's weights come from — who published them, not who
     #: runs them: `huggingface` for a hub checkpoint, curated or typed by hand;
     #: `custom` for the user's own, an endpoint they stood up included;
-    #: `robomous` for a model from the Robomous registry. Open: a compatible
-    #: release may add a member, and a client shows the value it cannot name.
+    #: `robomous` for a model from the Robomous registry. Closed: a caller
+    #: states it on creation, and the set grows only with a release.
     origin: ModelOrigin
     allowed_actions: list[ConnectionAction]
     #: What this connection's model can be asked for, and empty where nothing is

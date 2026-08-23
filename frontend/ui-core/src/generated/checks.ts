@@ -139,7 +139,7 @@ export const checkModelCapability: Check<Schemas["ModelCapability"]> =
   /*#__PURE__*/ openOneOf(["point_suggest", "text_detect"] as const);
 
 export const checkModelOrigin: Check<Schemas["ModelOrigin"]> =
-  /*#__PURE__*/ openOneOf(["huggingface", "custom", "robomous"] as const);
+  /*#__PURE__*/ oneOf(["huggingface", "custom", "robomous"] as const);
 
 export const checkPrecision: Check<Schemas["Precision"]> =
   /*#__PURE__*/ oneOf(["fp16", "fp32"] as const);

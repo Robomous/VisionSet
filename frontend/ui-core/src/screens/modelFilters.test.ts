@@ -59,13 +59,7 @@ it("names every origin this build knows, and marks each with its own edge", () =
   expect(originLabel("huggingface")).toBe("Hugging Face");
   expect(originLabel("custom")).toBe("Customized");
   expect(originLabel("robomous")).toBe("Robomous");
-  expect(new Set(["huggingface", "custom", "robomous"].map(originMark)).size).toBe(3);
-});
-
-it("shows an origin this build cannot name as itself, on an unmarked card", () => {
-  // Display, never drop — and never guess a colour for it.
-  expect(originLabel("some-registry")).toBe("some-registry");
-  expect(originMark("some-registry")).toBeUndefined();
+  expect(new Set((["huggingface", "custom", "robomous"] as const).map(originMark)).size).toBe(3);
 });
 
 it("offers only the values on the page, named ones first in this build's order", () => {
@@ -88,15 +82,17 @@ it("offers only the values on the page, named ones first in this build's order",
 });
 
 it("offers a value this build cannot name raw, after the named ones, in listing order", () => {
+  // Ability is the open vocabulary on this page: a newer server's member
+  // arrives through the generated check and must reach a filter.
   const rows = [
-    connection("z", { origin: "z-registry" } as Partial<Connection>),
-    connection("a", { origin: "a-registry" } as Partial<Connection>),
+    connection("z", { capabilities: ["z_sense"] }),
+    connection("a", { capabilities: ["a_sense"] }),
     own,
   ];
-  expect(optionsOf(rows, "origin").map((o) => [o.key, o.known])).toEqual([
-    ["custom", true],
-    ["z-registry", false],
-    ["a-registry", false],
+  expect(optionsOf(rows, "capability").map((o) => [o.key, o.known])).toEqual([
+    ["text_detect", true],
+    ["z_sense", false],
+    ["a_sense", false],
   ]);
 });
 

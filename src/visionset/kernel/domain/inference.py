@@ -96,13 +96,15 @@ class ConnectionSetupState(StrEnum):
 # docstring verbatim into `openapi.json`, where RST markup ships as literal
 # backticks and internal rationale ships as API documentation. The docstring is
 # the sentence a client should read, on `ConnectionAction`'s terms.
-class ModelOrigin(OpenVocabulary):
+class ModelOrigin(StrEnum):
     """Where a connection's weights come from — who published them, not who runs them.
 
     A different axis from ``ConnectionType`` (where the model *runs*) and from
     ``provider_id`` (which *driver* runs it): a hub checkpoint served locally and
     the same checkpoint behind somebody's endpoint share an origin and nothing
-    else. Open, because the next origin is a product decision, not a kernel one.
+    else. Closed, on ``ConnectionType``'s test: a caller states it on creation,
+    so a client must be able to enumerate what it may send, and the set grows
+    only by a deliberate kernel change — the next origin is exactly that change.
     """
 
     #: A checkpoint fetched from the public hub, curated or typed by hand.

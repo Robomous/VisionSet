@@ -4194,10 +4194,12 @@ export interface components {
          *     A different axis from ``ConnectionType`` (where the model *runs*) and from
          *     ``provider_id`` (which *driver* runs it): a hub checkpoint served locally and
          *     the same checkpoint behind somebody's endpoint share an origin and nothing
-         *     else. Open, because the next origin is a product decision, not a kernel one.
+         *     else. Closed, on ``ConnectionType``'s test: a caller states it on creation,
+         *     so a client must be able to enumerate what it may send, and the set grows
+         *     only by a deliberate kernel change — the next origin is exactly that change.
          * @enum {string}
          */
-        ModelOrigin: "huggingface" | "custom" | "robomous" | (string & {});
+        ModelOrigin: "huggingface" | "custom" | "robomous";
         /**
          * PolygonBody
          * @description A closed polygon of at least three points. The closing edge is implicit.
@@ -11720,7 +11722,6 @@ export interface KnownMembers {
   ConnectionAction: "download_weights" | "check_integrity" | "test_endpoint" | "update" | "delete";
   JobAction: "start" | "complete";
   ModelCapability: "point_suggest" | "text_detect";
-  ModelOrigin: "huggingface" | "custom" | "robomous";
   PreLabelExclusionReason: "no_producible_geometry" | "required_attribute";
   SuggestParameter: "detail";
 }

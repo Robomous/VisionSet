@@ -511,12 +511,11 @@ it("shows a capability this build has no name for as its raw value, never droppe
   ).toEqual(["depth_estimate", "writes depth_map"]);
 });
 
-it("marks a card's edge by its origin, names it plainly, and leaves one it cannot name unmarked", async () => {
+it("marks a card's edge by its origin, and names it plainly", async () => {
   listing([
     connection({ id: "a", name: "hub", origin: "huggingface" }),
     connection({ id: "b", name: "own", origin: "custom" }),
     connection({ id: "c", name: "registry", origin: "robomous" }),
-    connection({ id: "d", name: "elsewhere", origin: "some-registry" as Connection["origin"] }),
   ]);
   render(mount(<ModelsScreen />));
   const hub = await screen.findByTestId("connection-hub");
@@ -528,10 +527,6 @@ it("marks a card's edge by its origin, names it plainly, and leaves one it canno
   const registry = screen.getByTestId("connection-registry");
   expect(registry.className).toMatch(/\bborder-l-origin-robomous\b/);
   expect(within(registry).getByTestId("connection-origin").textContent).toBe("Robomous");
-  // Open vocabulary: shown by its value, never dropped, never guessed a colour for.
-  const elsewhere = screen.getByTestId("connection-elsewhere");
-  expect(elsewhere.className).not.toMatch(/border-l-(4|origin-)/);
-  expect(within(elsewhere).getByTestId("connection-origin").textContent).toBe("some-registry");
 });
 
 it("asks for the download size per card, and only below Ready", async () => {

@@ -265,8 +265,9 @@ GET /inference/connections/{id}  →  { "setup_state": "ready",
 
 `produces` is the third declaration on the same row: the shapes the model answers in, sorted
 by value, empty exactly when `capabilities` is. `origin` sits beside them and is not a
-declaration but a fact about the weights - `huggingface`, `custom` or `robomous`, open to a
-later member - set on creation and derived from the kind when the request does not say.
+declaration but a fact about the weights - `huggingface`, `custom` or `robomous`, a closed
+vocabulary like the kind's - set on creation and derived from the kind when the request does
+not say.
 
 An empty `capabilities` is not a refusal to act on: the server judges every request on its own
 either way. It says only that nothing can yet rely on this connection for a particular tool -

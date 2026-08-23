@@ -535,12 +535,11 @@ export function ConnectionCard({
     can.has("test_endpoint") ||
     (can.has("download_weights") && ready);
   const downloadable = can.has("download_weights") && !ready;
-  const mark = originMark(connection.origin);
   return (
     <Card
       // The edge is the one colour on the card, and it says where the weights
-      // come from; an origin this build cannot name leaves the card unmarked.
-      className={cn("w-full", mark !== undefined && "border-l-4", mark)}
+      // come from.
+      className={cn("w-full border-l-4", originMark(connection.origin))}
       data-testid={`connection-${connection.name}`}
       data-origin={connection.origin}
     >

@@ -68,10 +68,11 @@ question from where the model runs (the kind) and from which driver runs it (`pr
 Three values exist today: `huggingface` for a hub checkpoint, curated or typed by hand;
 `custom` for the user's own, an endpoint they stood up included; `robomous` for a model from
 the Robomous registry. Omitted on creation, it is what the kind implies - `huggingface` for
-`local`, `custom` for `http` - and a caller that knows better states it. The vocabulary is open:
-a later release may add an origin, and a client shows the value it cannot name. Like the kind,
-it is not editable afterwards, because it is a fact about the weights and the weights are what
-a connection is. The Models page tints each card by it (see [The Models page](#the-models-page)).
+`local`, `custom` for `http` - and a caller that knows better states it. The vocabulary is
+closed, like the kind's: a caller states it, so a client must be able to enumerate what it may
+send, and a new origin arrives with a release. Like the kind, it is not editable afterwards,
+because it is a fact about the weights and the weights are what a connection is. The Models page
+marks each card by it (see [The Models page](#the-models-page)).
 
 ## Running a model here needs the `local-inference` extra
 
@@ -841,9 +842,7 @@ The page is a grid of cards, one per connection - a connection serving two abili
 card, not two. Each card carries one colour, and it is where the weights come from: a narrow
 accent along the card's left edge - amber for a hub checkpoint, blue for the user's own, the
 brand's orange for the Robomous registry - with the origin named in plain words beneath the
-model reference (**Hugging Face**, **Customized**, **Robomous**). An origin this build cannot
-name is printed as it arrived on an unmarked card, because nothing the server declares is hidden
-and nothing is guessed a colour for. Top to bottom a card shows its name with `model @ revision`
+model reference (**Hugging Face**, **Customized**, **Robomous**). Top to bottom a card shows its name with `model @ revision`
 beneath; the origin; one quiet square label per ability the connection declares, in a person's
 words - **Suggests from clicks** for `point_suggest`, **Finds what you name** for `text_detect`,
 a value this build has no words for printed as it arrived - and one more for what it writes

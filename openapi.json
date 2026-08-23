@@ -3393,15 +3393,14 @@
         "x-visionset-open": true
       },
       "ModelOrigin": {
-        "description": "Where a connection's weights come from \u2014 who published them, not who runs them.\n\nA different axis from ``ConnectionType`` (where the model *runs*) and from\n``provider_id`` (which *driver* runs it): a hub checkpoint served locally and\nthe same checkpoint behind somebody's endpoint share an origin and nothing\nelse. Open, because the next origin is a product decision, not a kernel one.",
+        "description": "Where a connection's weights come from \u2014 who published them, not who runs them.\n\nA different axis from ``ConnectionType`` (where the model *runs*) and from\n``provider_id`` (which *driver* runs it): a hub checkpoint served locally and\nthe same checkpoint behind somebody's endpoint share an origin and nothing\nelse. Closed, on ``ConnectionType``'s test: a caller states it on creation,\nso a client must be able to enumerate what it may send, and the set grows\nonly by a deliberate kernel change \u2014 the next origin is exactly that change.",
         "enum": [
           "huggingface",
           "custom",
           "robomous"
         ],
         "title": "ModelOrigin",
-        "type": "string",
-        "x-visionset-open": true
+        "type": "string"
       },
       "PolygonBody": {
         "additionalProperties": false,

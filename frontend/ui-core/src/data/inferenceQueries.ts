@@ -129,6 +129,7 @@ export interface SuggestionOut {
 }
 
 export type ConnectionType = components["schemas"]["ConnectionType"];
+export type ModelOrigin = components["schemas"]["ModelOrigin"];
 export type ConnectionSetupState = components["schemas"]["ConnectionSetupState"];
 export type Precision = components["schemas"]["Precision"];
 export type DownloadSizeOut = components["schemas"]["DownloadSizeOut"];
