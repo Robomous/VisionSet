@@ -4,27 +4,28 @@
  * A top-level destination rather than a project tab: a connection carries no
  * project id, every project uses the same ones, and navigation maps 1:1 to domain
  * objects — so a project tab would state a scope the object does not have.
- * `DESIGN.md` carries the rail's membership. Named for the noun it catalogues —
+ * The `information-architecture` skill carries the rail's membership. Named for
+ * the noun it catalogues —
  * the models a workspace can run — rather than for one use of them, because the
  * same list serves the suggest tool, pre-labeling and whatever asks next.
  *
- * ## One card per connection, filtered by what it enables
+ * ## One card per connection, narrowed by dropdowns
  *
  * The screen is a grid of cards, one per connection, and a card says what its
- * model does as badges — *Suggests from clicks*, *Finds what you name* — rather
- * than sitting under a heading per ability. A connection serving two abilities
- * is one card, not two; the per-connection facts the wire already carries —
- * what it writes, the device, the precision, the endpoint's host — are on the
- * card rather than nowhere. Capability is a **filter chip** instead: All, plus
- * one chip per ability this build describes and one per value the workspace
- * declares that it does not. *What can I do in the app with this?* is still
- * the question somebody arrives with, and the badge answers it per card.
+ * model does as quiet labels — *Suggests from clicks*, *Finds what you name*,
+ * *writes boxes or polygons* — rather than sitting under a heading per ability.
+ * A connection serving two abilities is one card, not two; the per-connection
+ * facts the wire already carries — where the weights come from, what it writes,
+ * the device, the precision, the endpoint's host — are on the card rather than
+ * nowhere. The card's one colour is its left edge, and it says the origin.
  *
- * Which chip a card answers comes off `capabilities`, which the server derives
- * from the downloaded model's own config. The chips, the badge prose and the
- * invitation a chip shows when nothing serves it live in `modelCapabilities.ts`;
- * what a card may be *asked to do* is still `allowed_actions` and nothing else,
- * which is a different field answering a different question.
+ * Narrowing is a row of dropdowns, one per dimension the workspace varies on —
+ * origin, ability, where it runs, state — combined so a card is shown only
+ * while it answers every choice; `modelFilters.ts` derives which dropdowns are
+ * on screen and what each offers from the listing itself, and `modelCopy.ts`
+ * says how every value reads, on the card and in the filter alike. What a card
+ * may be *asked to do* is still `allowed_actions` and nothing else, which is a
+ * different field answering a different question.
  *
  * Cards, and not a table, because the content is a handful of rich objects
  * rather than rows of one shape — which is the one reading of `DESIGN.md`'s
@@ -220,7 +221,6 @@ import {
   precisionsFor,
   type Precision,
 } from "./inferenceCatalog";
-import { capabilityProse } from "./modelCapabilities";
 import {
   DIMENSION,
   NO_FILTERS,
@@ -233,8 +233,8 @@ import {
   type FilterOption,
   type ModelFilters,
 } from "./modelFilters";
-import { originLabel, originMark } from "./modelOrigin";
-/** Above this many cards a list carries a filter input (`DESIGN.md`). */
+import { STATE_LABELS, capabilityProse, kindLabel, originLabel, originMark } from "./modelCopy";
+/** Above this many cards a list carries a filter input (`docs/content/ui/product-principles.md`). */
 const FILTER_ABOVE = 20;
 
 export function ModelsScreen(): JSX.Element {
@@ -337,9 +337,9 @@ export function ModelsScreen(): JSX.Element {
                       />
                     </div>
                   )}
-                  {/* Never hides the count of what it filtered out (`DESIGN.md`). */}
+                  {/* Never hides the count of what it filtered out (`docs/content/ui/product-principles.md`). */}
                   {(narrowed || typing || page.items.length > FILTER_ABOVE) && (
-                    <span className="text-xs text-muted-foreground" data-testid="filter-count">
+                    <span className="text-xs text-muted-foreground" aria-live="polite" data-testid="filter-count">
                       {shown.length} of {page.items.length}
                     </span>
                   )}
@@ -418,7 +418,7 @@ function FilterSelect({
         {label}
       </Label>
       <Select value={value ?? ALL} onValueChange={onChange}>
-        <SelectTrigger id={id} className="h-8 min-w-36" data-testid={id}>
+        <SelectTrigger id={id} className="min-w-36" data-testid={id}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -441,9 +441,6 @@ function FilterSelect({
   );
 }
 
-/** How each place a model can run reads on a card; a kind this build cannot name reads as itself. */
-const KIND_LABEL: Record<ConnectionType, string> = { local: "Local", http: "HTTP" };
-
 /**
  * Where the model runs, in one line: `Local · cuda · fp16`, `HTTP · models.example`.
  *
@@ -454,9 +451,8 @@ const KIND_LABEL: Record<ConnectionType, string> = { local: "Local", http: "HTTP
  * the path is re-readable in the edit form.
  */
 export function sourceLine(connection: Connection): string {
-  const kind = (KIND_LABEL as Record<string, string>)[connection.connection_type];
   return [
-    kind ?? connection.connection_type,
+    kindLabel(connection.connection_type),
     connection.device,
     connection.precision,
     hostOf(connection.endpoint_url),
@@ -535,6 +531,7 @@ export function ConnectionCard({
     can.has("test_endpoint") ||
     (can.has("download_weights") && ready);
   const downloadable = can.has("download_weights") && !ready;
+  const abilities = abilityLabels(connection);
   return (
     <Card
       // The edge is the one colour on the card, and it says where the weights
@@ -623,18 +620,16 @@ export function ConnectionCard({
         )}
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-3">
-        {abilityLabels(connection).length > 0 && (
-          // What it does and what it writes, each a quiet square label in the
-          // card's own ink on `muted`: boxed so the eye finds them, and colourless
-          // so nothing on this card competes with the edge and the state.
+        {abilities.length > 0 && (
+          // What it does and what it writes, as quiet labels: boxed so the eye
+          // finds them, colourless so nothing here competes with the edge and
+          // the state.
           <ul className="flex flex-wrap gap-1.5" aria-label="What it does" data-testid="connection-abilities">
-            {abilityLabels(connection).map((label) => (
-              <li
-                key={label}
-                className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-xs"
-                data-testid="ability-label"
-              >
-                {label}
+            {abilities.map((label) => (
+              <li key={label}>
+                <Badge variant="quiet" data-testid="ability-label">
+                  {label}
+                </Badge>
               </li>
             ))}
           </ul>
@@ -642,20 +637,19 @@ export function ConnectionCard({
         <p className="text-xs text-muted-foreground" data-testid="connection-source">
           {sourceLine(connection)}
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {/*
-            Semantic token **and** text, never colour alone: the word is what a
-            screen reader announces and what somebody who cannot tell the two
-            desaturated chips apart reads.
-          */}
-          <Badge
-            variant={ready ? "success" : "warning"}
-            data-testid="connection-status"
-            data-state={connection.setup_state}
-          >
-            {ready ? "Ready" : "Not set up"}
-          </Badge>
-        </div>
+        {/*
+          Semantic token **and** text, never colour alone: the word is what a
+          screen reader announces and what somebody who cannot tell the two
+          desaturated chips apart reads.
+        */}
+        <Badge
+          variant={ready ? "success" : "warning"}
+          className="w-fit"
+          data-testid="connection-status"
+          data-state={connection.setup_state}
+        >
+          {STATE_LABELS[connection.setup_state]}
+        </Badge>
         {/*
           Rendered off the wire and not off `weights.running`, so a page that
           arrived mid-transfer shows it on its first fetch — the whole point of
@@ -722,7 +716,7 @@ export function ConnectionCard({
             disabled={busy}
             onClick={weights.start}
           >
-            <IconDownload className="size-4" aria-hidden="true" />
+            <IconDownload aria-hidden="true" />
             {busy ? busyLabel : "Download weights"}
           </Button>
         </CardFooter>
@@ -920,21 +914,6 @@ function IntegrityProgress({ check }: { readonly check: IntegrityCheck }): JSX.E
 }
 
 /**
- * The dialog itself, which owns no form state at all.
- *
- * **The form is a child, so Radix mounts it per opening.** `DialogContent`
- * portals its subtree only while the dialog is open and unmounts it on close, so
- * every opening gets a fresh {@link ConnectionForm} and there is nothing to
- * reset.
- *
- * One long-lived component reset by an effect cannot hold that: the reset and
- * the effect that seeds the model run in the same commit over the same render's
- * state, so the second reads the *previous* session's kind and seeds a model
- * into a form that was told to forget one — which is how a local session
- * abandoned mid-load hands its model id to the next connection, an HTTP one
- * included. No guard fixes that, because a guard reads the same stale state.
- */
-/**
  * One way a model can run, offered as a tile: an icon, a name and a sentence.
  *
  * A tile rather than a labelled button because the two kinds are a choice to
@@ -974,6 +953,21 @@ function KindChoice({
   );
 }
 
+/**
+ * The dialog itself, which owns no form state at all.
+ *
+ * **The form is a child, so Radix mounts it per opening.** `DialogContent`
+ * portals its subtree only while the dialog is open and unmounts it on close, so
+ * every opening gets a fresh {@link ConnectionForm} and there is nothing to
+ * reset.
+ *
+ * One long-lived component reset by an effect cannot hold that: the reset and
+ * the effect that seeds the model run in the same commit over the same render's
+ * state, so the second reads the *previous* session's kind and seeds a model
+ * into a form that was told to forget one — which is how a local session
+ * abandoned mid-load hands its model id to the next connection, an HTTP one
+ * included. No guard fixes that, because a guard reads the same stale state.
+ */
 function ConnectionDialog({
   open,
   onClose,
@@ -1227,13 +1221,15 @@ function ConnectionForm({
           </DialogDescription>
           <form className="flex flex-col gap-4" onSubmit={submit}>
             {/*
-              Two columns, one question each: what the model *is* on the left,
-              where it *runs* on the right. A kind's fields keep to their column,
-              so the two forms share a shape and a person's eye lands in the same
-              place whichever kind is open.
+              A two-column grid, every field its own cell: name beside model on
+              the first row, then the kind's own fields in pairs beneath — a
+              custom model's id and revision, then device and precision; or
+              revision and endpoint, then the credential across both. Nothing is
+              stacked in one column while the other stands empty, and the two
+              forms share a shape, so a person's eye lands in the same place
+              whichever kind is open.
             */}
             <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-              <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="connection-name">Name</Label>
               <Input
@@ -1337,7 +1333,26 @@ function ConnectionForm({
                       </FieldHint>
                     </>
                   )}
+                  {/* What choosing this model commits to, read where the choice is made. */}
+                  <AccessLine entries={entries} modelId={modelId.trim()} />
+                  <DownloadSizeLine modelId={modelId.trim()} revision={revision.trim()} />
                 </div>
+              </>
+            ) : (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="connection-custom-model">Model</Label>
+                  <Input
+                    id="connection-custom-model"
+                    data-testid="connection-custom-model"
+                    value={modelId}
+                    onChange={(event) => setModelId(event.target.value)}
+                  />
+                </div>
+              </>
+            )}
+            {local ? (
+              <>
                 {/*
                   Whenever there is nothing to offer — the catalog refused, or
                   it answered and named nothing — the seeding effect lands
@@ -1370,36 +1385,7 @@ function ConnectionForm({
                     </div>
                   </>
                 )}
-              </>
-            ) : (
-              <>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="connection-custom-model">Model</Label>
-                  <Input
-                    id="connection-custom-model"
-                    data-testid="connection-custom-model"
-                    value={modelId}
-                    onChange={(event) => setModelId(event.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="connection-revision">Revision</Label>
-                  <Input
-                    id="connection-revision"
-                    data-testid="connection-revision"
-                    value={revision}
-                    onChange={(event) => setRevision(event.target.value)}
-                  />
-                  <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
-                </div>
-              </>
-            )}
-              </div>
-              <div className="flex flex-col gap-3">
-            {local ? (
-              <>
-                <div className="flex gap-3">
-                  <div className="flex flex-1 flex-col gap-1.5">
+                  <div className="flex flex-col gap-1.5">
                     <Label htmlFor="connection-device">Device</Label>
                     <Select value={device} onValueChange={pickDevice}>
                       <SelectTrigger id="connection-device" data-testid="connection-device">
@@ -1422,7 +1408,7 @@ function ConnectionForm({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="flex flex-1 flex-col gap-1.5">
+                  <div className="flex flex-col gap-1.5">
                     <Label htmlFor="connection-precision">Precision</Label>
                     <Select
                       value={precision}
@@ -1448,12 +1434,19 @@ function ConnectionForm({
                         : "fp16 halves the memory and runs faster on CUDA."}
                     </FieldHint>
                   </div>
-                </div>
-                <AccessLine entries={entries} modelId={modelId.trim()} />
-                <DownloadSizeLine modelId={modelId.trim()} revision={revision.trim()} />
               </>
             ) : (
               <>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="connection-revision">Revision</Label>
+                  <Input
+                    id="connection-revision"
+                    data-testid="connection-revision"
+                    value={revision}
+                    onChange={(event) => setRevision(event.target.value)}
+                  />
+                  <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
+                </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="connection-endpoint">Endpoint URL</Label>
                   <Input
@@ -1463,7 +1456,7 @@ function ConnectionForm({
                     onChange={(event) => setEndpoint(event.target.value)}
                   />
                 </div>
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
                   <Label htmlFor="connection-credential-env">Credential variable</Label>
                   <Input
                     id="connection-credential-env"
@@ -1479,7 +1472,6 @@ function ConnectionForm({
                 </div>
               </>
             )}
-              </div>
             </div>
             {failure !== null && (
               <FieldError data-testid="connection-error">{refusalProse(failure)}</FieldError>

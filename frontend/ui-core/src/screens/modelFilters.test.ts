@@ -2,6 +2,7 @@
  * The Models page's filters, as pure functions: a dimension offers only the
  * values on the page, is withheld until there is a choice to make, an unknown
  * value is offered raw, a stale choice reads as All, and the dimensions combine.
+ * How each value reads is `modelCopy.test.ts`'s subject.
  */
 
 import { expect, it } from "vitest";
@@ -16,7 +17,6 @@ import {
   offeredDimensions,
   optionsOf,
 } from "./modelFilters";
-import { originLabel, originMark } from "./modelOrigin";
 import type { Connection } from "../data/inferenceQueries";
 
 function connection(name: string, overrides: Partial<Connection> = {}): Connection {
@@ -54,13 +54,6 @@ const own = connection("own", {
   capabilities: ["text_detect"],
 });
 const pending = connection("pending", { setup_state: "not_set_up" });
-
-it("names every origin this build knows, and marks each with its own edge", () => {
-  expect(originLabel("huggingface")).toBe("Hugging Face");
-  expect(originLabel("custom")).toBe("Customized");
-  expect(originLabel("robomous")).toBe("Robomous");
-  expect(new Set((["huggingface", "custom", "robomous"] as const).map(originMark)).size).toBe(3);
-});
 
 it("offers only the values on the page, named ones first in this build's order", () => {
   // Three origins this build names, one on the page: one option, not three.

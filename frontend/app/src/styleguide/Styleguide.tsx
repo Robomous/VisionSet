@@ -186,6 +186,9 @@ export function Styleguide(): JSX.Element {
                 <Swatch name="brand" className="bg-brand" />
                 <Swatch name="success" className="bg-success" />
                 <Swatch name="warning" className="bg-warning" />
+                <Swatch name="origin-hub" className="bg-origin-hub" />
+                <Swatch name="origin-custom" className="bg-origin-custom" />
+                <Swatch name="origin-robomous" className="bg-origin-robomous" />
               </div>
             </div>
           </div>
@@ -342,11 +345,7 @@ export function Styleguide(): JSX.Element {
             <Badge variant="destructive">failed</Badge>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="series-1">series-1</Badge>
-            <Badge variant="series-2">series-2</Badge>
-            <Badge variant="series-3">series-3</Badge>
-            <Badge variant="series-4">series-4</Badge>
-            <Badge variant="series-5">series-5</Badge>
+            <Badge variant="quiet">quiet — a fact, not a state</Badge>
           </div>
           <div className="max-w-md">
             <p className="mb-1 text-xs text-muted-foreground">Ingest — 240 of 412</p>

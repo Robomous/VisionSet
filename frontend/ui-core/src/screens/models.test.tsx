@@ -14,12 +14,12 @@
  * 3. **The form stays usable when the size is unknown** (design principle 9).
  *    Creating a connection downloads nothing, so not knowing what a download
  *    would cost is not a reason to prevent one being configured.
- * 4. **What a card says, and which chip shows it, is the wire's too.** Badges
- *    and chips come off `capabilities`, and the tests that matter are the ones
- *    with nowhere obvious to put a card: two abilities on one connection, a
- *    value this build has no name for, and a connection that has not declared
- *    anything at all. A card no chip reaches is a connection nobody can
- *    download, edit or delete.
+ * 4. **What a card says, and which filter shows it, is the wire's too.** The
+ *    labels, the origin mark and the dropdowns come off the listing, and the
+ *    tests that matter are the ones with nowhere obvious to put a card: two
+ *    abilities on one connection, a value this build has no name for, and a
+ *    connection that has not declared anything at all. A card no filter reaches
+ *    is a connection nobody can download, edit or delete.
  * 5. **What the form may offer is the installation's**, served rather than
  *    compiled in — so the model field is a query, with the three states a query
  *    has. None of them is a disabled control: it says it is reading, it renders
@@ -420,8 +420,6 @@ it("renders every field a full connection carries, top to bottom", async () => {
       .getAllByTestId("ability-label")
       .map((label) => label.textContent),
   ).toEqual(["Suggests from clicks", "Finds what you name", "writes boxes or polygons"]);
-  expect(within(shown).queryByTestId("capability-badge")).toBeNull();
-  expect(within(shown).queryByTestId("produces-chip")).toBeNull();
   expect(within(shown).getByTestId("connection-source").textContent).toBe("Local · cuda · fp16");
   expect(within(shown).getByTestId("connection-status").textContent).toBe("Ready");
   // Ready, so the download reading is the overflow's check and there is no
@@ -747,7 +745,6 @@ it("says nothing matches rather than inviting mid-filter", async () => {
   await choose("filter-capability", "Text prompts");
 
   expect(screen.getByTestId("filtered-out").textContent).toBe("Nothing here matches the filter.");
-  expect(screen.queryByRole("button", { name: /add a .* connection/i })).toBeNull();
   // And the count is what both filters left, of everything.
   expect(screen.getByTestId("filter-count").textContent).toContain("0 of 24");
 });

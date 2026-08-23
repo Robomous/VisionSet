@@ -159,7 +159,7 @@ primitive targets):
 | Button — icon | `svg size-4` (`size-3.5`/`size-3` at `sm`/`xs`) |
 | Button — hover | default `hover:bg-primary/80`; secondary `color-mix(in oklch, var(--secondary), var(--foreground) 5%)`; destructive soft |
 | Input | `h-8 rounded-lg border-input px-2.5 text-base md:text-sm`; dark theme `bg-input/30` |
-| Badge | `h-5 px-2 text-xs rounded-4xl`; icons `size-3` |
+| Badge | `h-5 px-2 text-xs rounded-4xl`; icons `size-3`. The `quiet` variant alone is `rounded-md` — a square, colourless label for a fact read beside other facts, never a state |
 | Menu — surface | `dark` subtree + `bg-popover p-1 rounded-lg ring-1 ring-foreground/10 shadow-md`, `min-w-32`, `duration-100` enter/exit |
 | Menu — item | `px-1.5 py-1 text-sm rounded-md focus:bg-accent focus:text-accent-foreground`; destructive item soft |
 | Card | `rounded-xl ring-1 ring-foreground/10 text-sm`; `--card-spacing` = `--spacing(4)` (16px; 12px at the `sm` size); footer `bg-muted/50` |
@@ -270,9 +270,7 @@ does not restyle when the page switches theme):
 
 These are **series colours, never status.** A chart never leans on `chart-2` to mean
 "warning" — status uses the status tokens below, a chart uses these to tell one series
-from another. The badge's `series-N` variants carry them off the chart for the same
-job — a category a page needs told apart at a glance, such as the kind of prompt a
-model answers — with `foreground` ink, never a tinted one.
+from another.
 
 ## VisionSet Extensions
 

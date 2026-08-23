@@ -19,9 +19,8 @@
  * workspace, derived on every render, never a layout somebody configured.
  */
 
-import type { Connection, ConnectionSetupState, ConnectionType } from "../data/inferenceQueries";
-import { CAPABILITY_OPTION_LABELS } from "./modelCapabilities";
-import { ORIGIN_OPTION_LABELS } from "./modelOrigin";
+import type { Connection } from "../data/inferenceQueries";
+import { OPTION_LABELS } from "./modelCopy";
 
 /** The dimensions, in the order the page lays them out. */
 export const DIMENSIONS = ["origin", "capability", "kind", "state"] as const;
@@ -52,15 +51,6 @@ interface DimensionSpec {
   readonly copy: Readonly<Record<string, string>>;
 }
 
-/** How each place a model can run reads; a kind this build cannot name reads as itself. */
-const KIND_LABELS: Record<ConnectionType, string> = { local: "Local", http: "HTTP" };
-
-/** How each setup state reads — the same two words the card's status badge uses. */
-const STATE_LABELS: Record<ConnectionSetupState, string> = {
-  ready: "Ready",
-  not_set_up: "Not set up",
-};
-
 /**
  * What each dimension is, in one table, so adding a dimension is one entry:
  * the page lays out whatever is here, and every function below reads it.
@@ -69,22 +59,22 @@ export const DIMENSION: Readonly<Record<Dimension, DimensionSpec>> = {
   origin: {
     label: "Origin",
     of: (connection) => [connection.origin],
-    copy: ORIGIN_OPTION_LABELS,
+    copy: OPTION_LABELS.origin,
   },
   capability: {
     label: "Ability",
     of: (connection) => connection.capabilities,
-    copy: CAPABILITY_OPTION_LABELS,
+    copy: OPTION_LABELS.capability,
   },
   kind: {
     label: "Runs",
     of: (connection) => [connection.connection_type],
-    copy: KIND_LABELS,
+    copy: OPTION_LABELS.kind,
   },
   state: {
     label: "State",
     of: (connection) => [connection.setup_state],
-    copy: STATE_LABELS,
+    copy: OPTION_LABELS.state,
   },
 };
 

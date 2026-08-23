@@ -1,8 +1,8 @@
 /**
- * The Models page in a real browser: a grid of connection cards filtered by
- * ability, and a weight download somebody watches on one of them.
+ * The Models page in a real browser: a grid of connection cards narrowed by
+ * dropdowns, and a weight download somebody watches on one of them.
  *
- * The cards and chips are asserted here as well as in `models.test.tsx` because
+ * The cards and filters are asserted here as well as in `models.test.tsx` because
  * the two claims differ: jsdom proves the filtering is total over what the wire
  * can say, and this proves a real workspace opens on it — and that a run in
  * flight is still found, after a reload, on the card its connection is.
@@ -171,8 +171,8 @@ type Check = Omit<Wire["IntegrityCheckOut"], "job_id" | "error" | "error_code"> 
  *
  * `capabilities` defaults the way the server derives it: nothing until the
  * weights are here, because the ability is read out of the model's own config.
- * That is also why a download in flight is watched on a card with no badge
- * below — the connection cannot say what it answers until the transfer lands.
+ * That is also why a download in flight is watched on a card with no ability
+ * label — the connection cannot say what it answers until the transfer lands.
  */
 function connection(
   setup: "not_set_up" | "ready",
