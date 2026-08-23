@@ -124,16 +124,16 @@
  */
 
 import {
-  Download,
-  FileSearch,
-  Filter,
-  MoreHorizontal,
-  Pencil,
-  Plug,
-  Radio,
-  ShieldCheck,
-  Trash2,
-} from "lucide-react";
+  IconBroadcast,
+  IconDots,
+  IconDownload,
+  IconFileSearch,
+  IconFilter,
+  IconPencil,
+  IconPlug,
+  IconShieldCheck,
+  IconTrash,
+} from "@tabler/icons-react";
 import { useEffect, useRef, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -217,7 +217,7 @@ export function InferenceScreen(): JSX.Element {
           </p>
         </div>
         <Button variant="primary" data-testid="new-connection" onClick={() => setCreating(true)}>
-          <Plug className="size-4" aria-hidden="true" />
+          <IconPlug aria-hidden="true" />
           Add connection
         </Button>
       </header>
@@ -246,7 +246,7 @@ export function InferenceScreen(): JSX.Element {
             <div className="flex flex-col gap-8" data-testid="connection-sections">
               {page.items.length > FILTER_ABOVE && (
                 <div className="flex items-center gap-2">
-                  <Filter className="size-4 text-muted-foreground" aria-hidden="true" />
+                  <IconFilter className="size-4 text-muted-foreground" aria-hidden="true" />
                   <Label htmlFor="connection-filter" className="sr-only">
                     Filter connections
                   </Label>
@@ -355,7 +355,7 @@ export function CapabilitySection({
         <EmptyState
           title={section.empty.title}
           description={section.empty.body}
-          icon={<Plug className="size-8" />}
+          icon={<IconPlug className="size-8" />}
           // `secondary`, not `primary`: the header's "Add connection" is on
           // screen and opens the same dialog. One filled action per view, and a
           // section per capability would otherwise put four on one page.
@@ -446,7 +446,7 @@ function ConnectionRow({
                 disabled={busy}
                 onClick={weights.start}
               >
-                <Download className="size-4" aria-hidden="true" />
+                <IconDownload className="size-4" aria-hidden="true" />
                 {busy ? busyLabel : "Download weights"}
               </Button>
             )}
@@ -463,7 +463,7 @@ function ConnectionRow({
                     aria-label={`Actions for ${connection.name}`}
                     data-testid={`actions-${connection.name}`}
                   >
-                    <MoreHorizontal className="size-4" aria-hidden="true" />
+                    <IconDots aria-hidden="true" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -482,7 +482,7 @@ function ConnectionRow({
                       disabled={busy}
                       onSelect={weights.start}
                     >
-                      <FileSearch className="size-4" aria-hidden="true" />
+                      <IconFileSearch className="size-4" aria-hidden="true" />
                       {busy ? busyLabel : "Check for missing files"}
                     </DropdownMenuItem>
                   )}
@@ -492,7 +492,7 @@ function ConnectionRow({
                       disabled={busy}
                       onSelect={integrity.start}
                     >
-                      <ShieldCheck className="size-4" aria-hidden="true" />
+                      <IconShieldCheck className="size-4" aria-hidden="true" />
                       {busy ? busyLabel : "Check files are undamaged"}
                     </DropdownMenuItem>
                   )}
@@ -502,19 +502,19 @@ function ConnectionRow({
                       disabled={probe.isPending}
                       onSelect={() => probe.mutate(connection.id)}
                     >
-                      <Radio className="size-4" aria-hidden="true" />
+                      <IconBroadcast className="size-4" aria-hidden="true" />
                       {probe.isPending ? "Asking the endpoint…" : "Test endpoint"}
                     </DropdownMenuItem>
                   )}
                   {can.has("update") && (
                     <DropdownMenuItem data-testid="action-edit" onSelect={onEdit}>
-                      <Pencil className="size-4" aria-hidden="true" />
+                      <IconPencil className="size-4" aria-hidden="true" />
                       Edit
                     </DropdownMenuItem>
                   )}
                   {can.has("delete") && (
                     <DropdownMenuItem data-testid="action-delete" onSelect={onDelete}>
-                      <Trash2 className="size-4" aria-hidden="true" />
+                      <IconTrash className="size-4" aria-hidden="true" />
                       Delete
                     </DropdownMenuItem>
                   )}
