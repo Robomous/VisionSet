@@ -125,15 +125,40 @@ function batch(id: string, name: string, state: "in_annotation" | "draft", unann
   };
 }
 
-function stubBatches(items: unknown[]): void {
+/**
+ * A full `PreLabelPlanOut`, answered from the selection the request carries the
+ * way the server does: `produces` is the selection, and a polygon-only class is
+ * left out once polygons are.
+ */
+function planFor(request: Request): Answer {
+  const selected = new URL(request.url).searchParams.getAll("geometries");
+  const produces = selected.length === 0 ? ["bbox", "polygon"] : selected;
+  const lane = produces.includes("polygon") ? [] : [{ name: "lane", reasons: ["no_producible_geometry"] }];
+  return {
+    status: 200,
+    body: {
+      schema_version: 1,
+      asked_classes: produces.includes("polygon") ? ["person", "lane"] : ["person"],
+      produces,
+      excluded_classes: [{ name: "vehicle", reasons: ["required_attribute"] }, ...lane],
+    },
+  };
+}
+
+function stubBatches(items: unknown[], connections: readonly Connection[] = [connectionOf()]): void {
   on("GET", new RegExp(`/projects/${PROJECT}/batches$`), {
     status: 200,
     body: { items, total: items.length },
   });
   on("GET", /\/inference\/connections$/, {
     status: 200,
-    body: { items: [connectionOf({ capabilities: ["text_detect"] })], total: 1 },
+    body: { items: connections, total: connections.length },
   });
+  handlers.push((request) =>
+    request.method === "GET" && /\/pre-label$/.test(new URL(request.url).pathname)
+      ? planFor(request)
+      : undefined,
+  );
 }
 
 function renderBatches(): void {
@@ -208,6 +233,7 @@ it("checks every open batch with untouched assets by default and posts exactly t
     connection_id: connectionOf().id,
     minimum_confidence: 0.35,
     batch_ids: [OPEN],
+    geometries: ["bbox", "polygon"],
   });
   const result = await screen.findByTestId("project-prelabel-result");
   expect(textOf(result)).toMatch(/drive-01/);
@@ -275,3 +301,134 @@ it("marks a batch whose remembered run is live", async () => {
   renderBatches();
   expect(await screen.findByTestId(`prelabel-live-${OPEN}`)).toBeTruthy();
 });
+
+// --- what each run would ask for and write, and which shapes ---------------------
+
+it("names what each batch's run would ask for and write, beside the batch", async () => {
+  stubBatches([
+    batch(OPEN, "drive-01", "in_annotation", 8),
+    batch(OPEN_EMPTY, "drive-02", "in_annotation", 0),
+  ]);
+  renderBatches();
+  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await screen.findByTestId("project-prelabel-dialog");
+
+  const asked = await screen.findAllByTestId("prelabel-asked-classes");
+  expect(asked).toHaveLength(2);
+  expect(textOf(asked[0]!)).toBe("Asks for person, lane.");
+  expect(textOf(screen.getAllByTestId("prelabel-produces")[0]!)).toBe("Writes boxes or polygons.");
+  expect(textOf(screen.getAllByTestId("prelabel-excluded-classes")[0]!)).toBe(
+    "Not asked for: vehicle (requires an attribute a prediction cannot supply).",
+  );
+});
+
+it("offers a ticked checkbox per shape, re-reads every plan for the selection, and posts it", async () => {
+  stubBatches([batch(OPEN, "drive-01", "in_annotation", 8)]);
+  on("POST", new RegExp(`/projects/${PROJECT}/batches/pre-label$`), {
+    status: 202,
+    body: { items: [], total: 0 },
+  });
+  renderBatches();
+  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await screen.findByTestId("project-prelabel-dialog");
+  const boxes = (await screen.findByTestId("prelabel-shape-bbox")) as HTMLInputElement;
+  const polygons = screen.getByTestId("prelabel-shape-polygon") as HTMLInputElement;
+  expect(boxes.checked).toBe(true);
+  expect(polygons.checked).toBe(true);
+  await screen.findByTestId("prelabel-asked-classes");
+
+  await userEvent.click(polygons);
+
+  await waitFor(() =>
+    expect(textOf(screen.getByTestId("prelabel-produces"))).toBe("Writes boxes."),
+  );
+  expect(textOf(screen.getByTestId("prelabel-excluded-classes"))).toContain(
+    "lane (no shape this model produces)",
+  );
+
+  await userEvent.click(screen.getByTestId("project-prelabel-start"));
+  const posted = sent.find(
+    (request) => request.method === "POST" && request.url.endsWith("/batches/pre-label"),
+  );
+  expect(posted).toBeDefined();
+  expect(((await posted!.clone().json()) as { geometries: unknown }).geometries).toEqual(["bbox"]);
+});
+
+it("cannot start with no shape ticked, and says why", async () => {
+  stubBatches([batch(OPEN, "drive-01", "in_annotation", 8)]);
+  renderBatches();
+  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await screen.findByTestId("project-prelabel-dialog");
+  const start = (): HTMLButtonElement =>
+    screen.getByTestId("project-prelabel-start") as HTMLButtonElement;
+  await waitFor(() => expect(start().disabled).toBe(false));
+
+  await userEvent.click(screen.getByTestId("prelabel-shape-bbox"));
+  await userEvent.click(screen.getByTestId("prelabel-shape-polygon"));
+
+  expect(start().disabled).toBe(true);
+  expect(textOf(await screen.findByTestId("prelabel-shapes-error"))).toMatch(/at least one shape/i);
+});
+
+it("shows no shape control for a model that writes one shape, and sends no selection", async () => {
+  stubBatches(
+    [batch(OPEN, "drive-01", "in_annotation", 8)],
+    [connectionOf({ produces: ["bbox"] })],
+  );
+  on("POST", new RegExp(`/projects/${PROJECT}/batches/pre-label$`), {
+    status: 202,
+    body: { items: [], total: 0 },
+  });
+  renderBatches();
+  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await screen.findByTestId("project-prelabel-dialog");
+  await screen.findByTestId("prelabel-asked-classes");
+
+  expect(screen.queryByTestId("prelabel-shapes")).toBeNull();
+  await userEvent.click(screen.getByTestId("project-prelabel-start"));
+  const posted = sent.find(
+    (request) => request.method === "POST" && request.url.endsWith("/batches/pre-label"),
+  );
+  expect(await posted!.clone().json()).toEqual({
+    connection_id: connectionOf().id,
+    minimum_confidence: 0.35,
+    batch_ids: [OPEN],
+  });
+});
+
+it("will not start while a checked batch's plan is refused, and names it", async () => {
+  stubBatches([
+    batch(OPEN, "drive-01", "in_annotation", 8),
+    batch(OPEN_EMPTY, "drive-02", "in_annotation", 0),
+  ]);
+  handlers.unshift((request) =>
+    request.method === "GET" &&
+    /\/pre-label$/.test(new URL(request.url).pathname) &&
+    request.url.includes(OPEN)
+      ? {
+          status: 409,
+          body: {
+            code: "SCHEMA_HAS_NO_DETECTABLE_CLASS",
+            message: "schema version 1 declares no class that a box can be written as",
+          },
+        }
+      : undefined,
+  );
+  renderBatches();
+  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await screen.findByTestId("project-prelabel-dialog");
+
+  expect(textOf(await screen.findByTestId("prelabel-plan-error"))).toMatch(
+    /no class that a box can be written as/,
+  );
+  const start = (): HTMLButtonElement =>
+    screen.getByTestId("project-prelabel-start") as HTMLButtonElement;
+  expect(start().disabled).toBe(true);
+  expect(textOf(screen.getByTestId("project-prelabel-blocked"))).toMatch(/drive-01/);
+
+  // Unchecking the refused batch lifts the block, and checking the other keeps it up.
+  await userEvent.click(screen.getByTestId(`prelabel-pick-${OPEN}`));
+  await userEvent.click(screen.getByTestId(`prelabel-pick-${OPEN_EMPTY}`));
+  await waitFor(() => expect(start().disabled).toBe(false));
+});
+
