@@ -65,7 +65,10 @@ export const buttonVariants = cva(
           "bg-destructive/10 text-destructive hover:bg-destructive/20 " +
           "focus-visible:border-destructive/40 focus-visible:ring-destructive/20 " +
           "dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+        // The neutral preset's `primary` is near-black: without a resting
+        // underline a link button reads as static prose. Hover answers with the
+        // same `/80` step every filled variant uses.
+        link: "text-primary underline underline-offset-4 hover:text-primary/80",
       },
       size: {
         xs: "h-6 gap-1 px-2 text-xs [&_svg:not([class*='size-'])]:size-3",
@@ -78,6 +81,11 @@ export const buttonVariants = cva(
         "icon-sm": "size-7 p-0",
       },
     },
+    compoundVariants: [
+      // A link button is inline prose, not a boxed control: no height, no
+      // padding, whatever `size` says — `size` still picks the text scale.
+      { variant: "link", class: "h-auto p-0" },
+    ],
     defaultVariants: { variant: "secondary", size: "md" },
   },
 );
