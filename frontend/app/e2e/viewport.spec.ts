@@ -199,4 +199,9 @@ test("nothing else gains a floor", async ({ page }) => {
   await page.goto(`/projects/${PROJECT}/batches/${BATCH}`);
   await expect(page.getByTestId("gallery")).toBeVisible();
   await expect(page.getByTestId("viewport-too-narrow")).toHaveCount(0);
+  // Below `lg` the project's tab strip sits above the gallery; it scrolls
+  // within its own row rather than widening the page (#754).
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBe(true);
 });

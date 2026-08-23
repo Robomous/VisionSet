@@ -917,7 +917,7 @@ function JobRow({
             }
             commit();
           }}
-          className="h-8 w-40"
+          className="w-40"
         />
       ) : (
         <Button
