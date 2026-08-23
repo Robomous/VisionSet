@@ -781,8 +781,8 @@ screen's whole subject has stopped existing.
 Gated on `pre_label` in the batch's own `allowed_actions`, never on the batch's state read
 locally - the same rule every control on this screen follows. It is the reason the
 capability stopped being an orphan: a connection could declare `text_detect` from the day the
-Inference dashboard shipped a section for it, and nothing in the app ever asked one until this
-control existed to.
+Models page (then named Inference) described the ability, and nothing in the app ever asked one
+until this control existed to.
 
 The model select is narrowed to connections whose `capabilities` include `text_detect`, read
 off the wire rather than guessed from a name or a model id, on `inferenceQueries.ts`'s standing

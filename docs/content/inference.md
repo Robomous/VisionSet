@@ -440,8 +440,9 @@ have to be **asked**: its model runs elsewhere, and this workspace never loads i
 `test_endpoint` action does the asking - one request to the connection's `endpoint_url` - and
 records what came back: the capability the endpoint declared becomes the row's `capabilities`,
 and `provider_id` records the driver that asked (`http`, unless the row already named another).
-Until then an `http` connection declares nothing, sits under *No ability declared yet* in the
-Inference section, and is refused with `INFERENCE_CONNECTION_NOT_SET_UP` naming `test_endpoint`.
+Until then an `http` connection declares nothing - its card on the Models page carries no
+ability badge and answers only the **All** chip - and is refused with
+`INFERENCE_CONNECTION_NOT_SET_UP` naming `test_endpoint`.
 
 Asking again re-asks and overwrites. Pointing the connection at a different endpoint forgets the
 previous answer, on the same reasoning a moved model forgets its family: what the old endpoint
@@ -766,15 +767,19 @@ provenance, and only this configuration is removed.
 That is also why a connection has no lifecycle to speak of - it is a form somebody filled in, and
 the remedy for a wrong one is to edit it or make another.
 
-## The Inference section
+## The Models page
 
-Connections live behind **Inference** in the rail, beside Home and Projects. It is a top-level
-destination rather than something inside a project because a connection belongs to the
-*workspace*: it carries no project id, and every project uses the same ones.
+Connections live behind **Models** in the rail, beside Home and Projects, at `/models`; the
+address the page had before it was named for what it lists, `/inference`, redirects there. It is
+a top-level destination rather than something inside a project because a connection belongs to
+the *workspace*: it carries no project id, and every project uses the same ones. The entry is
+named for the noun the page catalogues - the models a workspace can run - rather than for one
+use of them, because the same list serves the editor's suggest tool, pre-labeling, and whatever
+asks next.
 
 A workspace with none says so and offers one thing - **Add connection**. Creating one is two
 steps, because the two kinds share almost no fields: first where the model runs, then that kind's
-form.
+form. The header's **Add model** opens the same dialog.
 
 - **Local** opens on an offered model, a `cpu` device and `fp32` precision. What the model field
   lists belongs to *this installation* rather than to this release: every installed driver
@@ -801,8 +806,8 @@ form.
   connection downloads nothing, so not knowing the size is information rather than a barrier.
 - **HTTP** asks for the endpoint URL and, optionally, the **Credential variable** - the name of
   an environment variable holding the endpoint's credential, never the secret itself, which the
-  hint beside the field says. Once created, **Test endpoint** in the row's menu asks the endpoint
-  what it answers and moves the row under that ability.
+  hint beside the field says. Once created, **Test endpoint** in the card's menu asks the endpoint
+  what it answers, and the card's badges say what came back.
 
 Because that list is a request rather than a constant, the model field has four states and says
 which one it is in. While the answer is in flight it says it is reading, and puts nothing else in
@@ -814,32 +819,51 @@ two leave the free model id and revision fields on screen, because a model id ty
 no list at all - a catalog that could not be read is no reason to stop a connection being
 configured.
 
-Each row shows its name, its kind, `model @ revision`, and its status as a word - **Ready** or
-**Not set up** - beside a colour, never as a colour alone. A local row that is not set up carries
-**Download weights**, which launches the background job described above and reports its progress
-in place; the row becomes **Ready** when the job finishes, without a reload. A row that is already
-ready carries two checks in its overflow menu instead - **Check for missing files**, which is the
-same request re-run, and **Check files are undamaged**, which reads every byte. The table above is
-what separates them. A machine without the extra still shows both controls, and pressing either
-answers with the install command - a control that vanished would take the remedy with it. While
-either run is under way all three are disabled and labelled with what is happening, for the reason
-above: they act on one cache, and the run is read off the row, so a tab that started nothing shows
-it too.
+The page is a grid of cards, one per connection - a connection serving two abilities is one
+card, not two. Top to bottom a card shows its name with `model @ revision` beneath; one badge
+per ability the connection declares, in a person's words - **Suggests from clicks** for
+`point_suggest`, **Finds what you name** for `text_detect`, and a value this build has no words
+for printed as it arrived, because nothing the server declares is hidden; one small chip per
+shape it writes (*boxes*, *polygons*, ...), read from `produces`; where it runs, in one line -
+`Local · cuda · fp16`, or `HTTP · models.example` with the endpoint's host; and its status as a
+word - **Ready** or **Not set up** - beside a colour, never as a colour alone. Every line is
+absent rather than blank when the connection has nothing to put in it: a card whose weights have
+not been downloaded carries no badge and no chips yet, because what a model answers is read out
+of its own config.
 
-A failed download leaves the row at **Not set up**, because weights arrive or they do not, and says
-what happened in the job's own words with what to do about it. There is no separate retry button:
-**Download weights** is the retry. A failed *integrity* check leaves the row at **Not set up** for a
-different reason - the damaged files were removed and the connection stood down before the row said
-so - and the retry is the same **Download weights**, which now has to fetch them again for real.
+Above the grid sit filter chips: **All**, one chip per ability this build describes - **Point
+prompts**, **Text prompts** - whether or not anything serves it, and one per value the workspace
+declares that this build cannot name. A chip narrows the grid to the connections declaring that
+ability; a connection that has declared nothing appears under **All** only. A described chip
+with nothing under it shows an invitation naming what to add rather than an empty grid, because
+an ability the app consumes is a thing to invite a connection for. Above twenty connections the
+page also grows a text filter, which matches a name substring and keeps saying how many it hid;
+while it is in use an empty result says *nothing here matches the filter* and invites nothing.
+
+A local card that is not set up also says what fetching its weights would cost - the same size
+read the form shows before a confirm, asked per card and only while there is something to
+fetch - and carries **Download weights**, which launches the background job described above and
+reports its progress on the card; the card becomes **Ready** when the job finishes, without a
+reload. A card that is already ready carries two checks in its overflow menu instead - **Check for
+missing files**, which is the same request re-run, and **Check files are undamaged**, which reads
+every byte. The table above is what separates them. A machine without the extra still shows both
+controls, and pressing either answers with the install command - a control that vanished would
+take the remedy with it. While either run is under way all three are disabled and labelled with
+what is happening, for the reason above: they act on one cache, and the run is read off the
+connection, so a tab that started nothing shows it too.
+
+A failed download leaves the card at **Not set up**, because weights arrive or they do not, and
+says what happened in the job's own words with what to do about it. There is no separate retry
+button: **Download weights** is the retry. A failed *integrity* check leaves the card at **Not set
+up** for a different reason - the damaged files were removed and the connection stood down before
+the card said so - and the retry is the same **Download weights**, which now has to fetch them
+again for real.
 
 Editing does not offer to change the kind, because the kind is not editable. Saving an edit that
-moves a local row to another model or revision returns it to **Not set up** in place, with
+moves a local connection to another model or revision returns it to **Not set up** in place, with
 **Download weights** as the next step - the files on the disk belong to the model it was pointing
 at before. Deleting asks once and says exactly what it destroys: *annotations keep their model
 provenance; only this configuration is removed.*
-
-Above twenty rows the list grows a filter, which matches a name substring and keeps saying how
-many it hid.
 
 **Reached from the editor, too.** Arming the editor's suggest tool with no usable connection shows
 a panel naming what is missing and offering **Set up a connection**, which lands here. Nothing

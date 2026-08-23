@@ -101,28 +101,28 @@ Any list that can exceed ~20 rows carries a filter input. Filtering is client-si
 instant, matches a name substring case-insensitively, and never hides the count of what it
 filtered out.
 
-### A list sectioned by what its rows enable
+### A list filtered by what its items enable
 
-Where the rows of a list are things a person configures so that *something else* becomes
-possible, the list is sectioned by the ability rather than sorted by the row — a heading
-naming the ability in a user's words, one line of prose naming the surface that consumes
-it, the rows serving it, and the section's own empty state. The Inference dashboard is the
-specimen. Four rules make it honest:
+Where the items of a list are things a person configures so that *something else* becomes
+possible, each item says which abilities it enables, in a user's words, and the list is
+filtered by ability rather than sectioned by it — one chip per ability beside an **All**, and
+the ability's own empty state behind its chip. An item enabling two abilities is one item,
+not two copies. The Models page is the specimen. Four rules make it honest:
 
-- **The sections come from the data's own vocabulary**, never from a client-side reading of
-  what a row is. On Inference that is `capabilities`, which the server derives from the
+- **The abilities come from the data's own vocabulary**, never from a client-side reading of
+  what an item is. On Models that is `capabilities`, which the server derives from the
   model's weights.
-- **A section with a consuming surface invites; one without it only describes.** An ability
-  the product cannot yet use gets its heading, its prose and no control at all — a CTA
-  there is principle 4's dead button wearing a friendlier label.
-- **Nothing declared is invisible.** A value the build has no copy for gets a generic
-  section built from the value, and a row declaring no ability at all gets one too. A row
-  under no heading is a row nobody can act on.
-- **Section CTAs are secondary treatments.** The view's dominant action stays in the
-  header; otherwise a page of empty sections is a page of competing primaries.
+- **A chip with a consuming surface invites; one without it only describes.** An ability
+  the product cannot yet use gets its chip, its prose and no control at all — a CTA there is
+  principle 4's dead button wearing a friendlier label.
+- **Nothing declared is invisible.** A value the build has no copy for gets a chip and a badge
+  built from the value, and an item declaring no ability at all still appears under **All**. An
+  item no chip reaches is an item nobody can act on.
+- **Invitation CTAs are secondary treatments.** The view's dominant action stays in the
+  header; otherwise a chip showing an invitation is a second primary on the page.
 
-A filter crossing such a list empties sections it does not match, and an emptied section
-says *nothing here matches* rather than showing its invitation.
+A text filter crossing such a list narrows what the chip shows, and an emptied result says
+*nothing here matches* rather than showing the chip's invitation.
 
 ## Tabs
 
