@@ -158,7 +158,7 @@ export const SelectContent = forwardRef<
         <SelectPrimitive.ScrollUpButton className="z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4">
           <IconChevronUp className="size-4 text-muted-foreground" aria-hidden="true" />
         </SelectPrimitive.ScrollUpButton>
-        <SelectPrimitive.Viewport className="overflow-y-auto p-1">
+        <SelectPrimitive.Viewport className="w-full min-w-(--radix-select-trigger-width) overflow-y-auto p-1">
           {children}
         </SelectPrimitive.Viewport>
         <SelectPrimitive.ScrollDownButton className="z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4">
