@@ -36,6 +36,21 @@ fact travels on `ProjectOut` as `thumbnail_asset_id` and `thumbnail_hash`, and t
 with no images; an id beside a null hash names an asset whose preview was never cached, so a
 client shows a placeholder without fetching anything.
 
+## When a project was made
+
+`Project.created_at` is stamped in UTC when `create` runs. It is `None` for a project written
+before the workspace recorded it: the storage keeps no moment for those rows, only their insertion
+order, and nothing invents a date. `list` keeps returning projects in the order they were created,
+oldest first, on every surface - the SDK, `GET /projects`, `visionset project list` and the MCP
+tools. `ProjectOut` carries the stamp as `created_at`, a timestamp or null, and the CLI's `--json`
+and the MCP project payloads carry the same field.
+
+The Projects screen is the one place the order is turned around. It shows a **Created** column -
+"2d ago" inside a week, the date beyond it, a dash for a project with no stamp - and lists newest
+first by default; the column header flips to oldest first. The order is applied in the browser
+over the list it already holds, and projects without a stamp sit at the end in both directions,
+in the order they were created, so a missing date never places a row among the dated ones.
+
 ## The project-dataset relation is 1:1
 
 The dataset **is** the curated state of the project, not a thing kept beside it. Three
