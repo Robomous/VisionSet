@@ -391,8 +391,13 @@ question a caller has to settle *before* asking: does this model take the kind o
 about to send? So a connection also declares what it can be asked for.
 
 ```json
-{ "setup_state": "ready", "capabilities": ["point_suggest"], … }
+{ "setup_state": "ready", "capabilities": ["point_suggest"], "produces": ["bbox", "polygon"], … }
 ```
+
+`produces` beside it names the shapes the model answers in — the geometries a pre-label run
+against this connection can write — sorted, and empty exactly when `capabilities` is: a
+connection nobody has read promises no shape. It is the same declaration the batch-scoped
+pre-label plan reports, before any batch narrows it to what one schema can take.
 
 | Capability | Means | Consumed by |
 | --- | --- | --- |

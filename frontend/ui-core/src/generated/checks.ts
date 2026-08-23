@@ -129,6 +129,9 @@ export const checkConnectionSetupState: Check<Schemas["ConnectionSetupState"]> =
 export const checkConnectionType: Check<Schemas["ConnectionType"]> =
   /*#__PURE__*/ oneOf(["local", "http"] as const);
 
+export const checkGeometryType: Check<Schemas["GeometryType"]> =
+  /*#__PURE__*/ oneOf(["bbox", "polygon", "mask", "polyline", "keypoints", "cuboid_3d", "polyline_3d", "classification_tag"] as const);
+
 export const checkIntegrityCheckOut: Check<Schemas["IntegrityCheckOut"]> =
   /*#__PURE__*/ object({ "error": [true, either([isString, isNull] as const)], "error_code": [true, either([isString, isNull] as const)], "files_read": [true, isInteger], "files_total": [true, either([isInteger, isNull] as const)], "job_id": [true, isString], "state": [true, checkBackgroundJobState] } as const);
 
@@ -142,7 +145,7 @@ export const checkWeightDownloadOut: Check<Schemas["WeightDownloadOut"]> =
   /*#__PURE__*/ object({ "bytes_done": [true, isInteger], "bytes_total": [true, either([isInteger, isNull] as const)], "error": [true, either([isString, isNull] as const)], "error_code": [true, either([isString, isNull] as const)], "job_id": [true, isString], "state": [true, checkBackgroundJobState] } as const);
 
 export const checkConnectionOut: Check<Schemas["ConnectionOut"]> =
-  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkConnectionAction)], "capabilities": [true, arrayOf(checkModelCapability)], "connection_type": [true, checkConnectionType], "created_at": [true, isString], "credential_env": [true, either([isString, isNull] as const)], "device": [true, either([isString, isNull] as const)], "download": [true, either([checkWeightDownloadOut, isNull] as const)], "endpoint_url": [true, either([isString, isNull] as const)], "id": [true, isString], "integrity_check": [true, either([checkIntegrityCheckOut, isNull] as const)], "model_id": [true, isString], "model_revision": [true, isString], "name": [true, isString], "precision": [true, either([checkPrecision, isNull] as const)], "provider_id": [true, either([isString, isNull] as const)], "setup_state": [true, checkConnectionSetupState], "updated_at": [true, isString] } as const);
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkConnectionAction)], "capabilities": [true, arrayOf(checkModelCapability)], "connection_type": [true, checkConnectionType], "created_at": [true, isString], "credential_env": [true, either([isString, isNull] as const)], "device": [true, either([isString, isNull] as const)], "download": [true, either([checkWeightDownloadOut, isNull] as const)], "endpoint_url": [true, either([isString, isNull] as const)], "id": [true, isString], "integrity_check": [true, either([checkIntegrityCheckOut, isNull] as const)], "model_id": [true, isString], "model_revision": [true, isString], "name": [true, isString], "precision": [true, either([checkPrecision, isNull] as const)], "produces": [true, arrayOf(checkGeometryType)], "provider_id": [true, either([isString, isNull] as const)], "setup_state": [true, checkConnectionSetupState], "updated_at": [true, isString] } as const);
 
 export const checkConnectionPage: Check<Schemas["ConnectionPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkConnectionOut)], "total": [true, isInteger] } as const);
@@ -173,9 +176,6 @@ export const checkDownloadSizeOut: Check<Schemas["DownloadSizeOut"]> =
 
 export const checkClassExportStatus: Check<Schemas["ClassExportStatus"]> =
   /*#__PURE__*/ oneOf(["supported", "degraded", "dropped"] as const);
-
-export const checkGeometryType: Check<Schemas["GeometryType"]> =
-  /*#__PURE__*/ oneOf(["bbox", "polygon", "mask", "polyline", "keypoints", "cuboid_3d", "polyline_3d", "classification_tag"] as const);
 
 export const checkClassCompatibilityOut: Check<Schemas["ClassCompatibilityOut"]> =
   /*#__PURE__*/ object({ "annotations": [true, isInteger], "assets": [true, isInteger], "geometry": [true, checkGeometryType], "label_class": [true, isString], "reason": [false, either([isString, isNull] as const)], "status": [true, checkClassExportStatus] } as const);

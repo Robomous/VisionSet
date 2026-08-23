@@ -136,6 +136,7 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     // check refuses a response missing it, and a stub that omitted one rendered
     // this screen's error card in every case — which reads as a component bug.
     capabilities: [],
+    produces: [],
     // Also not optional on the wire, and `null` is their ordinary value: nobody
     // has ever asked this connection to fetch or to re-read anything.
     download: null,

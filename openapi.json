@@ -1996,6 +1996,13 @@
               }
             ]
           },
+          "produces": {
+            "items": {
+              "$ref": "#/components/schemas/GeometryType"
+            },
+            "title": "Produces",
+            "type": "array"
+          },
           "provider_id": {
             "anyOf": [
               {
@@ -2030,6 +2037,7 @@
           "credential_env",
           "allowed_actions",
           "capabilities",
+          "produces",
           "download",
           "integrity_check",
           "created_at",

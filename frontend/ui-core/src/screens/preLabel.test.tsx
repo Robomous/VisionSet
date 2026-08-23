@@ -120,6 +120,7 @@ function connectionOf(overrides: Partial<Connection> = {}): Connection {
     setup_state: "ready",
     allowed_actions: ["update", "delete"],
     capabilities: ["text_detect"],
+    produces: ["bbox", "polygon"],
     download: null,
     integrity_check: null,
     created_at: "2026-08-08T00:00:00Z",

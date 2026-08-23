@@ -3524,6 +3524,8 @@ export interface components {
             /** Name */
             name: string;
             precision: components["schemas"]["Precision"] | null;
+            /** Produces */
+            produces: components["schemas"]["GeometryType"][];
             /** Provider Id */
             provider_id: string | null;
             setup_state: components["schemas"]["ConnectionSetupState"];

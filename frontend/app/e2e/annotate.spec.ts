@@ -196,6 +196,7 @@ const READY_SAM = {
   setup_state: "ready",
   allowed_actions: [],
   capabilities: ["point_suggest"],
+  produces: ["bbox", "polygon"],
   download: null,
   integrity_check: null,
   created_at: "2026-08-08T00:00:00Z",

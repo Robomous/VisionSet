@@ -118,6 +118,7 @@ function connectionRow(
     // never been downloaded declares nothing, which is why the default only
     // makes sense beside `setup`.
     capabilities: setup === "ready" ? ["point_suggest"] : [],
+    produces: setup === "ready" ? ["bbox", "polygon"] : [],
     // Not optional on the wire, so not optional here — the generated runtime
     // check refuses a response missing them.
     download: null,
