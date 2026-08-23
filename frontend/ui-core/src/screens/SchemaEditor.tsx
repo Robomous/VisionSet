@@ -802,7 +802,7 @@ export function SchemaEditor({
           <Button
             variant="link"
             size="sm"
-            className="h-auto p-0 align-baseline text-xs"
+            className="align-baseline text-xs"
             data-testid="schema-reload"
             disabled={draftLocked}
             onClick={() => {
@@ -835,7 +835,7 @@ export function SchemaEditor({
           <Button
             variant="link"
             size="sm"
-            className="h-auto p-0 align-baseline text-xs"
+            className="align-baseline text-xs"
             data-testid="schema-reload-draft"
             disabled={draftLocked}
             onClick={() => {
