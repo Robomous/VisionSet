@@ -190,6 +190,16 @@ describe("Select", () => {
     const plain = screen.getByRole("option", { name: "org/model-large" });
     expect(plain.querySelector(".text-muted-foreground")).toBeNull();
   });
+
+  it("floors the open list at the closed control's width", async () => {
+    render(pickOne());
+    await userEvent.click(screen.getByTestId("model"));
+    const viewport = document.querySelector("[data-radix-select-viewport]");
+    expect(viewport).not.toBeNull();
+    const classes = (viewport as HTMLElement).className.split(" ");
+    expect(classes).toContain("w-full");
+    expect(classes).toContain("min-w-(--radix-select-trigger-width)");
+  });
 });
 
 describe("Card and Table", () => {
