@@ -198,7 +198,7 @@ call until the end. #439 has since added a job gate, but it changes none of this
 | `download_connection_weights` | Fetch a local connection's weights. Synchronous. |
 | `check_connection_integrity` | Re-read every byte against the hub's digests. Synchronous. |
 | `test_inference_connection` | Ask an http connection's endpoint what it answers, and record it. Synchronous. |
-| `update_inference_connection` | Edit one. The type cannot change. |
+| `update_inference_connection` | Edit one. The type cannot change, and neither can the model once the connection is set up. |
 
 The tools that make a workspace auto-label-ready without a browser — the SDK-first half of the
 Models page (#421). Connections are workspace infrastructure, so nothing here takes a

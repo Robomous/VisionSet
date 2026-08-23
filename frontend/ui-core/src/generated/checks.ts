@@ -121,7 +121,7 @@ export const checkBlockingAssetPage: Check<Schemas["BlockingAssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBlockingAssetOut)], "total": [true, isInteger] } as const);
 
 export const checkConnectionAction: Check<Schemas["ConnectionAction"]> =
-  /*#__PURE__*/ openOneOf(["download_weights", "check_integrity", "test_endpoint", "update", "delete"] as const);
+  /*#__PURE__*/ openOneOf(["download_weights", "check_integrity", "test_endpoint", "update", "update_model", "delete"] as const);
 
 export const checkConnectionSetupState: Check<Schemas["ConnectionSetupState"]> =
   /*#__PURE__*/ oneOf(["not_set_up", "ready"] as const);

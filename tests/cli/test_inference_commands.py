@@ -207,6 +207,7 @@ def test_show_declares_what_this_slice_can_perform(root: Path) -> None:
     assert payload(root, "inference", "show", "local-gd")["allowed_actions"] == [
         "download_weights",
         "update",
+        "update_model",
         "delete",
     ]
     ok(root, *HTTP)

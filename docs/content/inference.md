@@ -277,25 +277,25 @@ At a terminal, and through an MCP tool, each call blocks until it is done, so on
 agent serialises itself. Two of them, or either beside the server, do not coordinate: nothing here
 makes a download and a check over one cache impossible, only unlikely to be asked for by accident.
 
-## Pointing a connection somewhere else
+## Which model a connection names is fixed once it is set up
 
-Editing a local connection's `model_id` or `model_revision` puts it back to `not_set_up`. The
-weights on your disk are the weights of the model it used to name, and `setup_state` answers *are
-the weights here* - so leaving it `ready` would have it claim to be set up over files nothing ever
-fetched. It forgets what kind of model it holds at the same time, and for the same reason. The
-recorded driver goes with them, unless the same edit names one: it was recorded for the model
-the row used to name, and who serves the new one is a different question - which a re-pin from
-one offered checkpoint to another answers in the same edit, carrying the id of whoever offers
-the new entry.
+A connection's model - `model_id` and `model_revision` together - can be changed only while
+the connection has nothing committed to it: a `local` connection that is still `not_set_up`.
+Until the weights arrive the reference is a plan, and a plan may change; the edit forgets what
+kind of model the row thought it held and the driver recorded for it, because both were
+answers about the previous reference. Once the weights are here the connection *is* those
+weights - labels carry its id as provenance, the family and the driver were read out of that
+model's config - and a different model is a new connection, not an edit to this one. An `http`
+connection is born `ready`, so its model is fixed at creation.
 
-**The remedy is the ordinary one.** The row offers **Download weights** again, and the cache is
-keyed by model rather than by connection: the previous model's files are left where they are, so
-pointing a connection back at something it used to name costs a cache hit instead of a second
-transfer. Editing anything else - the name, the device, the precision - changes neither the state
-nor the family, and neither does sending the same model reference back unchanged.
-
-An `http` connection keeps no weights here, so a model edit resets nothing for it. It stays
-`ready`, which for that kind has always meant *there is nothing to set up on this machine*.
+The rule reaches you the way every gate on this page does. `update_model` appears in
+`allowed_actions` exactly where the model may still change, the edit form offers the model
+fields only while it does and otherwise shows the reference as a fact beside the fields you can
+edit, and an edit that would move the reference anywhere else is refused with
+`INFERENCE_CONNECTION_MODEL_FIXED` (409), naming the remedy. What you can always edit is the name,
+the device and the precision - and, for an `http` connection, the endpoint and the credential
+variable. Sending the same model reference back unchanged is not a move: the only client there
+is sends the whole form on every edit, and a rename must not read as a retarget.
 
 ## Which device runs the model
 
@@ -440,10 +440,10 @@ every request on its own. It says only that no tool can rely on this connection.
 
 **It is recorded when the weights arrive** - or, for an `http` connection, when its endpoint is
 asked - because that is the first moment it is knowable without reaching a network. Editing a
-connection to point at another model or revision clears it again - nothing has read the new one,
-and a stale answer reads exactly like a fresh one - and takes the setup state with it, for the
-same reason: see [Pointing a connection somewhere
-else](#pointing-a-connection-somewhere-else). A connection created before this shipped acquires
+connection to point at another model or revision, where that is still allowed, clears it again -
+nothing has read the new one, and a stale answer reads exactly like a fresh one: see [Which
+model a connection names is fixed once it is set
+up](#which-model-a-connection-names-is-fixed-once-it-is-set-up). A connection created before this shipped acquires
 its answer the first time something reads it, from files already on your disk.
 
 ## Asking an endpoint what it answers

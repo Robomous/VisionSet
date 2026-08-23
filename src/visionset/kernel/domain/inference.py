@@ -296,6 +296,22 @@ later widening moves the declaration and the refusal together.
 """
 
 
+RETARGETABLE_STATES: Final[frozenset[ConnectionSetupState]] = frozenset(
+    {ConnectionSetupState.NOT_SET_UP}
+)
+"""The setup states in which a connection may still be pointed at a different model.
+
+Before the weights arrive nothing has been committed: the reference is a plan,
+and changing the plan costs nobody anything. Once they are here the connection
+*is* those weights — labels carry its id as provenance, the family and the
+driver were read out of that model's config — and a different model is a new
+connection, not an edit to this one. ``update_model`` is declared on this set,
+and ``InferenceConnectionService.update`` refuses a moved reference outside it
+through the same declaration, so the control a client offers and the answer a
+caller gets come from one rule.
+"""
+
+
 EVERY_SETUP_STATE: Final[frozenset[ConnectionSetupState]] = frozenset(ConnectionSetupState)
 """The setup states that refuse nothing — which today is all of them.
 

@@ -51,6 +51,7 @@ from visionset.kernel.domain.inference import (
     CHECKABLE_STATES,
     EVERY_CONNECTION_TYPE,
     EVERY_SETUP_STATE,
+    RETARGETABLE_STATES,
     WEIGHT_HOLDING_TYPES,
     ConnectionSetupState,
     ConnectionType,
@@ -153,6 +154,10 @@ class ConnectionAction(OpenVocabulary):
     CHECK_INTEGRITY = "check_integrity"
     TEST_ENDPOINT = "test_endpoint"
     UPDATE = "update"
+    #: Point it at a different model or revision — declared only while nothing
+    #: has been committed to the one it names; ``update`` alone stays for the
+    #: name and the runtime parameters.
+    UPDATE_MODEL = "update_model"
     DELETE = "delete"
 
 
@@ -311,6 +316,7 @@ CONNECTION_GATES: Final[Mapping[ConnectionAction, frozenset[ConnectionSetupState
     ConnectionAction.CHECK_INTEGRITY: CHECKABLE_STATES,
     ConnectionAction.TEST_ENDPOINT: EVERY_SETUP_STATE,
     ConnectionAction.UPDATE: EVERY_SETUP_STATE,
+    ConnectionAction.UPDATE_MODEL: RETARGETABLE_STATES,
     ConnectionAction.DELETE: EVERY_SETUP_STATE,
 }
 """Which setup states each connection action is legal in.
@@ -326,7 +332,14 @@ integrity, and ``visionset.inference.weights`` says why that distinction is wort
 keeping. A client renders it under its own label; the wire keeps one name,
 because it is one call doing one thing.
 
-**``check_integrity`` is the row that makes this table conditional**, and it is
+**``update_model`` is conditional in both halves**: a ``local`` connection may be
+pointed at a different model only while it is ``not_set_up``, because until
+the weights arrive the reference is a plan and afterwards it is what the
+connection is; an ``http`` connection is born ``ready`` and never declares it —
+its model is fixed at creation, and a different one is a new connection.
+:data:`~visionset.kernel.domain.inference.RETARGETABLE_STATES` carries the why.
+
+**``check_integrity`` is the row that makes this table conditional in state**, and it is
 exactly the one-line narrowing the previous paragraph left room for. It is legal
 at ``ready`` and nowhere else, because it
 re-reads the snapshot a download left behind: at ``not_set_up`` there is no
@@ -361,6 +374,7 @@ CONNECTION_KINDS: Final[Mapping[ConnectionAction, frozenset[ConnectionType]]] = 
     ConnectionAction.CHECK_INTEGRITY: WEIGHT_HOLDING_TYPES,
     ConnectionAction.TEST_ENDPOINT: ENDPOINT_TYPES,
     ConnectionAction.UPDATE: EVERY_CONNECTION_TYPE,
+    ConnectionAction.UPDATE_MODEL: WEIGHT_HOLDING_TYPES,
     ConnectionAction.DELETE: EVERY_CONNECTION_TYPE,
 }
 """Which kinds each connection action is legal for — the second half of the gate.

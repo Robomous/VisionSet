@@ -76,6 +76,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "InferenceConnectionNotDownloadable": (409, "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"),
     "InferenceConnectionNotCheckable": (409, "INFERENCE_CONNECTION_NOT_CHECKABLE"),
     "InferenceConnectionNotTestable": (409, "INFERENCE_CONNECTION_NOT_TESTABLE"),
+    "InferenceConnectionModelFixed": (409, "INFERENCE_CONNECTION_MODEL_FIXED"),
     "InferenceEndpointUnavailable": (502, "INFERENCE_ENDPOINT_UNAVAILABLE"),
     "WeightsDamaged": (409, "WEIGHTS_DAMAGED"),
     "InferenceConnectionNotSetUp": (409, "INFERENCE_CONNECTION_NOT_SET_UP"),

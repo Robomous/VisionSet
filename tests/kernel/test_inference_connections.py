@@ -34,16 +34,18 @@ from visionset.kernel.domain import (
     MPS,
     PRE_LABEL_CONFIDENCE_KEY,
     PRE_LABEL_GEOMETRIES_KEY,
+    ConnectionAction,
     ConnectionSetupState,
     ConnectionType,
     GeometryType,
     InferenceConnection,
     ModelOrigin,
     Precision,
+    connection_actions,
     pre_label_job_payload,
     precisions_for,
 )
-from visionset.kernel.errors import InferenceConnectionNotTestable
+from visionset.kernel.errors import InferenceConnectionModelFixed, InferenceConnectionNotTestable
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
 
 LOCAL = dict(
@@ -480,14 +482,18 @@ def test_pointing_a_connection_at_another_model_forgets_what_kind_it_was(
     The answer was read out of the old model's config; nothing has read the new
     one. Keeping it would leave the row declaring what its *previous* weights
     could be asked for, and every client filtering on that declaration would
-    believe it.
+    believe it. The one row that can still move its model while carrying a
+    family is a set-up connection whose files were found damaged and purged —
+    back at `not_set_up`, family still recorded — so that is the row this
+    exercises.
     """
     made = connections.create("local", **LOCAL)
     connections.record_weights_ready(made.id, model_family="sam2")
+    purged = connections.record_weights_missing(made.id)
+    assert purged.setup_state is ConnectionSetupState.NOT_SET_UP
+    assert purged.model_family == "sam2"
 
     assert connections.update(made.id, model_id="other/model").model_family is None
-    connections.record_weights_ready(made.id, model_family="grounding-dino")
-    assert connections.update(made.id, model_revision="beef1234").model_family is None
 
 
 def test_editing_anything_else_keeps_the_family(connections) -> None:  # noqa: ANN001
@@ -498,39 +504,48 @@ def test_editing_anything_else_keeps_the_family(connections) -> None:  # noqa: A
     assert connections.update(made.id, device="cpu", precision="fp32").model_family == "sam2"
 
 
-def test_pointing_a_connection_at_another_model_sends_it_back_for_a_download(
-    connections,  # noqa: ANN001
-) -> None:
-    """The weights on disk belong to the model this connection no longer names.
+def test_a_set_up_connections_model_is_fixed(connections) -> None:  # noqa: ANN001
+    """Once the weights are here the connection *is* those weights.
 
-    `setup_state` answers *are the weights here*, so an edit that changes which
-    weights are meant makes the stored answer describe the wrong question. The
-    row would go on claiming to be set up over a reference nothing ever fetched.
+    Either half of the reference — the model id or the revision — moving means
+    different weights, and a row that already holds weights refuses both, staying
+    exactly as it was. The refusal is raised through the same declaration a
+    client renders, so `update_model` leaving `allowed_actions` and this refusal
+    arriving are one rule: a different model is a new connection.
     """
     made = connections.create("local", **LOCAL)
-    connections.record_weights_ready(made.id, model_family="sam2")
+    ready = connections.record_weights_ready(made.id, model_family="sam2")
+    assert ConnectionAction.UPDATE_MODEL not in connection_actions(
+        ready.setup_state, connection_type=ready.connection_type
+    )
 
-    edited = connections.update(made.id, model_id="other/model")
+    with pytest.raises(InferenceConnectionModelFixed, match="new connection"):
+        connections.update(made.id, model_id="other/model")
+    with pytest.raises(InferenceConnectionModelFixed):
+        connections.update(made.id, model_revision="beef1234")
+    kept = connections.get(made.id)
+    assert kept.model_id == LOCAL["model_id"]
+    assert kept.setup_state is ConnectionSetupState.READY
+    assert kept.model_family == "sam2"
+
+
+def test_a_connection_still_waiting_for_weights_may_change_its_model(
+    connections,  # noqa: ANN001
+) -> None:
+    """Before the weights arrive the reference is a plan, and a plan may change.
+
+    Nothing is committed to the model a `not_set_up` row names — no file on disk,
+    no family read out of a config — so moving the reference costs nobody
+    anything, and `update_model` says so.
+    """
+    made = connections.create("local", **LOCAL)
+    assert ConnectionAction.UPDATE_MODEL in connection_actions(
+        made.setup_state, connection_type=made.connection_type
+    )
+    edited = connections.update(made.id, model_id="other/model", model_revision="beef1234")
+    assert edited.model_id == "other/model"
     assert edited.setup_state is ConnectionSetupState.NOT_SET_UP
     assert edited.model_family is None
-    assert connections.get(made.id).setup_state is ConnectionSetupState.NOT_SET_UP
-
-
-def test_pinning_a_connection_to_another_revision_sends_it_back_too(
-    connections,  # noqa: ANN001
-) -> None:
-    """The reference is the pair, so either half of it moving means new weights.
-
-    A revision is what makes provenance answerable; two revisions of one model id
-    are two different sets of files, and only one of them was downloaded.
-    """
-    made = connections.create("local", **LOCAL)
-    connections.record_weights_ready(made.id, model_family="sam2")
-
-    assert (
-        connections.update(made.id, model_revision="beef1234").setup_state
-        is ConnectionSetupState.NOT_SET_UP
-    )
 
 
 def test_editing_anything_else_leaves_a_connection_set_up(connections) -> None:  # noqa: ANN001
@@ -571,43 +586,39 @@ def test_resupplying_the_same_model_reference_is_not_a_change(connections) -> No
     assert renamed.model_family == "sam2"
 
 
-def test_an_http_connection_keeps_its_readiness_when_its_model_moves(
-    connections,  # noqa: ANN001
-) -> None:
-    """There are no local weights to invalidate, so there is nothing to reset.
+def test_an_endpoints_model_is_fixed_at_creation(connections) -> None:  # noqa: ANN001
+    """Born `ready`, so never retargetable: the rule read through the declaration.
 
-    An `http` connection is born `ready` because nothing has to be set up on this
-    machine at all — a fact about the kind, not about a download that happened.
-    Sending it to `not_set_up` would offer a remedy it cannot perform.
+    An `http` connection has no weights to wait for, which is why it is ready at
+    once — and why there is no moment in which its model is still a plan. Its
+    endpoint and credential remain its own to change.
     """
     made = connections.create("remote", **HTTP)
     assert made.setup_state is ConnectionSetupState.READY
+    with pytest.raises(InferenceConnectionModelFixed, match="fixed at creation"):
+        connections.update(made.id, model_id="other/model", model_revision="beef1234")
+    moved = connections.update(made.id, endpoint_url="https://elsewhere.invalid/predict")
+    assert moved.endpoint_url == "https://elsewhere.invalid/predict"
 
-    edited = connections.update(made.id, model_id="other/model", model_revision="beef1234")
-    assert edited.setup_state is ConnectionSetupState.READY
 
+def test_the_model_a_row_already_names_is_not_a_move(connections) -> None:  # noqa: ANN001
+    """The only client there is sends the whole shape on every edit.
 
-def test_editing_back_and_downloading_again_restores_the_family(
-    connections,  # noqa: ANN001
-) -> None:
-    """The round trip, and the reason the old blobs are left where they are.
-
-    Pointing a connection back at a model it used to name is an ordinary edit
-    followed by an ordinary download; the cache is keyed by model, so the second
-    download finds what the first one fetched and the connection is set up again
-    cheaply.
+    A rename arrives carrying the model id the row already has; read as a move it
+    would be refused on a set-up connection, so the rule compares values and a
+    mention is not a move.
     """
     made = connections.create("local", **LOCAL)
     connections.record_weights_ready(made.id, model_family="sam2")
-    connections.update(made.id, model_id="other/model")
-
-    back = connections.update(made.id, model_id=LOCAL["model_id"])
-    assert back.setup_state is ConnectionSetupState.NOT_SET_UP
-    assert back.model_family is None
-
-    redownloaded = connections.record_weights_ready(made.id, model_family="sam2")
-    assert redownloaded.setup_state is ConnectionSetupState.READY
-    assert redownloaded.model_family == "sam2"
+    renamed = connections.update(
+        made.id,
+        name="renamed",
+        model_id=LOCAL["model_id"],
+        model_revision=LOCAL["model_revision"],
+    )
+    assert renamed.name == "renamed"
+    assert renamed.setup_state is ConnectionSetupState.READY
+    assert renamed.model_family == "sam2"
 
 
 def test_a_pre_label_payload_round_trips_its_three_facts() -> None:

@@ -132,7 +132,7 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     credential_env: null,
     origin: "huggingface",
     setup_state: "not_set_up",
-    allowed_actions: ["download_weights", "update", "delete"],
+    allowed_actions: ["download_weights", "update", "update_model", "delete"],
     // Not optional on the wire, so not optional here: the generated runtime
     // check refuses a response missing it, and a stub that omitted one rendered
     // this screen's error card in every case — which reads as a component bug.
@@ -1399,7 +1399,7 @@ it("keeps saying a model needs access when it is pinned to another commit", asyn
       name: "pinned-elsewhere",
       model_id: SAM3,
       model_revision: "0000000000000000000000000000000000000000",
-      allowed_actions: ["update", "delete"],
+      allowed_actions: ["update", "update_model", "delete"],
     }),
   ]);
   catalog();
@@ -1543,8 +1543,7 @@ it("shows an offered model at another revision as a custom connection", async ()
   listing([
     connection({
       model_revision: "0000000000000000000000000000000000000000",
-      setup_state: "ready",
-      allowed_actions: ["update", "delete"],
+      allowed_actions: ["download_weights", "update", "update_model", "delete"],
     }),
   ]);
   catalog();
@@ -1774,7 +1773,7 @@ it("lands the row at Not set up when a check finds damage, and says what was don
   listing([
     connection({
       setup_state: "not_set_up",
-      allowed_actions: ["download_weights", "update", "delete"],
+      allowed_actions: ["download_weights", "update", "update_model", "delete"],
       integrity_check: checkOf(
         "failed",
         9,
@@ -1861,7 +1860,7 @@ it("names the transfer on the download button a check has taken out of reach", a
   listing([
     connection({
       setup_state: "not_set_up",
-      allowed_actions: ["download_weights", "update", "delete"],
+      allowed_actions: ["download_weights", "update", "update_model", "delete"],
       integrity_check: checkOf("running", 2, 9),
     }),
   ]);
@@ -2011,51 +2010,77 @@ it("edits without offering to change the kind", async () => {
   expect(screen.queryByTestId("choose-type")).toBeNull();
 });
 
-it("lands an edited row at Not set up without a reload", async () => {
-  // The declaration is a cached answer, and this edit changes it: repinning the
-  // connection to another revision sends it back for a download, so the row's
-  // whole meaning changes underneath a screen that is already showing it. The
-  // list invalidation on a successful PATCH is what carries that across.
-  let edited = false;
-  handlers.push((request) => {
-    if (request.method !== "GET" || !new URL(request.url).pathname.endsWith("/connections")) return;
-    const row = edited
-      ? connection({
-          model_revision: "beefbeefbeefbeefbeefbeefbeefbeefbeefbeef",
-          setup_state: "not_set_up",
-          allowed_actions: ["download_weights", "update", "delete"],
-        })
-      : connection({
-          // Pinned to a revision no offer names, so the form offers the revision
-          // as a field to edit rather than as a fixed pair.
-          model_revision: "0000000000000000000000000000000000000000",
-          setup_state: "ready",
-          capabilities: ["point_suggest"],
-          allowed_actions: READY_BOTH,
-        });
-    return { status: 200, body: { items: [row], total: 1 } };
-  });
-  handlers.push((request) => {
-    if (request.method !== "PATCH") return;
-    edited = true;
-    return { status: 200, body: connection({ setup_state: "not_set_up" }) };
-  });
+it("shows a set-up connection's model as a fact, and offers no field that would move it", async () => {
+  // Read off the declaration: a ready row does not declare `update_model`, so
+  // the select, the custom id and the revision are not on the form — the
+  // reference is stated where the choice used to be, with the remedy beside
+  // it — while name, device and precision stay editable. Nothing here decides
+  // that a ready row is fixed; the wire did.
+  listing([
+    connection({
+      setup_state: "ready",
+      capabilities: ["point_suggest"],
+      allowed_actions: ["download_weights", "check_integrity", "update", "delete"],
+    }),
+  ]);
   catalog();
-  sizeIs(1_200_000_000);
-
   render(mount(<ModelsScreen />));
-  expect((await screen.findByTestId("connection-status")).textContent).toContain("Ready");
-
   await userEvent.click(await screen.findByTestId("actions-sam2-local"));
   await userEvent.click(await screen.findByTestId("action-edit"));
-  const revision = await screen.findByTestId("connection-revision");
-  await userEvent.clear(revision);
-  await userEvent.type(revision, "beefbeefbeefbeefbeefbeefbeefbeefbeefbeef");
-  await userEvent.click(await screen.findByTestId("connection-submit"));
+  const fixed = await screen.findByTestId("connection-model-fixed");
+  expect(fixed.textContent).toBe(`${SAM_BASE_PLUS} @ ${SAM_BASE_PLUS_COMMIT}`);
+  expect(screen.getByText(/Add a new model to run a different one/)).not.toBeNull();
+  expect(screen.queryByTestId("connection-model")).toBeNull();
+  expect(screen.queryByTestId("connection-custom-model")).toBeNull();
+  expect(screen.queryByTestId("connection-revision")).toBeNull();
+  expect(screen.getByTestId("connection-name")).not.toBeNull();
+  expect(screen.getByTestId("connection-device")).not.toBeNull();
+  expect(screen.getByTestId("connection-precision")).not.toBeNull();
+});
 
+it("offers the model fields on a connection still waiting for its weights", async () => {
+  // The same form, on a row that declares `update_model`: the select is there,
+  // and the reference it resolves to is the stored pair.
+  listing([connection({ model_id: SAM_BASE_PLUS, model_revision: SAM_BASE_PLUS_COMMIT })]);
+  catalog();
+  render(mount(<ModelsScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-edit"));
   await waitFor(() =>
-    expect(screen.getByTestId("connection-status").textContent).toContain("Not set up"),
+    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
   );
+  expect(screen.queryByTestId("connection-model-fixed")).toBeNull();
+});
+
+it("sends the unchanged reference with a rename of a set-up connection", async () => {
+  // The whole shape travels on every edit and a mention is not a move: the
+  // server compares values, so the fixed reference rides along unchanged.
+  listing([
+    connection({
+      setup_state: "ready",
+      capabilities: ["point_suggest"],
+      allowed_actions: ["download_weights", "check_integrity", "update", "delete"],
+    }),
+  ]);
+  catalog();
+  const patches: Request[] = [];
+  handlers.push((request) => {
+    if (request.method !== "PATCH") return;
+    patches.push(request);
+    return { status: 200, body: connection({ name: "renamed", setup_state: "ready" }) };
+  });
+  render(mount(<ModelsScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-edit"));
+  const name = await screen.findByTestId("connection-name");
+  await userEvent.clear(name);
+  await userEvent.type(name, "renamed");
+  await userEvent.click(screen.getByTestId("connection-submit"));
+  await waitFor(() => expect(patches).toHaveLength(1));
+  const body = await patches[0]!.clone().json();
+  expect(body.name).toBe("renamed");
+  expect(body.model_id).toBe(SAM_BASE_PLUS);
+  expect(body.model_revision).toBe(SAM_BASE_PLUS_COMMIT);
 });
 
 it("sends an edit carrying only the fields ConnectionUpdate declares", async () => {

@@ -914,6 +914,31 @@ function IntegrityProgress({ check }: { readonly check: IntegrityCheck }): JSX.E
 }
 
 /**
+ * The model a set-up connection names, as the fact it now is.
+ *
+ * In the cell the select would occupy, so the form keeps its shape: once the
+ * weights are here the connection *is* those weights, and a different model is
+ * a new connection — which the hint says, in the place the choice used to be.
+ */
+function FixedModel({ connection }: { readonly connection: Connection }): JSX.Element {
+  return (
+    <div className="flex flex-col gap-1.5">
+      {/* The primitive's look without a `<label>` pointing at no control. */}
+      <Label asChild>
+        <span>Model</span>
+      </Label>
+      <p className="font-mono text-sm break-all" data-testid="connection-model-fixed">
+        {connection.model_id} @ {connection.model_revision}
+      </p>
+      <FieldHint>
+        Set up with these weights, so the model cannot change here. Add a new model to run a
+        different one.
+      </FieldHint>
+    </div>
+  );
+}
+
+/**
  * One way a model can run, offered as a tile: an icon, a name and a sentence.
  *
  * A tile rather than a labelled button because the two kinds are a choice to
@@ -1157,6 +1182,11 @@ function ConnectionForm({
 
   const local = kind === "local";
   const custom = choice === CUSTOM_MODEL;
+  // Read off the declaration, never off the state: a set-up connection does
+  // not declare `update_model`, so its model is shown as a fact and the fields
+  // that would move it are not offered. The reference still travels with the
+  // edit, unchanged, because a mention is not a move.
+  const modelFixed = editing !== undefined && !editing.allowed_actions.includes("update_model");
   /** Whether the model field is a select — the one state of four that has a control. */
   const offering = catalog.isSuccess && groups.length > 0;
   const pending = create.isPending || update.isPending;
@@ -1249,7 +1279,9 @@ function ConnectionForm({
               for. Offering the same list there would be recommending models
               for somebody else's server.
             */}
-            {local ? (
+            {modelFixed ? (
+              <FixedModel connection={editing} />
+            ) : local ? (
               <>
                 <div className="flex flex-col gap-1.5">
                   {/*
@@ -1362,7 +1394,7 @@ function ConnectionForm({
                   nothing, so a listing that failed is not a reason to prevent
                   one being configured.
                 */}
-                {custom && (
+                {custom && !modelFixed && (
                   <>
                     <div className="flex flex-col gap-1.5">
                       <Label htmlFor="connection-custom-model">Model id</Label>
@@ -1437,6 +1469,7 @@ function ConnectionForm({
               </>
             ) : (
               <>
+                {!modelFixed && (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="connection-revision">Revision</Label>
                   <Input
@@ -1447,6 +1480,7 @@ function ConnectionForm({
                   />
                   <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
                 </div>
+                )}
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="connection-endpoint">Endpoint URL</Label>
                   <Input

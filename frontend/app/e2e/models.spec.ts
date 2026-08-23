@@ -193,7 +193,11 @@ function connection(
     credential_env: null,
     origin: "huggingface",
     setup_state: setup,
-    allowed_actions: ["download_weights", "update", "delete"],
+    // A waiting row may still change its model; a set-up one may not.
+    allowed_actions:
+      setup === "ready"
+        ? ["download_weights", "update", "delete"]
+        : ["download_weights", "update", "update_model", "delete"],
     capabilities,
     produces: capabilities.length === 0 ? [] : ["bbox", "polygon"],
     download:

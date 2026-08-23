@@ -3476,7 +3476,7 @@ export interface components {
          * @description What can be asked of an inference connection. Order is display order.
          * @enum {string}
          */
-        ConnectionAction: "download_weights" | "check_integrity" | "test_endpoint" | "update" | "delete" | (string & {});
+        ConnectionAction: "download_weights" | "check_integrity" | "test_endpoint" | "update" | "update_model" | "delete" | (string & {});
         /**
          * ConnectionCreate
          * @description What a caller supplies to configure a connection.
@@ -11719,7 +11719,7 @@ export type OpenMember<A extends string> = A | (string & {});
 export interface KnownMembers {
   AssetAction: "annotate" | "skip" | "restore" | "confirm" | "submit_for_review" | "accept" | "return_to_annotator";
   BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "pre_label" | "edit_membership" | "delete";
-  ConnectionAction: "download_weights" | "check_integrity" | "test_endpoint" | "update" | "delete";
+  ConnectionAction: "download_weights" | "check_integrity" | "test_endpoint" | "update" | "update_model" | "delete";
   JobAction: "start" | "complete";
   ModelCapability: "point_suggest" | "text_detect";
   PreLabelExclusionReason: "no_producible_geometry" | "required_attribute";

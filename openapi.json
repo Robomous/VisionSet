@@ -1802,6 +1802,7 @@
           "check_integrity",
           "test_endpoint",
           "update",
+          "update_model",
           "delete"
         ],
         "title": "ConnectionAction",

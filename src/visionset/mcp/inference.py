@@ -121,8 +121,16 @@ def create_inference_connection(
 def update_inference_connection(
     connection: ConnectionRef,
     name: Annotated[str | None, Field(description="Rename it.")] = None,
-    model_id: Annotated[str | None, Field(description="Point at another model.")] = None,
-    model_revision: Annotated[str | None, Field(description="Move the pin.")] = None,
+    model_id: Annotated[
+        str | None,
+        Field(
+            description="Point at another model. Only while the connection declares update_model."
+        ),
+    ] = None,
+    model_revision: Annotated[
+        str | None,
+        Field(description="Move the pin. Only while the connection declares update_model."),
+    ] = None,
     device: Annotated[
         str | None,
         Field(description="Local only. cpu, mps, cuda, or cuda:N for a second GPU."),
@@ -144,9 +152,12 @@ def update_inference_connection(
 ) -> dict[str, Any]:
     """Edit a connection. Parameters you omit are left alone; the type cannot change.
 
-    Moving a local connection's model or revision stands it back to `not_set_up`,
-    because the weights on disk are no longer the weights it names — download
-    again to make it `ready`.
+    Which model it names is fixed once it is set up: a local connection may move
+    its model or revision only while it is still `not_set_up` (it declares
+    `update_model` then), and an http connection never can — refused with
+    `INFERENCE_CONNECTION_MODEL_FIXED`. For a different model, create a new
+    connection. The name, device and precision — and an endpoint's URL and
+    credential variable — can always be edited.
     """
     with opened_workspace() as workspace:
         connections = InferenceConnectionService(workspace)

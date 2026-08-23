@@ -303,11 +303,19 @@ def test_a_connection_declares_what_this_slice_can_perform(client: TestClient) -
     has none of its own and never will, in any state, but does have an endpoint
     to ask.
     """
-    assert created(client, LOCAL)["allowed_actions"] == ["download_weights", "update", "delete"]
+    assert created(client, LOCAL)["allowed_actions"] == [
+        "download_weights",
+        "update",
+        "update_model",
+        "delete",
+    ]
     assert created(client, HTTP)["allowed_actions"] == ["test_endpoint", "update", "delete"]
     # `check_integrity` is absent from both, and for two different reasons —
     # the local one has no snapshot yet and the HTTP one never will.
     # The `ready` half is `test_a_ready_connection_declares_the_integrity_check`.
+    # `update_model` is the fresh local row's alone: nothing is committed to the
+    # model it names until the weights arrive, and an endpoint's model is fixed
+    # at creation.
 
 
 @pytest.mark.parametrize("body", [LOCAL, HTTP], ids=["local", "http"])
@@ -333,6 +341,9 @@ def test_every_declared_action_is_one_the_api_performs(
                 f"/inference/connections/{made['id']}/test-endpoint"
             ),
             "update": lambda: client.patch(
+                f"/inference/connections/{made['id']}", json={"name": "renamed"}
+            ),
+            "update_model": lambda: client.patch(
                 f"/inference/connections/{made['id']}", json={"model_revision": "deadbeef"}
             ),
             "delete": lambda: client.delete(f"/inference/connections/{made['id']}"),
@@ -540,26 +551,58 @@ def test_a_finished_download_leaves_the_connection_ready(
         ]
 
 
-def test_editing_the_model_takes_the_integrity_check_off_the_row(
+def test_a_set_up_connections_model_is_fixed(
     tmp_path: Path, runtime_present: None, fetched: list[str]
 ) -> None:
-    """The declaration follows the reset, because it is derived from the state.
+    """Once the weights are here the connection *is* those weights.
 
-    `check_integrity` re-reads a snapshot. Pointing the connection at a model
-    whose snapshot was never fetched leaves nothing to read, so the action stops
-    being offered in the same response that performs the edit — a client never
-    sees a window in which it is declared over weights that are not there.
+    The declaration and the refusal come from one rule: `update_model` leaves
+    the row when it becomes `ready`, and a moved reference is answered with a
+    409 naming the remedy — a new connection — while the row stays exactly as
+    it was, integrity check and all. A different model is not an edit.
     """
     with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
         made = _made_ready(client)
+        assert "update_model" not in made["allowed_actions"]
         assert "check_integrity" in made["allowed_actions"]
 
-        edited = client.patch(
+        response = client.patch(
             f"/inference/connections/{made['id']}", json={"model_id": "other/model"}
-        ).json()
-        assert edited["setup_state"] == "not_set_up"
-        assert edited["capabilities"] == []
-        assert edited["allowed_actions"] == ["download_weights", "update", "delete"]
+        )
+        assert response.status_code == 409, response.text
+        assert response.json()["code"] == "INFERENCE_CONNECTION_MODEL_FIXED"
+        assert "new connection" in response.json()["message"]
+        after = client.get(f"/inference/connections/{made['id']}").json()
+        assert after["model_id"] == made["model_id"]
+        assert after["setup_state"] == "ready"
+        assert "check_integrity" in after["allowed_actions"]
+
+
+def test_a_connection_still_waiting_for_weights_may_change_its_model(client: TestClient) -> None:
+    """Before the weights arrive the reference is a plan, and a plan may change."""
+    made = created(client, LOCAL)
+    assert "update_model" in made["allowed_actions"]
+    edited = client.patch(
+        f"/inference/connections/{made['id']}", json={"model_id": "other/model"}
+    ).json()
+    assert edited["model_id"] == "other/model"
+    assert edited["setup_state"] == "not_set_up"
+
+
+def test_an_endpoints_model_is_fixed_at_creation(client: TestClient) -> None:
+    """Born `ready`, so never retargetable; its endpoint and credential still are."""
+    made = created(client, HTTP)
+    assert "update_model" not in made["allowed_actions"]
+    refused = client.patch(
+        f"/inference/connections/{made['id']}", json={"model_revision": "deadbeef"}
+    )
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "INFERENCE_CONNECTION_MODEL_FIXED"
+    moved = client.patch(
+        f"/inference/connections/{made['id']}",
+        json={"endpoint_url": "https://elsewhere.invalid/predict"},
+    )
+    assert moved.status_code == 200, moved.text
 
 
 def test_renaming_a_ready_connection_leaves_it_ready(

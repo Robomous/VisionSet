@@ -46,7 +46,7 @@ visionset inference create NAME --type local|http --model ID --revision REV
                                [--device cpu|mps|cuda|cuda:N] [--precision fp16|fp32]
                                [--endpoint URL] [--provider DRIVER_ID] [--credential-env NAME]
 visionset inference list
-visionset inference show|update|delete NAME_OR_ID
+visionset inference show|update|delete NAME_OR_ID          # update: the model only while not set up
 visionset inference size MODEL_ID --revision REV         # no --workspace: it opens none
 visionset inference download NAME_OR_ID
 visionset inference check-integrity NAME_OR_ID

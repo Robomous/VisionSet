@@ -73,6 +73,7 @@ from visionset.kernel import (
     ExportSourceUnreadable,
     GeometryNotProduced,
     InferenceConnectionInvalid,
+    InferenceConnectionModelFixed,
     InferenceConnectionNameTaken,
     InferenceConnectionNotCheckable,
     InferenceConnectionNotDownloadable,
@@ -327,6 +328,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # and no state change gives it one. Its own code because the remedy — use
     # an http connection — is nothing NOT_CHECKABLE's reader would guess.
     InferenceConnectionNotTestable: ErrorRule(409, "INFERENCE_CONNECTION_NOT_TESTABLE"),
+    InferenceConnectionModelFixed: ErrorRule(409, "INFERENCE_CONNECTION_MODEL_FIXED"),
     # Raised by the integrity job rather than by a request, and it has a rule
     # because every declared error does — the table is total by test. 409 is the
     # honest status if a synchronous surface ever raises it: the resource is in a

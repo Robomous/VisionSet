@@ -1447,11 +1447,14 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * A stub cannot referee this body, because it is written by whoever wrote
      * the body — only a real server, checking the request against
      * `ConnectionUpdate`, can catch a field the dialog serialises but the
-     * schema forbids. Two edits, because the kernel compares the model
-     * reference rather than asking whether it was supplied: a rename carries
-     * that reference too, so only a real PATCH tells apart the repin that must
-     * undo setup from the rename that must not. Last in the walk and nothing
-     * is put back, since no later step reads this connection.
+     * schema forbids. A rename carries the model reference the row already
+     * has, and the kernel compares rather than asks whether it was supplied —
+     * so only a real PATCH proves a rename of a set-up connection is not read
+     * as the retarget it now refuses. The second half is the declaration
+     * itself: a set-up row does not declare `update_model`, and only a real
+     * kernel's answer can show the form reading that rather than a stub's
+     * transcription. Last in the walk and nothing is put back, since no later
+     * step reads this connection.
      */
     // The export dialog is still up, and deliberately: it holds the outcome so
     // the badge can announce it once the poll has stopped, which means it closes
@@ -1484,21 +1487,19 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(after).toBeVisible();
     await expect(after.getByTestId("connection-status")).toContainText(/ready/i);
 
-    // And a reference that really does move. The revision is free text on a
-    // connection — the commit-hash rule belongs to catalog entries, which is why
-    // the setup step above could pin this one to `stub` at all.
+    // And the model is now a fact: the real kernel withholds `update_model`
+    // from a set-up row, so the form states the reference where the choice
+    // used to be and offers no field that would move it — while the name it
+    // just changed is still there to change again.
     await page.getByTestId(`actions-${REPINNED}`).click();
     await page.getByTestId("action-edit").click();
-    await expect(page.getByTestId("connection-revision")).toBeVisible();
-    await page.getByTestId("connection-revision").fill("stub-repinned");
-    await page.getByTestId("connection-submit").click();
-
+    await expect(page.getByTestId("connection-model-fixed")).toBeVisible();
+    await expect(page.getByTestId("connection-revision")).toHaveCount(0);
+    await expect(page.getByTestId("connection-custom-model")).toHaveCount(0);
+    await expect(page.getByTestId("connection-name")).toBeVisible();
+    await page.keyboard.press("Escape");
     await expect(page.getByTestId("connection-dialog")).toHaveCount(0);
-    await expect(after.getByTestId("connection-status")).toContainText(/not set up/i);
-
-    // The remedy is offered on the row it happened to, which is the other half
-    // of what "undoes its setup" is allowed to mean.
-    await expect(after.getByTestId("download-weights")).toBeVisible();
+    await expect(after.getByTestId("connection-status")).toContainText(/ready/i);
   });
 
   await test.step("the whole walk produced a clean console", async () => {

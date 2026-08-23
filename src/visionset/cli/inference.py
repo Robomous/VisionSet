@@ -154,8 +154,16 @@ def inference_show(
 def inference_update(
     connection: ConnectionArgument,
     name: Annotated[str | None, typer.Option("--name", help="Rename it.")] = None,
-    model_id: Annotated[str | None, typer.Option("--model", help="Point at another model.")] = None,
-    model_revision: Annotated[str | None, typer.Option("--revision", help="Move the pin.")] = None,
+    model_id: Annotated[
+        str | None,
+        typer.Option(
+            "--model", help="Point at another model. Only while the connection is not set up."
+        ),
+    ] = None,
+    model_revision: Annotated[
+        str | None,
+        typer.Option("--revision", help="Move the pin. Only while the connection is not set up."),
+    ] = None,
     device: Annotated[
         str | None,
         typer.Option("--device", help="Local only. cpu, mps, cuda, or cuda:N for a second GPU."),
