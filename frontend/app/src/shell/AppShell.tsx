@@ -13,8 +13,8 @@
  * distinguished by `border-sidebar-border` rather than by inverting.
  *
  * `DESIGN.md` is explicit about what is on it — logo, collapse toggle, Home,
- * Projects, Inference, and the account control at the bottom — and about what is
- * not. `Inference` is one of them by a settled decision:
+ * Projects, Models, and the account control at the bottom — and about what is
+ * not. `Models` is one of them by a settled decision:
  * model connections are workspace infrastructure that every
  * project uses, so they cannot live inside any one project, and the rail is the
  * only workspace-level surface there is.
@@ -158,7 +158,7 @@ export function AppShell(): JSX.Element {
         <RailLink to="/projects" collapsed={collapsed} testId="rail-projects" label="Projects">
           <IconFolders aria-hidden="true" />
         </RailLink>
-        <RailLink to="/inference" collapsed={collapsed} testId="rail-inference" label="Inference">
+        <RailLink to="/models" collapsed={collapsed} testId="rail-models" label="Models">
           <IconCpu aria-hidden="true" />
         </RailLink>
 

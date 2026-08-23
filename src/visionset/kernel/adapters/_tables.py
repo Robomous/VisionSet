@@ -786,6 +786,10 @@ class InferenceConnectionRow(Base):
     #: After ``provider_id``, on the same rule. An environment variable's name,
     #: never its value.
     credential_env: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: After ``credential_env``, on the same rule. Nullable in the schema only
+    #: because ``ALTER TABLE`` cannot append a ``NOT NULL`` column without a
+    #: default; the migration fills every row and the domain fills every new one.
+    origin: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 #: Connection names are unique in the workspace, case-insensitively.

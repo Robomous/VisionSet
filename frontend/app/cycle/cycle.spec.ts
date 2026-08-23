@@ -75,7 +75,7 @@ const STAND_IN = "built-in stand-in";
  * What the same connection is called after the walk edits it.
  *
  * A second constant rather than a literal at the call site, because a rename
- * moves two test ids at once — the row is `connection-{name}` and its menu
+ * moves two test ids at once — the card is `connection-{name}` and its menu
  * trigger is `actions-{name}` — so the new name is read in three places and a
  * typo in one of them fails as a timeout rather than as a mismatch.
  */
@@ -543,8 +543,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * action, the connection's lifecycle. Only the thing at the far end
      * predicts nothing.
      */
-    await page.getByTestId("rail-inference").click();
-    await expect(page.getByTestId("inference-screen")).toBeVisible();
+    await page.getByTestId("rail-models").click();
+    await expect(page.getByTestId("models-screen")).toBeVisible();
 
     await page.getByTestId("new-connection").click();
     await page.getByTestId("choose-local").click();
@@ -590,14 +590,14 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // action — the lifecycle here is the real one, not a shortcut written for a
     // suite. What is different is only that there is nothing to fetch.
 
-    // Read inside the row rather than off the screen. Both ids live inside a
-    // connection's own row, so an unscoped read is sound only while the
+    // Read inside the card rather than off the screen. Both ids live inside a
+    // connection's own card, so an unscoped read is sound only while the
     // workspace holds exactly one — and Playwright's strict mode then refuses
     // the locator, naming the selector instead of the assumption.
-    const row = page.getByTestId(`connection-${STAND_IN}`);
-    await expect(row.getByTestId("connection-status")).toContainText(/not set up/i);
-    await row.getByTestId("download-weights").click();
-    await expect(row.getByTestId("connection-status")).toContainText(/ready/i, {
+    const card = page.getByTestId(`connection-${STAND_IN}`);
+    await expect(card.getByTestId("connection-status")).toContainText(/not set up/i);
+    await card.getByTestId("download-weights").click();
+    await expect(card.getByTestId("connection-status")).toContainText(/ready/i, {
       timeout: 15_000,
     });
 
@@ -610,10 +610,10 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * cause is an extra row on this screen. Stated here, where the count is
      * decided, a violation names the count.
      *
-     * The type badge is what is counted because it is unconditional inside a
-     * row, while the download button appears only before setup.
+     * The source line is what is counted because it is unconditional inside a
+     * card, while the download button appears only before setup.
      */
-    await expect(page.getByTestId("connection-type")).toHaveCount(1);
+    await expect(page.getByTestId("connection-source")).toHaveCount(1);
   });
 
   await test.step("a click in the editor comes back as a shape, from a real server", async () => {
@@ -1447,11 +1447,14 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * A stub cannot referee this body, because it is written by whoever wrote
      * the body — only a real server, checking the request against
      * `ConnectionUpdate`, can catch a field the dialog serialises but the
-     * schema forbids. Two edits, because the kernel compares the model
-     * reference rather than asking whether it was supplied: a rename carries
-     * that reference too, so only a real PATCH tells apart the repin that must
-     * undo setup from the rename that must not. Last in the walk and nothing
-     * is put back, since no later step reads this connection.
+     * schema forbids. A rename carries the model reference the row already
+     * has, and the kernel compares rather than asks whether it was supplied —
+     * so only a real PATCH proves a rename of a set-up connection is not read
+     * as the retarget it now refuses. The second half is the declaration
+     * itself: a set-up row does not declare `update_model`, and only a real
+     * kernel's answer can show the form reading that rather than a stub's
+     * transcription. Last in the walk and nothing is put back, since no later
+     * step reads this connection.
      */
     // The export dialog is still up, and deliberately: it holds the outcome so
     // the badge can announce it once the poll has stopped, which means it closes
@@ -1461,8 +1464,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("export-dialog")).toHaveCount(0);
 
-    await page.getByTestId("rail-inference").click();
-    await expect(page.getByTestId("inference-screen")).toBeVisible();
+    await page.getByTestId("rail-models").click();
+    await expect(page.getByTestId("models-screen")).toBeVisible();
     // Two locators because the row's id is its name and the rename moves it.
     const before = page.getByTestId(`connection-${STAND_IN}`);
     const after = page.getByTestId(`connection-${REPINNED}`);
@@ -1484,21 +1487,19 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(after).toBeVisible();
     await expect(after.getByTestId("connection-status")).toContainText(/ready/i);
 
-    // And a reference that really does move. The revision is free text on a
-    // connection — the commit-hash rule belongs to catalog entries, which is why
-    // the setup step above could pin this one to `stub` at all.
+    // And the model is now a fact: the real kernel withholds `update_model`
+    // from a set-up row, so the form states the reference where the choice
+    // used to be and offers no field that would move it — while the name it
+    // just changed is still there to change again.
     await page.getByTestId(`actions-${REPINNED}`).click();
     await page.getByTestId("action-edit").click();
-    await expect(page.getByTestId("connection-revision")).toBeVisible();
-    await page.getByTestId("connection-revision").fill("stub-repinned");
-    await page.getByTestId("connection-submit").click();
-
+    await expect(page.getByTestId("connection-model-fixed")).toBeVisible();
+    await expect(page.getByTestId("connection-revision")).toHaveCount(0);
+    await expect(page.getByTestId("connection-custom-model")).toHaveCount(0);
+    await expect(page.getByTestId("connection-name")).toBeVisible();
+    await page.keyboard.press("Escape");
     await expect(page.getByTestId("connection-dialog")).toHaveCount(0);
-    await expect(after.getByTestId("connection-status")).toContainText(/not set up/i);
-
-    // The remedy is offered on the row it happened to, which is the other half
-    // of what "undoes its setup" is allowed to mean.
-    await expect(after.getByTestId("download-weights")).toBeVisible();
+    await expect(after.getByTestId("connection-status")).toContainText(/ready/i);
   });
 
   await test.step("the whole walk produced a clean console", async () => {

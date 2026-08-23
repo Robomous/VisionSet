@@ -462,7 +462,7 @@ export function PreLabelSettings({
           // `SuggestPanel`'s standing rule, applied here: there is nowhere to
           // route "add one" from this dialog without a new nav entry.
           <p className="text-xs text-muted-foreground" data-testid="prelabel-no-connections">
-            No connection answers text prompts yet — add one from Inference first.
+            No connection answers text prompts yet — add one from Models first.
           </p>
         ) : (
           <Select value={activeId} onValueChange={onConnectionChange} disabled={disabled}>

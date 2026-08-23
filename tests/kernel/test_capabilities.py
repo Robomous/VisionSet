@@ -39,6 +39,7 @@ from visionset.kernel import (
     BatchNotEditable,
     BatchNotFound,
     BatchNotInAnnotation,
+    InferenceConnectionModelFixed,
     InferenceConnectionNotCheckable,
     InferenceConnectionNotDownloadable,
     InferenceConnectionNotTestable,
@@ -62,6 +63,7 @@ from visionset.kernel.domain import (
     JOB_MOVES,
     JOB_TRANSITIONS,
     OPEN_JOB_STATES,
+    RETARGETABLE_STATES,
     UNNAMED_EDGES,
     WEIGHT_HOLDING_TYPES,
     Annotation,
@@ -881,6 +883,12 @@ def _invoke_connection(
         assert connections.require_downloadable(connection_id).id == connection_id
 
     def update() -> None:
+        # The name, never the model: `update` is declared in every state and a
+        # moved reference is `update_model`'s question.
+        edited = connections.update(connection_id, name="renamed")
+        assert edited.name == "renamed"
+
+    def update_model() -> None:
         edited = connections.update(connection_id, model_revision="deadbeef")
         assert edited.model_revision == "deadbeef"
 
@@ -899,6 +907,7 @@ def _invoke_connection(
         ConnectionAction.CHECK_INTEGRITY: check_integrity,
         ConnectionAction.TEST_ENDPOINT: test_endpoint,
         ConnectionAction.UPDATE: update,
+        ConnectionAction.UPDATE_MODEL: update_model,
         ConnectionAction.DELETE: delete,
     }[action]
 
@@ -940,6 +949,18 @@ def _refuse_connection(
                 connections.require_endpoint_testable(connection_id)
 
         return refused_test
+
+    if action is ConnectionAction.UPDATE_MODEL:
+
+        def refused_retarget() -> None:
+            # A moved reference is refused; the same edit carrying the model
+            # the row already names is a rename, and goes through.
+            with pytest.raises(InferenceConnectionModelFixed):
+                connections.update(connection_id, model_revision="deadbeef")
+            current = connections.get(connection_id)
+            connections.update(connection_id, model_id=current.model_id, name="still-named")
+
+        return refused_retarget
 
     return None
 
@@ -998,13 +1019,19 @@ def test_a_connections_declaration_is_read_from_the_kernels_own_gate() -> None:
     *names* a set the domain keeps rather than spelling one out here, which is
     what makes a later widening one edit rather than two.
     """
-    narrow_in_state = {ConnectionAction.CHECK_INTEGRITY}
+    narrow_in_state = {ConnectionAction.CHECK_INTEGRITY, ConnectionAction.UPDATE_MODEL}
     for action in set(ConnectionAction) - narrow_in_state:
         assert CONNECTION_GATES[action] is EVERY_SETUP_STATE
     assert CONNECTION_GATES[ConnectionAction.CHECK_INTEGRITY] is CHECKABLE_STATES
     assert {ConnectionSetupState.READY} == CHECKABLE_STATES
+    assert CONNECTION_GATES[ConnectionAction.UPDATE_MODEL] is RETARGETABLE_STATES
+    assert {ConnectionSetupState.NOT_SET_UP} == RETARGETABLE_STATES
 
-    weight_actions = {ConnectionAction.DOWNLOAD_WEIGHTS, ConnectionAction.CHECK_INTEGRITY}
+    weight_actions = {
+        ConnectionAction.DOWNLOAD_WEIGHTS,
+        ConnectionAction.CHECK_INTEGRITY,
+        ConnectionAction.UPDATE_MODEL,
+    }
     endpoint_actions = {ConnectionAction.TEST_ENDPOINT}
     for action in set(ConnectionAction) - weight_actions - endpoint_actions:
         assert CONNECTION_KINDS[action] is EVERY_CONNECTION_TYPE
@@ -1063,11 +1090,16 @@ def test_the_actions_a_connection_cannot_yet_be_asked_for_are_not_declared() -> 
     `test_endpoint` is no exception: its service door (`require_endpoint_testable`,
     `record_endpoint_answer`), its route, and the CLI/MCP tools that reach it.
     The set is updated by hand precisely so that arriving here is a decision.
+    `update_model` joined the same way: it names the half of an edit that the
+    existing update route and commands already carry, narrowed to the squares
+    where nothing has been committed to the model a row names, and the edit form
+    reads it to decide whether the model fields are offered at all.
     """
     assert {a.value for a in ConnectionAction} == {
         "download_weights",
         "check_integrity",
         "test_endpoint",
         "update",
+        "update_model",
         "delete",
     }

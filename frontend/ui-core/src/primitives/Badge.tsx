@@ -10,6 +10,12 @@
  * action, so it is the neutral chip, and `success` / `warning` / `destructive` are
  * the three desaturated statuses.
  *
+ * `quiet` is the one variant that is not a state: a square, colourless label for
+ * a fact read beside other facts — what a model does, what it writes — where a
+ * pill would read as a status and a colour would compete with the one the card
+ * carries. Square corners are the whole of its difference, and the reason it is
+ * a variant here rather than a class on a screen.
+ *
  * `Alert` carries `role="alert"` on the destructive variant only. An informational
  * panel announced as an alert interrupts a screen reader for something nobody
  * needs to hear; an error must interrupt.
@@ -33,6 +39,7 @@ export const badgeVariants = cva(
         warning: "border-warning bg-warning/10 text-warning",
         destructive: "border-destructive bg-destructive/10 text-destructive",
         outline: "border-border bg-card text-foreground",
+        quiet: "rounded-md border-transparent bg-muted text-foreground",
       },
     },
     defaultVariants: { variant: "neutral" },

@@ -263,7 +263,7 @@ export {
   type ErrorBoundaryProps,
 } from "./patterns/ErrorBoundary.js";
 export { DatasetScreen, type DatasetScreenProps } from "./screens/DatasetScreen.js";
-export { InferenceScreen } from "./screens/InferenceScreen.js";
+export { ModelsScreen } from "./screens/ModelsScreen.js";
 export { saveBlob } from "./screens/download.js";
 export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbnail.js";
 

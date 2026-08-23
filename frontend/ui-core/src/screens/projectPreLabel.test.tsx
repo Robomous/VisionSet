@@ -84,7 +84,7 @@ const NO_PROGRESS = {
   total: 0,
 };
 
-/** A full `ConnectionOut`, on `inference.test.tsx`'s fixture — every field the check reads. */
+/** A full `ConnectionOut`, on `models.test.tsx`'s fixture — every field the check reads. */
 function connectionOf(overrides: Partial<Connection> = {}): Connection {
   return {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -97,6 +97,7 @@ function connectionOf(overrides: Partial<Connection> = {}): Connection {
     endpoint_url: null,
     provider_id: "sam",
     credential_env: null,
+    origin: "huggingface",
     setup_state: "ready",
     allowed_actions: ["update", "delete"],
     capabilities: ["text_detect"],

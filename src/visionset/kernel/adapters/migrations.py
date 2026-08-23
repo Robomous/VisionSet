@@ -70,6 +70,7 @@ from sqlalchemy import Connection, inspect, text
 from sqlalchemy.schema import CreateColumn
 
 from visionset.kernel.adapters._tables import Base
+from visionset.kernel.domain import ConnectionType, default_origin
 
 
 @dataclass(frozen=True)
@@ -352,6 +353,26 @@ def _add_project_created_at(connection: Connection) -> None:
     _add_column(connection, "project", "created_at")
 
 
+def _add_connection_origin(connection: Connection) -> None:
+    """``inference_connection.origin``: where a connection's weights come from.
+
+    Backfilled from the kind, because the kind is the whole of what an old row
+    knows and it is enough: a local connection could only ever have fetched from
+    the hub, and an http one points at an endpoint somebody stood up. The rule is
+    the domain's own (``default_origin``), applied here in SQL so a file and a
+    fresh row cannot disagree about what silence meant.
+    """
+    _add_column(connection, "inference_connection", "origin")
+    for kind in ConnectionType:
+        connection.execute(
+            text(
+                "UPDATE inference_connection SET origin = :origin"
+                " WHERE origin IS NULL AND connection_type = :kind"
+            ),
+            {"origin": default_origin(kind).value, "kind": kind.value},
+        )
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -367,6 +388,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=12, name="job_error_code", upgrade=_add_job_error_code),
     Migration(version=13, name="credential_env", upgrade=_add_credential_env),
     Migration(version=14, name="project_created_at", upgrade=_add_project_created_at),
+    Migration(version=15, name="connection_origin", upgrade=_add_connection_origin),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

@@ -464,6 +464,7 @@ def _connection_to_row(entity: InferenceConnection) -> t.Base:
         model_family=entity.model_family,
         provider_id=entity.provider_id,
         credential_env=entity.credential_env,
+        origin=entity.origin.value,
     )
 
 
@@ -485,6 +486,7 @@ def _connection_to_domain(_: Session, row: Any) -> InferenceConnection:
         model_family=row.model_family,
         provider_id=row.provider_id,
         credential_env=row.credential_env,
+        origin=row.origin,
     )
 
 

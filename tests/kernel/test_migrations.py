@@ -185,6 +185,7 @@ def _at_generation_one(path: Path) -> None:
         connection.execute(text("ALTER TABLE job DROP COLUMN error_code"))
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN credential_env"))
         connection.execute(text("ALTER TABLE project DROP COLUMN created_at"))
+        connection.execute(text("ALTER TABLE inference_connection DROP COLUMN origin"))
         connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 1"))
     store.close()
 
@@ -230,6 +231,43 @@ def test_a_project_written_before_the_column_reads_back_without_a_date(tmp_path:
     migrated.close()
 
 
+def test_a_connection_written_before_the_column_is_given_the_origin_its_kind_implies(
+    tmp_path: Path,
+) -> None:
+    """Migration 15 backfills from the kind, because the kind is the whole of what
+    an old row knows: a local connection could only ever have fetched from the
+    hub, and an http one points at an endpoint somebody stood up."""
+    old = tmp_path / "old.db"
+    _at_generation_one(old)
+    with SqliteMetadataStore(old).engine.begin() as connection:
+        connection.execute(
+            text(
+                "insert into inference_connection (id, name, connection_type, model_id,"
+                " model_revision, device, precision, setup_state, created_at, updated_at)"
+                " values ('l', 'local', 'local', 'some/model', 'abc', 'cpu', 'fp32',"
+                " 'not_set_up', '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"
+            )
+        )
+        connection.execute(
+            text(
+                "insert into inference_connection (id, name, connection_type, model_id,"
+                " model_revision, endpoint_url, setup_state, created_at, updated_at)"
+                " values ('h', 'remote', 'http', 'some/model', 'abc',"
+                " 'https://example.invalid/predict', 'ready',"
+                " '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"
+            )
+        )
+
+    migrated = SqliteMetadataStore(old)
+    migrated.initialize()
+    with migrated.engine.connect() as connection:
+        rows = connection.execute(
+            text("select name, origin from inference_connection order by name")
+        ).all()
+    assert rows == [("local", "huggingface"), ("remote", "custom")]
+    migrated.close()
+
+
 def test_running_every_migration_again_changes_nothing(tmp_path: Path) -> None:
     """Idempotency, and now it covers the baseline rather than skipping it.
 
@@ -272,7 +310,7 @@ _DECLARED_TAILS = {
     # Migration 7 then migration 11, in that order — the second appended column
     # is what gives this table an order to get wrong, which is why it earns an
     # entry only now.
-    "inference_connection": ["model_family", "provider_id", "credential_env"],
+    "inference_connection": ["model_family", "provider_id", "credential_env", "origin"],
     "job": ["error_code"],
     "project": ["created_at"],
 }

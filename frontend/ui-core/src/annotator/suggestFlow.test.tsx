@@ -112,6 +112,7 @@ function connectionRow(
     endpoint_url: null,
     provider_id: "sam",
     credential_env: null,
+    origin: "huggingface",
     setup_state: setup,
     allowed_actions: [],
     // What the server resolved from this model's own config. A row that has

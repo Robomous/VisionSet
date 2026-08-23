@@ -24,7 +24,7 @@
  * what order. That is not the hand-mirror `ui-capabilities` bans — that rule is
  * about `allowed_actions`, which no field-level shape can carry — and the
  * refusal still arrives from the server and still renders as prose, which
- * `inference.test.tsx` holds.
+ * `models.test.tsx` holds.
  *
  * ## Where the retired invariants went
  *
@@ -93,7 +93,7 @@ export function precisionOn(device: string, current: Precision): Precision {
  *
  * A `Record` over the vocabulary's *known* members, so a member added to the
  * kernel fails this build until its heading exists — the same enforcement
- * `inferenceSections.ts` puts on the dashboard, for the same invariant. This is
+ * `modelCopy.ts` puts on the Models page, for the same invariant. This is
  * the copy a plugin does not ship: a driver declares which ability it serves and
  * never how that ability is named on screen.
  */
@@ -128,10 +128,9 @@ export function entriesOf(providers: readonly InstalledProvider[]): readonly Cur
 /**
  * The offers under their headings, in the order the dashboard reads abilities.
  *
- * A group with nothing in it is **not** rendered, which is where this parts
- * company with `sectionsOf`: an empty section of the dashboard is an invitation
- * to configure something, and an empty group in a select is a heading over
- * nothing.
+ * A group with nothing in it is **not** rendered — an empty group in a select is
+ * a heading over nothing — on the rule the Models page's filters follow when
+ * they withhold a dimension below two values.
  *
  * An ability this build has no heading for is shown under its own value rather
  * than dropped. The capability vocabulary is open, so a newer server or an

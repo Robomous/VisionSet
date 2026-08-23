@@ -107,6 +107,7 @@ def create_inference_connection(workspace: WorkspaceDep, body: ConnectionCreate)
             endpoint_url=body.endpoint_url,
             provider_id=body.provider_id,
             credential_env=body.credential_env,
+            origin=body.origin,
         )
     )
 

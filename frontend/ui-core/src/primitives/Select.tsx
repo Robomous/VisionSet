@@ -59,7 +59,7 @@
  * mounts the buttons only while there is somewhere to scroll to, which is exactly
  * when that ambiguity exists.
  *
- * It is a property of layout under a real viewport, so `inference.spec.ts` asserts
+ * It is a property of layout under a real viewport, so `models.spec.ts` asserts
  * it in chromium. jsdom reports every height as zero and would agree with any
  * implementation, including the broken one this replaced.
  */
@@ -153,7 +153,7 @@ export const SelectContent = forwardRef<
           scrolling viewport are what turn that into a scroll; the module note
           above carries the argument and the measurement. Nova's own recipe
           scrolls the content element itself — this keeps the split deliberately,
-          because it is the fix `inference.spec.ts` asserts.
+          because it is the fix `models.spec.ts` asserts.
         */}
         <SelectPrimitive.ScrollUpButton className="z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4">
           <IconChevronUp className="size-4 text-muted-foreground" aria-hidden="true" />

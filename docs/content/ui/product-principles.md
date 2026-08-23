@@ -101,28 +101,33 @@ Any list that can exceed ~20 rows carries a filter input. Filtering is client-si
 instant, matches a name substring case-insensitively, and never hides the count of what it
 filtered out.
 
-### A list sectioned by what its rows enable
+### A list filtered by what its items enable
 
-Where the rows of a list are things a person configures so that *something else* becomes
-possible, the list is sectioned by the ability rather than sorted by the row — a heading
-naming the ability in a user's words, one line of prose naming the surface that consumes
-it, the rows serving it, and the section's own empty state. The Inference dashboard is the
+Where the items of a list are things a person configures so that *something else* becomes
+possible, each item says which abilities it enables, in a user's words, and the list is
+filtered rather than sectioned — one dropdown per dimension the items vary on, each at
+**All** until somebody chooses, combined so an item is shown only while it answers every
+choice. An item enabling two abilities is one item, not two copies. The Models page is the
 specimen. Four rules make it honest:
 
-- **The sections come from the data's own vocabulary**, never from a client-side reading of
-  what a row is. On Inference that is `capabilities`, which the server derives from the
-  model's weights.
-- **A section with a consuming surface invites; one without it only describes.** An ability
-  the product cannot yet use gets its heading, its prose and no control at all — a CTA
-  there is principle 4's dead button wearing a friendlier label.
-- **Nothing declared is invisible.** A value the build has no copy for gets a generic
-  section built from the value, and a row declaring no ability at all gets one too. A row
-  under no heading is a row nobody can act on.
-- **Section CTAs are secondary treatments.** The view's dominant action stays in the
-  header; otherwise a page of empty sections is a page of competing primaries.
+- **The values come from the data's own vocabulary**, never from a client-side reading of
+  what an item is. On Models that is `capabilities`, which the server derives from the
+  model's weights, and `origin`, which the server records.
+- **A filter offers only what is on the page, and is not offered at all until there is a
+  choice to make.** The options are the distinct values the items carry; a dimension on which
+  every item agrees is withheld, because a dropdown whose every choice shows the same items
+  is principle 4's dead control wearing a friendlier label. The set of filters on screen is
+  therefore a fact about the data, derived on every render.
+- **Nothing declared is invisible.** A value the build has no copy for is offered raw and
+  shown raw on the item, and an item declaring no ability at all still appears under **All**.
+  An item no filter reaches is an item nobody can act on.
+- **An emptied result states the fact and invites nothing.** Every choice on offer is one some
+  item answers, so what left nothing is the combination; the page says *nothing here
+  matches*, keeps the count of what it hid, and offers **Clear**. The view's dominant action
+  stays in the header.
 
-A filter crossing such a list empties sections it does not match, and an emptied section
-says *nothing here matches* rather than showing its invitation.
+A text filter crossing such a list narrows what the dropdowns show, and is held to the same
+emptied-result rule.
 
 ## Tabs
 

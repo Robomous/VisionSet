@@ -122,12 +122,9 @@ def test_an_http_connection_recording_no_driver_is_served_by_the_built_in_one(
     connections: InferenceConnectionService, tmp_path: Path
 ) -> None:
     made = an_http(connections)
-    declared = connections.record_endpoint_answer(
-        made.id, model_family="text_detect", provider_id="http"
-    )
-    # Forget the driver again, the way a row written by an older build would look.
-    forgotten = connections.update(declared.id, model_id="other/model")
-    redeclared = connections.record_weights_ready(forgotten.id, model_family="text_detect")
+    # A family recorded with no driver beside it, the way a row written by an
+    # older build looks: the family was read, the provider column did not exist.
+    redeclared = connections.record_weights_ready(made.id, model_family="text_detect")
     assert redeclared.provider_id is None
     assert isinstance(provider_for(redeclared, workspace_root=tmp_path), RemoteDetector)
 

@@ -1100,6 +1100,18 @@ class InferenceConnectionNotCheckable(VisionSetError):
     """
 
 
+class InferenceConnectionModelFixed(VisionSetError):
+    """This connection is set up, so which model it names cannot change.
+
+    The refusal ``CONNECTION_GATES`` describes for ``update_model``, raised
+    through ``connection_actions`` rather than beside it. Once the weights are
+    here the connection *is* those weights — labels carry its id as provenance,
+    the family and the driver were read out of that model's config — so a
+    different model is a new connection rather than an edit to this one. The
+    name, the device and the precision remain editable.
+    """
+
+
 class InferenceConnectionNotTestable(VisionSetError):
     """This connection has no endpoint to ask.
 

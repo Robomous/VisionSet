@@ -10,10 +10,11 @@
  *
  * `LIGHT_THEME`/`DARK_THEME` are the shadcn preset (`b3bXyyPdWj` — style
  * `nova`, base colour `neutral`, chart palette `orange`) exactly as the CLI
- * 4.18.0 scratch generated it, plus VisionSet's four justified extensions:
+ * 4.18.0 scratch generated it, plus VisionSet's justified extensions:
  * `stage` (the annotator's surround), `brand` (Robomous coral — identity
- * only), and the `success`/`warning` status pair, each with its own
- * `-foreground`. Everything else is shadcn's own vocabulary.
+ * only), the `success`/`warning` status pair, each with its own
+ * `-foreground`, and the three `origin-*` marks a Models card's accent edge
+ * takes. Everything else is shadcn's own vocabulary.
  */
 
 export const LIGHT_THEME: Readonly<Record<string, string>> = Object.freeze({
@@ -62,6 +63,11 @@ export const LIGHT_THEME: Readonly<Record<string, string>> = Object.freeze({
   "success-foreground": "oklch(1 0 0)",
   warning: "oklch(0.646 0.13 80)",
   "warning-foreground": "oklch(0.205 0 0)",
+  // Where a model's weights come from, as a card's accent edge: a mark,
+  // never a surface, ink or status. Theme-stable, like the chart palette.
+  "origin-hub": "oklch(0.8 0.16 85)",
+  "origin-custom": "oklch(0.65 0.15 250)",
+  "origin-robomous": "oklch(0.68 0.17 35)",
 });
 
 export const DARK_THEME: Readonly<Record<string, string>> = Object.freeze({
@@ -103,6 +109,9 @@ export const DARK_THEME: Readonly<Record<string, string>> = Object.freeze({
   "success-foreground": "oklch(0.205 0 0)",
   warning: "oklch(0.75 0.14 80)",
   "warning-foreground": "oklch(0.205 0 0)",
+  "origin-hub": "oklch(0.8 0.16 85)",
+  "origin-custom": "oklch(0.65 0.15 250)",
+  "origin-robomous": "oklch(0.68 0.17 35)",
 });
 
 /** The two provenance facts a colour string alone cannot carry. */
@@ -112,7 +121,7 @@ export const THEME = {
   fontHeading: "'Geist Variable', sans-serif",
 } as const;
 
-/** The six variable names the audit kept beyond shadcn's own vocabulary. */
+/** The nine variable names VisionSet keeps beyond shadcn's own vocabulary. */
 export const EXTENSIONS = [
   "stage",
   "brand",
@@ -120,6 +129,9 @@ export const EXTENSIONS = [
   "success-foreground",
   "warning",
   "warning-foreground",
+  "origin-hub",
+  "origin-custom",
+  "origin-robomous",
 ] as const;
 
 /** `cssVar("popover")` → `"var(--popover)"` — for a runtime caller that needs a string. */

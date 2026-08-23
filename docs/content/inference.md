@@ -43,7 +43,7 @@ with WorkspaceService.open("./road-signs") as workspace:
         print(one.name, one.connection_type.value, one.setup_state.value)
 ```
 
-**In the browser:** the **Inference** entry in the rail. See *The Inference section* below.
+**In the browser:** the **Models** entry in the rail. See *The Models page* below.
 
 **Over HTTP:** `GET`/`POST /inference/connections`,
 `GET`/`PATCH`/`DELETE /inference/connections/{connection_id}`, and
@@ -60,6 +60,19 @@ a later adapter - with no way to tell which field to believe.
 
 The kind itself cannot be changed after creation. Switching `local` to `http` would empty every
 parameter the row carries and keep only its name, which is a new connection wearing an old id.
+
+## Where the weights come from
+
+A connection also records its `origin` - who published the weights, which is a different
+question from where the model runs (the kind) and from which driver runs it (`provider_id`).
+Three values exist today: `huggingface` for a hub checkpoint, curated or typed by hand;
+`custom` for the user's own, an endpoint they stood up included; `robomous` for a model from
+the Robomous registry. Omitted on creation, it is what the kind implies - `huggingface` for
+`local`, `custom` for `http` - and a caller that knows better states it. The vocabulary is
+closed, like the kind's: a caller states it, so a client must be able to enumerate what it may
+send, and a new origin arrives with a release. Like the kind, it is not editable afterwards,
+because it is a fact about the weights and the weights are what a connection is. The Models page
+marks each card by it (see [The Models page](#the-models-page)).
 
 ## Running a model here needs the `local-inference` extra
 
@@ -264,25 +277,25 @@ At a terminal, and through an MCP tool, each call blocks until it is done, so on
 agent serialises itself. Two of them, or either beside the server, do not coordinate: nothing here
 makes a download and a check over one cache impossible, only unlikely to be asked for by accident.
 
-## Pointing a connection somewhere else
+## Which model a connection names is fixed once it is set up
 
-Editing a local connection's `model_id` or `model_revision` puts it back to `not_set_up`. The
-weights on your disk are the weights of the model it used to name, and `setup_state` answers *are
-the weights here* - so leaving it `ready` would have it claim to be set up over files nothing ever
-fetched. It forgets what kind of model it holds at the same time, and for the same reason. The
-recorded driver goes with them, unless the same edit names one: it was recorded for the model
-the row used to name, and who serves the new one is a different question - which a re-pin from
-one offered checkpoint to another answers in the same edit, carrying the id of whoever offers
-the new entry.
+A connection's model - `model_id` and `model_revision` together - can be changed only while
+the connection has nothing committed to it: a `local` connection that is still `not_set_up`.
+Until the weights arrive the reference is a plan, and a plan may change; the edit forgets what
+kind of model the row thought it held and the driver recorded for it, because both were
+answers about the previous reference. Once the weights are here the connection *is* those
+weights - labels carry its id as provenance, the family and the driver were read out of that
+model's config - and a different model is a new connection, not an edit to this one. An `http`
+connection is born `ready`, so its model is fixed at creation.
 
-**The remedy is the ordinary one.** The row offers **Download weights** again, and the cache is
-keyed by model rather than by connection: the previous model's files are left where they are, so
-pointing a connection back at something it used to name costs a cache hit instead of a second
-transfer. Editing anything else - the name, the device, the precision - changes neither the state
-nor the family, and neither does sending the same model reference back unchanged.
-
-An `http` connection keeps no weights here, so a model edit resets nothing for it. It stays
-`ready`, which for that kind has always meant *there is nothing to set up on this machine*.
+The rule reaches you the way every gate on this page does. `update_model` appears in
+`allowed_actions` exactly where the model may still change, the edit form offers the model
+fields only while it does and otherwise shows the reference as a fact beside the fields you can
+edit, and an edit that would move the reference anywhere else is refused with
+`INFERENCE_CONNECTION_MODEL_FIXED` (409), naming the remedy. What you can always edit is the name,
+the device and the precision - and, for an `http` connection, the endpoint and the credential
+variable. Sending the same model reference back unchanged is not a move: the only client there
+is sends the whole form on every edit, and a rename must not read as a retarget.
 
 ## Which device runs the model
 
@@ -427,10 +440,10 @@ every request on its own. It says only that no tool can rely on this connection.
 
 **It is recorded when the weights arrive** - or, for an `http` connection, when its endpoint is
 asked - because that is the first moment it is knowable without reaching a network. Editing a
-connection to point at another model or revision clears it again - nothing has read the new one,
-and a stale answer reads exactly like a fresh one - and takes the setup state with it, for the
-same reason: see [Pointing a connection somewhere
-else](#pointing-a-connection-somewhere-else). A connection created before this shipped acquires
+connection to point at another model or revision, where that is still allowed, clears it again -
+nothing has read the new one, and a stale answer reads exactly like a fresh one: see [Which
+model a connection names is fixed once it is set
+up](#which-model-a-connection-names-is-fixed-once-it-is-set-up). A connection created before this shipped acquires
 its answer the first time something reads it, from files already on your disk.
 
 ## Asking an endpoint what it answers
@@ -440,8 +453,9 @@ have to be **asked**: its model runs elsewhere, and this workspace never loads i
 `test_endpoint` action does the asking - one request to the connection's `endpoint_url` - and
 records what came back: the capability the endpoint declared becomes the row's `capabilities`,
 and `provider_id` records the driver that asked (`http`, unless the row already named another).
-Until then an `http` connection declares nothing, sits under *No ability declared yet* in the
-Inference section, and is refused with `INFERENCE_CONNECTION_NOT_SET_UP` naming `test_endpoint`.
+Until then an `http` connection declares nothing - its card on the Models page carries no
+ability badge and answers only the **All** chip - and is refused with
+`INFERENCE_CONNECTION_NOT_SET_UP` naming `test_endpoint`.
 
 Asking again re-asks and overwrites. Pointing the connection at a different endpoint forgets the
 previous answer, on the same reasoning a moved model forgets its family: what the old endpoint
@@ -766,15 +780,25 @@ provenance, and only this configuration is removed.
 That is also why a connection has no lifecycle to speak of - it is a form somebody filled in, and
 the remedy for a wrong one is to edit it or make another.
 
-## The Inference section
+## The Models page
 
-Connections live behind **Inference** in the rail, beside Home and Projects. It is a top-level
-destination rather than something inside a project because a connection belongs to the
-*workspace*: it carries no project id, and every project uses the same ones.
+Connections live behind **Models** in the rail, beside Home and Projects, at `/models`; the
+address the page had before it was named for what it lists, `/inference`, redirects there. It is
+a top-level destination rather than something inside a project because a connection belongs to
+the *workspace*: it carries no project id, and every project uses the same ones. The entry is
+named for the noun the page catalogues - the models a workspace can run - rather than for one
+use of them, because the same list serves the editor's suggest tool, pre-labeling, and whatever
+asks next.
 
-A workspace with none says so and offers one thing - **Add connection**. Creating one is two
-steps, because the two kinds share almost no fields: first where the model runs, then that kind's
-form.
+A workspace with none says so and offers one thing - **Add model**, the same dialog the
+header's button opens. Creating one is two steps, because the two kinds share almost no fields:
+first where the model runs, offered as two tiles side by side - **Local**, weights this machine
+downloads and runs; **HTTP**, an endpoint that answers this project's inference contract - then
+that kind's form. The dialog is wider than it is tall, and the form lays its two halves side
+by side: what the model *is* on the left (name, model, and for a custom model its id and
+revision), where it *runs* on the right (device and precision, or endpoint and credential
+variable), so a person reads it as one shape rather than scrolling a column of fields. Editing
+opens on the same form with the kind already settled.
 
 - **Local** opens on an offered model, a `cpu` device and `fp32` precision. What the model field
   lists belongs to *this installation* rather than to this release: every installed driver
@@ -801,8 +825,8 @@ form.
   connection downloads nothing, so not knowing the size is information rather than a barrier.
 - **HTTP** asks for the endpoint URL and, optionally, the **Credential variable** - the name of
   an environment variable holding the endpoint's credential, never the secret itself, which the
-  hint beside the field says. Once created, **Test endpoint** in the row's menu asks the endpoint
-  what it answers and moves the row under that ability.
+  hint beside the field says. Once created, **Test endpoint** in the card's menu asks the endpoint
+  what it answers, and the card's badges say what came back.
 
 Because that list is a request rather than a constant, the model field has four states and says
 which one it is in. While the answer is in flight it says it is reading, and puts nothing else in
@@ -814,32 +838,59 @@ two leave the free model id and revision fields on screen, because a model id ty
 no list at all - a catalog that could not be read is no reason to stop a connection being
 configured.
 
-Each row shows its name, its kind, `model @ revision`, and its status as a word - **Ready** or
-**Not set up** - beside a colour, never as a colour alone. A local row that is not set up carries
-**Download weights**, which launches the background job described above and reports its progress
-in place; the row becomes **Ready** when the job finishes, without a reload. A row that is already
-ready carries two checks in its overflow menu instead - **Check for missing files**, which is the
-same request re-run, and **Check files are undamaged**, which reads every byte. The table above is
-what separates them. A machine without the extra still shows both controls, and pressing either
-answers with the install command - a control that vanished would take the remedy with it. While
-either run is under way all three are disabled and labelled with what is happening, for the reason
-above: they act on one cache, and the run is read off the row, so a tab that started nothing shows
-it too.
+The page is a grid of cards, one per connection - a connection serving two abilities is one
+card, not two. Each card carries one colour, and it is where the weights come from: a narrow
+accent along the card's left edge - amber for a hub checkpoint, blue for the user's own, the
+brand's orange for the Robomous registry - with the origin named in plain words beneath the
+model reference (**Hugging Face**, **Customized**, **Robomous**). Top to bottom a card shows its name with `model @ revision`
+beneath; the origin; one quiet square label per ability the connection declares, in a person's
+words - **Suggests from clicks** for `point_suggest`, **Finds what you name** for `text_detect`,
+a value this build has no words for printed as it arrived - and one more for what it writes
+(*writes boxes or polygons*), read from `produces`; where it runs, in one line - `Local · cuda ·
+fp16`, or `HTTP · models.example` with the endpoint's host; and its status as a word - **Ready**
+or **Not set up** - beside a colour, never as a colour alone, the one badge on the card. Every
+line is absent rather than blank when the connection has nothing to put in it: a card whose
+weights have not been downloaded carries no ability labels yet, because what a model answers is
+read out of its own config.
 
-A failed download leaves the row at **Not set up**, because weights arrive or they do not, and says
-what happened in the job's own words with what to do about it. There is no separate retry button:
-**Download weights** is the retry. A failed *integrity* check leaves the row at **Not set up** for a
-different reason - the damaged files were removed and the connection stood down before the row said
-so - and the retry is the same **Download weights**, which now has to fetch them again for real.
+Above the grid sit dropdown filters, one per dimension the workspace varies on - **Origin**,
+**Ability**, **Runs** (local or HTTP), **State** (ready or not set up) - each at **All** until
+somebody chooses, and combined: a card is shown only while it answers every chosen value. A
+filter offers only the values on the page, named in a person's words where this build knows
+them and printed raw where it does not; and a dimension on which every connection agrees is not
+offered at all, because a dropdown whose every choice shows the same cards is a control in a
+useless state - a workspace with one connection shows no filter, and one whose connections
+differ only in ability shows exactly one. A connection that has declared no ability answers
+**All** only. While anything is chosen a **Clear** control puts every filter back and the page
+says how many cards the choice left of how many there are; an empty result says *nothing here
+matches the filter* and invites nothing, because every choice on offer is one some card
+answers, so what left nothing is the combination. Above twenty connections the page also grows
+a text filter, which matches a name substring.
+
+A local card that is not set up also says what fetching its weights would cost - the same size
+read the form shows before a confirm, asked per card and only while there is something to
+fetch - and carries **Download weights**, which launches the background job described above and
+reports its progress on the card; the card becomes **Ready** when the job finishes, without a
+reload. A card that is already ready carries two checks in its overflow menu instead - **Check for
+missing files**, which is the same request re-run, and **Check files are undamaged**, which reads
+every byte. The table above is what separates them. A machine without the extra still shows both
+controls, and pressing either answers with the install command - a control that vanished would
+take the remedy with it. While either run is under way all three are disabled and labelled with
+what is happening, for the reason above: they act on one cache, and the run is read off the
+connection, so a tab that started nothing shows it too.
+
+A failed download leaves the card at **Not set up**, because weights arrive or they do not, and
+says what happened in the job's own words with what to do about it. There is no separate retry
+button: **Download weights** is the retry. A failed *integrity* check leaves the card at **Not set
+up** for a different reason - the damaged files were removed and the connection stood down before
+the card said so - and the retry is the same **Download weights**, which now has to fetch them
+again for real.
 
 Editing does not offer to change the kind, because the kind is not editable. Saving an edit that
-moves a local row to another model or revision returns it to **Not set up** in place, with
+moves a local connection to another model or revision returns it to **Not set up** in place, with
 **Download weights** as the next step - the files on the disk belong to the model it was pointing
 at before. Deleting asks once and says exactly what it destroys: *annotations keep their model
 provenance; only this configuration is removed.*
-
-Above twenty rows the list grows a filter, which matches a name substring and keeps saying how
-many it hid.
 
 **Reached from the editor, too.** Arming the editor's suggest tool with no usable connection shows
 a panel naming what is missing and offering **Set up a connection**, which lands here. Nothing

@@ -121,7 +121,7 @@ export const checkBlockingAssetPage: Check<Schemas["BlockingAssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBlockingAssetOut)], "total": [true, isInteger] } as const);
 
 export const checkConnectionAction: Check<Schemas["ConnectionAction"]> =
-  /*#__PURE__*/ openOneOf(["download_weights", "check_integrity", "test_endpoint", "update", "delete"] as const);
+  /*#__PURE__*/ openOneOf(["download_weights", "check_integrity", "test_endpoint", "update", "update_model", "delete"] as const);
 
 export const checkConnectionSetupState: Check<Schemas["ConnectionSetupState"]> =
   /*#__PURE__*/ oneOf(["not_set_up", "ready"] as const);
@@ -138,6 +138,9 @@ export const checkIntegrityCheckOut: Check<Schemas["IntegrityCheckOut"]> =
 export const checkModelCapability: Check<Schemas["ModelCapability"]> =
   /*#__PURE__*/ openOneOf(["point_suggest", "text_detect"] as const);
 
+export const checkModelOrigin: Check<Schemas["ModelOrigin"]> =
+  /*#__PURE__*/ oneOf(["huggingface", "custom", "robomous"] as const);
+
 export const checkPrecision: Check<Schemas["Precision"]> =
   /*#__PURE__*/ oneOf(["fp16", "fp32"] as const);
 
@@ -145,7 +148,7 @@ export const checkWeightDownloadOut: Check<Schemas["WeightDownloadOut"]> =
   /*#__PURE__*/ object({ "bytes_done": [true, isInteger], "bytes_total": [true, either([isInteger, isNull] as const)], "error": [true, either([isString, isNull] as const)], "error_code": [true, either([isString, isNull] as const)], "job_id": [true, isString], "state": [true, checkBackgroundJobState] } as const);
 
 export const checkConnectionOut: Check<Schemas["ConnectionOut"]> =
-  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkConnectionAction)], "capabilities": [true, arrayOf(checkModelCapability)], "connection_type": [true, checkConnectionType], "created_at": [true, isString], "credential_env": [true, either([isString, isNull] as const)], "device": [true, either([isString, isNull] as const)], "download": [true, either([checkWeightDownloadOut, isNull] as const)], "endpoint_url": [true, either([isString, isNull] as const)], "id": [true, isString], "integrity_check": [true, either([checkIntegrityCheckOut, isNull] as const)], "model_id": [true, isString], "model_revision": [true, isString], "name": [true, isString], "precision": [true, either([checkPrecision, isNull] as const)], "produces": [true, arrayOf(checkGeometryType)], "provider_id": [true, either([isString, isNull] as const)], "setup_state": [true, checkConnectionSetupState], "updated_at": [true, isString] } as const);
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkConnectionAction)], "capabilities": [true, arrayOf(checkModelCapability)], "connection_type": [true, checkConnectionType], "created_at": [true, isString], "credential_env": [true, either([isString, isNull] as const)], "device": [true, either([isString, isNull] as const)], "download": [true, either([checkWeightDownloadOut, isNull] as const)], "endpoint_url": [true, either([isString, isNull] as const)], "id": [true, isString], "integrity_check": [true, either([checkIntegrityCheckOut, isNull] as const)], "model_id": [true, isString], "model_revision": [true, isString], "name": [true, isString], "origin": [true, checkModelOrigin], "precision": [true, either([checkPrecision, isNull] as const)], "produces": [true, arrayOf(checkGeometryType)], "provider_id": [true, either([isString, isNull] as const)], "setup_state": [true, checkConnectionSetupState], "updated_at": [true, isString] } as const);
 
 export const checkConnectionPage: Check<Schemas["ConnectionPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkConnectionOut)], "total": [true, isInteger] } as const);

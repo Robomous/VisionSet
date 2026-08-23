@@ -42,7 +42,7 @@ import { defineConfig } from "vitest/config";
  * be. Measured on an idle 16-thread machine, alternating: 41s and 42s at four
  * workers against 37s and 44s at vitest's default of fifteen. The suite's wall
  * time is bounded by its slowest *file*, not by how much CPU it can occupy —
- * `screens/inference.test.tsx` alone is 23s of a 41s run, while all 51 files
+ * `screens/models.test.tsx` alone is 23s of a 41s run, while all 51 files
  * together sum to 78s. Four workers therefore carry about 19s of work each, which
  * is under that critical path, and the workers past the fourth spend most of their
  * lives waiting for it. What the cap actually removes is the contention that made
@@ -65,7 +65,7 @@ export default defineConfig({
      * Vitest's 5000ms default is a bound for a pure function, and several tests
      * here are not that: they mount a screen under a real `ApiProvider`, wait on
      * TanStack Query and drive a dozen `userEvent` interactions. Three in
-     * `inference.test.tsx` are slower still by design — `CONNECTION_POLL_MS` is
+     * `models.test.tsx` are slower still by design — `CONNECTION_POLL_MS` is
      * 2000ms and they sleep 1.5 poll intervals to prove a poll *stopped*, which is
      * a negative that cannot be asserted any faster. Each of those three carried
      * its own `}, 15_000)` override; this is that decision made once, in the place

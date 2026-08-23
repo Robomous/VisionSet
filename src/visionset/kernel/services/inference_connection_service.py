@@ -47,6 +47,7 @@ from visionset.kernel.domain import (
     ConnectionType,
     InferenceConnection,
     IntegrityCheck,
+    ModelOrigin,
     WeightDownload,
     connection_actions,
     normalize_name,
@@ -54,6 +55,7 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import (
     ConstraintViolated,
     InferenceConnectionInvalid,
+    InferenceConnectionModelFixed,
     InferenceConnectionNameTaken,
     InferenceConnectionNotCheckable,
     InferenceConnectionNotDownloadable,
@@ -190,6 +192,7 @@ class InferenceConnectionService:
         endpoint_url: str | None = None,
         provider_id: str | None = None,
         credential_env: str | None = None,
+        origin: ModelOrigin | None = None,
     ) -> InferenceConnection:
         """Configure a connection. Nothing is fetched and nothing is contacted.
 
@@ -208,6 +211,10 @@ class InferenceConnectionService:
             InferenceConnectionNameTaken: another connection holds that name.
             InferenceConnectionInvalid: the parameters do not match the kind, or
                 the device or precision is outside what this build offers.
+
+        ``origin`` absent means the one the kind implies (``default_origin``);
+        a caller that knows better — a registry, a path that brings its own
+        weights — states it.
 
         ``provider_id`` is taken as given and never checked against what is
         installed: which drivers this process found is
@@ -230,6 +237,7 @@ class InferenceConnectionService:
                         endpoint_url=endpoint_url,
                         provider_id=provider_id,
                         credential_env=credential_env or None,
+                        origin=origin,
                         setup_state=_born_in(connection_type),
                     )
                 )
@@ -256,13 +264,11 @@ class InferenceConnectionService:
         and ``None`` already means *leave this alone* — so the empty string
         clears it, being the one shape a form with an emptied input can send.
 
-        Pointing a connection at a different model or revision **undoes its
-        setup**: it forgets what kind of model it was, and a connection whose
-        weights live on this machine goes back to ``not_set_up``. Both answers
-        were about the previous reference's files, and those files are still the
-        previous reference's. Fetching the weights again is the remedy, and it is
-        already among the actions such a connection offers. A field that arrives
-        holding the value it already had is not a move.
+        Pointing a connection at a different model or revision, where it is
+        still allowed, **forgets what kind of model it was**: that answer was
+        read out of the previous reference's config and nothing has read the
+        new one. A field that arrives holding the value it already had is not
+        a move.
 
         Pointing an ``http`` connection at a different endpoint forgets what the
         previous one declared, for the same reason; asking the new one is the
@@ -273,12 +279,21 @@ class InferenceConnectionService:
         is a new connection wearing an old id — and an id that already travelled
         onto labels as provenance should not start meaning something else.
 
+        **A set-up connection's model is fixed.** Moving the reference is legal
+        only while ``update_model`` is declared — a ``local`` connection whose
+        weights have not arrived — and refused otherwise, through the same
+        declaration a client renders: once the weights are here the connection
+        *is* those weights, and a different model is a new connection. The
+        name, the device and the precision are edited freely in every state.
+
         Raises:
             InferenceConnectionNotFound: no such connection in this workspace.
             InvalidName: a supplied name is blank once stripped.
             InferenceConnectionNameTaken: another connection holds that name.
             InferenceConnectionInvalid: the result would not match the kind, or
                 the device or precision is outside what this build offers.
+            InferenceConnectionModelFixed: the model or revision would change on
+                a connection that does not declare ``update_model``.
         """
         try:
             with self._workspace.unit_of_work() as uow:
@@ -298,26 +313,25 @@ class InferenceConnectionService:
                         changes[field] = value
                 if credential_env is not None:
                     changes["credential_env"] = credential_env or None
-                # Everything this row had learned was learned from the weights of
-                # the model it used to name, so moving the reference drops all of
-                # it: the family, because that answer was read out of the old
-                # model's config and nothing has read the new one, and — for a
-                # kind that keeps weights here — the setup state, because the
-                # files on disk are the *previous* reference's. A row left
-                # `ready` over weights nobody fetched is not a stale display; it
-                # is what `allowed_actions` and the family backfill are derived
-                # from. Downloading again is the remedy, and it is already
-                # offered.
+                # A moved reference is legal only where `update_model` is
+                # declared — the row holds nothing committed to the model it
+                # names — and the refusal comes through that same declaration.
+                # Where it is legal, everything the row had learned from the
+                # previous model goes: the family, read out of a config nothing
+                # has read for the new one, and the recorded driver with it.
                 #
                 # Compared rather than merely supplied, because the only client
                 # there is sends the whole shape on every edit: a rename arrives
                 # carrying the model id it already had, and reading that as a
-                # move would send a set-up connection back for a download of
-                # weights that never left.
+                # move would refuse a rename on every set-up connection.
                 if any(
                     field in changes and changes[field] != getattr(current, field)
                     for field in ("model_id", "model_revision")
                 ):
+                    if ConnectionAction.UPDATE_MODEL not in connection_actions(
+                        current.setup_state, connection_type=current.connection_type
+                    ):
+                        raise InferenceConnectionModelFixed(_why_model_fixed(current))
                     changes["model_family"] = None
                     # The recorded driver goes with it, on the same reasoning one
                     # step over: it was recorded for the model this row used to
@@ -688,6 +702,23 @@ def _first_reason(exc: ValidationError) -> str:
     """
     first = exc.errors()[0]
     return str(first.get("msg", exc)).removeprefix("Value error, ")
+
+
+def _why_model_fixed(connection: InferenceConnection) -> str:
+    """The refusal for a moved reference, in a sentence somebody can act on."""
+    if connection.connection_type in WEIGHT_HOLDING_TYPES:
+        return (
+            f"Connection {connection.name!r} is set up with "
+            f"{connection.model_id} @ {connection.model_revision}; its model cannot be "
+            "changed once the weights are here. Add a new connection for a different "
+            "model; the name, device and precision of this one can still be edited."
+        )
+    return (
+        f"Connection {connection.name!r} names {connection.model_id} @ "
+        f"{connection.model_revision}, and an endpoint's model is fixed at creation. "
+        "Add a new connection for a different model; the name, endpoint and "
+        "credential variable of this one can still be edited."
+    )
 
 
 def _why_not_downloadable(connection: InferenceConnection) -> str:

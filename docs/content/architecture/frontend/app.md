@@ -26,7 +26,7 @@ architecture bug**, because the future enterprise UI cannot reuse it.
 
 | Region | Routes | Inside the token gate? |
 | --- | --- | --- |
-| the product | `/`, `/projects`, `/projects/:projectId`, `/inference`, ... | yes |
+| the product | `/`, `/projects`, `/projects/:projectId`, `/models`, ... | yes |
 | the annotator showcase | `/demo` | **no** |
 | the design system | `/styleguide` | **no** |
 

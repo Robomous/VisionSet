@@ -159,7 +159,7 @@ primitive targets):
 | Button — icon | `svg size-4` (`size-3.5`/`size-3` at `sm`/`xs`) |
 | Button — hover | default `hover:bg-primary/80`; secondary `color-mix(in oklch, var(--secondary), var(--foreground) 5%)`; destructive soft |
 | Input | `h-8 rounded-lg border-input px-2.5 text-base md:text-sm`; dark theme `bg-input/30` |
-| Badge | `h-5 px-2 text-xs rounded-4xl`; icons `size-3` |
+| Badge | `h-5 px-2 text-xs rounded-4xl`; icons `size-3`. The `quiet` variant alone is `rounded-md` — a square, colourless label for a fact read beside other facts, never a state |
 | Menu — surface | `dark` subtree + `bg-popover p-1 rounded-lg ring-1 ring-foreground/10 shadow-md`, `min-w-32`, `duration-100` enter/exit |
 | Menu — item | `px-1.5 py-1 text-sm rounded-md focus:bg-accent focus:text-accent-foreground`; destructive item soft |
 | Card | `rounded-xl ring-1 ring-foreground/10 text-sm`; `--card-spacing` = `--spacing(4)` (16px; 12px at the `sm` size); footer `bg-muted/50` |
@@ -274,7 +274,7 @@ from another.
 
 ## VisionSet Extensions
 
-Four roles the preset has no token for, each following shadcn's own extension
+Five roles the preset has no token for, each following shadcn's own extension
 convention exactly — a value in `:root`, a dark counterpart in `.dark`, exposure through
 `@theme inline` (`--color-<name>: var(--<name>)`), and coverage in both `tokens.test.ts`
 and `tests/scripts/design_tokens.test.mjs`:
@@ -285,8 +285,9 @@ and `tests/scripts/design_tokens.test.mjs`:
 | `brand` | Robomous coral. Identity only — the wordmark, and its styleguide swatch. Never a functional-UI colour; there is no counted quota, and introducing it into a control is a semantic-colour violation whatever the count | `oklch(0.653 0.178 32.3)` | `oklch(0.653 0.178 32.3)` |
 | `success` / `success-foreground` | The batch-state family's settled/succeeded state and its one filled control — a green analogue of the preset's own destructive treatment | `oklch(0.577 0.132 152)` / `oklch(1 0 0)` | `oklch(0.696 0.17 152)` / `oklch(0.205 0 0)` |
 | `warning` / `warning-foreground` | Something is waiting on a person | `oklch(0.646 0.13 80)` / `oklch(0.205 0 0)` | `oklch(0.75 0.14 80)` / `oklch(0.205 0 0)` |
+| `origin-hub` / `origin-custom` / `origin-robomous` | Where a model's weights come from, as a **mark** — the accent edge of a card on the Models page, a few pixels wide on the plain `card` — amber for the hub, blue for the user's own, orange on the brand's hue for the Robomous registry. A mark only: never a surface, never ink, and an origin is a kind, never a state, so these never stand in for a status. Identical in both themes, like the chart palette, because a mark this small must read the same wherever the card is. `origin-robomous` is its own token; `brand` stays identity-only | `oklch(0.8 0.16 85)` / `oklch(0.65 0.15 250)` / `oklch(0.68 0.17 35)` | same |
 
-No fifth extension exists. An `info` family was considered and rejected for now:
+No sixth extension exists. An `info` family was considered and rejected for now:
 in-flight product states keep the current `primary`-tinted treatment; a dedicated `info`
 token is a later product decision, not a gap in this rewrite.
 
