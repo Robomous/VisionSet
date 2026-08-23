@@ -51,6 +51,7 @@ from visionset.inference import (
     PreLabelExclusionReason,
     PreLabelPlan,
     capabilities_of,
+    produces_of,
 )
 from visionset.kernel.domain import (
     DEFAULT_DETAIL,
@@ -2400,6 +2401,15 @@ class ConnectionOut(BaseModel):
     #: be relied on for a particular tool; the server still judges every request
     #: on its own.
     capabilities: list[ModelCapability]
+    #: The shapes this connection's model answers in — the geometries a
+    #: pre-label run against it can write, sorted by value. Empty exactly when
+    #: `capabilities` is: a connection nobody has read declares no shape, and
+    #: neither does one of a family this build cannot run.
+    #:
+    #: Per connection and without a batch in hand, which is what a catalogue
+    #: card or a driver selector needs; the batch-scoped pre-label plan reports
+    #: the same set narrowed to what one schema can take.
+    produces: list[GeometryType]
     #: The most recent weight download asked for on this connection, or `null`
     #: where none ever was.
     #:
@@ -2447,6 +2457,7 @@ class ConnectionOut(BaseModel):
                 connection.setup_state, connection_type=connection.connection_type
             ),
             capabilities=capabilities_of(connection.model_family),
+            produces=sorted(produces_of(connection.model_family), key=lambda shape: shape.value),
             download=None if download is None else WeightDownloadOut.of(download),
             integrity_check=(
                 None if integrity_check is None else IntegrityCheckOut.of(integrity_check)

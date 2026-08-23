@@ -60,7 +60,7 @@ from uuid import UUID
 # rule in this file exists to prevent. ``PreLabelPlan`` arrives the same way:
 # the narrowing of a pinned schema to the classes a served model's shapes can
 # be written as is derived there, and every surface publishes it.
-from visionset.inference import PreLabelPlan, capabilities_of
+from visionset.inference import PreLabelPlan, capabilities_of, produces_of
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
@@ -820,6 +820,7 @@ def connection(
         # Empty until something has read the model's own config — see
         # ``InferenceConnection.model_family``.
         "capabilities": [c.value for c in capabilities_of(value.model_family)],
+        "produces": sorted(shape.value for shape in produces_of(value.model_family)),
         "download": None if download is None else weight_download(download),
         "integrity_check": None if check is None else integrity_check(check),
         "created_at": _moment(value.created_at),

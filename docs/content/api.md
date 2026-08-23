@@ -259,8 +259,12 @@ not that they are the right kind of model - and either list may be empty without
 ```
 GET /inference/connections/{id}  →  { "setup_state": "ready",
                                       "allowed_actions": ["download_weights", …],
-                                      "capabilities": ["point_suggest"], … }
+                                      "capabilities": ["point_suggest"],
+                                      "produces": ["bbox", "polygon"], … }
 ```
+
+`produces` is the third declaration on the same row: the shapes the model answers in, sorted
+by value, empty exactly when `capabilities` is.
 
 An empty `capabilities` is not a refusal to act on: the server judges every request on its own
 either way. It says only that nothing can yet rely on this connection for a particular tool -

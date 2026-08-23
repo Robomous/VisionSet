@@ -19,8 +19,9 @@ from tests.server._jobs import InlineDispatcher, ManualDispatcher
 
 from visionset.inference import weights as weights_module
 from visionset.inference.integrity import IntegrityReport
+from visionset.inference.registry import registered, served
 from visionset.jobs import integrity as job_module
-from visionset.kernel.domain import BackgroundJobState, DownloadSize
+from visionset.kernel.domain import BackgroundJobState, DownloadSize, ServedFamily
 from visionset.kernel.errors import LocalInferenceUnavailable, WeightsDamaged
 from visionset.kernel.services import InferenceConnectionService
 from visionset.server.routes import inference as inference_routes
@@ -948,6 +949,51 @@ def test_a_connection_whose_weights_never_arrived_declares_nothing(
     particular tool yet.
     """
     assert created(client, LOCAL)["capabilities"] == []
+
+
+SERVED_FAMILIES: tuple[tuple[str, ServedFamily], ...] = tuple(
+    sorted(served(registered().providers).items())
+)
+"""Every family some installed driver serves, with what it declares.
+
+Derived from the drivers rather than written, so a family added to a driver is
+a subject of the wire claim below with nothing to remember.
+"""
+
+
+@pytest.mark.parametrize(
+    ("family", "declared"), SERVED_FAMILIES, ids=[family for family, _ in SERVED_FAMILIES]
+)
+def test_a_connection_declares_the_shapes_its_model_answers_in(
+    tmp_path: Path,
+    runtime_present: None,
+    fetched: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    family: str,
+    declared: ServedFamily,
+) -> None:
+    """The wire's `produces` is the driver's declaration, sorted, per connection.
+
+    Read off the listing as well as the single read: the listing is what a card
+    view and a driver selector consume, and the two serializers must agree.
+    """
+    monkeypatch.setattr(weights_module, "family_of", lambda *_, **__: family)
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = _made_ready(client)
+        expected = sorted(shape.value for shape in declared.produces)
+        assert made["produces"] == expected
+        listed = client.get("/inference/connections").json()["items"]
+        assert [one["produces"] for one in listed] == [expected]
+
+
+def test_a_connection_nobody_has_read_produces_nothing(client: TestClient) -> None:
+    """Degrades with `capabilities`: no family known, no shape promised.
+
+    An empty list, not null — the client rule is that a chip with no data is
+    omitted, and a list a client can iterate is what lets it stay that simple.
+    """
+    assert created(client, LOCAL)["produces"] == []
+    assert created(client, HTTP)["produces"] == []
 
 
 def test_an_http_connection_declares_nothing_yet(client: TestClient) -> None:
