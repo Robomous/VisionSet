@@ -24,6 +24,7 @@ it. It never names an adapter.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from visionset.kernel.domain import ClassCount, Dataset, Project, ProjectPreview, ProjectStats
@@ -221,6 +222,7 @@ class ProjectService:
                         workspace_id=self._workspace.workspace_id,
                         name=resolved,
                         description=description,
+                        created_at=datetime.now(UTC),
                     )
                 )
                 uow.datasets.add(Dataset(project_id=project.id, name=resolved))
