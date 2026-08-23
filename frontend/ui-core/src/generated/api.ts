@@ -3501,6 +3501,7 @@ export interface components {
             model_revision: string;
             /** Name */
             name: string;
+            origin?: components["schemas"]["ModelOrigin"] | null;
             precision?: components["schemas"]["Precision"] | null;
             /** Provider Id */
             provider_id?: string | null;
@@ -3539,6 +3540,7 @@ export interface components {
             model_revision: string;
             /** Name */
             name: string;
+            origin: components["schemas"]["ModelOrigin"];
             precision: components["schemas"]["Precision"] | null;
             /** Produces */
             produces: components["schemas"]["GeometryType"][];
@@ -4185,6 +4187,17 @@ export interface components {
          * @enum {string}
          */
         ModelCapability: "point_suggest" | "text_detect" | (string & {});
+        /**
+         * ModelOrigin
+         * @description Where a connection's weights come from — who published them, not who runs them.
+         *
+         *     A different axis from ``ConnectionType`` (where the model *runs*) and from
+         *     ``provider_id`` (which *driver* runs it): a hub checkpoint served locally and
+         *     the same checkpoint behind somebody's endpoint share an origin and nothing
+         *     else. Open, because the next origin is a product decision, not a kernel one.
+         * @enum {string}
+         */
+        ModelOrigin: "huggingface" | "custom" | "robomous" | (string & {});
         /**
          * PolygonBody
          * @description A closed polygon of at least three points. The closing edge is implicit.
@@ -11707,6 +11720,7 @@ export interface KnownMembers {
   ConnectionAction: "download_weights" | "check_integrity" | "test_endpoint" | "update" | "delete";
   JobAction: "start" | "complete";
   ModelCapability: "point_suggest" | "text_detect";
+  ModelOrigin: "huggingface" | "custom" | "robomous";
   PreLabelExclusionReason: "no_producible_geometry" | "required_attribute";
   SuggestParameter: "detail";
 }

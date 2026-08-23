@@ -986,6 +986,23 @@ def test_a_connection_declares_the_shapes_its_model_answers_in(
         assert [one["produces"] for one in listed] == [expected]
 
 
+def test_a_connection_says_where_its_weights_come_from(client: TestClient) -> None:
+    """Derived from the kind unless the request says, and open on the wire so a
+    newer server's origin renders rather than breaking the listing."""
+    assert created(client, LOCAL)["origin"] == "huggingface"
+    assert created(client, HTTP)["origin"] == "custom"
+    stated = created(client, {**LOCAL, "name": "registry", "origin": "robomous"})
+    assert stated["origin"] == "robomous"
+    items = client.get("/inference/connections").json()["items"]
+    listed = {one["name"]: one["origin"] for one in items}
+    assert listed == {"local-gd": "huggingface", "remote": "custom", "registry": "robomous"}
+
+
+def test_an_origin_outside_the_vocabulary_is_refused(client: TestClient) -> None:
+    response = client.post("/inference/connections", json={**LOCAL, "origin": "somewhere"})
+    assert response.status_code == 422, response.text
+
+
 def test_a_connection_nobody_has_read_produces_nothing(client: TestClient) -> None:
     """Degrades with `capabilities`: no family known, no shape promised.
 

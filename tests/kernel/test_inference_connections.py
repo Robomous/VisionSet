@@ -38,6 +38,7 @@ from visionset.kernel.domain import (
     ConnectionType,
     GeometryType,
     InferenceConnection,
+    ModelOrigin,
     Precision,
     pre_label_job_payload,
     precisions_for,
@@ -66,6 +67,30 @@ def connections(tmp_path: Path):  # noqa: ANN201 - a fixture handing back two ob
     workspace = WorkspaceService.init(tmp_path / "ws", name="inference")
     yield InferenceConnectionService(workspace)
     workspace.close()
+
+
+# --- where the weights come from ------------------------------------------------
+
+
+def test_a_connection_records_where_its_weights_come_from_by_default() -> None:
+    """Derived from the kind when nobody says: today's only local path is the
+    hub, and an endpoint somebody stood up is their own."""
+    assert InferenceConnection(name="x", **LOCAL).origin is ModelOrigin.HUGGINGFACE
+    assert InferenceConnection(name="x", **HTTP).origin is ModelOrigin.CUSTOM
+
+
+def test_an_origin_somebody_states_is_kept() -> None:
+    stated = InferenceConnection(name="x", **LOCAL, origin=ModelOrigin.ROBOMOUS)
+    assert stated.origin is ModelOrigin.ROBOMOUS
+
+
+def test_the_service_derives_and_honours_the_origin(connections) -> None:  # noqa: ANN001
+    local = connections.create("local", **LOCAL)
+    assert local.origin is ModelOrigin.HUGGINGFACE
+    remote = connections.create("remote", **HTTP)
+    assert remote.origin is ModelOrigin.CUSTOM
+    stated = connections.create("stated", **LOCAL, origin=ModelOrigin.ROBOMOUS)
+    assert connections.get(stated.id).origin is ModelOrigin.ROBOMOUS
 
 
 # --- the type-conditional rule ------------------------------------------------

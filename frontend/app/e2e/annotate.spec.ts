@@ -193,6 +193,7 @@ const READY_SAM = {
   endpoint_url: null,
   provider_id: "sam",
   credential_env: null,
+  origin: "huggingface",
   setup_state: "ready",
   allowed_actions: [],
   capabilities: ["point_suggest"],

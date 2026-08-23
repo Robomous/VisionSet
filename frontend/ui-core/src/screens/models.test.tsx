@@ -130,6 +130,7 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     endpoint_url: null,
     provider_id: "sam",
     credential_env: null,
+    origin: "huggingface",
     setup_state: "not_set_up",
     allowed_actions: ["download_weights", "update", "delete"],
     // Not optional on the wire, so not optional here: the generated runtime
@@ -2087,6 +2088,7 @@ function hosted(overrides: Partial<Connection> = {}): Connection {
     endpoint_url: "https://models.example/predict",
     provider_id: null,
     credential_env: null,
+    origin: "custom",
     setup_state: "ready",
     allowed_actions: HTTP_ACTIONS,
     capabilities: [],

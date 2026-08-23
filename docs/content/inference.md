@@ -61,6 +61,18 @@ a later adapter - with no way to tell which field to believe.
 The kind itself cannot be changed after creation. Switching `local` to `http` would empty every
 parameter the row carries and keep only its name, which is a new connection wearing an old id.
 
+## Where the weights come from
+
+A connection also records its `origin` - who published the weights, which is a different
+question from where the model runs (the kind) and from which driver runs it (`provider_id`).
+Three values exist today: `huggingface` for a hub checkpoint, curated or typed by hand;
+`custom` for the user's own, an endpoint they stood up included; `robomous` for a model from
+the Robomous registry. Omitted on creation, it is what the kind implies - `huggingface` for
+`local`, `custom` for `http` - and a caller that knows better states it. The vocabulary is open:
+a later release may add an origin, and a client shows the value it cannot name. Like the kind,
+it is not editable afterwards, because it is a fact about the weights and the weights are what
+a connection is. The Models page tints each card by it (see [The Models page](#the-models-page)).
+
 ## Running a model here needs the `local-inference` extra
 
 Both auto-labeling modes - suggesting a shape from a click, and pre-labeling a batch from its

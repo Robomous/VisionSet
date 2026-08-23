@@ -191,6 +191,7 @@ function connection(
     endpoint_url: null,
     provider_id: "sam",
     credential_env: null,
+    origin: "huggingface",
     setup_state: setup,
     allowed_actions: ["download_weights", "update", "delete"],
     capabilities,
@@ -407,6 +408,7 @@ test("an http connection is asked what it answers, and moves under it", async ({
     endpoint_url: "https://models.example/predict",
     provider_id: null,
     credential_env: null,
+    origin: "custom",
     allowed_actions: ["test_endpoint", "update", "delete"],
   };
   await serveApi(page, () => hosted);

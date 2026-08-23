@@ -109,6 +109,7 @@ from visionset.kernel.domain import (
     LabelClass,
     MembershipChange,
     ModelCapability,
+    ModelOrigin,
     Partition,
     PolygonGeometry,
     PolylineGeometry,
@@ -2406,6 +2407,12 @@ class ConnectionOut(BaseModel):
     #: server reads the variable from its own environment each time it speaks to
     #: the endpoint, and sends the value as `Authorization: Bearer <value>`.
     credential_env: str | None
+    #: Where this connection's weights come from — who published them, not who
+    #: runs them: `huggingface` for a hub checkpoint, curated or typed by hand;
+    #: `custom` for the user's own, an endpoint they stood up included;
+    #: `robomous` for a model from the Robomous registry. Open: a compatible
+    #: release may add a member, and a client shows the value it cannot name.
+    origin: ModelOrigin
     allowed_actions: list[ConnectionAction]
     #: What this connection's model can be asked for, and empty where nothing is
     #: known yet: a connection whose weights have never been fetched, one whose
@@ -2476,6 +2483,7 @@ class ConnectionOut(BaseModel):
             setup_state=connection.setup_state,
             provider_id=connection.provider_id,
             credential_env=connection.credential_env,
+            origin=connection.origin,
             allowed_actions=connection_actions(
                 connection.setup_state, connection_type=connection.connection_type
             ),
@@ -2535,6 +2543,11 @@ class ConnectionCreate(BaseModel):
     #: as `Authorization: Bearer <value>`. A variable the server cannot find when
     #: it is needed is refused then, naming the variable.
     credential_env: str | None = None
+    #: Where the weights come from. Omitted means what the kind implies —
+    #: `huggingface` for `local`, `custom` for `http` — and a caller that knows
+    #: better states it. Not editable afterwards: it is a fact about the
+    #: weights, and the weights are what a connection is.
+    origin: ModelOrigin | None = None
 
 
 class ConnectionUpdate(BaseModel):

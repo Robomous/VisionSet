@@ -47,6 +47,7 @@ from visionset.kernel.domain import (
     ConnectionType,
     InferenceConnection,
     IntegrityCheck,
+    ModelOrigin,
     WeightDownload,
     connection_actions,
     normalize_name,
@@ -190,6 +191,7 @@ class InferenceConnectionService:
         endpoint_url: str | None = None,
         provider_id: str | None = None,
         credential_env: str | None = None,
+        origin: ModelOrigin | None = None,
     ) -> InferenceConnection:
         """Configure a connection. Nothing is fetched and nothing is contacted.
 
@@ -208,6 +210,10 @@ class InferenceConnectionService:
             InferenceConnectionNameTaken: another connection holds that name.
             InferenceConnectionInvalid: the parameters do not match the kind, or
                 the device or precision is outside what this build offers.
+
+        ``origin`` absent means the one the kind implies (``default_origin``);
+        a caller that knows better — a registry, a path that brings its own
+        weights — states it.
 
         ``provider_id`` is taken as given and never checked against what is
         installed: which drivers this process found is
@@ -230,6 +236,7 @@ class InferenceConnectionService:
                         endpoint_url=endpoint_url,
                         provider_id=provider_id,
                         credential_env=credential_env or None,
+                        origin=origin,
                         setup_state=_born_in(connection_type),
                     )
                 )

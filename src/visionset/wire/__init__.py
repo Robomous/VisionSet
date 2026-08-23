@@ -812,6 +812,7 @@ def connection(
         # ``InferenceConnection.provider_id``.
         "provider_id": value.provider_id,
         "credential_env": value.credential_env,
+        "origin": value.origin.value,
         "allowed_actions": [
             a.value
             for a in connection_actions(value.setup_state, connection_type=value.connection_type)

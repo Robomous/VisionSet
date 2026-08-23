@@ -96,6 +96,35 @@ class ConnectionSetupState(StrEnum):
 # docstring verbatim into `openapi.json`, where RST markup ships as literal
 # backticks and internal rationale ships as API documentation. The docstring is
 # the sentence a client should read, on `ConnectionAction`'s terms.
+class ModelOrigin(OpenVocabulary):
+    """Where a connection's weights come from — who published them, not who runs them.
+
+    A different axis from ``ConnectionType`` (where the model *runs*) and from
+    ``provider_id`` (which *driver* runs it): a hub checkpoint served locally and
+    the same checkpoint behind somebody's endpoint share an origin and nothing
+    else. Open, because the next origin is a product decision, not a kernel one.
+    """
+
+    #: A checkpoint fetched from the public hub, curated or typed by hand.
+    HUGGINGFACE = "huggingface"
+    #: The user's own — an endpoint they stood up, or weights they brought.
+    CUSTOM = "custom"
+    #: A model from the Robomous registry.
+    ROBOMOUS = "robomous"
+
+
+def default_origin(connection_type: ConnectionType) -> ModelOrigin:
+    """The origin a kind implies when nobody states one.
+
+    The only local path this build has fetches from the hub, and an ``http``
+    endpoint is, until something says otherwise, somebody's own. Stated once so
+    the service and the migration that backfills old rows cannot disagree.
+    """
+    return (
+        ModelOrigin.HUGGINGFACE if connection_type is ConnectionType.LOCAL else ModelOrigin.CUSTOM
+    )
+
+
 class ModelCapability(OpenVocabulary):
     """What a connection's model can be asked for: the kind of prompt it takes."""
 
@@ -862,6 +891,21 @@ class InferenceConnection(BaseModel):
     #: variable is *set* is a fact about the process, and is judged by the driver
     #: when it is about to need it.
     credential_env: str | None = None
+    #: Where the weights come from. Filled from the kind when a caller does not
+    #: say — see :func:`default_origin` — so no row is ever without one; a row
+    #: written before the column existed reads back through the same rule.
+    origin: ModelOrigin
+
+    @model_validator(mode="before")
+    @classmethod
+    def _origin_from_kind(cls, data: object) -> object:
+        if isinstance(data, dict) and data.get("origin") is None:
+            try:
+                kind = ConnectionType(str(data.get("connection_type")))
+            except ValueError:
+                return data
+            return {**data, "origin": default_origin(kind)}
+        return data
 
     @field_validator("name", "model_id", "model_revision")
     @classmethod
