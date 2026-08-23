@@ -93,7 +93,7 @@ export function precisionOn(device: string, current: Precision): Precision {
  *
  * A `Record` over the vocabulary's *known* members, so a member added to the
  * kernel fails this build until its heading exists — the same enforcement
- * `inferenceSections.ts` puts on the dashboard, for the same invariant. This is
+ * `modelCapabilities.ts` puts on the Models page, for the same invariant. This is
  * the copy a plugin does not ship: a driver declares which ability it serves and
  * never how that ability is named on screen.
  */
@@ -129,7 +129,7 @@ export function entriesOf(providers: readonly InstalledProvider[]): readonly Cur
  * The offers under their headings, in the order the dashboard reads abilities.
  *
  * A group with nothing in it is **not** rendered, which is where this parts
- * company with `sectionsOf`: an empty section of the dashboard is an invitation
+ * company with `capabilityChips`: an empty chip on the Models page is an invitation
  * to configure something, and an empty group in a select is a heading over
  * nothing.
  *

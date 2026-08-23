@@ -75,7 +75,7 @@ const STAND_IN = "built-in stand-in";
  * What the same connection is called after the walk edits it.
  *
  * A second constant rather than a literal at the call site, because a rename
- * moves two test ids at once — the row is `connection-{name}` and its menu
+ * moves two test ids at once — the card is `connection-{name}` and its menu
  * trigger is `actions-{name}` — so the new name is read in three places and a
  * typo in one of them fails as a timeout rather than as a mismatch.
  */
@@ -590,14 +590,14 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // action — the lifecycle here is the real one, not a shortcut written for a
     // suite. What is different is only that there is nothing to fetch.
 
-    // Read inside the row rather than off the screen. Both ids live inside a
-    // connection's own row, so an unscoped read is sound only while the
+    // Read inside the card rather than off the screen. Both ids live inside a
+    // connection's own card, so an unscoped read is sound only while the
     // workspace holds exactly one — and Playwright's strict mode then refuses
     // the locator, naming the selector instead of the assumption.
-    const row = page.getByTestId(`connection-${STAND_IN}`);
-    await expect(row.getByTestId("connection-status")).toContainText(/not set up/i);
-    await row.getByTestId("download-weights").click();
-    await expect(row.getByTestId("connection-status")).toContainText(/ready/i, {
+    const card = page.getByTestId(`connection-${STAND_IN}`);
+    await expect(card.getByTestId("connection-status")).toContainText(/not set up/i);
+    await card.getByTestId("download-weights").click();
+    await expect(card.getByTestId("connection-status")).toContainText(/ready/i, {
       timeout: 15_000,
     });
 

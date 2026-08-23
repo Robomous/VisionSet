@@ -443,8 +443,8 @@ export interface AnnotationPageProps {
    * screen.
    *
    * Optional because `ui-core` imports no router and cannot know whether its
-   * host has such a screen — the app does, and wires this to the Inference
-   * section. Absent, the suggest tool's panel still says what is missing and
+   * host has such a screen — the app does, and wires this to the Models
+   * page. Absent, the suggest tool's panel still says what is missing and
    * simply renders no control: a host that cannot honour one renders none
    * rather than a dead one.
    */
