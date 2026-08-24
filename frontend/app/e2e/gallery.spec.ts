@@ -385,6 +385,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
             fps: 30,
             width: 1280,
             height: 720,
+            ranges: [],
           },
         } satisfies Wire["SourceOut"],
       });

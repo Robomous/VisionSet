@@ -16,7 +16,7 @@
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
@@ -149,6 +149,7 @@ const VIDEO_SOURCE = {
     duration_seconds: 12.5,
     codec: "h264",
     extraction_fps: 2,
+    ranges: [],
   },
 };
 
@@ -241,6 +242,54 @@ describe("registering a source", () => {
     // this test exists for — no `bodySerializer`, so the body is JSON — is caught
     // by the body being a `FormData` at all.
     expect(form.has("file")).toBe(true);
+  });
+
+  it("threads the timeline selection into the multipart body, raw", async () => {
+    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 10 });
+    on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
+
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("drive.mp4", "video/mp4")]);
+    const track = await screen.findByTestId("range-track");
+    vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 200,
+      bottom: 40,
+      width: 200,
+      height: 40,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent.pointerDown(track, { clientX: 20 });
+    fireEvent.pointerMove(track, { clientX: 100 });
+    fireEvent.pointerUp(track, { clientX: 100 });
+
+    // The merged form drives the estimate — [1, 5) at 1 fps is four grid points.
+    expect(screen.getByTestId("frames-estimate").textContent).toContain("≈ 4 frames");
+
+    await userEvent.click(screen.getByTestId("register-source"));
+    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
+    const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
+    // Raw, not merged: the kernel canonicalizes, and step 2 echoes that form.
+    expect(JSON.parse(form.get("ranges") as string)).toEqual([
+      { start_seconds: 1, end_seconds: 5 },
+    ]);
+  });
+
+  it("says a clip the browser cannot decode is ingested whole", async () => {
+    vi.mocked(probeClip).mockResolvedValueOnce(null);
+
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("weird.mkv", "video/x-matroska")]);
+
+    expect((await screen.findByTestId("clip-undecodable")).textContent).toContain(
+      "ingested whole",
+    );
+    expect(screen.queryByTestId("clip-timeline")).toBeNull();
+    // The statement is advisory: registration proceeds exactly as before.
+    expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("shows the probe only after registering, which is the only time it exists", async () => {
@@ -387,18 +436,18 @@ describe("the selection panel", () => {
     render(mount(<IngestScreen projectId={PROJECT} />));
     await choose([pick("drive.mp4", "video/mp4")]);
 
-    // floor(47.7 × 1) — the same arithmetic as the probe card's "Frames
+    // ceil(47.7 × 1) = 48 — the grid includes t = 0, which the old floor
+    // spelling missed. The same arithmetic as the probe card's "Frames
     // expected", so the estimate and the registered answer can only differ by
     // what the two probes measured, never by rounding.
-    expect((await screen.findByTestId("frames-estimate")).textContent).toContain("47");
+    expect((await screen.findByTestId("frames-estimate")).textContent).toContain("48");
     expect(screen.getByTestId("selection").textContent).toContain("47.7 s");
 
-    // It tracks the typed rate: floor(47.7 × 2) = 95, which a `round` would
-    // also answer — but floor(47.7 × 1) = 47 is 48 under `round`, so the pair
-    // pins the spelling.
+    // It tracks the typed rate: ceil(47.7 × 2) = 96 — and the pair pins the
+    // spelling, since floor would answer 47 and 95.
     await userEvent.clear(screen.getByTestId("extraction-fps"));
     await userEvent.type(screen.getByTestId("extraction-fps"), "2");
-    expect(screen.getByTestId("frames-estimate").textContent).toContain("95");
+    expect(screen.getByTestId("frames-estimate").textContent).toContain("96");
 
     // No usable rate, no estimate — a number computed from garbage is worse
     // than none.
