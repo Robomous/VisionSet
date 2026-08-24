@@ -7,10 +7,11 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Iterator, Mapping
+from itertools import chain, count
 from pathlib import Path
 from typing import IO, Final
 
-from visionset.kernel.domain import VideoFrame, VideoMetadata
+from visionset.kernel.domain import TimeRange, VideoFrame, VideoMetadata, grid_bounds
 from visionset.kernel.errors import CorruptMedia, MediaToolUnavailable, UnsupportedMedia
 from visionset.kernel.ports.video_processor import DEFAULT_EXTRACTION_FPS
 
@@ -80,6 +81,11 @@ _EXTRACTION_ARGS: Final = (
     "-fflags", "+bitexact",
     "-flags:v", "+bitexact",
 )  # fmt: skip
+
+#: Output pacing under a ``select`` filter, appended only when clip ranges drop
+#: frames: without ``vfr`` the muxer would re-duplicate frames to fill the gaps
+#: the selection just made. A whole-clip run keeps today's exact command.
+_RANGE_ARGS: Final = ("-fps_mode", "vfr")
 
 #: ``\x89PNG\r\n\x1a\n``. Every frame on the pipe starts with it.
 _PNG_SIGNATURE: Final = b"\x89PNG\r\n\x1a\n"
@@ -411,9 +417,15 @@ class FfmpegVideoProcessor:
         source: Path,
         *,
         fps: float = DEFAULT_EXTRACTION_FPS,
+        ranges: tuple[TimeRange, ...] = (),
         name: str | None = None,
     ) -> Iterator[VideoFrame]:
-        """Frames taken off ``source`` at ``fps``, one at a time, in order.
+        """Frames taken off ``source`` at ``fps``, one at a time, in grid order.
+
+        ``ranges`` is a canonical selection on the port's terms: the clip is
+        still read from the start — selection is a filter, never a seek — and
+        each kept frame carries its grid index, byte-identical to the frame a
+        whole-clip run yields at that index.
 
         Not a generator itself, on purpose. A generator's body does not run until
         something asks it for a value, so writing it that way would report a
@@ -438,7 +450,8 @@ class FfmpegVideoProcessor:
             raise ValueError(f"fps must be greater than zero, got {fps}")
         ffmpeg = _require_tool(_FFMPEG)
         _require_file(source)
-        return _extract(ffmpeg, source, fps, _clip_name(source, name))
+        bounds = grid_bounds(ranges, fps=fps)
+        return _extract(ffmpeg, source, fps, bounds, _clip_name(source, name))
 
 
 def _run_ffprobe(ffprobe: str, source: Path, clip: str) -> Mapping[str, object]:
@@ -475,7 +488,26 @@ def _video_stream(document: Mapping[str, object], clip: str) -> Mapping[str, obj
     raise UnsupportedMedia("the file holds no video stream", name=clip)
 
 
-def _extract(ffmpeg: str, source: Path, fps: float, clip: str) -> Iterator[VideoFrame]:
+def _filtergraph(fps: float, bounds: tuple[tuple[int, int], ...]) -> str:
+    """The resampling grid, plus — under a selection — the frames kept off it.
+
+    ``select`` runs *after* ``fps`` and compares the integer output frame number
+    ``n`` against bounds precomputed in Python, never a float timestamp inside
+    ffmpeg: the arithmetic naming the kept frames is the same ``grid_bounds``
+    the expected count uses, so the two cannot disagree. The quotes around the
+    expression are filtergraph quoting — they keep its commas from splitting
+    the graph.
+    """
+    grid = f"fps=fps={fps}:round=up"
+    if not bounds:
+        return grid
+    kept = "+".join(f"gte(n,{a})*lt(n,{b})" for a, b in bounds)
+    return f"{grid},select='{kept}'"
+
+
+def _extract(
+    ffmpeg: str, source: Path, fps: float, bounds: tuple[tuple[int, int], ...], clip: str
+) -> Iterator[VideoFrame]:
     """Stream frames off one ffmpeg process, and account for how it ended.
 
     stderr goes to a temporary **file** rather than to a pipe, which is not
@@ -498,8 +530,9 @@ def _extract(ffmpeg: str, source: Path, fps: float, clip: str) -> Iterator[Video
         "-nostdin",
         "-loglevel", "error",
         "-i", str(source),
-        "-vf", f"fps=fps={fps}:round=up",
+        "-vf", _filtergraph(fps, bounds),
         *_EXTRACTION_ARGS,
+        *(_RANGE_ARGS if bounds else ()),
         "-",
     ]  # fmt: skip
 
@@ -516,15 +549,19 @@ def _extract(ffmpeg: str, source: Path, fps: float, clip: str) -> Iterator[Video
             raise RuntimeError("ffmpeg was started without a readable stdout")
 
         produced = 0
+        grid = chain.from_iterable(range(a, b) for a, b in bounds) if bounds else count()
         try:
-            for index, content in enumerate(_png_frames(stdout)):
-                produced = index + 1
+            for content in _png_frames(stdout):
+                produced += 1
                 # The grid, not the source's own presentation timestamps: with
                 # round=up the filter emits the frame sitting at each grid point,
                 # so this is the arithmetic ffmpeg would have produced anyway,
                 # without a second stream of text to parse. It counts from the
                 # start of the stream, so a clip whose first frame is not at zero
-                # is reported relative to its own beginning.
+                # is reported relative to its own beginning. Under a selection
+                # the kept frames arrive in grid order, so the next index inside
+                # the bounds is this frame's name.
+                index = next(grid)
                 yield VideoFrame(index=index, timestamp=index / fps, content=content)
             returncode = process.wait()
         finally:
