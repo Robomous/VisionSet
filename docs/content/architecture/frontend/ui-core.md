@@ -106,7 +106,7 @@ visual-design rule. The current choices:
 | Concern | Choice |
 | --- | --- |
 | UI primitives | Radix (+ shadcn-style composition with `cva` and `cn`) - the open-code shadcn maintenance model is the direction: a primitive is VisionSet-owned source in `frontend/ui-core/src/primitives/`, edited directly, not a package dependency upgraded blindly |
-| Icons | `@tabler/icons-react` is the set: the primitives and the screens draw nothing else. `lucide-react` remains only in `src/annotator/`, as migration debt |
+| Icons | `@tabler/icons-react`, and nothing else: the primitives, the screens and the annotation workspace all draw from it, and no package declares a second icon library |
 | Styling | Tailwind v4, CSS-first `@theme`, on the shadcn preset `b3bXyyPdWj` - no `tailwind.config.js`, ever |
 | Toasts | sonner |
 | Component tests | vitest + jsdom + @testing-library/react |
