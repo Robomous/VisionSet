@@ -51,7 +51,10 @@ name, else the path's last segment, and it is what both wire projections publish
 `register_images` takes it, because a clip's basename is already its filename.
 
 `VideoProvenance` is the port's own `VideoMetadata` — original fps, duration, displayed
-dimensions, codec — plus the `extraction_fps` a decomposition will run at. The probe result is
+dimensions, codec — plus the cut a decomposition will run at: `extraction_fps`, and the clip
+`ranges` extraction reads, empty meaning the whole clip. Ranges are stored canonically —
+clamped to the clip, sorted, overlaps and touches merged, a full cover collapsing to the
+empty selection — so two spellings of one selection cannot fork a source. The probe result is
 kept whole rather than re-spelled field by field, because `metadata.fps` is the rate the file was
 *shot* at and `extraction_fps` is the rate we chose to *cut* it at, and re-declaring the first
 beside the second is how the two come to be confused.
@@ -74,7 +77,7 @@ over one file**, not one source with a history.
 
 ## Registration is idempotent
 
-The match key is `(kind, path, extraction_fps)`. Registering the same origin twice returns the
+The match key is `(kind, path, extraction_fps, ranges)`. Registering the same origin twice returns the
 same `Source` rather than a second one, so that once ingest gives `asset.source_id` a target,
 "which source did this asset come from?" has one answer.
 
@@ -98,12 +101,15 @@ because nothing referenced a source, so a duplicate was inert - and [ingest](ing
 that, by giving `asset.source_id` a target and letting the winner of a race decide an asset's
 recorded origin.
 
-`uq_source_project_kind_path_fps` went in with it, over
-`(project_id, kind, path, coalesce(json_extract(video, '$.extraction_fps'), 0))`. The fourth term
-is an expression rather than a column, and it is `coalesce`d rather than left to be NULL, because
-SQLite treats NULLs in a unique index as **distinct** - an image directory, whose `video` is NULL,
-would otherwise never collide with itself, which is most of what the index is for. `0` cannot be
-mistaken for a real rate: `extraction_fps` is `gt=0`.
+`uq_source_project_kind_path_fps_ranges` went in with it — born four-term as
+`uq_source_project_kind_path_fps`, reshaped by migration 16 when ranges joined the identity — over
+`(project_id, kind, path, coalesce(json_extract(video, '$.extraction_fps'), 0),
+coalesce(json_extract(video, '$.ranges'), ''))`. The last two terms are expressions rather than
+columns, and they are `coalesce`d rather than left to be NULL, because SQLite treats NULLs in a
+unique index as **distinct** - an image directory, whose `video` is NULL, would otherwise never
+collide with itself, which is most of what the index is for. `0` cannot be mistaken for a real
+rate (`extraction_fps` is `gt=0`), and an empty selection omits its JSON key when stored, so a
+whole-clip row written in any generation lands on `''`.
 
 The two layers do what they do everywhere else in this store. The pre-check is what produces a
 friendly answer; the index is the guarantee. A caller that loses the race sees a raw
@@ -130,8 +136,9 @@ the workspace, so both stay outside the `VisionSetError` tree - the same line
 ## Over HTTP, a path is an upload
 
 `SourceService` registers by path, and an HTTP client has bytes rather than a path. So the
-[REST API](api.md) takes multipart - one `files` part per image, or one `file` part plus an
-`extraction_fps` field for a clip - writes the parts under `<workspace>/uploads/`, and registers
+[REST API](api.md) takes multipart - one `files` part per image, or one `file` part plus
+`extraction_fps` and an optional `ranges` field for a clip - writes the parts under
+`<workspace>/uploads/`, and registers
 what it wrote. There is **no route that accepts a server-side path**: it would hand every token
 holder an arbitrary-directory read, and the two surfaces that legitimately hold real paths, the
 CLI and MCP, call the SDK in-process and never go through HTTP.

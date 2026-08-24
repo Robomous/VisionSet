@@ -157,7 +157,7 @@ stills in filename order, and two calls can never disagree.
 
 **An asset with no recorded arrival sorts last.** That is every asset ingested before
 `Asset.ingested_at` existed, and it cannot be backfilled — the information exists nowhere, and `Source.registered_at` is not
-the proxy it looks like, because registration is idempotent on `(kind, path, extraction_fps)`
+the proxy it looks like, because registration is idempotent on `(kind, path, extraction_fps, ranges)`
 and is never rewritten. Sorting them last is the only reading that degrades quietly: treating
 the missing value as the epoch invents a date, and treating it as *now* would pin the oldest
 rows in the product to the top of a "recent" list forever. A workspace that has ingested nothing
@@ -349,8 +349,9 @@ one fatal cause, `failures` for the per-item report - because by then there is n
 to answer.
 
 **Uploads are multipart, and the only non-JSON request shape.** Registering a source means
-sending the bytes: one `files` part per image, or one `file` part plus an `extraction_fps` field
-for a clip. VisionSet sets **no size limit of its own** - parts are spooled to disk past 1 MiB
+sending the bytes: one `files` part per image, or one `file` part plus `extraction_fps` — and
+optionally `ranges`, a JSON array of half-open `{start_seconds, end_seconds}` stretches to
+extract — for a clip. VisionSet sets **no size limit of its own** - parts are spooled to disk past 1 MiB
 and streamed from there, so memory does not grow with the file - which means the real ceilings
 are your reverse proxy's (`client_max_body_size` in nginx) and free disk. Uploaded bytes are
 staged under `<workspace>/uploads/<digest>/` and, like blobs, are **never deleted**: a workspace
