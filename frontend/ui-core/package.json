@@ -1,7 +1,7 @@
 {
   "name": "@visionset/ui-core",
   "version": "0.0.1-beta.2",
-  "description": "VisionSet domain components, design tokens, and the generated typed API client. UI primitives: Radix + lucide only.",
+  "description": "VisionSet domain components, design tokens, and the generated typed API client. UI primitives: Radix behaviour under shadcn Nova styling, with Tabler icons.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",

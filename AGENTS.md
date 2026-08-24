@@ -64,7 +64,7 @@ client of the same SDK, and the release artifact is a plain `pip` package.
 | Component | Location | Stack |
 | --- | --- | --- |
 | Python distribution | `src/visionset/` | Python 3.12+, pydantic v2, FastAPI, Typer, MCP, SQLAlchemy, uv |
-| Frontend workspace | `frontend/` | Node 24, pnpm, TypeScript, React 19, Vite, vitest, Radix + lucide |
+| Frontend workspace | `frontend/` | Node 24, pnpm, TypeScript, React 19, Vite, vitest, Radix + Tabler |
 | Dev infra | `docker/` | Docker Compose (dev only) |
 
 See `README.md` for the monorepo map and `CONTRIBUTING.md` for the full check list.
