@@ -176,7 +176,7 @@ primitive targets):
 | Button — hover | default `hover:bg-primary/80`; secondary `color-mix(in oklch, var(--secondary), var(--foreground) 5%)`; destructive soft |
 | Input | `h-8 rounded-lg border-input px-2.5 text-base md:text-sm`; dark theme `bg-input/30` |
 | Badge | `h-5 px-2 text-xs rounded-4xl`; icons `size-3`. The `quiet` variant alone is `rounded-md` — a square, colourless label for a fact read beside other facts, never a state |
-| Menu — surface | `dark` subtree + `bg-popover p-1 rounded-lg ring-1 ring-foreground/10 shadow-md`, `min-w-32`, `duration-100` enter/exit |
+| Menu — surface | `dark` subtree + `bg-popover p-1 rounded-lg ring-1 ring-foreground/10 shadow-md`, `min-w-32`, `duration-100` enter and **no exit** — see *Motion* |
 | Menu — item | `px-1.5 py-1 text-sm rounded-md focus:bg-accent focus:text-accent-foreground`; destructive item soft |
 | Card | `rounded-xl ring-1 ring-foreground/10 text-sm`; `--card-spacing` = `--spacing(4)` (16px; 12px at the `sm` size); footer `bg-muted/50` |
 | Dialog — overlay | `bg-black/10 supports-backdrop-filter:backdrop-blur-xs duration-100` |
@@ -185,7 +185,7 @@ primitive targets):
 | Elevation | `ring-1 ring-foreground/10` + a resting shadow — never a coloured border |
 
 `frontend/ui-core/src/primitives/` carries the table itself, not a family resemblance to
-it: the heights, the `ring-3` focus treatment, the `duration-100` enter/exit, the
+it: the heights, the `ring-3` focus treatment, the `duration-100` enter, the
 `--card-spacing` variable and Nova's interaction idioms (uniform disabled opacity, soft
 destructive, `/80`-opacity hover, the inverted menu subtree) are the primitives' own
 declarations. The table is the contract and the primitives are where it is spelled, so a
@@ -247,6 +247,33 @@ list.
 which is the only place the composition can be checked: Tailwind renders `ring-3` as a
 `box-shadow` layer, so "the ring is there" is a question about a computed shadow list
 rather than about a class string.
+
+## Motion
+
+Motion orients or confirms, and never stands between somebody and their next action —
+*Fast and quiet*, applied. An **enter** animation is free to play: nothing is waiting on
+it, because the surface it introduces did not exist a frame ago. An **exit** animation is
+not, and the difference is not a matter of taste.
+
+**A floating surface leaves on the frame it is dismissed.** While an exit animation runs,
+Radix keeps the content mounted, and the dismissable layer stays mounted with it. A press
+on the trigger inside that window is read twice — the trigger toggles the surface open,
+and the layer still listening reads the same pointer-down as an interaction outside itself
+and dismisses — so the two cancel and the surface never appears. At `duration-100` that
+window covers the gap between an `Escape` and the click after it, which makes it a defect
+a fast hand meets routinely rather than an edge case. The annotation workspace is where
+that tempo is normal, and it is where the behaviour was measured; the fix belongs to the
+primitive because every menu in the product shared the flaw.
+
+So `DropdownMenuContent` animates in and not out, and
+`frontend/app/e2e/annotate.spec.ts` holds the two presses that would catch a fade being
+restored. A surface that genuinely needs an exit — one whose trigger cannot be pressed
+again straight away, as a modal's cannot — may keep one; the tooltip keeps its own,
+because a hover has no toggle to swallow.
+
+`prefers-reduced-motion` sits above all of this: the base layer in `styles.css` collapses
+every animation and transition to a single frame under that query, so none of the above is
+something a component opts into.
 
 ## Sidebar / Menu
 
