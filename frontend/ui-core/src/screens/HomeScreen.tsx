@@ -301,7 +301,9 @@ function Resume({
       data-kind={resume.kind}
     >
       <h2 className="text-xs font-medium text-muted-foreground">Continue where you left off</h2>
-      <div className="flex items-center gap-4">
+      {/* The resume control keeps its own width and wraps below the thumbnail
+          and the counts rather than pushing the page wider. */}
+      <div className="flex flex-wrap items-center gap-4">
         {resume.thumbnail_asset_id !== null && (
           <div className="size-16 shrink-0 overflow-hidden rounded-sm">
             <AssetThumbnail

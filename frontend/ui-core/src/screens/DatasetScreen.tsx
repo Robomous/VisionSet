@@ -184,7 +184,15 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
       >
         {/* The product's one tab shape — a row on a full-width hairline, the
             active tab's rule sitting on it — with the count as a chip beside the
-            two views whose size is the first thing anybody asks. */}
+            two views whose size is the first thing anybody asks.
+
+            The strip scrolls within its own row rather than widening the page,
+            which is what the project navigation does at the same width and for
+            the same reason: a trigger carries a label and a count, so it has a
+            width it cannot shrink past, and truncating the labels would cost
+            more than a scroll does. The padding pair keeps the focus ring off
+            the scroller's clip. */}
+        <div className="min-w-0 overflow-x-auto pb-1.5 -mb-1.5">
         <TabsList variant="line">
           <TabsTrigger value="overview" data-testid="dataset-tab-overview">
             Overview
@@ -198,6 +206,7 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
             {releases.data !== undefined && <Badge>{releases.data.total}</Badge>}
           </TabsTrigger>
         </TabsList>
+        </div>
 
         <TabsContent value="overview">
         <Async query={stats} loadingRows={3}>
