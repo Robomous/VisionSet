@@ -31,16 +31,32 @@ CLI's own output.
 
 | File | Role |
 | --- | --- |
-| [`frontend/ui-core/components.json`](frontend/ui-core/components.json) | The decoded preset configuration shadcn's own tools read |
+| [`frontend/ui-core/components.json`](frontend/ui-core/components.json) | The preset properties shadcn's own tools read — the fields its config schema defines, and no others |
 | [`frontend/ui-core/src/styles.css`](frontend/ui-core/src/styles.css) | The tokens that run — `:root`, `.dark`, `@theme inline`, the base layer |
 | [`frontend/ui-core/src/tokens.ts`](frontend/ui-core/src/tokens.ts) | The TypeScript mirror, for a caller that cannot read CSS |
+
+**One intent, three layers — and they do not hold the same fields.** `components.json`
+carries only what shadcn's config schema defines (`style`, `tailwind.baseColor`,
+`iconLibrary`, `menuColor`, `menuAccent`, `rsc`/`tsx`/`rtl`, the aliases, the registries).
+That schema is **strict**: a decoded property it has no field for is *rejected*, not
+ignored, so the file cannot be made to restate the whole preset even as documentation.
+Everything else the preset decides — the radius, both fonts, the chart palette, every
+colour — is a *value*, and values live in `styles.css`. A decoded property missing from
+`components.json` is therefore the design working as intended, never drift:
+
+| Layer | Owns | Radius, as the worked example |
+| --- | --- | --- |
+| Preset intent | What the code decodes to (`shadcn preset decode b3bXyyPdWj`) | `radius: medium` |
+| Runtime | The value that actually paints, in `styles.css` | `--radius: 0.625rem` |
+| CLI configuration | The schema-supported fields, in `components.json` | no `radius` field — the schema defines none |
 
 Three machine gates hold this contract, each in one line: `tokens.test.ts` asserts
 `styles.css` and `tokens.ts` agree, declaration for declaration, and that no retired
 token has crept back in; `tests/scripts/design_tokens.test.mjs` bans a raw colour in any
 class string, bans a second `tailwind.config.js`, confines `brand` to its two identity
-sites, and re-checks the retired vocabulary by an independent method; `tests/scripts/
-docs_links.test.mjs` keeps every link and heading anchor in this document itself honest.
+sites, holds `components.json` to the schema-supported field set, and re-checks the
+retired vocabulary by an independent method; `tests/scripts/docs_links.test.mjs` keeps
+every link and heading anchor in this document itself honest.
 
 Radix stays the behaviour layer under every primitive — this is a visual foundation
 rewrite, not a component replacement.
@@ -184,8 +200,14 @@ this document sanctions, and only where the content's own height is the point.
 
 ## Radius
 
-`--radius: 0.625rem` (10px) is the one constant; every other radius step is derived from
-it in `@theme inline`, verbatim:
+The preset's `radius: medium` materialises here and nowhere else: `--radius: 0.625rem`
+(10px) in `styles.css` is the authoritative runtime value, mirrored by `tokens.ts` and
+pinned by `tokens.test.ts`. `components.json` holds no radius field — shadcn's config
+schema defines none, and being strict it rejects one. This stylesheet is the single place
+the medium step is spelled.
+
+`--radius` is the one constant; every other radius step is derived from it in
+`@theme inline`, verbatim:
 
 | Step | Formula | Result |
 | --- | --- | --- |
@@ -360,12 +382,12 @@ First-class, and part of every rule above rather than a section to satisfy after
 - **Ad-hoc geometry that fights Nova.** A control's height, padding, or radius is not a
   per-screen decision; reaching past the geometry table above for a bespoke size is a
   design decision to make in this document, not in a component diff.
-- **Mixing icon sets in new code.** Tabler is the set, and inside the primitives it is
-  already the only one: every icon `frontend/ui-core/src/primitives/` draws is
-  `@tabler/icons-react` — the select's chevrons and check, the dialog's close — and no
-  file there imports `lucide-react` at all. Lucide survives at *screen* level, in views
-  this rewrite did not open, and that is the whole of the remaining debt: a screen still
-  importing it is a file to migrate, not a precedent to follow.
+- **Mixing icon sets in new code.** Tabler is the set, and across the primitives *and*
+  the screens it is already the only one: every icon `frontend/ui-core/src/primitives/`
+  and `frontend/ui-core/src/screens/` draws is `@tabler/icons-react`, and neither
+  directory imports `lucide-react` at all. Lucide survives in exactly one place —
+  `frontend/ui-core/src/annotator/` — and that is the whole of the remaining debt: a file
+  there still importing it is a file to migrate, not a precedent to follow.
 - **Brand in a functional control.** Robomous coral is identity — the wordmark and its
   styleguide swatch, nothing else. A functional control reaching for `brand` is a
   semantic-colour violation regardless of how many other sites already use it correctly.
