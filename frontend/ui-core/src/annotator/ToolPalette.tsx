@@ -95,13 +95,13 @@ import {
 
 import { geometryLabel } from "../data/geometryCategory";
 import {
-  CircleHelp,
-  Hand,
-  Plus,
-  Redo2,
-  Sparkles,
-  Undo2,
-} from "lucide-react";
+  IconArrowBackUp,
+  IconArrowForwardUp,
+  IconHandStop,
+  IconHelpCircle,
+  IconPlus,
+  IconSparkles,
+} from "@tabler/icons-react";
 
 import { GeometryIcon } from "./GeometryIcon";
 import type { JSX, MouseEvent, ReactNode } from "react";
@@ -439,7 +439,7 @@ export function ToolPalette({
           onMouseDown={keepFocus}
           onClick={suggest.onToggle}
         >
-          <Sparkles className="size-4" />
+          <IconSparkles className="size-4" />
         </PaletteButton>
       )}
 
@@ -454,7 +454,7 @@ export function ToolPalette({
           onMouseDown={keepFocus}
           onClick={onAddClass}
         >
-          <Plus className="size-4" />
+          <IconPlus className="size-4" />
         </PaletteButton>
       )}
 
@@ -472,7 +472,7 @@ export function ToolPalette({
         onMouseDown={keepFocus}
         onClick={hand.onToggle}
       >
-        <Hand className="size-4" />
+        <IconHandStop className="size-4" />
       </PaletteButton>
 
       {!readOnly && history !== undefined && (
@@ -493,7 +493,7 @@ export function ToolPalette({
             onMouseDown={keepFocus}
             onClick={history.onUndo}
           >
-            <Undo2 className="size-4" />
+            <IconArrowBackUp className="size-4" />
           </PaletteButton>
           <PaletteButton
             testId="tool-redo"
@@ -503,7 +503,7 @@ export function ToolPalette({
             onMouseDown={keepFocus}
             onClick={history.onRedo}
           >
-            <Redo2 className="size-4" />
+            <IconArrowForwardUp className="size-4" />
           </PaletteButton>
         </>
       )}
@@ -517,7 +517,7 @@ export function ToolPalette({
         onMouseDown={keepFocus}
         onClick={onToggleHelp}
       >
-        <CircleHelp className="size-4" />
+        <IconHelpCircle className="size-4" />
       </PaletteButton>
     </div>
   );
@@ -578,7 +578,8 @@ function PaletteButton({
 /**
  * The strip's own name for the shared glyph.
  *
- * The map lives in `GeometryIcon`, because `DESIGN.md` pins the three glyphs.
+ * The map lives in `GeometryIcon`, so one glyph per geometry is decided once
+ * rather than at each call site.
  */
 function ToolIcon({ tool }: { readonly tool: ToolChoice["tool"] }): JSX.Element {
   return <GeometryIcon tool={tool} />;

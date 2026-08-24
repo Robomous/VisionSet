@@ -82,7 +82,7 @@ import {
   type LabelClass,
   type Tool,
 } from "@visionset/annotator";
-import { Check, Eye, EyeOff, Sparkles, Tag, Trash2 } from "lucide-react";
+import { IconCheck, IconEye, IconEyeOff, IconSparkles, IconTag, IconTrash } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
 
 import { geometryLabel } from "../data/geometryCategory";
@@ -278,14 +278,13 @@ export function AnnotatorPanel({
           </span>
           <Button
             variant="ghost"
-            size="icon"
-            className="size-6"
+            size="icon-xs"
             aria-label={allHidden ? "Show all objects" : "Hide all objects"}
             data-testid="toggle-all-visibility"
             disabled={drawn.length === 0}
             onClick={() => onHiddenChange(allHidden ? new Set() : new Set(drawn.map((o) => o.id)))}
           >
-            {allHidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            {allHidden ? <IconEyeOff className="size-4" /> : <IconEye className="size-4" />}
           </Button>
         </div>
       </div>
@@ -429,7 +428,7 @@ function TagRegion({
                 />
                 <span className="truncate">{declared.name}</span>
                 {on ? (
-                  <Check className="size-3 text-primary" aria-hidden="true" />
+                  <IconCheck className="size-3 text-primary" aria-hidden="true" />
                 ) : (
                   <kbd className="rounded-sm border border-border px-1 font-mono text-xs">
                     {hotkeyForClass(schema, declared.name) ?? "—"}
@@ -488,7 +487,7 @@ function ModelMark({
           aria-label={`Model-produced by ${annotation.model_ref ?? "an unnamed model"}`}
           className="flex shrink-0 items-center text-xs text-muted-foreground"
         >
-          <Sparkles className="size-3" aria-hidden="true" />
+          <IconSparkles className="size-3" aria-hidden="true" />
         </span>
       </TooltipTrigger>
       {/* The full reference, which is far too long for the row and is exactly
@@ -587,24 +586,22 @@ function ObjectRow({
       )}
       <Button
         variant="ghost"
-        size="icon"
-        className="size-6"
+        size="icon-xs"
         aria-label={hidden ? `Show object ${index + 1}` : `Hide object ${index + 1}`}
         data-testid={`object-visibility-${index}`}
         onClick={onToggleVisible}
       >
-        {hidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+        {hidden ? <IconEyeOff className="size-3.5" /> : <IconEye className="size-3.5" />}
       </Button>
       <Button
         variant="ghost"
-        size="icon"
-        className="size-6"
+        size="icon-xs"
         aria-label={`Delete object ${index + 1}`}
         data-testid={`object-delete-${index}`}
         onClick={onRemove}
         disabled={onRemove === undefined}
       >
-        <Trash2 className="size-3.5" />
+        <IconTrash className="size-3.5" />
       </Button>
     </li>
   );
@@ -638,12 +635,11 @@ function RowReassign({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="icon"
-          className="size-6"
+          size="icon-xs"
           aria-label={`Reassign object ${index + 1}`}
           data-testid={`object-reclass-${index}`}
         >
-          <Tag className="size-3.5" />
+          <IconTag className="size-3.5" />
         </Button>
       </DropdownMenuTrigger>
       <ReassignMenu

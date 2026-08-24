@@ -294,10 +294,9 @@ export async function expectProgress(page: Page, progress: string): Promise<void
  * Radix closes the menu on select, so a scenario pressing two of these opens it
  * twice. That is the product's behaviour and not a harness quirk.
  *
- * The menu is waited for rather than assumed: the trigger *toggles*, so a press
- * that arrives while the previous menu is still leaving is read as a dismiss
- * instead of an open (see {@link closeOverflow}). Waiting here is what makes that
- * fail as "the menu did not open" rather than as a missing item three lines later.
+ * The menu is waited for rather than assumed, so a menu that does not open fails
+ * here — as "the menu did not open" — rather than three lines later as a missing
+ * item.
  */
 export async function openOverflow(page: Page): Promise<void> {
   await page.getByTestId("more-actions").click();
@@ -305,19 +304,18 @@ export async function openOverflow(page: Page): Promise<void> {
 }
 
 /**
- * Escape out of the overflow menu, and wait until it has actually left.
+ * Escape out of the overflow menu, and assert it has actually left.
  *
- * Nova's menu surface animates out (`data-closed:animate-out` over `duration-100`),
- * which means Radix keeps the content — and its dismissable layer — mounted for a
- * beat after `open` goes false. A press on the trigger inside that beat hits both
- * handlers at once: the trigger toggles the menu open, and the still-listening
- * layer reads the same pointer-down as an interaction *outside* itself and
- * dismisses. The two cancel, and the menu never appears — which is exactly what
- * reopening the overflow straight after an `Escape` used to run into.
+ * The wait is the assertion that `Escape` closed the menu at all, and it is on the
+ * menu leaving the DOM rather than on a clock — per
+ * `tests/scripts/e2e_discipline.test.mjs`.
  *
- * So the close is a state to wait on, not a keystroke to fire and forget. The wait
- * is on the menu leaving the DOM, which is also the assertion that `Escape` closed
- * it at all — no clock anywhere, per `tests/scripts/e2e_discipline.test.mjs`.
+ * It is not a workaround for a surface that leaves slowly. The menu has no exit
+ * animation, deliberately, so there is no window in which it is still mounted and
+ * swallowing the next press — `DESIGN.md`'s *Motion* argues why, and
+ * `annotate.spec.ts` presses the trigger straight after an `Escape` to keep it
+ * true. A scenario that wants to reopen the menu immediately should do exactly
+ * that rather than reach for this.
  */
 export async function closeOverflow(page: Page): Promise<void> {
   await page.keyboard.press("Escape");

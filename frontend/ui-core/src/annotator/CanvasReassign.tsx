@@ -54,14 +54,18 @@ import {
   useAnnotatorSnapshot,
 } from "@visionset/annotator";
 import type { AnnotatorStore, Geometry, Viewport } from "@visionset/annotator";
-import { Tag } from "lucide-react";
+import { IconTag } from "@tabler/icons-react";
 import type { JSX } from "react";
 
 import { Button } from "../primitives/Button";
 import { DropdownMenu, DropdownMenuTrigger } from "../primitives/Menu";
 import { ReassignMenu } from "./ReassignMenu";
 
-/** The trigger's own size, in screen pixels — `size="icon"` at `size-6`. */
+/**
+ * The trigger's own size, in screen pixels — Nova's `icon-xs`, which is 24px
+ * square. The clamps below position the button by this number, so a different
+ * button size here is a silent mispositioning rather than a visible mistake.
+ */
 const TRIGGER_PX = 24;
 
 /**
@@ -121,12 +125,12 @@ export function CanvasReassign({
         <DropdownMenuTrigger asChild>
           <Button
             variant="secondary"
-            size="icon"
-            className="size-6 shadow-sm"
+            size="icon-xs"
+            className="shadow-sm"
             aria-label={`Reassign the selected ${subject.label_class}`}
             data-testid="canvas-reclass"
           >
-            <Tag className="size-3.5" />
+            <IconTag className="size-3.5" />
           </Button>
         </DropdownMenuTrigger>
         <ReassignMenu

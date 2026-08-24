@@ -63,7 +63,13 @@ import {
   type SuggestionState,
   type Detail,
 } from "@visionset/annotator";
-import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
+import {
+  IconAlertTriangle,
+  IconCheck,
+  IconLoader2,
+  IconSparkles,
+  IconX,
+} from "@tabler/icons-react";
 import type { JSX, ReactNode } from "react";
 
 import { EditorNotice } from "./EditorNotice";
@@ -218,7 +224,7 @@ export function SuggestPanel({
   */
   if (isParked(session)) {
     return (
-      <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+      <EditorNotice testId="suggest-panel" tone="calm" icon={<IconSparkles className="size-4" />}>
         <p className="font-medium text-foreground" data-testid="suggest-parked">
           {heldClass === null
             ? "Nothing selected to suggest for"
@@ -242,7 +248,7 @@ export function SuggestPanel({
           data-testid="suggest-discard"
           onClick={onDiscard}
         >
-          <X className="size-4" aria-hidden="true" />
+          <IconX className="size-4" aria-hidden="true" />
           Put the tool away
         </Button>
       </EditorNotice>
@@ -259,9 +265,9 @@ export function SuggestPanel({
         tone={copy.tone}
         icon={
           copy.tone === "warn" ? (
-            <TriangleAlert className="size-4" />
+            <IconAlertTriangle className="size-4" />
           ) : (
-            <Loader2 className="size-4 animate-spin" />
+            <IconLoader2 className="size-4 animate-spin" />
           )
         }
       >
@@ -288,7 +294,7 @@ export function SuggestPanel({
 
   if (session.status === "refused") {
     return (
-      <EditorNotice testId="suggest-panel" tone="warn" icon={<TriangleAlert className="size-4" />}>
+      <EditorNotice testId="suggest-panel" tone="warn" icon={<IconAlertTriangle className="size-4" />}>
         <p className="font-medium text-foreground">That suggestion could not be made</p>
         {/* The server's sentence, verbatim. It is the one that carries the
             install command when the cause is a missing extra. */}
@@ -309,7 +315,7 @@ export function SuggestPanel({
   // lives in `usePendingIndicator` rather than here.
   if (session.status === "asking") {
     return (
-      <EditorNotice testId="suggest-panel" tone="calm" icon={<Loader2 className="size-4 animate-spin" />}>
+      <EditorNotice testId="suggest-panel" tone="calm" icon={<IconLoader2 className="size-4 animate-spin" />}>
         <p className="font-medium text-foreground" data-testid="suggest-asking">
           Looking at that…
         </p>
@@ -328,7 +334,7 @@ export function SuggestPanel({
 
   if (session.status === "none") {
     return (
-      <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+      <EditorNotice testId="suggest-panel" tone="calm" icon={<IconSparkles className="size-4" />}>
         <p className="font-medium text-foreground" data-testid="suggest-none">
           Nothing to suggest there
         </p>
@@ -369,7 +375,7 @@ export function SuggestPanel({
   */
   if (isAcceptable(session)) {
     return (
-      <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+      <EditorNotice testId="suggest-panel" tone="calm" icon={<IconSparkles className="size-4" />}>
         <p className="font-medium text-foreground" data-testid="suggest-shown">
           A shape for “{session.labelClass}”
         </p>
@@ -378,7 +384,7 @@ export function SuggestPanel({
         </p>
         <div className="mt-1 flex gap-2">
           <Button variant="primary" size="sm" data-testid="suggest-accept" onClick={onAccept}>
-            <Check className="size-4" aria-hidden="true" />
+            <IconCheck className="size-4" aria-hidden="true" />
             Accept
             <Chip>↵</Chip>
           </Button>
@@ -398,7 +404,7 @@ export function SuggestPanel({
   }
 
   return (
-    <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+    <EditorNotice testId="suggest-panel" tone="calm" icon={<IconSparkles className="size-4" />}>
       <p className="font-medium text-foreground" data-testid="suggest-idle">
         Click the thing you want
       </p>
@@ -489,7 +495,7 @@ function Discard({ onDiscard }: { readonly onDiscard: () => void }): JSX.Element
       data-testid="suggest-discard"
       onClick={onDiscard}
     >
-      <X className="size-4" aria-hidden="true" />
+      <IconX className="size-4" aria-hidden="true" />
       Clear the points
       <Chip>Esc</Chip>
     </Button>

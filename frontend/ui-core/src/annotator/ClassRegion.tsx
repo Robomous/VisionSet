@@ -58,7 +58,7 @@ import {
   type LabelClass,
   type Tool,
 } from "@visionset/annotator";
-import { Plus } from "lucide-react";
+import { IconPlus } from "@tabler/icons-react";
 import { useState, type JSX, type RefObject } from "react";
 
 import { formatGeometries, geometryLabel } from "../data/geometryCategory";
@@ -196,14 +196,13 @@ export function ClassRegion({
               is missing something. */}
           <Button
             variant="ghost"
-            size="icon"
-            className="size-6"
+            size="icon-xs"
             aria-label="Add a class"
             data-testid="class-add"
             disabled={onAddClass === undefined}
             onClick={() => onAddClass?.("")}
           >
-            <Plus className="size-4" />
+            <IconPlus className="size-4" />
           </Button>
         </div>
       </div>
@@ -268,7 +267,7 @@ export function ClassRegion({
               className="flex h-9 w-full shrink-0 items-center gap-2 border-t border-border px-3 text-left text-sm text-muted-foreground hover:bg-muted"
               onClick={() => onAddClass?.(creatable)}
             >
-              <Plus className="size-3.5 shrink-0" aria-hidden="true" />
+              <IconPlus className="size-3.5 shrink-0" aria-hidden="true" />
               <span className="truncate">Create class “{creatable}”</span>
             </button>
           )}
