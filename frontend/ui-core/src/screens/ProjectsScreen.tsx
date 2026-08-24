@@ -170,8 +170,20 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
                       {project.name}
                     </Button>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {project.description ?? <span className="text-xs">—</span>}
+                  {/* Clamped, because the column is narrow and a description is
+                      free text: unclamped, a long one wraps a word-fragment per
+                      line and takes the row to several hundred pixels, which at a
+                      narrow width is a tall empty row with its text scrolled out
+                      of sight. Two lines here, and the project's own page carries
+                      the whole of it. */}
+                  <TableCell className="max-w-64 text-muted-foreground">
+                    {project.description === null || project.description === undefined ? (
+                      <span className="text-xs">—</span>
+                    ) : (
+                      <span className="line-clamp-2" title={project.description}>
+                        {project.description}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {project.created_at === null ? (
