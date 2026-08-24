@@ -3517,3 +3517,38 @@ test("a press on the suggest panel never reaches the picture underneath", async 
   await expect(page.getByTestId("suggest-adjustments")).toBeVisible();
   expect(asks(sent)).toBe(before);
 });
+
+/**
+ * ## Reopening a menu that was just dismissed
+ *
+ * `DESIGN.md`'s *Motion*: a floating surface leaves on the frame it is dismissed,
+ * because an animated exit keeps Radix's dismissable layer mounted and the next
+ * press on the trigger is then read as both an open and an outside-dismiss, which
+ * cancel. These two scenarios are the presses that catch a fade being restored —
+ * both failed against `duration-100` on the way out, the first in four runs of
+ * five and the second in five.
+ *
+ * Neither uses `closeOverflow`. Its wait is what a suite does to stay honest about
+ * a surface that is still leaving; the product's contract is that there is nothing
+ * to wait for.
+ */
+test("the overflow reopens on a press straight after Escape", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  await openOverflow(page);
+  await page.keyboard.press("Escape");
+  await page.getByTestId("more-actions").click();
+  await expect(page.getByRole("menu")).toBeVisible();
+});
+
+test("the overflow reopens on a press straight after a second Escape", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  await openOverflow(page);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await page.getByTestId("more-actions").click();
+  await expect(page.getByRole("menu")).toBeVisible();
+});
