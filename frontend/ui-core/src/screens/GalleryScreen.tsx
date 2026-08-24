@@ -708,7 +708,10 @@ function BatchHeader({
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Wraps rather than widening the page. Every control here is one a
+            batch's state offers, so none may be dropped at a narrow width; they
+            take a second line instead. */}
+        <div className="flex flex-wrap items-center gap-2">
           {/*
             Draft only, and it opens the dialog rather than sending anything:
             approval carries a partition, pins the schema and cuts the jobs, and
@@ -997,6 +1000,13 @@ function Toolbar({
     >
       {showSegments && (
         <>
+          {/* The row above already wraps, but the control is one joined pill and
+              is wider than the narrowest viewport on its own. It scrolls within
+              its own row rather than widening the page — the project navigation's
+              answer to the same shape — because squashing five state filters
+              costs more than a scroll does. The padding pair keeps the focus ring
+              off the scroller's clip. */}
+          <div className="max-w-full overflow-x-auto pb-1.5 -mb-1.5">
           <div
             className="inline-flex rounded-md border border-border p-0.5"
             role="group"
@@ -1021,6 +1031,7 @@ function Toolbar({
                 {SEGMENT_LABEL[one]} ({counts[one]})
               </button>
             ))}
+          </div>
           </div>
 
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
