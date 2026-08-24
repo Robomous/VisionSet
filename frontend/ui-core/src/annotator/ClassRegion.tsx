@@ -196,8 +196,7 @@ export function ClassRegion({
               is missing something. */}
           <Button
             variant="ghost"
-            size="icon"
-            className="size-6"
+            size="icon-xs"
             aria-label="Add a class"
             data-testid="class-add"
             disabled={onAddClass === undefined}

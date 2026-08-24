@@ -278,8 +278,7 @@ export function AnnotatorPanel({
           </span>
           <Button
             variant="ghost"
-            size="icon"
-            className="size-6"
+            size="icon-xs"
             aria-label={allHidden ? "Show all objects" : "Hide all objects"}
             data-testid="toggle-all-visibility"
             disabled={drawn.length === 0}
@@ -587,8 +586,7 @@ function ObjectRow({
       )}
       <Button
         variant="ghost"
-        size="icon"
-        className="size-6"
+        size="icon-xs"
         aria-label={hidden ? `Show object ${index + 1}` : `Hide object ${index + 1}`}
         data-testid={`object-visibility-${index}`}
         onClick={onToggleVisible}
@@ -597,8 +595,7 @@ function ObjectRow({
       </Button>
       <Button
         variant="ghost"
-        size="icon"
-        className="size-6"
+        size="icon-xs"
         aria-label={`Delete object ${index + 1}`}
         data-testid={`object-delete-${index}`}
         onClick={onRemove}
@@ -638,8 +635,7 @@ function RowReassign({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="icon"
-          className="size-6"
+          size="icon-xs"
           aria-label={`Reassign object ${index + 1}`}
           data-testid={`object-reclass-${index}`}
         >
