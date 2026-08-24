@@ -318,6 +318,51 @@ test("components.json holds the schema-supported preset fields, and no others", 
   assert.equal(config.tailwind.css, "src/styles.css");
 });
 
+/**
+ * Tabler is the icon set, and the only one — the final state of a migration that
+ * ran through the primitives, the screens and the annotation workspace in turn.
+ *
+ * The interesting failure is a *return*, not the original debt: an editor
+ * auto-import, or a branch that predates the migration coming back through a
+ * merge. Now that no manifest declares the old package such an import fails to
+ * resolve, which is the loud half. The quiet half is the manifest — a dependency
+ * added back "because something imported it" restores the whole problem without
+ * anything else noticing, so both halves are asserted here.
+ *
+ * Assembled from fragments so this file never contains the package's name as a
+ * contiguous string, and a repository-wide sweep for it never mistakes its own
+ * guard for a lingering usage — the trick `HEX` and `RETIRED_DECLARATIONS` above
+ * already use.
+ */
+const RETIRED_ICON_PACKAGE = ["lucide", "react"].join("-");
+
+test("no package declares a second icon set, and no source imports one", () => {
+  const listed = spawnSync("git", ["ls-files", "-z"], { cwd: REPO, encoding: "utf8" });
+  assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
+  const tracked = listed.stdout.split("\0").filter(Boolean);
+
+  const manifests = tracked.filter((name) => /(?:^|\/)package\.json$/.test(name));
+  assert.ok(manifests.length > 0, "no manifests were read, so this proves nothing");
+  const declaring = manifests.filter((name) =>
+    readFileSync(path.join(REPO, name), "utf8").includes(`"${RETIRED_ICON_PACKAGE}"`),
+  );
+  assert.deepEqual(
+    declaring,
+    [],
+    "@tabler/icons-react is the frontend's icon set. A second one is a decision for " +
+      `DESIGN.md, not a dependency:\n${declaring.join("\n")}`,
+  );
+
+  const sources = tracked.filter((name) => SOURCE.test(name) && !GENERATED.test(name));
+  assert.ok(sources.length > 0, "no frontend sources were read, so this proves nothing");
+  const importing = sources.filter((name) =>
+    new RegExp(String.raw`(?:from|require\()\s*["']${RETIRED_ICON_PACKAGE}["']`).test(
+      readFileSync(path.join(REPO, name), "utf8"),
+    ),
+  );
+  assert.deepEqual(importing, [], `these draw from the retired icon set:\n${importing.join("\n")}`);
+});
+
 test("the tokens have exactly one home, and it is the stylesheet", () => {
   const listed = spawnSync("git", ["ls-files", "-z"], { cwd: REPO, encoding: "utf8" });
   assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
