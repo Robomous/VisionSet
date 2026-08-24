@@ -269,6 +269,55 @@ test("the retired foundation vocabulary is absent from the stylesheet", () => {
   );
 });
 
+/**
+ * `components.json` carries the preset properties shadcn's own tools read, and
+ * only those: the fields its config schema defines. The schema is **strict** —
+ * `rawConfigSchema.safeParse` answers `unrecognized_keys` for anything else — so
+ * a decoded preset property the schema has no field for cannot be added here
+ * even as documentation. It would not be ignored; it would break every `shadcn`
+ * invocation that reads the file.
+ *
+ * `radius` is the property that keeps inviting the mistake: the preset decodes to
+ * `radius: medium`, and the obvious repair for "the config does not say so" is to
+ * write it in. The medium step's one home is `styles.css`'s `--radius: 0.625rem`
+ * (asserted by `tokens.test.ts`); this test is the other half, refusing the field
+ * that would look like a second home while doing nothing. Keys rather than a
+ * count, so a failure names what moved.
+ */
+const CONFIG_PATH = "frontend/ui-core/components.json";
+const SCHEMA_SUPPORTED_KEYS = [
+  "$schema",
+  "aliases",
+  "iconLibrary",
+  "menuAccent",
+  "menuColor",
+  "registries",
+  "rsc",
+  "rtl",
+  "style",
+  "tailwind",
+  "tsx",
+];
+
+test("components.json holds the schema-supported preset fields, and no others", () => {
+  const config = JSON.parse(readFileSync(path.join(REPO, CONFIG_PATH), "utf8"));
+  assert.deepEqual(
+    Object.keys(config).sort(),
+    SCHEMA_SUPPORTED_KEYS,
+    `${CONFIG_PATH} must carry exactly the fields shadcn's strict config schema defines. ` +
+      "A decoded preset property with no field here belongs in frontend/ui-core/src/styles.css " +
+      "as a value — see DESIGN.md 'Source of Truth'",
+  );
+
+  // The preset's own values, where the schema does have a field for them.
+  assert.equal(config.style, "radix-nova");
+  assert.equal(config.iconLibrary, "tabler");
+  assert.equal(config.menuColor, "inverted");
+  assert.equal(config.menuAccent, "subtle");
+  assert.equal(config.tailwind.baseColor, "neutral");
+  assert.equal(config.tailwind.css, "src/styles.css");
+});
+
 test("the tokens have exactly one home, and it is the stylesheet", () => {
   const listed = spawnSync("git", ["ls-files", "-z"], { cwd: REPO, encoding: "utf8" });
   assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
