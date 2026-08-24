@@ -25,7 +25,7 @@
  * a person could change to get it.
  */
 
-import { Maximize2, Minimize2, Minus, Plus, Scan } from "lucide-react";
+import { IconMaximize, IconMinimize, IconMinus, IconPlus, IconScan } from "@tabler/icons-react";
 import { useEffect, useState, type JSX } from "react";
 
 import { Button } from "../primitives/Button";
@@ -70,7 +70,7 @@ export function ZoomWidget({
         reason={floorReason}
         onClick={onZoomOut}
       >
-        <Minus className="size-4" />
+        <IconMinus className="size-4" />
       </ZoomButton>
 
       {/* The stage's own scale, capped by it — so the ceiling reads exactly
@@ -89,7 +89,7 @@ export function ZoomWidget({
         reason={ceilingReason}
         onClick={onZoomIn}
       >
-        <Plus className="size-4" />
+        <IconPlus className="size-4" />
       </ZoomButton>
 
       <span className="mx-0.5 h-5 w-px bg-border" />
@@ -97,7 +97,7 @@ export function ZoomWidget({
       {/* The same implementation `mod+0` reaches, which is why that chord stays
           intercepted rather than forwarded to the host. */}
       <ZoomButton testId="fit" label="Fit to window" atBound={false} reason="" onClick={onFit}>
-        <Scan className="size-4" />
+        <IconScan className="size-4" />
       </ZoomButton>
 
       {fullscreen !== null && (
@@ -108,7 +108,7 @@ export function ZoomWidget({
           reason=""
           onClick={fullscreen.toggle}
         >
-          {fullscreen.active ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          {fullscreen.active ? <IconMinimize className="size-4" /> : <IconMaximize className="size-4" />}
         </ZoomButton>
       )}
     </div>
