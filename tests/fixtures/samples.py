@@ -66,6 +66,7 @@ from visionset.kernel.domain import (
     SourceKind,
     SplitRecipe,
     ThumbnailBackfill,
+    TimeRange,
     VideoMetadata,
     VideoProvenance,
 )
@@ -185,6 +186,12 @@ SOURCE = Source(
             width=160, height=120, fps=10.0, duration_seconds=10.0, codec="h264"
         ),
         extraction_fps=5.0,
+        # Non-empty, per this module's rule: an empty selection would leave the
+        # ranges half of the wire projections unchecked.
+        ranges=(
+            TimeRange(start_seconds=1.0, end_seconds=3.5),
+            TimeRange(start_seconds=6.0, end_seconds=9.0),
+        ),
     ),
 )
 
