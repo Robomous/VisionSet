@@ -19,18 +19,19 @@ for every segmenter there will ever be.
 
 1. :func:`components` — which pieces of the mask survive the noise filter.
 2. :func:`filled` — the gaps in them narrower than a reach, closed.
-3. :func:`contour` — the boundary of what is left.
-4. :func:`polygon_at` — that boundary, reduced to a vertex count somebody can edit.
+3. :func:`contour` — the boundary of what is left: traced along the pixels' edges,
+   smoothed once, and reduced at :data:`MINIMUM_TOLERANCE`.
+4. :func:`polygon_at` — that boundary, within a pixel tolerance somebody chose.
 
 The geometry branch happens after step 2: a polygon class takes steps 3 and 4 on
 the piece the prompt points at, a box class takes one extent over *every*
-surviving piece. **A box therefore does not depend on ``detail``**, which is what
-"applies to polygon only" means once it is code rather than a table.
+surviving piece. **A box therefore does not depend on the tolerance**, which is
+what "applies to polygon only" means once it is code rather than a table.
 
 **Only one of these is a question anybody is asked.** The reach of the close and
 the noise floor are fixed here, because on the ordinary single clean piece every
 setting of either produced the same shape — controls wired to nothing (#557).
-``detail`` is the one that moves something a person can see.
+The tolerance is the one that moves something a person can see.
 
 **Which shape is produced is the caller's schema decision, not this module's
 guess.** :func:`shapes_from` takes the geometry kinds the active class actually
@@ -39,35 +40,31 @@ class allowing only boxes gets extents, and a class allowing neither is not
 offered the gesture at all. Nothing is ever widened — a box cannot become the
 outline it never held.
 
-**Tolerance is relative, and that is what makes one "detail" setting work.** The
-design asks for a knob that lands typical objects in a 10-40 vertex range. An
-absolute pixel tolerance cannot: three pixels is nothing on a car and is the
-whole of a bottle cap. So the tolerance handed to Douglas-Peucker is a fraction
-of the region's own bounding diagonal, which makes the vertex count a property of
-the *shape* rather than of how much of the frame it happens to fill.
+**The tolerance is a distance in the asset's pixels, and that is the whole
+contract.** Every point of the contour lies within ``tolerance`` of the polygon
+that is finally written, so the number means the same thing on every object and a
+person reading it knows what they will get before they move it.
 
 **The canonical contour, and why step 3 reduces before step 4 gets a choice.**
-Douglas-Peucker is not nested: reducing at half a pixel and then at five pixels
-does not give what reducing once at five pixels gives. The editor re-simplifies
-locally so that moving ``detail`` costs no round trip, while this module stays
+Douglas-Peucker is not nested: reducing at a quarter pixel and then at five does
+not give what reducing once at five gives. The editor re-simplifies locally so
+that moving the tolerance costs no round trip, while this module stays
 authoritative on what is finally written — and those two can only be proved to
 agree if they start from the same points. So :func:`contour` is *defined* as the
-traced boundary reduced once at :data:`MINIMUM_TOLERANCE`, that is what travels
-to a client, and :func:`polygon_at` takes it rather than a raw trace. It also
-bounds a payload that would otherwise run to tens of thousands of integer-pixel
-points on a large object.
+smoothed trace reduced once at :data:`MINIMUM_TOLERANCE`, that is what travels to
+a client, and :func:`polygon_at` takes it rather than a raw trace.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 
 from visionset.kernel.domain import (
-    DEFAULT_DETAIL,
+    DEFAULT_TOLERANCE,
+    MINIMUM_TOLERANCE,
     BboxGeometry,
-    Detail,
     Geometry,
     GeometryType,
     Mask,
@@ -75,33 +72,7 @@ from visionset.kernel.domain import (
 )
 
 Point = tuple[float, float]
-
-EPSILON: Final[Mapping[Detail, float]] = {
-    Detail.COARSE: 0.025,
-    Detail.BALANCED: 0.01,
-    Detail.FINE: 0.004,
-}
-"""What each step means, as a fraction of the region's bounding diagonal.
-
-``BALANCED`` is calibrated rather than chosen by taste, and the other two are
-placed around it. For a roughly circular object it keeps the vertices where the
-sagitta of a chord exceeds the tolerance, which works out at ~13 — inside the
-10-40 band with room on both sides for shapes more and less convoluted than a
-circle. ``COARSE`` is two and a half times as tolerant and ``FINE`` two and a
-half times as strict, which moves the same circle to roughly 8 and roughly 21:
-three settings a person can tell apart without any of them being useless.
-
-It is a mapping here and not a member value on ``Detail`` because the numbers are
-a property of *this* simplification algorithm. A second one would want its own
-table and the same three names.
-"""
-
-MINIMUM_TOLERANCE: Final = 0.5
-"""No tolerance below half a pixel, however small the region.
-
-Below this the simplification is arguing about detail the mask does not have —
-its own coordinates are integers — and the vertex count runs away for nothing.
-"""
+Corner = tuple[int, int]
 
 MINIMUM_FRAGMENT_SHARE: Final = 0.05
 """How big a piece has to be, against the biggest one, to survive the noise filter.
@@ -129,7 +100,8 @@ segmenter leaves along an edge, and well under anything somebody would call a
 feature of the shape.
 
 Fixed rather than asked for (#557). It lives here rather than in the domain
-because it is a number about *this* pipeline, the way :data:`EPSILON` is.
+because it is a number about *this* pipeline, the way
+:data:`MINIMUM_FRAGMENT_SHARE` is.
 """
 
 MAXIMUM_CLOSING_RADIUS: Final = 6
@@ -518,58 +490,111 @@ def filled(mask: Mask) -> Mask:
     ]
 
 
+def _set_bits(value: int) -> Iterator[int]:
+    while value:
+        low = value & -value
+        yield low.bit_length() - 1
+        value ^= low
+
+
+def _turned(options: list[Corner], *, at: Corner, heading: tuple[int, int]) -> Corner:
+    """Which way out of a corner that has more than one, left turn first.
+
+    A corner with two ways out is where two lit pixels touch only diagonally. The
+    left turn crosses onto the other pixel and keeps the 8-connected piece one
+    ring; the right turn would close round the first pixel alone and cut the piece
+    in two, which is not what :func:`components` said the piece was.
+    """
+    left = (heading[1], -heading[0])
+    right = (-heading[1], heading[0])
+    for wanted in (left, heading, right):
+        for index, candidate in enumerate(options):
+            if (candidate[0] - at[0], candidate[1] - at[1]) == wanted:
+                return options.pop(index)
+    raise AssertionError("a corner's ways out are its own edges")
+
+
 def outline(mask: Mask) -> list[Point]:
-    """The boundary of the piece this mask holds.
+    """The boundary of the piece this mask holds, along the pixels' edges.
 
-    Moore-neighbourhood tracing with Jacob's stopping criterion: walk the ring of
-    lit pixels, at each one resuming the search from where the previous step
-    arrived, and stop on re-entering the start pixel from the direction first
-    used to leave it. Stopping merely on *reaching* the start again is the
-    classic bug — a shape with a one-pixel isthmus revisits its start mid-trace
-    and the outline comes back truncated.
+    Vertices sit at pixel corners, so a lone lit pixel comes back as its unit
+    square and the ring describes where the mask ends rather than a path through
+    its outermost pixels. Clockwise, starting at the top-left corner of the
+    topmost-leftmost lit pixel — a corner that has exactly one way in and one
+    way out, which is what lets the walk stop on reaching it again.
 
-    The walk cannot leave the piece it starts in: it only ever steps to an
-    8-adjacent lit pixel, and two pixels 8-adjacent to each other are the same
-    piece by definition. Which piece it starts in is no longer a question here —
-    :func:`components` has already made the mask hold exactly one.
+    The edges come off the row bitsets: a pixel's top edge is on the ring where
+    the row above is unlit at that column, and so on for the other three sides.
+    So only boundary pixels are ever visited, and the walk is linear in the
+    perimeter rather than in the area.
+
+    The walk cannot leave the piece it starts in: every edge belongs to a lit
+    pixel and two pixels sharing a corner are the same 8-connected piece — which
+    is the piece :func:`components` already made the mask hold exactly one of.
+    Holes have rings of their own and the walk never reaches them.
     """
     found = runs(mask)
     if not found:
         return []
-    start = (found[0][1], found[0][0])
-    height, width = len(mask), len(mask[0])
+    rows, _ = _bits(mask, pad=0)
+    height = len(rows)
+    edges: dict[Corner, list[Corner]] = {}
 
-    def lit(point: tuple[int, int]) -> bool:
-        x, y = point
-        return 0 <= x < width and 0 <= y < height and bool(mask[y][x])
+    def edge(start: Corner, end: Corner) -> None:
+        edges.setdefault(start, []).append(end)
 
-    # Clockwise from due west, which is where a scan arriving from the left came
-    # from — so the first candidate examined is the one just above the start.
-    around: Final = ((-1, 0), (-1, -1), (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1))
+    for y, row in enumerate(rows):
+        if not row:
+            continue
+        above = rows[y - 1] if y else 0
+        below = rows[y + 1] if y + 1 < height else 0
+        for x in _set_bits(row & ~above):
+            edge((x, y), (x + 1, y))
+        for x in _set_bits(row & ~(row >> 1)):
+            edge((x + 1, y), (x + 1, y + 1))
+        for x in _set_bits(row & ~below):
+            edge((x + 1, y + 1), (x, y + 1))
+        for x in _set_bits(row & ~(row << 1)):
+            edge((x, y + 1), (x, y))
 
-    traced = [start]
-    current, entered_from = start, 0
+    start: Corner = (found[0][1], found[0][0])
+    ring = [start]
+    current, heading = start, (1, 0)
     while True:
-        for step in range(1, len(around) + 1):
-            index = (entered_from + step) % len(around)
-            candidate = (current[0] + around[index][0], current[1] + around[index][1])
-            if lit(candidate):
-                # The direction the *next* search resumes from: back the way we
-                # came, which is the opposite neighbour.
-                entered_from = (index + len(around) // 2) % len(around)
-                current = candidate
-                break
-        else:
-            # An isolated pixel has no ring to walk.
-            return [(float(start[0]), float(start[1]))]
-        if current == start:
+        options = edges[current]
+        following = (
+            options.pop() if len(options) == 1 else _turned(options, at=current, heading=heading)
+        )
+        heading = (following[0] - current[0], following[1] - current[1])
+        if following == start:
             break
-        traced.append(current)
-        if len(traced) > 4 * (height + width):
-            # A boundary longer than any real one is a trace that failed to
-            # close. Returning what was walked beats looping.
-            break
-    return [(float(x), float(y)) for x, y in traced]
+        ring.append(following)
+        current = following
+    return [(float(x), float(y)) for x, y in ring]
+
+
+def smoothed(ring: Sequence[Point]) -> list[Point]:
+    """One pass of corner cutting over a closed ring.
+
+    Every edge is replaced by the two points a quarter and three quarters of the
+    way along it. On the unit-edge ring :func:`outline` produces, that turns a
+    staircase into a straight or gently curved line while moving no corner by
+    more than half a pixel — the cut is bounded by the edge length, and every
+    edge is one pixel long. Run on a ring whose straight runs had already been
+    merged into long edges it would round the real corners of a rectangle, which
+    is why it comes before any reduction.
+
+    Every produced point lies on an edge of the ring it was given, so the result
+    never leaves the traced boundary and never crosses itself.
+    """
+    if len(ring) < 3:
+        return list(ring)
+    out: list[Point] = []
+    for index, (px, py) in enumerate(ring):
+        qx, qy = ring[(index + 1) % len(ring)]
+        out.append((0.75 * px + 0.25 * qx, 0.75 * py + 0.25 * qy))
+        out.append((0.25 * px + 0.75 * qx, 0.25 * py + 0.75 * qy))
+    return out
 
 
 def _distance_to_segment(point: Point, start: Point, end: Point) -> float:
@@ -614,58 +639,49 @@ def simplified(points: Sequence[Point], *, tolerance: float) -> list[Point]:
     return [point for point, kept in zip(points, keep, strict=True) if kept]
 
 
-def tolerance_for(points: Sequence[Point], *, detail: Detail = DEFAULT_DETAIL) -> float:
-    """The pixel tolerance ``detail`` means for a region of this size.
-
-    See the module docstring: a fraction of the bounding diagonal, floored so it
-    never argues about sub-pixel detail.
-    """
-    if not points:
-        return MINIMUM_TOLERANCE
-    xs = [x for x, _ in points]
-    ys = [y for _, y in points]
-    diagonal = ((max(xs) - min(xs)) ** 2 + (max(ys) - min(ys)) ** 2) ** 0.5
-    return max(MINIMUM_TOLERANCE, EPSILON[detail] * diagonal)
-
-
 def contour(mask: Mask) -> list[Point]:
-    """Step 3 — the canonical boundary: traced, then reduced once at the floor.
+    """Step 3 — the canonical boundary: traced, smoothed, reduced once at the floor.
 
     The reduction is part of the definition rather than an optimisation, and the
     module docstring says why: Douglas-Peucker is not nested, so a client that
     re-simplifies and a server that stays authoritative can only be proved to
-    agree when both start here. At half a pixel it discards nothing a mask of
-    integer coordinates could express, and it turns a staircase of thousands of
-    single-pixel steps into the handful of segments those steps were drawing.
+    agree when both start here. At a quarter pixel it discards nothing the
+    smoothed ring could express, and it turns the tens of thousands of points a
+    large object's ring holds into the few thousand that describe its shape.
     """
-    return simplified(outline(mask), tolerance=MINIMUM_TOLERANCE)
+    return simplified(smoothed(outline(mask)), tolerance=MINIMUM_TOLERANCE)
 
 
 def _closed(kept: list[Point], *, tolerance: float) -> list[Point]:
-    """Drop the vertices Douglas-Peucker only kept because it was told to.
+    """Drop the one vertex Douglas-Peucker only kept because it was told to.
 
     The algorithm pins the first and last point of what it is given, and what it
-    is given here is a *ring* cut open at an arbitrary pixel. So the final vertex
+    is given here is a *ring* cut open at an arbitrary corner. So the final vertex
     is pinned for a reason that stops being true the moment the ring closes, and
-    it lands one pixel from the first — a stray handle on an otherwise clean
-    outline, most visible on the straight-edged shapes where it is least
+    it lands a fraction of a pixel from the first — a stray handle on an otherwise
+    clean outline, most visible on the straight-edged shapes where it is least
     excusable: an axis-aligned rectangle came back as five points.
 
     Judged by the same tolerance as everything else rather than by exact
     equality: the artifact is a near-duplicate, not a duplicate, so testing
     ``kept[0] == kept[-1]`` never fires on the case that motivates it.
+
+    Exactly one, and never a loop. Cutting the ring open pins exactly one vertex
+    artificially, and that vertex is a near-duplicate of the first — a fraction of
+    a pixel away, one edge-trace step after smoothing — so removing it barely moves
+    the closing segment and cannot push a contour point past the tolerance. A
+    second drop would be dropping a real corner the reduction chose to keep, and
+    the contour behind it would then sit further out than the polygon promises.
     """
-    while len(kept) > 3:
-        if _distance_to_segment(kept[-1], kept[-2], kept[0]) > tolerance:
-            return kept
-        kept = kept[:-1]
+    if len(kept) > 3 and _distance_to_segment(kept[-1], kept[-2], kept[0]) <= tolerance:
+        return kept[:-1]
     return kept
 
 
 def polygon_at(
-    points: Sequence[Point], *, detail: Detail = DEFAULT_DETAIL
+    points: Sequence[Point], *, tolerance: float = DEFAULT_TOLERANCE
 ) -> PolygonGeometry | None:
-    """Step 4 — that contour at the requested vertex density, or ``None``.
+    """Step 4 — that contour within ``tolerance`` pixels, or ``None``.
 
     ``None`` covers a contour with nothing in it and one too thin to have three
     distinct corners: the domain requires three points, and a two-point "polygon"
@@ -677,7 +693,6 @@ def polygon_at(
     """
     if len(points) < 3:
         return None
-    tolerance = tolerance_for(points, detail=detail)
     kept = _closed(simplified(points, tolerance=tolerance), tolerance=tolerance)
     if len(kept) < 3:
         return None
@@ -740,7 +755,7 @@ def shapes_from(
     mask: Mask,
     *,
     allowed: Sequence[GeometryType],
-    detail: Detail = DEFAULT_DETAIL,
+    tolerance: float = DEFAULT_TOLERANCE,
     at: Sequence[Point] = (),
 ) -> list[Shaped]:
     """The whole pipeline: a mask and a class's geometries in, proposals out.
@@ -749,8 +764,8 @@ def shapes_from(
     first. A class that admits polygons gets the outline of the piece the prompt
     points at; one that admits only boxes gets a single box over every piece that
     survived the noise filter, measured off the mask's own extent rather than off
-    a simplified outline's corners — which is what keeps ``detail`` from quietly
-    moving a box.
+    a simplified outline's corners — which is what keeps the tolerance from
+    quietly moving a box.
 
     **The branch is before the close, and the close is paid for once.** A close
     only ever adds pixels whose whole neighbourhood was already reachable, so it
@@ -764,8 +779,7 @@ def shapes_from(
     because an empty list is how "nothing to propose" is already said.
 
     **Nothing is ever widened.** A class admitting neither kind gets an empty
-    list, and a piece too thin to be a polygon is dropped rather than demoted to
-    a box: answering in a kind the caller did not ask for is how a suggestion
+    list: answering in a kind the caller did not ask for is how a suggestion
     arrives that the schema will refuse to store.
     """
     kind = target_kind(allowed)
@@ -783,5 +797,5 @@ def shapes_from(
     pointed = pieces[0]
     whole = Piece(x=pointed.x, y=pointed.y, mask=filled(pointed.mask))
     traced = _shifted(contour(whole.mask), piece=whole)
-    polygon = polygon_at(traced, detail=detail)
+    polygon = polygon_at(traced, tolerance=tolerance)
     return [] if polygon is None else [Shaped(geometry=polygon, contour=tuple(traced))]

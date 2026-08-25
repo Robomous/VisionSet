@@ -65,7 +65,7 @@
  */
 
 import * as SelectPrimitive from "@radix-ui/react-select";
-import { IconCheck, IconChevronDown, IconChevronUp } from "@tabler/icons-react";
+import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import {
   forwardRef,
   type ComponentPropsWithoutRef,
@@ -112,7 +112,7 @@ export const SelectTrigger = forwardRef<
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <IconChevronDown className="size-4 text-muted-foreground" aria-hidden="true" />
+        <ChevronDown className="size-4 text-muted-foreground" aria-hidden="true" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
@@ -156,7 +156,7 @@ export const SelectContent = forwardRef<
           because it is the fix `models.spec.ts` asserts.
         */}
         <SelectPrimitive.ScrollUpButton className="z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4">
-          <IconChevronUp className="size-4 text-muted-foreground" aria-hidden="true" />
+          <ChevronUp className="size-4 text-muted-foreground" aria-hidden="true" />
         </SelectPrimitive.ScrollUpButton>
         <SelectPrimitive.Viewport
           className={cn(
@@ -167,7 +167,7 @@ export const SelectContent = forwardRef<
           {children}
         </SelectPrimitive.Viewport>
         <SelectPrimitive.ScrollDownButton className="z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4">
-          <IconChevronDown className="size-4 text-muted-foreground" aria-hidden="true" />
+          <ChevronDown className="size-4 text-muted-foreground" aria-hidden="true" />
         </SelectPrimitive.ScrollDownButton>
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>
@@ -214,7 +214,7 @@ export const SelectItem = forwardRef<
       </SelectPrimitive.ItemText>
       <span className="absolute right-2 flex size-4 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
-          <IconCheck className="size-4 text-primary" aria-hidden="true" />
+          <Check className="size-4 text-primary" aria-hidden="true" />
         </SelectPrimitive.ItemIndicator>
       </span>
     </SelectPrimitive.Item>

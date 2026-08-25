@@ -45,18 +45,7 @@
  * and a hairline, no `sidebar-*` token anywhere in it.
  */
 
-import {
-  IconChevronDown,
-  IconDatabase,
-  IconDots,
-  IconLayoutGrid,
-  IconPencil,
-  IconSitemap,
-  IconStack2,
-  IconTrash,
-  IconUpload,
-  type Icon,
-} from "@tabler/icons-react";
+import { ChevronDown, Database, Grid3x3, Layers, MoreHorizontal, Network, Pencil, Trash2, type LucideIcon, Upload } from "lucide-react";
 import { cva } from "class-variance-authority";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
@@ -87,7 +76,7 @@ export const DEFAULT_PROJECT_SECTION: ProjectSection = "overview";
 
 interface SectionLabel {
   readonly label: string;
-  readonly icon: Icon;
+  readonly icon: LucideIcon;
 }
 
 /**
@@ -109,10 +98,10 @@ const navItemVariants = cva(
 );
 
 const SECTION_LABELS: Record<ProjectSection, SectionLabel> = {
-  overview: { label: "Overview", icon: IconLayoutGrid },
-  schema: { label: "Schema", icon: IconSitemap },
-  batches: { label: "Batches", icon: IconStack2 },
-  dataset: { label: "Dataset", icon: IconDatabase },
+  overview: { label: "Overview", icon: Grid3x3 },
+  schema: { label: "Schema", icon: Network },
+  batches: { label: "Batches", icon: Layers },
+  dataset: { label: "Dataset", icon: Database },
 };
 
 /** One batch the annotator can be opened on: what the `Annotate ▾` menu lists. */
@@ -251,7 +240,7 @@ function Cta({ annotate, onIngest, contentOwnsTheAction = false, layout }: Proje
       className={wide}
       onClick={onIngest}
     >
-      <IconUpload className="size-4" aria-hidden="true" />
+      <Upload className="size-4" aria-hidden="true" />
       Ingest
     </Button>
   );
@@ -277,7 +266,7 @@ function AnnotateAction({
   if (targets.length === 1 && only !== undefined) {
     return (
       <Button variant="primary" data-testid="go-annotate" className={className} onClick={() => onOpen(only.id)}>
-        <IconPencil className="size-4" aria-hidden="true" />
+        <Pencil className="size-4" aria-hidden="true" />
         Annotate
       </Button>
     );
@@ -288,9 +277,9 @@ function AnnotateAction({
         {/* Same testid and variant as the jumping form: one control with two
             shapes, and the chevron is what tells them apart. */}
         <Button variant="primary" data-testid="go-annotate" className={className}>
-          <IconPencil className="size-4" aria-hidden="true" />
+          <Pencil className="size-4" aria-hidden="true" />
           Annotate
-          <IconChevronDown className="size-4" aria-hidden="true" />
+          <ChevronDown className="size-4" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
@@ -319,20 +308,20 @@ function Overflow({ onRename, onDelete }: ProjectNavProps): JSX.Element | null {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" aria-label="More actions" data-testid="project-menu">
-          <IconDots className="size-4" aria-hidden="true" />
+          <MoreHorizontal className="size-4" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
         {onRename !== undefined && (
           <DropdownMenuItem data-testid="rename-project" onSelect={onRename}>
-            <IconPencil className="size-4" aria-hidden="true" />
+            <Pencil className="size-4" aria-hidden="true" />
             Rename
           </DropdownMenuItem>
         )}
         {onRename !== undefined && onDelete !== undefined && <DropdownMenuSeparator />}
         {onDelete !== undefined && (
           <DropdownMenuItem destructive data-testid="delete-project" onSelect={onDelete}>
-            <IconTrash className="size-4" aria-hidden="true" />
+            <Trash2 className="size-4" aria-hidden="true" />
             Delete
           </DropdownMenuItem>
         )}

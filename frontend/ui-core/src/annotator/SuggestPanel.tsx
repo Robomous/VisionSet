@@ -55,13 +55,13 @@
  */
 
 import {
-  DETAIL_STEPS,
+  MAXIMUM_TOLERANCE,
+  MINIMUM_TOLERANCE,
   vertexCount,
   isAcceptable,
   isParked,
   hasPending,
   type SuggestionState,
-  type Detail,
 } from "@visionset/annotator";
 import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
 import type { JSX, ReactNode } from "react";
@@ -125,8 +125,8 @@ export interface SuggestPanelProps {
   /** Whether the adjustments are open. Owned by the host, because `Esc` layers on it. */
   readonly adjusting?: boolean;
   readonly onAdjusting?: (open: boolean) => void;
-  /** A step of vertex density, applied without a request. */
-  readonly onDetail?: (detail: Detail) => void;
+  /** A tolerance, applied without a request. */
+  readonly onTolerance?: (tolerance: number) => void;
   /**
    * Whether the wait has lasted long enough to be worth explaining.
    *
@@ -206,7 +206,7 @@ export function SuggestPanel({
   onDiscard,
   adjusting,
   onAdjusting,
-  onDetail,
+  onTolerance,
   pendingEscalated = false,
 }: SuggestPanelProps): JSX.Element {
   /*
@@ -348,7 +348,7 @@ export function SuggestPanel({
           session={session}
           open={adjusting === true}
           {...(onAdjusting === undefined ? {} : { onOpen: onAdjusting })}
-          {...(onDetail === undefined ? {} : { onDetail })}
+          {...(onTolerance === undefined ? {} : { onTolerance })}
         />
       </EditorNotice>
     );
@@ -391,7 +391,7 @@ export function SuggestPanel({
           session={session}
           open={adjusting === true}
           {...(onAdjusting === undefined ? {} : { onOpen: onAdjusting })}
-          {...(onDetail === undefined ? {} : { onDetail })}
+          {...(onTolerance === undefined ? {} : { onTolerance })}
         />
       </EditorNotice>
     );
@@ -518,7 +518,7 @@ function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
  * below.
  */
 function hasAdjustments(session: SuggestionState): boolean {
-  return session.parameters.includes("detail");
+  return session.parameters.includes("tolerance");
 }
 
 /**
@@ -582,12 +582,12 @@ function Adjustments({
   session,
   open,
   onOpen,
-  onDetail,
+  onTolerance,
 }: {
   readonly session: SuggestionState;
   readonly open: boolean;
   readonly onOpen?: (open: boolean) => void;
-  readonly onDetail?: (detail: Detail) => void;
+  readonly onTolerance?: (tolerance: number) => void;
 }): JSX.Element | null {
   // Gated on a setting this build has a row for, not on the list being non-empty:
   // a length test would offer `Adjust the shape` over an empty box the first time a
@@ -608,22 +608,21 @@ function Adjustments({
     );
   }
 
-  const { detail } = session.adjustments;
-  const step = DETAIL_STEPS.indexOf(detail);
+  const { tolerance } = session.adjustments;
   return (
     <div
       className="mt-2 flex flex-col gap-2 border-t border-border pt-2"
       data-testid="suggest-adjustments"
     >
-      {session.parameters.includes("detail") && onDetail !== undefined && (
+      {session.parameters.includes("tolerance") && onTolerance !== undefined && (
         <div className="flex items-center justify-between gap-3">
           <span className="text-xs text-muted-foreground">Detail</span>
           <div className="flex flex-1 items-center gap-2">
             {/*
-              A slider, because three words in a row did not read as pressable and
-              gave no feedback about what had moved (#557). Three stops rather than
-              a continuous range: `Detail` is three steps, and a range that landed
-              between them would be a position the server has no answer for.
+              A doubling track: the thumb's position is log2 of the tolerance, so
+              each halving takes the same distance and the fine end of the range
+              is not squeezed into one pixel of travel. Quarter steps of the
+              exponent give a continuous feel; the brackets walk whole doublings.
 
               A native `input[type=range]` and not a primitive, because there is no
               slider primitive in this package and one control does not earn one.
@@ -632,12 +631,12 @@ function Adjustments({
             <input
               type="range"
               className="flex-1 accent-primary"
-              min={0}
-              max={DETAIL_STEPS.length - 1}
-              step={1}
-              value={step}
+              min={Math.log2(MINIMUM_TOLERANCE)}
+              max={Math.log2(MAXIMUM_TOLERANCE)}
+              step={0.25}
+              value={Math.log2(tolerance)}
               aria-label="Detail"
-              aria-valuetext={`${labelFor(detail)}, ${vertexCount(session)} points`}
+              aria-valuetext={`${px(tolerance)} px, ${vertexCount(session)} points`}
               data-testid="suggest-detail"
               // No `preventDefault` here: a range input *drags* on its default
               // action, so cancelling the press is what made this unmovable by
@@ -645,18 +644,20 @@ function Adjustments({
               // `[`, `]`, Esc and Enter are live again the moment the drag ends.
               onMouseUp={returnFocusToCanvas}
               onTouchEnd={returnFocusToCanvas}
-              onChange={(event) => onDetail(DETAIL_STEPS[Number(event.target.value)] ?? detail)}
+              onChange={(event) =>
+                onTolerance(Math.round(2 ** Number(event.target.value) * 100) / 100)
+              }
             />
             {/*
-              Step and count in one label, because they are one fact: what this
-              position costs. Tabular figures so the number does not shift the row
-              as it changes under a held key.
+              Tolerance and count in one label, because they are one fact: what
+              this position costs. Tabular figures so the number does not shift
+              the row as it changes under a held key.
             */}
             <span
               className="shrink-0 tabular-nums text-xs text-muted-foreground"
               data-testid="suggest-detail-label"
             >
-              {labelFor(detail)} · {vertexCount(session)} pts
+              {px(tolerance)} px · {vertexCount(session)} pts
             </span>
             <Chip>[ ]</Chip>
           </div>
@@ -666,7 +667,7 @@ function Adjustments({
   );
 }
 
-/** Sentence case, from the wire's own lowercase vocabulary. */
-function labelFor(detail: Detail): string {
-  return detail.charAt(0).toUpperCase() + detail.slice(1);
+/** `1.0`, `0.5`, `0.25` — one decimal for whole pixels, the exact fraction below. */
+function px(tolerance: number): string {
+  return Number.isInteger(tolerance) ? tolerance.toFixed(1) : String(tolerance);
 }

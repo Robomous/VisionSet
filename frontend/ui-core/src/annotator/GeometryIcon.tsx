@@ -1,12 +1,12 @@
 /**
  * The glyph for a drawable geometry, and there is exactly one of each.
  *
- * The tool strip is the only caller. It stays a module of its own because
- * `DESIGN.md` pins these three glyphs as a contract rather than as one
- * component's private detail.
+ * The tool strip is the only caller. It stays a module of its own because there
+ * is exactly one glyph per geometry and that mapping is worth keeping in one
+ * place rather than re-decided at each call site.
  *
  * Worth knowing before reaching for it elsewhere: a class list went back to words
- * because a square, a spline and a waypoint node are not self-describing at chip
+ * because a square, a closed path and an open path are not self-describing at chip
  * size. The strip can afford them — it is five controls learned once.
  */
 
@@ -25,12 +25,12 @@ export interface GeometryIconProps {
   readonly className?: string;
 }
 
-/** `DESIGN.md` pins the three icons. */
+/** One glyph per geometry: a closed rectangle, a closed path, an open path, or the pointer. */
 export function GeometryIcon({ tool, className = "size-4" }: GeometryIconProps): JSX.Element {
   if (tool === "bbox") return <Square className={className} />;
   if (tool === "polygon") return <Spline className={className} />;
-  // A lane is a path, and `Waypoints` is the one icon in the set that reads as an
-  // open one — `Spline` is already the polygon's and would say "closed".
+  // A lane is a path, and it must read as an OPEN one — `Spline` is already
+  // the closed shape above it, and using it here would say "closed" for a lane.
   if (tool === "polyline") return <Waypoints className={className} />;
   return <MousePointer2 className={className} />;
 }

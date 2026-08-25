@@ -269,6 +269,105 @@ test("the retired foundation vocabulary is absent from the stylesheet", () => {
   );
 });
 
+/**
+ * `components.json` carries the preset properties shadcn's own tools read, and
+ * only those: the fields its config schema defines. The schema is **strict** —
+ * `rawConfigSchema.safeParse` answers `unrecognized_keys` for anything else — so
+ * a decoded preset property the schema has no field for cannot be added here
+ * even as documentation. It would not be ignored; it would break every `shadcn`
+ * invocation that reads the file.
+ *
+ * `radius` is the property that keeps inviting the mistake: the preset decodes to
+ * `radius: medium`, and the obvious repair for "the config does not say so" is to
+ * write it in. The medium step's one home is `styles.css`'s `--radius: 0.625rem`
+ * (asserted by `tokens.test.ts`); this test is the other half, refusing the field
+ * that would look like a second home while doing nothing. Keys rather than a
+ * count, so a failure names what moved.
+ */
+const CONFIG_PATH = "frontend/ui-core/components.json";
+const SCHEMA_SUPPORTED_KEYS = [
+  "$schema",
+  "aliases",
+  "iconLibrary",
+  "menuAccent",
+  "menuColor",
+  "registries",
+  "rsc",
+  "rtl",
+  "style",
+  "tailwind",
+  "tsx",
+];
+
+test("components.json holds the schema-supported preset fields, and no others", () => {
+  const config = JSON.parse(readFileSync(path.join(REPO, CONFIG_PATH), "utf8"));
+  assert.deepEqual(
+    Object.keys(config).sort(),
+    SCHEMA_SUPPORTED_KEYS,
+    `${CONFIG_PATH} must carry exactly the fields shadcn's strict config schema defines. ` +
+      "A decoded preset property with no field here belongs in frontend/ui-core/src/styles.css " +
+      "as a value — see DESIGN.md 'Source of Truth'",
+  );
+
+  // The preset's own values, where the schema does have a field for them.
+  assert.equal(config.style, "radix-nova");
+  assert.equal(config.iconLibrary, "lucide");
+  assert.equal(config.menuColor, "inverted");
+  assert.equal(config.menuAccent, "subtle");
+  assert.equal(config.tailwind.baseColor, "neutral");
+  assert.equal(config.tailwind.css, "src/styles.css");
+});
+
+/**
+ * Lucide is the icon set, and the only one.
+ *
+ * The rule is "one icon library", not "this particular library" — the product has
+ * drawn from both, and what costs a reader is two sets on one screen, where the
+ * same idea arrives at two weights and two grids. So this guards whichever set is
+ * currently *not* in use, and the value below is the whole of what changes when
+ * that decision changes.
+ *
+ * The interesting failure is a *return*, not an original debt: an editor
+ * auto-import, or a branch that predates the swap coming back through a merge.
+ * With no manifest declaring the other package such an import fails to resolve,
+ * which is the loud half. The quiet half is the manifest — a dependency added back
+ * "because something imported it" restores the whole problem with nothing else to
+ * say so, so both halves are asserted here.
+ *
+ * Assembled from fragments so this file never holds the package's name as a
+ * contiguous string, and a repository-wide sweep for it never mistakes its own
+ * guard for a lingering usage — the trick `HEX` and `RETIRED_DECLARATIONS` above
+ * already use.
+ */
+const RETIRED_ICON_PACKAGE = ["@tabler", "icons-react"].join("/");
+
+test("no package declares a second icon set, and no source imports one", () => {
+  const listed = spawnSync("git", ["ls-files", "-z"], { cwd: REPO, encoding: "utf8" });
+  assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
+  const tracked = listed.stdout.split("\0").filter(Boolean);
+
+  const manifests = tracked.filter((name) => /(?:^|\/)package\.json$/.test(name));
+  assert.ok(manifests.length > 0, "no manifests were read, so this proves nothing");
+  const declaring = manifests.filter((name) =>
+    readFileSync(path.join(REPO, name), "utf8").includes(`"${RETIRED_ICON_PACKAGE}"`),
+  );
+  assert.deepEqual(
+    declaring,
+    [],
+    `the frontend draws one icon set, and ${RETIRED_ICON_PACKAGE} is not it. ` +
+      `A second one is a decision for DESIGN.md, not a dependency:\n${declaring.join("\n")}`,
+  );
+
+  const sources = tracked.filter((name) => SOURCE.test(name) && !GENERATED.test(name));
+  assert.ok(sources.length > 0, "no frontend sources were read, so this proves nothing");
+  const importing = sources.filter((name) =>
+    new RegExp(String.raw`(?:from|require\()\s*["']${RETIRED_ICON_PACKAGE}["']`).test(
+      readFileSync(path.join(REPO, name), "utf8"),
+    ),
+  );
+  assert.deepEqual(importing, [], `these draw from the retired icon set:\n${importing.join("\n")}`);
+});
+
 test("the tokens have exactly one home, and it is the stylesheet", () => {
   const listed = spawnSync("git", ["ls-files", "-z"], { cwd: REPO, encoding: "utf8" });
   assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);

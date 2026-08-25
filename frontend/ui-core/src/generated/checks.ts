@@ -333,8 +333,11 @@ export const checkSchemaVersionPage: Check<Schemas["SchemaVersionPage"]> =
 export const checkSourceKind: Check<Schemas["SourceKind"]> =
   /*#__PURE__*/ oneOf(["image_directory", "video"] as const);
 
+export const checkClipRange: Check<Schemas["ClipRange"]> =
+  /*#__PURE__*/ object({ "end_seconds": [true, isNumber], "start_seconds": [true, isNumber] } as const);
+
 export const checkVideoProvenanceOut: Check<Schemas["VideoProvenanceOut"]> =
-  /*#__PURE__*/ object({ "codec": [true, isString], "duration_seconds": [true, isNumber], "extraction_fps": [true, isNumber], "fps": [true, isNumber], "height": [true, isInteger], "width": [true, isInteger] } as const);
+  /*#__PURE__*/ object({ "codec": [true, isString], "duration_seconds": [true, isNumber], "extraction_fps": [true, isNumber], "fps": [true, isNumber], "height": [true, isInteger], "ranges": [true, arrayOf(checkClipRange)], "width": [true, isInteger] } as const);
 
 export const checkSourceOut: Check<Schemas["SourceOut"]> =
   /*#__PURE__*/ object({ "id": [true, isString], "kind": [true, checkSourceKind], "name": [true, isString], "project_id": [true, isString], "registered_at": [true, isString], "video": [true, either([checkVideoProvenanceOut, isNull] as const)] } as const);
@@ -345,14 +348,11 @@ export const checkSourcePage: Check<Schemas["SourcePage"]> =
 export const checkSplitAssignmentOut: Check<Schemas["SplitAssignmentOut"]> =
   /*#__PURE__*/ object({ "test": [true, arrayOf(isString)], "train": [true, arrayOf(isString)], "val": [true, arrayOf(isString)] } as const);
 
-export const checkDetail: Check<Schemas["Detail"]> =
-  /*#__PURE__*/ oneOf(["coarse", "balanced", "fine"] as const);
-
 export const checkAppliedParameters: Check<Schemas["AppliedParameters"]> =
-  /*#__PURE__*/ object({ "detail": [true, checkDetail] } as const);
+  /*#__PURE__*/ object({ "tolerance": [true, isNumber] } as const);
 
 export const checkSuggestParameter: Check<Schemas["SuggestParameter"]> =
-  /*#__PURE__*/ openOneOf(["detail"] as const);
+  /*#__PURE__*/ openOneOf(["tolerance"] as const);
 
 export const checkBboxGeometry: Check<Schemas["BboxGeometry"]> =
   /*#__PURE__*/ object({ "height": [true, isNumber], "type": [true, lit("bbox")], "width": [true, isNumber], "x": [true, isNumber], "y": [true, isNumber] } as const);

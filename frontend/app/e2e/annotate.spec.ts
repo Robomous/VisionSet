@@ -427,7 +427,7 @@ async function serveApi(
               contour: [],
             },
           ],
-          applied: { detail: "balanced" },
+          applied: { tolerance: 1 },
           // A box class, so the wire names no settings at all — which is how the
           // editor is told to render no adjustments section (#557).
           parameters: [],
@@ -3215,7 +3215,7 @@ test("a suggest request that is out says so on the panel and nowhere else", asyn
             contour: [],
           },
         ],
-        applied: { detail: "balanced" },
+        applied: { tolerance: 1 },
         parameters: [],
       } satisfies Wire["SuggestionOut"],
     });
@@ -3266,7 +3266,7 @@ test("escape takes the wait back while the request is still out", async ({ page 
         model_ref: "m@1",
         confidence: 0.5,
         regions: [],
-        applied: { detail: "balanced" },
+        applied: { tolerance: 1 },
         parameters: [],
       } satisfies Wire["SuggestionOut"],
     });
@@ -3314,13 +3314,13 @@ test("a box class is offered no adjustments at all", async ({ page }) => {
   await expect(page.getByTestId("suggest-detail")).toHaveCount(0);
 });
 
-/** A traced ring big enough that the three steps genuinely differ. */
+/** A traced ring big enough that the tolerances genuinely differ. */
 const RING = Array.from({ length: 64 }, (_, index) => {
   const angle = (index / 64) * 2 * Math.PI;
   return [Math.round(160 + 90 * Math.cos(angle)), Math.round(160 + 90 * Math.sin(angle))];
 }) satisfies [number, number][];
 
-/** A polygon answer over that ring, with `detail` declared as the one setting. */
+/** A polygon answer over that ring, with the tolerance declared as the one setting. */
 async function servePolygonSuggestion(page: Page): Promise<void> {
   await page.route("**/inference/suggest", async (route) =>
     route.fulfill({
@@ -3328,8 +3328,8 @@ async function servePolygonSuggestion(page: Page): Promise<void> {
         model_ref: "facebook/sam2-hiera-base-plus@main",
         confidence: 0.9,
         regions: [{ geometry: { type: "polygon", points: RING }, contour: RING }],
-        applied: { detail: "balanced" },
-        parameters: ["detail"],
+        applied: { tolerance: 1 },
+        parameters: ["tolerance"],
       } satisfies Wire["SuggestionOut"],
     }),
   );
@@ -3344,7 +3344,7 @@ async function drawnVertices(page: Page): Promise<number> {
 const asks = (sent: readonly Request[]): number =>
   sent.filter((one) => one.url().includes("/inference/suggest")).length;
 
-test("a polygon class steps its detail from the keyboard, with no request", async ({ page }) => {
+test("a polygon class steps its tolerance from the keyboard, with no request", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent, undefined, undefined, undefined, undefined, true);
   await servePolygonSuggestion(page);
@@ -3360,7 +3360,6 @@ test("a polygon class steps its detail from the keyboard, with no request", asyn
 
   await page.keyboard.press("[");
   const coarse = await drawnVertices(page);
-  // The claim that only a real request log can settle: no round trip.
   expect(asks(sent)).toBe(before);
 
   await page.keyboard.press("]");
@@ -3369,25 +3368,25 @@ test("a polygon class steps its detail from the keyboard, with no request", asyn
   expect(fine).toBeGreaterThan(coarse);
   expect(asks(sent)).toBe(before);
 
-  // And it stops at the end rather than wrapping round to the coarsest.
+  // Down to the floor, and then one more: it stops rather than wrapping.
   await page.keyboard.press("]");
-  expect(await drawnVertices(page)).toBe(fine);
+  const finest = await drawnVertices(page);
+  await page.keyboard.press("]");
+  expect(await drawnVertices(page)).toBe(finest);
 
+  // Back up to 2 px: 0.25 → 0.5 → 1 → 2.
+  await page.keyboard.press("[");
   await page.keyboard.press("[");
   await page.keyboard.press("[");
 
   await page.getByTestId("suggest-adjust-open").click();
-  await expect(page.getByTestId("suggest-detail-label")).toHaveText(`Coarse · ${coarse} pts`);
-  await expect(page.getByTestId("suggest-detail")).toHaveValue("0");
-
-  // Opening the section must not switch the keyboard off, which is what a control
-  // taking focus would silently do — and does, in a browser, where jsdom has no
-  // focus to move and would report this working.
-  await page.keyboard.press("]");
+  await expect(page.getByTestId("suggest-detail-label")).toHaveText(`2.0 px · ${coarse} pts`);
   await expect(page.getByTestId("suggest-detail")).toHaveValue("1");
 
-  // Escape closes the adjustments and stops there: the points and the shape are
-  // both still on screen, and the second press is what takes them.
+  // Opening the section must not switch the keyboard off.
+  await page.keyboard.press("]");
+  await expect(page.getByTestId("suggest-detail")).toHaveValue("0");
+
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("suggest-adjustments")).toHaveCount(0);
   await expect(page.getByTestId("suggestion-shape")).toBeVisible();
@@ -3409,14 +3408,14 @@ test("the preview draws its vertices, and a committed shape does not", async ({ 
   const preview = page.getByTestId("suggestion-preview");
   await expect(preview.getByTestId("suggestion-shape")).toBeVisible();
 
-  // Dashed, and carrying one dot per vertex. Without the dots the detail control
-  // moves a number and nothing anybody can see (#557).
+  // Dashed, and carrying one dot per vertex. Without the dots the tolerance control
+  // moves a number and nothing anybody can see.
   await expect(preview.locator("polygon")).toHaveAttribute("stroke-dasharray", "10 6");
   const drawn = await drawnVertices(page);
   expect(drawn).toBeGreaterThan(3);
   await expect(preview.locator("circle")).toHaveCount(drawn);
 
-  // The set follows the detail, with no request — the same fact the counter
+  // The set follows the tolerance, with no request — the same fact the counter
   // reports, read off the canvas instead.
   await page.keyboard.press("[");
   await expect(preview.locator("circle")).toHaveCount(await drawnVertices(page));
@@ -3444,7 +3443,7 @@ test("the detail slider moves under the pointer, and hands the keyboard back", a
   await page.getByTestId("suggest-adjust-open").click();
 
   const slider = page.getByTestId("suggest-detail");
-  await expect(slider).toHaveValue("1");
+  await expect(slider).toHaveValue("0");
   const before = asks(sent);
 
   // A real drag: press the thumb, travel, release. `fill()` and `click()` both
@@ -3457,27 +3456,27 @@ test("the detail slider moves under the pointer, and hands the keyboard back", a
   await page.mouse.move(track.x + track.width - 1, track.y + track.height / 2, { steps: 8 });
   await page.mouse.up();
 
-  await expect(slider).toHaveValue("2");
-  await expect(page.getByTestId("suggest-detail-label")).toContainText("Fine");
-  const fine = await drawnVertices(page);
+  await expect(slider).toHaveValue("4");
+  await expect(page.getByTestId("suggest-detail-label")).toContainText("16.0 px");
+  const coarse = await drawnVertices(page);
   // Still no round trip: the drag is arithmetic, like the brackets.
   expect(asks(sent)).toBe(before);
 
-  // Dragging the other way, to the coarsest stop. Two *client* simplifications
+  // Dragging the other way, to the finest stop. Two *client* simplifications
   // compared against each other — the answer's own geometry arrives already
-  // reduced by the server and is not one of the three steps.
+  // reduced by the server and is not at either end of the track.
   await page.mouse.move(track.x + track.width / 2, track.y + track.height / 2);
   await page.mouse.down();
   await page.mouse.move(track.x + 1, track.y + track.height / 2, { steps: 8 });
   await page.mouse.up();
-  await expect(slider).toHaveValue("0");
-  await expect(page.getByTestId("suggest-detail-label")).toContainText("Coarse");
-  expect(fine).toBeGreaterThan(await drawnVertices(page));
+  await expect(slider).toHaveValue("-2");
+  await expect(page.getByTestId("suggest-detail-label")).toContainText("0.25 px");
+  expect(await drawnVertices(page)).toBeGreaterThan(coarse);
 
   // And the canvas has its keyboard back the moment the drag ended — without
   // this the brackets, Esc and Enter are all dead and nothing says why.
-  await page.keyboard.press("]");
-  await expect(slider).toHaveValue("1");
+  await page.keyboard.press("[");
+  await expect(slider).toHaveValue("-1");
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("suggest-adjustments")).toHaveCount(0);
   await expect(page.getByTestId("suggestion-shape")).toBeVisible();
@@ -3516,4 +3515,39 @@ test("a press on the suggest panel never reaches the picture underneath", async 
   await page.keyboard.press("]");
   await expect(page.getByTestId("suggest-adjustments")).toBeVisible();
   expect(asks(sent)).toBe(before);
+});
+
+/**
+ * ## Reopening a menu that was just dismissed
+ *
+ * `DESIGN.md`'s *Motion*: a floating surface leaves on the frame it is dismissed,
+ * because an animated exit keeps Radix's dismissable layer mounted and the next
+ * press on the trigger is then read as both an open and an outside-dismiss, which
+ * cancel. These two scenarios are the presses that catch a fade being restored —
+ * both failed against `duration-100` on the way out, the first in four runs of
+ * five and the second in five.
+ *
+ * Neither uses `closeOverflow`. Its wait is what a suite does to stay honest about
+ * a surface that is still leaving; the product's contract is that there is nothing
+ * to wait for.
+ */
+test("the overflow reopens on a press straight after Escape", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  await openOverflow(page);
+  await page.keyboard.press("Escape");
+  await page.getByTestId("more-actions").click();
+  await expect(page.getByRole("menu")).toBeVisible();
+});
+
+test("the overflow reopens on a press straight after a second Escape", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  await openOverflow(page);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await page.getByTestId("more-actions").click();
+  await expect(page.getByRole("menu")).toBeVisible();
 });

@@ -230,9 +230,9 @@ beforeEach(() => {
         contour: [],
       },
     ],
-    applied: { detail: "balanced" },
+    applied: { tolerance: 1 },
     // Declared as the server declares it for a box class: nothing at all, so the
-    // panel renders no adjustments. It works none of that out for itself (#557).
+    // panel renders no adjustments. It works none of that out for itself.
     parameters: [],
   };
   suggestRefusal = null;

@@ -80,7 +80,7 @@ import {
   formatGeometries,
   toast,
 } from "@visionset/ui-core";
-import { IconPlus, IconPointer, IconSquare, IconTrash } from "@tabler/icons-react";
+import { MousePointer2, Plus, Square, Trash2 } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 /** The demo schema, borrowed so the swatches show the real palette rule. */
@@ -204,13 +204,13 @@ export function Styleguide(): JSX.Element {
         <Section title="Buttons" description="Five variants, four sizes.">
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary" data-testid="button-primary">
-              <IconPlus className="size-4" aria-hidden="true" />
+              <Plus className="size-4" aria-hidden="true" />
               New project
             </Button>
             <Button variant="secondary">Cancel</Button>
             <Button variant="ghost">Ghost</Button>
             <Button variant="destructive">
-              <IconTrash className="size-4" aria-hidden="true" />
+              <Trash2 className="size-4" aria-hidden="true" />
               Delete
             </Button>
             <Button variant="link">Learn more</Button>
@@ -220,7 +220,7 @@ export function Styleguide(): JSX.Element {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="primary" size="icon" aria-label="Select (V)">
-                  <IconPointer className="size-4" aria-hidden="true" />
+                  <MousePointer2 className="size-4" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right">Select (V)</TooltipContent>
@@ -228,7 +228,7 @@ export function Styleguide(): JSX.Element {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="Box (B)">
-                  <IconSquare className="size-4" aria-hidden="true" />
+                  <Square className="size-4" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right">Box (B)</TooltipContent>
@@ -458,7 +458,7 @@ export function Styleguide(): JSX.Element {
             meta="11 images · ingested Aug 7, 2026"
             actions={
               <Button variant="secondary">
-                <IconPlus className="size-4" aria-hidden="true" />
+                <Plus className="size-4" aria-hidden="true" />
                 Ingest
               </Button>
             }

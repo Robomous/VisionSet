@@ -32,14 +32,12 @@
  *    "what a product does about a missing tool" is a product decision it is not
  *    the job of a demo to make.
  *
- * ## The icons are hand-drawn, and that is a deferral rather than a preference
+ * ## The icons are hand-drawn
  *
- * `DESIGN.md` pins lucide-react (MousePointer2 / Square / Spline) and the design
- * system is the
- * task that installs it. Adding a dependency to `@visionset/app` so a demo can
- * draw three glyphs would put the choice in the wrong milestone, so these are
- * three inline paths at lucide's 24-unit grid and 2px stroke. They are replaced,
- * not extended, when the real icon set arrives.
+ * Three inline paths on a 24-unit grid at 2px stroke. This strip draws its own
+ * chrome from `./theme` and imports nothing but the engine, which is the point of
+ * it — the product's own geometry glyphs are `GeometryIcon`'s, and they are not
+ * what a demo of the headless engine should be exercising.
  */
 
 import { drawableGeometries, hotkeyForClass } from "@visionset/annotator";
@@ -219,7 +217,7 @@ function IconButton({
   );
 }
 
-/** lucide's grid and stroke, three paths of it. See the header note. */
+/** Three paths on the grid and stroke the header note describes. */
 function ToolIcon({ tool }: { readonly tool: Tool }): JSX.Element {
   return (
     <svg

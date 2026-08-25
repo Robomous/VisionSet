@@ -104,7 +104,25 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: resolveWorkers(),
   timeout: 20_000,
-  expect: { timeout: 5_000 },
+  expect: {
+    timeout: 5_000,
+    /**
+     * Strict on purpose, and it stayed strict.
+     *
+     * `threshold` is per-pixel colour tolerance and `maxDiffPixels` is how many may
+     * differ at all; both are at their least forgiving because the first run was
+     * already stable in the environment the `visual` project pins. A tolerance
+     * added before a failure is understood is a tolerance that hides the next
+     * regression, so the order is: make the state deterministic, then compare
+     * exactly, and only widen with a reason written next to the number.
+     */
+    toHaveScreenshot: {
+      animations: "disabled",
+      caret: "hide",
+      scale: "css",
+      maxDiffPixels: 0,
+    },
+  },
   reporter: process.env.CI
     ? [["github"], ["html", { open: "never" }]]
     : [["list"]],
@@ -132,5 +150,44 @@ export default defineConfig({
   // Chromium only, as v1 was. The subject of every scenario here is pointer and
   // keyboard semantics, and the React adapter implements those one way; tripling
   // the browser download would buy rendering coverage nothing in this suite asserts.
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: VIEWPORT } }],
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"], viewport: VIEWPORT },
+      // The visual project owns these; running them here too would compare a
+      // reference image against a second environment and call the difference a
+      // regression.
+      testIgnore: /visual\.spec\.ts$/,
+    },
+    {
+      /**
+       * The reference images, and the environment that is allowed to produce them.
+       *
+       * A screenshot compares two renderings, so anything the renderer reads has to
+       * be stated rather than inherited. The locale decides what `toLocaleDateString`
+       * writes into a "Created" cell, the timezone decides which day it lands on, and
+       * `deviceScaleFactor` decides how many pixels each CSS pixel becomes — a
+       * baseline captured at 2 and compared at 1 differs everywhere at once.
+       *
+       * These run in one Linux Chromium and nowhere else: baselines from a second OS
+       * would disagree about font rasterisation, and the disagreement would be
+       * reported as a product regression. The Docker command that owns them is in
+       * `docs/content/architecture/frontend/visual-baselines.md`.
+       */
+      name: "visual",
+      testMatch: /visual\.spec\.ts$/,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: VIEWPORT,
+        deviceScaleFactor: 1,
+        locale: "en-US",
+        timezoneId: "UTC",
+        // Motion is settled by `expect.toHaveScreenshot`'s `animations: "disabled"`
+        // rather than by asking the context for reduced motion. The product honours
+        // `prefers-reduced-motion` by collapsing its animations, so asking for it
+        // here would photograph that mode instead of the ordinary one — a reference
+        // image of a setting most people do not have.
+      },
+    },
+  ],
 });

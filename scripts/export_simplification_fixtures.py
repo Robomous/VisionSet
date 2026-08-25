@@ -1,7 +1,7 @@
 """Export simplification golden cases to tests/fixtures/simplification.json.
 
-The editor re-runs `detail` locally so that moving it costs no round trip, while
-the kernel stays authoritative on what is finally written. Those are two
+The editor re-runs the tolerance locally so that moving it costs no round trip,
+while the kernel stays authoritative on what is finally written. Those are two
 implementations of one algorithm, and the only thing that makes "they agree" a
 fact rather than a hope is a set of inputs both are held to.
 
@@ -16,10 +16,10 @@ It carries **contours rather than masks**, because a contour is where the two
 implementations meet: everything before it needs a segmenter's output and runs
 only here, and everything after it has to give the same answer in both places.
 The contours are produced by the real pipeline from shapes chosen to exercise
-what can differ — a curve whose vertex count actually moves between steps, a
+what can differ — a curve whose vertex count actually moves with the tolerance, a
 rectangle whose closing artifact has to be dropped identically, a shape small
-enough that the tolerance floor decides instead of the ratio, and one too thin
-to be a polygon at all.
+enough that the floor keeps nearly all of it, and one too thin to be a polygon
+at all.
 
 Usage: uv run python scripts/export_simplification_fixtures.py
 """
@@ -31,17 +31,14 @@ import math
 from pathlib import Path
 from typing import Any
 
-from visionset.inference.masks import (
-    EPSILON,
-    MINIMUM_TOLERANCE,
-    contour,
-    polygon_at,
-    tolerance_for,
-)
-from visionset.kernel.domain import Detail
+from visionset.inference.masks import contour, polygon_at
+from visionset.kernel.domain import DEFAULT_TOLERANCE, MAXIMUM_TOLERANCE, MINIMUM_TOLERANCE
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_PATH = "tests/fixtures/simplification.json"
+
+TOLERANCES: list[float] = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0]
+"""The doubling ladder from the floor to the ceiling — every stop the brackets reach."""
 
 
 def disc(radius: int) -> list[list[bool]]:
@@ -75,42 +72,40 @@ def blob(radius: int, lobes: int) -> list[list[bool]]:
 
 CASES: list[tuple[str, list[list[bool]]]] = [
     # A curve: every step keeps a different number of vertices, so a simplifier
-    # that ignored `detail` entirely would be caught here and nowhere else.
+    # that ignored the tolerance entirely would be caught here and nowhere else.
     ("disc", disc(60)),
     ("blob", blob(70, 5)),
     # Straight edges: the ring is cut open at an arbitrary pixel and the closing
     # artifact has to be dropped identically, or one side answers five corners.
     ("rectangle", rect(10, 10, 60, 60)),
     ("thin-rectangle", rect(10, 10, 80, 14)),
-    # Small enough that the half-pixel floor decides rather than the ratio, which
-    # is a different branch of `tolerance_for` and the one a port most easily
-    # leaves out.
+    # Small enough that the floor keeps most of the ring: the case where the
+    # finest setting and the contour nearly coincide.
     ("tiny-disc", disc(4)),
-    # Two points: below what a polygon can be, and both sides must refuse.
-    ("two-pixels", rect(10, 10, 11, 10)),
+    # An empty mask: no contour at all, and both sides must refuse.
+    ("nothing", [[False] * 20 for _ in range(20)]),
 ]
 
 
 def build_fixture() -> dict[str, Any]:
     return {
         "minimum_tolerance": MINIMUM_TOLERANCE,
-        "epsilon": {step.value: EPSILON[step] for step in Detail},
+        "default_tolerance": DEFAULT_TOLERANCE,
+        "maximum_tolerance": MAXIMUM_TOLERANCE,
+        "tolerances": TOLERANCES,
         "cases": [
             {
                 "name": name,
                 "contour": [list(point) for point in contour(mask)],
-                "tolerance": {
-                    step.value: tolerance_for(contour(mask), detail=step) for step in Detail
-                },
-                "polygon": {step.value: _points(mask, step) for step in Detail},
+                "polygon": {str(t): _points(mask, t) for t in TOLERANCES},
             }
             for name, mask in CASES
         ],
     }
 
 
-def _points(mask: list[list[bool]], step: Detail) -> list[list[float]] | None:
-    polygon = polygon_at(contour(mask), detail=step)
+def _points(mask: list[list[bool]], tolerance: float) -> list[list[float]] | None:
+    polygon = polygon_at(contour(mask), tolerance=tolerance)
     return None if polygon is None else [list(point) for point in polygon.points]
 
 

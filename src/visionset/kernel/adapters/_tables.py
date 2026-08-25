@@ -201,16 +201,22 @@ class SourceRow(Base):
 #: collide with itself, which is most of what this index is for. ``0`` cannot be
 #: confused with a real rate: ``VideoProvenance.extraction_fps`` is ``gt=0``.
 #:
+#: The fifth term is the canonical clip-range selection. ``_video_to_json``
+#: omits the ``ranges`` key when the selection is empty, so a whole-clip row —
+#: written before ranges existed or after — always lands on ``''``, and a row
+#: that names ranges lands on its one canonical JSON spelling.
+#:
 #: This is SQL reading a JSON column, which the module docstring above reserves
 #: for values "nothing ever queries". An index is not a query: no service gains
 #: a JSON path, ``_source_to_domain`` still rehydrates ``VideoProvenance`` whole,
 #: and the doctrine's purpose — no service building SQL over JSON — is intact.
 SOURCE_ORIGIN_UNIQUE = Index(
-    "uq_source_project_kind_path_fps",
+    "uq_source_project_kind_path_fps_ranges",
     SourceRow.project_id,
     SourceRow.kind,
     SourceRow.path,
     text("coalesce(json_extract(video, '$.extraction_fps'), 0)"),
+    text("coalesce(json_extract(video, '$.ranges'), '')"),
     unique=True,
 )
 

@@ -96,7 +96,7 @@
  * omission.
  */
 
-import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
@@ -709,8 +709,11 @@ export function SchemaEditor({
             now"; there is no now — a published version is immutable, and the
             navigator is the way back to the one that can be edited. Rendering it
             greyed would also leave it in the DOM, where a test could click it. */}
+        {/* The row wraps rather than widening the page: the note field and the
+            two controls come to 460px, which stops fitting below about 500px.
+            Nova buttons do not shrink, by design, so the row is what gives. */}
         {past === undefined && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Optional, and unlabelled beyond its placeholder because it is one
               field: a version's commit message, written once at publish. There is
               no edit path for it afterwards, so this is the only place it exists. */}
@@ -718,7 +721,8 @@ export function SchemaEditor({
             aria-label="Why this version"
             placeholder="Why this version? (optional)"
             data-testid="version-note"
-            className="w-56"
+            // Full width while the row is wrapped, its own width once the row fits.
+            className="w-full min-w-0 sm:w-56"
             disabled={draftLocked}
             value={note}
             onChange={(event) => {
@@ -732,7 +736,7 @@ export function SchemaEditor({
             disabled={draftLocked}
             onClick={addClass}
           >
-            <IconPlus className="size-4" aria-hidden="true" />
+            <Plus className="size-4" aria-hidden="true" />
             Add class
           </Button>
           <Button
@@ -1244,7 +1248,7 @@ function ClassDetail({
               disabled={locked}
               onClick={onRemove}
             >
-              {checking ? "Checking…" : <IconTrash className="size-4" aria-hidden="true" />}
+              {checking ? "Checking…" : <Trash2 className="size-4" aria-hidden="true" />}
             </Button>
           </div>
         </CardAction>

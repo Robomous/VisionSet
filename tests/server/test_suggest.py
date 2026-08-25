@@ -177,15 +177,15 @@ def block(x0: int, y0: int, x1: int, y1: int) -> list[list[bool]]:
     ]
 
 
-#: Big enough that the half-pixel tolerance floor is not what decides the vertex
-#: count. On the ordinary fixture asset every `detail` step lands on the floor
+#: Big enough that the quarter-pixel tolerance floor is not what decides the vertex
+#: count. On the ordinary fixture asset every tolerance step lands on the floor
 #: and answers 20 vertices, which reports a working control and a dead one
 #: identically.
 ROOMY = (200, 200)
 
 
 def disc(radius: int = 70, frame: tuple[int, int] = ROOMY) -> list[list[bool]]:
-    """A filled circle — a shape whose vertex count actually moves with `detail`."""
+    """A filled circle — a shape whose vertex count actually moves with tolerance."""
     width, height = frame
     cx, cy = width // 2, height // 2
     return [
@@ -476,7 +476,7 @@ def test_a_click_comes_back_as_a_polygon_with_its_confidence_and_model(
     assert body["confidence"] == pytest.approx(0.82)
     (region,) = body["regions"]
     assert region["geometry"]["type"] == "polygon"
-    assert region["geometry"]["points"] == [[2.0, 3.0], [12.0, 3.0], [12.0, 9.0], [2.0, 9.0]]
+    assert region["geometry"]["points"] == [[2.25, 3.0], [12.75, 3.0], [13.0, 9.75], [2.25, 10.0]]
 
 
 def test_a_tested_http_connection_suggests_through_its_endpoint(
@@ -614,7 +614,7 @@ def test_a_request_that_sends_no_parameters_gets_the_defaults_back(
 
     body = ask(client, project=project, asset=asset, connection=connection).json()
 
-    assert body["applied"] == {"detail": "balanced"}
+    assert body["applied"] == {"tolerance": 1.0}
 
 
 def test_the_answer_echoes_the_parameters_it_was_given(
@@ -628,10 +628,10 @@ def test_the_answer_echoes_the_parameters_it_was_given(
         project=project,
         asset=asset,
         connection=connection,
-        detail="fine",
+        tolerance=4.0,
     ).json()
 
-    assert body["applied"] == {"detail": "fine"}
+    assert body["applied"] == {"tolerance": 4.0}
 
 
 def test_a_polygon_class_is_told_the_one_parameter_applies(
@@ -642,7 +642,7 @@ def test_a_polygon_class_is_told_the_one_parameter_applies(
 
     body = ask(client, project=project, asset=asset, connection=connection).json()
 
-    assert body["parameters"] == ["detail"]
+    assert body["parameters"] == ["tolerance"]
 
 
 def test_a_box_class_is_told_nothing_applies(
@@ -651,7 +651,7 @@ def test_a_box_class_is_told_nothing_applies(
     """What the editor renders on a box class, and the whole of why it renders it.
 
     A client works none of this out: an empty list is what tells it to render no
-    adjustments at all. Remove `detail` from the polygon row of
+    adjustments at all. Remove `tolerance` from the polygon row of
     `PARAMETER_APPLIES_TO` and the assertion above goes red; declare it for a box
     and this one does.
     """
@@ -692,14 +692,14 @@ def test_an_answer_with_nothing_in_it_still_carries_its_controls(
 def test_a_polygon_carries_the_contour_it_was_reduced_from(
     client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
 ) -> None:
-    """What lets the editor re-run `detail` locally instead of asking again."""
+    """What lets the editor re-run the tolerance locally instead of asking again."""
     connection = a_connection(client)
     asset = an_asset(client, runner, project, tmp_path)
 
     (region,) = ask(client, project=project, asset=asset, connection=connection).json()["regions"]
 
     assert len(region["contour"]) >= len(region["geometry"]["points"])
-    assert region["contour"][0] == [2.0, 3.0], "the traced boundary, in the asset's own pixels"
+    assert region["contour"][0] == [2.25, 3.0], "the traced boundary, in the asset's own pixels"
 
 
 def test_a_coarser_setting_comes_back_with_no_more_vertices(
@@ -709,7 +709,7 @@ def test_a_coarser_setting_comes_back_with_no_more_vertices(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`detail` reaching the shape at all, over HTTP.
+    """The tolerance reaching the shape at all, over HTTP.
 
     A disc rather than the rectangle the other tests use: a rectangle is four
     corners at every setting, so it would report a working control and a dead one
@@ -721,11 +721,11 @@ def test_a_coarser_setting_comes_back_with_no_more_vertices(
 
     counts = [
         len(
-            ask(client, project=project, asset=asset, connection=connection, detail=step).json()[
+            ask(client, project=project, asset=asset, connection=connection, tolerance=t).json()[
                 "regions"
             ][0]["geometry"]["points"]
         )
-        for step in ("coarse", "balanced", "fine")
+        for t in (8.0, 2.0, 0.5)
     ]
     assert counts[0] < counts[1] < counts[2], counts
 
@@ -784,16 +784,32 @@ def test_a_setting_the_request_no_longer_takes_is_refused(
     )
 
 
-def test_a_detail_step_the_vocabulary_does_not_have_is_refused(
+def test_a_tolerance_outside_the_range_is_refused_rather_than_clamped(
     client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
 ) -> None:
-    """A closed vocabulary, refused by the schema rather than silently defaulted."""
     connection = a_connection(client)
     asset = an_asset(client, runner, project, tmp_path)
 
-    answer = ask(client, project=project, asset=asset, connection=connection, detail="sharpest")
+    assert (
+        ask(client, project=project, asset=asset, connection=connection, tolerance=0.1).status_code
+        == 422
+    )
+    assert (
+        ask(client, project=project, asset=asset, connection=connection, tolerance=17).status_code
+        == 422
+    )
 
-    assert answer.status_code == 422
+
+def test_the_retired_setting_is_an_unknown_field(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    assert (
+        ask(client, project=project, asset=asset, connection=connection, detail="fine").status_code
+        == 422
+    )
 
 
 # --- when the machine cannot carry it ----------------------------------------

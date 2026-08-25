@@ -12,8 +12,9 @@ ingested more than once, and the promise is that the same source yields the same
 assets. That promise only means something if the parameters are part of what
 "the same source" *is* — put them on the job and two runs of one source could
 legitimately disagree, leaving idempotency with nothing to be measured against.
-The consequence is deliberate: one clip registered at 1 fps and again at 5 fps is
-two sources over one file, not one source with a history.
+The consequence is deliberate: one clip registered at 1 fps and again at 5 fps —
+or over different clip ranges — is two sources over one file, not one source
+with a history.
 
 **Paths are canonicalized once**, by :func:`canonical_path`, so ``./data`` and
 ``/abs/data`` are one source rather than two. See that function for what
@@ -22,6 +23,8 @@ canonicalization does and does not promise.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path, PurePath
@@ -78,6 +81,82 @@ def canonical_path(path: Path) -> str:
     return str(path.resolve(strict=True))
 
 
+class TimeRange(BaseModel):
+    """One half-open stretch of a clip: ``start_seconds <= t < end_seconds``.
+
+    Half-open on the extraction grid: the grid point at ``start_seconds`` is
+    inside, the one at ``end_seconds`` is not, so two ranges meeting at a
+    boundary share no frame and ``ceil(end*fps) - ceil(start*fps)`` counts
+    exactly what extraction emits.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    start_seconds: float = Field(ge=0)
+    end_seconds: float
+
+    @model_validator(mode="after")
+    def _end_is_after_start(self) -> TimeRange:
+        if self.end_seconds <= self.start_seconds:
+            raise ValueError(
+                f"a range must end after it starts, got [{self.start_seconds}, {self.end_seconds})"
+            )
+        return self
+
+
+def canonical_ranges(
+    ranges: Iterable[TimeRange], *, duration_seconds: float
+) -> tuple[TimeRange, ...]:
+    """The one spelling of a range selection, so identity can compare it.
+
+    Clamps to ``[0, duration_seconds]``, drops what the clamp emptied, sorts by
+    start, and merges overlapping and adjacent ranges — "0-3 plus 2-5" and
+    "0-5" are the same selection. A selection covering the whole clip
+    canonicalizes to the **empty** tuple, so "whole clip" has exactly one
+    identity spelling: the one a caller who selected nothing already has.
+    """
+    clamped = sorted(
+        (range_.start_seconds, min(range_.end_seconds, duration_seconds))
+        for range_ in ranges
+        if range_.start_seconds < duration_seconds
+    )
+    merged: list[tuple[float, float]] = []
+    for start, end in clamped:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    if merged == [(0.0, duration_seconds)]:
+        return ()
+    return tuple(TimeRange(start_seconds=start, end_seconds=end) for start, end in merged)
+
+
+def grid_bounds(ranges: Iterable[TimeRange], *, fps: float) -> tuple[tuple[int, int], ...]:
+    """Each range as ``[a, b)`` in grid indices: ``ceil(start*fps), ceil(end*fps)``.
+
+    The same numbers build the extraction filter and the expected count, which
+    is what keeps the estimate and the emitted frames from disagreeing.
+    """
+    return tuple(
+        (math.ceil(range_.start_seconds * fps), math.ceil(range_.end_seconds * fps))
+        for range_ in ranges
+    )
+
+
+def expected_frames(ranges: Iterable[TimeRange], *, duration_seconds: float, fps: float) -> int:
+    """How many grid points the selection holds — exactly what extraction emits.
+
+    Per range ``ceil(end*fps) - ceil(start*fps)``; an empty selection is the
+    whole clip, ``ceil(duration*fps)``. The grid includes t = 0, which is what
+    the earlier ``floor`` spelling missed by one on every fractional product.
+    The ingest screen mirrors this function; the two must stay one formula.
+    """
+    bounds = grid_bounds(ranges, fps=fps)
+    if not bounds:
+        return math.ceil(duration_seconds * fps)
+    return sum(b - a for a, b in bounds)
+
+
 class VideoProvenance(BaseModel):
     """What a clip was, and how we chose to cut it.
 
@@ -89,6 +168,11 @@ class VideoProvenance(BaseModel):
     across builds — see ``ports/video_processor.py`` — so these numbers describe
     the file, not a promise about what a later re-ingest will produce.
 
+    :attr:`ranges` is the other half of the cut beside :attr:`extraction_fps`:
+    which stretches of the clip extraction reads, empty meaning the whole clip.
+    Always stored canonical — see :func:`canonical_ranges` — and the validator
+    refuses anything else rather than quietly rewriting a frozen value.
+
     Frozen, like every other value in the domain that is a pure function of some
     bytes and a choice.
     """
@@ -97,6 +181,15 @@ class VideoProvenance(BaseModel):
 
     metadata: VideoMetadata
     extraction_fps: float = Field(gt=0)
+    ranges: tuple[TimeRange, ...] = ()
+
+    @model_validator(mode="after")
+    def _ranges_are_canonical(self) -> VideoProvenance:
+        if self.ranges != canonical_ranges(
+            self.ranges, duration_seconds=self.metadata.duration_seconds
+        ):
+            raise ValueError("ranges must be canonical; pass them through canonical_ranges")
+        return self
 
 
 class Source(BaseModel):

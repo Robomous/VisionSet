@@ -225,8 +225,8 @@ function SuggestedShape({
         is not one — selection carries the panel row, the delete key and the
         keyboard rules a preview must not have. So it gets its own rule: the
         vertices are up the whole time the preview is, undecimated at every step,
-        because where precision was gained or lost *is* what `detail` is about and
-        a counter alone made it a blind control (#557).
+        because where precision was gained or lost *is* what the tolerance is about and
+        a counter alone made it a blind control.
 
         Polygons only. A box has no vertex list — its corners are grips, and a
         preview has nothing to drag.

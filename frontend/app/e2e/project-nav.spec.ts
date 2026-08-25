@@ -315,3 +315,48 @@ test("the column's items are real links, so the section has an address before it
   await expect(page.getByTestId("schema-editor")).toBeVisible();
   await expect(page.getByTestId("nav-schema")).toHaveAttribute("aria-current", "page");
 });
+
+/**
+ * The product's responsive floor, asserted rather than eyeballed.
+ *
+ * A page that scrolls sideways is a defect; a *local* scroller that does not
+ * widen the page is not, and this file's own strip is deliberately one. So the
+ * assertion is on the document, which is the thing a user drags.
+ *
+ * Every width here caught something real: the schema's action row came to 460px
+ * and overflowed to about 500px, the dataset tabs could not shrink past their
+ * labels and counts, and the gallery's batch actions and its state filter each
+ * widened the page on their own. A regression in any of them is a sideways
+ * scrollbar on a screen somebody works in all day.
+ *
+ * One test per route rather than one sweep: fifteen navigations in a single test
+ * runs past the suite's 20s budget, and a timeout reads as "the floor is broken"
+ * when it means "the test did too much".
+ */
+const FLOOR_WIDTHS = [320, 375, 480] as const;
+
+for (const route of [...SECTIONS, "batches-detail"] as const) {
+  const path =
+    route === "batches-detail"
+      ? `/projects/${PROJECT}/batches/${BATCH}`
+      : `/projects/${PROJECT}/${route}`;
+
+  test(`${route} does not scroll the document sideways at the responsive floor`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: FLOOR_WIDTHS[0], height: 800 });
+    await openCold(page, path);
+    await expect(page.getByTestId("project-tabs")).toBeVisible();
+
+    for (const width of FLOOR_WIDTHS) {
+      await page.setViewportSize({ width, height: 800 });
+      const overflow = await page.evaluate(() => {
+        const de = document.documentElement;
+        return de.scrollWidth - de.clientWidth;
+      });
+      expect(overflow, `${path} at ${width}px scrolls the document sideways`).toBeLessThanOrEqual(
+        0,
+      );
+    }
+  });
+}

@@ -18,14 +18,30 @@ import { cn } from "../lib/cn";
 export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 
+/**
+ * The enter animation, and no exit animation — the absence is the load-bearing
+ * part.
+ *
+ * An animated exit keeps Radix's content mounted for its duration after `open`
+ * goes false, and the dismissable layer stays mounted with it. A press on the
+ * trigger inside that window is then read twice: the trigger toggles the menu
+ * open, and the layer still listening reads the same pointer-down as an
+ * interaction *outside* itself and dismisses. The two cancel and the menu never
+ * appears. A hundred milliseconds is well inside the gap between an `Escape` and
+ * the click after it, so a fast hand hit this routinely rather than rarely.
+ *
+ * `DESIGN.md`'s "fast and quiet" is the principle it broke — motion orients or
+ * confirms and never makes anyone wait — so the menu leaves on the frame it is
+ * dismissed. Restoring a fade here reintroduces the swallow;
+ * `annotate.spec.ts` holds the two presses that prove it.
+ */
 const SURFACE =
   "dark z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-32 " +
   "origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto " +
   "rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 " +
   "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 " +
   "data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 " +
-  "data-[state=closed]:overflow-hidden data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 " +
-  "data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
+  "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95";
 
 export const DropdownMenuContent = forwardRef<
   ElementRef<typeof DropdownMenuPrimitive.Content>,

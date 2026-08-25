@@ -163,10 +163,14 @@ describe("ProjectNav", () => {
     expect(screen.getByTestId("project-menu")).toBeTruthy();
   });
 
-  it("is drawn with Tabler only", () => {
+  it("draws from the one icon set and no other", () => {
     // `import.meta.url` is an `http://localhost/` URL under jsdom, so the path is
     // resolved from the package root vitest runs in rather than from this module.
     const source = readFileSync(resolve(process.cwd(), "src/patterns/ProjectNav.tsx"), "utf8");
-    expect(source).not.toMatch(/lucide-react/);
+    // Both directions: the set it draws, and the one it must not reach back for.
+    // Asserting only the absence would pass for a file that had stopped drawing
+    // icons at all.
+    expect(source).toMatch(/lucide-react/);
+    expect(source).not.toMatch(/@tabler\/icons-react/);
   });
 });

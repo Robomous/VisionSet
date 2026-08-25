@@ -108,7 +108,7 @@ import {
   refused,
   selectOnly,
   selectionOf,
-  steppedDetail,
+  steppedTolerance,
   suggestClassFor,
   suggestGeometriesFor,
   suggestibleClassIn,
@@ -116,13 +116,12 @@ import {
   useAnnotatorSnapshot,
   usePendingIndicator,
   withClass,
-  withDetail,
   withPoint,
+  withTolerance,
   type Answer,
   type AnnotatorStore,
   type AnnotatorView,
   type Clipboard,
-  type Detail,
   type Point,
   type Polarity,
   type Suggestion,
@@ -131,20 +130,7 @@ import {
   type Viewport,
 } from "@visionset/annotator";
 import { AnnotatorStore as Store } from "@visionset/annotator";
-import {
-  ArrowLeft,
-  Check,
-  CheckCheck,
-  ChevronLeft,
-  ChevronRight,
-  CircleHelp,
-  Grid3x3,
-  MonitorSmartphone,
-  MoreHorizontal,
-  SkipForward,
-  TriangleAlert,
-  Undo2,
-} from "lucide-react";
+import { ArrowLeft, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, Eye, Grid3x3, MonitorSmartphone, MoreHorizontal, SkipForward, TriangleAlert, Undo2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -182,7 +168,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../primitives/Menu";
-import { Eye } from "lucide-react";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { CanvasReassign } from "./CanvasReassign";
 import { EditorNotice, EditorNotices } from "./EditorNotice";
@@ -597,21 +582,17 @@ function JobScreen({
   const [activeTool, setActiveTool] = useState<Tool | null>(null);
 
   /**
-   * The suggest tool's vertex density, held here for `activeClass`'s reason.
+   * The suggest tool's tolerance, held here for `activeClass`'s reason.
    *
    * A choice about how to work rather than a fact about the workspace, so it is
    * client memory and never a write: two people annotating the same batch may
-   * reasonably want different amounts of detail, and a shared setting would make
-   * one of them keep changing the other's. It is also not `prefs.ts` — that tier
-   * is a preference remembered across visits, and this is a session, in the same
+   * reasonably want different tolerances, and a shared setting would make one of
+   * them keep changing the other's. It is also not `prefs.ts` — that tier is a
+   * preference remembered across visits, and this is a session, in the same
    * scope the clipboard and the drawing class have. Leaving the job forgets it,
    * moving to the next frame does not.
-   *
-   * The other two settings deliberately do not live here. They change the mask
-   * rather than the reading of it, so carrying one to the next frame would mean
-   * quietly asking a different question about a different picture.
    */
-  const [detail, setDetail] = useState<Detail>(DEFAULT_ADJUSTMENTS.detail);
+  const [tolerance, setTolerance] = useState<number>(DEFAULT_ADJUSTMENTS.tolerance);
   /**
    * Every route to a drawing class goes through here — the panel's list, the tool
    * strip, a digit hotkey and the canvas's own `activate-class`.
@@ -689,8 +670,8 @@ function JobScreen({
       clipboard={clipboard}
       activeClass={activeClass}
       activeTool={activeTool}
-      detail={detail}
-      onDetail={setDetail}
+      tolerance={tolerance}
+      onTolerance={setTolerance}
       onActivateClass={activateClass}
       onActivateTool={setActiveTool}
       onNavigate={setChosen}
@@ -766,9 +747,9 @@ interface WorkspaceProps {
   } | null;
   /** Held by `JobScreen`, so `mod+c` here and `mod+v` on the next frame is one clipboard. */
   readonly clipboard: Clipboard;
-  /** The suggest tool's vertex density, held one level up so it outlives a frame. */
-  readonly detail: Detail;
-  readonly onDetail: (detail: Detail) => void;
+  /** The suggest tool's tolerance, held one level up so it outlives a frame. */
+  readonly tolerance: number;
+  readonly onTolerance: (tolerance: number) => void;
   /** Also `JobScreen`'s, and for a sharper reason — see the note where it is declared. */
   readonly activeClass: string | null;
   /** `JobScreen`'s too, and at that scope for the same reason the class is. */
@@ -818,8 +799,8 @@ function Workspace({
   loaded,
   counts,
   clipboard,
-  detail,
-  onDetail: setDetail,
+  tolerance,
+  onTolerance: setTolerance,
   activeClass,
   activeTool,
   onActivateClass: armClass,
@@ -1052,9 +1033,9 @@ function Workspace({
     const labelClass = suggestClassFor(store.document.schema, activeClass);
     if (labelClass === null) return;
     activateClass(labelClass);
-    // The vertex density the job is already working at, so arming the tool on
-    // the next frame does not quietly go back to the middle setting.
-    setSession(armed(labelClass, { ...DEFAULT_ADJUSTMENTS, detail }));
+    // The tolerance the job is already working at, so arming the tool on the
+    // next frame does not quietly go back to the default.
+    setSession(armed(labelClass, { ...DEFAULT_ADJUSTMENTS, tolerance }));
   }
 
   /**
@@ -1130,26 +1111,25 @@ function Workspace({
     setSession(cleared(session));
   }
 
-  /** A step of vertex density, applied here: no request, so a held key is free. */
-  function applyDetail(next: Detail): void {
+  /** A tolerance applied here: no request, so a held key is free. */
+  function applyTolerance(next: number): void {
     if (session === null) return;
-    setSession(withDetail(session, next));
-    // Lifted, so the choice outlives this frame. See `JobScreen`'s own note.
-    setDetail(next);
+    setSession(withTolerance(session, next));
+    setTolerance(next);
   }
 
   /**
    * `[` and `]`, answering `false` where there is nothing for them to move.
    *
-   * The declaration decides, not this file: a box class never has `detail` in
-   * `parameters`, so the bracket falls through to the browser rather than being
-   * swallowed by a control that is not on screen.
+   * The declaration decides, not this file: a box class never has the tolerance
+   * in `parameters`, so the bracket falls through to the browser rather than
+   * being swallowed by a control that is not on screen.
    */
-  function stepDetail(direction: -1 | 1): boolean {
-    if (session === null || !session.parameters.includes("detail")) return false;
-    const next = steppedDetail(session.adjustments.detail, direction);
-    if (next === session.adjustments.detail) return false;
-    applyDetail(next);
+  function stepTolerance(direction: -1 | 1): boolean {
+    if (session === null || !session.parameters.includes("tolerance")) return false;
+    const next = steppedTolerance(session.adjustments.tolerance, direction);
+    if (next === session.adjustments.tolerance) return false;
+    applyTolerance(next);
     return true;
   }
 
@@ -1277,11 +1257,11 @@ function Workspace({
       return true;
     }
     // The brackets answer `false` when there is no session, or when the server
-    // has not declared `detail` as applying here — a box class — so the chord
-    // falls through to the browser rather than being swallowed by a control that
-    // is not on screen.
-    if (name === COARSER_SUGGESTION) return stepDetail(-1);
-    if (name === FINER_SUGGESTION) return stepDetail(1);
+    // has not declared the tolerance as applying here — a box class — so the
+    // chord falls through to the browser rather than being swallowed by a
+    // control that is not on screen.
+    if (name === COARSER_SUGGESTION) return stepTolerance(-1);
+    if (name === FINER_SUGGESTION) return stepTolerance(1);
     return false;
   }
 
@@ -2796,7 +2776,7 @@ function Workspace({
                 onDiscard={discardSuggestion}
                 adjusting={adjusting}
                 onAdjusting={setAdjusting}
-                onDetail={applyDetail}
+                onTolerance={applyTolerance}
                 // Off the same clock the halo is drawn from, which is what lets
                 // the card and the canvas be read as one report of one wait
                 // rather than as two. The card's own appearance follows the

@@ -32,7 +32,7 @@ from visionset.kernel import (
     UnsupportedMedia,
     WorkspaceCorrupt,
 )
-from visionset.kernel.domain import Source, SourceKind, VideoMetadata, VideoProvenance
+from visionset.kernel.domain import Source, SourceKind, TimeRange, VideoMetadata, VideoProvenance
 from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS
 from visionset.kernel.services import ProjectService, SourceService, WorkspaceService
 
@@ -220,6 +220,79 @@ def test_the_same_clip_at_a_different_rate_is_a_second_source(tmp_path: Path) ->
     assert fast.id != slow.id
     assert {s.id for s in fx.sources.list(fx.project.id)} == {slow.id, fast.id}
     fx.close()
+
+
+def test_the_same_clip_with_the_same_ranges_is_one_source(tmp_path: Path) -> None:
+    fx = Fixture(tmp_path)
+    clip = fx.clip()
+    selection = [TimeRange(start_seconds=0.5, end_seconds=1.5)]
+    first = fx.sources.register_video(fx.project.id, clip.path, ranges=selection)
+    second = fx.sources.register_video(fx.project.id, clip.path, ranges=selection)
+    assert second == first
+    assert len(fx.sources.list(fx.project.id)) == 1
+    fx.close()
+
+
+def test_the_same_clip_with_different_ranges_is_a_second_source(tmp_path: Path) -> None:
+    """Ranges are the other half of the cut, so they fork identity as the rate does."""
+    fx = Fixture(tmp_path)
+    clip = fx.clip()
+    head = fx.sources.register_video(
+        fx.project.id, clip.path, ranges=[TimeRange(start_seconds=0, end_seconds=1)]
+    )
+    tail = fx.sources.register_video(
+        fx.project.id, clip.path, ranges=[TimeRange(start_seconds=1, end_seconds=2)]
+    )
+    assert head.id != tail.id
+    assert {s.id for s in fx.sources.list(fx.project.id)} == {head.id, tail.id}
+    fx.close()
+
+
+def test_range_spelling_variants_collapse_to_one_source(tmp_path: Path) -> None:
+    """Identity compares the canonical form, never what a caller happened to type."""
+    fx = Fixture(tmp_path)
+    clip = fx.clip()
+    messy = fx.sources.register_video(
+        fx.project.id,
+        clip.path,
+        ranges=[
+            TimeRange(start_seconds=1.2, end_seconds=1.8),
+            TimeRange(start_seconds=0.2, end_seconds=1.5),
+        ],
+    )
+    tidy = fx.sources.register_video(
+        fx.project.id, clip.path, ranges=[TimeRange(start_seconds=0.2, end_seconds=1.8)]
+    )
+    assert tidy.id == messy.id
+    assert messy.require_video().ranges == (TimeRange(start_seconds=0.2, end_seconds=1.8),)
+    fx.close()
+
+
+def test_a_selection_covering_the_whole_clip_is_the_plain_source(tmp_path: Path) -> None:
+    """\"Whole clip\" has one identity spelling: the empty selection."""
+    fx = Fixture(tmp_path)
+    clip = fx.clip(duration_seconds=2.0)
+    plain = fx.sources.register_video(fx.project.id, clip.path)
+    covering = fx.sources.register_video(
+        fx.project.id, clip.path, ranges=[TimeRange(start_seconds=0, end_seconds=5)]
+    )
+    assert covering.id == plain.id
+    assert covering.require_video().ranges == ()
+    fx.close()
+
+
+def test_a_ranged_source_rehydrates_its_selection(tmp_path: Path) -> None:
+    fx = Fixture(tmp_path)
+    clip = fx.clip()
+    registered = fx.sources.register_video(
+        fx.project.id, clip.path, ranges=[TimeRange(start_seconds=0.5, end_seconds=1.5)]
+    )
+    fx.close()
+
+    reopened = WorkspaceService.open(tmp_path / "ws")
+    read_back = SourceService(reopened).get(registered.id)
+    assert read_back.require_video().ranges == (TimeRange(start_seconds=0.5, end_seconds=1.5),)
+    reopened.close()
 
 
 def test_differing_capture_params_update_the_source_rather_than_forking_it(

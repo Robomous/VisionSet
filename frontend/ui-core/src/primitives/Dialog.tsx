@@ -14,7 +14,7 @@
  */
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { IconX } from "@tabler/icons-react";
+import { X } from "lucide-react";
 import {
   createContext,
   forwardRef,
@@ -95,7 +95,7 @@ export const DialogContent = forwardRef<
             "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:hover:bg-muted/50"
           }
         >
-          <IconX className="size-4" aria-hidden="true" />
+          <X className="size-4" aria-hidden="true" />
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
     </DialogPortal>

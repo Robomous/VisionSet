@@ -119,11 +119,11 @@ const EXTENSION_NAMES = [
 ];
 
 const ORANGE_CHART = {
-  "chart-1": "oklch(0.837 0.128 66.29)",
-  "chart-2": "oklch(0.705 0.213 47.604)",
-  "chart-3": "oklch(0.646 0.222 41.116)",
-  "chart-4": "oklch(0.553 0.195 38.402)",
-  "chart-5": "oklch(0.47 0.157 37.304)",
+  "chart-1": "oklch(0.87 0 0)",
+  "chart-2": "oklch(0.556 0 0)",
+  "chart-3": "oklch(0.439 0 0)",
+  "chart-4": "oklch(0.371 0 0)",
+  "chart-5": "oklch(0.269 0 0)",
 } as const;
 
 describe("EXTENSIONS", () => {
@@ -159,7 +159,7 @@ describe(":root", () => {
     expect(THEME.radius).toBe("0.625rem");
   });
 
-  it("pins the orange chart palette exactly", () => {
+  it("pins the neutral chart palette exactly", () => {
     for (const [name, value] of Object.entries(ORANGE_CHART)) {
       expect(root.get(name)).toBe(value);
     }
@@ -183,7 +183,7 @@ describe(".dark", () => {
     expect(Object.keys(DARK_THEME).sort()).toEqual([...dark.keys()].sort());
   });
 
-  it("pins the orange chart palette exactly, unchanged from light", () => {
+  it("pins the neutral chart palette exactly, unchanged from light", () => {
     for (const [name, value] of Object.entries(ORANGE_CHART)) {
       expect(dark.get(name)).toBe(value);
     }
@@ -254,12 +254,13 @@ describe("legacy tokens", () => {
 });
 
 describe("structure", () => {
-  it("declares the dark variant and the five imports, in order", () => {
+  it("declares the dark variant and the four imports, in order", () => {
     const anchors = [
       '@import "tailwindcss";',
       '@import "tw-animate-css";',
       '@import "shadcn/tailwind.css";',
-      '@import "@fontsource-variable/inter";',
+      // One family, so one font import: `b2iH` sets the heading face to the body's
+      // rather than naming a second one.
       '@import "@fontsource-variable/geist";',
       "@custom-variant dark (&:is(.dark *));",
     ];

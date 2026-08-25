@@ -22,13 +22,7 @@
  * because coordinates without a frame cannot be placed.
  */
 
-import {
-  IconChevronLeft,
-  IconChevronRight,
-  IconEye,
-  IconEyeOff,
-  IconTrash,
-} from "@tabler/icons-react";
+import { ChevronLeft, ChevronRight, Eye, EyeOff, Trash2 } from "lucide-react";
 import { useState, type CSSProperties, type JSX, type KeyboardEvent } from "react";
 import {
   BboxShape,
@@ -164,7 +158,7 @@ export function DatasetAssetDialog({
               disabled={!hasPrevious}
               onClick={() => onIndex(index - 1)}
             >
-              <IconChevronLeft aria-hidden="true" />
+              <ChevronLeft aria-hidden="true" />
             </Button>
             <Button
               variant="secondary"
@@ -174,7 +168,7 @@ export function DatasetAssetDialog({
               disabled={!hasNext}
               onClick={() => onIndex(index + 1)}
             >
-              <IconChevronRight aria-hidden="true" />
+              <ChevronRight aria-hidden="true" />
             </Button>
             <Button
               variant="ghost"
@@ -183,7 +177,7 @@ export function DatasetAssetDialog({
               aria-pressed={showLabels}
               onClick={() => setShowLabels((value) => !value)}
             >
-              {showLabels ? <IconEye aria-hidden="true" /> : <IconEyeOff aria-hidden="true" />}
+              {showLabels ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
               {showLabels ? "Hide labels" : "Show labels"}
             </Button>
           </div>
@@ -194,7 +188,7 @@ export function DatasetAssetDialog({
               data-testid="preview-remove"
               onClick={() => onRemove(asset)}
             >
-              <IconTrash aria-hidden="true" />
+              <Trash2 aria-hidden="true" />
               Remove from dataset
             </Button>
             <Button variant="secondary" size="sm" onClick={onClose}>

@@ -54,7 +54,9 @@ from visionset.inference import (
     produces_of,
 )
 from visionset.kernel.domain import (
-    DEFAULT_DETAIL,
+    DEFAULT_TOLERANCE,
+    MAXIMUM_TOLERANCE,
+    MINIMUM_TOLERANCE,
     ActivityEntry,
     ActivityKind,
     Annotation,
@@ -90,7 +92,6 @@ from visionset.kernel.domain import (
     Dataset,
     DatasetChange,
     DatasetStats,
-    Detail,
     DownloadSize,
     DraftAttribute,
     DraftLabelClass,
@@ -705,8 +706,22 @@ class SchemaVersionCreate(BaseModel):
 # two rates are the reason this type exists at all: ``fps`` is what the file was
 # *shot* at and ``extraction_fps`` is what we chose to *cut* it at, and a client
 # that confuses them decomposes at the wrong rate. See ``docs/content/sources.md``.
+class ClipRange(BaseModel):
+    """One stretch of a clip to extract, half-open: start_seconds <= t < end_seconds."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start_seconds: float
+    end_seconds: float
+
+
 class VideoProvenanceOut(BaseModel):
-    """What a clip turned out to be, and the rate it is decomposed at."""
+    """What a clip turned out to be, and the cut it is decomposed by.
+
+    `ranges` is the canonical form of the selection the source was registered
+    with — clamped to the clip, sorted, overlaps merged — and empty means the
+    whole clip. Like `extraction_fps`, it is part of the source's identity.
+    """
 
     width: int
     height: int
@@ -714,6 +729,7 @@ class VideoProvenanceOut(BaseModel):
     duration_seconds: float
     codec: str
     extraction_fps: float
+    ranges: tuple[ClipRange, ...]
 
     @classmethod
     def of(cls, provenance: VideoProvenance) -> Self:
@@ -724,6 +740,10 @@ class VideoProvenanceOut(BaseModel):
             duration_seconds=provenance.metadata.duration_seconds,
             codec=provenance.metadata.codec,
             extraction_fps=provenance.extraction_fps,
+            ranges=tuple(
+                ClipRange(start_seconds=r.start_seconds, end_seconds=r.end_seconds)
+                for r in provenance.ranges
+            ),
         )
 
 
@@ -2663,9 +2683,10 @@ class SuggestRequest(BaseModel):
     #: server prefers the polygon, so a caller holding a box tool narrows this to
     #: `["bbox"]` rather than letting the preference decide against it.
     allowed_geometries: list[GeometryType] = Field(min_length=1)
-    #: How much of an outline survives simplification. Omitted means `balanced`,
-    #: which is what every suggestion used before there was a choice.
-    detail: Detail = DEFAULT_DETAIL
+    #: How closely the outline follows the mask, in the asset's own pixels: every
+    #: point of the traced outline lies within this distance of the polygon.
+    #: Omitted means `1.0`. Refused outside `[0.25, 16]`, never clamped.
+    tolerance: float = Field(default=DEFAULT_TOLERANCE, ge=MINIMUM_TOLERANCE, le=MAXIMUM_TOLERANCE)
 
 
 class SuggestedRegion(BaseModel):
@@ -2673,8 +2694,8 @@ class SuggestedRegion(BaseModel):
 
     geometry: Geometry
     #: The outline the shape was reduced from, in the asset's own pixels — what
-    #: lets a client re-run `detail` locally instead of asking again. Already
-    #: reduced once at the half-pixel floor, which is what makes the client's
+    #: lets a client re-run the tolerance locally instead of asking again. Already
+    #: reduced once at the quarter-pixel floor, which is what makes the client's
     #: answer and the server's provably the same: simplification is not nested,
     #: so both have to start from identical points.
     #: Empty for a box, which is an extent rather than something reduced from
@@ -2688,7 +2709,7 @@ class SuggestedRegion(BaseModel):
 class AppliedParameters(BaseModel):
     """The parameter values this answer was actually produced with."""
 
-    detail: Detail
+    tolerance: float
 
 
 class SuggestionOut(BaseModel):
@@ -2697,7 +2718,7 @@ class SuggestionOut(BaseModel):
     `regions` is empty when there is no suggestion, and that is an ordinary
     answer rather than an error: a click can land on sky, the model can be less
     sure than the caller asked for, the shape found can be one this class cannot
-    hold, and the detail as set can leave nothing. A 404 or a 409 for any of
+    hold, and the tolerance as set can leave nothing. A 404 or a 409 for any of
     those would be telling the caller they did something wrong when they did not.
 
     `model_ref` is echoed on every answer, including the empty one, because it

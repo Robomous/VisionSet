@@ -39,12 +39,13 @@ from pathlib import Path
 from typing import Annotated, Final
 
 import typer
+from pydantic import ValidationError
 
 from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption, resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.kernel.domain import IngestFailure, IngestFailureKind, IngestResult
+from visionset.kernel.domain import IngestFailure, IngestFailureKind, IngestResult, TimeRange
 from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS
 from visionset.kernel.services import IngestService, SourceService
 
@@ -91,6 +92,22 @@ def _recovered(failure: IngestFailure) -> str:
     return f"{recovered} (container claimed about {failure.frames_expected_estimate})"
 
 
+def _parse_range(spec: str) -> TimeRange:
+    """``START:END`` in seconds, or the usage error a malformed spelling earns.
+
+    The domain's own bounds (a start at or after zero, an end after the start)
+    refuse here too: `TimeRange` raises a bare `ValidationError`, which is not a
+    `VisionSetError` and would print a traceback rather than a sentence.
+    """
+    head, sep, tail = spec.partition(":")
+    if not sep:
+        raise typer.BadParameter(f"--range must be START:END in seconds, got {spec!r}")
+    try:
+        return TimeRange(start_seconds=float(head), end_seconds=float(tail))
+    except (ValueError, ValidationError) as exc:
+        raise typer.BadParameter(f"--range {spec!r}: {exc}") from exc
+
+
 def ingest(
     source: Annotated[
         Path,
@@ -108,6 +125,16 @@ def ingest(
             help=(
                 "Frames per second to extract. Video sources only; defaults to "
                 f"{DEFAULT_EXTRACTION_FPS}."
+            ),
+        ),
+    ] = None,
+    range_specs: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--range",
+            help=(
+                "A stretch of the clip to extract, as START:END in seconds; repeatable. "
+                "Video sources only. Overlaps merge; the whole clip is the default."
             ),
         ),
     ] = None,
@@ -141,6 +168,11 @@ def ingest(
         raise typer.BadParameter(
             f"--fps applies to a video source; {source} is a directory of stills"
         )
+    if range_specs and source.is_dir():
+        raise typer.BadParameter(
+            f"--range applies to a video source; {source} is a directory of stills"
+        )
+    ranges = [_parse_range(spec) for spec in range_specs or ()]
 
     with opened_workspace(workspace) as service:
         resolved = resolve_project(service, project)
@@ -152,6 +184,7 @@ def ingest(
                 resolved.id,
                 source,
                 extraction_fps=DEFAULT_EXTRACTION_FPS if fps is None else fps,
+                ranges=ranges,
             )
         note(f"Reading {registered.kind.value.replace('_', ' ')} {source}…")
         result = IngestService(service).ingest(registered.id, batch_name=batch_name)
