@@ -8,7 +8,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { clock, expectedFrames, mergedRanges, selectedSeconds } from "./clipRanges";
+import {
+  clock,
+  expectedFrames,
+  mergedRanges,
+  selectedSeconds,
+  selectionSummary,
+} from "./clipRanges";
 
 function r(start: number, end: number): { start_seconds: number; end_seconds: number } {
   return { start_seconds: start, end_seconds: end };
@@ -52,6 +58,13 @@ describe("selectedSeconds", () => {
   it("sums a merged selection and answers the whole clip for the empty one", () => {
     expect(selectedSeconds([r(0.5, 1.5), r(1.8, 2)], 2)).toBeCloseTo(1.2);
     expect(selectedSeconds([], 2)).toBe(2);
+  });
+});
+
+describe("selectionSummary", () => {
+  it("says whole clip for the empty selection, and merged spans with length otherwise", () => {
+    expect(selectionSummary([], 2)).toBe("Whole clip");
+    expect(selectionSummary([r(1.2, 1.8), r(0.2, 1.5)], 2)).toBe("0:00.2–0:01.8 · 0:01.6");
   });
 });
 

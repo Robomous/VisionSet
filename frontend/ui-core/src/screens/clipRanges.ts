@@ -65,6 +65,16 @@ export function selectedSeconds(ranges: readonly ClipRange[], durationSeconds: n
   return ranges.reduce((sum, one) => sum + (one.end_seconds - one.start_seconds), 0);
 }
 
+/** The one sentence for a selection: "Whole clip", or its merged spans and length. */
+export function selectionSummary(ranges: readonly ClipRange[], durationSeconds: number): string {
+  const merged = mergedRanges(ranges, durationSeconds);
+  if (merged.length === 0) return "Whole clip";
+  const spans = merged
+    .map((one) => `${clock(one.start_seconds)}–${clock(one.end_seconds)}`)
+    .join(", ");
+  return `${spans} · ${clock(selectedSeconds(merged, durationSeconds))}`;
+}
+
 /** `m:ss`, tenths kept only when they exist: 75 → "1:15", 7.5 → "0:07.5". */
 export function clock(seconds: number): string {
   const tenths = Math.round(seconds * 10);

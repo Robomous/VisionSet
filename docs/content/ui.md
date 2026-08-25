@@ -880,9 +880,12 @@ resolution are shown. Registering the same clip at another rate — or over othe
 clip ranges — produces a **second source**, deliberately: idempotency is on
 `(kind, path, extraction_fps, ranges)`.
 
-A decodable clip gets a preview player and a hand-rolled multi-range timeline in
-step 1: drag creates a range, the handles drag and nudge by one grid step (shift
-for ten), Delete removes one, and a click scrubs the player — inside a selected
+A decodable clip gets an editor-shaped block in step 1: a compact preview
+player, the cut's facts beside it — rate, frame count, selection — and a
+hand-rolled multi-range timeline spanning the panel under both, its empty track
+inviting the drag from inside itself. Drag creates a range, the handles drag
+and nudge by one grid step (shift for ten), Delete removes one, and a click
+scrubs the player — inside a selected
 range it previews, playing from that moment and stopping where the range ends. The selection rides
 to registration as typed and the kernel canonicalizes; the probe card's `Ranges`
 fact echoes the canonical form, which is where an overlapping selection is first

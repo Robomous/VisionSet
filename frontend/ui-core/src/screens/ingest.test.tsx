@@ -267,7 +267,7 @@ describe("registering a source", () => {
     fireEvent.pointerUp(track, { clientX: 100 });
 
     // The merged form drives the estimate — [1, 5) at 1 fps is four grid points.
-    expect(screen.getByTestId("frames-estimate").textContent).toContain("≈ 4 frames");
+    expect(screen.getByTestId("frames-estimate").textContent?.trim()).toBe("≈ 4");
 
     await userEvent.click(screen.getByTestId("register-source"));
     await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));

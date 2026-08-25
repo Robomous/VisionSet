@@ -20,11 +20,12 @@ import {
   type JSX,
   type KeyboardEvent,
   type PointerEvent,
+  type ReactNode,
   type SyntheticEvent,
 } from "react";
 
 import { cn } from "../lib/cn";
-import { clock, mergedRanges, selectedSeconds, type ClipRange } from "./clipRanges";
+import { clock, mergedRanges, type ClipRange } from "./clipRanges";
 
 /** The narrowest range a handle drag can leave behind, in seconds. */
 const MIN_SPAN = 0.01;
@@ -45,6 +46,7 @@ export function ClipRangeTimeline({
   fps,
   ranges,
   onRangesChange,
+  aside,
 }: {
   /** An object URL the caller owns — the caller revokes it. Null renders no player. */
   readonly src: string | null;
@@ -53,6 +55,8 @@ export function ClipRangeTimeline({
   readonly fps: number;
   readonly ranges: readonly ClipRange[];
   readonly onRangesChange: (ranges: readonly ClipRange[]) => void;
+  /** The cut's facts, laid beside the player; the caller owns their content. */
+  readonly aside?: ReactNode;
 }): JSX.Element {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -195,33 +199,50 @@ export function ClipRangeTimeline({
   );
 
   return (
-    <div className="flex select-none flex-col gap-2" data-testid="clip-timeline">
-      {src !== null && (
-        <video
-          ref={videoRef}
-          src={src}
-          controls
-          preload="metadata"
-          className="max-h-56 w-full max-w-md rounded-lg bg-muted"
-          data-testid="clip-player"
-          onTimeUpdate={timeUpdated}
-          onPause={() => setPreviewEnd(null)}
-        />
+    <div className="flex select-none flex-col gap-3" data-testid="clip-timeline">
+      {(src !== null || aside !== undefined) && (
+        <div className="flex flex-col gap-4 md:flex-row md:items-start">
+          {src !== null && (
+            <video
+              ref={videoRef}
+              src={src}
+              controls
+              preload="metadata"
+              className="max-h-56 w-full max-w-md shrink-0 rounded-lg bg-muted"
+              data-testid="clip-player"
+              onTimeUpdate={timeUpdated}
+              onPause={() => setPreviewEnd(null)}
+            />
+          )}
+          {aside !== undefined && <div className="min-w-0 flex-1">{aside}</div>}
+        </div>
       )}
-      <div
-        ref={trackRef}
-        className="relative h-10 cursor-crosshair touch-none rounded-md bg-muted"
-        data-testid="range-track"
-        aria-label="Clip timeline"
-        onPointerDown={trackPointerDown}
-        onPointerMove={trackPointerMove}
-        onPointerUp={trackPointerUp}
-      >
+      <div className="flex items-center gap-2">
+        <span className="text-xs tabular-nums text-muted-foreground" aria-hidden="true">
+          0:00
+        </span>
+        <div
+          ref={trackRef}
+          className="relative h-10 flex-1 cursor-crosshair touch-none rounded-md bg-muted"
+          data-testid="range-track"
+          aria-label="Clip timeline"
+          onPointerDown={trackPointerDown}
+          onPointerMove={trackPointerMove}
+          onPointerUp={trackPointerUp}
+        >
         <div
           className="pointer-events-none absolute inset-y-0 w-px bg-foreground/60"
           style={{ left: percent(Math.min(playhead, durationSeconds)) }}
           aria-hidden="true"
         />
+        {merged.length === 0 && draft === null && (
+          <span
+            className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-muted-foreground"
+            data-testid="range-ghost"
+          >
+            Drag to select a range
+          </span>
+        )}
         {ranges.map((one, index) => (
           <div
             // Index, deliberately: a range has no identity beyond its place
@@ -280,14 +301,11 @@ export function ClipRangeTimeline({
             aria-hidden="true"
           />
         )}
+        </div>
+        <span className="text-xs tabular-nums text-muted-foreground" aria-hidden="true">
+          {clock(durationSeconds)}
+        </span>
       </div>
-      <p className="text-xs text-muted-foreground" data-testid="selection-readout">
-        {merged.length === 0
-          ? "Whole clip — drag on the timeline to select ranges"
-          : `Selected ${clock(selectedSeconds(merged, durationSeconds))} of ${clock(durationSeconds)} · ${merged
-              .map((one) => `${clock(one.start_seconds)}–${clock(one.end_seconds)}`)
-              .join(", ")}`}
-      </p>
     </div>
   );
 }

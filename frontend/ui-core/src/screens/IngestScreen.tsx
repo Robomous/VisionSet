@@ -155,7 +155,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { SchemaForeshadow } from "./SchemaForeshadow";
 import { ClipRangeTimeline } from "./ClipRangeTimeline";
 import { probeClip, type ClipProbe } from "./clipProbe";
-import { clock, expectedFrames, mergedRanges, type ClipRange } from "./clipRanges";
+import {
+  clock,
+  expectedFrames,
+  mergedRanges,
+  selectionSummary,
+  type ClipRange,
+} from "./clipRanges";
 import {
   useBatches,
   useIngestJob,
@@ -786,6 +792,34 @@ function Step({
  * to match the server's "Frames expected" exactly; it renders only when both
  * halves exist, so an unreadable clip degrades to the field alone.
  */
+function RateField({
+  fps,
+  onFps,
+}: {
+  readonly fps: string;
+  readonly onFps: (value: string) => void;
+}): JSX.Element {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor="extraction-fps">Extraction rate</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          id="extraction-fps"
+          data-testid="extraction-fps"
+          type="number"
+          min="0.1"
+          step="0.1"
+          className="w-24 tabular-nums"
+          value={fps}
+          onChange={(event) => onFps(event.target.value)}
+        />
+        <span className="text-sm text-muted-foreground">fps</span>
+      </div>
+    </div>
+  );
+}
+
+
 function SelectionPanel({
   files,
   isVideo,
@@ -887,56 +921,56 @@ function SelectionPanel({
       )}
 
       {isVideo && (
-        <div className="flex flex-col gap-3 border-t border-border p-3">
-          {clip !== null && (
+        <div className="border-t border-border p-3">
+          {clip !== null ? (
             <ClipRangeTimeline
               src={clipUrl}
               durationSeconds={clip.durationSeconds}
               fps={gridFps}
               ranges={ranges}
               onRangesChange={onRanges}
+              aside={
+                <div className="flex flex-col gap-3">
+                  <RateField fps={fps} onFps={onFps} />
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                    {estimate !== null && (
+                      <>
+                        <dt className="text-muted-foreground">Frames</dt>
+                        <dd
+                          className="font-medium tabular-nums"
+                          data-testid="frames-estimate"
+                          title="The browser's own reading of the clip; the probe after registration is the authoritative one."
+                        >
+                          ≈ {formatCount(estimate)}
+                        </dd>
+                      </>
+                    )}
+                    <dt className="text-muted-foreground">Selection</dt>
+                    <dd className="tabular-nums" data-testid="selection-readout">
+                      {selectionSummary(ranges, clip.durationSeconds)}
+                    </dd>
+                  </dl>
+                  <FieldHint>
+                    Part of what the source <em>is</em> — the same clip registered at another
+                    rate or other ranges becomes a second source.
+                  </FieldHint>
+                </div>
+              }
             />
-          )}
-          {unreadable && (
-            <p className="text-xs text-muted-foreground" data-testid="clip-undecodable">
-              The browser cannot decode this clip; it will be ingested whole.
-            </p>
-          )}
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="extraction-fps">Extraction rate</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="extraction-fps"
-                  data-testid="extraction-fps"
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  className="w-24 tabular-nums"
-                  value={fps}
-                  onChange={(event) => onFps(event.target.value)}
-                />
-                <span className="text-sm text-muted-foreground">fps</span>
-              </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {unreadable && (
+                <p className="text-xs text-muted-foreground" data-testid="clip-undecodable">
+                  The browser cannot decode this clip; it will be ingested whole.
+                </p>
+              )}
+              <RateField fps={fps} onFps={onFps} />
               <FieldHint>
                 Part of what the source <em>is</em> — the same clip registered at another rate
                 or other ranges becomes a second source.
               </FieldHint>
             </div>
-            {estimate !== null && (
-              <p
-                className="text-sm text-muted-foreground"
-                data-testid="frames-estimate"
-                title="The browser's own reading of the clip; the probe after registration is the authoritative one."
-              >
-                ≈{" "}
-                <span className="font-medium tabular-nums text-foreground">
-                  {formatCount(estimate)}
-                </span>{" "}
-                frames
-              </p>
-            )}
-          </div>
+          )}
         </div>
       )}
     </div>

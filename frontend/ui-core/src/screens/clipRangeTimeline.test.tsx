@@ -53,13 +53,13 @@ function mockRect(track: HTMLElement): void {
 }
 
 describe("ClipRangeTimeline", () => {
-  it("states the whole clip when nothing is selected", () => {
+  it("invites a drag from inside the empty track", () => {
     render(<Harness />);
-    expect(screen.getByTestId("selection-readout").textContent).toContain("Whole clip");
+    expect(screen.getByTestId("range-ghost").textContent).toContain("Drag to select a range");
     expect(screen.queryByTestId("range-segment")).toBeNull();
   });
 
-  it("reads out the merged form while segments stay as typed", () => {
+  it("keeps segments as typed and retires the ghost once anything is selected", () => {
     render(
       <Harness
         initial={[
@@ -69,9 +69,7 @@ describe("ClipRangeTimeline", () => {
       />,
     );
     expect(screen.getAllByTestId("range-segment")).toHaveLength(2);
-    const readout = screen.getByTestId("selection-readout").textContent ?? "";
-    expect(readout).toContain("0:00.5–0:01.5");
-    expect(readout).toContain("Selected 0:01 of 0:02");
+    expect(screen.queryByTestId("range-ghost")).toBeNull();
   });
 
   it("creates a range from a drag on the track", () => {
@@ -85,7 +83,12 @@ describe("ClipRangeTimeline", () => {
 
     // 20px of 200 over 2 s is 0.2 s; 120px is 1.2 s.
     expect(screen.getAllByTestId("range-segment")).toHaveLength(1);
-    expect(screen.getByTestId("selection-readout").textContent).toContain("0:00.2–0:01.2");
+    expect(screen.getByTestId("range-0-start").getAttribute("aria-label")).toBe(
+      "Start of range 1, 0:00.2",
+    );
+    expect(screen.getByTestId("range-0-end").getAttribute("aria-label")).toBe(
+      "End of range 1, 0:01.2",
+    );
   });
 
   it("nudges a handle by one grid step, and ten with shift", () => {
@@ -93,11 +96,15 @@ describe("ClipRangeTimeline", () => {
 
     fireEvent.keyDown(screen.getByTestId("range-0-start"), { key: "ArrowRight" });
     // One grid step at 5 fps is 0.2 s.
-    expect(screen.getByTestId("selection-readout").textContent).toContain("0:00.7–0:01.5");
+    expect(screen.getByTestId("range-0-start").getAttribute("aria-label")).toBe(
+      "Start of range 1, 0:00.7",
+    );
 
     fireEvent.keyDown(screen.getByTestId("range-0-end"), { key: "ArrowLeft", shiftKey: true });
     // Ten steps left of 1.5 would invert; the end clamps just above the start.
-    expect(screen.getByTestId("selection-readout").textContent).toContain("0:00.7–0:00.7");
+    expect(screen.getByTestId("range-0-end").getAttribute("aria-label")).toBe(
+      "End of range 1, 0:00.7",
+    );
   });
 
   it("previews a selected range from a click inside it, and stops at its end", () => {
@@ -149,6 +156,6 @@ describe("ClipRangeTimeline", () => {
 
     fireEvent.click(screen.getByTestId("range-0-remove"));
     expect(screen.queryByTestId("range-segment")).toBeNull();
-    expect(screen.getByTestId("selection-readout").textContent).toContain("Whole clip");
+    expect(screen.getByTestId("range-ghost").textContent).toContain("Drag to select a range");
   });
 });
