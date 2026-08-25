@@ -30,7 +30,7 @@
  * UUIDs. A program has the SDK and the API.
  */
 
-import { IconPlayerPlay, IconStack2, IconUpload } from "@tabler/icons-react";
+import { Layers, Play, Upload } from "lucide-react";
 import { useState, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -89,7 +89,7 @@ export function BatchesScreen({
           <>
             {onIngest !== undefined && (
               <Button variant="secondary" data-testid="go-ingest" onClick={onIngest}>
-                <IconUpload className="size-4" aria-hidden="true" />
+                <Upload className="size-4" aria-hidden="true" />
                 Ingest
               </Button>
             )}
@@ -285,7 +285,7 @@ function Lifecycle({
       // several filled buttons down the same column, under a page header whose
       // "Annotate" is the actual forward action.
       <Button variant="secondary" size="sm" data-testid={`approve-${batch.name}`} onClick={onApprove}>
-        <IconStack2 className="size-4" aria-hidden="true" />
+        <Layers className="size-4" aria-hidden="true" />
         Approve
       </Button>
     );
@@ -300,7 +300,7 @@ function Lifecycle({
           disabled={start.isPending}
           onClick={() => start.mutate()}
         >
-          <IconPlayerPlay className="size-4" aria-hidden="true" />
+          <Play className="size-4" aria-hidden="true" />
           Start
         </Button>
         {start.isError && (

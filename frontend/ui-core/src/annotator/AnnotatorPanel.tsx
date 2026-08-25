@@ -82,7 +82,7 @@ import {
   type LabelClass,
   type Tool,
 } from "@visionset/annotator";
-import { IconCheck, IconEye, IconEyeOff, IconSparkles, IconTag, IconTrash } from "@tabler/icons-react";
+import { Check, Eye, EyeOff, Sparkles, Tag, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
 
 import { geometryLabel } from "../data/geometryCategory";
@@ -284,7 +284,7 @@ export function AnnotatorPanel({
             disabled={drawn.length === 0}
             onClick={() => onHiddenChange(allHidden ? new Set() : new Set(drawn.map((o) => o.id)))}
           >
-            {allHidden ? <IconEyeOff className="size-4" /> : <IconEye className="size-4" />}
+            {allHidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
           </Button>
         </div>
       </div>
@@ -428,7 +428,7 @@ function TagRegion({
                 />
                 <span className="truncate">{declared.name}</span>
                 {on ? (
-                  <IconCheck className="size-3 text-primary" aria-hidden="true" />
+                  <Check className="size-3 text-primary" aria-hidden="true" />
                 ) : (
                   <kbd className="rounded-sm border border-border px-1 font-mono text-xs">
                     {hotkeyForClass(schema, declared.name) ?? "—"}
@@ -487,7 +487,7 @@ function ModelMark({
           aria-label={`Model-produced by ${annotation.model_ref ?? "an unnamed model"}`}
           className="flex shrink-0 items-center text-xs text-muted-foreground"
         >
-          <IconSparkles className="size-3" aria-hidden="true" />
+          <Sparkles className="size-3" aria-hidden="true" />
         </span>
       </TooltipTrigger>
       {/* The full reference, which is far too long for the row and is exactly
@@ -591,7 +591,7 @@ function ObjectRow({
         data-testid={`object-visibility-${index}`}
         onClick={onToggleVisible}
       >
-        {hidden ? <IconEyeOff className="size-3.5" /> : <IconEye className="size-3.5" />}
+        {hidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
       </Button>
       <Button
         variant="ghost"
@@ -601,7 +601,7 @@ function ObjectRow({
         onClick={onRemove}
         disabled={onRemove === undefined}
       >
-        <IconTrash className="size-3.5" />
+        <Trash2 className="size-3.5" />
       </Button>
     </li>
   );
@@ -639,7 +639,7 @@ function RowReassign({
           aria-label={`Reassign object ${index + 1}`}
           data-testid={`object-reclass-${index}`}
         >
-          <IconTag className="size-3.5" />
+          <Tag className="size-3.5" />
         </Button>
       </DropdownMenuTrigger>
       <ReassignMenu

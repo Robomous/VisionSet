@@ -10,7 +10,7 @@
  * size. The strip can afford them — it is five controls learned once.
  */
 
-import { IconPointer, IconPolygon, IconSquare, IconVectorSpline } from "@tabler/icons-react";
+import { MousePointer2, Spline, Square, Waypoints } from "lucide-react";
 import type { JSX } from "react";
 
 export interface GeometryIconProps {
@@ -27,10 +27,10 @@ export interface GeometryIconProps {
 
 /** One glyph per geometry: a closed rectangle, a closed path, an open path, or the pointer. */
 export function GeometryIcon({ tool, className = "size-4" }: GeometryIconProps): JSX.Element {
-  if (tool === "bbox") return <IconSquare className={className} />;
-  if (tool === "polygon") return <IconPolygon className={className} />;
-  // A lane is a path, and it must read as an OPEN one — `IconPolygon` is already
+  if (tool === "bbox") return <Square className={className} />;
+  if (tool === "polygon") return <Spline className={className} />;
+  // A lane is a path, and it must read as an OPEN one — `Spline` is already
   // the closed shape above it, and using it here would say "closed" for a lane.
-  if (tool === "polyline") return <IconVectorSpline className={className} />;
-  return <IconPointer className={className} />;
+  if (tool === "polyline") return <Waypoints className={className} />;
+  return <MousePointer2 className={className} />;
 }

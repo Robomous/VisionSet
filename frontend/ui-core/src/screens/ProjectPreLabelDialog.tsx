@@ -14,7 +14,7 @@
  * pressing Start could only reproduce the refusal the row already shows.
  */
 
-import { IconSparkles } from "@tabler/icons-react";
+import { Sparkles } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
@@ -72,7 +72,7 @@ export function ProjectPreLabelButton({
         data-testid="project-prelabel"
         onClick={() => setOpen(true)}
       >
-        <IconSparkles className="size-4" aria-hidden="true" />
+        <Sparkles className="size-4" aria-hidden="true" />
         Pre-label
       </Button>
       {open && (

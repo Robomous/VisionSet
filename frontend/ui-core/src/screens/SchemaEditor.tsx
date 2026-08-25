@@ -96,7 +96,7 @@
  * omission.
  */
 
-import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
@@ -736,7 +736,7 @@ export function SchemaEditor({
             disabled={draftLocked}
             onClick={addClass}
           >
-            <IconPlus className="size-4" aria-hidden="true" />
+            <Plus className="size-4" aria-hidden="true" />
             Add class
           </Button>
           <Button
@@ -1248,7 +1248,7 @@ function ClassDetail({
               disabled={locked}
               onClick={onRemove}
             >
-              {checking ? "Checking…" : <IconTrash className="size-4" aria-hidden="true" />}
+              {checking ? "Checking…" : <Trash2 className="size-4" aria-hidden="true" />}
             </Button>
           </div>
         </CardAction>

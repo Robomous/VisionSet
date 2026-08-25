@@ -24,7 +24,7 @@
  * rather than disk.
  */
 
-import { IconArrowDown, IconArrowUp, IconFolderPlus, IconTrash } from "@tabler/icons-react";
+import { ArrowDown, ArrowUp, FolderPlus, Trash2 } from "lucide-react";
 import { useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -74,7 +74,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
   const [creating, setCreating] = useState(false);
   const [doomed, setDoomed] = useState<Project | null>(null);
   const [order, setOrder] = useState<CreatedOrder>("newest");
-  const OrderIcon = order === "newest" ? IconArrowDown : IconArrowUp;
+  const OrderIcon = order === "newest" ? ArrowDown : ArrowUp;
 
   return (
     <div className="flex flex-col gap-6" data-testid="projects-screen">
@@ -86,7 +86,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
           </p>
         </div>
         <Button variant="primary" data-testid="new-project" onClick={() => setCreating(true)}>
-          <IconFolderPlus aria-hidden="true" />
+          <FolderPlus aria-hidden="true" />
           New project
         </Button>
       </header>
@@ -200,7 +200,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
                       data-testid={`delete-${project.name}`}
                       onClick={() => setDoomed(project)}
                     >
-                      <IconTrash aria-hidden="true" />
+                      <Trash2 aria-hidden="true" />
                     </Button>
                   </TableCell>
                 </TableRow>

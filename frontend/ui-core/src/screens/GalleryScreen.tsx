@@ -36,16 +36,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import {
-  IconArrowBackUp,
-  IconCheck,
-  IconEraser,
-  IconEye,
-  IconPlayerPlay,
-  IconPlayerSkipForward,
-  IconTrash,
-  IconX,
-} from "@tabler/icons-react";
+import { Check, Eraser, Eye, Play, SkipForward, Trash2, Undo2, X } from "lucide-react";
 
 import { Async } from "../data/Async";
 import { readStep, writePref } from "../data/prefs";
@@ -740,9 +731,9 @@ function BatchHeader({
               onClick={onStartAnnotating}
             >
               {editable ? (
-                <IconPlayerPlay className="size-4" aria-hidden="true" />
+                <Play className="size-4" aria-hidden="true" />
               ) : (
-                <IconEye className="size-4" aria-hidden="true" />
+                <Eye className="size-4" aria-hidden="true" />
               )}
               {/* The label says which of the three it is doing — starting on the
                   first frame that is waiting, reopening a batch whose work is
@@ -944,7 +935,7 @@ function JobRow({
           onClick={() => assign.mutate(null)}
           className="text-muted-foreground hover:text-foreground"
         >
-          <IconX className="size-4" aria-hidden="true" />
+          <X className="size-4" aria-hidden="true" />
         </button>
       )}
       {assign.isError && <FieldError>{refusalProse(assign.error)}</FieldError>}
@@ -1252,7 +1243,7 @@ function Tile({
           {picture}
           {selected && (
             <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground">
-              <IconCheck className="size-3" aria-hidden="true" />
+              <Check className="size-3" aria-hidden="true" />
             </span>
           )}
         </button>
@@ -1507,7 +1498,7 @@ function BulkBar({
         {...(withheld === null ? {} : { title: withheld })}
         onClick={() => bulk.mutate({ targets: skippable, progress: "skipped" })}
       >
-        <IconPlayerSkipForward className="size-4" aria-hidden="true" />
+        <SkipForward className="size-4" aria-hidden="true" />
         {bulk.isPending ? "Working…" : `Mark skipped (${skippable.length})`}
       </Button>
 
@@ -1519,7 +1510,7 @@ function BulkBar({
         {...(withheld === null ? {} : { title: withheld })}
         onClick={() => bulk.mutate({ targets: restorable, progress: "unannotated" })}
       >
-        <IconArrowBackUp className="size-4" aria-hidden="true" />
+        <Undo2 className="size-4" aria-hidden="true" />
         {bulk.isPending ? "Working…" : `Restore (${restorable.length})`}
       </Button>
 
@@ -1537,7 +1528,7 @@ function BulkBar({
         {...(withheld === null ? {} : { title: withheld })}
         onClick={() => bulk.mutate({ targets: returnable, progress: "annotated" })}
       >
-        <IconArrowBackUp className="size-4" aria-hidden="true" />
+        <Undo2 className="size-4" aria-hidden="true" />
         {bulk.isPending ? "Working…" : `Return to annotator (${returnable.length})`}
       </Button>
 
@@ -1549,7 +1540,7 @@ function BulkBar({
         {...(withheld === null ? {} : { title: withheld })}
         onClick={() => bulk.mutate({ targets: confirmable, progress: "annotated" })}
       >
-        <IconCheck className="size-4" aria-hidden="true" />
+        <Check className="size-4" aria-hidden="true" />
         {bulk.isPending ? "Working…" : `Confirm labels (${confirmable.length})`}
       </Button>
 
@@ -1561,7 +1552,7 @@ function BulkBar({
         {...(withheld === null ? {} : { title: withheld })}
         onClick={() => setDiscarding(true)}
       >
-        <IconEraser className="size-4" aria-hidden="true" />
+        <Eraser className="size-4" aria-hidden="true" />
         {discard.isPending ? "Discarding…" : `Discard model labels (${discardable.length})`}
       </Button>
 
@@ -1580,7 +1571,7 @@ function BulkBar({
         {...(removable ? {} : { title: MEMBERSHIP_FIXED })}
         onClick={() => setConfirming(true)}
       >
-        <IconTrash className="size-4" aria-hidden="true" />
+        <Trash2 className="size-4" aria-hidden="true" />
         {remove.isPending ? "Removing…" : `Remove from batch (${removalIds.length})`}
       </Button>
 
@@ -1694,7 +1685,7 @@ function BulkBar({
         aria-label="Clear selection"
         className="text-muted-foreground hover:text-foreground"
       >
-        <IconX className="size-4" aria-hidden="true" />
+        <X className="size-4" aria-hidden="true" />
       </button>
 
       <RemoveFromBatchDialog

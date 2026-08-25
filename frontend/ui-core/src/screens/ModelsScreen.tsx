@@ -135,20 +135,7 @@
  * instead of disabling itself.
  */
 
-import {
-  IconBroadcast,
-  IconCpu,
-  IconDots,
-  IconDownload,
-  IconFileSearch,
-  IconFilter,
-  IconPencil,
-  IconPlug,
-  IconShieldCheck,
-  IconTrash,
-  IconWorld,
-  IconX,
-} from "@tabler/icons-react";
+import { Cpu, Download, FileSearch, Filter, Globe, MoreHorizontal, Pencil, Plug, RadioTower, ShieldCheck, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type JSX, type ReactNode } from "react";
 
 import { Async } from "../data/Async";
@@ -260,7 +247,7 @@ export function ModelsScreen(): JSX.Element {
           </p>
         </div>
         <Button variant="primary" data-testid="new-connection" onClick={() => setCreating(true)}>
-          <IconPlug aria-hidden="true" />
+          <Plug aria-hidden="true" />
           Add model
         </Button>
       </header>
@@ -317,13 +304,13 @@ export function ModelsScreen(): JSX.Element {
                       data-testid="clear-filters"
                       onClick={() => setChosen(NO_FILTERS)}
                     >
-                      <IconX className="size-4" aria-hidden="true" />
+                      <X className="size-4" aria-hidden="true" />
                       Clear
                     </Button>
                   )}
                   {page.items.length > FILTER_ABOVE && (
                     <div className="flex items-center gap-2">
-                      <IconFilter className="size-4 text-muted-foreground" aria-hidden="true" />
+                      <Filter className="size-4 text-muted-foreground" aria-hidden="true" />
                       <Label htmlFor="connection-filter" className="sr-only">
                         Filter connections
                       </Label>
@@ -559,7 +546,7 @@ export function ConnectionCard({
                   aria-label={`Actions for ${connection.name}`}
                   data-testid={`actions-${connection.name}`}
                 >
-                  <IconDots aria-hidden="true" />
+                  <MoreHorizontal aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -578,7 +565,7 @@ export function ConnectionCard({
                     disabled={busy}
                     onSelect={weights.start}
                   >
-                    <IconFileSearch className="size-4" aria-hidden="true" />
+                    <FileSearch className="size-4" aria-hidden="true" />
                     {busy ? busyLabel : "Check for missing files"}
                   </DropdownMenuItem>
                 )}
@@ -588,7 +575,7 @@ export function ConnectionCard({
                     disabled={busy}
                     onSelect={integrity.start}
                   >
-                    <IconShieldCheck className="size-4" aria-hidden="true" />
+                    <ShieldCheck className="size-4" aria-hidden="true" />
                     {busy ? busyLabel : "Check files are undamaged"}
                   </DropdownMenuItem>
                 )}
@@ -598,19 +585,19 @@ export function ConnectionCard({
                     disabled={probe.isPending}
                     onSelect={() => probe.mutate(connection.id)}
                   >
-                    <IconBroadcast className="size-4" aria-hidden="true" />
+                    <RadioTower className="size-4" aria-hidden="true" />
                     {probe.isPending ? "Asking the endpoint…" : "Test endpoint"}
                   </DropdownMenuItem>
                 )}
                 {can.has("update") && (
                   <DropdownMenuItem data-testid="action-edit" onSelect={onEdit}>
-                    <IconPencil className="size-4" aria-hidden="true" />
+                    <Pencil className="size-4" aria-hidden="true" />
                     Edit
                   </DropdownMenuItem>
                 )}
                 {can.has("delete") && (
                   <DropdownMenuItem data-testid="action-delete" onSelect={onDelete}>
-                    <IconTrash className="size-4" aria-hidden="true" />
+                    <Trash2 className="size-4" aria-hidden="true" />
                     Delete
                   </DropdownMenuItem>
                 )}
@@ -716,7 +703,7 @@ export function ConnectionCard({
             disabled={busy}
             onClick={weights.start}
           >
-            <IconDownload aria-hidden="true" />
+            <Download aria-hidden="true" />
             {busy ? busyLabel : "Download weights"}
           </Button>
         </CardFooter>
@@ -1228,14 +1215,14 @@ function ConnectionForm({
           <div className="grid gap-3 sm:grid-cols-2" data-testid="choose-type">
             <KindChoice
               testId="choose-local"
-              icon={<IconCpu className="size-5" aria-hidden="true" />}
+              icon={<Cpu className="size-5" aria-hidden="true" />}
               title="Local"
               description="Weights this machine downloads and runs."
               onChoose={() => setKind("local")}
             />
             <KindChoice
               testId="choose-http"
-              icon={<IconWorld className="size-5" aria-hidden="true" />}
+              icon={<Globe className="size-5" aria-hidden="true" />}
               title="HTTP"
               description="An endpoint that answers this project's inference contract."
               onChoose={() => setKind("http")}

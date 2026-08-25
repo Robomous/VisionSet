@@ -131,21 +131,7 @@ import {
   type Viewport,
 } from "@visionset/annotator";
 import { AnnotatorStore as Store } from "@visionset/annotator";
-import {
-  IconAlertTriangle,
-  IconArrowBackUp,
-  IconArrowLeft,
-  IconCheck,
-  IconChecks,
-  IconChevronLeft,
-  IconChevronRight,
-  IconDevices,
-  IconDots,
-  IconEye,
-  IconHelpCircle,
-  IconLayoutGrid,
-  IconPlayerSkipForward,
-} from "@tabler/icons-react";
+import { ArrowLeft, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, Eye, Grid3x3, MonitorSmartphone, MoreHorizontal, SkipForward, TriangleAlert, Undo2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -491,7 +477,7 @@ function TooNarrow({
   return (
     <div className="flex h-full items-center justify-center p-6" data-testid="viewport-too-narrow">
       <EmptyState
-        icon={<IconDevices className="size-8" />}
+        icon={<MonitorSmartphone className="size-8" />}
         title="This screen is too narrow to annotate on"
         description={`Annotating is precision work on a large surface: the editor needs at least ${ANNOTATOR_MIN_VIEWPORT_PX}px of width for the canvas, the tools and the object list to coexist. Rotate to landscape, widen the window, or open this job on a larger screen.`}
         {...(onOpenGallery === undefined || destination === undefined
@@ -503,7 +489,7 @@ function TooNarrow({
                   data-testid="too-narrow-gallery"
                   onClick={() => onOpenGallery(destination.project_id, destination.id)}
                 >
-                  <IconLayoutGrid className="size-4" aria-hidden="true" />
+                  <Grid3x3 className="size-4" aria-hidden="true" />
                   Back to the batch
                 </Button>
               ),
@@ -1926,7 +1912,7 @@ function Workspace({
             onClick={() => attempt(onOpenGallery)}
             disabled={onOpenGallery === undefined}
           >
-            <IconArrowLeft className="size-4" />
+            <ArrowLeft className="size-4" />
           </Button>
 
           {/* The batch's pin, not the project's active version. Named here because
@@ -2038,7 +2024,7 @@ function Workspace({
               data-testid="open-gallery"
               onClick={() => setGalleryOpen(true)}
             >
-              <IconLayoutGrid className="size-4" />
+              <Grid3x3 className="size-4" />
             </Button>
 
             <Button
@@ -2049,7 +2035,7 @@ function Workspace({
               disabled={assetIndex === 0}
               onClick={() => go(-1)}
             >
-              <IconChevronLeft className="size-4" />
+              <ChevronLeft className="size-4" />
             </Button>
             {/*
               `tabular-nums` is the whole reason this is a separate span rather
@@ -2072,7 +2058,7 @@ function Workspace({
               disabled={assetIndex >= assetCount - 1}
               onClick={() => go(1)}
             >
-              <IconChevronRight className="size-4" />
+              <ChevronRight className="size-4" />
             </Button>
           </div>
 
@@ -2117,7 +2103,7 @@ function Workspace({
                 disabled={!declares(asset, ASSET_ACTION.restore) || setProgress.isPending}
                 onClick={unskip}
               >
-                <IconArrowBackUp className="size-4" />
+                <Undo2 className="size-4" />
                 Un-skip
               </Button>
             ) : (
@@ -2129,7 +2115,7 @@ function Workspace({
                 disabled={!declares(asset, ASSET_ACTION.skip) || setProgress.isPending}
                 onClick={() => settle("skipped")}
               >
-                <IconPlayerSkipForward className="size-4" />
+                <SkipForward className="size-4" />
                 Skip
                 <Chip>X</Chip>
               </Button>
@@ -2222,7 +2208,7 @@ function Workspace({
                       });
                     }}
                   >
-                    <IconChecks className="size-4" />
+                    <CheckCheck className="size-4" />
                     {jobState === "completed" ? "Finished" : "Finish job"}
                   </Button>
                 </TooltipTrigger>
@@ -2290,7 +2276,7 @@ function Workspace({
                 onClick={() => go(1)}
               >
                 {flowLabel}
-                <IconChevronRight className="size-4" />
+                <ChevronRight className="size-4" />
               </Button>
             )}
 
@@ -2337,7 +2323,7 @@ function Workspace({
                     disabled={readOnly || !dirty || save.isPending}
                     onClick={() => attempt()}
                   >
-                    <IconCheck className="size-4" />
+                    <Check className="size-4" />
                     Save and stay
                   </Button>
                 </TooltipTrigger>
@@ -2394,7 +2380,7 @@ function Workspace({
                   disabled={setProgress.isPending}
                   onClick={() => settle(reviewAction.progress)}
                 >
-                  <IconChecks className="size-4" />
+                  <CheckCheck className="size-4" />
                   {reviewAction.label}
                 </Button>
               </TooltipTrigger>
@@ -2427,7 +2413,7 @@ function Workspace({
                 aria-label="More actions"
                 data-testid="more-actions"
               >
-                <IconDots className="size-4" />
+                <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -2444,7 +2430,7 @@ function Workspace({
                   disabled={readOnly || !dirty || save.isPending}
                   onSelect={() => attempt()}
                 >
-                  <IconCheck className="size-4" />
+                  <Check className="size-4" />
                   Save and stay
                 </DropdownMenuItem>
               )}
@@ -2456,7 +2442,7 @@ function Workspace({
                   disabled={setProgress.isPending}
                   onSelect={() => settle(reviewAction.progress)}
                 >
-                  <IconChecks className="size-4" />
+                  <CheckCheck className="size-4" />
                   {reviewAction.label}
                 </DropdownMenuItem>
               )}
@@ -2472,7 +2458,7 @@ function Workspace({
                     data-testid="return-to-annotator"
                     onSelect={() => settle("annotated")}
                   >
-                    <IconArrowBackUp className="size-4" />
+                    <Undo2 className="size-4" />
                     Return to annotator
                   </DropdownMenuItem>
                   {/* Inside the conditional, not above the row below it: the two
@@ -2483,7 +2469,7 @@ function Workspace({
                 </>
               )}
               <DropdownMenuItem data-testid="menu-shortcuts" onSelect={() => setHelpOpen(true)}>
-                <IconHelpCircle className="size-4" />
+                <CircleHelp className="size-4" />
                 Keyboard shortcuts
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -2510,7 +2496,7 @@ function Workspace({
           className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground"
           data-testid="readonly-banner"
         >
-          <IconEye className="size-3.5 shrink-0" aria-hidden="true" />
+          <Eye className="size-3.5 shrink-0" aria-hidden="true" />
           <span className="font-medium">Viewing only.</span>
           {workflowBecause ?? settledBecause}
           {/*
@@ -2553,7 +2539,7 @@ function Workspace({
           className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive"
           data-testid="skipped-notice"
         >
-          <IconPlayerSkipForward className="size-3.5 shrink-0" aria-hidden="true" />
+          <SkipForward className="size-3.5 shrink-0" aria-hidden="true" />
           This asset is skipped, so it will not reach the dataset and its annotations will not
           count towards the job. Un-skip it to put it back in play.
         </p>
@@ -2717,7 +2703,7 @@ function Workspace({
               <EditorNotice
                 testId="opening-refusal"
                 tone="warn"
-                icon={<IconAlertTriangle className="size-4" />}
+                icon={<TriangleAlert className="size-4" />}
                 title={asApiError(openingRefusal).code}
               >
                 {refusalProse(openingRefusal)}
@@ -2736,7 +2722,7 @@ function Workspace({
               <EditorNotice
                 testId="save-refusal"
                 tone="warn"
-                icon={<IconAlertTriangle className="size-4" />}
+                icon={<TriangleAlert className="size-4" />}
                 title={asApiError(save.error).code}
               >
                 <p className="font-medium text-foreground">This frame could not be saved</p>
@@ -2766,7 +2752,7 @@ function Workspace({
               <EditorNotice
                 testId="action-refusal"
                 tone="warn"
-                icon={<IconAlertTriangle className="size-4" />}
+                icon={<TriangleAlert className="size-4" />}
                 title={asApiError(actionRefusal).code}
               >
                 {refusalProse(actionRefusal)}
@@ -3201,7 +3187,7 @@ function SaveState({
     // so the exception is retired rather than inherited. The tick still
     // carries the meaning on its own — state is never colour alone.
     <span className="flex items-center gap-1 text-xs text-success" data-testid="save-state">
-      <IconCheck className="size-3.5" aria-hidden="true" />
+      <Check className="size-3.5" aria-hidden="true" />
       Saved
     </span>
   );
