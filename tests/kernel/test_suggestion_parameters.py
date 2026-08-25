@@ -14,9 +14,10 @@ goes red naming it.
 import pytest
 
 from visionset.kernel.domain import (
-    DEFAULT_DETAIL,
+    DEFAULT_TOLERANCE,
+    MAXIMUM_TOLERANCE,
+    MINIMUM_TOLERANCE,
     PARAMETER_APPLIES_TO,
-    Detail,
     GeometryType,
     SuggestParameter,
     suggest_parameters,
@@ -49,13 +50,13 @@ def test_a_declared_geometry_is_one_the_domain_actually_stores(
 
 
 def test_a_polygon_is_offered_every_parameter() -> None:
-    assert suggest_parameters(GeometryType.POLYGON) == (SuggestParameter.DETAIL,)
+    assert suggest_parameters(GeometryType.POLYGON) == (SuggestParameter.TOLERANCE,)
 
 
 def test_a_box_is_offered_nothing_at_all() -> None:
-    # `detail` changes an outline and a box has none, so a box class declares no
-    # parameters — which is what tells a client to render no adjustments rather
-    # than an empty section (#557).
+    # The tolerance shapes an outline and a box has none, so a box class declares
+    # no parameters — which is what tells a client to render no adjustments rather
+    # than an empty section.
     assert suggest_parameters(GeometryType.BBOX) == ()
 
 
@@ -71,5 +72,12 @@ def test_the_reader_answers_in_declaration_order() -> None:
         assert list(offered) == [p for p in SuggestParameter if p in offered]
 
 
-def test_the_default_is_a_member_of_its_own_vocabulary() -> None:
-    assert DEFAULT_DETAIL in Detail
+def test_the_default_tolerance_sits_inside_its_own_range() -> None:
+    assert MINIMUM_TOLERANCE < DEFAULT_TOLERANCE < MAXIMUM_TOLERANCE
+
+
+def test_the_range_is_wide_enough_to_double_from_the_default_in_both_directions() -> None:
+    # `[` and `]` walk a doubling ladder from the default; a range that could not
+    # be doubled at least once each way would have a dead bracket on arrival.
+    assert DEFAULT_TOLERANCE * 2 <= MAXIMUM_TOLERANCE
+    assert DEFAULT_TOLERANCE / 2 >= MINIMUM_TOLERANCE
