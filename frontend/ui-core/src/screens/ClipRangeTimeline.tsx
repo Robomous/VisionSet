@@ -21,6 +21,7 @@
 
 import { IconX } from "@tabler/icons-react";
 import {
+  useEffect,
   useRef,
   useState,
   type JSX,
@@ -61,10 +62,88 @@ export function ClipRangeTimeline({
   const trackRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playhead, setPlayhead] = useState(0);
-  // Where a running preview stops: the end of the range a click landed in.
-  const [previewEnd, setPreviewEnd] = useState<number | null>(null);
+  // Where running playback stops: the end of the clip it started inside. A
+  // ref, not state — timeupdate events are throttled and must read the truth
+  // synchronously, never a value a commit has not caught up with.
+  const previewEnd = useRef<number | null>(null);
   const [draft, setDraft] = useState<{ anchor: number; to: number } | null>(null);
   const [drag, setDrag] = useState<{ index: number; side: "start" | "end" } | null>(null);
+  // The filmstrip: as many sampled frames as fit the bar, movie-maker style.
+  const [thumbs, setThumbs] = useState<readonly string[]>([]);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (src === null || track === null) return;
+    const url = src;
+    let cancelled = false;
+    let generation = 0;
+    let lastWidth = 0;
+
+    function settled(video: HTMLVideoElement, name: "loadedmetadata" | "seeked"): Promise<void> {
+      return new Promise((resolve, reject) => {
+        video.addEventListener(name, () => resolve(), { once: true });
+        video.addEventListener("error", () => reject(new Error("undecodable")), { once: true });
+      });
+    }
+
+    async function build(width: number): Promise<void> {
+      const mine = ++generation;
+      lastWidth = width;
+      const video = document.createElement("video");
+      video.muted = true;
+      video.preload = "auto";
+      video.src = url;
+      try {
+        await settled(video, "loadedmetadata");
+        const aspect =
+          video.videoWidth > 0 && video.videoHeight > 0
+            ? video.videoWidth / video.videoHeight
+            : 16 / 9;
+        // Exactly as many slots as the bar's width holds at its own height —
+        // the last one is cropped by overflow rather than squeezed.
+        const height = 64;
+        const slot = Math.max(24, Math.round(height * aspect));
+        const count = Math.max(1, Math.ceil(width / slot));
+        const canvas = document.createElement("canvas");
+        canvas.width = slot;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (context === null) return;
+        const made: string[] = [];
+        for (let at = 0; at < count; at += 1) {
+          // The center of each slot's own span of the clip, so the strip's
+          // distribution matches the moments the slots stand over.
+          video.currentTime = ((at + 0.5) / count) * durationSeconds;
+          await settled(video, "seeked");
+          if (cancelled || mine !== generation) return;
+          context.drawImage(video, 0, 0, slot, height);
+          made.push(canvas.toDataURL("image/jpeg", 0.6));
+        }
+        if (!cancelled && mine === generation) setThumbs(made);
+      } catch {
+        // A clip the browser cannot decode keeps the plain bar.
+      } finally {
+        video.removeAttribute("src");
+      }
+    }
+
+    const width = track.getBoundingClientRect().width;
+    if (width > 0) void build(width);
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver((entries) => {
+            const seen = entries[0]?.contentRect.width ?? 0;
+            // Half a slot of movement before re-decoding the whole strip; the
+            // generation token retires a build a newer width supersedes.
+            if (seen > 0 && Math.abs(seen - lastWidth) >= 48) void build(seen);
+          });
+    observer?.observe(track);
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+    };
+  }, [src, durationSeconds]);
 
   // The last whole-second boundary. Every boundary is an integer except the
   // clip's own end, which closes a final partial cell.
@@ -123,31 +202,41 @@ export function ClipRangeTimeline({
   }
 
   /**
-   * A click is a scrub, and inside a selected range it is a preview: play from
-   * that moment and stop where the range ends, the way an editor timeline
-   * answers a click on a clip. Pausing — ours at the end, or the person's own —
-   * retires the preview.
+   * A click is a scrub, and inside a selected range it also starts playback.
+   * The stop boundary is NOT armed here: `playStarted` owns it, so playback
+   * begun from the player's own controls obeys the clips exactly the same.
    */
   function seek(at: number): void {
     const video = videoRef.current;
     if (video === null) return;
     video.currentTime = at;
     const inside = merged.find((one) => at >= one.start_seconds && at < one.end_seconds);
-    if (inside === undefined) {
-      setPreviewEnd(null);
-      return;
-    }
-    setPreviewEnd(inside.end_seconds);
+    if (inside === undefined) return;
     const played: unknown = video.play();
     // A refused autoplay only means the preview stays paused; jsdom returns no
     // promise at all.
     if (played instanceof Promise) void played.catch(() => undefined);
   }
 
+  /** Playback starting inside a clip arms that clip's end — whatever control started it. */
+  function playStarted(event: SyntheticEvent<HTMLVideoElement>): void {
+    const at = event.currentTarget.currentTime;
+    const inside = merged.find((one) => at >= one.start_seconds && at < one.end_seconds);
+    previewEnd.current = inside === undefined ? null : inside.end_seconds;
+  }
+
   function timeUpdated(event: SyntheticEvent<HTMLVideoElement>): void {
     const video = event.currentTarget;
+    const stop = previewEnd.current;
+    if (stop !== null && video.currentTime >= stop) {
+      video.pause();
+      // timeupdate is throttled, so playback overshoots before this runs; the
+      // indicator must end on the clip's boundary, never past it.
+      video.currentTime = stop;
+      setPlayhead(stop);
+      return;
+    }
     setPlayhead(video.currentTime);
-    if (previewEnd !== null && video.currentTime >= previewEnd) video.pause();
   }
 
   function trackPointerDown(event: PointerEvent<HTMLDivElement>): void {
@@ -237,6 +326,18 @@ export function ClipRangeTimeline({
     ),
   ).sort((a, b) => a - b);
 
+  // The stretches outside the selection, for the scrim that makes a clip read
+  // against its own imagery: unselected washes out, selected stays full-color.
+  const gaps: { from: number; to: number }[] = [];
+  if (merged.length > 0) {
+    let cursor = 0;
+    for (const one of merged) {
+      if (one.start_seconds > cursor) gaps.push({ from: cursor, to: one.start_seconds });
+      cursor = one.end_seconds;
+    }
+    if (cursor < durationSeconds) gaps.push({ from: cursor, to: durationSeconds });
+  }
+
   const handleClass = cn(
     "pointer-events-auto absolute inset-y-0 w-2 cursor-ew-resize rounded-sm bg-primary",
     "focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
@@ -255,7 +356,10 @@ export function ClipRangeTimeline({
               className="max-h-84 w-full max-w-2xl shrink-0 rounded-lg bg-muted"
               data-testid="clip-player"
               onTimeUpdate={timeUpdated}
-              onPause={() => setPreviewEnd(null)}
+              onPlay={playStarted}
+              onPause={() => {
+                previewEnd.current = null;
+              }}
             />
           )}
           {aside !== undefined && <div className="min-w-0 flex-1">{aside}</div>}
@@ -264,13 +368,40 @@ export function ClipRangeTimeline({
       <div className="flex flex-col gap-1">
         <div
           ref={trackRef}
-          className="relative h-10 cursor-crosshair touch-none rounded-md bg-muted"
+          className="relative h-16 cursor-crosshair touch-none rounded-md bg-muted"
           data-testid="range-track"
           aria-label="Clip timeline"
           onPointerDown={trackPointerDown}
           onPointerMove={trackPointerMove}
           onPointerUp={trackPointerUp}
         >
+          {thumbs.length > 0 && (
+            <div
+              className="pointer-events-none absolute inset-0 flex overflow-hidden rounded-md"
+              data-testid="filmstrip"
+              aria-hidden="true"
+            >
+              {thumbs.map((one, at) => (
+                // Index, deliberately: a slot is its place in the strip.
+                <img
+                  key={at}
+                  src={one}
+                  alt=""
+                  className="h-full min-w-0 flex-1 object-cover"
+                  draggable={false}
+                />
+              ))}
+            </div>
+          )}
+          {gaps.map((gap) => (
+            <div
+              key={gap.from}
+              className="pointer-events-none absolute inset-y-0 bg-background/70"
+              style={{ left: percent(gap.from), width: percent(gap.to - gap.from) }}
+              data-testid="unselected-scrim"
+              aria-hidden="true"
+            />
+          ))}
           {/* Ticks make the cells legible; capped so an hours-long clip does
               not render thousands of them. */}
           {last <= 240 &&
@@ -296,10 +427,12 @@ export function ClipRangeTimeline({
           />
           {ranges.length === 0 && draft === null && (
             <span
-              className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-muted-foreground"
+              className="pointer-events-none absolute inset-0 flex items-center justify-center"
               data-testid="range-ghost"
             >
-              Drag to select a range
+              <span className="rounded-md bg-background/70 px-2 py-0.5 text-xs text-muted-foreground">
+                Drag to select a range
+              </span>
             </span>
           )}
           {ranges.map((one, index) => (
@@ -307,7 +440,7 @@ export function ClipRangeTimeline({
               // Index, deliberately: a range has no identity beyond its place
               // in the list, and nothing reorders outside canonicalization.
               key={index}
-              className="pointer-events-none absolute inset-y-1 rounded-sm border border-primary bg-primary/10"
+              className="pointer-events-none absolute inset-y-0 rounded-sm border-2 border-primary"
               style={{
                 left: percent(one.start_seconds),
                 width: percent(one.end_seconds - one.start_seconds),
@@ -351,7 +484,7 @@ export function ClipRangeTimeline({
           ))}
           {draftCells !== null && (
             <div
-              className="pointer-events-none absolute inset-y-1 rounded-sm border border-dashed border-primary bg-primary/10"
+              className="pointer-events-none absolute inset-y-0 rounded-sm border-2 border-dashed border-primary bg-primary/10"
               style={{
                 left: percent(draftCells.start),
                 width: percent(draftCells.end - draftCells.start),

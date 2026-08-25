@@ -98,7 +98,13 @@ describe("ClipRangeTimeline", () => {
   });
 
   it("previews a selected range from a click inside it, and stops at its end", () => {
-    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockReturnValue(Promise.resolve());
+    // The real play() announces itself; the boundary is armed by that event.
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockImplementation(function (this: HTMLMediaElement) {
+        this.dispatchEvent(new Event("play"));
+        return Promise.resolve();
+      });
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockReturnValue(undefined);
     render(<Harness src="blob:clip" initial={[{ start_seconds: 0, end_seconds: 1 }]} />);
     const track = screen.getByTestId("range-track");
@@ -112,10 +118,26 @@ describe("ClipRangeTimeline", () => {
     expect(video.currentTime).toBe(0.5);
     expect(play).toHaveBeenCalled();
 
-    // The preview stops where the range does, the way an editor's does.
+    // timeupdate overshoots the boundary; the stop pauses AND snaps back to it.
     video.currentTime = 1.1;
     fireEvent.timeUpdate(video);
     expect(pause).toHaveBeenCalled();
+    expect(video.currentTime).toBe(1);
+  });
+
+  it("stops at the clip's end when playback starts from the player's own controls", () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockReturnValue(undefined);
+    render(<Harness src="blob:clip" initial={[{ start_seconds: 0, end_seconds: 1 }]} />);
+    const video = screen.getByTestId("clip-player") as HTMLVideoElement;
+
+    // No track click: the native play control starts playback inside the clip.
+    video.currentTime = 0.5;
+    fireEvent.play(video);
+    video.currentTime = 1.3;
+    fireEvent.timeUpdate(video);
+
+    expect(pause).toHaveBeenCalled();
+    expect(video.currentTime).toBe(1);
   });
 
   it("a click outside every range scrubs without playing", () => {
