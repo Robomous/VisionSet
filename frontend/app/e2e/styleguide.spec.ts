@@ -175,10 +175,15 @@ test("the progress fill wears the functional primary colour, not the brand", asy
  * `@layer base`, so every screen inherited one rhythm without asking. The
  * shadcn preset does not: typography is Tailwind's ordinary scale, applied per
  * element (`DESIGN.md`, *Typography* and *Density and Spacing*), and the base
- * layer's job shrank to three things — `html` gets `font-sans` (Inter), `h1`–`h4`
- * get `font-heading` (Geist) and `body` gets `bg-background`/`text-foreground`.
+ * layer's job shrank to three things — `html` gets `font-sans`, `h1`–`h4` get
+ * `font-heading` and `body` gets `bg-background`/`text-foreground`.
  * Those three are what this now asserts; a body-wide font-size is no longer
  * part of the claim because it is no longer part of the contract.
+ *
+ * Both hooks resolve to Geist under `b2iH`, which sets `--font-heading` to
+ * `--font-sans`. Each is still asserted by name rather than against the other: a
+ * heading that had fallen back to the browser's default would satisfy "the two
+ * agree" while proving the hook was never wired.
  */
 test("the base layer wires fonts and background, not a per-screen font-size", async ({ page }) => {
   const body = page.locator("body");
@@ -189,7 +194,7 @@ test("the base layer wires fonts and background, not a per-screen font-size", as
   const bodyBg = await rgbaOf(page, body, "background-color");
 
   // `html { @apply font-sans }` — every screen, not a class on each page.
-  expect(bodyFont).toContain("Inter");
+  expect(bodyFont).toContain("Geist");
   // `h1`–`h4` carry `font-heading` in the base layer, so a heading never repeats it.
   expect(headingFont).toContain("Geist");
   // `body { @apply bg-background }` — the preset's own white, applied once.

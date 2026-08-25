@@ -65,7 +65,7 @@
  * and the editor already spells that.
  */
 
-import { IconChevronDown, IconChevronRight, IconUpload } from "@tabler/icons-react";
+import { ChevronDown, ChevronRight, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
@@ -541,7 +541,7 @@ function Section({
   const headerIngest: ReactNode =
     ingestInHeader === undefined ? undefined : (
       <Button variant="secondary" data-testid="go-ingest" onClick={ingestInHeader}>
-        <IconUpload className="size-4" aria-hidden="true" />
+        <Upload className="size-4" aria-hidden="true" />
         Ingest
       </Button>
     );
@@ -1019,9 +1019,9 @@ function AnnotationRun({
             onClick={() => setOpen((shown) => !shown)}
           >
             {open ? (
-              <IconChevronDown className="size-4 shrink-0" aria-hidden="true" />
+              <ChevronDown className="size-4 shrink-0" aria-hidden="true" />
             ) : (
-              <IconChevronRight className="size-4 shrink-0" aria-hidden="true" />
+              <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
             )}
             v{oldest.version}–v{newest.version}
             {newest.version === active && <Badge variant="accent">active</Badge>}

@@ -48,13 +48,14 @@ never raises `ProjectNameTaken`.
 But a rule with no backstop is a wish, so the store carries the constraint too:
 `uq_project_workspace_name` on `project (workspace_id, name COLLATE NOCASE)`, alongside
 `uq_schema_project_version`, `uq_schema_draft_project_kind`, `uq_member_dataset_asset`,
-`uq_release_dataset_tag`, `uq_asset_project_content_hash`, `uq_source_project_kind_path_fps`,
+`uq_release_dataset_tag`, `uq_asset_project_content_hash`, `uq_source_project_kind_path_fps_ranges`,
 `uq_annotation_asset_classification`, `uq_token_workspace_name` and
 `uq_inference_connection_name`. The invariant then survives
 a service bug, a forgotten code path, and a second process.
 
-`uq_source_project_kind_path_fps` is one of the two whose terms are not all columns: its fourth
-is `coalesce(json_extract(video, '$.extraction_fps'), 0)`. SQLite treats NULLs in a unique index as
+`uq_source_project_kind_path_fps_ranges` is one of the two whose terms are not all columns: its
+fourth is `coalesce(json_extract(video, '$.extraction_fps'), 0)` and its fifth
+`coalesce(json_extract(video, '$.ranges'), '')`. SQLite treats NULLs in a unique index as
 distinct, so a nullable column would let every image directory collide with nothing at all — and
 an index is not a query, so no service gains a JSON path from it. That is also why neither it nor
 `uq_annotation_asset_classification`, which is partial, can use `checkfirst`: SQLAlchemy cannot
@@ -167,11 +168,12 @@ MIGRATIONS: list[Migration] = [
     Migration(version=13, name="credential_env", upgrade=_add_credential_env),
     Migration(version=14, name="project_created_at", upgrade=_add_project_created_at),
     Migration(version=15, name="connection_origin", upgrade=_add_connection_origin),
+    Migration(version=16, name="source_clip_ranges", upgrade=_reshape_source_origin_index),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 15
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 16
 ```
 
-**Generation 1 is the baseline, and the fourteen entries after it are ordinary migrations.** A long
+**Generation 1 is the baseline, and the fifteen entries after it are ordinary migrations.** A long
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus
@@ -205,6 +207,9 @@ so it backfills from the kind with the domain's own rule rather than leaving NUL
 something a fresh row would never mean. Where the value is unknowable here, the
 column arrives NULL and something outside the kernel fills it in later - and the column's own
 docstring says which, so a reader does not mistake an honest absence for a forgotten step.
+Migration 16 adds no column at all: it reshapes the source-origin index to carry the
+canonical-ranges term, and backfills nothing — a row written before ranges existed has no
+`$.ranges` key, which the new index reads as the same `''` a whole-clip selection stores.
 
 **There are no downgrade paths, deliberately.** Nothing walks a file backwards and the
 tests no longer do either. A downgrade is a compatibility promise and a promise is owed
@@ -278,8 +283,8 @@ object with `_tables` rather than repeating the DDL - `checkfirst=True` on a `Ta
 **SQLAlchemy cannot reflect a partial or expression-based index**, so `checkfirst` reports
 one absent and re-issues a `CREATE` that then fails on every fresh database. Those ask
 SQLite instead, via `CreateIndex(index, if_not_exists=True)`. Two indexes here are in that
-category: `uq_source_project_kind_path_fps` (its fourth term is
-`coalesce(json_extract(video, '$.extraction_fps'), 0)`) and
+category: `uq_source_project_kind_path_fps_ranges` (its fourth and fifth terms are
+`json_extract` expressions over `video`) and
 `uq_annotation_asset_classification` (partial, on the tag geometry).
 
 **A column arriving by `ALTER` is declared last on its row class**, because SQLite appends

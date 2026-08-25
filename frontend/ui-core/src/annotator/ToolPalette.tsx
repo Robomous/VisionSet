@@ -94,14 +94,7 @@ import {
 } from "@visionset/annotator";
 
 import { geometryLabel } from "../data/geometryCategory";
-import {
-  CircleHelp,
-  Hand,
-  Plus,
-  Redo2,
-  Sparkles,
-  Undo2,
-} from "lucide-react";
+import { CircleHelp, Hand, Plus, Redo2, Sparkles, Undo2 } from "lucide-react";
 
 import { GeometryIcon } from "./GeometryIcon";
 import type { JSX, MouseEvent, ReactNode } from "react";
@@ -578,7 +571,8 @@ function PaletteButton({
 /**
  * The strip's own name for the shared glyph.
  *
- * The map lives in `GeometryIcon`, because `DESIGN.md` pins the three glyphs.
+ * The map lives in `GeometryIcon`, so one glyph per geometry is decided once
+ * rather than at each call site.
  */
 function ToolIcon({ tool }: { readonly tool: ToolChoice["tool"] }): JSX.Element {
   return <GeometryIcon tool={tool} />;

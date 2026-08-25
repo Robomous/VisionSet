@@ -42,7 +42,7 @@ export type { LabelClass } from "./palette.js";
 
 export { cn } from "./lib/cn.js";
 
-// Primitives — Radix + lucide only (decision H).
+// Primitives — Radix behaviour under shadcn Nova styling, iconed with Tabler.
 export { Button, buttonVariants, type ButtonProps } from "./primitives/Button.js";
 export {
   Card,

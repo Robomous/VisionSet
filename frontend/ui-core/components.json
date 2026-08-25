@@ -4,7 +4,7 @@
   "rsc": false,
   "tsx": true,
   "tailwind": { "config": "", "css": "src/styles.css", "baseColor": "neutral", "cssVariables": true, "prefix": "" },
-  "iconLibrary": "tabler",
+  "iconLibrary": "lucide",
   "rtl": false,
   "aliases": { "components": "@/components", "utils": "@/lib/cn", "ui": "@/primitives", "lib": "@/lib", "hooks": "@/hooks" },
   "menuColor": "inverted",

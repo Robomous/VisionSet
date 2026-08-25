@@ -20,7 +20,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Final, Protocol, runtime_checkable
 
-from visionset.kernel.domain import ImageFormat, VideoFrame, VideoMetadata
+from visionset.kernel.domain import ImageFormat, TimeRange, VideoFrame, VideoMetadata
 
 #: How many frames a second to take out of a clip, unless a caller says otherwise.
 #:
@@ -61,12 +61,13 @@ class VideoProcessor(Protocol):
       has been applied by the time the numbers come back, and the frames
       :meth:`frames` yields have those same dimensions. See
       :class:`~visionset.kernel.domain.VideoMetadata`.
-    - **Extraction is deterministic.** The same file and the same ``fps`` produce
-      the same frames, byte for byte — which is what lets content addressing
-      dedup a re-ingest instead of doubling a dataset. The promise holds *within
-      one installed decoder*: a different ffmpeg build may encode the same
-      picture to different bytes, so a caller asserts repeatability and never a
-      literal hash.
+    - **Extraction is deterministic.** The same file, the same ``fps`` and the
+      same canonical ``ranges`` produce the same frames, byte for byte — which
+      is what lets content addressing dedup a re-ingest instead of doubling a
+      dataset, and collapse the overlap of two selections over one clip. The
+      promise holds *within one installed decoder*: a different ffmpeg build may
+      encode the same picture to different bytes, so a caller asserts
+      repeatability and never a literal hash.
     - **Frames arrive lazily, and the iterator owns a running program.** Nothing
       buffers a whole clip. A caller either exhausts the iterator or closes it
       (``contextlib.closing``, or letting a ``for`` loop go out of scope), and an
@@ -78,6 +79,13 @@ class VideoProcessor(Protocol):
     can say which item failed; an implementation may fall back to the file's own
     name, but it never invents one. The convention for naming a frame further
     down the pipeline is ``clip.mp4#frame=42`` — see ``MediaError``.
+
+    ``ranges`` is a canonical clip-range selection — ``canonical_ranges``'
+    output, never raw input — and empty means the whole clip. Selection is a
+    filter over the same t = 0 grid, never a seek: an implementation emits
+    exactly the grid points inside the selection, each frame byte-identical to
+    the one a whole-clip extraction yields at the same index, and each
+    ``VideoFrame`` carrying its grid index.
 
     **Asking for more frames a second than the clip has duplicates them.** This
     is documented rather than clamped: clamping would mean probing inside
@@ -102,5 +110,6 @@ class VideoProcessor(Protocol):
         source: Path,
         *,
         fps: float = DEFAULT_EXTRACTION_FPS,
+        ranges: tuple[TimeRange, ...] = (),
         name: str | None = None,
     ) -> Iterator[VideoFrame]: ...

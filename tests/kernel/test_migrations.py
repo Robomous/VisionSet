@@ -45,7 +45,7 @@ _UNIQUENESS_INDEXES = {
     # silently: a three-column index would refuse a clip's second extraction
     # rate, and a nullable fourth column would collide with nothing at all,
     # because SQLite treats NULLs in a unique index as distinct.
-    "uq_source_project_kind_path_fps": ("json_extract", "coalesce"),
+    "uq_source_project_kind_path_fps_ranges": ("json_extract", "coalesce", "$.ranges"),
     # Partial, so it constrains classification tags and nothing else: two boxes
     # under one class are two facts, two tags of one class are one statement
     # made twice.
@@ -162,7 +162,9 @@ def _at_generation_one(path: Path) -> None:
     migrations add*, which is what a generation-1 file genuinely lacked, and
     re-stamps the version to match. Dropping is safe for exactly the reason the
     columns are the shape they are: none carries a foreign key, and SQLite
-    refuses to drop one that does.
+    refuses to drop one that does. Migration 16 reshaped an index rather than
+    adding a column, so the old four-term spelling is recreated here by hand —
+    the current declaration no longer knows it.
 
     **Every column-adding migration must be undone here, and the failure is the
     silent kind.** A column left in place makes its migration find the column
@@ -186,6 +188,14 @@ def _at_generation_one(path: Path) -> None:
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN credential_env"))
         connection.execute(text("ALTER TABLE project DROP COLUMN created_at"))
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN origin"))
+        connection.execute(text("DROP INDEX uq_source_project_kind_path_fps_ranges"))
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX uq_source_project_kind_path_fps ON source"
+                " (project_id, kind, path,"
+                " coalesce(json_extract(video, '$.extraction_fps'), 0))"
+            )
+        )
         connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 1"))
     store.close()
 
@@ -265,6 +275,45 @@ def test_a_connection_written_before_the_column_is_given_the_origin_its_kind_imp
             text("select name, origin from inference_connection order by name")
         ).all()
     assert rows == [("local", "huggingface"), ("remote", "custom")]
+    migrated.close()
+
+
+def test_the_reshaped_source_index_still_refuses_a_duplicate_origin(tmp_path: Path) -> None:
+    """Migration 16 exercised for real: the index it creates has teeth on an old file.
+
+    Both rows spell a whole-clip source the way every generation has — no
+    ``$.ranges`` key — so the new fifth term reads ``''`` for each and the
+    four shared terms collide.
+    """
+    provenance = (
+        '{"metadata": {"width": 64, "height": 48, "fps": 10.0,'
+        ' "duration_seconds": 2.0, "codec": "h264"}, "extraction_fps": 1.0}'
+    )
+    old = tmp_path / "old.db"
+    _at_generation_one(old)
+    with SqliteMetadataStore(old).engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'clips')")
+        )
+        connection.execute(
+            text(
+                "insert into source (id, project_id, kind, path, registered_at,"
+                " capture_params, video) values ('s1', 'p', 'video', '/clips/a.mp4',"
+                f" '2026-01-01T00:00:00+00:00', '{{}}', '{provenance}')"
+            )
+        )
+
+    migrated = SqliteMetadataStore(old)
+    migrated.initialize()
+    with pytest.raises(IntegrityError), migrated.engine.begin() as connection:
+        connection.execute(
+            text(
+                "insert into source (id, project_id, kind, path, registered_at,"
+                " capture_params, video) values ('s2', 'p', 'video', '/clips/a.mp4',"
+                f" '2026-01-02T00:00:00+00:00', '{{}}', '{provenance}')"
+            )
+        )
     migrated.close()
 
 

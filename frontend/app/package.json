@@ -17,7 +17,6 @@
     "cycle": "playwright test -c playwright.cycle.config.ts"
   },
   "dependencies": {
-    "@tabler/icons-react": "^3.46.0",
     "@visionset/annotator": "workspace:*",
     "@visionset/ui-core": "workspace:*",
     "lucide-react": "^1.32.0",

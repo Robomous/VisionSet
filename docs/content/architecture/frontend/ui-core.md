@@ -73,14 +73,19 @@ whenever its asserted type is and `tsc` cannot see the mismatch.
 
 ## The design system is a shadcn preset
 
-`styles.css` is the shadcn preset `b3bXyyPdWj` (style `nova` on the Radix base,
-base colour `neutral`, chart palette `orange`, icons `tabler`, Inter body /
-Geist heading fonts, radius `medium`, menu `inverted`/`subtle`) - the CLI's own
-generated output, transcribed verbatim, plus four VisionSet extensions
-(`stage`, `brand`, `success`, `warning`) added through shadcn's own extension
-convention. `components.json` (`style: "radix-nova"`, `iconLibrary: "tabler"`,
-`menuColor: "inverted"`, `menuAccent: "subtle"`) is the decoded configuration
-those tools read. `tokens.ts` is the TypeScript mirror for a caller that
+`styles.css` is the shadcn preset `b2iH` (style `nova` on the Radix base, base
+colour `neutral`, chart palette `neutral`, icons `lucide`, Geist throughout with
+the heading face inheriting the body's, radius `medium`, menu
+`inverted`/`subtle`, pointer cursor on pressable controls) - the CLI's own
+generated output, transcribed verbatim, plus five VisionSet extension roles
+(`stage`, `brand`, `success`, `warning`, `origin-*`) added through shadcn's own
+extension convention. `components.json` (`style: "radix-nova"`,
+`iconLibrary: "lucide"`, `menuColor: "inverted"`, `menuAccent: "subtle"`) holds
+the preset properties shadcn's own tools read - the fields its config schema
+defines, and no others. The schema is strict, so the properties it has no field
+for - the radius, the fonts, the chart palette, every colour - are values
+carried by `styles.css` instead; see [`DESIGN.md`](../../../../DESIGN.md)'s
+Source of Truth for the three layers. `tokens.ts` is the TypeScript mirror for a caller that
 cannot read CSS. Both themes - light and dark - are declared in full from the
 preset, so `bg-primary` in a component here and `bg-primary` in a screen mean
 the same colour by construction. There is no `tailwind.config.js` in this
@@ -89,8 +94,9 @@ repository and there must not be one - the tokens would acquire a second home.
 Three gates hold this: `tokens.test.ts` asserts `styles.css` and `tokens.ts`
 agree, declaration for declaration, and that no retired token has returned;
 `tests/scripts/design_tokens.test.mjs` scans every tracked frontend file for a
-raw colour in a class string, refuses a second `tailwind.config.js`, and
-confines `brand` to its two identity sites; `tests/scripts/docs_links.test.mjs`
+raw colour in a class string, refuses a second `tailwind.config.js`, confines
+`brand` to its two identity sites, and holds `components.json` to the
+schema-supported field set; `tests/scripts/docs_links.test.mjs`
 keeps [`DESIGN.md`](../../../../DESIGN.md)'s own cross-references honest.
 
 ## Libraries
@@ -101,7 +107,7 @@ visual-design rule. The current choices:
 | Concern | Choice |
 | --- | --- |
 | UI primitives | Radix (+ shadcn-style composition with `cva` and `cn`) - the open-code shadcn maintenance model is the direction: a primitive is VisionSet-owned source in `frontend/ui-core/src/primitives/`, edited directly, not a package dependency upgraded blindly |
-| Icons | `@tabler/icons-react` is the target for new and touched components; `lucide-react` remains in components this rewrite did not touch, as migration debt |
+| Icons | `lucide-react`, and nothing else: the primitives, the screens and the annotation workspace all draw from it, and no package declares a second icon library |
 | Styling | Tailwind v4, CSS-first `@theme`, on the shadcn preset `b3bXyyPdWj` - no `tailwind.config.js`, ever |
 | Toasts | sonner |
 | Component tests | vitest + jsdom + @testing-library/react |

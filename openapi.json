@@ -1622,6 +1622,18 @@
             "description": "The clip.",
             "title": "File",
             "type": "string"
+          },
+          "ranges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which stretches of the clip to extract, as a JSON array of {\"start_seconds\": s, \"end_seconds\": e} objects, each half-open [start, end). Omitted means the whole clip.",
+            "title": "Ranges"
           }
         },
         "required": [
@@ -1793,6 +1805,26 @@
           }
         },
         "title": "ClassificationGeometry",
+        "type": "object"
+      },
+      "ClipRange": {
+        "additionalProperties": false,
+        "description": "One stretch of a clip to extract, half-open: start_seconds <= t < end_seconds.",
+        "properties": {
+          "end_seconds": {
+            "title": "End Seconds",
+            "type": "number"
+          },
+          "start_seconds": {
+            "title": "Start Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "start_seconds",
+          "end_seconds"
+        ],
+        "title": "ClipRange",
         "type": "object"
       },
       "ConnectionAction": {
@@ -5182,7 +5214,7 @@
         "type": "object"
       },
       "VideoProvenanceOut": {
-        "description": "What a clip turned out to be, and the rate it is decomposed at.",
+        "description": "What a clip turned out to be, and the cut it is decomposed by.\n\n`ranges` is the canonical form of the selection the source was registered\nwith \u2014 clamped to the clip, sorted, overlaps merged \u2014 and empty means the\nwhole clip. Like `extraction_fps`, it is part of the source's identity.",
         "properties": {
           "codec": {
             "title": "Codec",
@@ -5204,6 +5236,13 @@
             "title": "Height",
             "type": "integer"
           },
+          "ranges": {
+            "items": {
+              "$ref": "#/components/schemas/ClipRange"
+            },
+            "title": "Ranges",
+            "type": "array"
+          },
           "width": {
             "title": "Width",
             "type": "integer"
@@ -5215,7 +5254,8 @@
           "fps",
           "duration_seconds",
           "codec",
-          "extraction_fps"
+          "extraction_fps",
+          "ranges"
         ],
         "title": "VideoProvenanceOut",
         "type": "object"
@@ -13205,7 +13245,7 @@
     },
     "/projects/{project_id}/sources/video": {
       "post": {
-        "description": "Offer a project a clip, to be cut at `extraction_fps`.\n\nThe clip is probed on the way in, so a file that is not a video, or one\nwhose bytes will not decode, is 422 here rather than a run that fails later:\n422 `UNSUPPORTED_MEDIA` for a kind of file this cannot cut, and 422\n`CORRUPT_MEDIA` for one that is the right kind and will not decode. The\nmessage says what was wrong with the file and never where it was put.\n\nThe rate is part of what the source *is*: the same clip registered at 1 fps\nand again at 5 fps is two sources over one file, which is what makes \"the\nsame source yields the same assets\" mean anything.",
+        "description": "Offer a project a clip, to be cut at `extraction_fps` inside `ranges`.\n\nThe clip is probed on the way in, so a file that is not a video, or one\nwhose bytes will not decode, is 422 here rather than a run that fails later:\n422 `UNSUPPORTED_MEDIA` for a kind of file this cannot cut, and 422\n`CORRUPT_MEDIA` for one that is the right kind and will not decode. The\nmessage says what was wrong with the file and never where it was put.\n\nThe cut is part of what the source *is*: the same clip registered at 1 fps\nand again at 5 fps \u2014 or over different ranges \u2014 is two sources over one\nfile, which is what makes \"the same source yields the same assets\" mean\nanything. Ranges are stored canonically (clamped, sorted, merged), and the\nresponse carries that canonical form.",
         "operationId": "register_video_source",
         "parameters": [
           {

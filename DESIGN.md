@@ -19,28 +19,48 @@ the tests and contributor docs.
 ## Source of Truth
 
 VisionSet's visual language is a **shadcn preset**, not a hand-authored system: preset
-code `b3bXyyPdWj`, decoded as `style: nova` (on the Radix base — `radix-nova` in
-`components.json`), `baseColor: neutral`, `chart: orange`, `icons: tabler`,
-`font: inter`, `heading: geist`, `radius: medium`, `menu: inverted/subtle`. The preset
-was generated with shadcn CLI **4.18.0** and transcribed verbatim into this repository;
-that CLI version is the reference for every value in this document. Nothing here is
-invented — every token, every derived radius, every chart colour traces back to the
-CLI's own output.
+code `b2iH`, decoded as `style: nova` (on the Radix base — `radix-nova` in
+`components.json`), `baseColor: neutral`, `chart: neutral`, `icons: lucide`,
+`font: geist`, `heading: inherit`, `radius: medium`, `menu: inverted/subtle`, with the
+CLI's `--pointer` option on. The preset was generated with shadcn CLI **4.19.0** and
+transcribed verbatim into this repository; that CLI version is the reference for every
+value in this document. Nothing here is invented — every token, every derived radius,
+every chart colour traces back to the CLI's own output.
+
+`heading: inherit` is the one decoded value with no token of its own: it means the
+heading face *is* the body face, which the stylesheet spells as
+`--font-heading: var(--font-sans)` rather than as a second family.
 
 `@visionset/ui-core` owns the implementation, in exactly three files:
 
 | File | Role |
 | --- | --- |
-| [`frontend/ui-core/components.json`](frontend/ui-core/components.json) | The decoded preset configuration shadcn's own tools read |
+| [`frontend/ui-core/components.json`](frontend/ui-core/components.json) | The preset properties shadcn's own tools read — the fields its config schema defines, and no others |
 | [`frontend/ui-core/src/styles.css`](frontend/ui-core/src/styles.css) | The tokens that run — `:root`, `.dark`, `@theme inline`, the base layer |
 | [`frontend/ui-core/src/tokens.ts`](frontend/ui-core/src/tokens.ts) | The TypeScript mirror, for a caller that cannot read CSS |
+
+**One intent, three layers — and they do not hold the same fields.** `components.json`
+carries only what shadcn's config schema defines (`style`, `tailwind.baseColor`,
+`iconLibrary`, `menuColor`, `menuAccent`, `rsc`/`tsx`/`rtl`, the aliases, the registries).
+That schema is **strict**: a decoded property it has no field for is *rejected*, not
+ignored, so the file cannot be made to restate the whole preset even as documentation.
+Everything else the preset decides — the radius, both fonts, the chart palette, every
+colour — is a *value*, and values live in `styles.css`. A decoded property missing from
+`components.json` is therefore the design working as intended, never drift:
+
+| Layer | Owns | Radius, as the worked example |
+| --- | --- | --- |
+| Preset intent | What the code decodes to (`shadcn preset decode b3bXyyPdWj`) | `radius: medium` |
+| Runtime | The value that actually paints, in `styles.css` | `--radius: 0.625rem` |
+| CLI configuration | The schema-supported fields, in `components.json` | no `radius` field — the schema defines none |
 
 Three machine gates hold this contract, each in one line: `tokens.test.ts` asserts
 `styles.css` and `tokens.ts` agree, declaration for declaration, and that no retired
 token has crept back in; `tests/scripts/design_tokens.test.mjs` bans a raw colour in any
 class string, bans a second `tailwind.config.js`, confines `brand` to its two identity
-sites, and re-checks the retired vocabulary by an independent method; `tests/scripts/
-docs_links.test.mjs` keeps every link and heading anchor in this document itself honest.
+sites, holds `components.json` to the schema-supported field set, and re-checks the
+retired vocabulary by an independent method; `tests/scripts/docs_links.test.mjs` keeps
+every link and heading anchor in this document itself honest.
 
 Radix stays the behaviour layer under every primitive — this is a visual foundation
 rewrite, not a component replacement.
@@ -117,6 +137,11 @@ picks one of these three; it does not compose a fill from scratch.
 - **Hover** on a filled control is the same fill at reduced opacity (`hover:bg-primary/80`),
   not a colour change of meaning; a menu or list item highlights with `accent` instead.
 - **Press** reads as the control moving, not recolouring.
+- **The cursor turns to a hand over anything pressable**, which is the preset's
+  `--pointer` option: `button` and `[role="button"]`, in the base layer. It stops at
+  `:not(:disabled)` on purpose — a hand over a control that will not respond is the
+  cursor making a promise the control does not keep, and the disabled rule below is what
+  the reader should be getting instead.
 - **Disabled** is uniform reduced opacity plus `pointer-events-none` — the control dims
   as itself rather than swapping to a separate greyed-out skin. A disabled control still
   explains itself; see the product principles' never-disable-without-explanation rule.
@@ -126,12 +151,14 @@ picks one of these three; it does not compose a fill from scratch.
 
 ## Typography
 
-- **Body copy: Inter**, via `--font-sans` (`'Inter Variable', sans-serif`).
-- **Headings: Geist**, via `--font-heading` (`'Geist Variable', sans-serif`), applied at
-  the semantic-HTML level — `h1`–`h4` carry it in the base layer, so a screen never has
-  to remember `font-heading` on every heading it writes.
-- Both are bundled offline through `@fontsource-variable/{inter,geist}` — no runtime
-  fetch to a font host, ever.
+- **One family: Geist**, via `--font-sans` (`'Geist Variable', sans-serif`). The preset
+  sets `--font-heading` to `var(--font-sans)`, so a heading is the same face as body
+  copy at a different size and weight rather than a second typeface.
+- **`font-heading` survives as a hook, not as a difference.** `h1`–`h4` still carry it
+  in the base layer, so no screen writes it by hand and a later preset that splits the
+  two families again lands in one declaration rather than at every heading.
+- Bundled offline through `@fontsource-variable/geist` — no runtime fetch to a font
+  host, ever.
 - **One justified technical role: `font-mono`.** Tailwind's default monospace stack (no
   Geist Mono package is bundled) marks *machine-shaped* content — identifiers, hashes,
   model references, measurements. It is never decoration, and prose never wears it; this
@@ -160,7 +187,7 @@ primitive targets):
 | Button — hover | default `hover:bg-primary/80`; secondary `color-mix(in oklch, var(--secondary), var(--foreground) 5%)`; destructive soft |
 | Input | `h-8 rounded-lg border-input px-2.5 text-base md:text-sm`; dark theme `bg-input/30` |
 | Badge | `h-5 px-2 text-xs rounded-4xl`; icons `size-3`. The `quiet` variant alone is `rounded-md` — a square, colourless label for a fact read beside other facts, never a state |
-| Menu — surface | `dark` subtree + `bg-popover p-1 rounded-lg ring-1 ring-foreground/10 shadow-md`, `min-w-32`, `duration-100` enter/exit |
+| Menu — surface | `dark` subtree + `bg-popover p-1 rounded-lg ring-1 ring-foreground/10 shadow-md`, `min-w-32`, `duration-100` enter and **no exit** — see *Motion* |
 | Menu — item | `px-1.5 py-1 text-sm rounded-md focus:bg-accent focus:text-accent-foreground`; destructive item soft |
 | Card | `rounded-xl ring-1 ring-foreground/10 text-sm`; `--card-spacing` = `--spacing(4)` (16px; 12px at the `sm` size); footer `bg-muted/50` |
 | Dialog — overlay | `bg-black/10 supports-backdrop-filter:backdrop-blur-xs duration-100` |
@@ -169,7 +196,7 @@ primitive targets):
 | Elevation | `ring-1 ring-foreground/10` + a resting shadow — never a coloured border |
 
 `frontend/ui-core/src/primitives/` carries the table itself, not a family resemblance to
-it: the heights, the `ring-3` focus treatment, the `duration-100` enter/exit, the
+it: the heights, the `ring-3` focus treatment, the `duration-100` enter, the
 `--card-spacing` variable and Nova's interaction idioms (uniform disabled opacity, soft
 destructive, `/80`-opacity hover, the inverted menu subtree) are the primitives' own
 declarations. The table is the contract and the primitives are where it is spelled, so a
@@ -184,8 +211,14 @@ this document sanctions, and only where the content's own height is the point.
 
 ## Radius
 
-`--radius: 0.625rem` (10px) is the one constant; every other radius step is derived from
-it in `@theme inline`, verbatim:
+The preset's `radius: medium` materialises here and nowhere else: `--radius: 0.625rem`
+(10px) in `styles.css` is the authoritative runtime value, mirrored by `tokens.ts` and
+pinned by `tokens.test.ts`. `components.json` holds no radius field — shadcn's config
+schema defines none, and being strict it rejects one. This stylesheet is the single place
+the medium step is spelled.
+
+`--radius` is the one constant; every other radius step is derived from it in
+`@theme inline`, verbatim:
 
 | Step | Formula | Result |
 | --- | --- | --- |
@@ -226,6 +259,33 @@ which is the only place the composition can be checked: Tailwind renders `ring-3
 `box-shadow` layer, so "the ring is there" is a question about a computed shadow list
 rather than about a class string.
 
+## Motion
+
+Motion orients or confirms, and never stands between somebody and their next action —
+*Fast and quiet*, applied. An **enter** animation is free to play: nothing is waiting on
+it, because the surface it introduces did not exist a frame ago. An **exit** animation is
+not, and the difference is not a matter of taste.
+
+**A floating surface leaves on the frame it is dismissed.** While an exit animation runs,
+Radix keeps the content mounted, and the dismissable layer stays mounted with it. A press
+on the trigger inside that window is read twice — the trigger toggles the surface open,
+and the layer still listening reads the same pointer-down as an interaction outside itself
+and dismisses — so the two cancel and the surface never appears. At `duration-100` that
+window covers the gap between an `Escape` and the click after it, which makes it a defect
+a fast hand meets routinely rather than an edge case. The annotation workspace is where
+that tempo is normal, and it is where the behaviour was measured; the fix belongs to the
+primitive because every menu in the product shared the flaw.
+
+So `DropdownMenuContent` animates in and not out, and
+`frontend/app/e2e/annotate.spec.ts` holds the two presses that would catch a fade being
+restored. A surface that genuinely needs an exit — one whose trigger cannot be pressed
+again straight away, as a modal's cannot — may keep one; the tooltip keeps its own,
+because a hover has no toggle to swallow.
+
+`prefers-reduced-motion` sits above all of this: the base layer in `styles.css` collapses
+every animation and transition to a single frame under that query, so none of the above is
+something a component opts into.
+
 ## Sidebar / Menu
 
 - **`menuColor: inverted`.** Every menu and popover subtree — dropdown content, select
@@ -257,16 +317,22 @@ rather than about a class string.
 
 ## Charts
 
-The preset's chart palette — five orange steps, **identical in both themes** (a chart
-does not restyle when the page switches theme):
+The preset's chart palette — five neutral steps from light to dark, **identical in both
+themes** (a chart does not restyle when the page switches theme):
 
 | Token | Value |
 | --- | --- |
-| `chart-1` | `oklch(0.837 0.128 66.29)` |
-| `chart-2` | `oklch(0.705 0.213 47.604)` |
-| `chart-3` | `oklch(0.646 0.222 41.116)` |
-| `chart-4` | `oklch(0.553 0.195 38.402)` |
-| `chart-5` | `oklch(0.47 0.157 37.304)` |
+| `chart-1` | `oklch(0.87 0 0)` |
+| `chart-2` | `oklch(0.556 0 0)` |
+| `chart-3` | `oklch(0.439 0 0)` |
+| `chart-4` | `oklch(0.371 0 0)` |
+| `chart-5` | `oklch(0.269 0 0)` |
+
+They separate by **lightness rather than by hue**, which is the trade this preset makes:
+a series stays legible to a reader who cannot separate two hues, and it survives being
+printed or screenshotted in greyscale — at the cost of holding fewer series apart before
+the steps run together. A chart needing more than five wants a second channel, a shape
+or a label, not a sixth colour invented here.
 
 These are **series colours, never status.** A chart never leans on `chart-2` to mean
 "warning" — status uses the status tokens below, a chart uses these to tell one series
@@ -360,12 +426,13 @@ First-class, and part of every rule above rather than a section to satisfy after
 - **Ad-hoc geometry that fights Nova.** A control's height, padding, or radius is not a
   per-screen decision; reaching past the geometry table above for a bespoke size is a
   design decision to make in this document, not in a component diff.
-- **Mixing icon sets in new code.** Tabler is the set, and inside the primitives it is
-  already the only one: every icon `frontend/ui-core/src/primitives/` draws is
-  `@tabler/icons-react` — the select's chevrons and check, the dialog's close — and no
-  file there imports `lucide-react` at all. Lucide survives at *screen* level, in views
-  this rewrite did not open, and that is the whole of the remaining debt: a screen still
-  importing it is a file to migrate, not a precedent to follow.
+- **Mixing icon sets in new code.** `lucide-react` is the set, and the only one: every
+  icon the primitives, the screens and the annotation workspace draw comes from it, no
+  package declares a second icon library, and `tests/scripts/design_tokens.test.mjs`
+  refuses one that reappears in a manifest or an import. The rule is *one* set rather
+  than one particular set — what costs a reader is two of them on a screen, where the
+  same idea arrives at two weights and two grids. Changing which one is a decision to
+  make in this document, not a dependency to add.
 - **Brand in a functional control.** Robomous coral is identity — the wordmark and its
   styleguide swatch, nothing else. A functional control reaching for `brand` is a
   semantic-colour violation regardless of how many other sites already use it correctly.

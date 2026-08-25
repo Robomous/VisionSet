@@ -131,20 +131,7 @@ import {
   type Viewport,
 } from "@visionset/annotator";
 import { AnnotatorStore as Store } from "@visionset/annotator";
-import {
-  ArrowLeft,
-  Check,
-  CheckCheck,
-  ChevronLeft,
-  ChevronRight,
-  CircleHelp,
-  Grid3x3,
-  MonitorSmartphone,
-  MoreHorizontal,
-  SkipForward,
-  TriangleAlert,
-  Undo2,
-} from "lucide-react";
+import { ArrowLeft, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, Eye, Grid3x3, MonitorSmartphone, MoreHorizontal, SkipForward, TriangleAlert, Undo2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -182,7 +169,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../primitives/Menu";
-import { Eye } from "lucide-react";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { CanvasReassign } from "./CanvasReassign";
 import { EditorNotice, EditorNotices } from "./EditorNotice";
