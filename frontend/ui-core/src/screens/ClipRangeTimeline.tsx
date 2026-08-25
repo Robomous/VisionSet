@@ -6,11 +6,17 @@
  * paired handles and a playhead, which no installed primitive composes — and
  * `@radix-ui/react-slider` stays out of the dependency tree.
  *
- * The component never canonicalizes while a pointer is down — merging a segment
- * under the cursor would move what the user is holding. Overlaps live in local
- * state; the kernel canonicalizes on registration, and the readout below the
- * track already speaks in the merged form so nothing shown here disagrees with
- * what registration will answer.
+ * **Selection is discrete: whole seconds.** This is not an editor trimming on
+ * frames — a range starts on an exact second and ends on one, half-open, so a
+ * drag paints second cells and the handles walk boundaries. The one boundary
+ * that is not an integer is the clip's own end, which closes a final partial
+ * cell. Extraction still reads its k/fps grid inside the selection; the cells
+ * only decide which seconds are in.
+ *
+ * The component never merges while a pointer is down — merging a segment under
+ * the cursor would move what the user is holding. Overlaps live in local
+ * state; the kernel canonicalizes on registration, and the Selection fact
+ * beside the player speaks in the merged form.
  */
 
 import { IconX } from "@tabler/icons-react";
@@ -27,9 +33,6 @@ import {
 import { cn } from "../lib/cn";
 import { clock, mergedRanges, type ClipRange } from "./clipRanges";
 
-/** The narrowest range a handle drag can leave behind, in seconds. */
-const MIN_SPAN = 0.01;
-
 function capture(target: Element, pointerId: number): void {
   // jsdom implements the method but knows no pointers, so it throws where a
   // browser succeeds; losing capture only degrades a drag that leaves the track.
@@ -43,7 +46,6 @@ function capture(target: Element, pointerId: number): void {
 export function ClipRangeTimeline({
   src,
   durationSeconds,
-  fps,
   ranges,
   onRangesChange,
   aside,
@@ -51,8 +53,6 @@ export function ClipRangeTimeline({
   /** An object URL the caller owns — the caller revokes it. Null renders no player. */
   readonly src: string | null;
   readonly durationSeconds: number;
-  /** Grid granularity: arrow keys nudge a handle by one grid step, 1/fps. */
-  readonly fps: number;
   readonly ranges: readonly ClipRange[];
   readonly onRangesChange: (ranges: readonly ClipRange[]) => void;
   /** The cut's facts, laid beside the player; the caller owns their content. */
@@ -66,8 +66,30 @@ export function ClipRangeTimeline({
   const [draft, setDraft] = useState<{ anchor: number; to: number } | null>(null);
   const [drag, setDrag] = useState<{ index: number; side: "start" | "end" } | null>(null);
 
-  const step = fps > 0 ? 1 / fps : 1;
+  // The last whole-second boundary. Every boundary is an integer except the
+  // clip's own end, which closes a final partial cell.
+  const last = Math.floor(durationSeconds);
   const merged = mergedRanges(ranges, durationSeconds);
+
+  function nearestBoundary(seconds: number): number {
+    if (seconds <= 0) return 0;
+    if (seconds >= last) {
+      if (durationSeconds === last) return last;
+      return seconds - last <= durationSeconds - seconds ? last : durationSeconds;
+    }
+    return Math.round(seconds);
+  }
+
+  /** The boundary strictly below an end — the latest start its range allows. */
+  function boundaryBelow(seconds: number): number {
+    return seconds > last ? last : Math.ceil(seconds) - 1;
+  }
+
+  /** The boundary strictly above a start — the earliest end its range allows. */
+  function boundaryAbove(seconds: number): number {
+    const next = Math.floor(seconds) + 1;
+    return next > last ? durationSeconds : next;
+  }
 
   function toSeconds(clientX: number): number {
     const rect = trackRef.current?.getBoundingClientRect();
@@ -91,15 +113,11 @@ export function ClipRangeTimeline({
       ranges.map((one, at) => {
         if (at !== index) return one;
         if (side === "start") {
-          return {
-            ...one,
-            start_seconds: Math.max(0, Math.min(seconds, one.end_seconds - MIN_SPAN)),
-          };
+          const snapped = Math.min(nearestBoundary(seconds), boundaryBelow(one.end_seconds));
+          return { ...one, start_seconds: Math.max(0, snapped) };
         }
-        return {
-          ...one,
-          end_seconds: Math.min(durationSeconds, Math.max(seconds, one.start_seconds + MIN_SPAN)),
-        };
+        const snapped = Math.max(nearestBoundary(seconds), boundaryAbove(one.start_seconds));
+        return { ...one, end_seconds: Math.min(snapped, durationSeconds) };
       }),
     );
   }
@@ -164,7 +182,11 @@ export function ClipRangeTimeline({
       seek(toSeconds(event.clientX));
       return;
     }
-    onRangesChange([...ranges, { start_seconds: start, end_seconds: end }]);
+    const startCell = Math.min(Math.floor(start), last);
+    const above = Math.ceil(end);
+    let endCell = above > last ? durationSeconds : above;
+    if (endCell <= startCell) endCell = boundaryAbove(startCell);
+    onRangesChange([...ranges, { start_seconds: startCell, end_seconds: endCell }]);
   }
 
   function handlePointerDown(index: number, side: "start" | "end") {
@@ -179,7 +201,7 @@ export function ClipRangeTimeline({
 
   function handleKeys(index: number, side: "start" | "end") {
     return (event: KeyboardEvent<HTMLButtonElement>): void => {
-      const nudge = event.shiftKey ? step * 10 : step;
+      const nudge = event.shiftKey ? 10 : 1;
       const one = ranges[index];
       if (one === undefined) return;
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
@@ -192,6 +214,28 @@ export function ClipRangeTimeline({
       }
     };
   }
+
+  // The draft as the cells it will commit, so a drag paints whole seconds live.
+  const draftCells =
+    draft !== null && Math.abs(draft.to - draft.anchor) > 0
+      ? {
+          start: Math.min(Math.floor(Math.min(draft.anchor, draft.to)), last),
+          end:
+            Math.ceil(Math.max(draft.anchor, draft.to)) > last
+              ? durationSeconds
+              : Math.ceil(Math.max(draft.anchor, draft.to)),
+        }
+      : null;
+
+  // Only the seconds where markers sit are labelled — a full ruler is more
+  // reading than a selection needs. Deduplicated: touching ranges share one.
+  const markers = Array.from(
+    new Set(
+      ranges
+        .flatMap((one) => [one.start_seconds, one.end_seconds])
+        .concat(draftCells === null ? [] : [draftCells.start, draftCells.end]),
+    ),
+  ).sort((a, b) => a - b);
 
   const handleClass = cn(
     "pointer-events-auto absolute inset-y-0 w-2 cursor-ew-resize rounded-sm bg-primary",
@@ -217,94 +261,130 @@ export function ClipRangeTimeline({
           {aside !== undefined && <div className="min-w-0 flex-1">{aside}</div>}
         </div>
       )}
-      <div className="flex items-center gap-2">
-        <span className="text-xs tabular-nums text-muted-foreground" aria-hidden="true">
-          0:00
-        </span>
+      <div className="flex flex-col gap-1">
         <div
           ref={trackRef}
-          className="relative h-10 flex-1 cursor-crosshair touch-none rounded-md bg-muted"
+          className="relative h-10 cursor-crosshair touch-none rounded-md bg-muted"
           data-testid="range-track"
           aria-label="Clip timeline"
           onPointerDown={trackPointerDown}
           onPointerMove={trackPointerMove}
           onPointerUp={trackPointerUp}
         >
-        <div
-          className="pointer-events-none absolute inset-y-0 w-px bg-foreground/60"
-          style={{ left: percent(Math.min(playhead, durationSeconds)) }}
-          aria-hidden="true"
-        />
-        {merged.length === 0 && draft === null && (
-          <span
-            className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-muted-foreground"
-            data-testid="range-ghost"
-          >
-            Drag to select a range
-          </span>
-        )}
-        {ranges.map((one, index) => (
+          {/* Ticks make the cells legible; capped so an hours-long clip does
+              not render thousands of them. */}
+          {last <= 240 &&
+            Array.from({ length: last }, (_, at) => at + 1)
+              .filter((second) => second < durationSeconds)
+              .map((second) => (
+                <div
+                  key={second}
+                  className="pointer-events-none absolute inset-y-0 w-px bg-border"
+                  style={{ left: percent(second) }}
+                  aria-hidden="true"
+                />
+              ))}
           <div
-            // Index, deliberately: a range has no identity beyond its place
-            // in the list, and nothing reorders outside canonicalization.
-            key={index}
-            className="pointer-events-none absolute inset-y-1 rounded-sm border border-primary bg-primary/10"
+            className="pointer-events-none absolute inset-y-0 w-px bg-foreground/60"
             style={{
-              left: percent(one.start_seconds),
-              width: percent(one.end_seconds - one.start_seconds),
+              // Clamped to the track's inside: at 100% the line would paint on
+              // the border, outside the rounded box — and the element's own
+              // duration can outrun the probe's by a rounding.
+              left: `min(${(Math.min(playhead, durationSeconds) / durationSeconds) * 100}%, calc(100% - 1px))`,
             }}
-            data-testid="range-segment"
-          >
-            <button
-              type="button"
-              className={cn(handleClass, "-left-1")}
-              data-testid={`range-${index}-start`}
-              aria-label={`Start of range ${index + 1}, ${clock(one.start_seconds)}`}
-              onPointerDown={handlePointerDown(index, "start")}
-              onKeyDown={handleKeys(index, "start")}
-            />
-            <button
-              type="button"
-              className={cn(handleClass, "-right-1")}
-              data-testid={`range-${index}-end`}
-              aria-label={`End of range ${index + 1}, ${clock(one.end_seconds)}`}
-              onPointerDown={handlePointerDown(index, "end")}
-              onKeyDown={handleKeys(index, "end")}
-            />
-            <button
-              type="button"
-              className={cn(
-                "pointer-events-auto absolute -top-1.5 right-1 flex size-4 items-center",
-                "justify-center rounded-full border border-border bg-card text-muted-foreground",
-                "focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-              )}
-              data-testid={`range-${index}-remove`}
-              aria-label={`Remove range ${index + 1}`}
-              onPointerDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-              onClick={() => onRangesChange(ranges.filter((_, at) => at !== index))}
-            >
-              <IconX className="size-3" aria-hidden="true" />
-            </button>
-          </div>
-        ))}
-        {draft !== null && Math.abs(draft.to - draft.anchor) > 0 && (
-          <div
-            className="pointer-events-none absolute inset-y-1 rounded-sm border border-dashed border-primary bg-primary/10"
-            style={{
-              left: percent(Math.min(draft.anchor, draft.to)),
-              width: percent(Math.abs(draft.to - draft.anchor)),
-            }}
-            data-testid="range-draft"
             aria-hidden="true"
           />
-        )}
+          {ranges.length === 0 && draft === null && (
+            <span
+              className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-muted-foreground"
+              data-testid="range-ghost"
+            >
+              Drag to select a range
+            </span>
+          )}
+          {ranges.map((one, index) => (
+            <div
+              // Index, deliberately: a range has no identity beyond its place
+              // in the list, and nothing reorders outside canonicalization.
+              key={index}
+              className="pointer-events-none absolute inset-y-1 rounded-sm border border-primary bg-primary/10"
+              style={{
+                left: percent(one.start_seconds),
+                width: percent(one.end_seconds - one.start_seconds),
+              }}
+              data-testid="range-segment"
+            >
+              <button
+                type="button"
+                className={cn(handleClass, "-left-1")}
+                data-testid={`range-${index}-start`}
+                aria-label={`Start of range ${index + 1}, ${clock(one.start_seconds)}`}
+                onPointerDown={handlePointerDown(index, "start")}
+                onKeyDown={handleKeys(index, "start")}
+              />
+              <button
+                type="button"
+                className={cn(handleClass, "-right-1")}
+                data-testid={`range-${index}-end`}
+                aria-label={`End of range ${index + 1}, ${clock(one.end_seconds)}`}
+                onPointerDown={handlePointerDown(index, "end")}
+                onKeyDown={handleKeys(index, "end")}
+              />
+              <button
+                type="button"
+                className={cn(
+                  "pointer-events-auto absolute -top-1.5 right-1 flex size-4 items-center",
+                  "justify-center rounded-full border border-border bg-card text-muted-foreground",
+                  "focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                )}
+                data-testid={`range-${index}-remove`}
+                aria-label={`Remove range ${index + 1}`}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onClick={() => onRangesChange(ranges.filter((_, at) => at !== index))}
+              >
+                <IconX className="size-3" aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+          {draftCells !== null && (
+            <div
+              className="pointer-events-none absolute inset-y-1 rounded-sm border border-dashed border-primary bg-primary/10"
+              style={{
+                left: percent(draftCells.start),
+                width: percent(draftCells.end - draftCells.start),
+              }}
+              data-testid="range-draft"
+              aria-hidden="true"
+            />
+          )}
         </div>
-        <span className="text-xs tabular-nums text-muted-foreground" aria-hidden="true">
-          {clock(durationSeconds)}
-        </span>
+        {markers.length > 0 && (
+          <div
+            className="relative h-4 text-xs tabular-nums text-muted-foreground"
+            data-testid="range-labels"
+            aria-hidden="true"
+          >
+            {markers.map((second) => (
+              <span
+                key={second}
+                className={cn(
+                  "absolute",
+                  second <= 0
+                    ? ""
+                    : second >= durationSeconds
+                      ? "-translate-x-full"
+                      : "-translate-x-1/2",
+                )}
+                style={{ left: percent(Math.min(second, durationSeconds)) }}
+              >
+                {Number.isInteger(second) ? String(second) : second.toFixed(1)}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -853,10 +853,6 @@ function SelectionPanel({
 }): JSX.Element {
   const kind = isVideo ? "video" : files.length === 1 ? "image" : "images";
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
-  // The grid step the timeline nudges by. Falls back to one so a half-typed
-  // rate never turns arrow keys into a NaN.
-  const typedRate = Number(fps);
-  const gridFps = Number.isFinite(typedRate) && typedRate > 0 ? typedRate : 1;
 
   return (
     <div className="flex flex-col rounded-lg border border-border" data-testid="selection">
@@ -926,7 +922,6 @@ function SelectionPanel({
             <ClipRangeTimeline
               src={clipUrl}
               durationSeconds={clip.durationSeconds}
-              fps={gridFps}
               ranges={ranges}
               onRangesChange={onRanges}
               aside={
