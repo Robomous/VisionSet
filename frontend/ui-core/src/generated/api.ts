@@ -2437,7 +2437,7 @@ export interface paths {
         put?: never;
         /**
          * Register Video Source
-         * @description Offer a project a clip, to be cut at `extraction_fps`.
+         * @description Offer a project a clip, to be cut at `extraction_fps` inside `ranges`.
          *
          *     The clip is probed on the way in, so a file that is not a video, or one
          *     whose bytes will not decode, is 422 here rather than a run that fails later:
@@ -2445,9 +2445,11 @@ export interface paths {
          *     `CORRUPT_MEDIA` for one that is the right kind and will not decode. The
          *     message says what was wrong with the file and never where it was put.
          *
-         *     The rate is part of what the source *is*: the same clip registered at 1 fps
-         *     and again at 5 fps is two sources over one file, which is what makes "the
-         *     same source yields the same assets" mean anything.
+         *     The cut is part of what the source *is*: the same clip registered at 1 fps
+         *     and again at 5 fps — or over different ranges — is two sources over one
+         *     file, which is what makes "the same source yields the same assets" mean
+         *     anything. Ranges are stored canonically (clamped, sorted, merged), and the
+         *     response carries that canonical form.
          */
         post: operations["register_video_source"];
         delete?: never;
@@ -3378,6 +3380,11 @@ export interface components {
              * @description The clip.
              */
             file: string;
+            /**
+             * Ranges
+             * @description Which stretches of the clip to extract, as a JSON array of {"start_seconds": s, "end_seconds": e} objects, each half-open [start, end). Omitted means the whole clip.
+             */
+            ranges?: string | null;
         };
         /**
          * BySegmentsBody
@@ -3470,6 +3477,16 @@ export interface components {
              * @enum {string}
              */
             type: "classification_tag";
+        };
+        /**
+         * ClipRange
+         * @description One stretch of a clip to extract, half-open: start_seconds <= t < end_seconds.
+         */
+        ClipRange: {
+            /** End Seconds */
+            end_seconds: number;
+            /** Start Seconds */
+            start_seconds: number;
         };
         /**
          * ConnectionAction
@@ -5149,7 +5166,11 @@ export interface components {
         };
         /**
          * VideoProvenanceOut
-         * @description What a clip turned out to be, and the rate it is decomposed at.
+         * @description What a clip turned out to be, and the cut it is decomposed by.
+         *
+         *     `ranges` is the canonical form of the selection the source was registered
+         *     with — clamped to the clip, sorted, overlaps merged — and empty means the
+         *     whole clip. Like `extraction_fps`, it is part of the source's identity.
          */
         VideoProvenanceOut: {
             /** Codec */
@@ -5162,6 +5183,8 @@ export interface components {
             fps: number;
             /** Height */
             height: number;
+            /** Ranges */
+            ranges: components["schemas"]["ClipRange"][];
             /** Width */
             width: number;
         };

@@ -104,6 +104,7 @@ from visionset.kernel.domain import (
     SourceKind,
     ThumbnailBackfill,
     VideoProvenance,
+    expected_frames,
     normalize_name,
     report_name,
     require_move,
@@ -685,11 +686,11 @@ class IngestService:
         **And this is the one caller that can count the loss**, which is why the
         partial-extraction report is assembled here rather than in ``_failure``.
         Both numbers are already in hand when the refusal arrives: what arrived is
-        the length of ``candidates``, and what was expected is the probe this
-        source has carried since it was registered, times the rate it was
-        registered at. Neither costs a second pass over the clip — the estimate
-        is the same arithmetic the ingest screen shows as "Frames expected"
-        before a run starts.
+        the length of ``candidates``, and what was expected is the domain's own
+        count over the probe and selection this source has carried since it was
+        registered. Neither costs a second pass over the clip — the estimate is
+        the same arithmetic the ingest screen shows as "Frames expected" before
+        a run starts.
 
         ``total`` stays NULL for the whole run, and honestly so. ``VideoMetadata``
         carries no frame count by design — it would be a guess for a
@@ -702,7 +703,7 @@ class IngestService:
         failures: list[IngestFailure] = []
         clip = Path(source.path)
         frames = self._workspace.video_processor.frames(
-            clip, fps=provenance.extraction_fps, name=clip.name
+            clip, fps=provenance.extraction_fps, ranges=provenance.ranges, name=clip.name
         )
         self._record_progress(job_id, processed=0, total=None, failures=failures)
         try:
@@ -1057,11 +1058,11 @@ def _extraction_failure(
 
 
 def _expected_frames(provenance: VideoProvenance) -> int | None:
-    """What the clip claimed to hold, from the probe stored when it was registered.
+    """What the selection holds, from the probe stored when the source was registered.
 
-    ``floor`` rather than ``round``, matching the number the ingest screen has
-    always shown before a run starts: the two are the same claim about the same
-    clip and must not differ by one.
+    The domain's ``expected_frames`` — exact, matching what the extraction
+    filter emits, and mirrored by the ingest screen. The earlier ``floor``
+    spelling undercounted by one on every fractional product.
 
     ``None`` is reachable in principle rather than in practice — ``VideoMetadata``
     refuses a non-positive duration, so a registered source always has one — and
@@ -1072,4 +1073,6 @@ def _expected_frames(provenance: VideoProvenance) -> int | None:
     seconds = provenance.metadata.duration_seconds
     if seconds <= 0:
         return None
-    return int(seconds * provenance.extraction_fps)
+    return expected_frames(
+        provenance.ranges, duration_seconds=seconds, fps=provenance.extraction_fps
+    )

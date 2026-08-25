@@ -206,8 +206,12 @@ from visionset.kernel.domain.segmentation import (
 from visionset.kernel.domain.source import (
     Source,
     SourceKind,
+    TimeRange,
     VideoProvenance,
     canonical_path,
+    canonical_ranges,
+    expected_frames,
+    grid_bounds,
 )
 from visionset.kernel.domain.suggestion import (
     DEFAULT_DETAIL,
@@ -439,6 +443,7 @@ __all__ = [
     "TaskGroup",
     "TextPrompt",
     "ThumbnailBackfill",
+    "TimeRange",
     "Token",
     "VideoFrame",
     "VideoMetadata",
@@ -447,6 +452,9 @@ __all__ = [
     "assign_split",
     "canonical_bytes",
     "canonical_path",
+    "canonical_ranges",
+    "expected_frames",
+    "grid_bounds",
     "diff_classes",
     "generate_secret",
     "hash_secret",

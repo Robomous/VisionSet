@@ -31,14 +31,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated, Any
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from visionset import wire
+from visionset.kernel.domain import TimeRange
 from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS
 from visionset.kernel.services import IngestService, SourceService
 from visionset.mcp._errors import refused
 from visionset.mcp._resolve import ProjectRef, resolve_project
 from visionset.mcp._workspace import opened_workspace
+
+
+class ClipRangeInput(BaseModel):
+    """One stretch of a clip to extract, half-open: start_seconds <= t < end_seconds."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start_seconds: float = Field(description="Where the stretch begins, in seconds from zero.")
+    end_seconds: float = Field(description="Where it ends, exclusive. Must be after the start.")
 
 
 def ingest(
@@ -58,6 +68,16 @@ def ingest(
             description=(
                 "Frames per second to extract. Video sources only; defaults to "
                 f"{DEFAULT_EXTRACTION_FPS}. Must be greater than zero."
+            )
+        ),
+    ] = None,
+    ranges: Annotated[
+        list[ClipRangeInput] | None,
+        Field(
+            description=(
+                "Which stretches of the clip to extract, each half-open [start, end) in "
+                "seconds. Video sources only; omitted means the whole clip. Overlaps "
+                "merge, and the selection is part of the source's identity, like fps."
             )
         ),
     ] = None,
@@ -95,7 +115,8 @@ def ingest(
     are the ones `get_job` and the rest of the loop take.
 
     Refuses before doing any work if the path does not exist, if `fps` is not
-    positive, or if `fps` was given for a directory of stills.
+    positive, if a range is inverted or starts before zero, or if `fps` or
+    `ranges` was given for a directory of stills.
     """
     source_path = Path(path)
     # Three refusals the kernel raises *outside* the VisionSetError tree, so
@@ -110,6 +131,17 @@ def ingest(
         return refused("fps must be greater than zero")
     if fps is not None and source_path.is_dir():
         return refused(f"fps applies to a video source, and {path} is a directory of stills")
+    if ranges and source_path.is_dir():
+        return refused(f"ranges applies to a video source, and {path} is a directory of stills")
+    try:
+        selection = [
+            TimeRange(start_seconds=r.start_seconds, end_seconds=r.end_seconds)
+            for r in ranges or ()
+        ]
+    except ValidationError as exc:
+        # The kernel's refusal is a bare ValidationError, outside the
+        # VisionSetError tree, so `guarded` would answer with a traceback's text.
+        return refused(f"ranges is not a usable selection: {exc}")
 
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)
@@ -121,6 +153,7 @@ def ingest(
                 resolved.id,
                 source_path,
                 extraction_fps=DEFAULT_EXTRACTION_FPS if fps is None else fps,
+                ranges=selection,
             )
         result = IngestService(workspace).ingest(registered.id, batch_name=batch_name)
     return {

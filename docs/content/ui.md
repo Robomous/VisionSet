@@ -876,8 +876,26 @@ designing around it.
 assets" only means something if the parameters are part of what the source *is* -
 and the probe result exists only once the clip is registered. So the rate is chosen
 first, the clip is registered, and then its native fps, duration, codec and
-resolution are shown. Registering the same clip at another rate produces a
-**second source**, deliberately: idempotency is on `(kind, path, extraction_fps)`.
+resolution are shown. Registering the same clip at another rate — or over other
+clip ranges — produces a **second source**, deliberately: idempotency is on
+`(kind, path, extraction_fps, ranges)`.
+
+A decodable clip gets an editor-shaped block in step 1: a compact preview
+player, the cut's facts beside it — rate, frame count, selection — and a
+hand-rolled multi-range timeline spanning the panel under both, its empty track
+inviting the drag from inside itself. Selection is whole seconds: a drag
+paints second cells, a range starts on an exact second and ends just before
+its last one closes (the clip's partial final second is the one shorter
+cell), and only the marker seconds are labelled under the track, as plain
+numbers. The handles drag and nudge by one second (shift for ten), Delete
+removes a range, and a click scrubs the player — inside a selected
+range it previews, playing from that moment and stopping where the range ends. The selection rides
+to registration as typed and the kernel canonicalizes; the probe card's `Ranges`
+fact echoes the canonical form, which is where an overlapping selection is first
+seen merged. The frame estimate is exact — the mirrored `ceil` arithmetic over
+the merged selection, the same numbers the extraction filter is built from. A
+clip the browser cannot decode gets no timeline and one line saying it will be
+ingested whole.
 
 Three more things it inherits:
 

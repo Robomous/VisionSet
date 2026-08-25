@@ -63,6 +63,7 @@ from visionset.kernel.domain import (
     Project,
     Source,
     SourceKind,
+    TimeRange,
     VideoFrame,
     VideoMetadata,
     VideoProvenance,
@@ -98,7 +99,12 @@ class _NoFfmpeg:
         raise MediaToolUnavailable("ffmpeg is not installed; install it and try again")
 
     def frames(
-        self, source: Path, *, fps: float = 1.0, name: str | None = None
+        self,
+        source: Path,
+        *,
+        fps: float = 1.0,
+        ranges: tuple[TimeRange, ...] = (),
+        name: str | None = None,
     ) -> "list[VideoFrame]":
         raise MediaToolUnavailable("ffmpeg is not installed; install it and try again")
 
@@ -685,6 +691,57 @@ def test_one_clip_at_two_rates_is_still_two_sources(tmp_path: Path) -> None:
     fast = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=5.0)
 
     assert slow.id != fast.id
+    fixture.close()
+
+
+def test_overlapping_selections_across_two_sources_share_their_frames(tmp_path: Path) -> None:
+    """Byte-identical grid frames collapse by content hash, exactly as a re-ingest does."""
+    fixture = Fixture(tmp_path)
+    clip = fixture.clip()
+    head = fixture.sources.register_video(
+        fixture.project.id,
+        clip.path,
+        extraction_fps=5.0,
+        ranges=[TimeRange(start_seconds=0.0, end_seconds=1.0)],
+    )
+    late = fixture.sources.register_video(
+        fixture.project.id,
+        clip.path,
+        extraction_fps=5.0,
+        ranges=[TimeRange(start_seconds=0.5, end_seconds=1.5)],
+    )
+
+    first = fixture.ingest.ingest(head.id)
+    second = fixture.ingest.ingest(late.id)
+
+    assert first.created == 5
+    assert second.created == 3
+    assert second.deduplicated == 2
+    assert fixture.content_blob_count() == 8
+    fixture.close()
+
+
+def test_a_ranged_clip_records_grid_indices_on_its_assets(tmp_path: Path) -> None:
+    """`#frame=k` is the grid name: the same moment is named the same with or
+    without a selection."""
+    fixture = Fixture(tmp_path)
+    clip = fixture.clip()
+    source = fixture.sources.register_video(
+        fixture.project.id,
+        clip.path,
+        extraction_fps=5.0,
+        ranges=[TimeRange(start_seconds=0.5, end_seconds=1.5)],
+    )
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert [asset.frame_index for asset in result.assets] == list(range(3, 8))
+    assert [asset.uri for asset in result.assets] == [
+        f"{source.path}#frame={k}" for k in range(3, 8)
+    ]
+    assert [asset.frame_timestamp for asset in result.assets] == [
+        pytest.approx(k / 5.0) for k in range(3, 8)
+    ]
     fixture.close()
 
 

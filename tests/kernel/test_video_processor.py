@@ -55,11 +55,19 @@ from visionset.kernel.adapters import (
 )
 from visionset.kernel.adapters.ffmpeg_video_processor import (
     _EXTRACTION_ARGS,
+    _RANGE_ARGS,
+    _filtergraph,
     _oriented,
     _rational,
     _rotation,
 )
-from visionset.kernel.domain import ImageFormat, VideoFrame, VideoMetadata
+from visionset.kernel.domain import (
+    ImageFormat,
+    TimeRange,
+    VideoFrame,
+    VideoMetadata,
+    expected_frames,
+)
 from visionset.kernel.errors import (
     CorruptMedia,
     MediaError,
@@ -212,6 +220,53 @@ def test_asking_for_more_frames_than_the_clip_has_duplicates_them(clip: Generate
 
     assert len(frames) == 40
     assert len({hashlib.sha256(frame.content).digest() for frame in frames}) == 20
+
+
+# --- clip ranges --------------------------------------------------------------
+
+
+def test_a_selection_extracts_exactly_the_grid_points_inside_it(clip: GeneratedVideo) -> None:
+    """The acceptance criterion for ranges: half-open bounds, named by grid index."""
+    selection = (TimeRange(start_seconds=0.55, end_seconds=1.25),)
+
+    frames = list(FfmpegVideoProcessor().frames(clip.path, fps=10, ranges=selection))
+
+    assert [frame.index for frame in frames] == list(range(6, 13))
+    assert [frame.timestamp for frame in frames] == pytest.approx([k / 10 for k in range(6, 13)])
+
+
+def test_a_selected_frame_is_byte_identical_to_its_whole_clip_twin(clip: GeneratedVideo) -> None:
+    """Selection filters the same read, so it cannot change a frame's bytes — which
+    is what lets content addressing collapse two selections' overlap."""
+    whole = _frames(clip.path, fps=10)
+    selection = (TimeRange(start_seconds=0.55, end_seconds=1.25),)
+
+    frames = list(FfmpegVideoProcessor().frames(clip.path, fps=10, ranges=selection))
+
+    assert [frame.content for frame in frames] == [whole[k].content for k in range(6, 13)]
+
+
+def test_two_ranges_arrive_in_grid_order_with_their_grid_names(clip: GeneratedVideo) -> None:
+    selection = (
+        TimeRange(start_seconds=0.0, end_seconds=0.3),
+        TimeRange(start_seconds=1.5, end_seconds=2.0),
+    )
+
+    frames = list(FfmpegVideoProcessor().frames(clip.path, fps=10, ranges=selection))
+
+    assert [frame.index for frame in frames] == [0, 1, 2, *range(15, 20)]
+
+
+def test_the_count_formula_matches_extraction_at_a_fractional_boundary(
+    clip: GeneratedVideo,
+) -> None:
+    """The fixture's own rates divide it exactly; these deliberately do not."""
+    assert len(_frames(clip.path, fps=0.7)) == expected_frames((), duration_seconds=2.0, fps=0.7)
+
+    selection = (TimeRange(start_seconds=0.25, end_seconds=1.31),)
+    frames = list(FfmpegVideoProcessor().frames(clip.path, fps=3, ranges=selection))
+    assert len(frames) == expected_frames(selection, duration_seconds=2.0, fps=3)
+    assert [frame.index for frame in frames] == list(range(1, 4))
 
 
 # --- frame origin -------------------------------------------------------------
@@ -525,6 +580,20 @@ def test_the_extraction_arguments_are_pinned() -> None:
         "-fflags", "+bitexact",
         "-flags:v", "+bitexact",
     )  # fmt: skip
+    assert _RANGE_ARGS == ("-fps_mode", "vfr")
+
+
+def test_the_whole_clip_command_is_unchanged_by_the_ranges_feature() -> None:
+    """No selection, no new arguments: every frame hash ever stored stays put."""
+    assert _filtergraph(5, ()) == "fps=fps=5:round=up"
+
+
+def test_the_selection_filter_compares_integer_frame_numbers() -> None:
+    """Bounds are precomputed in Python; ffmpeg never compares a float timestamp."""
+    assert (
+        _filtergraph(1, ((2, 5), (9, 12)))
+        == "fps=fps=1:round=up,select='gte(n,2)*lt(n,5)+gte(n,9)*lt(n,12)'"
+    )
 
 
 @pytest.mark.parametrize(
@@ -551,6 +620,7 @@ class _NullVideoProcessor:
         source: Path,
         *,
         fps: float = DEFAULT_EXTRACTION_FPS,
+        ranges: tuple[TimeRange, ...] = (),
         name: str | None = None,
     ) -> Iterator[VideoFrame]:
         return iter(())

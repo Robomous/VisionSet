@@ -166,12 +166,13 @@ class VideoFrame(BaseModel):
     loop iteration. It lives in the domain anyway because the kernel passes it
     between a port and a service, which is the whole test for belonging here.
 
-    :attr:`index` counts **the extracted sequence**, not the source. A source
-    frame number means nothing for a variable-rate stream and cannot be
-    reproduced without knowing the rate the file was shot at; the extracted index
-    is what orders the assets and what names them. :attr:`timestamp` is the
-    locator that survives — it says where in the clip to look, whatever rate the
-    next decomposition runs at.
+    :attr:`index` is the **extraction-grid index** ``k`` — the point
+    ``t = k / fps`` on the grid the whole clip defines — never a source frame
+    number, which means nothing for a variable-rate stream. With no clip ranges
+    the grid index and the emitted order coincide; under ranges the kept frames
+    keep their grid names, so the same moment is named the same with or without
+    a selection. :attr:`timestamp` is the locator that survives — it says where
+    in the clip to look, whatever rate the next decomposition runs at.
 
     :attr:`content` is a complete, self-contained image in the port's
     ``FRAME_FORMAT``. Hashing it is what gives the resulting asset its identity,

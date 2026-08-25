@@ -22,14 +22,16 @@ Reading a spooled upload is blocking I/O too.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Final
 from uuid import UUID
 
 from fastapi import File, Form, Response, UploadFile, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from visionset.jobs.ingest import JOB_TYPE as ingest_job_type
 from visionset.jobs.ingest import payload_for as ingest_payload_for
-from visionset.kernel.domain import BackgroundJobSpec
+from visionset.kernel.domain import BackgroundJobSpec, TimeRange
 from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS
 from visionset.kernel.services import IngestService, SourceService
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
@@ -54,6 +56,36 @@ ExtractionFpsForm = Annotated[
     float,
     Form(gt=0, description="Frames per second to cut the clip at. One per second by default."),
 ]
+
+#: The clip-range selection, as a multipart field. Multipart carries strings, so
+#: the JSON array rides in one and is parsed here rather than by FastAPI.
+RangesForm = Annotated[
+    str | None,
+    Form(
+        description=(
+            "Which stretches of the clip to extract, as a JSON array of "
+            '{"start_seconds": s, "end_seconds": e} objects, each half-open '
+            "[start, end). Omitted means the whole clip."
+        ),
+    ),
+]
+
+_RANGES_ADAPTER: Final = TypeAdapter(tuple[TimeRange, ...])
+
+
+def _parse_ranges(ranges: str | None) -> tuple[TimeRange, ...]:
+    """The `ranges` field as domain values, or the 422 a malformed one earns.
+
+    Parsed against the kernel's own `TimeRange`, so its bounds (a start at or
+    after zero, an end after the start) refuse here as `VALIDATION_ERROR` —
+    the kernel's `ValidationError` is not a `VisionSetError` and would be a 500.
+    """
+    if ranges is None:
+        return ()
+    try:
+        return _RANGES_ADAPTER.validate_json(ranges)
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
 
 
 @project_router.post("/images", status_code=status.HTTP_201_CREATED, responses=documented(404))
@@ -102,8 +134,9 @@ def register_video_source(
     project_id: UUID,
     file: Annotated[UploadFile, File(description="The clip.")],
     extraction_fps: ExtractionFpsForm = DEFAULT_EXTRACTION_FPS,
+    ranges: RangesForm = None,
 ) -> SourceOut:
-    """Offer a project a clip, to be cut at `extraction_fps`.
+    """Offer a project a clip, to be cut at `extraction_fps` inside `ranges`.
 
     The clip is probed on the way in, so a file that is not a video, or one
     whose bytes will not decode, is 422 here rather than a run that fails later:
@@ -111,13 +144,16 @@ def register_video_source(
     `CORRUPT_MEDIA` for one that is the right kind and will not decode. The
     message says what was wrong with the file and never where it was put.
 
-    The rate is part of what the source *is*: the same clip registered at 1 fps
-    and again at 5 fps is two sources over one file, which is what makes "the
-    same source yields the same assets" mean anything.
+    The cut is part of what the source *is*: the same clip registered at 1 fps
+    and again at 5 fps — or over different ranges — is two sources over one
+    file, which is what makes "the same source yields the same assets" mean
+    anything. Ranges are stored canonically (clamped, sorted, merged), and the
+    response carries that canonical form.
     """
+    selection = _parse_ranges(ranges)
     staged = stage(workspace.root, [file])
     source = SourceService(workspace).register_video(
-        project_id, staged.only, extraction_fps=extraction_fps
+        project_id, staged.only, extraction_fps=extraction_fps, ranges=selection
     )
     return SourceOut.of(source)
 
