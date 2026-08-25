@@ -208,7 +208,7 @@ export function ClipRangeTimeline({
               src={src}
               controls
               preload="metadata"
-              className="max-h-56 w-full max-w-md shrink-0 rounded-lg bg-muted"
+              className="max-h-84 w-full max-w-2xl shrink-0 rounded-lg bg-muted"
               data-testid="clip-player"
               onTimeUpdate={timeUpdated}
               onPause={() => setPreviewEnd(null)}
