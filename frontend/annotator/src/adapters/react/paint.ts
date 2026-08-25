@@ -287,7 +287,9 @@ export interface PaintedSuggestion {
  * would flicker on every press". The engine kept its half of that and the renderer
  * threw it away, so the flicker it argues against was happening on every press.
  * A held suggestion is the best answer anyone has until a better one arrives,
- * whichever status is carrying it.
+ * whichever status is carrying it. The one status that does decide is `none`,
+ * which holds the shapes the current tolerance reduced to nothing so that a
+ * finer one can re-derive them — held to be re-simplified, not to be drawn.
  *
  * The **points are carried whatever the status**, which is why the caller checks
  * for them separately: the dots are what makes a refine click legible, and they
@@ -309,6 +311,7 @@ export function paintSuggestions(
   // of guard as the one below: what the type allows, not what the machine does.
   const labelClass = state.labelClass;
   if (labelClass === null) return [];
+  if (state.status === "none") return [];
   const color = classColor(declared, labelClass);
   const painted: PaintedSuggestion[] = [];
   for (const suggestion of state.suggestions) {

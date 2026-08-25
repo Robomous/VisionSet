@@ -89,8 +89,7 @@
  * that belongs to a class nobody is on any more.
  */
 
-import { polygonAt } from "../geometry/simplify";
-import type { Detail } from "../geometry/simplify";
+import { DEFAULT_TOLERANCE, polygonAt } from "../geometry/simplify";
 import { classNamed } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
 import type { IdFactory } from "../ids";
@@ -229,7 +228,7 @@ export interface Suggestion {
   /**
    * The outline this shape was reduced from, empty for a box.
    *
-   * What makes {@link withDetail} arithmetic rather than a round trip. It is the
+   * What makes {@link withTolerance} arithmetic rather than a round trip. It is the
    * *same* points the server reduced, which matters because Douglas-Peucker is
    * not nested: a client starting from anything else could not be held to the
    * server's answer, and the server is what finally writes.
@@ -246,7 +245,7 @@ export interface Suggestion {
  * value — it is carried to whoever asks whether a given setting applies — so a
  * member this build cannot name costs a control nobody can render, and no more.
  */
-export type SuggestParameter = "detail" | (string & {});
+export type SuggestParameter = "tolerance" | (string & {});
 
 /** What an answer carries back, beside the shapes themselves. */
 export interface Answer {
@@ -257,7 +256,7 @@ export interface Answer {
    * Which settings the server says apply to the kind of shape this class holds.
    *
    * Read from the answer and never computed here. A client that worked out for
-   * itself that a box has no use for `detail` would be the second copy of a rule
+   * itself that a box has no use for the tolerance would be the second copy of a rule
    * the kernel already owns, free to drift the first time the rule changes.
    */
   readonly parameters: readonly SuggestParameter[];
@@ -280,19 +279,19 @@ export type SuggestionStatus = "idle" | "asking" | "shown" | "none" | "refused";
 
 /** The one setting, as it stands right now. Sent on every ask. */
 export interface Adjustments {
-  readonly detail: Detail;
+  /** How far, in asset pixels, the outline may stray from the mask. */
+  readonly tolerance: number;
 }
 
 /**
  * What a session starts with, and what the server means by "nothing was sent".
  *
- * The value is the kernel's own default. It is restated here because this package
- * has no HTTP and cannot read it from an answer that has not arrived — and
- * `simplify.test.ts` holds `EPSILON` to the kernel's table, which is the half
- * that could silently differ.
+ * The value is the kernel's own default, restated here because this package has
+ * no HTTP and cannot read it from an answer that has not arrived; the fixture
+ * holds the two to each other.
  */
 export const DEFAULT_ADJUSTMENTS: Adjustments = {
-  detail: "balanced",
+  tolerance: DEFAULT_TOLERANCE,
 };
 
 /** The whole of a suggest session. `null`, in a host, is a tool that is not armed. */
@@ -480,50 +479,45 @@ export function isAcceptable(state: SuggestionState): boolean {
 }
 
 /**
- * A different vertex density, applied here and now.
+ * A different tolerance, applied here and now.
  *
  * **No request.** Each shape carries the contour it was reduced from, so this is
  * arithmetic — which is what lets `[` and `]` be held down. The server stays
  * authoritative: accepting asks again with these settings and writes what comes
- * back, and `tests/fixtures/simplification.json` is what holds the two to the
- * same answer.
+ * back, and `tests/fixtures/simplification.json` holds the two to the same answer.
  *
- * A shape with no contour is left exactly as it is. That is a box, and `detail`
- * has nothing to do to one — the same fact the server states by leaving `detail`
- * out of `parameters` for a box class.
+ * A shape with no contour is left exactly as it is. That is a box, and the
+ * tolerance has nothing to do to one — the same fact the server states by
+ * leaving it out of `parameters` for a box class.
  *
- * A step that is already set returns the state **by identity**, so a host can
- * fold this through unconditionally without a render.
+ * **A coarse tolerance can leave a small shape with nothing, and that is
+ * reversible.** The suggestions are kept when none of them survives, so a finer
+ * tolerance re-derives the shape from the same contour; what the readers see is
+ * gated on the status instead — {@link vertexCount} counts nothing and the
+ * painter draws nothing while `none`.
  *
- * **A step can never lose a shape, and that was measured rather than assumed.**
- * `polygonAt` answers `null` only for a contour with no area — three or more
- * collinear points — and collinearity is a property of the contour rather than of
- * the tolerance, so a shape drawable at one step is drawable at all three. The
- * empty branch below is the type's, not a reachable state: a zero-area outline is
- * dropped by the server before it is ever sent (#557).
+ * A tolerance that is already set returns the state **by identity**, so a host
+ * can fold this through unconditionally without a render.
  */
-export function withDetail(state: SuggestionState, detail: Detail): SuggestionState {
-  if (detail === state.adjustments.detail) return state;
-  const adjustments = { ...state.adjustments, detail };
-  if (state.status !== "shown") return { ...state, adjustments };
-  const suggestions = state.suggestions.flatMap((one) => resimplified(one, detail) ?? []);
-  return {
-    ...state,
-    adjustments,
-    suggestions,
-    status: suggestions.length === 0 ? "none" : "shown",
-  };
+export function withTolerance(state: SuggestionState, tolerance: number): SuggestionState {
+  if (tolerance === state.adjustments.tolerance) return state;
+  const adjustments = { ...state.adjustments, tolerance };
+  if (state.status !== "shown" && state.status !== "none") return { ...state, adjustments };
+  const suggestions = state.suggestions.flatMap((one) => resimplified(one, tolerance) ?? []);
+  if (suggestions.length === 0) return { ...state, adjustments, status: "none" };
+  return { ...state, adjustments, suggestions, status: "shown" };
 }
 
-function resimplified(one: Suggestion, detail: Detail): Suggestion | null {
+function resimplified(one: Suggestion, tolerance: number): Suggestion | null {
   if (one.contour.length === 0) return one;
-  const points = polygonAt(one.contour, detail);
+  const points = polygonAt(one.contour, tolerance);
   if (points === null) return null;
   return { ...one, geometry: { ...one.geometry, type: "polygon", points } as Geometry };
 }
 
 /** How many vertices the preview is currently spending. What the counter reads. */
 export function vertexCount(state: SuggestionState): number {
+  if (state.status === "none") return 0;
   return state.suggestions.reduce(
     (total, one) => total + (one.geometry.type === "polygon" ? one.geometry.points.length : 0),
     0,
