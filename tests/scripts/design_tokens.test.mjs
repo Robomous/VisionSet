@@ -311,7 +311,11 @@ test("components.json holds the schema-supported preset fields, and no others", 
 
   // The preset's own values, where the schema does have a field for them.
   assert.equal(config.style, "radix-nova");
-  assert.equal(config.iconLibrary, "tabler");
+  // The one field that no longer matches the decoded preset. `b3bXyyPdWj` decodes
+  // `iconLibrary: tabler`; the product draws lucide by a later decision, and the
+  // schema accepts the value, so this is a deliberate divergence rather than drift.
+  // DESIGN.md's *Source of Truth* records it.
+  assert.equal(config.iconLibrary, "lucide");
   assert.equal(config.menuColor, "inverted");
   assert.equal(config.menuAccent, "subtle");
   assert.equal(config.tailwind.baseColor, "neutral");
@@ -319,22 +323,27 @@ test("components.json holds the schema-supported preset fields, and no others", 
 });
 
 /**
- * Tabler is the icon set, and the only one — the final state of a migration that
- * ran through the primitives, the screens and the annotation workspace in turn.
+ * Lucide is the icon set, and the only one.
  *
- * The interesting failure is a *return*, not the original debt: an editor
- * auto-import, or a branch that predates the migration coming back through a
- * merge. Now that no manifest declares the old package such an import fails to
- * resolve, which is the loud half. The quiet half is the manifest — a dependency
- * added back "because something imported it" restores the whole problem without
- * anything else noticing, so both halves are asserted here.
+ * The rule is "one icon library", not "this particular library" — the product has
+ * drawn from both, and what costs a reader is two sets on one screen, where the
+ * same idea arrives at two weights and two grids. So this guards whichever set is
+ * currently *not* in use, and the value below is the whole of what changes when
+ * that decision changes.
  *
- * Assembled from fragments so this file never contains the package's name as a
+ * The interesting failure is a *return*, not an original debt: an editor
+ * auto-import, or a branch that predates the swap coming back through a merge.
+ * With no manifest declaring the other package such an import fails to resolve,
+ * which is the loud half. The quiet half is the manifest — a dependency added back
+ * "because something imported it" restores the whole problem with nothing else to
+ * say so, so both halves are asserted here.
+ *
+ * Assembled from fragments so this file never holds the package's name as a
  * contiguous string, and a repository-wide sweep for it never mistakes its own
  * guard for a lingering usage — the trick `HEX` and `RETIRED_DECLARATIONS` above
  * already use.
  */
-const RETIRED_ICON_PACKAGE = ["lucide", "react"].join("-");
+const RETIRED_ICON_PACKAGE = ["@tabler", "icons-react"].join("/");
 
 test("no package declares a second icon set, and no source imports one", () => {
   const listed = spawnSync("git", ["ls-files", "-z"], { cwd: REPO, encoding: "utf8" });
@@ -349,8 +358,8 @@ test("no package declares a second icon set, and no source imports one", () => {
   assert.deepEqual(
     declaring,
     [],
-    "@tabler/icons-react is the frontend's icon set. A second one is a decision for " +
-      `DESIGN.md, not a dependency:\n${declaring.join("\n")}`,
+    `the frontend draws one icon set, and ${RETIRED_ICON_PACKAGE} is not it. ` +
+      `A second one is a decision for DESIGN.md, not a dependency:\n${declaring.join("\n")}`,
   );
 
   const sources = tracked.filter((name) => SOURCE.test(name) && !GENERATED.test(name));
