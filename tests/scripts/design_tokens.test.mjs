@@ -311,10 +311,6 @@ test("components.json holds the schema-supported preset fields, and no others", 
 
   // The preset's own values, where the schema does have a field for them.
   assert.equal(config.style, "radix-nova");
-  // The one field that no longer matches the decoded preset. `b3bXyyPdWj` decodes
-  // `iconLibrary: tabler`; the product draws lucide by a later decision, and the
-  // schema accepts the value, so this is a deliberate divergence rather than drift.
-  // DESIGN.md's *Source of Truth* records it.
   assert.equal(config.iconLibrary, "lucide");
   assert.equal(config.menuColor, "inverted");
   assert.equal(config.menuAccent, "subtle");

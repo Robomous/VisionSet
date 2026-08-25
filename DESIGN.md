@@ -19,20 +19,17 @@ the tests and contributor docs.
 ## Source of Truth
 
 VisionSet's visual language is a **shadcn preset**, not a hand-authored system: preset
-code `b3bXyyPdWj`, decoded as `style: nova` (on the Radix base — `radix-nova` in
-`components.json`), `baseColor: neutral`, `chart: orange`, `icons: tabler`,
-`font: inter`, `heading: geist`, `radius: medium`, `menu: inverted/subtle`. The preset
-was generated with shadcn CLI **4.18.0** and transcribed verbatim into this repository;
-that CLI version is the reference for every value in this document. Nothing here is
-invented — every token, every derived radius, every chart colour traces back to the
-CLI's own output.
+code `b2iH`, decoded as `style: nova` (on the Radix base — `radix-nova` in
+`components.json`), `baseColor: neutral`, `chart: neutral`, `icons: lucide`,
+`font: geist`, `heading: inherit`, `radius: medium`, `menu: inverted/subtle`, with the
+CLI's `--pointer` option on. The preset was generated with shadcn CLI **4.19.0** and
+transcribed verbatim into this repository; that CLI version is the reference for every
+value in this document. Nothing here is invented — every token, every derived radius,
+every chart colour traces back to the CLI's own output.
 
-**One property deliberately diverges: the icon set.** The preset decodes
-`icons: tabler`, and that line above says so because it is what the code decodes to;
-the product draws `lucide-react`, and `components.json` says `iconLibrary: lucide`.
-The schema accepts the value, so this is a decision rather than drift — but it is the
-one place where reading the preset and reading the configuration give different
-answers, and it is written here so nobody has to discover that by diffing them.
+`heading: inherit` is the one decoded value with no token of its own: it means the
+heading face *is* the body face, which the stylesheet spells as
+`--font-heading: var(--font-sans)` rather than as a second family.
 
 `@visionset/ui-core` owns the implementation, in exactly three files:
 
@@ -140,6 +137,11 @@ picks one of these three; it does not compose a fill from scratch.
 - **Hover** on a filled control is the same fill at reduced opacity (`hover:bg-primary/80`),
   not a colour change of meaning; a menu or list item highlights with `accent` instead.
 - **Press** reads as the control moving, not recolouring.
+- **The cursor turns to a hand over anything pressable**, which is the preset's
+  `--pointer` option: `button` and `[role="button"]`, in the base layer. It stops at
+  `:not(:disabled)` on purpose — a hand over a control that will not respond is the
+  cursor making a promise the control does not keep, and the disabled rule below is what
+  the reader should be getting instead.
 - **Disabled** is uniform reduced opacity plus `pointer-events-none` — the control dims
   as itself rather than swapping to a separate greyed-out skin. A disabled control still
   explains itself; see the product principles' never-disable-without-explanation rule.
@@ -149,12 +151,14 @@ picks one of these three; it does not compose a fill from scratch.
 
 ## Typography
 
-- **Body copy: Inter**, via `--font-sans` (`'Inter Variable', sans-serif`).
-- **Headings: Geist**, via `--font-heading` (`'Geist Variable', sans-serif`), applied at
-  the semantic-HTML level — `h1`–`h4` carry it in the base layer, so a screen never has
-  to remember `font-heading` on every heading it writes.
-- Both are bundled offline through `@fontsource-variable/{inter,geist}` — no runtime
-  fetch to a font host, ever.
+- **One family: Geist**, via `--font-sans` (`'Geist Variable', sans-serif`). The preset
+  sets `--font-heading` to `var(--font-sans)`, so a heading is the same face as body
+  copy at a different size and weight rather than a second typeface.
+- **`font-heading` survives as a hook, not as a difference.** `h1`–`h4` still carry it
+  in the base layer, so no screen writes it by hand and a later preset that splits the
+  two families again lands in one declaration rather than at every heading.
+- Bundled offline through `@fontsource-variable/geist` — no runtime fetch to a font
+  host, ever.
 - **One justified technical role: `font-mono`.** Tailwind's default monospace stack (no
   Geist Mono package is bundled) marks *machine-shaped* content — identifiers, hashes,
   model references, measurements. It is never decoration, and prose never wears it; this
@@ -313,16 +317,22 @@ something a component opts into.
 
 ## Charts
 
-The preset's chart palette — five orange steps, **identical in both themes** (a chart
-does not restyle when the page switches theme):
+The preset's chart palette — five neutral steps from light to dark, **identical in both
+themes** (a chart does not restyle when the page switches theme):
 
 | Token | Value |
 | --- | --- |
-| `chart-1` | `oklch(0.837 0.128 66.29)` |
-| `chart-2` | `oklch(0.705 0.213 47.604)` |
-| `chart-3` | `oklch(0.646 0.222 41.116)` |
-| `chart-4` | `oklch(0.553 0.195 38.402)` |
-| `chart-5` | `oklch(0.47 0.157 37.304)` |
+| `chart-1` | `oklch(0.87 0 0)` |
+| `chart-2` | `oklch(0.556 0 0)` |
+| `chart-3` | `oklch(0.439 0 0)` |
+| `chart-4` | `oklch(0.371 0 0)` |
+| `chart-5` | `oklch(0.269 0 0)` |
+
+They separate by **lightness rather than by hue**, which is the trade this preset makes:
+a series stays legible to a reader who cannot separate two hues, and it survives being
+printed or screenshotted in greyscale — at the cost of holding fewer series apart before
+the steps run together. A chart needing more than five wants a second channel, a shape
+or a label, not a sixth colour invented here.
 
 These are **series colours, never status.** A chart never leans on `chart-2` to mean
 "warning" — status uses the status tokens below, a chart uses these to tell one series
