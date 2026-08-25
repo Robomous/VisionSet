@@ -50,7 +50,7 @@ function answerOf(...suggestions: readonly Suggestion[]): Answer {
     modelRef: MODEL_REF,
     confidence: suggestions[0]?.confidence ?? null,
     suggestions,
-    parameters: ["detail"],
+    parameters: ["tolerance"],
   };
 }
 

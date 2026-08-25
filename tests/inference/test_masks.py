@@ -29,11 +29,11 @@ from visionset.inference.masks import (
     polygon_at,
     shapes_from,
     simplified,
+    smoothed,
     spans,
 )
 from visionset.kernel.domain import (
     BboxGeometry,
-    Detail,
     GeometryType,
     PolygonGeometry,
 )
@@ -54,6 +54,22 @@ def disc(radius: int, *, width: int | None = None, height: int | None = None) ->
     ]
 
 
+def blob(radius: int, lobes: int) -> list[list[bool]]:
+    """A lobed disc: an outline whose curvature keeps changing."""
+    import math
+
+    width = height = 2 * radius + 12
+    cx, cy = width // 2, height // 2
+    return [
+        [
+            ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+            <= radius * (1.0 + 0.18 * math.sin(math.atan2(y - cy, x - cx) * lobes))
+            for x in range(width)
+        ]
+        for y in range(height)
+    ]
+
+
 def rect(
     x0: int, y0: int, x1: int, y1: int, *, width: int = 100, height: int = 100
 ) -> list[list[bool]]:
@@ -66,6 +82,18 @@ def empty(size: int = 10) -> list[list[bool]]:
 
 def lit(mask: list[list[bool]]) -> int:
     return sum(sum(1 for cell in row if cell) for row in mask)
+
+
+def _gap_between(one: tuple[float, float], other: tuple[float, float]) -> float:
+    return ((one[0] - other[0]) ** 2 + (one[1] - other[1]) ** 2) ** 0.5
+
+
+def distance_to_ring(point: tuple[float, float], ring: list[tuple[float, float]]) -> float:
+    """How far a point is from the closed polyline through ``ring``."""
+    return min(
+        masks._distance_to_segment(point, ring[index], ring[(index + 1) % len(ring)])
+        for index in range(len(ring))
+    )
 
 
 # --- the extent ---------------------------------------------------------------
@@ -296,32 +324,89 @@ def holed(hole: int) -> list[list[bool]]:
 # --- step 3: the canonical contour ---------------------------------------------
 
 
-def test_the_outline_closes_on_itself() -> None:
+def test_the_outline_is_the_pixels_edges_not_their_centres() -> None:
+    """A lone pixel is its unit square: the boundary of the mask, not a path through it."""
+    assert outline(rect(3, 3, 3, 3)) == [(3.0, 3.0), (4.0, 3.0), (4.0, 4.0), (3.0, 4.0)]
+
+
+def test_the_outline_walks_every_corner_of_the_ring_once() -> None:
     traced = outline(rect(10, 10, 20, 20))
     assert traced[0] == (10.0, 10.0)
-    assert len(traced) == 40  # the perimeter of an 11x11 square, corners counted once
-    assert len(set(traced)) == len(traced), "no pixel is walked twice"
+    assert len(traced) == 44  # the perimeter of an 11x11 square, in unit edges
+    assert len(set(traced)) == len(traced)
 
 
-def test_an_isolated_pixel_has_no_ring_to_walk() -> None:
-    assert outline(rect(3, 3, 3, 3)) == [(3.0, 3.0)]
+def test_two_pixels_touching_only_at_a_corner_are_one_ring() -> None:
+    """The trace agrees with the 8-connected pieces `components` builds.
+
+    At the pinch the walk turns onto the other pixel rather than closing round the
+    first, so the corner is visited twice and both squares are on the one ring.
+    """
+    mask = [[False] * 5 for _ in range(5)]
+    mask[1][1] = True
+    mask[2][2] = True
+    traced = outline(mask)
+    assert len(traced) == 8
+    assert len(set(traced)) == 7
 
 
-def test_the_contour_is_the_trace_already_reduced_at_the_floor() -> None:
+def test_an_enclosed_hole_does_not_reach_the_outline() -> None:
+    mask = rect(2, 2, 9, 9, width=12, height=12)
+    for y in range(4, 8):
+        for x in range(4, 8):
+            mask[y][x] = False
+    assert outline(mask) == outline(rect(2, 2, 9, 9, width=12, height=12))
+
+
+def test_smoothing_cuts_every_corner_by_a_quarter_of_its_edges() -> None:
+    square = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]
+    assert smoothed(square) == [
+        (1.0, 0.0),
+        (3.0, 0.0),
+        (4.0, 1.0),
+        (4.0, 3.0),
+        (3.0, 4.0),
+        (1.0, 4.0),
+        (0.0, 3.0),
+        (0.0, 1.0),
+    ]
+
+
+def test_smoothing_never_leaves_the_ring_it_was_given() -> None:
+    ring = outline(disc(20))
+    for point in smoothed(ring):
+        assert distance_to_ring(point, ring) <= 0.5
+
+
+def test_smoothing_leaves_anything_shorter_than_a_ring_alone() -> None:
+    pair = [(0.0, 0.0), (1.0, 1.0)]
+    assert smoothed(pair) == pair
+
+
+def test_the_contour_is_the_smoothed_trace_reduced_at_the_floor() -> None:
     """The definition, asserted as a definition rather than described.
 
-    Douglas-Peucker is not nested, so the editor and this module can only be
+    Simplification is not nested, so the editor and this module can only be
     proved to agree when both start from the same points. That makes the
-    half-pixel reduction part of what a contour *is*.
+    quarter-pixel reduction part of what a contour *is*.
     """
     mask = rect(10, 10, 20, 20)
-    assert contour(mask) == simplified(outline(mask), tolerance=MINIMUM_TOLERANCE)
+    assert contour(mask) == simplified(smoothed(outline(mask)), tolerance=MINIMUM_TOLERANCE)
 
 
-def test_the_floor_costs_a_square_none_of_its_corners() -> None:
-    """It throws away staircase, not shape: 40 traced pixels, 4 corners plus the seam."""
-    assert len(outline(rect(10, 10, 20, 20))) == 40
-    assert len(contour(rect(10, 10, 20, 20))) == 5
+def test_a_square_keeps_its_corners_to_within_half_a_pixel() -> None:
+    """Smoothing works on unit edges, so a real corner moves by a fraction of a pixel."""
+    traced = contour(rect(10, 10, 60, 60))
+    assert len(traced) <= 9
+    for corner in ((10.0, 10.0), (61.0, 10.0), (61.0, 61.0), (10.0, 61.0)):
+        assert min(_gap_between(corner, point) for point in traced) <= 0.5
+
+
+def test_a_staircase_becomes_one_straight_edge() -> None:
+    triangle = [[x <= y for x in range(40)] for y in range(40)]
+    polygon = polygon_at(contour(triangle), tolerance=1.0)
+    assert polygon is not None
+    assert len(polygon.points) == 3
 
 
 def test_an_empty_mask_has_no_contour() -> None:
@@ -347,48 +432,51 @@ def test_a_contour_too_thin_to_be_a_polygon_is_refused() -> None:
     assert polygon_at([]) is None
 
 
-@pytest.mark.parametrize("radius", [8, 15, 30, 60, 120, 300])
-def test_a_typical_object_lands_in_the_ten_to_forty_vertex_band(radius: int) -> None:
-    """The range, and the property that says the tolerance is relative rather than absolute.
+TOLERANCES = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0]
 
-    The same detail setting has to work on a thing eight pixels across and a
-    thing six hundred across, which an absolute pixel tolerance cannot do: three
-    pixels is nothing on a car and is the whole of a bottle cap. Asserting the
-    band across a 37x size range is what would fail if the tolerance stopped
-    scaling with the region.
-    """
-    polygon = polygon_at(contour(disc(radius)))
+
+@pytest.mark.parametrize("tolerance", TOLERANCES)
+@pytest.mark.parametrize("shape", ["disc", "blob", "rectangle"])
+def test_every_contour_point_is_within_the_tolerance_of_the_polygon(
+    shape: str, tolerance: float
+) -> None:
+    """The promise the setting makes, asserted as a bound rather than a count."""
+    if shape == "rectangle":
+        mask = rect(10, 10, 60, 60)
+    else:
+        mask = disc(250) if shape == "disc" else blob(250, 7)
+    traced = contour(filled(mask))
+    polygon = polygon_at(traced, tolerance=tolerance)
     assert polygon is not None
-    assert 10 <= len(polygon.points) <= 40
+    for point in traced:
+        assert distance_to_ring(point, polygon.points) <= tolerance + 1e-9
 
 
-def test_a_rectangle_comes_back_as_exactly_its_corners() -> None:
+def test_a_tighter_tolerance_keeps_more_of_the_outline() -> None:
+    traced = contour(disc(250))
+    counts = [len(polygon_at(traced, tolerance=t).points) for t in (8.0, 2.0, 1.0, 0.5)]  # type: ignore[union-attr]
+    assert counts == sorted(counts)
+    assert counts[0] < counts[-1]
+
+
+def test_a_large_smooth_object_at_one_pixel_is_no_longer_a_handful_of_vertices() -> None:
+    polygon = polygon_at(contour(disc(250)), tolerance=1.0)
+    assert polygon is not None
+    assert len(polygon.points) > 40
+
+
+def test_a_rectangle_comes_back_as_its_four_corners() -> None:
     """The closing artifact, pinned.
 
     Douglas-Peucker pins the last point of what it is given, and what it is given
-    is a ring cut open at an arbitrary pixel — so the final vertex is pinned for
-    a reason that stops being true once the ring closes, landing one pixel from
-    the first. This asserts the near-duplicate is gone, which an equality check
-    on first-versus-last would never catch, because it is not a duplicate.
+    is a ring cut open at an arbitrary corner — so the final vertex is pinned for
+    a reason that stops being true once the ring closes. This asserts the
+    near-duplicate is gone, which an equality check on first-versus-last would
+    never catch, because it is not a duplicate.
     """
-    polygon = polygon_at(contour(rect(10, 10, 60, 60)))
+    polygon = polygon_at(contour(rect(10, 10, 60, 60)), tolerance=1.0)
     assert polygon is not None
-    assert polygon.points == [(10.0, 10.0), (60.0, 10.0), (60.0, 60.0), (10.0, 60.0)]
-
-
-@pytest.mark.parametrize("radius", [30, 60, 120])
-def test_the_three_steps_are_ordered_and_tell_each_other_apart(radius: int) -> None:
-    """Finer keeps more than balanced, which keeps more than coarse.
-
-    Strictly, at every size in the band: three settings that collapsed onto two
-    at some scale would be a control with a dead position.
-    """
-    traced = contour(disc(radius))
-    counts = [
-        len(polygon_at(traced, detail=step).points)  # type: ignore[union-attr]
-        for step in (Detail.COARSE, Detail.BALANCED, Detail.FINE)
-    ]
-    assert counts[0] < counts[1] < counts[2], counts
+    assert polygon.points == [(10.25, 10.0), (60.75, 10.0), (61.0, 60.75), (10.25, 61.0)]
 
 
 # --- the whole pipeline, and the kinds a class admits --------------------------
@@ -398,7 +486,7 @@ def test_a_polygon_stands_where_polygons_are_allowed() -> None:
     shaped = shapes_from(speckled(), allowed=BOTH, at=[(3.0, 5.0)])
     assert len(shaped) == 1
     assert shaped[0].geometry == PolygonGeometry(
-        points=[(1.0, 3.0), (6.0, 3.0), (6.0, 8.0), (1.0, 8.0)]
+        points=[(1.25, 3.0), (6.75, 3.0), (7.0, 8.75), (1.25, 9.0)]
     )
 
 
@@ -414,17 +502,17 @@ def contour_in_asset() -> list[tuple[float, float]]:
 
 
 def test_a_box_class_gets_the_extent_and_not_a_reduced_outlines_corners() -> None:
-    """The branch after hole filling, which is what keeps `detail` off a box."""
+    """The branch after hole filling, which is what keeps the tolerance off a box."""
     shaped = shapes_from(speckled(), allowed=BOX_ONLY, at=[(3.0, 5.0)])
     assert len(shaped) == 1
     assert shaped[0].geometry == BboxGeometry(x=1.0, y=3.0, width=6.0, height=6.0)
     assert shaped[0].contour == (), "there is nothing for a client to re-derive"
 
 
-@pytest.mark.parametrize("step", list(Detail), ids=lambda d: d.value)
-def test_a_box_does_not_move_when_detail_does(step: Detail) -> None:
+@pytest.mark.parametrize("tolerance", TOLERANCES)
+def test_a_box_does_not_move_when_the_tolerance_does(tolerance: float) -> None:
     """ "Applies to polygon only", asserted as behaviour rather than as a table row."""
-    shaped = shapes_from(disc(40), allowed=BOX_ONLY, detail=step)
+    shaped = shapes_from(disc(40), allowed=BOX_ONLY, tolerance=tolerance)
     assert shaped[0].geometry == shapes_from(disc(40), allowed=BOX_ONLY)[0].geometry
 
 
@@ -433,9 +521,22 @@ def test_a_class_admitting_neither_is_offered_nothing() -> None:
     assert shapes_from(speckled(), allowed=[GeometryType.CLASSIFICATION_TAG]) == []
 
 
-def test_a_piece_too_thin_to_be_a_polygon_is_dropped_rather_than_demoted() -> None:
-    """Nothing is ever widened, and nothing is answered in a kind nobody asked for."""
-    assert shapes_from(rect(10, 10, 11, 10), allowed=BOTH) == []
+def test_a_two_pixel_piece_is_its_own_small_rectangle() -> None:
+    """Nothing is widened and nothing is demoted: the smallest piece is still a polygon.
+
+    Tracing along the pixels' edges gives every non-empty piece four corners, so
+    the noise filter is what guards against specks and degeneracy never has to.
+    Asserted at the floor because a tolerance coarser than the object is entitled
+    to flatten it — a two-pixel thing is a pixel tall.
+    """
+    shaped = shapes_from(rect(10, 10, 11, 10), allowed=BOTH, tolerance=MINIMUM_TOLERANCE)
+    assert len(shaped) == 1
+    polygon = shaped[0].geometry
+    assert isinstance(polygon, PolygonGeometry)
+    assert len(polygon.points) == 4
+    corners = ((10.0, 10.0), (12.0, 10.0), (12.0, 11.0), (10.0, 11.0))
+    for point in polygon.points:
+        assert min(_gap_between(point, corner) for corner in corners) <= 0.5
 
 
 def test_a_polygon_is_the_piece_that_was_clicked_and_only_that_piece() -> None:

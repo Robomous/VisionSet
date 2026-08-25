@@ -551,7 +551,7 @@ The gesture:
 | left-click | adds a point on the object, and asks again |
 | alt-click | adds a point that is **not** on the object, and asks again |
 | `↵` | accepts the proposal as an annotation |
-| `[` / `]` | coarser or finer, without opening anything |
+| `[` / `]` | coarser or finer - doubles or halves the tolerance, without opening anything |
 | `Esc` | closes the adjustments; then clears the points; then puts the tool away |
 
 Every click sends **all** the points placed so far - the route is stateless - and
@@ -581,11 +581,11 @@ class and the model's confidence beside it, and is in neither the document nor t
 undo history. `Esc` is its undo. Switching class, switching frames or leaving the
 page discards it, and nothing is written.
 
-**Its vertices are drawn the whole time it is up**, which is what makes the detail
+**Its vertices are drawn the whole time it is up**, which is what makes the tolerance
 setting something you can see rather than a number that changes. A committed shape
 shows its vertices only while it is selected; a proposal is not selected and shows
-them anyway, because choosing how much outline to keep is exactly a question about
-where the points are.
+them anyway, because choosing how far the polygon may drift from the mask is
+exactly a question about where the points are.
 
 **The shape can be adjusted before it is accepted**, from a section inside the
 same card - never a second panel over the picture, which would cover the thing
@@ -593,19 +593,22 @@ being adjusted. It is closed until you ask for it, because the default is right
 most of the time.
 
 One setting, and whether it appears is the server's answer rather than the
-editor's guess (`docs/content/inference.md`). **Detail** is a three-position slider -
-coarse, balanced, fine - with a label beside it naming the step and what it costs,
-`Fine · 41 pts`. `[` and `]` move it without opening anything. Either way it costs
-no request at all: the answer carried the outline it was reduced from, and the
-editor re-simplifies it here, so the shape and its vertices move under a held key.
+editor's guess (`docs/content/inference.md`). **Detail** is a slider on a
+doubling track over the tolerance, from `0.25` px to `16` px, defaulting to
+`1.0`, with a label beside it naming the value and what it costs,
+`2.0 px · 23 pts`. `[` doubles it and `]` halves it without opening anything.
+Either way it costs no request at all: the answer carried the outline it was
+reduced from, and the editor re-simplifies it here, so the shape and its
+vertices move under a held key. On a small object a coarse tolerance can leave
+nothing to show; step finer and the shape comes back.
 
 Pressing the slider never takes focus off the canvas, so `[`, `]`, `Esc` and `↵`
 keep working while you drag it. Tab still reaches it, for driving it from the
 keyboard on purpose.
 
-On a class that stores a box the section does not appear at all, because detail
-changes an outline and a box has none. The editor does not know that; the answer
-says so, by naming no settings.
+On a class that stores a box the section does not appear at all, because the
+tolerance changes an outline and a box has none. The editor does not know that;
+the answer says so, by naming no settings.
 
 **Two settings were here and are not.** Closing the gaps in the mask and proposing
 every separate piece are still done, at fixed defaults. As controls they did

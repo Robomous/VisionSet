@@ -214,9 +214,10 @@ from visionset.kernel.domain.source import (
     grid_bounds,
 )
 from visionset.kernel.domain.suggestion import (
-    DEFAULT_DETAIL,
+    DEFAULT_TOLERANCE,
+    MAXIMUM_TOLERANCE,
+    MINIMUM_TOLERANCE,
     PARAMETER_APPLIES_TO,
-    Detail,
     SuggestParameter,
     suggest_parameters,
 )
@@ -424,10 +425,11 @@ __all__ = [
     "AssetSegmentation",
     "Mask",
     "SegmentedMask",
-    "Detail",
     "SuggestParameter",
     "PARAMETER_APPLIES_TO",
-    "DEFAULT_DETAIL",
+    "DEFAULT_TOLERANCE",
+    "MAXIMUM_TOLERANCE",
+    "MINIMUM_TOLERANCE",
     "suggest_parameters",
     "ActivityEntry",
     "ActivityKind",

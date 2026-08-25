@@ -446,8 +446,8 @@ badges: `classColor` in `frontend/annotator/src/adapters/react/paint.ts`. `ui-co
 
 **The suggestion preview is a third visual state, not a shape marked selected.** Selection
 carries the panel row, the delete key and the keyboard rules a proposal must not have. Its
-vertices are up the whole time it is on screen, undecimated at every detail step, because
-where precision was gained or lost *is* what the detail control is about. Its outline is
+vertices are up the whole time it is on screen, undecimated at every tolerance change, because
+where precision was gained or lost *is* what the tolerance control is about. Its outline is
 dashed and an accepted annotation's is solid, which is what tells proposed from committed
 at a glance.
 

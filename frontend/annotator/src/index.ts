@@ -169,7 +169,7 @@ export {
   suggestibleClassIn,
   vertexCount,
   withClass,
-  withDetail,
+  withTolerance,
   withPoint,
   type Adjustments,
   type Answer,
@@ -183,19 +183,17 @@ export {
   type SuggestionStatus,
 } from "./core/interaction/suggestion";
 
-// The simplifier the editor re-runs when `detail` moves, and the vocabulary it
+// The simplifier the editor re-runs when the tolerance moves, and the range it
 // moves through. Exported because `ui-core` renders the control and reads the
 // vertex count; the algorithm itself is held to the kernel's answers by
 // `tests/fixtures/simplification.json`.
 export {
-  DETAIL_STEPS,
-  EPSILON,
+  DEFAULT_TOLERANCE,
+  MAXIMUM_TOLERANCE,
   MINIMUM_TOLERANCE,
   polygonAt,
   simplified,
-  steppedDetail,
-  toleranceFor,
-  type Detail,
+  steppedTolerance,
 } from "./core/geometry/simplify";
 export {
   TRANSITIONS,

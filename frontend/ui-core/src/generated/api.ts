@@ -1276,21 +1276,21 @@ export interface paths {
          *     alone; sending both would answer past the tool they are holding, and nothing
          *     on their screen would have said so.
          *
-         *     **`detail` is the one setting, and it does not reach the model.** It decides
-         *     how much of an outline survives simplification. It is optional and defaults
-         *     to `balanced`, which is what every suggestion used before there was a choice.
-         *     Closing the small gaps in a mask and dropping its noise specks still happen,
-         *     at fixed defaults nobody asks for.
+         *     **`tolerance` is the one setting, and it does not reach the model.** It is a
+         *     distance in the asset's pixels: every point of the traced outline lies within
+         *     it of the polygon returned. Optional, defaulting to `1.0`; refused outside
+         *     `[0.25, 16]` rather than clamped. Closing the small gaps in a mask and
+         *     dropping its noise specks still happen, at fixed defaults nobody asks for.
          *
          *     **`parameters` says which settings apply here**, for the kind of shape this
-         *     request will come back in. It is empty for a box class — `detail` changes an
+         *     request will come back in. It is empty for a box class — the tolerance shapes an
          *     outline and a box has none — which is how a client is told to render no
          *     adjustments at all. It is present even when there is nothing to propose, so
          *     somebody who adjusted their way into an empty answer can adjust their way
          *     back out. A client renders what this names and works none of it out itself.
          *
          *     **`contour` on each region is the outline the shape was reduced from.** It is
-         *     what lets a client re-run `detail` locally rather than asking again, and it
+         *     what lets a client re-run the tolerance locally rather than asking again, and it
          *     is the *same* points this route reduced — simplification is not nested, so a
          *     client starting from anything else could not be held to the same answer. A
          *     box carries none, because there is nothing it was reduced from.
@@ -2911,7 +2911,8 @@ export interface components {
          * @description The parameter values this answer was actually produced with.
          */
         AppliedParameters: {
-            detail: components["schemas"]["Detail"];
+            /** Tolerance */
+            tolerance: number;
         };
         /**
          * AssetAction
@@ -3792,12 +3793,6 @@ export interface components {
              */
             dataset_id: string;
         };
-        /**
-         * Detail
-         * @description How much of an outline survives simplification. Order is display order.
-         * @enum {string}
-         */
-        Detail: "coarse" | "balanced" | "fine";
         /**
          * DownloadSizeOut
          * @description What fetching a model's weights would cost, before anybody fetches them.
@@ -5060,7 +5055,7 @@ export interface components {
          * @description A setting that shapes a suggestion. Order is display order.
          * @enum {string}
          */
-        SuggestParameter: "detail" | (string & {});
+        SuggestParameter: "tolerance" | (string & {});
         /**
          * SuggestPoint
          * @description One click, in the asset's own pixel coordinates.
@@ -5104,8 +5099,6 @@ export interface components {
              * Format: uuid
              */
             connection_id: string;
-            /** @default balanced */
-            detail: components["schemas"]["Detail"];
             /** Negative */
             negative?: components["schemas"]["SuggestPoint"][];
             /** Positive */
@@ -5115,6 +5108,11 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /**
+             * Tolerance
+             * @default 1
+             */
+            tolerance: number;
         };
         /**
          * SuggestedRegion
@@ -5136,7 +5134,7 @@ export interface components {
          *     `regions` is empty when there is no suggestion, and that is an ordinary
          *     answer rather than an error: a click can land on sky, the model can be less
          *     sure than the caller asked for, the shape found can be one this class cannot
-         *     hold, and the detail as set can leave nothing. A 404 or a 409 for any of
+         *     hold, and the tolerance as set can leave nothing. A 404 or a 409 for any of
          *     those would be telling the caller they did something wrong when they did not.
          *
          *     `model_ref` is echoed on every answer, including the empty one, because it
@@ -11746,5 +11744,5 @@ export interface KnownMembers {
   JobAction: "start" | "complete";
   ModelCapability: "point_suggest" | "text_detect";
   PreLabelExclusionReason: "no_producible_geometry" | "required_attribute";
-  SuggestParameter: "detail";
+  SuggestParameter: "tolerance";
 }

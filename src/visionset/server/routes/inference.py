@@ -406,21 +406,21 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
     alone; sending both would answer past the tool they are holding, and nothing
     on their screen would have said so.
 
-    **`detail` is the one setting, and it does not reach the model.** It decides
-    how much of an outline survives simplification. It is optional and defaults
-    to `balanced`, which is what every suggestion used before there was a choice.
-    Closing the small gaps in a mask and dropping its noise specks still happen,
-    at fixed defaults nobody asks for.
+    **`tolerance` is the one setting, and it does not reach the model.** It is a
+    distance in the asset's pixels: every point of the traced outline lies within
+    it of the polygon returned. Optional, defaulting to `1.0`; refused outside
+    `[0.25, 16]` rather than clamped. Closing the small gaps in a mask and
+    dropping its noise specks still happen, at fixed defaults nobody asks for.
 
     **`parameters` says which settings apply here**, for the kind of shape this
-    request will come back in. It is empty for a box class — `detail` changes an
+    request will come back in. It is empty for a box class — the tolerance shapes an
     outline and a box has none — which is how a client is told to render no
     adjustments at all. It is present even when there is nothing to propose, so
     somebody who adjusted their way into an empty answer can adjust their way
     back out. A client renders what this names and works none of it out itself.
 
     **`contour` on each region is the outline the shape was reduced from.** It is
-    what lets a client re-run `detail` locally rather than asking again, and it
+    what lets a client re-run the tolerance locally rather than asking again, and it
     is the *same* points this route reduced — simplification is not nested, so a
     client starting from anything else could not be held to the same answer. A
     box carries none, because there is nothing it was reduced from.
@@ -465,7 +465,7 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
         connection_id=body.connection_id,
         prompt=prompt,
         allowed=tuple(body.allowed_geometries),
-        detail=body.detail,
+        tolerance=body.tolerance,
     )
     return SuggestionOut(
         model_ref=answer.model_ref,
@@ -474,7 +474,7 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
             SuggestedRegion(geometry=shape.geometry, contour=list(shape.contour))
             for shape in answer.shapes
         ],
-        applied=AppliedParameters(detail=body.detail),
+        applied=AppliedParameters(tolerance=body.tolerance),
         parameters=list(answer.parameters),
     )
 

@@ -70,7 +70,6 @@ from visionset.inference.integrity import (
     purge,
 )
 from visionset.inference.masks import (
-    EPSILON,
     MINIMUM_FRAGMENT_SHARE,
     MINIMUM_TOLERANCE,
     Piece,
@@ -81,7 +80,6 @@ from visionset.inference.masks import (
     polygon_at,
     shapes_from,
     simplified,
-    tolerance_for,
 )
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
 from visionset.inference.prelabel import (
@@ -164,7 +162,6 @@ __all__ = [
     "registered",
     "reset",
     "serving",
-    "EPSILON",
     "MPS_FALLBACK_VARIABLE",
     "enable_mps_fallback",
     "DEFAULT_EMBEDDING_CAPACITY",
@@ -223,7 +220,6 @@ __all__ = [
     "shapes_from",
     "shapes_prose",
     "simplified",
-    "tolerance_for",
     "planned",
     "pre_label",
     "provider_for",

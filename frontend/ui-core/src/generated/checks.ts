@@ -348,14 +348,11 @@ export const checkSourcePage: Check<Schemas["SourcePage"]> =
 export const checkSplitAssignmentOut: Check<Schemas["SplitAssignmentOut"]> =
   /*#__PURE__*/ object({ "test": [true, arrayOf(isString)], "train": [true, arrayOf(isString)], "val": [true, arrayOf(isString)] } as const);
 
-export const checkDetail: Check<Schemas["Detail"]> =
-  /*#__PURE__*/ oneOf(["coarse", "balanced", "fine"] as const);
-
 export const checkAppliedParameters: Check<Schemas["AppliedParameters"]> =
-  /*#__PURE__*/ object({ "detail": [true, checkDetail] } as const);
+  /*#__PURE__*/ object({ "tolerance": [true, isNumber] } as const);
 
 export const checkSuggestParameter: Check<Schemas["SuggestParameter"]> =
-  /*#__PURE__*/ openOneOf(["detail"] as const);
+  /*#__PURE__*/ openOneOf(["tolerance"] as const);
 
 export const checkBboxGeometry: Check<Schemas["BboxGeometry"]> =
   /*#__PURE__*/ object({ "height": [true, isNumber], "type": [true, lit("bbox")], "width": [true, isNumber], "x": [true, isNumber], "y": [true, isNumber] } as const);

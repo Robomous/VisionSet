@@ -253,7 +253,7 @@ export const ACCEPT_SUGGESTION = "accept-suggestion";
 export const DISCARD_SUGGESTION = "discard-suggestion";
 
 /**
- * Move the suggestion's vertex density one step — `[` coarser, `]` finer.
+ * Move the suggestion's tolerance one stop — `[` coarser (doubles it), `]` finer (halves it).
  *
  * Ordinary rows rather than a substitution, because unlike `enter` and `escape`
  * these two chords mean nothing else: there is no drawing gesture and no
@@ -262,11 +262,11 @@ export const DISCARD_SUGGESTION = "discard-suggestion";
  *
  * Host rows for `TOGGLE_SUGGEST`'s reason with one addition of its own. The
  * *arithmetic* is core's — `geometry/simplify.ts`, held to the kernel's answers
- * by a golden fixture — but which step the session is on is part of a session
- * the host holds, and the host is also what decides whether the control is
- * offered at all: the server declares whether `detail` applies to the kind of
- * shape this class holds, and a bracket pressed on a box class answers `false`
- * and falls through.
+ * by a golden fixture — but which tolerance the session holds is part of a
+ * session the host holds, and the host is also what decides whether the control
+ * is offered at all: the server declares whether the tolerance applies to the
+ * kind of shape this class holds, and a bracket pressed on a box class answers
+ * `false` and falls through.
  *
  * Two rows and not one signed row, because a chord is bound to an action name
  * and `[` and `]` are two chords. It is also what lets a host offer one and

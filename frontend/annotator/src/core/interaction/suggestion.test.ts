@@ -15,12 +15,11 @@ import { AnnotatorStore } from "../state/store";
 import { annotationsInDrawOrder, createDocument } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
 import { addAnnotationCommand } from "../state/commands";
-import { DETAIL_STEPS, polygonAt } from "../geometry/simplify";
 import type { AnnotationSchema, AssetDescriptor, Geometry, LabelClass, Point } from "../types";
 import type { Answer } from "./suggestion";
 import {
   vertexCount,
-  withDetail,
+  withTolerance,
   SUGGESTIBLE_GEOMETRY_TYPES,
   acceptedAnnotations,
   allowedGeometriesFor,
@@ -104,7 +103,7 @@ function answerOf(...suggestions: readonly Suggestion[]): Answer {
     modelRef: MODEL_REF,
     confidence: suggestions[0]?.confidence ?? null,
     suggestions,
-    parameters: ["detail"],
+    parameters: ["tolerance"],
   };
 }
 
@@ -500,7 +499,7 @@ describe("nothing about a pending suggestion is in the document or the history",
 });
 
 
-describe("adjusting the vertex density", () => {
+describe("adjusting the tolerance", () => {
   /**
    * A circle's traced ring, at integer pixels.
    *
@@ -517,40 +516,41 @@ describe("adjusting the vertex density", () => {
     return showing(proposal({ type: "polygon", points: [...RING] }, 0.9, RING));
   }
 
+  /** The eight corners of a four-pixel disc: a shape the coarse end cannot keep. */
+  const SMALL: readonly Point[] = [[2, 0], [4, 0], [6, 2], [6, 4], [4, 6], [2, 6], [0, 4], [0, 2]];
+
+  function smallShown(): SuggestionState {
+    return showing(proposal({ type: "polygon", points: [...SMALL] }, 0.9, SMALL));
+  }
+
   it("re-simplifies here, with no ask and no new serial", () => {
-    // The whole reason the contour travels: `[` and `]` are held down, and a
-    // request per keypress would put a network round trip and a model decode
-    // between the press and the picture.
     const before = withContour();
-    const after = withDetail(before, "coarse");
+    const after = withTolerance(before, 4);
     expect(after.serial).toBe(before.serial);
     expect(after.status).toBe("shown");
-    expect(after.adjustments.detail).toBe("coarse");
+    expect(after.adjustments.tolerance).toBe(4);
   });
 
   it("keeps fewer vertices the coarser it is asked to be", () => {
-    const fine = withDetail(withContour(), "fine");
-    const coarse = withDetail(withContour(), "coarse");
+    const fine = withTolerance(withContour(), 0.5);
+    const coarse = withTolerance(withContour(), 8);
     expect(vertexCount(coarse)).toBeLessThan(vertexCount(fine));
   });
 
-  it("returns the state by identity for the step already set", () => {
-    // So a host can fold it through unconditionally without a render.
+  it("returns the state by identity for the tolerance already set", () => {
     const state = withContour();
-    expect(withDetail(state, state.adjustments.detail)).toBe(state);
+    expect(withTolerance(state, state.adjustments.tolerance)).toBe(state);
   });
 
   it("leaves a box exactly as it is, because it was reduced from nothing", () => {
-    // The same fact the server states by leaving `detail` out of `parameters`
-    // for a box class, seen from the client's side.
     const boxed = showing(proposal(A_BOX, 0.9, []));
-    expect(withDetail(boxed, "coarse").suggestions[0]?.geometry).toEqual(A_BOX);
+    expect(withTolerance(boxed, 8).suggestions[0]?.geometry).toEqual(A_BOX);
   });
 
-  it("records the step even with nothing showing, so the next ask carries it", () => {
+  it("records the tolerance even with nothing showing, so the next ask carries it", () => {
     const armedOnly = armed("car");
-    expect(withDetail(armedOnly, "fine").adjustments.detail).toBe("fine");
-    expect(withDetail(armedOnly, "fine").status).toBe("idle");
+    expect(withTolerance(armedOnly, 0.5).adjustments.tolerance).toBe(0.5);
+    expect(withTolerance(armedOnly, 0.5).status).toBe("idle");
   });
 
   it("counts only the vertices of the polygons it is drawing", () => {
@@ -559,18 +559,31 @@ describe("adjusting the vertex density", () => {
     expect(vertexCount(withContour())).toBe(vertexCount(withContour()));
   });
 
-  it("a step can never lose a shape, because only a zero-area outline is refused", () => {
-    // Reported in planning as a defect — a coarser step dropping a shape and
-    // taking its contour with it, so a finer step could not bring it back. It is
-    // not reachable, and this is the measurement rather than the argument:
-    // `polygonAt` refuses only a contour with no area, and whether points are
-    // collinear does not depend on the tolerance. So the three steps agree about
-    // which shapes exist and differ only in how many vertices each spends (#557).
-    const collinear: readonly Point[] = [[0, 0], [5, 0], [10, 0]];
-    const curved = RING;
-    for (const step of DETAIL_STEPS) {
-      expect(polygonAt(collinear, step)).toBeNull();
-      expect(polygonAt(curved, step)).not.toBeNull();
+  it("a coarse tolerance can leave a small shape with nothing", () => {
+    // A shape survives while three of its contour points are still more than the
+    // tolerance apart.
+    expect(withTolerance(smallShown(), 16).status).toBe("none");
+  });
+
+  it("brings the small shape back when the tolerance goes fine again", () => {
+    const lost = withTolerance(smallShown(), 16);
+    const found = withTolerance(lost, 1);
+    expect(found.status).toBe("shown");
+    expect(found.suggestions[0]?.geometry.type).toBe("polygon");
+    expect(vertexCount(found)).toBeGreaterThanOrEqual(3);
+  });
+
+  it("counts no vertices while there is nothing to show", () => {
+    expect(vertexCount(withTolerance(smallShown(), 16))).toBe(0);
+  });
+
+  it("leaves an empty answer empty at every tolerance, because it has no contour to reduce", () => {
+    const asked = withPoint(armed("car"), [1, 1], "positive");
+    const empty = answered(asked, asked.serial, NOTHING);
+    for (const tolerance of [0.25, 4, 16]) {
+      const moved = withTolerance(empty, tolerance);
+      expect(moved.status).toBe("none");
+      expect(moved.suggestions).toEqual([]);
     }
   });
 });
@@ -597,9 +610,9 @@ describe("what the answer declares", () => {
       modelRef: MODEL_REF,
       confidence: null,
       suggestions: [],
-      parameters: ["detail"],
+      parameters: ["tolerance"],
     });
     expect(empty.status).toBe("none");
-    expect(empty.parameters).toEqual(["detail"]);
+    expect(empty.parameters).toEqual(["tolerance"]);
   });
 });

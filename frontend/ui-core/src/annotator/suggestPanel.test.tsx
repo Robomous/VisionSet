@@ -35,7 +35,7 @@ function answerOf(...suggestions: readonly Suggestion[]): Answer {
     modelRef: MODEL_REF,
     confidence: suggestions[0]?.confidence ?? null,
     suggestions,
-    parameters: ["detail"],
+    parameters: ["tolerance"],
   };
 }
 
@@ -457,7 +457,7 @@ describe("the adjustments, which are a section and never a popup", () => {
           contour: [[0, 0], [10, 0], [10, 10], [0, 10]],
         },
       ],
-      parameters: ["detail"],
+      parameters: ["tolerance"],
     };
   }
 
@@ -474,7 +474,7 @@ describe("the adjustments, which are a section and never a popup", () => {
 
   it("renders exactly the parameters the server declared, and nothing else", () => {
     render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
-      onDetail: vi.fn() }));
+      onTolerance: vi.fn() }));
     expect(screen.getByTestId("suggest-detail")).toBeTruthy();
     // The two that were here and are not (#557). A control wired to nothing on
     // the ordinary mask is worse than no control.
@@ -484,10 +484,10 @@ describe("the adjustments, which are a section and never a popup", () => {
 
   it("offers a box class no section at all, because the wire declared nothing", () => {
     // The whole of the rule: no condition in this file mentions a box. Declare
-    // `detail` for a box in the kernel's table and this test goes red there.
+    // `tolerance` for a box in the kernel's table and this test goes red there.
     const session = asked();
     const boxy = answered(session, session.serial, { ...polygonAnswer(), parameters: [] });
-    render(mount({ session: boxy, adjusting: true, onAdjusting: vi.fn(), onDetail: vi.fn() }));
+    render(mount({ session: boxy, adjusting: true, onAdjusting: vi.fn(), onTolerance: vi.fn() }));
 
     expect(screen.queryByTestId("suggest-adjustments")).toBeNull();
     expect(screen.queryByTestId("suggest-adjust-open")).toBeNull();
@@ -514,7 +514,7 @@ describe("the adjustments, which are a section and never a popup", () => {
       parameters: ["depth_bias"],
     });
     render(
-      mount({ session: unknown, adjusting: true, onAdjusting: vi.fn(), onDetail: vi.fn() }),
+      mount({ session: unknown, adjusting: true, onAdjusting: vi.fn(), onTolerance: vi.fn() }),
     );
 
     expect(screen.queryByTestId("suggest-adjust-open")).toBeNull();
@@ -528,37 +528,48 @@ describe("the adjustments, which are a section and never a popup", () => {
     const session = asked();
     const mixed = answered(session, session.serial, {
       ...polygonAnswer(),
-      parameters: ["depth_bias", "detail"],
+      parameters: ["depth_bias", "tolerance"],
     });
-    render(mount({ session: mixed, adjusting: true, onAdjusting: vi.fn(), onDetail: vi.fn() }));
+    render(mount({ session: mixed, adjusting: true, onAdjusting: vi.fn(), onTolerance: vi.fn() }));
 
     expect(screen.getByTestId("suggest-adjustments")).toBeTruthy();
     expect(screen.getByTestId("suggest-detail")).toBeTruthy();
   });
 
-  it("names the step and what it costs in one label, beside the control", () => {
+  it("names the tolerance and what it costs in one label, beside the control", () => {
     render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
-      onDetail: vi.fn() }));
-    expect(screen.getByTestId("suggest-detail-label").textContent).toBe("Balanced · 4 pts");
+      onTolerance: vi.fn() }));
+    expect(screen.getByTestId("suggest-detail-label").textContent).toBe("1.0 px · 4 pts");
   });
 
-  it("puts the slider on the step the session is holding", () => {
+  it("puts the slider on a doubling track, at the tolerance the session is holding", () => {
     render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
-      onDetail: vi.fn() }));
+      onTolerance: vi.fn() }));
     const slider = screen.getByTestId("suggest-detail") as HTMLInputElement;
-    expect(slider.value).toBe("1");
-    expect(slider.min).toBe("0");
-    expect(slider.max).toBe("2");
+    expect(slider.value).toBe("0");
+    expect(slider.min).toBe("-2");
+    expect(slider.max).toBe("4");
+    expect(slider.step).toBe("0.25");
   });
 
-  it("reports a step through the door that needs no request", () => {
-    const onDetail = vi.fn();
-    render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(), onDetail }));
+  it("reports a tolerance through the door that needs no request", () => {
+    const onTolerance = vi.fn();
+    render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(), onTolerance }));
 
-    fireEvent.change(screen.getByTestId("suggest-detail"), { target: { value: "0" } });
-    expect(onDetail).toHaveBeenCalledWith("coarse");
-    fireEvent.change(screen.getByTestId("suggest-detail"), { target: { value: "2" } });
-    expect(onDetail).toHaveBeenCalledWith("fine");
+    fireEvent.change(screen.getByTestId("suggest-detail"), { target: { value: "4" } });
+    expect(onTolerance).toHaveBeenCalledWith(16);
+    fireEvent.change(screen.getByTestId("suggest-detail"), { target: { value: "-2" } });
+    expect(onTolerance).toHaveBeenCalledWith(0.25);
+    fireEvent.change(screen.getByTestId("suggest-detail"), { target: { value: "-1" } });
+    expect(onTolerance).toHaveBeenCalledWith(0.5);
+  });
+
+  it("rounds a quarter step's tolerance to two decimals", () => {
+    const onTolerance = vi.fn();
+    render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(), onTolerance }));
+
+    fireEvent.change(screen.getByTestId("suggest-detail"), { target: { value: "0.25" } });
+    expect(onTolerance).toHaveBeenCalledWith(1.19);
   });
 
   it("lets a press on the slider through, because that press is the drag", () => {
@@ -567,7 +578,7 @@ describe("the adjustments, which are a section and never a popup", () => {
     // moved with the brackets. The old test asserted the guard *fired*, which is
     // exactly the assertion a dead control passes (#563).
     render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
-      onDetail: vi.fn() }));
+      onTolerance: vi.fn() }));
     const press = fireEvent.mouseDown(screen.getByTestId("suggest-detail"));
     expect(press).toBe(true);
   });
@@ -581,7 +592,7 @@ describe("the adjustments, which are a section and never a popup", () => {
     document.body.appendChild(root);
 
     render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
-      onDetail: vi.fn() }));
+      onTolerance: vi.fn() }));
     const slider = screen.getByTestId("suggest-detail");
     slider.focus();
     expect(document.activeElement).toBe(slider);
@@ -601,7 +612,7 @@ describe("the adjustments, which are a section and never a popup", () => {
       ...polygonAnswer(),
       suggestions: [],
     });
-    render(mount({ session: empty, adjusting: true, onAdjusting: vi.fn(), onDetail: vi.fn() }));
+    render(mount({ session: empty, adjusting: true, onAdjusting: vi.fn(), onTolerance: vi.fn() }));
 
     expect(screen.getByTestId("suggest-none")).toBeTruthy();
     expect(screen.getByTestId("suggest-adjustments")).toBeTruthy();
@@ -619,7 +630,7 @@ describe("the adjustments, which are a section and never a popup", () => {
       suggestions: [],
       parameters: ["depth_bias"],
     });
-    render(mount({ session: empty, adjusting: true, onAdjusting: vi.fn(), onDetail: vi.fn() }));
+    render(mount({ session: empty, adjusting: true, onAdjusting: vi.fn(), onTolerance: vi.fn() }));
 
     expect(screen.getByTestId("suggest-none")).toBeTruthy();
     expect(screen.queryByTestId("suggest-adjustments")).toBeNull();

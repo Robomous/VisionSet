@@ -45,7 +45,6 @@
 
 import type {
   Adjustments,
-  Detail,
   GeometryType,
   SuggestParameter,
 } from "@visionset/annotator";
@@ -115,15 +114,15 @@ export interface SuggestionOut {
   readonly confidence: number;
   readonly regions: readonly SuggestedRegion[];
   readonly applied: {
-    readonly detail: Detail;
+    readonly tolerance: number;
   };
   /**
    * Which settings have any effect on the kind of shape this class holds.
    *
    * Read and rendered as given. The editor works none of it out for itself —
-   * that a box has no use for `detail` is the kernel's rule, and a second copy
-   * of it here would be the hand-mirrored table the capabilities contract exists
-   * to forbid.
+   * that a box has no use for the tolerance is the kernel's rule, and a second
+   * copy of it here would be the hand-mirrored table the capabilities contract
+   * exists to forbid.
    */
   readonly parameters: readonly SuggestParameter[];
 }
@@ -522,7 +521,7 @@ export interface SuggestInput {
    * `suggestGeometriesFor` is where that choice is made once.
    */
   readonly allowedGeometries: readonly GeometryType[];
-  /** Where the three settings stand. Sent on every ask, echoed by every answer. */
+  /** Where the setting stands. Sent on every ask, echoed by every answer. */
   readonly adjustments: Adjustments;
 }
 
@@ -540,7 +539,7 @@ export function useSuggestRegion() {
             positive: input.positive.map(([x, y]) => ({ x, y })),
             negative: input.negative.map(([x, y]) => ({ x, y })),
             allowed_geometries: [...input.allowedGeometries],
-            detail: input.adjustments.detail,
+            tolerance: input.adjustments.tolerance,
           } as never,
         }),
         checkSuggestRegion,

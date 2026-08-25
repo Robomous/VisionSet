@@ -1,11 +1,11 @@
 /**
- * Douglas-Peucker over a traced contour, and the vertex density a person picks.
+ * Douglas-Peucker over a traced contour, at the pixel tolerance a person picks.
  *
  * ## Why this exists twice
  *
  * The kernel produces the shape that is finally written; this produces the shape
  * on screen while somebody is still deciding. Asking the server for each step of
- * a three-position control would put a network round trip and a model decode
+ * moving the tolerance would put a network round trip and a model decode
  * between a keypress and the picture, for an answer that needs neither: the
  * response already carries the contour, and reducing it is arithmetic.
  *
@@ -31,34 +31,21 @@
  * places.
  *
  * The contour arriving here is already reduced at {@link MINIMUM_TOLERANCE},
- * because Douglas-Peucker is not nested — reducing at half a pixel and then at
+ * because Douglas-Peucker is not nested — reducing at a quarter pixel and then at
  * five does not give what reducing once at five gives — so both sides start from
  * the same points or they can never be held to the same answer.
  */
 
 import type { Point } from "../types";
 
-/** How much of an outline survives. The wire's `detail`, and the same three names. */
-export type Detail = "coarse" | "balanced" | "fine";
+/** What a caller that says nothing gets: an outline within one pixel of the mask. */
+export const DEFAULT_TOLERANCE = 1;
 
-/** Coarsest first, so `[` and `]` move the same direction the list reads. */
-export const DETAIL_STEPS = ["coarse", "balanced", "fine"] as const satisfies readonly Detail[];
+/** The finest setting, and the floor the kernel reduces the contour at. */
+export const MINIMUM_TOLERANCE = 0.25;
 
-/**
- * What each step means, as a fraction of the region's bounding diagonal.
- *
- * Relative rather than absolute, which is the whole reason one setting works at
- * every scale: three pixels is nothing on a car and is the whole of a bottle cap.
- * The numbers are the kernel's, and the fixture asserts they still are.
- */
-export const EPSILON = {
-  coarse: 0.025,
-  balanced: 0.01,
-  fine: 0.004,
-} as const satisfies Record<Detail, number>;
-
-/** No tolerance below half a pixel, however small the region. */
-export const MINIMUM_TOLERANCE = 0.5;
+/** The coarsest setting. Past this an outline stops describing the object. */
+export const MAXIMUM_TOLERANCE = 16;
 
 /** The domain's floor for a polygon: fewer than three points is a line. */
 const MINIMUM_POLYGON_POINTS = 3;
@@ -108,62 +95,49 @@ export function simplified(points: readonly Point[], tolerance: number): Point[]
   return points.filter((_, index) => keep[index]!);
 }
 
-/** The pixel tolerance a step means for a region of this size. */
-export function toleranceFor(points: readonly Point[], detail: Detail): number {
-  if (points.length === 0) return MINIMUM_TOLERANCE;
-  const xs = points.map(([x]) => x);
-  const ys = points.map(([, y]) => y);
-  const diagonal = Math.sqrt(
-    (Math.max(...xs) - Math.min(...xs)) ** 2 + (Math.max(...ys) - Math.min(...ys)) ** 2,
-  );
-  return Math.max(MINIMUM_TOLERANCE, EPSILON[detail] * diagonal);
-}
-
 /**
- * Drop the vertices Douglas-Peucker only kept because it was told to.
+ * Drop the one vertex Douglas-Peucker only kept because it was told to.
  *
  * The algorithm pins the first and last point of what it is given, and what it is
- * given here is a ring cut open at an arbitrary pixel — so the final vertex is
- * pinned for a reason that stops being true the moment the ring closes, and it
- * lands one pixel from the first. Judged by the same tolerance as everything
- * else rather than by exact equality: the artifact is a near-duplicate, so
- * comparing the first point to the last never fires on the case that motivates it.
+ * given here is a ring cut open at an arbitrary pixel. Cutting the ring open pins
+ * exactly one vertex artificially, and it is a near-duplicate of the first point
+ * (a fraction of a pixel away), so it is dropped when it sits within the
+ * tolerance of the closing segment; a second drop would remove a real corner the
+ * reduction chose to keep.
  */
 function closed(kept: Point[], tolerance: number): Point[] {
-  let ring = kept;
-  while (ring.length > MINIMUM_POLYGON_POINTS) {
-    if (distanceToSegment(ring[ring.length - 1]!, ring[ring.length - 2]!, ring[0]!) > tolerance) {
-      return ring;
+  if (kept.length > MINIMUM_POLYGON_POINTS) {
+    const last = kept[kept.length - 1]!;
+    if (distanceToSegment(last, kept[kept.length - 2]!, kept[0]!) <= tolerance) {
+      return kept.slice(0, -1);
     }
-    ring = ring.slice(0, -1);
   }
-  return ring;
+  return kept;
 }
 
 /**
- * That contour at the requested vertex density, or `null` where no polygon can be
+ * That contour within `tolerance` pixels, or `null` where no polygon can be
  * made — an empty contour, or one too thin to have three distinct corners.
- *
- * `null` rather than an empty array, because "there is no shape here" and "the
- * shape has no vertices" are different facts and only the first one happens.
  */
-export function polygonAt(points: readonly Point[], detail: Detail): Point[] | null {
+export function polygonAt(points: readonly Point[], tolerance: number): Point[] | null {
   if (points.length < MINIMUM_POLYGON_POINTS) return null;
-  const tolerance = toleranceFor(points, detail);
   const kept = closed(simplified(points, tolerance), tolerance);
   if (kept.length < MINIMUM_POLYGON_POINTS) return null;
   return kept;
 }
 
 /**
- * The next step in a direction, stopping at each end rather than wrapping.
+ * The next stop on the doubling ladder: `-1` coarser (twice the tolerance), `+1`
+ * finer (half of it), clamped to the range and stopping at each end rather than
+ * wrapping — `[` and `]` are held down, and a control that wrapped would take
+ * somebody from the coarsest straight to the finest.
  *
- * Stopping is deliberate: `[` and `]` are held down, and a control that wrapped
- * would take somebody from the coarsest straight to the finest without their
- * having asked for anything in between.
+ * The ladder is the powers of two between the ends. A `tolerance` the slider
+ * left between stops is taken to the nearest one first, so a bracket always
+ * lands back on the ladder rather than walking off it from wherever the slider
+ * happened to leave it.
  */
-export function steppedDetail(detail: Detail, direction: -1 | 1): Detail {
-  const at = DETAIL_STEPS.indexOf(detail);
-  const next = Math.min(DETAIL_STEPS.length - 1, Math.max(0, at + direction));
-  return DETAIL_STEPS[next]!;
+export function steppedTolerance(tolerance: number, direction: -1 | 1): number {
+  const exponent = Math.round(Math.log2(tolerance)) + (direction === -1 ? 1 : -1);
+  return Math.min(MAXIMUM_TOLERANCE, Math.max(MINIMUM_TOLERANCE, 2 ** exponent));
 }
