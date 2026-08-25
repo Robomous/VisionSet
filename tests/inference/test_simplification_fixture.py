@@ -3,8 +3,8 @@
 `tests/fixtures/simplification.json` is a committed artifact, and the only thing
 that carries this algorithm across the language boundary: the `frontend` CI job
 installs no Python and reads what is in the repository. The editor re-simplifies
-a contour locally so that moving `detail` costs no round trip, and this module is
-what makes "the two agree" checkable rather than asserted.
+a contour locally so that moving the tolerance costs no round trip, and this
+module is what makes "the two agree" checkable rather than asserted.
 
 So it needs two independent links, the shape `openapi.json` and its generated
 client already have. This is the first — the fixture is the application's own
@@ -25,10 +25,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from scripts.export_simplification_fixtures import OUTPUT_PATH, build_fixture
+from scripts.export_simplification_fixtures import OUTPUT_PATH, TOLERANCES, build_fixture
 
-from visionset.inference.masks import EPSILON, MINIMUM_TOLERANCE
-from visionset.kernel.domain import Detail
+from visionset.kernel.domain import DEFAULT_TOLERANCE, MAXIMUM_TOLERANCE, MINIMUM_TOLERANCE
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -49,37 +48,35 @@ def test_the_fixture_carries_the_constants_the_port_needs() -> None:
     """The TypeScript reads these rather than restating them, so they have to travel."""
     payload = committed()
     assert payload["minimum_tolerance"] == MINIMUM_TOLERANCE
-    assert payload["epsilon"] == {step.value: EPSILON[step] for step in Detail}
+    assert payload["default_tolerance"] == DEFAULT_TOLERANCE
+    assert payload["maximum_tolerance"] == MAXIMUM_TOLERANCE
+    assert payload["tolerances"] == TOLERANCES
 
 
-def test_every_step_of_the_vocabulary_is_covered() -> None:
+def test_every_tolerance_is_covered_by_every_case() -> None:
     for case in committed()["cases"]:
-        assert set(case["polygon"]) == {step.value for step in Detail}
-        assert set(case["tolerance"]) == {step.value for step in Detail}
+        assert set(case["polygon"]) == {str(t) for t in TOLERANCES}
 
 
-def test_a_case_exists_whose_vertex_count_moves_with_every_step() -> None:
-    """Without one, a port that ignored `detail` would pass the whole gate.
-
-    Every straight-edged case answers four corners at all three settings, which
-    is correct and proves nothing about the setting.
-    """
+def test_a_case_exists_whose_vertex_count_moves_with_the_tolerance() -> None:
+    """Without one, a port that ignored the tolerance would pass the whole gate."""
     moving = [
         case
         for case in committed()["cases"]
-        if len({len(points) for points in case["polygon"].values() if points is not None}) == 3
+        if len({len(points) for points in case["polygon"].values() if points is not None}) >= 4
     ]
-    assert moving, "no case tells the three steps apart"
+    assert moving, "no case tells the tolerances apart"
 
 
-def test_a_case_exists_where_the_floor_decides_rather_than_the_ratio() -> None:
-    """The other branch of `tolerance_for`, and the one a port most easily leaves out."""
-    floored = [
+def test_a_case_exists_that_is_a_polygon_at_the_floor_and_refused_at_the_ceiling() -> None:
+    """The ends decide something a middle tolerance does not."""
+    turning = [
         case
         for case in committed()["cases"]
-        if set(case["tolerance"].values()) == {MINIMUM_TOLERANCE}
+        if case["polygon"][str(MINIMUM_TOLERANCE)] is not None
+        and case["polygon"][str(MAXIMUM_TOLERANCE)] is None
     ]
-    assert floored, "no case reaches the minimum tolerance on every step"
+    assert turning, "no case is a shape at the floor and nothing at the ceiling"
 
 
 def test_a_case_exists_that_cannot_be_a_polygon_at_all() -> None:
