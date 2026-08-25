@@ -409,12 +409,11 @@ First-class, and part of every rule above rather than a section to satisfy after
 - **Ad-hoc geometry that fights Nova.** A control's height, padding, or radius is not a
   per-screen decision; reaching past the geometry table above for a bespoke size is a
   design decision to make in this document, not in a component diff.
-- **Mixing icon sets in new code.** Tabler is the set, and across the primitives *and*
-  the screens it is already the only one: every icon `frontend/ui-core/src/primitives/`
-  and `frontend/ui-core/src/screens/` draws is `@tabler/icons-react`, and neither
-  directory imports `lucide-react` at all. Lucide survives in exactly one place —
-  `frontend/ui-core/src/annotator/` — and that is the whole of the remaining debt: a file
-  there still importing it is a file to migrate, not a precedent to follow.
+- **Mixing icon sets in new code.** Tabler is the set, and now the only one: every icon
+  the primitives, the screens and the annotation workspace draw is
+  `@tabler/icons-react`, no package declares a second icon library, and
+  `tests/scripts/design_tokens.test.mjs` refuses one that reappears in a manifest or an
+  import. A second set is a decision to make in this document, not a dependency to add.
 - **Brand in a functional control.** Robomous coral is identity — the wordmark and its
   styleguide swatch, nothing else. A functional control reaching for `brand` is a
   semantic-colour violation regardless of how many other sites already use it correctly.
