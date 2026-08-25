@@ -663,6 +663,36 @@ describe("saving twice with nothing edited in between", () => {
  * merged, and a publish always carries what was actually typed, including the
  * keystroke still inside the debounce window when Save was pressed.
  */
+describe("one unnamed class at a time", () => {
+  it("refuses a second Add and lands on the class still waiting for a name", async () => {
+    render(
+      mount(
+        <>
+          <ProjectScreen projectId={PROJECT} tab="schema" />
+          <Toaster />
+        </>,
+      ),
+    );
+    await screen.findByTestId("schema-editor");
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[0]);
+
+    await userEvent.click(screen.getByTestId("add-class"));
+
+    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(
+      CLASSES.length + 1,
+    );
+    expect(await screen.findByText("Name the new class first")).toBeDefined();
+    expect(screen.getByTestId(`class-name-${CLASSES.length}`)).toHaveProperty("value", "");
+
+    await userEvent.type(screen.getByTestId(`class-name-${CLASSES.length}`), "pedestrian");
+    await userEvent.click(screen.getByTestId("add-class"));
+    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(
+      CLASSES.length + 2,
+    );
+  });
+});
+
 describe("the draft lives on the server", () => {
   it("seeds from the server draft when there is no local one", async () => {
     curatedDrafts.set(PROJECT, {
