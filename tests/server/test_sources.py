@@ -230,6 +230,50 @@ def test_the_default_rate_is_one_frame_per_second(
     response = post_video(client, project, clip)
 
     assert response.json()["video"]["extraction_fps"] == 1.0
+    assert response.json()["video"]["ranges"] == []
+
+
+def test_a_clip_registered_with_ranges_echoes_them_canonically(
+    client: TestClient, project: str, clip: Path
+) -> None:
+    """Overlaps merge and order is fixed, so the response is the identity spelling."""
+    response = post_video(
+        client,
+        project,
+        clip,
+        ranges=(
+            '[{"start_seconds": 1.2, "end_seconds": 1.8},'
+            ' {"start_seconds": 0.2, "end_seconds": 1.5}]'
+        ),
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["video"]["ranges"] == [{"start_seconds": 0.2, "end_seconds": 1.8}]
+
+
+def test_a_clip_with_different_ranges_is_a_second_source(
+    client: TestClient, project: str, clip: Path
+) -> None:
+    """Ranges are the other half of the cut, so they fork identity as the rate does."""
+    head = post_video(client, project, clip, ranges='[{"start_seconds": 0, "end_seconds": 1}]')
+    tail = post_video(client, project, clip, ranges='[{"start_seconds": 1, "end_seconds": 2}]')
+
+    assert head.json()["id"] != tail.json()["id"]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["not json", '[{"start_seconds": 2, "end_seconds": 1}]', '[{"start": 0}]'],
+    ids=["not-json", "inverted", "wrong-keys"],
+)
+def test_malformed_ranges_are_422_before_anything_is_written(
+    client: TestClient, project: str, clip: Path, bad: str
+) -> None:
+    """Parsed against the kernel's own bounds, so its bare ValidationError never 500s."""
+    response = post_video(client, project, clip, ranges=bad)
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "VALIDATION_ERROR"
 
 
 def test_a_non_positive_rate_is_422_before_anything_is_written(

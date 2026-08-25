@@ -705,8 +705,22 @@ class SchemaVersionCreate(BaseModel):
 # two rates are the reason this type exists at all: ``fps`` is what the file was
 # *shot* at and ``extraction_fps`` is what we chose to *cut* it at, and a client
 # that confuses them decomposes at the wrong rate. See ``docs/content/sources.md``.
+class ClipRange(BaseModel):
+    """One stretch of a clip to extract, half-open: start_seconds <= t < end_seconds."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start_seconds: float
+    end_seconds: float
+
+
 class VideoProvenanceOut(BaseModel):
-    """What a clip turned out to be, and the rate it is decomposed at."""
+    """What a clip turned out to be, and the cut it is decomposed by.
+
+    `ranges` is the canonical form of the selection the source was registered
+    with — clamped to the clip, sorted, overlaps merged — and empty means the
+    whole clip. Like `extraction_fps`, it is part of the source's identity.
+    """
 
     width: int
     height: int
@@ -714,6 +728,7 @@ class VideoProvenanceOut(BaseModel):
     duration_seconds: float
     codec: str
     extraction_fps: float
+    ranges: tuple[ClipRange, ...]
 
     @classmethod
     def of(cls, provenance: VideoProvenance) -> Self:
@@ -724,6 +739,10 @@ class VideoProvenanceOut(BaseModel):
             duration_seconds=provenance.metadata.duration_seconds,
             codec=provenance.metadata.codec,
             extraction_fps=provenance.extraction_fps,
+            ranges=tuple(
+                ClipRange(start_seconds=r.start_seconds, end_seconds=r.end_seconds)
+                for r in provenance.ranges
+            ),
         )
 
 

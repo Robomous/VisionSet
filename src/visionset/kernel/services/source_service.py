@@ -14,7 +14,7 @@ entry point would have to accept parameters that are meaningless for half its
 callers.
 
 **Registration is idempotent, and the match key is ``(kind, path,
-extraction_fps)``.** Registering the same origin twice returns the same
+extraction_fps, ranges)``.** Registering the same origin twice returns the same
 ``Source`` rather than a second one, so that "which source did this asset come
 from?" has one answer through ``asset.source_id``. The key
 deliberately excludes ``capture_params``: fragmenting one directory into two
@@ -42,7 +42,7 @@ through it. It never names an adapter.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from uuid import UUID
 
@@ -50,8 +50,10 @@ from visionset.kernel.domain import (
     Project,
     Source,
     SourceKind,
+    TimeRange,
     VideoProvenance,
     canonical_path,
+    canonical_ranges,
     normalize_name,
 )
 from visionset.kernel.errors import ProjectNotFound, SourceNotFound
@@ -131,9 +133,15 @@ class SourceService:
         clip: Path,
         *,
         extraction_fps: float = DEFAULT_EXTRACTION_FPS,
+        ranges: Sequence[TimeRange] = (),
         capture_params: Mapping[str, str] | None = None,
     ) -> Source:
         """Record a video file as an origin, with what a probe makes of it.
+
+        ``ranges``, like the rate, is part of the source's identity. It is
+        canonicalized against the probed duration — clamped, sorted, merged —
+        so two spellings of one selection are one source and a different
+        selection is a second source. Empty means the whole clip.
 
         The probe runs **before** the transaction opens. It is an out-of-process
         decoder, and holding a write transaction open across a subprocess is how
@@ -162,11 +170,14 @@ class SourceService:
             raise ValueError(f"extraction_fps must be positive, got {extraction_fps}")
         path = canonical_path(clip)
         metadata = self._workspace.video_processor.probe(Path(path))
+        canonical = canonical_ranges(ranges, duration_seconds=metadata.duration_seconds)
         return self._register(
             project_id,
             SourceKind.VIDEO,
             path,
-            video=VideoProvenance(metadata=metadata, extraction_fps=extraction_fps),
+            video=VideoProvenance(
+                metadata=metadata, extraction_fps=extraction_fps, ranges=canonical
+            ),
             capture_params=capture_params,
         )
 
@@ -204,15 +215,18 @@ class SourceService:
     ) -> Source:
         """Add the source, or return the one that already stands for this origin."""
         params = dict(capture_params or {})
-        extraction_fps = None if video is None else video.extraction_fps
+        cut = None if video is None else (video.extraction_fps, video.ranges)
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
             for stored in uow.sources.list(project_id):
                 if stored.kind is not kind or stored.path != path:
                     continue
-                if (
-                    None if stored.video is None else stored.video.extraction_fps
-                ) != extraction_fps:
+                stored_cut = (
+                    None
+                    if stored.video is None
+                    else (stored.video.extraction_fps, stored.video.ranges)
+                )
+                if stored_cut != cut:
                     continue
                 # ``None`` means the caller said nothing, which must keep the
                 # stored name — not erase it. A provided name renames: a label

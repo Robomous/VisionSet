@@ -344,6 +344,22 @@ def _change_to_domain(_: Session, row: Any) -> DatasetChange:
     )
 
 
+def _video_to_json(video: VideoProvenance | None) -> dict[str, Any] | None:
+    """``VideoProvenance`` as stored, with an empty ``ranges`` key omitted.
+
+    Omitted, not stored as ``[]``: the source-origin index compares
+    ``json_extract(video, '$.ranges')``, and rows written before ranges existed
+    have no key — a whole-clip selection must serialize the same way, or the
+    index would hold two spellings of one origin.
+    """
+    if video is None:
+        return None
+    dump = video.model_dump(mode="json")
+    if not dump["ranges"]:
+        del dump["ranges"]
+    return dump
+
+
 def _source_to_row(entity: Source) -> t.Base:
     return t.SourceRow(
         id=entity.id,
@@ -357,7 +373,7 @@ def _source_to_row(entity: Source) -> t.Base:
         # in a second timestamp format.
         registered_at=entity.registered_at.isoformat(),
         capture_params=dict(entity.capture_params),
-        video=None if entity.video is None else entity.video.model_dump(mode="json"),
+        video=_video_to_json(entity.video),
     )
 
 

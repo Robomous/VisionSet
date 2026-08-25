@@ -67,9 +67,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy import Connection, inspect, text
-from sqlalchemy.schema import CreateColumn
+from sqlalchemy.schema import CreateColumn, CreateIndex
 
-from visionset.kernel.adapters._tables import Base
+from visionset.kernel.adapters._tables import SOURCE_ORIGIN_UNIQUE, Base
 from visionset.kernel.domain import ConnectionType, default_origin
 
 
@@ -373,6 +373,20 @@ def _add_connection_origin(connection: Connection) -> None:
         )
 
 
+def _reshape_source_origin_index(connection: Connection) -> None:
+    """The source-origin index grows a canonical-ranges term.
+
+    Clip ranges joined the source's identity beside ``extraction_fps``, so the
+    uniqueness backstop has to compare them too. SQLite cannot alter an index:
+    the old one is dropped by name and the shared declaration created in its
+    place. Nothing is backfilled — a row written before ranges existed has no
+    ``$.ranges`` key, which the new index reads as ``''``, the same term a
+    whole-clip selection serializes to.
+    """
+    connection.execute(text("DROP INDEX IF EXISTS uq_source_project_kind_path_fps"))
+    connection.execute(CreateIndex(SOURCE_ORIGIN_UNIQUE, if_not_exists=True))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -389,6 +403,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=13, name="credential_env", upgrade=_add_credential_env),
     Migration(version=14, name="project_created_at", upgrade=_add_project_created_at),
     Migration(version=15, name="connection_origin", upgrade=_add_connection_origin),
+    Migration(version=16, name="source_clip_ranges", upgrade=_reshape_source_origin_index),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

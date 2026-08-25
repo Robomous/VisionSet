@@ -56,6 +56,61 @@ def test_the_run_id_is_not_called_job_id_because_no_tool_can_read_one(
     assert error(call("get_job", job_id=result["ingest_job_id"]))["message"]
 
 
+def test_a_clip_ingested_with_ranges_extracts_only_inside_them(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Five grid points sit in [0.5, 1.5) at 5 fps, and the echo is canonical."""
+    named = schema(monkeypatch, tmp_path)
+    write_video(tmp_path / "clip.mp4", size=(160, 120))
+    result = payload(
+        call(
+            "ingest",
+            project=named,
+            path=str(tmp_path / "clip.mp4"),
+            fps=5,
+            ranges=[{"start_seconds": 0.5, "end_seconds": 1.5}],
+        )
+    )
+
+    assert result["created"] == 5
+    assert result["source"]["video"]["ranges"] == [{"start_seconds": 0.5, "end_seconds": 1.5}]
+
+
+def test_ranges_for_a_directory_of_stills_are_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = schema(monkeypatch, tmp_path)
+    write_images(tmp_path / "incoming", count=1)
+    message = error(
+        call(
+            "ingest",
+            project=named,
+            path=str(tmp_path / "incoming"),
+            ranges=[{"start_seconds": 0.0, "end_seconds": 1.0}],
+        )
+    )["message"]
+
+    assert "video source" in message
+
+
+def test_an_inverted_range_is_refused_before_any_work(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The kernel refusal is a bare ValidationError, so the tool answers first."""
+    named = schema(monkeypatch, tmp_path)
+    write_video(tmp_path / "clip.mp4")
+    message = error(
+        call(
+            "ingest",
+            project=named,
+            path=str(tmp_path / "clip.mp4"),
+            ranges=[{"start_seconds": 1.5, "end_seconds": 0.5}],
+        )
+    )["message"]
+
+    assert "selection" in message
+
+
 def test_ingesting_the_same_directory_again_creates_nothing_new(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

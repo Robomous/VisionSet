@@ -773,9 +773,10 @@ export function useBatches(projectId: string): UseQueryResult<BatchPage, Error> 
  * this whole screen is shaped around: "same source, same assets" only means
  * something if the parameters are part of what the source *is*. So the rate is
  * chosen here, before anything has been probed — and registering the same clip at
- * a different rate produces a **second source**, deliberately.
+ * a different rate, or over other ranges, produces a **second source**,
+ * deliberately.
  *
- * Registration is idempotent on `(kind, path, extraction_fps)` and upload staging
+ * Registration is idempotent on `(kind, path, extraction_fps, ranges)` and upload staging
  * is content-addressed, so re-registering the same bytes at the same rate returns
  * the source that already exists rather than a duplicate.
  */
@@ -786,6 +787,7 @@ export function useRegisterSource(projectId: string) {
     mutationFn: async (input: {
       files: readonly File[];
       extractionFps?: number;
+      ranges?: readonly { start_seconds: number; end_seconds: number }[];
       name?: string;
     }) => {
       const extractionFps = input.extractionFps;
@@ -794,7 +796,15 @@ export function useRegisterSource(projectId: string) {
         ? unwrap(
             await client.POST("/projects/{project_id}/sources/video", {
               params: { path: { project_id: projectId } },
-              body: { file: input.files[0] as unknown as string, extraction_fps: extractionFps },
+              body: {
+                file: input.files[0] as unknown as string,
+                extraction_fps: extractionFps,
+                // Multipart carries strings, so the selection rides as one JSON
+                // field; the kernel canonicalizes and the response echoes that.
+                ...(input.ranges !== undefined && input.ranges.length > 0
+                  ? { ranges: JSON.stringify(input.ranges) }
+                  : {}),
+              },
               bodySerializer: formData,
             }),
             checkRegisterVideoSource,

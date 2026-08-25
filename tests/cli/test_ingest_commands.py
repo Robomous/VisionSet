@@ -142,6 +142,30 @@ def test_fps_on_a_directory_exits_two(root: Path, tmp_path: Path) -> None:
     assert "directory of stills" in usage_error(result)
 
 
+def test_range_on_a_directory_exits_two(root: Path, tmp_path: Path) -> None:
+    result = run(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--range", "0:1")
+    assert result.exit_code == 2, result.output
+    assert "directory of stills" in usage_error(result)
+
+
+def test_a_malformed_range_exits_two(root: Path, tmp_path: Path) -> None:
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"")
+    result = run(root, "ingest", str(clip), "-p", "road-signs", "--range", "banana")
+    assert result.exit_code == 2, result.output
+    assert "START:END" in usage_error(result)
+
+
+def test_an_inverted_range_exits_two(root: Path, tmp_path: Path) -> None:
+    # ``TimeRange`` refuses with a bare ``ValidationError``, which is not a
+    # ``VisionSetError`` and would print a traceback.
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"")
+    result = run(root, "ingest", str(clip), "-p", "road-signs", "--range", "2:1")
+    assert result.exit_code == 2, result.output
+    assert "end after it starts" in usage_error(result)
+
+
 def test_an_unknown_project_exits_one(root: Path, tmp_path: Path) -> None:
     result = run(root, "ingest", str(stills(tmp_path)), "-p", "nope")
     assert result.exit_code == 1, result.output
@@ -162,6 +186,25 @@ def test_a_video_registers_at_the_rate_it_was_given(root: Path, tmp_path: Path) 
     assert document["source"]["kind"] == "video"
     assert document["source"]["video"]["extraction_fps"] == 5.0
     assert document["created"] == 10
+
+
+def test_a_video_registers_the_ranges_it_was_given(root: Path, tmp_path: Path) -> None:
+    """Five grid points sit in [0.5, 1.5) at 5 fps, and `--json` echoes the canon."""
+    require_ffmpeg()
+    clip = write_video(tmp_path / "clip.mp4", size=(96, 72), fps=10, duration_seconds=2.0)
+    document = payload(
+        root,
+        "ingest",
+        str(clip.path),
+        "-p",
+        "road-signs",
+        "--fps",
+        "5",
+        "--range",
+        "0.5:1.5",
+    )
+    assert document["source"]["video"]["ranges"] == [{"start_seconds": 0.5, "end_seconds": 1.5}]
+    assert document["created"] == 5
 
 
 def test_a_damaged_clip_says_how_much_of_it_arrived(root: Path, tmp_path: Path) -> None:

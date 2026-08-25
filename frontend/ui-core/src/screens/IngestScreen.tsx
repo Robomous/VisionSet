@@ -15,7 +15,7 @@
  * and reporting a number that might not be the one stored. So this screen states
  * it: pick a rate, register, and then read what the clip actually is. If the rate
  * was wrong, registering again at a different one produces a **second source** —
- * deliberately, since idempotency is on `(kind, path, extraction_fps)`.
+ * deliberately, since idempotency is on `(kind, path, extraction_fps, ranges)`.
  *
  * ## One step is active at a time
  *
@@ -46,7 +46,8 @@
  * and duration is what turns a rate into "≈ N frames". The estimate is
  * advisory; the probe in step 2 stays the authoritative record. Where the
  * browser cannot read the clip (an unsupported codec — or jsdom, which has no
- * media pipeline at all), the panel simply shows no estimate.
+ * media pipeline at all), the panel shows no estimate and no timeline, says the
+ * clip will be ingested whole, and registration proceeds exactly as before.
  *
  * ## Refusals split by when they can be known
  *
@@ -152,7 +153,15 @@ import {
 } from "../primitives/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { SchemaForeshadow } from "./SchemaForeshadow";
+import { ClipRangeTimeline } from "./ClipRangeTimeline";
 import { probeClip, type ClipProbe } from "./clipProbe";
+import {
+  clock,
+  expectedFrames,
+  mergedRanges,
+  selectionSummary,
+  type ClipRange,
+} from "./clipRanges";
 import {
   useBatches,
   useIngestJob,
@@ -266,6 +275,16 @@ export function IngestScreen({
   const [jobId, setJobId] = useState<string | null>(null);
   // The browser's own read of a chosen clip. Null while unread or unreadable.
   const [clip, setClip] = useState<ClipProbe | null>(null);
+  // The clip-range selection being edited in step 1. Raw and possibly
+  // overlapping: the kernel canonicalizes on registration, and step 2 echoes
+  // the merged form back.
+  const [ranges, setRanges] = useState<readonly ClipRange[]>([]);
+  // The chosen clip as an object URL for the preview player. Null where the
+  // platform has no object URLs (jsdom), so the timeline renders no player.
+  const [clipUrl, setClipUrl] = useState<string | null>(null);
+  // True once the browser said it cannot decode the clip — probeClip settled
+  // null, as opposed to never settling at all.
+  const [unreadable, setUnreadable] = useState(false);
   // Bumped by `again()`/`clearFiles()` and used as the dropzone's `key`. See there.
   const [attempt, setAttempt] = useState(0);
 
@@ -304,13 +323,21 @@ export function IngestScreen({
   // and a late answer must not describe the previous file.
   useEffect(() => {
     setClip(null);
+    setRanges([]);
+    setUnreadable(false);
     if (!(files.length === 1 && files[0].type.startsWith("video/"))) return;
+    const url = typeof URL.createObjectURL === "function" ? URL.createObjectURL(files[0]) : null;
+    setClipUrl(url);
     let stale = false;
     void probeClip(files[0]).then((probe) => {
-      if (!stale) setClip(probe);
+      if (stale) return;
+      if (probe === null) setUnreadable(true);
+      else setClip(probe);
     });
     return () => {
       stale = true;
+      setClipUrl(null);
+      if (url !== null) URL.revokeObjectURL(url);
     };
   }, [files]);
 
@@ -345,7 +372,7 @@ export function IngestScreen({
     register.mutate(
       {
         files,
-        ...(isVideo ? { extractionFps: rate } : {}),
+        ...(isVideo ? { extractionFps: rate, ranges } : {}),
         ...(isVideo || stated === "" ? {} : { name: stated }),
       },
       { onSuccess: (registered) => setSource(registered) },
@@ -475,9 +502,19 @@ export function IngestScreen({
                     sourceName={sourceName}
                     onSourceName={setSourceName}
                     suggestedName={suggestedName}
+                    ranges={ranges}
+                    onRanges={setRanges}
+                    clipUrl={clipUrl}
+                    unreadable={unreadable}
                     estimate={
                       clip !== null && usableRate
-                        ? Math.floor(clip.durationSeconds * rate)
+                        ? // Still approximate: the input is the browser's duration,
+                          // which can differ from ffprobe's by a container's rounding.
+                          expectedFrames(
+                            mergedRanges(ranges, clip.durationSeconds),
+                            clip.durationSeconds,
+                            rate,
+                          )
                         : null
                     }
                     onClear={clearFiles}
@@ -550,9 +587,21 @@ export function IngestScreen({
                       <Fact
                         label="Frames expected"
                         value={String(
-                          Math.floor(source.video.duration_seconds * source.video.extraction_fps),
+                          expectedFrames(
+                            source.video.ranges,
+                            source.video.duration_seconds,
+                            source.video.extraction_fps,
+                          ),
                         )}
                       />
+                      {source.video.ranges.length > 0 && (
+                        <Fact
+                          label="Ranges"
+                          value={source.video.ranges
+                            .map((one) => `${clock(one.start_seconds)}–${clock(one.end_seconds)}`)
+                            .join(", ")}
+                        />
+                      )}
                     </dl>
                   )}
 
@@ -743,6 +792,34 @@ function Step({
  * to match the server's "Frames expected" exactly; it renders only when both
  * halves exist, so an unreadable clip degrades to the field alone.
  */
+function RateField({
+  fps,
+  onFps,
+}: {
+  readonly fps: string;
+  readonly onFps: (value: string) => void;
+}): JSX.Element {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor="extraction-fps">Extraction rate</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          id="extraction-fps"
+          data-testid="extraction-fps"
+          type="number"
+          min="0.1"
+          step="0.1"
+          className="w-24 tabular-nums"
+          value={fps}
+          onChange={(event) => onFps(event.target.value)}
+        />
+        <span className="text-sm text-muted-foreground">fps</span>
+      </div>
+    </div>
+  );
+}
+
+
 function SelectionPanel({
   files,
   isVideo,
@@ -752,6 +829,10 @@ function SelectionPanel({
   sourceName,
   onSourceName,
   suggestedName,
+  ranges,
+  onRanges,
+  clipUrl,
+  unreadable,
   estimate,
   onClear,
 }: {
@@ -763,6 +844,10 @@ function SelectionPanel({
   readonly sourceName: string;
   readonly onSourceName: (value: string) => void;
   readonly suggestedName: string;
+  readonly ranges: readonly ClipRange[];
+  readonly onRanges: (ranges: readonly ClipRange[]) => void;
+  readonly clipUrl: string | null;
+  readonly unreadable: boolean;
   readonly estimate: number | null;
   readonly onClear: () => void;
 }): JSX.Element {
@@ -832,39 +917,54 @@ function SelectionPanel({
       )}
 
       {isVideo && (
-        <div className="flex flex-col gap-3 border-t border-border p-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="extraction-fps">Extraction rate</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="extraction-fps"
-                data-testid="extraction-fps"
-                type="number"
-                min="0.1"
-                step="0.1"
-                className="w-24 tabular-nums"
-                value={fps}
-                onChange={(event) => onFps(event.target.value)}
-              />
-              <span className="text-sm text-muted-foreground">fps</span>
+        <div className="border-t border-border p-3">
+          {clip !== null ? (
+            <ClipRangeTimeline
+              src={clipUrl}
+              durationSeconds={clip.durationSeconds}
+              ranges={ranges}
+              onRangesChange={onRanges}
+              aside={
+                <div className="flex flex-col gap-3">
+                  <RateField fps={fps} onFps={onFps} />
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                    {estimate !== null && (
+                      <>
+                        <dt className="text-muted-foreground">Frames</dt>
+                        <dd
+                          className="font-medium tabular-nums"
+                          data-testid="frames-estimate"
+                          title="The browser's own reading of the clip; the probe after registration is the authoritative one."
+                        >
+                          ≈ {formatCount(estimate)}
+                        </dd>
+                      </>
+                    )}
+                    <dt className="text-muted-foreground">Selection</dt>
+                    <dd className="tabular-nums" data-testid="selection-readout">
+                      {selectionSummary(ranges, clip.durationSeconds)}
+                    </dd>
+                  </dl>
+                  <FieldHint>
+                    Part of what the source <em>is</em> — the same clip registered at another
+                    rate or other ranges becomes a second source.
+                  </FieldHint>
+                </div>
+              }
+            />
+          ) : (
+            <div className="flex flex-col gap-3">
+              {unreadable && (
+                <p className="text-xs text-muted-foreground" data-testid="clip-undecodable">
+                  The browser cannot decode this clip; it will be ingested whole.
+                </p>
+              )}
+              <RateField fps={fps} onFps={onFps} />
+              <FieldHint>
+                Part of what the source <em>is</em> — the same clip registered at another rate
+                or other ranges becomes a second source.
+              </FieldHint>
             </div>
-            <FieldHint>
-              Part of what the source <em>is</em> — the same clip registered at another rate
-              becomes a second source.
-            </FieldHint>
-          </div>
-          {estimate !== null && (
-            <p
-              className="text-sm text-muted-foreground"
-              data-testid="frames-estimate"
-              title="The browser's own reading of the clip; the probe after registration is the authoritative one."
-            >
-              ≈{" "}
-              <span className="font-medium tabular-nums text-foreground">
-                {formatCount(estimate)}
-              </span>{" "}
-              frames
-            </p>
           )}
         </div>
       )}

@@ -231,10 +231,13 @@ reported.frames_produced  # 8 — exact, and the assets are in the batch
 reported.frames_expected_estimate  # 20 — an estimate, and may be None
 ```
 
-`frames_produced` is the length of what the loop kept. `frames_expected_estimate` is
-`duration_seconds × extraction_fps` off the probe the source has carried since it was registered
- - the same arithmetic the ingest screen shows as "Frames expected" before a run starts - so no
-second pass over the clip is made for it. It is named an estimate because it is one:
+`frames_produced` is the length of what the loop kept. `frames_expected_estimate` is the
+domain's own count over the probe and the clip ranges the source has carried since it was
+registered — per half-open range `ceil(end × fps) − ceil(start × fps)`, the whole clip
+`ceil(duration × fps)`. The same arithmetic builds the extraction filter and the ingest
+screen's "Frames expected", so the three cannot disagree, and no second pass over the clip is
+made for it; an earlier `floor` spelling undercounted by one on every fractional product.
+It is still named an estimate because here it is one:
 `VideoMetadata` deliberately carries no frame count (for a variable-rate stream the product is a
 guess), and a damaged container's own metadata is suspect besides. A partial with no denominator
 still states what it recovered.
@@ -343,7 +346,7 @@ they have, because the filesystem already knows, and the source they end up with
 the path and the rate from then on.
 
 It is the only command in the CLI that is two SDK calls, and its module says so. Both are safe to
-repeat: registration is idempotent on `(kind, path, extraction_fps)`, and content addressing means a
+repeat: registration is idempotent on `(kind, path, extraction_fps, ranges)`, and content addressing means a
 second run creates nothing the first already did.
 
 The batch id goes to stdout alone, so `BATCH=$(visionset ingest …)` is the whole idiom. The per-file
@@ -370,7 +373,7 @@ posture the kernel takes about a crashed process.
 The [API](api.md) is `enqueue` and `resume` with a worker between them.
 
 ```
-POST /projects/{id}/sources/video   multipart: the clip + extraction_fps   → 201 SourceOut
+POST /projects/{id}/sources/video   multipart: the clip + extraction_fps + ranges → 201 SourceOut
 POST /sources/{id}/ingest-jobs                                             → 202 IngestJobOut
 GET  /ingest-jobs/{id}                                                     → 200 IngestJobOut
 GET  /batches/{id}/assets                                                  → 200 the assets
@@ -413,8 +416,19 @@ for them. See [batches.md](batches.md).
 `@visionset/ui-core`'s ingest screen is three steps, and their order is forced by
 the two facts on this page rather than chosen: **`extraction_fps` belongs to the
 source**, so it is picked before anything is probed, and the probe only exists once
-the source is registered. Registering the same clip at another rate creates a second
-source, which the screen says out loud.
+the source is registered. Registering the same clip at another rate — or over other
+clip ranges — creates a second source, which the screen says out loud.
+
+A chosen clip the browser can decode also gets a preview player and a timeline:
+dragging on it selects one or more **clip ranges**, half-open stretches extraction
+alone will read. The selection is part of the source, like the rate. It is stored
+canonically — clamped to the clip, sorted, overlapping and touching ranges merged,
+a full cover collapsing to the empty selection — and the probe card echoes that
+canonical form back, which is where an overlapping selection is first seen merged.
+The frame count beside the rate is exact: the same
+`ceil(end × fps) − ceil(start × fps)` per range that builds the extraction filter.
+A clip the browser cannot decode gets no timeline and one line saying it will be
+ingested whole; registration proceeds unchanged.
 
 It shows `processed` against `total` for a directory and a bare count for a clip
 (there is no denominator until an extraction is over), groups the per-file report by
