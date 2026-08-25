@@ -986,6 +986,15 @@ how many classes narrow and states that nothing already labeled is invalidated.
 It also names what the narrowing defers: a batch still open on the outgoing version keeps
 writing the class that was dropped, and those labels block a release rather than this save.
 
+**A class that has no name yet takes neither path.** The draft may hold one - naming a
+class is typed work, and the draft exists so typed work survives - but the published
+contract refuses a blank name, so the preview refuses it too. The editor therefore keeps
+an unnamed class out of every preview body: removing one is a local edit with no request,
+and removing a *named* class while one waits for a name previews the named classes only.
+The same rule bounds how many can wait: **Add class** adds nothing while a class is still
+unnamed, and instead selects that class and says so - the remedy Save already uses for the
+same blank, not a greyed button.
+
 That does not demote the 409. Nothing is locked between a preview and the publish, so
 somebody can label a class in the gap and turn a preview that looked safe into a refusal -
 which is why the publish's own refusal stays authoritative, and why it renders through the

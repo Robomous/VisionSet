@@ -640,6 +640,16 @@ export function SchemaEditor({
 
   function addClass(): void {
     if (saveInFlight.current || preview.isPending) return;
+    // One unnamed class at a time: a second one is indistinguishable from the
+    // first, and `save` would refuse the draft anyway. Same remedy as there —
+    // land on the class that still needs a name rather than grey the button.
+    const blank = classes.findIndex((declared) => declared.name.trim() === "");
+    if (blank !== -1) {
+      setSelected(blank);
+      setFilter("");
+      toast("Name the new class first");
+      return;
+    }
     edit([...classes, { name: "", geometries: ["bbox"], color: null, attributes: [] }]);
     // Selected, and the filter cleared — a new class has an empty name, so any
     // filter at all would hide the row that was just created.
@@ -658,8 +668,17 @@ export function SchemaEditor({
 
   async function requestRemoveClass(index: number): Promise<void> {
     if (saveInFlight.current || preview.isPending) return;
+    // A class still unnamed was never published, so nothing can carry it and no
+    // preview is owed; it is also not a class `POST /preview` accepts, so it is
+    // left out of the candidate the way `save` would refuse to send it.
+    if (classes[index]?.name.trim() === "") {
+      removeClass(index);
+      return;
+    }
     setFlow({ kind: "checking-removal" });
-    const candidate = classes.filter((_, position) => position !== index);
+    const candidate = classes.filter(
+      (declared, position) => position !== index && declared.name.trim() !== "",
+    );
     try {
       const previewed = await preview.mutateAsync({ classes: candidate });
       if (previewed.is_refused) {
