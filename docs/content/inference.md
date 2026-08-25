@@ -595,8 +595,8 @@ POST /inference/suggest
       "contour": [[404.0, 221.0], …]
     }
   ],
-  "applied": {"detail": "balanced"},
-  "parameters": ["detail"]
+  "applied": {"tolerance": 1.0},
+  "parameters": ["tolerance"]
 }
 ```
 
@@ -643,18 +643,19 @@ model.
 
 1. **Which pieces** of the mask become shapes.
 2. **Closing the gaps** in them that are narrower than a reach.
-3. **Tracing** the boundary of what is left.
-4. **Simplifying** that boundary to a vertex count somebody can edit.
+3. **Tracing** the boundary of what is left along the pixels' edges, and smoothing it once.
+4. **Simplifying** that boundary to within a tolerance you choose.
 
 The geometry branch happens after the second step: a polygon class takes steps 3 and 4 on the
 piece you pointed at, a box class takes one extent over every piece that survived. A box
-therefore does not move when `detail` does.
+therefore does not move when `tolerance` does.
 
 | Setting | What it moves | Applies to |
 | --- | --- | --- |
-| `detail` | `coarse`, `balanced` or `fine` - how much of the outline survives | polygon |
+| `tolerance` | a distance in the asset's pixels; every point of the traced outline lies within it of the polygon | polygon |
 
-It is optional, and omitting it gives what this route always gave: `balanced`.
+It is optional and defaults to `1.0`. It is refused outside `0.25` to `16`, never clamped: a
+clamped value would report a tolerance the server did not apply.
 
 **Two settings used to be here and are not** (#557). How wide a gap gets closed and how many
 pieces become shapes are still decided, at fixed defaults nobody asks for. As controls they
@@ -663,10 +664,18 @@ shape - so they read as knobs wired to nothing, and could only be got wrong on t
 one. Their value is in the default rather than in the choice. They come back as settings if
 a real need for the choice appears.
 
-**The tolerance is relative, which is what makes one setting work everywhere.** It is a fraction
-of the region's own size rather than a pixel count, so it does the same thing to a thing eight
-pixels across and a thing eight hundred across, and `balanced` keeps a typical object in the
-10-40 vertex range.
+**The tolerance is a distance, and that is the whole promise.** Every point of the traced
+outline lies within `tolerance` pixels of the polygon you get back, so the number means the
+same thing on a thing eight pixels across and a thing eight hundred across, and you know what
+you will get before you move it. One pixel follows the mask closely on any object; sixteen
+gives a rough shape to nudge into place. In the editor, `[` doubles it and `]` halves it, and
+the slider runs on a doubling track between the two ends.
+
+**The outline is the mask's edge, smoothed.** The trace runs along the boundary between lit
+and unlit pixels — so a single pixel is its unit square rather than a point — and one pass of
+corner cutting over those unit edges turns the staircase a pixel grid imposes into a smooth
+line while moving no real corner by more than half a pixel. That smoothed ring, reduced once at
+a quarter pixel, is the `contour` every answer carries.
 
 **Specks are dropped first, and a click never becomes a cleanup job.** A mask routinely carries
 more than one separate piece - a scrap of antialiasing along an edge, a reflection, a patch of
@@ -691,7 +700,7 @@ the largest piece alone cuts the object off at the occlusion, and a box per piec
 thing twice.
 
 **`parameters` says which settings apply here**, for the kind of shape your `allowed_geometries`
-will produce. A box has no outline, so `detail` has nothing to do to one and the list comes back
+will produce. A box has no outline, so the tolerance has nothing to do to one and the list comes back
 **empty** - which is how a client is told to offer no adjustments at all. A client renders what
 this lists and works none of it out for itself.
 
@@ -704,7 +713,7 @@ makes an outline ragged. Its reach grows with the piece and stops at a few pixel
 gap is a feature of the shape rather than an artefact of tracing it.
 
 **`contour` is the outline the shape was reduced from**, in the asset's own pixels, and it is
-there so a client can re-run `detail` without asking again. It is the same points the server
+there so a client can re-run the tolerance without asking again. It is the same points the server
 reduced, which matters:
 simplification is not nested, so a client starting from anything else could not be held to the
 server's answer. A box carries none, because it is an extent rather than something reduced from
