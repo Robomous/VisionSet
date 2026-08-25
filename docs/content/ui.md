@@ -882,7 +882,8 @@ clip ranges — produces a **second source**, deliberately: idempotency is on
 
 A decodable clip gets a preview player and a hand-rolled multi-range timeline in
 step 1: drag creates a range, the handles drag and nudge by one grid step (shift
-for ten), Delete removes one, and a click seeks the player. The selection rides
+for ten), Delete removes one, and a click scrubs the player — inside a selected
+range it previews, playing from that moment and stopping where the range ends. The selection rides
 to registration as typed and the kernel canonicalizes; the probe card's `Ranges`
 fact echoes the canonical form, which is where an overlapping selection is first
 seen merged. The frame estimate is exact — the mirrored `ceil` arithmetic over

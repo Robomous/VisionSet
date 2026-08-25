@@ -10,16 +10,22 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState, type JSX } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ClipRangeTimeline } from "./ClipRangeTimeline";
 import type { ClipRange } from "./clipRanges";
 
-function Harness({ initial = [] }: { readonly initial?: readonly ClipRange[] }): JSX.Element {
+function Harness({
+  initial = [],
+  src = null,
+}: {
+  readonly initial?: readonly ClipRange[];
+  readonly src?: string | null;
+}): JSX.Element {
   const [ranges, setRanges] = useState<readonly ClipRange[]>(initial);
   return (
     <ClipRangeTimeline
-      src={null}
+      src={src}
       durationSeconds={2}
       fps={5}
       ranges={ranges}
@@ -27,6 +33,10 @@ function Harness({ initial = [] }: { readonly initial?: readonly ClipRange[] }):
     />
   );
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function mockRect(track: HTMLElement): void {
   vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
@@ -88,6 +98,40 @@ describe("ClipRangeTimeline", () => {
     fireEvent.keyDown(screen.getByTestId("range-0-end"), { key: "ArrowLeft", shiftKey: true });
     // Ten steps left of 1.5 would invert; the end clamps just above the start.
     expect(screen.getByTestId("selection-readout").textContent).toContain("0:00.7–0:00.7");
+  });
+
+  it("previews a selected range from a click inside it, and stops at its end", () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockReturnValue(Promise.resolve());
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockReturnValue(undefined);
+    render(<Harness src="blob:clip" initial={[{ start_seconds: 0.5, end_seconds: 1.5 }]} />);
+    const track = screen.getByTestId("range-track");
+    mockRect(track);
+
+    fireEvent.pointerDown(track, { clientX: 100 });
+    fireEvent.pointerUp(track, { clientX: 100 });
+
+    // 100px of 200 over 2 s is 1 s — inside the range, so the click plays.
+    const video = screen.getByTestId("clip-player") as HTMLVideoElement;
+    expect(video.currentTime).toBe(1);
+    expect(play).toHaveBeenCalled();
+
+    // The preview stops where the range does, the way an editor's does.
+    video.currentTime = 1.6;
+    fireEvent.timeUpdate(video);
+    expect(pause).toHaveBeenCalled();
+  });
+
+  it("a click outside every range scrubs without playing", () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockReturnValue(Promise.resolve());
+    render(<Harness src="blob:clip" initial={[{ start_seconds: 0.5, end_seconds: 1.5 }]} />);
+    const track = screen.getByTestId("range-track");
+    mockRect(track);
+
+    fireEvent.pointerDown(track, { clientX: 190 });
+    fireEvent.pointerUp(track, { clientX: 190 });
+
+    expect((screen.getByTestId("clip-player") as HTMLVideoElement).currentTime).toBe(1.9);
+    expect(play).not.toHaveBeenCalled();
   });
 
   it("deletes the focused range from the keyboard, and from its remove control", () => {

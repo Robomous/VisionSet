@@ -14,7 +14,14 @@
  */
 
 import { IconX } from "@tabler/icons-react";
-import { useRef, useState, type JSX, type KeyboardEvent, type PointerEvent } from "react";
+import {
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent,
+  type PointerEvent,
+  type SyntheticEvent,
+} from "react";
 
 import { cn } from "../lib/cn";
 import { clock, mergedRanges, selectedSeconds, type ClipRange } from "./clipRanges";
@@ -50,6 +57,8 @@ export function ClipRangeTimeline({
   const trackRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playhead, setPlayhead] = useState(0);
+  // Where a running preview stops: the end of the range a click landed in.
+  const [previewEnd, setPreviewEnd] = useState<number | null>(null);
   const [draft, setDraft] = useState<{ anchor: number; to: number } | null>(null);
   const [drag, setDrag] = useState<{ index: number; side: "start" | "end" } | null>(null);
 
@@ -91,7 +100,38 @@ export function ClipRangeTimeline({
     );
   }
 
+  /**
+   * A click is a scrub, and inside a selected range it is a preview: play from
+   * that moment and stop where the range ends, the way an editor timeline
+   * answers a click on a clip. Pausing — ours at the end, or the person's own —
+   * retires the preview.
+   */
+  function seek(at: number): void {
+    const video = videoRef.current;
+    if (video === null) return;
+    video.currentTime = at;
+    const inside = merged.find((one) => at >= one.start_seconds && at < one.end_seconds);
+    if (inside === undefined) {
+      setPreviewEnd(null);
+      return;
+    }
+    setPreviewEnd(inside.end_seconds);
+    const played: unknown = video.play();
+    // A refused autoplay only means the preview stays paused; jsdom returns no
+    // promise at all.
+    if (played instanceof Promise) void played.catch(() => undefined);
+  }
+
+  function timeUpdated(event: SyntheticEvent<HTMLVideoElement>): void {
+    const video = event.currentTarget;
+    setPlayhead(video.currentTime);
+    if (previewEnd !== null && video.currentTime >= previewEnd) video.pause();
+  }
+
   function trackPointerDown(event: PointerEvent<HTMLDivElement>): void {
+    // The browser's default for this drag is text selection, which turns a
+    // handle drag into a page-wide highlight; the track owns its pointer.
+    event.preventDefault();
     capture(event.currentTarget, event.pointerId);
     const at = toSeconds(event.clientX);
     setDraft({ anchor: at, to: at });
@@ -117,8 +157,7 @@ export function ClipRangeTimeline({
     // Under a pixel-scale movement this was a click, and a click on a timeline
     // means "show me that moment", not a sliver of a range.
     if (end - start <= pixelsToSeconds(3)) {
-      const video = videoRef.current;
-      if (video !== null) video.currentTime = toSeconds(event.clientX);
+      seek(toSeconds(event.clientX));
       return;
     }
     onRangesChange([...ranges, { start_seconds: start, end_seconds: end }]);
@@ -126,6 +165,7 @@ export function ClipRangeTimeline({
 
   function handlePointerDown(index: number, side: "start" | "end") {
     return (event: PointerEvent<HTMLButtonElement>): void => {
+      event.preventDefault();
       event.stopPropagation();
       const track = trackRef.current;
       if (track !== null) capture(track, event.pointerId);
@@ -155,16 +195,17 @@ export function ClipRangeTimeline({
   );
 
   return (
-    <div className="flex flex-col gap-2" data-testid="clip-timeline">
+    <div className="flex select-none flex-col gap-2" data-testid="clip-timeline">
       {src !== null && (
         <video
           ref={videoRef}
           src={src}
           controls
           preload="metadata"
-          className="max-h-56 w-full rounded-lg bg-muted"
+          className="max-h-56 w-full max-w-md rounded-lg bg-muted"
           data-testid="clip-player"
-          onTimeUpdate={(event) => setPlayhead(event.currentTarget.currentTime)}
+          onTimeUpdate={timeUpdated}
+          onPause={() => setPreviewEnd(null)}
         />
       )}
       <div
@@ -218,7 +259,10 @@ export function ClipRangeTimeline({
               )}
               data-testid={`range-${index}-remove`}
               aria-label={`Remove range ${index + 1}`}
-              onPointerDown={(event) => event.stopPropagation()}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
               onClick={() => onRangesChange(ranges.filter((_, at) => at !== index))}
             >
               <IconX className="size-3" aria-hidden="true" />
