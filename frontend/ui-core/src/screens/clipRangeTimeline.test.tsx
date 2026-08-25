@@ -98,13 +98,7 @@ describe("ClipRangeTimeline", () => {
   });
 
   it("previews a selected range from a click inside it, and stops at its end", () => {
-    // The real play() announces itself; the boundary is armed by that event.
-    const play = vi
-      .spyOn(HTMLMediaElement.prototype, "play")
-      .mockImplementation(function (this: HTMLMediaElement) {
-        this.dispatchEvent(new Event("play"));
-        return Promise.resolve();
-      });
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockReturnValue(Promise.resolve());
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockReturnValue(undefined);
     render(<Harness src="blob:clip" initial={[{ start_seconds: 0, end_seconds: 1 }]} />);
     const track = screen.getByTestId("range-track");
@@ -117,6 +111,8 @@ describe("ClipRangeTimeline", () => {
     const video = screen.getByTestId("clip-player") as HTMLVideoElement;
     expect(video.currentTime).toBe(0.5);
     expect(play).toHaveBeenCalled();
+    // The browser answers play() with the play event; the boundary arms there.
+    fireEvent.play(video);
 
     // timeupdate overshoots the boundary; the stop pauses AND snaps back to it.
     video.currentTime = 1.1;

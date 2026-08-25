@@ -19,7 +19,7 @@
  * beside the player speaks in the merged form.
  */
 
-import { IconX } from "@tabler/icons-react";
+import { X } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -478,7 +478,7 @@ export function ClipRangeTimeline({
                 }}
                 onClick={() => onRangesChange(ranges.filter((_, at) => at !== index))}
               >
-                <IconX className="size-3" aria-hidden="true" />
+                <X className="size-3" aria-hidden="true" />
               </button>
             </div>
           ))}
