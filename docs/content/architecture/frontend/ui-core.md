@@ -73,9 +73,10 @@ whenever its asserted type is and `tsc` cannot see the mismatch.
 
 ## The design system is a shadcn preset
 
-`styles.css` is the shadcn preset `b3bXyyPdWj` (style `nova` on the Radix base,
-base colour `neutral`, chart palette `orange`, icons `tabler`, Inter body /
-Geist heading fonts, radius `medium`, menu `inverted`/`subtle`) - the CLI's own
+`styles.css` is the shadcn preset `b2iH` (style `nova` on the Radix base, base
+colour `neutral`, chart palette `neutral`, icons `lucide`, Geist throughout with
+the heading face inheriting the body's, radius `medium`, menu
+`inverted`/`subtle`, pointer cursor on pressable controls) - the CLI's own
 generated output, transcribed verbatim, plus five VisionSet extension roles
 (`stage`, `brand`, `success`, `warning`, `origin-*`) added through shadcn's own
 extension convention. `components.json` (`style: "radix-nova"`,
@@ -84,10 +85,7 @@ the preset properties shadcn's own tools read - the fields its config schema
 defines, and no others. The schema is strict, so the properties it has no field
 for - the radius, the fonts, the chart palette, every colour - are values
 carried by `styles.css` instead; see [`DESIGN.md`](../../../../DESIGN.md)'s
-Source of Truth for the three layers. The icon set is the one place the
-configuration and the preset disagree on purpose: the preset decodes `tabler`, the
-product draws `lucide-react`, and `iconLibrary` records the product rather than the
-preset. `tokens.ts` is the TypeScript mirror for a caller that
+Source of Truth for the three layers. `tokens.ts` is the TypeScript mirror for a caller that
 cannot read CSS. Both themes - light and dark - are declared in full from the
 preset, so `bg-primary` in a component here and `bg-primary` in a screen mean
 the same colour by construction. There is no `tailwind.config.js` in this
