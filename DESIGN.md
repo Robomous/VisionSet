@@ -27,6 +27,13 @@ that CLI version is the reference for every value in this document. Nothing here
 invented — every token, every derived radius, every chart colour traces back to the
 CLI's own output.
 
+**One property deliberately diverges: the icon set.** The preset decodes
+`icons: tabler`, and that line above says so because it is what the code decodes to;
+the product draws `lucide-react`, and `components.json` says `iconLibrary: lucide`.
+The schema accepts the value, so this is a decision rather than drift — but it is the
+one place where reading the preset and reading the configuration give different
+answers, and it is written here so nobody has to discover that by diffing them.
+
 `@visionset/ui-core` owns the implementation, in exactly three files:
 
 | File | Role |
@@ -409,11 +416,13 @@ First-class, and part of every rule above rather than a section to satisfy after
 - **Ad-hoc geometry that fights Nova.** A control's height, padding, or radius is not a
   per-screen decision; reaching past the geometry table above for a bespoke size is a
   design decision to make in this document, not in a component diff.
-- **Mixing icon sets in new code.** Tabler is the set, and now the only one: every icon
-  the primitives, the screens and the annotation workspace draw is
-  `@tabler/icons-react`, no package declares a second icon library, and
-  `tests/scripts/design_tokens.test.mjs` refuses one that reappears in a manifest or an
-  import. A second set is a decision to make in this document, not a dependency to add.
+- **Mixing icon sets in new code.** `lucide-react` is the set, and the only one: every
+  icon the primitives, the screens and the annotation workspace draw comes from it, no
+  package declares a second icon library, and `tests/scripts/design_tokens.test.mjs`
+  refuses one that reappears in a manifest or an import. The rule is *one* set rather
+  than one particular set — what costs a reader is two of them on a screen, where the
+  same idea arrives at two weights and two grids. Changing which one is a decision to
+  make in this document, not a dependency to add.
 - **Brand in a functional control.** Robomous coral is identity — the wordmark and its
   styleguide swatch, nothing else. A functional control reaching for `brand` is a
   semantic-colour violation regardless of how many other sites already use it correctly.

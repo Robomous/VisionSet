@@ -79,12 +79,15 @@ Geist heading fonts, radius `medium`, menu `inverted`/`subtle`) - the CLI's own
 generated output, transcribed verbatim, plus five VisionSet extension roles
 (`stage`, `brand`, `success`, `warning`, `origin-*`) added through shadcn's own
 extension convention. `components.json` (`style: "radix-nova"`,
-`iconLibrary: "tabler"`, `menuColor: "inverted"`, `menuAccent: "subtle"`) holds
+`iconLibrary: "lucide"`, `menuColor: "inverted"`, `menuAccent: "subtle"`) holds
 the preset properties shadcn's own tools read - the fields its config schema
 defines, and no others. The schema is strict, so the properties it has no field
 for - the radius, the fonts, the chart palette, every colour - are values
 carried by `styles.css` instead; see [`DESIGN.md`](../../../../DESIGN.md)'s
-Source of Truth for the three layers. `tokens.ts` is the TypeScript mirror for a caller that
+Source of Truth for the three layers. The icon set is the one place the
+configuration and the preset disagree on purpose: the preset decodes `tabler`, the
+product draws `lucide-react`, and `iconLibrary` records the product rather than the
+preset. `tokens.ts` is the TypeScript mirror for a caller that
 cannot read CSS. Both themes - light and dark - are declared in full from the
 preset, so `bg-primary` in a component here and `bg-primary` in a screen mean
 the same colour by construction. There is no `tailwind.config.js` in this
@@ -106,7 +109,7 @@ visual-design rule. The current choices:
 | Concern | Choice |
 | --- | --- |
 | UI primitives | Radix (+ shadcn-style composition with `cva` and `cn`) - the open-code shadcn maintenance model is the direction: a primitive is VisionSet-owned source in `frontend/ui-core/src/primitives/`, edited directly, not a package dependency upgraded blindly |
-| Icons | `@tabler/icons-react`, and nothing else: the primitives, the screens and the annotation workspace all draw from it, and no package declares a second icon library |
+| Icons | `lucide-react`, and nothing else: the primitives, the screens and the annotation workspace all draw from it, and no package declares a second icon library |
 | Styling | Tailwind v4, CSS-first `@theme`, on the shadcn preset `b3bXyyPdWj` - no `tailwind.config.js`, ever |
 | Toasts | sonner |
 | Component tests | vitest + jsdom + @testing-library/react |
