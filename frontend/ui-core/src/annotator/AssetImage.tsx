@@ -22,7 +22,7 @@
  * app-level blob cache would only pin the same bytes in JS memory a second time.
  */
 
-import { IconPhotoOff } from "@tabler/icons-react";
+import { ImageOff } from "lucide-react";
 import { useEffect, useState, type JSX, type ReactNode } from "react";
 
 import { useApiClient } from "../data/ApiProvider";
@@ -86,7 +86,7 @@ export function AssetImage({ projectId, assetId, children }: AssetImageProps): J
         data-testid="asset-image-error"
         className="flex size-full flex-col items-center justify-center gap-2 text-muted-foreground"
       >
-        <IconPhotoOff className="size-6" aria-hidden="true" />
+        <ImageOff className="size-6" aria-hidden="true" />
         <span className="text-xs">The asset&rsquo;s content could not be loaded.</span>
       </div>
     );

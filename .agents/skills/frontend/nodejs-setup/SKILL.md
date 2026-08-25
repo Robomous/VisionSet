@@ -64,8 +64,8 @@ pnpm add -w -D <pkg>                            # root tooling only
 - `@visionset/annotator` keeps `react` as an **optional peer dependency** — never promote it to
   a hard dependency; the core must stay usable without React.
 - `@visionset/ui-core` UI primitives are **Radix behaviour + shadcn Nova styling, iconed with
-  Tabler**. Do not add another component library, and do not add a second icon set:
-  `@tabler/icons-react` is the only one the frontend declares, and a gate refuses another.
+  lucide**. Do not add another component library, and do not add a second icon set:
+  `lucide-react` is the only one the frontend declares, and a gate refuses another.
 - `@visionset/app` is `private: true` — never published to npm; its bundle ships inside the
   Python wheel.
 

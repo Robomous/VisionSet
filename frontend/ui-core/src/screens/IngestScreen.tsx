@@ -119,18 +119,7 @@
  * run still say which batch holds what it managed to read.
  */
 
-import {
-  IconAlertTriangle,
-  IconArrowLeft,
-  IconCheck,
-  IconFolderOpen,
-  IconMovie,
-  IconPhoto,
-  IconRefresh,
-  IconRotate,
-  IconUpload,
-  IconX,
-} from "@tabler/icons-react";
+import { ArrowLeft, Check, Film, FolderOpen, Image, RefreshCw, RotateCw, TriangleAlert, Upload, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useEffect,
@@ -535,9 +524,9 @@ export function IngestScreen({
                 <form className="flex flex-col gap-4" onSubmit={launch}>
                   <div className="flex items-center gap-2">
                     {source.kind === "video" ? (
-                      <IconMovie className="size-4 text-muted-foreground" aria-hidden="true" />
+                      <Film className="size-4 text-muted-foreground" aria-hidden="true" />
                     ) : (
-                      <IconPhoto className="size-4 text-muted-foreground" aria-hidden="true" />
+                      <Image className="size-4 text-muted-foreground" aria-hidden="true" />
                     )}
                     <span className="text-sm font-medium" title={source.name}>
                       {sourceLabel(source.name)}
@@ -612,7 +601,7 @@ export function IngestScreen({
                         (registration is idempotent, nothing to undo), but every
                         setting on this screen resets with the files. */}
                     <Button variant="ghost" data-testid="back-to-files" onClick={again}>
-                      <IconArrowLeft aria-hidden="true" />
+                      <ArrowLeft aria-hidden="true" />
                       Change files
                     </Button>
                     <Button
@@ -714,7 +703,7 @@ function Step({
           )}
           aria-hidden="true"
         >
-          {checked ? <IconCheck className="size-3.5" /> : index}
+          {checked ? <Check className="size-3.5" /> : index}
         </span>
         {!last && <div className="mt-1 w-px flex-1 bg-border" aria-hidden="true" />}
       </div>
@@ -785,9 +774,9 @@ function SelectionPanel({
       <div className="flex items-center gap-3 p-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted">
           {isVideo ? (
-            <IconMovie className="size-4 text-muted-foreground" aria-hidden="true" />
+            <Film className="size-4 text-muted-foreground" aria-hidden="true" />
           ) : (
-            <IconPhoto className="size-4 text-muted-foreground" aria-hidden="true" />
+            <Image className="size-4 text-muted-foreground" aria-hidden="true" />
           )}
         </span>
         <div className="min-w-0 flex-1">
@@ -819,7 +808,7 @@ function SelectionPanel({
           aria-label="Clear selection"
           onClick={onClear}
         >
-          <IconX aria-hidden="true" />
+          <X aria-hidden="true" />
         </Button>
       </div>
 
@@ -972,7 +961,7 @@ function RunCard({
                   disabled={resume.isPending}
                   onClick={() => resume.mutate(job.id)}
                 >
-                  <IconRefresh aria-hidden="true" />
+                  <RefreshCw aria-hidden="true" />
                   {resume.isPending ? "Resuming…" : "Resume"}
                 </Button>
                 <FieldHint>
@@ -1076,7 +1065,7 @@ function Outcome({
       <div className="flex flex-wrap gap-2">
         {batchId !== null && onOpenBatch !== undefined && (
           <Button variant="primary" data-testid="open-batch" onClick={() => onOpenBatch(batchId)}>
-            <IconFolderOpen aria-hidden="true" />
+            <FolderOpen aria-hidden="true" />
             Open batch
           </Button>
         )}
@@ -1084,11 +1073,11 @@ function Outcome({
             is a real second run — registration is idempotent and content
             addressing makes re-reading free. */}
         <Button variant="secondary" data-testid="rerun-source" onClick={onRerun}>
-          <IconRotate aria-hidden="true" />
+          <RotateCw aria-hidden="true" />
           Ingest into another batch
         </Button>
         <Button variant="secondary" data-testid="ingest-another" onClick={onAgain}>
-          <IconUpload aria-hidden="true" />
+          <Upload aria-hidden="true" />
           Ingest another source
         </Button>
       </div>
@@ -1118,7 +1107,7 @@ function Outcome({
  * Renders nothing at all when nothing was partial, which is the ok-state.
  *
  * The treatment is the one this card already uses for a report — the neutral
- * `Alert` box, with `Failures`' own `IconAlertTriangle` in the heading. No new
+ * `Alert` box, with `Failures`' own `TriangleAlert` in the heading. No new
  * `Alert` variant was added for it: the icon and the sentence carry the status,
  * which is what keeps it from being conveyed by colour alone.
  */
@@ -1134,7 +1123,7 @@ function Partials({
     <Alert
       title={
         <span className="flex items-center gap-2">
-          <IconAlertTriangle className="size-4 text-warning" aria-hidden="true" />
+          <TriangleAlert className="size-4 text-warning" aria-hidden="true" />
           Some of what you ingested was damaged
         </span>
       }
@@ -1185,7 +1174,7 @@ function Failures({
   return (
     <div className="flex flex-col gap-2" data-testid="failures">
       <p className="flex items-center gap-2 text-sm">
-        <IconAlertTriangle className="size-4 text-destructive" aria-hidden="true" />
+        <TriangleAlert className="size-4 text-destructive" aria-hidden="true" />
         {/* The refused count, not `failures.length`: a partial belongs to the
             report above, and counting it here would say a file could not be read
             while its frames are in the batch. */}
@@ -1285,7 +1274,7 @@ function Dropzone({ onFiles }: { readonly onFiles: (files: readonly File[]) => v
         over ? "border-primary bg-primary/5" : "border-border bg-muted"
       }`}
     >
-      <IconUpload className="size-6 text-muted-foreground" aria-hidden="true" />
+      <Upload className="size-6 text-muted-foreground" aria-hidden="true" />
       <p className="text-sm">Drop images or a video here</p>
       <p className="text-xs text-muted-foreground">
         Nothing is filtered in the browser — the server reads every file and reports what it

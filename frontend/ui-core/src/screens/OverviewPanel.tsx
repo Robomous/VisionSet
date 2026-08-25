@@ -40,7 +40,7 @@
  * a cursor already on its way somewhere.
  */
 
-import { IconAlertTriangle, IconPhoto, IconTags, IconUpload } from "@tabler/icons-react";
+import { Image, Tags, TriangleAlert, Upload } from "lucide-react";
 import type { JSX } from "react";
 
 import { asApiError } from "../data/errors";
@@ -357,7 +357,7 @@ function FirstRun({
       // above it is not competing with a checklist step pointing somewhere else.
       <div data-testid="first-run" data-invitation={invitation}>
         <EmptyState
-          icon={<IconPhoto className="size-8" />}
+          icon={<Image className="size-8" />}
           title="Nothing ingested yet"
           description="Ingest images or a video to see counts, class distribution and samples here."
           action={
@@ -366,7 +366,7 @@ function FirstRun({
               // above this one, same label and same handler, so a filled button
               // here would render the identical action twice.
               <Button variant="secondary" data-testid="overview-ingest" onClick={onIngest}>
-                <IconUpload aria-hidden="true" />
+                <Upload aria-hidden="true" />
                 Ingest
               </Button>
             )
@@ -380,7 +380,7 @@ function FirstRun({
   return (
     <div data-testid="first-run" data-invitation={invitation}>
       <EmptyState
-        icon={<IconTags className="size-8" />}
+        icon={<Tags className="size-8" />}
         title={first ? "Define your first classes" : "Define your classes"}
         description={
           first
@@ -394,7 +394,7 @@ function FirstRun({
           <div className="flex flex-col items-center gap-2">
             {onOpenSchema !== undefined && (
               <Button variant="primary" data-testid="first-run-cta" onClick={onOpenSchema}>
-                <IconTags aria-hidden="true" />
+                <Tags aria-hidden="true" />
                 Define classes
               </Button>
             )}
@@ -492,7 +492,7 @@ function Distribution({
               className="flex items-center gap-1.5 text-xs text-warning"
               data-testid="imbalance-note"
             >
-              <IconAlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+              <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
               {note}
             </p>
           )}

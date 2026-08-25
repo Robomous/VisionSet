@@ -23,7 +23,7 @@
  */
 
 import { useState, type JSX } from "react";
-import { IconPlayerPlay, IconSquareCheck } from "@tabler/icons-react";
+import { Play, SquareCheck } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
@@ -152,7 +152,7 @@ export function CompleteBatchButton({
         disabled={outstanding > 0 || finish.isPending}
         onClick={() => finish.mutate()}
       >
-        <IconSquareCheck className="size-4" aria-hidden="true" />
+        <SquareCheck className="size-4" aria-hidden="true" />
         {finish.isPending ? "Completing…" : "Complete"}
       </Button>
 
@@ -356,7 +356,7 @@ export function StartAnnotatingButton({
         disabled={start.isPending}
         onClick={() => start.mutate()}
       >
-        <IconPlayerPlay className="size-4" aria-hidden="true" />
+        <Play className="size-4" aria-hidden="true" />
         {start.isPending ? "Starting…" : "Start annotating"}
       </Button>
       {refusal !== null && (

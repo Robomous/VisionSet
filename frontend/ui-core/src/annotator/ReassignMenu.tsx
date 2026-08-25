@@ -47,7 +47,7 @@
 
 import { digitFromCode, hotkeyForClass } from "@visionset/annotator";
 import type { Annotation, AnnotationSchema, LabelClass } from "@visionset/annotator";
-import { IconCheck } from "@tabler/icons-react";
+import { Check } from "lucide-react";
 import type { JSX, KeyboardEvent } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
@@ -143,7 +143,7 @@ export function ReassignMenu({
               style={{ background: classColor(declared, declared.name) }}
             />
             <span className="min-w-0 flex-1 truncate">{declared.name}</span>
-            {current && <IconCheck className="size-3.5 shrink-0" aria-label="current class" />}
+            {current && <Check className="size-3.5 shrink-0" aria-label="current class" />}
             {ok ? (
               hotkey !== null && (
                 <kbd className="shrink-0 rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground">

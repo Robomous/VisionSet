@@ -82,14 +82,7 @@
  * right level for it.
  */
 
-import {
-  IconCpu,
-  IconFolders,
-  IconHome,
-  IconLayoutSidebarLeftCollapse,
-  IconLayoutSidebarLeftExpand,
-  IconLogout,
-} from "@tabler/icons-react";
+import { Cpu, Folders, House, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import {
   Button,
   buttonVariants,
@@ -145,21 +138,21 @@ export function AppShell(): JSX.Element {
             onClick={toggle}
           >
             {collapsed ? (
-              <IconLayoutSidebarLeftExpand aria-hidden="true" />
+              <PanelLeftOpen aria-hidden="true" />
             ) : (
-              <IconLayoutSidebarLeftCollapse aria-hidden="true" />
+              <PanelLeftClose aria-hidden="true" />
             )}
           </RailButton>
         </div>
 
         <RailLink to="/" end collapsed={collapsed} testId="rail-home" label="Home">
-          <IconHome aria-hidden="true" />
+          <House aria-hidden="true" />
         </RailLink>
         <RailLink to="/projects" collapsed={collapsed} testId="rail-projects" label="Projects">
-          <IconFolders aria-hidden="true" />
+          <Folders aria-hidden="true" />
         </RailLink>
         <RailLink to="/models" collapsed={collapsed} testId="rail-models" label="Models">
-          <IconCpu aria-hidden="true" />
+          <Cpu aria-hidden="true" />
         </RailLink>
 
         <div className="mt-auto">
@@ -243,7 +236,7 @@ function SignOut({ collapsed }: { readonly collapsed: boolean }): JSX.Element {
   const label = access === "session" ? "Use a token" : "Sign out";
   return (
     <RailButton testId="rail-sign-out" label={label} onClick={signOut} wide={!collapsed}>
-      <IconLogout aria-hidden="true" />
+      <LogOut aria-hidden="true" />
       {!collapsed && <span className="truncate">{label}</span>}
     </RailButton>
   );

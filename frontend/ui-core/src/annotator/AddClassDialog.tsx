@@ -85,7 +85,7 @@
  * where every other refusal here renders.
  */
 
-import { IconPlus, IconX } from "@tabler/icons-react";
+import { Plus, X } from "lucide-react";
 import { useEffect, useRef, useState, type JSX } from "react";
 
 import { asApiError } from "../data/errors";
@@ -634,7 +634,7 @@ export function AddClassDialog({
                       onBank?.(banked);
                     }}
                   >
-                    <IconX className="size-3" aria-hidden="true" />
+                    <X className="size-3" aria-hidden="true" />
                   </button>
                 </li>
               ))}
@@ -830,7 +830,7 @@ export function AddClassDialog({
                 disabled={pending || !readyForm}
                 onClick={addAnother}
               >
-                <IconPlus className="size-4" aria-hidden="true" />
+                <Plus className="size-4" aria-hidden="true" />
                 Create and add another
                 <kbd className="ml-1 rounded border border-border px-1 font-mono text-xs text-muted-foreground">
                   ⌘↵

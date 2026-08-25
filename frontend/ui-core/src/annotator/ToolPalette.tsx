@@ -94,14 +94,7 @@ import {
 } from "@visionset/annotator";
 
 import { geometryLabel } from "../data/geometryCategory";
-import {
-  IconArrowBackUp,
-  IconArrowForwardUp,
-  IconHandStop,
-  IconHelpCircle,
-  IconPlus,
-  IconSparkles,
-} from "@tabler/icons-react";
+import { CircleHelp, Hand, Plus, Redo2, Sparkles, Undo2 } from "lucide-react";
 
 import { GeometryIcon } from "./GeometryIcon";
 import type { JSX, MouseEvent, ReactNode } from "react";
@@ -439,7 +432,7 @@ export function ToolPalette({
           onMouseDown={keepFocus}
           onClick={suggest.onToggle}
         >
-          <IconSparkles className="size-4" />
+          <Sparkles className="size-4" />
         </PaletteButton>
       )}
 
@@ -454,7 +447,7 @@ export function ToolPalette({
           onMouseDown={keepFocus}
           onClick={onAddClass}
         >
-          <IconPlus className="size-4" />
+          <Plus className="size-4" />
         </PaletteButton>
       )}
 
@@ -472,7 +465,7 @@ export function ToolPalette({
         onMouseDown={keepFocus}
         onClick={hand.onToggle}
       >
-        <IconHandStop className="size-4" />
+        <Hand className="size-4" />
       </PaletteButton>
 
       {!readOnly && history !== undefined && (
@@ -493,7 +486,7 @@ export function ToolPalette({
             onMouseDown={keepFocus}
             onClick={history.onUndo}
           >
-            <IconArrowBackUp className="size-4" />
+            <Undo2 className="size-4" />
           </PaletteButton>
           <PaletteButton
             testId="tool-redo"
@@ -503,7 +496,7 @@ export function ToolPalette({
             onMouseDown={keepFocus}
             onClick={history.onRedo}
           >
-            <IconArrowForwardUp className="size-4" />
+            <Redo2 className="size-4" />
           </PaletteButton>
         </>
       )}
@@ -517,7 +510,7 @@ export function ToolPalette({
         onMouseDown={keepFocus}
         onClick={onToggleHelp}
       >
-        <IconHelpCircle className="size-4" />
+        <CircleHelp className="size-4" />
       </PaletteButton>
     </div>
   );

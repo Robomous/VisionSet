@@ -17,7 +17,7 @@
  * renders no control rather than a dead one — the caller omits it.
  */
 
-import { IconArrowLeft } from "@tabler/icons-react";
+import { ArrowLeft } from "lucide-react";
 import type { JSX } from "react";
 
 import { Button } from "../primitives/Button";
@@ -42,7 +42,7 @@ export function BackLink({ label, onNavigate }: BackLinkProps): JSX.Element {
       className="-ml-2 w-fit max-w-64 text-muted-foreground hover:text-foreground"
       onClick={onNavigate}
     >
-      <IconArrowLeft aria-hidden="true" />
+      <ArrowLeft aria-hidden="true" />
       <span className="truncate">{label}</span>
     </Button>
   );

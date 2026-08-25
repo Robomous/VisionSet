@@ -54,7 +54,7 @@ import {
   useAnnotatorSnapshot,
 } from "@visionset/annotator";
 import type { AnnotatorStore, Geometry, Viewport } from "@visionset/annotator";
-import { IconTag } from "@tabler/icons-react";
+import { Tag } from "lucide-react";
 import type { JSX } from "react";
 
 import { Button } from "../primitives/Button";
@@ -130,7 +130,7 @@ export function CanvasReassign({
             aria-label={`Reassign the selected ${subject.label_class}`}
             data-testid="canvas-reclass"
           >
-            <IconTag className="size-3.5" />
+            <Tag className="size-3.5" />
           </Button>
         </DropdownMenuTrigger>
         <ReassignMenu

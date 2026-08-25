@@ -9,7 +9,7 @@
  */
 
 import { Button, EmptyState } from "@visionset/ui-core";
-import { IconCompass } from "@tabler/icons-react";
+import { Compass } from "lucide-react";
 import type { JSX } from "react";
 import { Link, useLocation } from "react-router";
 
@@ -18,7 +18,7 @@ export function NotFound(): JSX.Element {
   return (
     <EmptyState
       data-testid="not-found"
-      icon={<IconCompass className="size-8" aria-hidden="true" />}
+      icon={<Compass className="size-8" aria-hidden="true" />}
       title="No such page"
       description={pathname}
       action={

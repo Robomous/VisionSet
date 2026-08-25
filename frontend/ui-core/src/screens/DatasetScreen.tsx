@@ -43,15 +43,7 @@
  * button runs it.
  */
 
-import {
-  IconCheck,
-  IconDownload,
-  IconJson,
-  IconShieldCheck,
-  IconTag,
-  IconTrash,
-  IconUpload,
-} from "@tabler/icons-react";
+import { Braces, Check, Download, ShieldCheck, Tag, Trash2, Upload } from "lucide-react";
 import { useEffect, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -163,7 +155,7 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
             disabled={dataset.data === undefined}
             onClick={() => setPublishing(true)}
           >
-            <IconTag className="size-4" aria-hidden="true" />
+            <Tag className="size-4" aria-hidden="true" />
             Publish release
           </Button>
         }
@@ -496,7 +488,7 @@ function TrunkTile({
           onClick={onRemove}
           className="text-muted-foreground hover:text-destructive"
         >
-          <IconTrash aria-hidden="true" />
+          <Trash2 aria-hidden="true" />
         </Button>
       </span>
     </div>
@@ -595,7 +587,7 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
     <Card data-testid={`release-${release.tag}`}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <IconTag className="size-4 text-muted-foreground" aria-hidden="true" />
+          <Tag className="size-4 text-muted-foreground" aria-hidden="true" />
           {release.tag}
           <Badge>v{release.schema_version}</Badge>
           {release.split !== null && release.split !== undefined && (
@@ -618,7 +610,7 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
 
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" size="sm" data-testid={`export-${release.tag}`} onClick={() => setExporting(true)}>
-            <IconDownload className="size-4" aria-hidden="true" />
+            <Download className="size-4" aria-hidden="true" />
             Export
           </Button>
           <Button
@@ -632,7 +624,7 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
               })
             }
           >
-            <IconJson className="size-4" aria-hidden="true" />
+            <Braces className="size-4" aria-hidden="true" />
             Manifest
           </Button>
           <Button
@@ -642,7 +634,7 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
             disabled={verify.isFetching}
             onClick={() => void verify.refetch()}
           >
-            <IconShieldCheck className="size-4" aria-hidden="true" />
+            <ShieldCheck className="size-4" aria-hidden="true" />
             {verify.isFetching ? "Verifying…" : "Verify"}
           </Button>
         </div>
@@ -717,7 +709,7 @@ function Verification({
   if (report.ok) {
     return (
       <p className="flex items-center gap-2 text-xs text-muted-foreground" data-testid={`verified-${tag}`}>
-        <IconCheck className="size-3.5" aria-hidden="true" />
+        <Check className="size-3.5" aria-hidden="true" />
         {report.checked} blobs re-read and re-hashed. Intact.
       </p>
     );
@@ -885,7 +877,7 @@ function PublishDialog({
               data-testid="publish-submit"
               disabled={tag.trim() === "" || publish.isPending || (split && !balanced)}
             >
-              <IconUpload className="size-4" aria-hidden="true" />
+              <Upload className="size-4" aria-hidden="true" />
               {publish.isPending ? "Publishing…" : "Publish"}
             </Button>
           </DialogFooter>
@@ -1151,7 +1143,7 @@ function ExportDialog({
             disabled={format === "" || running || (needsConsent && !consented)}
             onClick={() => run(needsConsent)}
           >
-            <IconDownload className="size-4" aria-hidden="true" />
+            <Download className="size-4" aria-hidden="true" />
             {running ? "Exporting…" : needsConsent ? "Export anyway" : "Export"}
           </Button>
         </DialogFooter>
