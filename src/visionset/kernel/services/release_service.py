@@ -940,17 +940,30 @@ class _RecordingReader:
         that read and did not write — is left out rather than guessed.
         """
         rows: dict[str, ExportFileMapping] = {}
-        by_stem = {path.stem: path for path in written}
+        by_stem: dict[str, list[Path]] = {}
+        for path in written:
+            by_stem.setdefault(path.stem, []).append(path)
+        claimed: set[Path] = set()
         unmatched: dict[str, _Produced] = {}
         for key, produced in self._produced.items():
             if produced.exported_sha256 is None:
                 continue
-            if (path := by_stem.get(key)) is not None:
-                rows[key] = _mapping_row(dest, path, produced)
+            # A label file shares the image's stem, so the stem alone is
+            # ambiguous; the digest says which sibling holds the pixels.
+            match = next(
+                (
+                    candidate
+                    for candidate in by_stem.get(key, ())
+                    if sha256_hex(candidate.read_bytes()) == produced.exported_sha256
+                ),
+                None,
+            )
+            if match is not None:
+                rows[key] = _mapping_row(dest, match, produced)
+                claimed.add(match)
             else:
                 unmatched[produced.exported_sha256] = produced
         if unmatched:
-            claimed = {path for path in (by_stem.get(key) for key in rows) if path is not None}
             for path in written:
                 if path in claimed:
                     continue
