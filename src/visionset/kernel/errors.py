@@ -1290,3 +1290,58 @@ class GeometryNotProduced(VisionSetError):
     to change and no wait helps, so the remedy is a different selection, or no
     selection, which means every shape the model produces.
     """
+
+
+class AugmentationRequiresSplit(VisionSetError):
+    """An augmenting recipe met a release that was published without a split recipe.
+
+    Augmented variants are written for the train fold only — a model must
+    never validate on a variant of an image it trained on — and a release
+    without a split recipe has no folds, so "the train fold" names nothing.
+    Raised at pre-flight and again at export, so a consent dialog and a job
+    runner give the same answer. The remedy is a release published with a
+    split recipe, or a recipe that does not augment.
+    """
+
+
+class PreprocessingStepUnsupportedGeometry(VisionSetError):
+    """A recipe step met an annotation geometry it cannot transform.
+
+    A refusal, never a consent: pre-processing moves images and their labels
+    together, so an export that dropped or guessed a label it could not move
+    would ship a training set silently disagreeing with its own images —
+    which is exactly what the lossy-consent path exists to prevent, one stage
+    earlier. Today's one case is ``rot90`` over a polyline, whose point order
+    carries meaning relative to the frame's axes.
+    """
+
+    step: str | None = None
+    """Which step refused — a step kind or an augmentation op name."""
+
+    geometry: str | None = None
+    """Which geometry it could not transform, as the ``GeometryType`` value."""
+
+    asset_id: str | None = None
+    """The first manifest asset carrying the geometry, for the report.
+
+    All three are class attributes with ``None`` defaults and **not**
+    constructor parameters, exactly as ``LossyExportNotConsented.compatibility``
+    is — so this error stays constructible from one message.
+    ``transform_manifest`` sets them as keywords.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        step: str | None = None,
+        geometry: str | None = None,
+        asset_id: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        if step is not None:
+            self.step = step
+        if geometry is not None:
+            self.geometry = geometry
+        if asset_id is not None:
+            self.asset_id = asset_id

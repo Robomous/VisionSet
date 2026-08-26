@@ -180,8 +180,13 @@ class Manifest(BaseModel):
         return sum(len(asset.annotations) for asset in self.assets)
 
 
-def canonical_bytes(manifest: Manifest) -> bytes:
-    """The one serialization of a manifest, and the bytes its hash is over.
+def canonical_bytes(model: BaseModel) -> bytes:
+    """The one serialization of a hashed document, and the bytes its hash is over.
+
+    Written for the :class:`Manifest` and shared by everything else whose hash
+    is a contract — the pre-processing recipe hash is computed over exactly
+    this encoding, because two spellings of "canonical" would eventually
+    disagree.
 
     ``sort_keys`` recurses, so ``attributes`` — the only dict in the document —
     is ordered by this too rather than by whatever order it was written in.
@@ -198,7 +203,7 @@ def canonical_bytes(manifest: Manifest) -> bytes:
     Raises:
         UnserializableManifest: a number in the document is NaN or infinite.
     """
-    document = manifest.model_dump(mode="json")
+    document = model.model_dump(mode="json")
     try:
         text = json.dumps(
             document,
