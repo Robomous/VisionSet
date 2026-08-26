@@ -97,7 +97,7 @@
  */
 
 import { Plus, Trash2 } from "lucide-react";
-import { useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
+import { useId, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
 import { asApiError } from "../data/errors";
@@ -1335,15 +1335,24 @@ function OrphanBlockersDialog({
   readonly framesListed: boolean;
   readonly onClose: () => void;
 }): JSX.Element {
+  // Radix mints one description id per dialog root, so a dialog with several
+  // `DialogDescription`s needs each one named here — `label_class` can hold a
+  // space, which a `space`-joined `aria-describedby` cannot, so `uid` prefixes
+  // an index rather than the class name itself.
+  const uid = useId();
+  const blockerIds = blockers?.map((_blocker, index) => `${uid}-blocker-${index}`) ?? [];
+  const noteId = `${uid}-note`;
   return (
     <Dialog open={blockers !== null} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="orphan-dialog">
+      <DialogContent data-testid="orphan-dialog" aria-describedby={[...blockerIds, noteId].join(" ")}>
         <DialogTitle>Annotations already use these classes</DialogTitle>
         <NarrowingChanges diff={diff} />
-        {blockers?.map((blocker) => (
-          <DialogDescription key={blocker.label_class}>{describeClassCount(blocker)}</DialogDescription>
+        {blockers?.map((blocker, index) => (
+          <DialogDescription key={blocker.label_class} id={blockerIds[index]}>
+            {describeClassCount(blocker)}
+          </DialogDescription>
         ))}
-        <DialogDescription>
+        <DialogDescription id={noteId}>
           There is no override for this one. Keep the class, or clear those labels first
           {framesListed ? " — the frames carrying them are under “Frames in the way”, below the editor" : ""}.
         </DialogDescription>
@@ -1392,21 +1401,28 @@ function DestructiveDialog({
   readonly onConfirm: () => void;
 }): JSX.Element {
   const destructiveClasses = preview?.diff.destructive_classes ?? [];
+  const uid = useId();
+  const summaryId = `${uid}-summary`;
+  const noRegressionId = `${uid}-no-regression`;
+  const openBatchId = `${uid}-open-batch`;
   return (
     <Dialog open={preview !== null} onOpenChange={(next) => !next && onCancel()}>
-      <DialogContent data-testid="destructive-dialog">
+      <DialogContent
+        data-testid="destructive-dialog"
+        aria-describedby={[summaryId, noRegressionId, openBatchId].join(" ")}
+      >
         <DialogTitle>This narrows the schema</DialogTitle>
-        <DialogDescription>
+        <DialogDescription id={summaryId}>
           <span className="tabular-nums">{formatCount(destructiveClasses.length)}</span>{" "}
           {destructiveClasses.length === 1 ? "class narrows" : "classes narrow"}:{" "}
           {describeDestructiveClasses(destructiveClasses)}.
         </DialogDescription>
         <NarrowingChanges diff={preview?.diff ?? null} />
-        <DialogDescription>
+        <DialogDescription id={noRegressionId}>
           No existing annotation becomes invalid — that is why this can be published at all.
           Publishing adds a new version; earlier versions keep what they declared.
         </DialogDescription>
-        <DialogDescription>
+        <DialogDescription id={openBatchId}>
           A batch still open on the current version keeps writing what that version declares,
           including what this one drops. Those labels are kept — but a release cannot be published
           while they are in it.

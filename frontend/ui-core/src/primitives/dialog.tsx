@@ -5,22 +5,6 @@ import { cn } from "../lib/cn"
 import { Button } from "./button"
 import { XIcon } from "lucide-react"
 
-// Radix mints one description id per dialog root and points `aria-describedby`
-// at it, so a dialog with two `DialogDescription`s has duplicate ids and a
-// screen reader hears only the first. Each description here registers its own
-// id with the enclosing content, which describes itself by all of them.
-type RegisterDescription = (id: string) => () => void
-const DescriptionRegistry = React.createContext<RegisterDescription | null>(null)
-
-function useDescribedBy(): { readonly describedBy: string | undefined; readonly register: RegisterDescription } {
-  const [ids, setIds] = React.useState<readonly string[]>([])
-  const register = React.useCallback<RegisterDescription>((id) => {
-    setIds((previous) => [...previous, id])
-    return () => setIds((previous) => previous.filter((known) => known !== id))
-  }, [])
-  return { describedBy: ids.length > 0 ? ids.join(" ") : undefined, register }
-}
-
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
@@ -69,20 +53,17 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
-  const { describedBy, register } = useDescribedBy()
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
-        aria-describedby={describedBy}
         className={cn(
           "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}
       >
-        <DescriptionRegistry.Provider value={register}>
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
@@ -97,7 +78,6 @@ function DialogContent({
             </Button>
           </DialogPrimitive.Close>
         )}
-        </DescriptionRegistry.Provider>
       </DialogPrimitive.Content>
     </DialogPortal>
   )
@@ -160,13 +140,9 @@ function DialogDescription({
   className,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Description>) {
-  const id = React.useId()
-  const register = React.useContext(DescriptionRegistry)
-  React.useLayoutEffect(() => register?.(id), [register, id])
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      id={id}
       className={cn(
         "text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
         className

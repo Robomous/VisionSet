@@ -286,18 +286,6 @@ describe("Progress", () => {
 });
 
 describe("Dialog", () => {
-  function Described({ second }: { readonly second: boolean }): JSX.Element {
-    return (
-      <Dialog open>
-        <DialogContent>
-          <DialogTitle>Narrowing</DialogTitle>
-          <DialogDescription>one class narrows</DialogDescription>
-          {second ? <DialogDescription>nothing becomes invalid</DialogDescription> : null}
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
   function describedBy(dialog: HTMLElement): readonly (string | null)[] {
     return (dialog.getAttribute("aria-describedby") ?? "")
       .split(" ")
@@ -305,15 +293,36 @@ describe("Dialog", () => {
       .map((id) => document.getElementById(id)?.textContent ?? null);
   }
 
-  it("points aria-describedby at every description, each under its own id", () => {
-    const { rerender } = render(<Described second />);
+  it("points aria-describedby at every description, each under its own id, when the caller names them", () => {
+    render(
+      <Dialog open>
+        <DialogContent aria-describedby="d1 d2">
+          <DialogTitle>Narrowing</DialogTitle>
+          <DialogDescription id="d1">one class narrows</DialogDescription>
+          <DialogDescription id="d2">nothing becomes invalid</DialogDescription>
+        </DialogContent>
+      </Dialog>,
+    );
     const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-describedby")).toBe("d1 d2");
     expect(describedBy(dialog)).toEqual(["one class narrows", "nothing becomes invalid"]);
-    const ids = Array.from(dialog.querySelectorAll("p")).map((p) => p.id);
-    expect(new Set(ids).size).toBe(ids.length);
+    expect(document.getElementById("d1")?.textContent).toBe("one class narrows");
+    expect(document.getElementById("d2")?.textContent).toBe("nothing becomes invalid");
+  });
 
-    rerender(<Described second={false} />);
-    expect(describedBy(dialog)).toEqual(["one class narrows"]);
+  it("wires a single, unnamed description through Radix's own id by default", () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Narrowing</DialogTitle>
+          <DialogDescription>one class narrows</DialogDescription>
+        </DialogContent>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole("dialog");
+    const describedById = dialog.getAttribute("aria-describedby");
+    expect(describedById).toBeTruthy();
+    expect(document.getElementById(describedById ?? "")?.textContent).toBe("one class narrows");
   });
 });
 
