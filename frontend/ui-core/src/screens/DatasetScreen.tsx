@@ -18,13 +18,15 @@
  * and the UI keeps them apart too: the delete dialog, the schema dialog and this
  * one are three.
  *
- * There is no pre-export validation route, so consent here is attempt-shaped:
- * attempt, read `LOSSY_EXPORT_NOT_CONSENTED` off the 409, ask, retry with the flag.
- * The schema editor does not have this shape — it previews first — and the
- * difference is exactly the routed preview that export lacks.
- * `FormatOut.lossy` is what makes the question predictable — it is declared by the
- * *format*, because a bbox-only format loses a polygon whether or not today's
- * dataset holds one.
+ * `GET /releases/{id}/export-compatibility` exists and would answer the question
+ * before anything is attempted; this screen does not call it. Consent here is
+ * attempt-shaped: attempt, read `LOSSY_EXPORT_NOT_CONSENTED` off the 409, ask,
+ * retry with the flag — and the 409 carries the same compatibility report the
+ * route would, judged for the chosen target, so the banner can say what the
+ * target accepts and how much would be lost. `FormatOut.lossy`, read through the
+ * target's format, is what makes the question predictable before the attempt —
+ * declared by the *format*, because a bbox-only format loses a polygon whether or
+ * not today's dataset holds one.
  *
  * ## The trunk's membership is on the screen now, and so is curation
  *
@@ -65,19 +67,14 @@ import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
 import {
   classBlockers,
   describeClassCount,
+  describeTargetDrops,
   jobFailureProse,
   lostClasses,
   refusalProse,
 } from "../data/refusals";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../primitives/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
+import { ExportTargetSelect } from "../patterns/ExportTargetSelect";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { DatasetAssetDialog, trunkAssetLabel } from "./DatasetAssetDialog";
 import { saveBlob } from "./download";
@@ -88,6 +85,7 @@ import {
   useDatasetStats,
   useDownloadManifest,
   useExportRelease,
+  useExportTargets,
   useFormats,
   useJobArtifact,
   useProjectDataset,
@@ -931,10 +929,11 @@ function ExportDialog({
   readonly open: boolean;
   readonly onClose: () => void;
 }): JSX.Element {
+  const targets = useExportTargets();
   const formats = useFormats();
   const exportRelease = useExportRelease(releaseId);
   const artifact = useJobArtifact();
-  const [format, setFormat] = useState("");
+  const [target, setTarget] = useState("");
   const [consented, setConsented] = useState(false);
   // The job this dialog is watching. Null until a launch is accepted, and null
   // again once the archive has been saved — a finished download is not something
@@ -947,10 +946,13 @@ function ExportDialog({
   const [outcome, setOutcome] = useState<string | null>(null);
   const job = useBackgroundJob(jobId);
 
-  const installed = formats.data?.items ?? [];
-  const chosen = installed.find((one) => one.name === format);
-  // **The refusals still arrive on the launch.** An unknown format is a 404 and a
-  // lossy format without consent is a 409, both answered by the request rather
+  const catalog = targets.data?.items ?? [];
+  const chosen = catalog.find((one) => one.name === target);
+  // Lossiness is the format's declaration, reached through the target's format;
+  // a formats read that failed leaves the hint out and the 409 still asks.
+  const lossy = formats.data?.items.find((one) => one.name === chosen?.format)?.lossy === true;
+  // **The refusals still arrive on the launch.** An unknown target is a 404 and a
+  // lossy export without consent is a 409, both answered by the request rather
   // than by the job — so the consent flow below is exactly the one that shipped
   // before export was queued.
   const failure = exportRelease.isError ? asApiError(exportRelease.error) : null;
@@ -964,7 +966,7 @@ function ExportDialog({
     setSaved(false);
     setOutcome(null);
     exportRelease.mutate(
-      { format, ...(allowLossy ? { allowLossy: true } : {}) },
+      { target, ...(allowLossy ? { allowLossy: true } : {}) },
       { onSuccess: (queued) => setJobId(queued.id) },
     );
   }
@@ -982,11 +984,11 @@ function ExportDialog({
     setOutcome("succeeded");
     artifact.mutate(jobId, {
       onSuccess: (blob) => {
-        saveBlob(blob, `${tag}-${format}.zip`);
+        saveBlob(blob, `${tag}-${target}.zip`);
         setJobId(null);
       },
     });
-  }, [saved, jobId, job.data?.state, artifact, tag, format]);
+  }, [saved, jobId, job.data?.state, artifact, tag, target]);
 
   // The badge's subject: the live job while there is one, the outcome once the
   // archive has been handed over and the poll has stopped.
@@ -997,65 +999,67 @@ function ExportDialog({
       <DialogContent data-testid="export-dialog">
         <DialogTitle>Export {tag}</DialogTitle>
         <DialogDescription>
-          Writes the release through an installed exporter and downloads the result.
+          Writes the release for the model you will train and downloads the result.
         </DialogDescription>
 
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="export-format">Format</Label>
+            <Label htmlFor="export-target">Target model</Label>
             {/*
               Three renderings for three answers, because `?? []` above used to
               give the first two the same one — the swallowed-refusal pattern.
-              A failed `GET /formats` is not an answer at all; a
+              A failed `GET /export-targets` is not an answer at all; a
               successful empty page is an answer about this server's plugins;
-              and the combobox is for when there is something to choose. Rolling
+              and the picker is for when there is something to choose. Rolling
               the first two together produces a control offering nothing and
               saying nothing, which is also the visible signature of an install
               whose exporters are not discoverable — so the screen that should
               tell a broken install from a broken request is what makes the two
               indistinguishable.
 
-              Loading is deliberately not a fourth branch: `formats.data ===
-              undefined` while pending, so the combobox stands empty for the one
-              tick it takes, exactly as it did before.
+              Loading is deliberately not a fourth branch: `targets.data ===
+              undefined` while pending, so the picker stands empty for the one
+              tick it takes.
             */}
-            {formats.isError ? (
-              <div data-testid="export-formats-error">
+            {targets.isError ? (
+              <div data-testid="export-targets-error">
                 {/* No `code`: the identifier is not the half a person can act
                     on, and the sibling refusal on this screen
                     (`manifest-error-*`) already renders prose without one. */}
                 <ErrorState
-                  message={`${refusalProse(formats.error)} Try again to choose a format.`}
-                  onRetry={() => void formats.refetch()}
+                  message={`${refusalProse(targets.error)} Try again to choose a model.`}
+                  onRetry={() => void targets.refetch()}
                 />
               </div>
-            ) : formats.data !== undefined && installed.length === 0 ? (
-              <div data-testid="export-formats-empty">
+            ) : targets.data !== undefined && catalog.length === 0 ? (
+              <div data-testid="export-targets-empty">
                 <EmptyState
                   title="No exporters installed"
                   description="Exporters ship as plugins on the server. Install one to write this release out."
                 />
               </div>
             ) : (
-              <Select value={format} onValueChange={setFormat}>
-                <SelectTrigger id="export-format" data-testid="export-format">
-                  <SelectValue placeholder="Choose a format" />
-                </SelectTrigger>
-                <SelectContent>
-                  {installed.map((one) => (
-                    <SelectItem key={one.name} value={one.name}>
-                      {one.name}
-                      {one.lossy ? " (lossy)" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ExportTargetSelect
+                id="export-target"
+                data-testid="export-target"
+                targets={catalog}
+                value={target}
+                onValueChange={setTarget}
+              />
             )}
             {/* Declared by the format, never by the release: a bbox-only format
                 loses a polygon whether or not today's dataset holds one. */}
-            {chosen?.lossy === true && (
+            {lossy && (
               <FieldHint data-testid="lossy-hint">
-                This format cannot express everything the schema allows.
+                {chosen?.label} cannot take everything the schema allows.
+              </FieldHint>
+            )}
+            {/* A formats read that failed is said, not swallowed: the hint is
+                absent for a reason, and the launch still asks before dropping. */}
+            {chosen !== undefined && formats.isError && (
+              <FieldHint data-testid="lossy-unknown">
+                Whether {chosen.label} loses anything could not be read — the export asks before
+                dropping a shape.
               </FieldHint>
             )}
           </div>
@@ -1082,7 +1086,13 @@ function ExportDialog({
               title="Some shapes cannot be exported"
               data-testid="lossy-consent"
             >
-              <p>{refusalProse(failure)}</p>
+              {/* The sentence names the target and the counts when the 409
+                  carried its report; without one, the vocabulary's own line. */}
+              <p>
+                {chosen !== undefined && lost !== null
+                  ? describeTargetDrops(chosen, lost)
+                  : refusalProse(failure)}
+              </p>
               {lost !== null && lost.length > 0 && (
                 <ul className="mt-2 list-disc pl-5 text-sm" data-testid="lossy-classes">
                   {lost.map((one) => (
@@ -1140,7 +1150,7 @@ function ExportDialog({
             data-testid="export-submit"
             // The consent gate: while the API is asking, the button stays shut until
             // the box is ticked. It is `allow_lossy` and never `confirm`.
-            disabled={format === "" || running || (needsConsent && !consented)}
+            disabled={target === "" || running || (needsConsent && !consented)}
             onClick={() => run(needsConsent)}
           >
             <Download className="size-4" aria-hidden="true" />

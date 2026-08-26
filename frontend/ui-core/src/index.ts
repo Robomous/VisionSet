@@ -441,3 +441,12 @@ export {
   type ReleaseVerification,
   type SplitRecipe,
 } from "./screens/queries.js";
+export { useExportTargets, type ExportTarget } from "./screens/queries.js";
+export {
+  ExportTargetSelect,
+  exportTargetMeta,
+  groupExportTargets,
+  type ExportTargetGroup,
+  type ExportTargetSelectProps,
+} from "./patterns/ExportTargetSelect.js";
+export { describeTargetDrops } from "./data/refusals.js";

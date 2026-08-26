@@ -87,6 +87,7 @@
  */
 
 import { asApiError } from "./errors.js";
+import { GEOMETRY_LABELS, GEOMETRY_PLURALS } from "./geometryCategory.js";
 import type { components } from "../generated/api.js";
 import { formatCount } from "../lib/format.js";
 
@@ -150,8 +151,9 @@ export const REFUSAL_PROSE: Record<string, string> = {
   RELEASE_NOT_FOUND: "That release is no longer on record.",
   RELEASE_TAG_TAKEN: "A release with that tag already exists — tags are never reused.",
   NO_SPLIT_RECIPE: "This release was published without a split, so there are no folds to show.",
-  LOSSY_EXPORT_NOT_CONSENTED: "This format cannot express every shape in the dataset.",
+  LOSSY_EXPORT_NOT_CONSENTED: "This target cannot take every shape in the dataset.",
   EXPORT_FORMAT_NOT_FOUND: "No exporter for that format is installed on this server.",
+  EXPORT_TARGET_NOT_FOUND: "No installed exporter writes for that model.",
   UNSERIALIZABLE_MANIFEST: "This release's manifest cannot be read back — the workspace may be damaged.",
   EMPTY_RELEASE: "This dataset has no frames yet — promote a completed batch first.",
   // The dialog lists the classes beside this, from the refusal's own `blockers`.
@@ -300,4 +302,50 @@ export function lostClasses(detail: Record<string, unknown> | null): readonly Cl
 
 function isClassCompatibility(value: unknown): value is ClassCompatibility {
   return isClassCount(value) && typeof (value as Record<string, unknown>)["status"] === "string";
+}
+
+/** `"boxes"`, or `"box"` for exactly one; a geometry the build has no word for stays raw. */
+function geometryNoun(geometry: string, count: number): string {
+  const table: Record<string, string> = count === 1 ? GEOMETRY_LABELS : GEOMETRY_PLURALS;
+  return table[geometry] ?? geometry;
+}
+
+function listed(words: readonly string[]): string {
+  if (words.length <= 1) return words.join("");
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+/**
+ * The lossy consent as one sentence about the target: what it accepts, and how
+ * much of this release it would drop or degrade.
+ *
+ * `"YOLOv10 accepts boxes only — 1,204 polygons would be dropped."` The counts
+ * are the report's, summed per geometry across classes, so the sentence answers
+ * the question the per-class list beneath it then itemises. A target that
+ * accepts nothing the release holds still names what it does accept, so the
+ * remedy — pick another target — is readable off the sentence.
+ */
+export function describeTargetDrops(
+  target: { readonly label: string; readonly geometries: readonly string[] },
+  lost: readonly ClassCompatibility[],
+): string {
+  const accepted = target.geometries.map((one) => geometryNoun(one, 2));
+  const accepts =
+    accepted.length === 0
+      ? `${target.label} accepts none of the shapes here`
+      : accepted.length === 1
+        ? `${target.label} accepts ${accepted[0]} only`
+        : `${target.label} accepts ${listed(accepted)}`;
+
+  const totals = new Map<string, number>();
+  for (const one of lost) {
+    const key = `${one.status}:${one.geometry}`;
+    totals.set(key, (totals.get(key) ?? 0) + one.annotations);
+  }
+  const clauses = [...totals].map(([key, count]) => {
+    const [status, geometry] = key.split(":") as [string, string];
+    const verb = status === "degraded" ? "would be degraded" : "would be dropped";
+    return `${formatCount(count)} ${geometryNoun(geometry, count)} ${verb}`;
+  });
+  return clauses.length === 0 ? `${accepts}.` : `${accepts} — ${listed(clauses)}.`;
 }
