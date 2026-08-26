@@ -35,8 +35,9 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from visionset import wire
-from visionset.formats.registry import exporter
-from visionset.kernel.domain import SplitRecipe
+from visionset.formats import registry
+from visionset.kernel.domain import ExportTarget, SplitRecipe
+from visionset.kernel.ports import Exporter, resolve_target
 from visionset.kernel.services import ProjectService, ReleaseService
 from visionset.mcp._errors import refused
 from visionset.mcp._resolve import ProjectRef, resolve_project, resolve_release
@@ -119,16 +120,64 @@ def verify_release(project: ProjectRef, tag: TagRef) -> dict[str, Any]:
     return wire.release_verification(report)
 
 
+TargetRef = Annotated[
+    str | None,
+    Field(
+        description=(
+            "The model the release will train, resolved to the format that writes for it. "
+            "See `list_export_targets`. Give this or `format`, never both."
+        )
+    ),
+]
+"""Module-level for the ``inspect.signature`` reason."""
+
+FormatRef = Annotated[
+    str | None,
+    Field(
+        description=(
+            "An installed exporter's name. See `list_formats`. Give this or `target`, never both."
+        )
+    ),
+]
+"""Module-level for the ``inspect.signature`` reason."""
+
+
+def _addressed(target: str | None, format: str | None) -> tuple[Exporter, ExportTarget | None]:
+    """The plugin one of the two names, and the target when it was a target.
+
+    Through `pick` and `resolve_target` rather than by indexing the registry: a
+    `KeyError` is outside the VisionSetError tree, so a mistyped name has to
+    arrive as a refusal that names the installed ones.
+
+    Raises:
+        ExportFormatNotFound: `format` names nothing installed.
+        ExportTargetNotFound: `target` names nothing any installed format declares.
+        ExportTargetConflict: two installed formats declare `target`.
+    """
+    installed = registry.exporters()
+    if target is not None:
+        return resolve_target(installed, target)
+    assert format is not None
+    return registry.pick(installed, format)[0], None
+
+
 def check_export(
     project: ProjectRef,
     tag: TagRef,
-    format: Annotated[str, Field(description="An installed exporter's name. See `list_formats`.")],
+    target: TargetRef = None,
+    format: FormatRef = None,
 ) -> dict[str, Any]:
-    """Say what a format would drop from a release, without writing anything.
+    """Say what a target or a format would drop from a release, without writing anything.
 
     Call this before `export_release` when the answer matters. It reads the
     release's frozen manifest and judges every class in it against what the
     format declares it can write, so the numbers are exact rather than estimated.
+
+    Exactly one of `target` and `format`. A target narrows its format to the
+    geometries its trainer has a task for, so `target="yolov10"` can report a
+    polygon class `dropped` where `format="ultralytics"` reports it `supported`;
+    `target` on the report names which question it answers. Both or neither is
+    refused.
 
     Every class gets a `status`, and there are three of them. `supported` is
     written as it stands. `dropped` is **not in the output at all** —
@@ -154,20 +203,24 @@ def check_export(
     attributes, confidence, provenance — and is true of the format forever;
     this is about the labels this release actually holds.
     """
+    if (target is None) == (format is None):
+        return refused("give exactly one of target and format")
     with opened_workspace() as workspace:
         release = resolve_release(workspace, project, tag)
-        report = ReleaseService(workspace).check_export(release.id, exporter(format))
+        plugin, addressed = _addressed(target, format)
+        report = ReleaseService(workspace).check_export(release.id, plugin, target=addressed)
     return wire.export_compatibility(report)
 
 
 def export_release(
     project: ProjectRef,
     tag: TagRef,
-    format: Annotated[str, Field(description="An installed exporter's name. See `list_formats`.")],
     dest: Annotated[
         str,
         Field(description="An absolute directory path on this machine to write into."),
     ],
+    target: TargetRef = None,
+    format: FormatRef = None,
     allow_lossy: Annotated[
         bool,
         Field(
@@ -178,11 +231,17 @@ def export_release(
         ),
     ] = False,
 ) -> dict[str, Any]:
-    """Write a release to a local directory in one of the installed formats.
+    """Write a release to a local directory, for a target or in one of the installed formats.
 
     Blocks until the export finishes and returns a description of what landed —
     the bytes stay on disk, which is the point: whatever trains on this reads the
     directory, not this call's answer.
+
+    Exactly one of `target` and `format`. A target is the model the release will
+    train — `list_export_targets` names them — and resolves to the format that
+    writes for it; the export then carries only the geometries that trainer has
+    a task for, and the report names the target. A format addresses no trainer.
+    Both or neither is refused.
 
     `dest` is created if it does not exist and is **not emptied first**, so
     `file_count` and `total_bytes` describe the directory afterwards, which
@@ -208,14 +267,13 @@ def export_release(
     # bare OSError from inside a plugin rather than as a refusal.
     if destination.exists() and not destination.is_dir():
         return refused(f"dest must be a directory, and {dest} is a file")
+    if (target is None) == (format is None):
+        return refused("give exactly one of target and format")
 
     with opened_workspace() as workspace:
         release = resolve_release(workspace, project, tag)
-        # `pick`, through `exporter()`, rather than indexing the registry: a
-        # `KeyError` is outside the VisionSetError tree, so a mistyped format name
-        # has to arrive as a refusal that names the installed ones.
-        plugin = exporter(format)
+        plugin, addressed = _addressed(target, format)
         result = ReleaseService(workspace).export(
-            release.id, plugin, destination, allow_lossy=allow_lossy
+            release.id, plugin, destination, allow_lossy=allow_lossy, target=addressed
         )
     return wire.export_result(result)

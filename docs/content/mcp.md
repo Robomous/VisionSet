@@ -190,9 +190,10 @@ call until the end. #439 has since added a job gate, but it changes none of this
 | `publish_release` | Freeze it under a tag, immutably. |
 | `list_releases` | Everything published, with counts and hashes. |
 | `verify_release` | Re-hash every blob a release names. |
-| `list_formats` | Installed exporters, which are lossy, and what each can write. |
-| `check_export` | What a format would drop from a release, before writing anything. |
-| `export_release` | Write a release to a local directory. `allow_lossy` where needed. |
+| `list_formats` | Installed exporters, which are lossy, what each can write, and the targets it writes for. |
+| `list_export_targets` | The models a release can be exported for, each with the format it resolves to and its hints. |
+| `check_export` | What a target or a format would drop from a release, before writing anything. Exactly one of `target` and `format`. |
+| `export_release` | Write a release to a local directory, for a target or in a format. `allow_lossy` where needed. |
 
 ### Inference connections
 
@@ -358,15 +359,16 @@ out of the object to pick the variant, and omitting it fails. Always send
 ## What is not here, and why
 
 Fifty candidate tools were recorded across the four REST tasks; thirty of them shipped and
-twenty did not. Twenty-six have been added since, every one of them because a surface grew a
+twenty did not. Twenty-seven have been added since, every one of them because a surface grew a
 capability an agent had no way to reach. The larger groups say what that looks like: the four
 batch-composition tools above; the seven inference-connection tools, closing the Models page's
 SDK-first parity; the four schema-draft tools above, because composing a schema across several
 calls needs somewhere to hold a class before it is finished; the three deletions, which are
 advertised only on request; the pre-labeling trio, `pre_label_job` beside the two fan-outs,
-closing the last capability declared with no consumer; and `check_export`, the plan-before-apply
-half of an export on the `preview_schema_change` precedent. That is fifty-three offered by
-default and fifty-six in all. The parity rule means
+closing the last capability declared with no consumer; `check_export`, the plan-before-apply
+half of an export on the `preview_schema_change` precedent; and `list_export_targets`, because
+`export_release` takes a target name and an agent has to be able to read the catalog it comes
+from. That is fifty-four offered by default and fifty-seven in all. The parity rule means
 *evaluated*, not *implemented* — tool-selection accuracy degrades with count, so a tool ships
 only when an agent has a reason to reach for it that no neighbour covers.
 

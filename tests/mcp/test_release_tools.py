@@ -206,6 +206,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "geometries": ["polyline"],
                 "degraded_geometries": [],
                 "modalities": ["image"],
+                "targets": ["bdd100k-lane"],
             },
             {
                 # The one format whose content is tags: a box has a location it
@@ -216,6 +217,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "geometries": ["classification_tag"],
                 "degraded_geometries": [],
                 "modalities": ["image"],
+                "targets": ["classification"],
             },
             {
                 # Lossless: boxes and polygons are native, and everything
@@ -225,6 +227,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "geometries": ["bbox", "polygon"],
                 "degraded_geometries": [],
                 "modalities": ["image"],
+                "targets": ["coco"],
             },
             {
                 "name": "culane",
@@ -232,6 +235,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "geometries": ["polyline"],
                 "degraded_geometries": [],
                 "modalities": ["image"],
+                "targets": ["culane"],
             },
             {
                 "name": "curvelanes",
@@ -239,6 +243,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "geometries": ["polyline"],
                 "degraded_geometries": [],
                 "modalities": ["image"],
+                "targets": ["curvelanes"],
             },
             {
                 "name": "dummy",
@@ -248,6 +253,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "geometries": sorted(one.value for one in GeometryType),
                 "degraded_geometries": [],
                 "modalities": ["image", "point_cloud", "video"],
+                "targets": ["dummy"],
             },
             {
                 "name": "openlane-2d",
@@ -255,6 +261,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "geometries": ["polyline"],
                 "degraded_geometries": [],
                 "modalities": ["image"],
+                "targets": ["openlane-2d"],
             },
             {
                 # The one lane format that does not write the vertices it
@@ -266,6 +273,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "geometries": [],
                 "degraded_geometries": ["polyline"],
                 "modalities": ["image"],
+                "targets": ["tusimple"],
             },
             {
                 # Lossy because a label row is a class index and coordinates,
@@ -275,6 +283,17 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "geometries": ["bbox", "classification_tag", "polygon"],
                 "degraded_geometries": [],
                 "modalities": ["image"],
+                "targets": [
+                    "yolo11",
+                    "yolo12",
+                    "yolo26",
+                    "yolov10",
+                    "yolov3",
+                    "yolov5",
+                    "yolov6",
+                    "yolov8",
+                    "yolov9",
+                ],
             },
             {
                 "name": "voc",
@@ -282,6 +301,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "geometries": ["bbox"],
                 "degraded_geometries": ["polygon"],
                 "modalities": ["image"],
+                "targets": ["voc"],
             },
             {
                 # Detection only, so a polygon is reduced to its box.
@@ -290,6 +310,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "geometries": ["bbox"],
                 "degraded_geometries": ["polygon"],
                 "modalities": ["image"],
+                "targets": ["yolov7"],
             },
         ],
         "total": 11,
@@ -311,6 +332,90 @@ def test_export_writes_into_the_directory_it_was_given(
     # `DummyExporter` writes nothing, so zero is an export that ran rather than one
     # that failed — and the count comes from walking `dest`, never from the plugin.
     assert result["file_count"] == 0
+
+
+def test_an_export_can_be_addressed_to_a_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The self-target of a format is the format, so this is the same export by another name."""
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    dest = tmp_path / "exports" / "dummy"
+
+    result = payload(
+        call("export_release", project=named, tag="v1.0", target="dummy", dest=str(dest))
+    )
+
+    assert (result["format"], result["target"]) == ("dummy", "dummy")
+    assert result["compatibility"]["target"] == "dummy"
+    written = json.loads((dest / EXPORT_REPORT_FILENAME).read_text(encoding="utf-8"))
+    assert written["target"] == "dummy"
+
+
+@pytest.mark.parametrize("tool", ["check_export", "export_release"])
+@pytest.mark.parametrize(
+    "address", [{}, {"target": "dummy", "format": "dummy"}], ids=["neither", "both"]
+)
+def test_target_and_format_are_one_choice(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tool: str, address: dict[str, str]
+) -> None:
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    extra = {"dest": str(tmp_path / "out")} if tool == "export_release" else {}
+
+    refusal = error(call(tool, project=named, tag="v1.0", **address, **extra))
+
+    assert refusal["message"] == "give exactly one of target and format"
+    assert not (tmp_path / "out").exists()
+
+
+def test_an_unknown_target_names_the_ones_that_are_installed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+
+    refusal = error(
+        call("export_release", project=named, tag="v1.0", target="yolo99", dest=str(tmp_path))
+    )
+
+    assert "yolo11" in refusal["message"]
+
+
+def test_check_export_by_target_names_the_target_on_the_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+
+    report = payload(call("check_export", project=named, tag="v1.0", target="dummy"))
+
+    assert (report["format"], report["target"]) == ("dummy", "dummy")
+
+
+def test_the_catalog_is_the_one_the_other_surfaces_publish() -> None:
+    document = payload(call("list_export_targets"))
+
+    assert document["total"] == len(document["items"])
+    rows = {row["name"]: row for row in document["items"]}
+    assert rows["yolo11"] == {
+        "name": "yolo11",
+        "label": "YOLO11",
+        "family": "ultralytics-yolo",
+        "format": "ultralytics",
+        "tasks": ["classify", "detect", "obb", "pose", "segment"],
+        "geometries": ["bbox", "classification_tag", "polygon"],
+        "hints": {
+            "recommended_size": [640, 640],
+            "recommended_strategy": "letterbox",
+            "trainer_resizes": True,
+            "augmentation_common": True,
+        },
+    }
+    assert rows["yolov7"]["format"] == "yolov5-yaml"
+    # Every installed format is reachable through the catalog.
+    formats = {row["name"] for row in payload(call("list_formats"))["items"]}
+    assert {row["format"] for row in rows.values()} == formats
 
 
 def test_an_unknown_format_names_the_ones_that_are_installed(
