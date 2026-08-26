@@ -27,7 +27,12 @@ from visionset.kernel.errors import (
     ExportTargetNotFound,
     InvalidExportTarget,
 )
-from visionset.kernel.ports import ContentReader, resolve_target, validate_targets
+from visionset.kernel.ports import (
+    ContentReader,
+    resolve_target,
+    validate_installed,
+    validate_targets,
+)
 
 NO_HINTS = PreprocessingHints(
     recommended_size=None,
@@ -204,3 +209,45 @@ def test_a_target_wider_than_its_exporter_is_refused_by_name() -> None:
 
     assert "wide" in str(refusal.value)
     assert str(refusal.value).endswith("polygon")
+
+
+def test_a_target_may_carry_a_geometry_the_exporter_writes_reduced() -> None:
+    """Degraded is still written: a lane format's target carries lanes."""
+    plugin = _Format(
+        "a-format", frozenset(), frozenset({_target(geometries=frozenset({GeometryType.POLYLINE}))})
+    )
+    plugin.degraded_geometries = frozenset({GeometryType.POLYLINE})
+
+    validate_targets(plugin)
+
+
+def test_every_installed_declaration_is_checked_at_once() -> None:
+    sound = _Format("a-format", frozenset({GeometryType.BBOX}), frozenset({_target("a")}))
+    wide = _Format(
+        "b-format",
+        frozenset({GeometryType.BBOX}),
+        frozenset({_target("b", frozenset({GeometryType.POLYGON}))}),
+    )
+
+    validate_installed({"a-format": sound})
+    with pytest.raises(InvalidExportTarget, match="'b'"):
+        validate_installed({"a-format": sound, "b-format": wide})
+
+
+def test_one_target_name_declared_by_two_installed_formats_is_a_conflict() -> None:
+    first = _Format("a-format", frozenset({GeometryType.BBOX}), frozenset({_target("taken")}))
+    second = _Format("b-format", frozenset({GeometryType.BBOX}), frozenset({_target("taken")}))
+
+    with pytest.raises(ExportTargetConflict) as refusal:
+        validate_installed({first.format_name: first, second.format_name: second})
+
+    assert "a-format" in str(refusal.value)
+    assert "b-format" in str(refusal.value)
+
+
+def test_one_format_declaring_many_targets_is_not_a_conflict() -> None:
+    plugin = _Format(
+        "a-format", frozenset({GeometryType.BBOX}), frozenset({_target("one"), _target("two")})
+    )
+
+    validate_installed({plugin.format_name: plugin})

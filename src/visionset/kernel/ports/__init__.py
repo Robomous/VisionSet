@@ -11,6 +11,7 @@ from visionset.kernel.ports.exporter import (
     ContentReader,
     Exporter,
     resolve_target,
+    validate_installed,
     validate_targets,
 )
 from visionset.kernel.ports.image_processor import (
@@ -62,4 +63,5 @@ __all__ = [
     "WeightsSource",
     "resolve_target",
     "validate_targets",
+    "validate_installed",
 ]
