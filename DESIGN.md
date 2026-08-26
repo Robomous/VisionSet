@@ -175,7 +175,7 @@ anti-pattern this section exists to prevent:
   spacing scale — gaps between sections, page padding, list rhythm. A screen reaches for
   `p-6`, `gap-4`, `space-y-8`; it does not invent a control's internal geometry.
 
-Nova's component geometry, transcribed from the preset (the concrete defaults every
+Nova's component geometry, as the canonical files carry it (the concrete defaults every
 primitive targets):
 
 | Control | Geometry |
@@ -212,7 +212,7 @@ is not its snapshot plus added lines. VisionSet adds exactly three variants that
 
 Two measurements are deliberately *not* the table's, and both are argued at the
 component: `Textarea` is `min-h-16` rather than a fixed height, because the content's own
-height is the point. `SelectTrigger` used to earn the same exception directly; now the
+height is the point. `SelectTrigger` used to earn the same exception directly; the
 canonical trigger is `h-8` like any other control, and a two-line option instead composes
 `twoLineTrigger` (`frontend/ui-core/src/lib/select.ts`, exported) onto the trigger at the
 call site — `data-[size=default]:h-auto min-h-8`, plus dropping the value's line clamp —
@@ -380,10 +380,11 @@ token is a later product decision, not a gap in this rewrite.
 shadcn's model is **open code**: a primitive is source VisionSet owns and edits in
 `frontend/ui-core/src/primitives/`, not a package dependency upgraded blindly. Radix
 supplies the behaviour (focus management, `aria-*` wiring, keyboard patterns); the style
-on top of it is `radix-nova`, recorded as `components.json`'s `style` field. There is no
-`shadcn add` run against this package after the initial generation, and no component
-replacement — the same primitives from before this rewrite still exist, now speaking the
-preset's vocabulary.
+on top of it is `radix-nova`, recorded as `components.json`'s `style` field. Every file
+there is installed by `shadcn@4.19.0 add` (`pnpm --filter @visionset/ui-core shadcn:add
+<name>`), not hand-authored; `frontend/ui-core/shadcn/` holds each one exactly as the CLI
+wrote it, and a primitive is edited only by adding lines to that file —
+`tests/scripts/shadcn_canonical.test.mjs` is the gate.
 
 Rendered to look at: `pnpm --filter @visionset/app dev`, then the `/styleguide` route
 (`frontend/app/src/styleguide/Styleguide.tsx`).
