@@ -1,7 +1,7 @@
 /**
- * A batch's jobs, as an accordion — at most one of them open, and every one closable.
+ * A batch's jobs, on the gallery: flat when there is one, an accordion from two.
  *
- * ## Why the frames moved inside a job
+ * ## Why the frames live inside a job
  *
  * A batch's assets are partitioned into jobs at approval, so "which frames am I
  * working" is a question only a job can answer. While the gallery drew one
@@ -10,9 +10,17 @@
  * person working job 2 scrolled past job 1's frames to reach their own, and the
  * strip could not say which job needed them without opening each one.
  *
- * So the grid, the segment counts and the timeline all live in the open panel and
- * all read that job. What stays outside is the one setting that is about looking
- * rather than about working: the thumbnail size.
+ * So the grid, the segment counts and the timeline all read one job. What stays
+ * outside is the one setting that is about looking rather than about working:
+ * the thumbnail size.
+ *
+ * ## One job is the batch
+ *
+ * The common batch has one job, and a one-row accordion is a header nobody can
+ * choose between, a bar repeating the batch's own and a sentence naming a job
+ * nobody else has. So with exactly one job there is no accordion: the job's
+ * controls sit under the batch header and its frames follow, and the batch bar
+ * is the page's one bar. The accordion exists from two jobs.
  *
  * ## At most one open, and every panel may be closed
  *
@@ -21,33 +29,20 @@
  * accordion read as an index. Which one opens on arrival is `defaultOpenJob`, and
  * it deliberately waits for **every** job's counts: opening off a half-read map
  * means opening the wrong job and jumping when the rest land.
+ *
+ * A closed panel is unmounted, and what a person chose inside it — the filter,
+ * the order, the selection — is kept here by job id, so reopening restores it.
  */
 
-import { useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react";
-import { ChevronDown, ChevronRight, X } from "lucide-react";
+import { useEffect, useState, type JSX, type KeyboardEvent } from "react";
+import { ChevronDown, ChevronRight, User } from "lucide-react";
 
-import { Button } from "../primitives/Button";
 import { Progress } from "../primitives/Feedback";
-import { FieldError, Input } from "../primitives/Input";
+import { FieldError } from "../primitives/Input";
 import { refusalProse } from "../data/refusals";
-import { FrameGrid } from "./FrameGrid";
-import { StartJobButton, Timeline, Toolbar } from "./GalleryScreen";
-import { PreLabelButton } from "./PreLabelDialog";
-import {
-  annotatedShare,
-  segmentCounts,
-  segmentProgress,
-  type Segment,
-} from "./batchState";
-import {
-  useAssignJob,
-  useJobsProgress,
-  type AssetSort,
-  type Batch,
-  type BatchAsset,
-  type Job,
-  type ProgressCounts,
-} from "./queries";
+import { DEFAULT_JOB_VIEW, JobWorkspace, patchView, type JobView } from "./GalleryControls";
+import { annotatedShare } from "./batchState";
+import { useJobsProgress, type Batch, type BatchAsset, type Job, type ProgressCounts } from "./queries";
 
 export interface JobPanelsProps {
   readonly projectId: string;
@@ -89,6 +84,77 @@ export function defaultOpenJob(
   return unfinished?.id ?? jobs[0]?.id ?? null;
 }
 
+/**
+ * What each job's frames are being looked at through, remembered across a close.
+ *
+ * A patch is applied to the state as it is *then*, not as the caller saw it: the
+ * grid reports its selection from an effect that can run after a filter change,
+ * and merging at write time is what keeps that report from undoing the filter.
+ */
+function useJobViews(): readonly [
+  (jobId: string) => JobView,
+  (jobId: string, patch: Partial<JobView>) => void,
+] {
+  const [views, setViews] = useState<ReadonlyMap<string, JobView>>(new Map());
+  const viewOf = (jobId: string): JobView => views.get(jobId) ?? DEFAULT_JOB_VIEW;
+  const setView = (jobId: string, patch: Partial<JobView>): void =>
+    setViews((current) => {
+      const before = current.get(jobId) ?? DEFAULT_JOB_VIEW;
+      const after = patchView(before, patch);
+      return after === before ? current : new Map(current).set(jobId, after);
+    });
+  return [viewOf, setView];
+}
+
+/**
+ * The one job's controls and frames, with nothing between them and the batch
+ * header. Its counts are read here, the same way the accordion reads every
+ * job's, so the segment chips have their numbers.
+ */
+export function SingleJobWorkspace({
+  projectId,
+  batch,
+  jobs,
+  minColumn,
+  onOpenAsset,
+  onOpenJob,
+  onCorrect,
+  onLoaded,
+  onSelectionChange,
+}: JobPanelsProps): JSX.Element {
+  const job = jobs[0] as Job;
+  const { counts: progress, error } = useJobsProgress([job.id]);
+  const [viewOf, setView] = useJobViews();
+
+  return (
+    <section
+      aria-label="Frames"
+      data-testid="job-workspace"
+      className="flex flex-col gap-3 rounded-md border border-border p-3"
+    >
+      {error !== null && <FieldError>{refusalProse(error)}</FieldError>}
+      <JobWorkspace
+        projectId={projectId}
+        batch={batch}
+        job={job}
+        ordinal={1}
+        minColumn={minColumn}
+        counts={progress?.get(job.id)}
+        view={viewOf(job.id)}
+        onView={(patch) => {
+          setView(job.id, patch);
+          if (patch.selected !== undefined) onSelectionChange?.(patch.selected);
+        }}
+        assignee="line"
+        {...(onOpenAsset === undefined ? {} : { onOpenAsset })}
+        {...(onOpenJob === undefined ? {} : { onOpenJob })}
+        {...(onCorrect === undefined ? {} : { onCorrect })}
+        {...(onLoaded === undefined ? {} : { onLoaded })}
+      />
+    </section>
+  );
+}
+
 export function JobPanels({
   projectId,
   batch,
@@ -101,6 +167,7 @@ export function JobPanels({
   onSelectionChange,
 }: JobPanelsProps): JSX.Element {
   const { counts: progress, error } = useJobsProgress(jobs.map((one) => one.id));
+  const [viewOf, setView] = useJobViews();
   // `undefined` is "the default has not been applied yet"; `null` is "the person
   // closed the last panel". The distinction is what stops the default from
   // reasserting itself: derived every render, it would move the open panel out
@@ -120,6 +187,8 @@ export function JobPanels({
   function toggle(jobId: string): void {
     if (jobId !== open) {
       setOpen(jobId);
+      // The header reads the open panel's selection; the one opening has its own.
+      onSelectionChange?.(viewOf(jobId).selected);
       return;
     }
     setOpen(null);
@@ -146,22 +215,35 @@ export function JobPanels({
             onOpen={() => toggle(job.id)}
           />
           {job.id === open && (
-            // Keyed on the job, so the segment, the order and the selection are
-            // the open job's own rather than the previous one's carried over.
-            <JobPanel
+            // Keyed on the job, so the grid and the timeline are the open job's
+            // own rather than the previous one's carried over.
+            <section
               key={job.id}
-              projectId={projectId}
-              batch={batch}
-              job={job}
-              ordinal={index + 1}
-              minColumn={minColumn}
-              counts={progress?.get(job.id)}
-              {...(onOpenAsset === undefined ? {} : { onOpenAsset })}
-              {...(onOpenJob === undefined ? {} : { onOpenJob })}
-              {...(onCorrect === undefined ? {} : { onCorrect })}
-              {...(onLoaded === undefined ? {} : { onLoaded })}
-              {...(onSelectionChange === undefined ? {} : { onSelectionChange })}
-            />
+              role="region"
+              id={`job-panel-${job.id}`}
+              aria-labelledby={`job-header-${job.id}`}
+              data-testid={`job-panel-${job.id}`}
+              className="flex flex-col gap-3 border-t border-border p-3"
+            >
+              <JobWorkspace
+                projectId={projectId}
+                batch={batch}
+                job={job}
+                ordinal={index + 1}
+                minColumn={minColumn}
+                counts={progress?.get(job.id)}
+                view={viewOf(job.id)}
+                onView={(patch) => {
+                  setView(job.id, patch);
+                  if (patch.selected !== undefined) onSelectionChange?.(patch.selected);
+                }}
+                assignee="button"
+                {...(onOpenAsset === undefined ? {} : { onOpenAsset })}
+                {...(onOpenJob === undefined ? {} : { onOpenJob })}
+                {...(onCorrect === undefined ? {} : { onCorrect })}
+                {...(onLoaded === undefined ? {} : { onLoaded })}
+              />
+            </section>
           )}
         </div>
       ))}
@@ -202,7 +284,9 @@ function JobHeader({
           id={`job-header-${job.id}`}
           data-testid={`job-header-${job.id}`}
           aria-expanded={expanded}
-          aria-controls={`job-panel-${job.id}`}
+          // Only while the panel exists: a closed panel is unmounted, and an id
+          // pointing at nothing is a broken reference rather than a closed one.
+          {...(expanded ? { "aria-controls": `job-panel-${job.id}` } : {})}
           onClick={onOpen}
           onKeyDown={moveBetweenHeaders}
           className={
@@ -231,8 +315,9 @@ function JobHeader({
           className="min-w-0 flex-1"
         />
       )}
-      <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-        {job.assignee ?? "—"}
+      <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <User className="size-3.5" aria-hidden="true" />
+        {job.assignee ?? "Unassigned"}
       </span>
     </div>
   );
@@ -267,201 +352,4 @@ function moveBetweenHeaders(event: KeyboardEvent<HTMLButtonElement>): void {
   if (target === undefined) return;
   event.preventDefault();
   target.focus();
-}
-
-/**
- * One job's frames and everything that acts on them.
- *
- * In order: the door into the annotator and the two things that can be done to
- * the job as a whole, then that job's filters, its timeline and its grid. The
- * counts behind the segments are the **job's** `ProgressCounts`, never the
- * batch's — a chip reading `All (48)` over a job holding twelve is the filter
- * lying about what it filters.
- */
-function JobPanel({
-  projectId,
-  batch,
-  job,
-  ordinal,
-  minColumn,
-  counts,
-  onOpenAsset,
-  onOpenJob,
-  onCorrect,
-  onLoaded,
-  onSelectionChange,
-}: {
-  readonly projectId: string;
-  readonly batch: Batch;
-  readonly job: Job;
-  readonly ordinal: number;
-  readonly minColumn: number;
-  readonly counts: ProgressCounts | undefined;
-  readonly onOpenAsset?: (asset: BatchAsset) => void;
-  readonly onOpenJob?: (jobId: string) => void;
-  readonly onCorrect?: () => void;
-  readonly onLoaded?: (assets: readonly BatchAsset[]) => void;
-  readonly onSelectionChange?: (selected: ReadonlySet<string>) => void;
-}): JSX.Element {
-  const [segment, setSegment] = useState<Segment>("all");
-  const [sort, setSort] = useState<AssetSort>("membership");
-  const [loaded, setLoaded] = useState<readonly BatchAsset[]>([]);
-  const [highlighted, setHighlighted] = useState<string | null>(null);
-  const scrollToAsset = useRef<((assetId: string) => void) | null>(null);
-
-  // Both this panel's timeline and the screen's header read the same window, and
-  // the identity has to be stable: `FrameGrid` re-runs its report whenever this
-  // changes.
-  const report = useCallback(
-    (assets: readonly BatchAsset[]) => {
-      setLoaded(assets);
-      onLoaded?.(assets);
-    },
-    [onLoaded],
-  );
-
-  return (
-    <section
-      role="region"
-      id={`job-panel-${job.id}`}
-      aria-labelledby={`job-header-${job.id}`}
-      data-testid={`job-panel-${job.id}`}
-      className="flex flex-col gap-3 border-t border-border p-3"
-    >
-      <div className="flex flex-wrap items-center gap-3">
-        {onOpenJob !== undefined && (
-          <StartJobButton batchId={batch.id} job={job} onOpenJob={onOpenJob} />
-        )}
-        <PreLabelButton batch={batch} job={job} ordinal={ordinal} onSegment={setSegment} />
-        <AssigneeEditor batchId={batch.id} job={job} ordinal={ordinal} />
-      </div>
-
-      <Toolbar
-        segment={segment}
-        onSegment={setSegment}
-        sort={sort}
-        onSort={setSort}
-        showSegments
-        showDensity={false}
-        {...(counts === undefined ? {} : { counts: segmentCounts(counts) })}
-      />
-
-      <Timeline
-        assets={loaded}
-        highlighted={highlighted}
-        onPick={(assetId) => {
-          scrollToAsset.current?.(assetId);
-          setHighlighted(assetId);
-        }}
-      />
-
-      <FrameGrid
-        projectId={projectId}
-        batchId={batch.id}
-        batch={batch}
-        view={{ job: job.id, progress: segmentProgress(segment), sort }}
-        segment={segment}
-        minColumn={minColumn}
-        selectable
-        onLoaded={report}
-        scrollRef={scrollToAsset}
-        emptyBatch={{
-          title: "This job has no frames",
-          description: "Every frame it held has been removed from the batch.",
-        }}
-        {...(onOpenAsset === undefined ? {} : { onOpenAsset })}
-        {...(onCorrect === undefined ? {} : { onCorrect })}
-        {...(onSelectionChange === undefined ? {} : { onSelectionChange })}
-      />
-    </section>
-  );
-}
-
-/**
- * Who is working this job. A name, not an account — `JobService.assign` takes a
- * plain string and there is no annotator identity to enforce anything against —
- * so the control is always live; there is nothing to gate it on.
- */
-function AssigneeEditor({
-  batchId,
-  job,
-  ordinal,
-}: {
-  readonly batchId: string;
-  readonly job: Job;
-  readonly ordinal: number;
-}): JSX.Element {
-  const assign = useAssignJob(batchId, job.id);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  // Escape closes the editor WITHOUT committing, and it does so by unmounting
-  // the input — which is what fires the blur a naive `onBlur={commit}` would
-  // then read as "the user tabbed away, save it". This flag is how Escape's own
-  // blur is told apart from every other one: set immediately before the state
-  // change that causes it, read (and cleared) by the blur that follows.
-  const discarding = useRef(false);
-
-  function commit(): void {
-    const name = draft.trim();
-    if (name.length === 0 || name === (job.assignee ?? "")) {
-      setEditing(false);
-      return;
-    }
-    assign.mutate(name, { onSuccess: () => setEditing(false) });
-  }
-
-  return (
-    <>
-      {editing ? (
-        <Input
-          autoFocus
-          value={draft}
-          placeholder="Name, then Enter"
-          disabled={assign.isPending}
-          aria-label={`Assignee for job ${ordinal}`}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") commit();
-            if (event.key === "Escape") {
-              discarding.current = true;
-              setEditing(false);
-            }
-          }}
-          onBlur={() => {
-            if (discarding.current) {
-              discarding.current = false;
-              return;
-            }
-            commit();
-          }}
-          className="w-40"
-        />
-      ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={assign.isPending}
-          onClick={() => {
-            setDraft(job.assignee ?? "");
-            setEditing(true);
-          }}
-        >
-          {job.assignee ?? "Assign"}
-        </Button>
-      )}
-      {job.assignee !== null && !editing && (
-        <button
-          type="button"
-          aria-label={`Clear assignee for job ${ordinal}`}
-          disabled={assign.isPending}
-          onClick={() => assign.mutate(null)}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <X className="size-4" aria-hidden="true" />
-        </button>
-      )}
-      {assign.isError && <FieldError>{refusalProse(assign.error)}</FieldError>}
-    </>
-  );
 }

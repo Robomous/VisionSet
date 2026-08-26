@@ -2074,9 +2074,10 @@ describe("the job panel's way into the annotator", () => {
         />,
       ),
     );
-    // The accordion first: the frames are *inside* a panel now, so there are no
-    // tiles at all until the job roster and its counts have both landed.
-    await screen.findByTestId("job-panels");
+    // The job's workspace first: the frames belong to the job, so there are no
+    // tiles at all until the roster and its counts have both landed. One job
+    // means no accordion — the workspace sits flat under the header.
+    await screen.findByTestId("job-workspace");
     await screen.findByTestId("tile-asset-0");
     return openedJob;
   }
@@ -2084,13 +2085,48 @@ describe("the job panel's way into the annotator", () => {
   it("offers no door in the header once the batch is open", async () => {
     await openWith("in_annotation", "pending", "unannotated");
     expect(screen.queryByTestId("start-annotating")).toBeNull();
-    // Pre-label is a job's action now, so every trigger on the page is inside the
-    // accordion. Asserting a batch-keyed testid is absent would pass on a page
-    // that still had a header mount, because the testid is keyed by job.
-    const panels = screen.getByTestId("job-panels");
-    const triggers = [...document.querySelectorAll('[data-testid^="pre-label-"]')];
-    expect(triggers.length).toBeGreaterThan(0);
-    expect(triggers.every((node) => panels.contains(node))).toBe(true);
+    // Pre-label and the door are the job's, so every trigger on the page is in
+    // the job's workspace and none in the header. Asserting a batch-keyed testid
+    // is absent would pass on a page that still had a header mount, because the
+    // testid is keyed by job.
+    const workspace = screen.getByTestId("job-workspace");
+    const header = screen.getByTestId("batch-title").closest("header") as HTMLElement;
+    const triggers = [
+      ...document.querySelectorAll('[data-testid^="pre-label-"], [data-testid^="start-job-"]'),
+    ];
+    expect(triggers.length).toBe(2);
+    expect(triggers.every((node) => workspace.contains(node))).toBe(true);
+    expect(triggers.some((node) => header.contains(node))).toBe(false);
+  });
+
+  it("draws one job flat: no accordion, no job header, one bar on the page", async () => {
+    await openWith("in_annotation", "in_progress", "unannotated", "annotated");
+    expect(screen.queryByTestId("job-panels")).toBeNull();
+    expect(screen.queryByTestId(`job-header-${JOB}`)).toBeNull();
+    expect(screen.queryByTestId(`job-row-${JOB}`)).toBeNull();
+    expect(screen.getAllByRole("progressbar")).toHaveLength(1);
+    // The workspace holds, in order, the action row, the filter, the strip and
+    // the grid — everything the accordion's open panel held, with nothing to
+    // choose between above it.
+    const workspace = within(screen.getByTestId("job-workspace"));
+    expect(workspace.getByTestId(`start-job-${JOB}`)).toBeTruthy();
+    expect(workspace.getByTestId("segments")).toBeTruthy();
+    expect(workspace.getByTestId("sort-order")).toBeTruthy();
+    expect(workspace.getByTestId("timeline")).toBeTruthy();
+    expect(workspace.getByTestId("tile-asset-0")).toBeTruthy();
+    expect(workspace.getByTestId(`assignee-${JOB}`).textContent).toContain("Unassigned");
+  });
+
+  it("keeps the header's filled control to the batch's own step, and to at most one", async () => {
+    // Two filled controls on a page are two answers to "what now?"; none on a
+    // page whose step is the column's Annotate is correct. The job's door is
+    // never the filled one — the batch's own step is, while it has one.
+    const filled = (): Element[] => [
+      ...document.querySelectorAll('[data-testid="gallery"] [data-variant="primary"]'),
+    ];
+    await openWith("in_annotation", "in_progress", "unannotated");
+    expect(filled()).toHaveLength(0);
+    expect(screen.getByTestId(`start-job-${JOB}`).dataset.variant).toBe("secondary");
   });
 
   it("starts a pending job, then opens it", async () => {
@@ -2255,10 +2291,19 @@ describe("the gallery header's own next step", () => {
     expect(screen.queryByTestId("start-annotating")).toBeNull();
   });
 
-  it("offers no Start on an in_annotation batch, whose door is in the job's panel", async () => {
+  it("offers no Start on an in_annotation batch, whose door is the job's", async () => {
     await openIn("in_annotation", "annotated", "unannotated", "unannotated");
     expect(screen.queryByTestId("start-batch")).toBeNull();
     expect(screen.queryByTestId("start-annotating")).toBeNull();
+  });
+
+  it("fills exactly one control while the batch has a step of its own", async () => {
+    const filled = (): Element[] => [
+      ...document.querySelectorAll('[data-testid="gallery"] [data-variant="primary"]'),
+    ];
+    await openIn("approved", "unannotated", "unannotated");
+    expect(filled()).toHaveLength(1);
+    expect(filled()[0]).toBe(screen.getByTestId("start-batch"));
   });
 
   it("performs the batch's own start rather than navigating into the annotator", async () => {
@@ -2379,12 +2424,14 @@ describe("the jobs accordion", () => {
   }
 
   /**
-   * The assignee editor is in the **open panel**, not on every row: a collapsed
-   * header is an overview and names who has the job, and the control that changes
-   * that is one of the things opening a panel is for.
+   * With one job the editor is a line of the action row — "Assigned to Dana" or
+   * "Unassigned", the name itself the control. With several, the name is on the
+   * collapsed header and the editor is in the **open panel**, because a header
+   * is an overview and the control that changes it is one of the things opening
+   * a panel is for.
    */
-  async function openPanel(): Promise<ReturnType<typeof within>> {
-    return within(await screen.findByTestId(`job-panel-${JOB}`));
+  async function workspace(): Promise<ReturnType<typeof within>> {
+    return within(await screen.findByTestId("job-workspace"));
   }
 
   it("names each job's assignee on its own header, open or not", async () => {
@@ -2405,10 +2452,10 @@ describe("the jobs accordion", () => {
     // The overview half of the claim: who has a job is legible without opening
     // it, and an unassigned one says so rather than saying nothing.
     expect((await screen.findByTestId(`job-row-${JOB}`)).textContent).toContain("Dana Reyes");
-    expect(screen.getByTestId(`job-row-${OTHER_JOB}`).textContent).toContain("—");
+    expect(screen.getByTestId(`job-row-${OTHER_JOB}`).textContent).toContain("Unassigned");
 
     // ...and the editor is in whichever panel is open, once.
-    const panel = await openPanel();
+    const panel = within(await screen.findByTestId(`job-panel-${JOB}`));
     expect(panel.getByRole("button", { name: "Dana Reyes" })).toBeTruthy();
     expect(screen.queryAllByLabelText(/Assignee for job/)).toHaveLength(0);
   });
@@ -2446,8 +2493,8 @@ describe("the jobs accordion", () => {
       return undefined;
     });
     renderGallery();
-    const panel = await openPanel();
-    await userEvent.click(panel.getByRole("button", { name: /assign/i }));
+    const panel = await workspace();
+    await userEvent.click(panel.getByRole("button", { name: "Unassigned" }));
     await userEvent.keyboard("Dana Reyes{Enter}");
     const said = await panel.findByRole("alert");
     expect(said.textContent).toContain("That job is no longer on record.");
@@ -2471,13 +2518,14 @@ describe("the jobs accordion", () => {
       return undefined;
     });
     renderGallery();
-    const panel = await openPanel();
-    await userEvent.click(panel.getByRole("button", { name: /assign/i }));
+    const panel = await workspace();
+    await userEvent.click(panel.getByRole("button", { name: "Unassigned" }));
     await userEvent.keyboard("Dana Reyes{Enter}");
     const put = sent.find((request) => request.method === "PUT");
     expect(put).toBeTruthy();
     expect(JSON.parse(bodies.get(put!) ?? "")).toEqual({ assignee: "Dana Reyes" });
-    expect(await panel.findByText("Dana Reyes")).toBeTruthy();
+    expect(await panel.findByRole("button", { name: "Dana Reyes" })).toBeTruthy();
+    expect(panel.getByTestId(`assignee-${JOB}`).textContent).toContain("Assigned to");
   });
 
   it("commits the typed name on blur, not only on Enter", async () => {
@@ -2490,8 +2538,8 @@ describe("the jobs accordion", () => {
       return undefined;
     });
     renderGallery();
-    const panel = await openPanel();
-    await userEvent.click(panel.getByRole("button", { name: /assign/i }));
+    const panel = await workspace();
+    await userEvent.click(panel.getByRole("button", { name: "Unassigned" }));
     await userEvent.type(panel.getByLabelText(/Assignee for job/), "Dana Reyes");
     await userEvent.tab();
     const put = sent.find((request) => request.method === "PUT");
@@ -2507,11 +2555,11 @@ describe("the jobs accordion", () => {
       return undefined;
     });
     renderGallery();
-    const panel = await openPanel();
-    await userEvent.click(panel.getByRole("button", { name: /assign/i }));
+    const panel = await workspace();
+    await userEvent.click(panel.getByRole("button", { name: "Unassigned" }));
     await userEvent.type(panel.getByLabelText(/Assignee for job/), "Dana Reyes");
     await userEvent.keyboard("{Escape}");
-    expect(await panel.findByRole("button", { name: "Assign" })).toBeTruthy();
+    expect(await panel.findByRole("button", { name: "Unassigned" })).toBeTruthy();
     expect(sent.some((request) => request.method === "PUT")).toBe(false);
   });
 
@@ -2523,10 +2571,10 @@ describe("the jobs accordion", () => {
       return undefined;
     });
     renderGallery();
-    const panel = await openPanel();
-    await userEvent.click(panel.getByRole("button", { name: /assign/i }));
+    const panel = await workspace();
+    await userEvent.click(panel.getByRole("button", { name: "Unassigned" }));
     await userEvent.tab();
-    expect(await panel.findByRole("button", { name: "Assign" })).toBeTruthy();
+    expect(await panel.findByRole("button", { name: "Unassigned" })).toBeTruthy();
     expect(sent.some((request) => request.method === "PUT")).toBe(false);
   });
 
