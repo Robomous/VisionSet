@@ -160,6 +160,16 @@ export const REFUSAL_PROSE: Record<string, string> = {
   RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA:
     "The active schema no longer describes some annotations in this dataset.",
 
+  // Pre-processing recipes. The two 409s arrive on an export, where the
+  // remedy is a different release or a different recipe; the kernel's own
+  // sentences for the name pair carry a project id, which a person cannot use.
+  PREPROCESSING_RECIPE_NOT_FOUND: "That recipe is no longer on record.",
+  PREPROCESSING_RECIPE_NAME_TAKEN: "A recipe with that name already exists in this project.",
+  AUGMENTATION_REQUIRES_SPLIT:
+    "This recipe augments, and the release was published without a split — publish one with folds, or export with a recipe that only resizes.",
+  PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY:
+    "A step in this recipe cannot move a shape this release holds — quarter turns cannot follow a polyline. Take the step out, or export without the recipe.",
+
   // Inference connections.
   INFERENCE_CONNECTION_NOT_FOUND: "That model connection is no longer on record.",
   INFERENCE_CONNECTION_NOT_DOWNLOADABLE:

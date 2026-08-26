@@ -75,9 +75,12 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { ExportTargetSelect } from "../patterns/ExportTargetSelect";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../primitives/Select";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { DatasetAssetDialog, trunkAssetLabel } from "./DatasetAssetDialog";
 import { saveBlob } from "./download";
+import { PreprocessingTab } from "./PreprocessingTab";
+import { describeRecipeSpec } from "./recipeDraft";
 import {
   TRUNK_PAGE_SIZE,
   useBackgroundJob,
@@ -88,6 +91,7 @@ import {
   useExportTargets,
   useFormats,
   useJobArtifact,
+  usePreprocessingRecipes,
   useProjectDataset,
   usePublishRelease,
   useReleases,
@@ -114,15 +118,22 @@ const CONTENT_VIOLATES_SCHEMA = "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA";
  * route is a redirect, so nothing can reach this screen standalone.
  */
 /**
- * The dataset's three views: what it holds in numbers, what it holds in pictures,
- * what has been frozen out of it. Tabs, because each answers a different question
- * and the page was all three at once — counts, a grid and a timeline in one
- * column, each pushing the next below the fold.
+ * The dataset's four views: what it holds in numbers, what it holds in pictures,
+ * what an export does to the pictures, what has been frozen out of it. Tabs,
+ * because each answers a different question and the page was all of them at
+ * once — counts, a grid and a timeline in one column, each pushing the next
+ * below the fold. Pre-processing sits before Releases because a recipe is
+ * chosen at export, which is a release's own control.
  */
-export type DatasetTab = "overview" | "assets" | "releases";
+export type DatasetTab = "overview" | "assets" | "preprocessing" | "releases";
 
-const DATASET_TABS: readonly DatasetTab[] = ["overview", "assets", "releases"];
+export const DATASET_TABS: readonly DatasetTab[] = ["overview", "assets", "preprocessing", "releases"];
 const DEFAULT_DATASET_TAB: DatasetTab = "overview";
+
+/** The `DatasetTab` a raw value names, or the default: the host's normaliser. */
+export function resolveDatasetTab(tab: string | undefined): DatasetTab {
+  return DATASET_TABS.find((one) => one === tab) ?? DEFAULT_DATASET_TAB;
+}
 
 export interface DatasetScreenProps {
   readonly projectId: string;
@@ -136,8 +147,9 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
   const dataset = useProjectDataset(projectId);
   const stats = useDatasetStats(dataset.data?.id);
   const releases = useReleases(dataset.data?.id);
+  const recipes = usePreprocessingRecipes(projectId);
   const [publishing, setPublishing] = useState(false);
-  const current = DATASET_TABS.find((one) => one === tab) ?? DEFAULT_DATASET_TAB;
+  const current = resolveDatasetTab(tab);
 
   return (
     <div className="flex flex-col gap-6" data-testid="dataset-screen">
@@ -167,8 +179,7 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
           ? { defaultValue: current }
           : {
               value: current,
-              onValueChange: (next: string) =>
-                onTabChange(DATASET_TABS.find((one) => one === next) ?? DEFAULT_DATASET_TAB),
+              onValueChange: (next: string) => onTabChange(resolveDatasetTab(next)),
             })}
         data-testid="dataset-tabs"
       >
@@ -190,6 +201,10 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
           <TabsTrigger value="assets" data-testid="dataset-tab-assets">
             Assets
             {stats.data !== undefined && <Badge>{stats.data.asset_count}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="preprocessing" data-testid="dataset-tab-preprocessing">
+            Pre-processing
+            {recipes.data !== undefined && <Badge>{recipes.data.total}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="releases" data-testid="dataset-tab-releases">
             Releases
@@ -252,6 +267,10 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
           <TrunkAssets projectId={projectId} datasetId={dataset.data?.id} />
         </TabsContent>
 
+        <TabsContent value="preprocessing">
+          <PreprocessingTab projectId={projectId} datasetId={dataset.data?.id} />
+        </TabsContent>
+
         <TabsContent value="releases">
           <Async
             query={releases}
@@ -267,7 +286,7 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
                 {[...page.items]
                   .sort((a, b) => b.created_at.localeCompare(a.created_at))
                   .map((release) => (
-                    <ReleaseCard key={release.id} release={release} />
+                    <ReleaseCard key={release.id} projectId={projectId} release={release} />
                   ))}
               </div>
             )}
@@ -576,7 +595,13 @@ function Stat({ label, value }: { readonly label: string; readonly value: number
   );
 }
 
-function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
+function ReleaseCard({
+  projectId,
+  release,
+}: {
+  readonly projectId: string;
+  readonly release: Release;
+}): JSX.Element {
   const verify = useVerifyRelease(release.id);
   const manifest = useDownloadManifest(release.id);
   const [exporting, setExporting] = useState(false);
@@ -668,7 +693,13 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
         )}
       </CardContent>
 
-      <ExportDialog releaseId={release.id} tag={release.tag} open={exporting} onClose={() => setExporting(false)} />
+      <ExportDialog
+        projectId={projectId}
+        releaseId={release.id}
+        tag={release.tag}
+        open={exporting}
+        onClose={() => setExporting(false)}
+      />
     </Card>
   );
 }
@@ -918,12 +949,20 @@ const JOB_STATE_VARIANT: Record<string, BadgeTone> = {
 };
 
 
+/**
+ * A recipe name is a slug, so a tilde can never be one — which is what makes it
+ * safe as the "no recipe" option's value. `Select` refuses an empty string.
+ */
+const NO_RECIPE = "~none";
+
 function ExportDialog({
+  projectId,
   releaseId,
   tag,
   open,
   onClose,
 }: {
+  readonly projectId: string;
   readonly releaseId: string;
   readonly tag: string;
   readonly open: boolean;
@@ -931,9 +970,11 @@ function ExportDialog({
 }): JSX.Element {
   const targets = useExportTargets();
   const formats = useFormats();
+  const recipes = usePreprocessingRecipes(projectId);
   const exportRelease = useExportRelease(releaseId);
   const artifact = useJobArtifact();
   const [target, setTarget] = useState("");
+  const [recipe, setRecipe] = useState(NO_RECIPE);
   const [consented, setConsented] = useState(false);
   // The job this dialog is watching. Null until a launch is accepted, and null
   // again once the archive has been saved — a finished download is not something
@@ -966,7 +1007,11 @@ function ExportDialog({
     setSaved(false);
     setOutcome(null);
     exportRelease.mutate(
-      { target, ...(allowLossy ? { allowLossy: true } : {}) },
+      {
+        target,
+        ...(recipe === NO_RECIPE ? {} : { recipe }),
+        ...(allowLossy ? { allowLossy: true } : {}),
+      },
       { onSuccess: (queued) => setJobId(queued.id) },
     );
   }
@@ -1061,6 +1106,40 @@ function ExportDialog({
                 Whether {chosen.label} loses anything could not be read — the export asks before
                 dropping a shape.
               </FieldHint>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="export-recipe">Pre-processing recipe</Label>
+            {/* The same three answers as the target picker: a recipes read that
+                failed is said, a project with none is said, and the picker is
+                for when there is something to choose. `None` is always an
+                option, because an export without a recipe applies no transform. */}
+            {recipes.isError ? (
+              <FieldHint data-testid="export-recipes-error">
+                {refusalProse(recipes.error)} The export runs without a recipe.
+              </FieldHint>
+            ) : recipes.data !== undefined && recipes.data.items.length === 0 ? (
+              <FieldHint data-testid="export-recipes-empty">
+                None yet — a recipe is written on the Pre-processing view. This export applies no
+                transform.
+              </FieldHint>
+            ) : (
+              <Select value={recipe} onValueChange={setRecipe}>
+                <SelectTrigger id="export-recipe" data-testid="export-recipe">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_RECIPE} meta="Images and labels as the release holds them">
+                    None
+                  </SelectItem>
+                  {(recipes.data?.items ?? []).map((one) => (
+                    <SelectItem key={one.name} value={one.name} meta={describeRecipeSpec(one.spec)}>
+                      {one.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
 

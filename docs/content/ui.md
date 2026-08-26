@@ -221,14 +221,72 @@ timeline offers no edit and no delete, because there is no `ReleaseService.delet
  - only a project's own cascade removes one, and the manifest blob survives even
 that.
 
-**The section is three views behind one tab row** — Overview (the counts and the per-class
-table), Assets (the trunk), Releases (the timeline) — because each answers a different
-question and stacked in one column each pushed the next below the fold. The row is the
-product's one tab shape (`Tabs`' `line` variant on a full-width hairline); Assets and
-Releases carry their counts on the label. The view is component state, Overview by
-default; `DatasetScreen` takes `tab`/`onTabChange` like every other screen, so a host
-that wants the view in a URL can wire it without a router inside `ui-core`. Publish
-release stays on the section header, which every view shares.
+**The section is four views behind one tab row** — Overview (the counts and the per-class
+table), Assets (the trunk), Pre-processing (the project's recipes), Releases (the timeline) —
+because each answers a different question and stacked in one column each pushed the next
+below the fold. The row is the product's one tab shape (`Tabs`' `line` variant on a
+full-width hairline); Assets, Pre-processing and Releases carry their counts on the label.
+The view is component state, Overview by default; `DatasetScreen` takes `tab`/`onTabChange`
+like every other screen, and `ProjectScreen` is the host that holds it, because the
+Pre-processing view's editor owns the page's filled control and the navigation column
+that steps back for it (`contentOwnsTheAction`) is drawn outside the section. Publish
+release stays on the section header, which every view shares, and is `secondary` on every
+view.
+
+**Pre-processing is a recipe, written once and chosen at export.** A recipe is a named
+project resource — no state, no `allowed_actions`, every write unconditional
+(`docs/content/preprocessing.md`) — so the view gates nothing. The left panel is the list,
+one row per recipe with its one-line summary (`letterbox 640×640 · flip · 2 variants`) and
+the target its hints came from as a `quiet` chip, a small `New`, and the line that says where
+a recipe acts: *Applied at export. Choose a recipe in the Export dialog; exports without one
+apply no transform.* With no recipe yet the panel is an invitation with one verb-first
+action. The first recipe opens on arrival, so the editor is on screen whenever there is
+something to edit.
+
+The editor is **four steps, always visible, each settled or not** — not the ingest flow's
+one-step-at-a-time stepper, because a recipe's choices have no order between them. The
+marker at each step's head is the ingest flow's own (`patterns/StepMarker.tsx`), so a
+decided step reads the same on both screens. *Target model* is the Export dialog's grouped
+picker (`patterns/ExportTargetSelect.tsx`), and choosing one preselects the resize from the
+target's hints — `recommended_strategy` on the strategy chips, marked *suggested*, and
+`recommended_size` in the width and height — while the second line names the family, the
+tasks, the format it writes, and the geometries it carries with the active schema's class
+count. The hints are read off the wire; nothing in the browser computes a size. **Changing
+the target rewrites the suggestion only for fields nobody has typed in**, so a size chosen on
+purpose survives a change of model (`recipeDraft.ts`, `touched`). *Resize* leads with the
+ambient line a trainer earns when `trainer_resizes` is set (*YOLO11 letterboxes to 640 on
+its own. Pre-resizing shrinks the archive and speeds up loading.*), then Letterbox / Stretch
+/ None, the size, the pad value for a letterbox, and the *Geometry exact* line.
+*Augmentation* is three checkboxes — the amount beside brightness and contrast, the variants
+per image beneath — and the line that says variants are written for the train fold only, so
+an export with augmentation needs a release published with a split. Ticking the first
+augmentation sets one variant and unticking the last clears it, which are the spec's own two
+cross-field rules; every other bound of the request body is restated beside its field
+(*Width is a whole number from 32 to 8192.*) so the reason a step is unsettled is next to
+it and the footer carries the first one beside a shut *Save recipe*. Those are the body's
+shape, not a kernel rule the client is mirroring: the server still answers 422 to a body the
+form did not build.
+
+*Preview* renders three sample assets through `POST /projects/{id}/preprocessing-preview`,
+the export's own kernel path over a one-asset manifest: the first three train-fold members
+of the newest release with a split — variants are the train fold's — or the project's first
+three assets when no release has one. Three columns: the asset as it is, after the resize
+step alone, and the first augmented variant; a stage the recipe does not have says so
+(*No resize step*) rather than repeating the original. Each cell is one request keyed on
+the spec it renders, and the spec settles for 400 ms before a cell asks, so typing `640`
+does not pay for `6` and `64`. The cell shows the rendered image and nothing over it; the
+response carries the placed annotations for the static overlay pattern to paint when it
+lands. A refused rendering — `UNSUPPORTED_MEDIA` for an asset that is not a JPEG, PNG or
+WebP — is prose in the cell.
+
+Save is a create for a new draft and a whole-replace `PUT` at the recipe's current name for
+an open one; Discard puts the stored spec back; `PREPROCESSING_RECIPE_NAME_TAKEN` and every
+other refusal render through the vocabulary. The Export dialog's second control,
+**Pre-processing recipe**, lists the same recipes with the same one-line summary under
+*None*, and sends the chosen name as `recipe=`; a project with none says so in a line rather
+than offering a picker with one row. The two 409s an export can answer —
+`AUGMENTATION_REQUIRES_SPLIT`, `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY` — are refusals, never
+consents: prose with the remedy, and no checkbox.
 
 **The trunk is a grid of pictures, looked at one at a time.** Every promoted asset is a
 tile — the frame number over the picture and how many labels it carries underneath, both read

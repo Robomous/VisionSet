@@ -3113,6 +3113,32 @@ describe("the project's identity and its one filled control", () => {
     expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
   });
 
+  it("steps Ingest back while the Pre-processing view holds the filled button, and forward again", async () => {
+    // The recipe editor owns the page's forward action — Save recipe, or the
+    // invitation to write one — so the column's control steps back for exactly
+    // as long as that view is showing, in both directions.
+    headerFor({});
+    on("GET", /\/dataset$/, {
+      status: 200,
+      body: { id: "99999999-9999-4999-8999-999999999999", project_id: PROJECT, name: "highway", description: null },
+    });
+    on("GET", /\/preprocessing-recipes$/, { status: 200, body: { items: [], total: 0 } });
+    on("GET", /\/releases$/, { status: 200, body: { items: [], total: 0 } });
+    render(mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} tab="dataset" />));
+
+    await screen.findByTestId("dataset-tabs");
+    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+    expect(screen.getByTestId("publish-release").className).not.toContain("bg-primary");
+
+    await userEvent.click(screen.getByTestId("dataset-tab-preprocessing"));
+    const invitation = await screen.findByTestId("recipe-new");
+    expect(filled()).toEqual([invitation]);
+    expect(screen.getByTestId("publish-release").className).not.toContain("bg-primary");
+
+    await userEvent.click(screen.getByTestId("dataset-tab-releases"));
+    await waitFor(() => expect(filled()).toEqual([screen.getByTestId("go-ingest")]));
+  });
+
   it("moves Rename into the overflow, so only two buttons show", async () => {
     headerFor({ batchState: "in_annotation" });
     render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />));

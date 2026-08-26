@@ -250,7 +250,27 @@ function baseline(): void {
     },
   });
   on("GET", /\/export-targets$/, { status: 200, body: { items: TARGETS, total: TARGETS.length } });
+  on("GET", /\/preprocessing-recipes$/, { status: 200, body: { items: RECIPES, total: RECIPES.length } });
 }
+
+/** One recipe of the project: what the export dialog offers beside the target. */
+const RECIPES = [
+  {
+    id: "88888888-8888-4888-8888-888888888888",
+    project_id: PROJECT,
+    name: "yolo-640",
+    spec: {
+      target: "yolo11",
+      steps: [
+        { kind: "resize", strategy: "letterbox", width: 640, height: 640, pad_value: 114 },
+        { kind: "augment", op: "hflip", amount: 0.2 },
+      ],
+      variants_per_asset: 1,
+    },
+    created_at: "2026-08-20T10:00:00.000000Z",
+    updated_at: "2026-08-20T10:00:00.000000Z",
+  },
+];
 
 describe("the dataset view", () => {
   it("reports annotations and assets per class, because the two are different questions", async () => {
@@ -1165,5 +1185,109 @@ describe("looking at a member", () => {
     await screen.findByTestId("preview-no-overlay");
     expect(screen.queryByTestId("preview-overlay")).toBeNull();
     expect(screen.getByTestId("preview-metadata").textContent).toContain("—");
+  });
+});
+
+describe("export, and the recipe beside the target", () => {
+  const launch = () => sent.find((r) => r.method === "POST" && r.url.includes("/export"));
+
+  it("sends no recipe by default: an export without one applies no transform", async () => {
+    baseline();
+    handlers.push((request) =>
+      request.method === "POST" && request.url.includes("/export") ? { status: 200, body: {} } : undefined,
+    );
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+    expect(screen.getByTestId("export-recipe").textContent).toContain("None");
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
+    await userEvent.click(screen.getByTestId("export-submit"));
+
+    await waitFor(() => expect(launch()).not.toBeUndefined());
+    expect(new URL(launch()?.url ?? "").searchParams.get("recipe")).toBeNull();
+  });
+
+  it("lists the project's recipes with a one-line summary, and sends the chosen one by name", async () => {
+    baseline();
+    handlers.push((request) =>
+      request.method === "POST" && request.url.includes("/export") ? { status: 200, body: {} } : undefined,
+    );
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
+    await userEvent.click(screen.getByTestId("export-recipe"));
+    const option = await screen.findByRole("option", { name: /yolo-640/ });
+    expect(option.textContent).toContain("letterbox 640×640 · flip · 1 variant");
+    await userEvent.click(option);
+    await userEvent.click(screen.getByTestId("export-submit"));
+
+    await waitFor(() => expect(launch()).not.toBeUndefined());
+    const query = new URL(launch()?.url ?? "").searchParams;
+    expect(query.get("recipe")).toBe("yolo-640");
+    expect(query.get("target")).toBe("dummy");
+  });
+
+  it("says when the project has no recipes, instead of offering a picker with one row", async () => {
+    on("GET", /\/preprocessing-recipes$/, { status: 200, body: { items: [], total: 0 } });
+    baseline();
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+
+    expect((await screen.findByTestId("export-recipes-empty")).textContent).toContain("Pre-processing view");
+    expect(screen.queryByTestId("export-recipe")).toBeNull();
+  });
+
+  it("renders the split refusal as prose, with the remedy", async () => {
+    baseline();
+    handlers.push((request) =>
+      request.method === "POST" && request.url.includes("/export")
+        ? {
+            status: 409,
+            body: {
+              code: "AUGMENTATION_REQUIRES_SPLIT",
+              message: "the recipe asks for 1 augmented variant(s) per asset and this release has no split recipe",
+            },
+          }
+        : undefined,
+    );
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
+    await userEvent.click(screen.getByTestId("export-recipe"));
+    await userEvent.click(await screen.findByRole("option", { name: /yolo-640/ }));
+    await userEvent.click(screen.getByTestId("export-submit"));
+
+    const said = (await screen.findByTestId("export-error")).textContent ?? "";
+    expect(said).toContain("published without a split");
+    expect(said).not.toContain("AUGMENTATION_REQUIRES_SPLIT");
+    // A refusal, never a consent: no checkbox appears for it.
+    expect(screen.queryByTestId("lossy-consent")).toBeNull();
+  });
+
+  it("renders the geometry refusal as prose", async () => {
+    baseline();
+    handlers.push((request) =>
+      request.method === "POST" && request.url.includes("/export")
+        ? {
+            status: 409,
+            body: {
+              code: "PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY",
+              message: "the 'rot90' step cannot transform a polyline (asset 1234 carries one)",
+              detail: { step: "rot90", geometry: "polyline", asset_id: "1234" },
+            },
+          }
+        : undefined,
+    );
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
+    await userEvent.click(screen.getByTestId("export-submit"));
+
+    const said = (await screen.findByTestId("export-error")).textContent ?? "";
+    expect(said).toContain("cannot follow a polyline");
+    expect(said).not.toContain("PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY");
   });
 });

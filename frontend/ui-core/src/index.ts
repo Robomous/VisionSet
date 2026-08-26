@@ -451,3 +451,45 @@ export {
 } from "./patterns/ExportTargetSelect.js";
 export { describeTargetDrops } from "./data/refusals.js";
 export { StaticAnnotationOverlay, type StaticAnnotationOverlayProps } from "./patterns/StaticAnnotationOverlay.js";
+export { DATASET_TABS, resolveDatasetTab, type DatasetTab } from "./screens/DatasetScreen.js";
+export { PreprocessingTab, type PreprocessingTabProps } from "./screens/PreprocessingTab.js";
+export {
+  AUGMENT_OPS,
+  applyTargetHints,
+  canonicalSpec,
+  describeRecipeSpec,
+  draftFromSpec,
+  draftToSpec,
+  EMPTY_DRAFT,
+  sameSpec,
+  touch,
+  type AugmentOp,
+  type RecipeDraft,
+  type RecipeSpec,
+  type ResizeChoice,
+  type SpecOutcome,
+  type SpecProblem,
+} from "./screens/recipeDraft.js";
+export {
+  recipeKeys,
+  useCreatePreprocessingRecipe,
+  useDeletePreprocessingRecipe,
+  usePreprocessingPreview,
+  usePreprocessingRecipes,
+  useReleaseAssignment,
+  useUpdatePreprocessingRecipe,
+  type PreprocessingPreview,
+  type PreprocessingRecipe,
+  type PreprocessingRecipePage,
+  type PreviewAnnotation,
+  type SplitAssignment,
+} from "./screens/queries.js";
+export { RecipeList, type RecipeListItem, type RecipeListProps } from "./patterns/RecipeList.js";
+export {
+  RecipeEditor,
+  targetCarries,
+  targetSubtitle,
+  trainerResizesLine,
+  type RecipeEditorProps,
+} from "./patterns/RecipeEditor.js";
+export { StepMarker, type StepMarkerProps, type StepState } from "./patterns/StepMarker.js";
