@@ -1569,8 +1569,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("augment-variants")).toHaveValue("1");
     await expect(page.getByTestId("recipe-step-augment")).toHaveAttribute("data-state", "complete");
 
-    // The preview: three cells of the first row, each one a real render of a
-    // frame this walk ingested — the original, the letterbox, and variant 1.
+    // The preview: three cells of the one row, each one a real render of a
+    // frame this walk ingested — the original, the letterbox, and the flip
+    // shown at full strength.
     // Generous, because the preview debounces the draft and then goes through
     // Pillow three times.
     for (const cell of ["original", "resize", "augment"]) {
