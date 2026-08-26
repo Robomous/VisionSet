@@ -528,13 +528,101 @@ describe("the editor", () => {
   });
 });
 
+describe("deleting a recipe", () => {
+  it("asks first, sends DELETE at the recipe's name, and the row leaves the list", async () => {
+    const stored = [recipeRow("yolo-640", LETTERBOX), recipeRow("wide-720", { ...LETTERBOX, target: "wide" })];
+    handlers.push((request) => {
+      if (request.method !== "GET" || !pathOf(request).endsWith("/preprocessing-recipes")) return undefined;
+      const items = sent.some((r) => r.method === "DELETE") ? stored.slice(1) : stored;
+      return { status: 200, body: { items, total: items.length } };
+    });
+    baseline();
+    on("DELETE", /\/preprocessing-recipes\/yolo-640$/, { status: 204 });
+    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    await screen.findByTestId("recipe-editor");
+    expect(screen.getByTestId("recipe-yolo-640").getAttribute("aria-current")).toBe("true");
+
+    await userEvent.click(screen.getByTestId("recipe-delete-yolo-640"));
+    const dialog = await screen.findByTestId("delete-recipe-dialog");
+    expect(dialog.textContent).toContain("Delete yolo-640?");
+    expect(sent.some((r) => r.method === "DELETE")).toBe(false);
+    await userEvent.click(within(dialog).getByTestId("delete-recipe-submit"));
+
+    const remove = () => sent.find((r) => r.method === "DELETE");
+    await waitFor(() => expect(remove()).not.toBeUndefined());
+    expect(pathOf(remove() as Request)).toMatch(/\/preprocessing-recipes\/yolo-640$/);
+    await waitFor(() => expect(screen.queryByTestId("delete-recipe-dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId("recipe-yolo-640")).toBeNull());
+    // The editor held the deleted one, so it moves to the recipe that is left.
+    expect(screen.getByTestId("recipe-wide-720").getAttribute("aria-current")).toBe("true");
+    expect(screen.getByTestId("recipe-name")).toHaveProperty("value", "wide-720");
+  });
+
+  it("returns to the invitation when the last recipe goes", async () => {
+    const stored = [recipeRow("yolo-640", LETTERBOX)];
+    handlers.push((request) => {
+      if (request.method !== "GET" || !pathOf(request).endsWith("/preprocessing-recipes")) return undefined;
+      const items = sent.some((r) => r.method === "DELETE") ? [] : stored;
+      return { status: 200, body: { items, total: items.length } };
+    });
+    baseline();
+    on("DELETE", /\/preprocessing-recipes\/yolo-640$/, { status: 204 });
+    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    await screen.findByTestId("recipe-editor");
+
+    await userEvent.click(screen.getByTestId("recipe-delete-yolo-640"));
+    await userEvent.click(await screen.findByTestId("delete-recipe-submit"));
+
+    await screen.findByTestId("recipes-empty");
+    expect(screen.queryByTestId("recipe-editor")).toBeNull();
+  });
+
+  it("renders a refused delete as prose in the dialog, never as its code", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX)]);
+    on("DELETE", /\/preprocessing-recipes\/yolo-640$/, {
+      status: 404,
+      body: { code: "PREPROCESSING_RECIPE_NOT_FOUND", message: "project 1111 has no recipe named 'yolo-640'" },
+    });
+    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    await screen.findByTestId("recipe-editor");
+
+    await userEvent.click(screen.getByTestId("recipe-delete-yolo-640"));
+    await userEvent.click(await screen.findByTestId("delete-recipe-submit"));
+
+    const said = (await screen.findByTestId("delete-recipe-error")).textContent ?? "";
+    expect(said).toContain("no longer on record");
+    expect(said).not.toContain("PREPROCESSING_RECIPE_NOT_FOUND");
+    expect(said).not.toContain("1111");
+    expect(document.body.textContent).not.toContain("PREPROCESSING_RECIPE_NOT_FOUND");
+    // The dialog stays up holding the refusal, and the editor still holds the recipe.
+    expect(screen.getByTestId("delete-recipe-dialog")).toBeTruthy();
+    expect(screen.getByTestId("recipe-editor")).toBeTruthy();
+  });
+
+  it("can be cancelled without a request", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX)]);
+    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    await screen.findByTestId("recipe-editor");
+
+    await userEvent.click(screen.getByTestId("recipe-delete-yolo-640"));
+    await userEvent.click(await screen.findByTestId("delete-recipe-cancel"));
+
+    await waitFor(() => expect(screen.queryByTestId("delete-recipe-dialog")).toBeNull());
+    expect(sent.some((r) => r.method === "DELETE")).toBe(false);
+    expect(screen.getByTestId("recipe-yolo-640").getAttribute("aria-current")).toBe("true");
+  });
+});
+
 describe("the preview", () => {
   it("samples the project's first three assets when no release has a split, and renders each stage", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
     render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
 
     const grid = await screen.findByTestId("preview-grid");
-    expect(within(grid).getAllByTestId(/^preview-row-/)).toHaveLength(3);
+    const rows = within(grid).getAllByTestId(/^preview-row-/);
+    expect(rows).toHaveLength(3);
+    // Three cells and nothing else: the row spends its width on the images.
+    for (const row of rows) expect(row.children).toHaveLength(3);
     expect(screen.getByTestId("preview-aside").textContent).toBe("3 sample assets · seeded");
 
     await waitFor(() =>

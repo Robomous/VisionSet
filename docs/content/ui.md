@@ -283,7 +283,10 @@ not a JPEG, PNG or WebP — is prose in the cell.
 
 Save is a create for a new draft and a whole-replace `PUT` at the recipe's current name for
 an open one; Discard puts the stored spec back; `PREPROCESSING_RECIPE_NAME_TAKEN` and every
-other refusal render through the vocabulary. The Export dialog's second control,
+other refusal render through the vocabulary. Each row carries a delete control beside it
+that asks first — the recipe alone goes, and an export already run keeps its own copy — and
+closes the editor when the recipe it held is the one deleted; a refusal such as
+`PREPROCESSING_RECIPE_NOT_FOUND` is prose in the dialog. The Export dialog's second control,
 **Pre-processing recipe**, lists the same recipes with the same one-line summary under
 *None*, and sends the chosen name as `recipe=`; a project with none says so in a line rather
 than offering a picker with one row. The two 409s an export can answer —

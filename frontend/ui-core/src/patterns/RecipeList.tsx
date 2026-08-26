@@ -8,10 +8,12 @@
  * summary and, as a `quiet` chip, the target its hints were read from: a fact
  * beside other facts, never a state.
  *
- * Data-only. The screen decides what is selected and what `New` does.
+ * Data-only. The screen decides what is selected, what `New` does, and what
+ * deleting asks first. The delete control sits beside the row rather than
+ * inside it: the row is itself a button, and a button cannot hold one.
  */
 
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import type { JSX } from "react";
 
 import { cn } from "../lib/cn";
@@ -30,6 +32,7 @@ export interface RecipeListProps {
   readonly selected: string | null;
   readonly onSelect: (name: string) => void;
   readonly onNew: () => void;
+  readonly onDelete: (name: string) => void;
   /** The label a target's `name` is shown as; an unknown target shows its name. */
   readonly labelFor: (target: string) => string;
   readonly className?: string;
@@ -40,6 +43,7 @@ export function RecipeList({
   selected,
   onSelect,
   onNew,
+  onDelete,
   labelFor,
   className,
 }: RecipeListProps): JSX.Element {
@@ -56,7 +60,13 @@ export function RecipeList({
         {recipes.map((recipe) => {
           const chosen = recipe.name === selected;
           return (
-            <li key={recipe.name}>
+            <li
+              key={recipe.name}
+              className={cn(
+                "flex items-center border-l-2 pr-1 transition-colors",
+                chosen ? "border-l-primary bg-primary/10" : "border-l-transparent",
+              )}
+            >
               <button
                 type="button"
                 data-testid={`recipe-${recipe.name}`}
@@ -64,10 +74,8 @@ export function RecipeList({
                 aria-current={chosen ? "true" : undefined}
                 onClick={() => onSelect(recipe.name)}
                 className={cn(
-                  "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left transition-colors",
-                  chosen
-                    ? "border-l-primary bg-primary/10"
-                    : "border-l-transparent hover:bg-muted focus-visible:bg-muted",
+                  "flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left transition-colors",
+                  !chosen && "hover:bg-muted focus-visible:bg-muted",
                 )}
               >
                 <span className="flex min-w-0 flex-1 flex-col">
@@ -82,6 +90,15 @@ export function RecipeList({
                   <Badge variant="quiet">{labelFor(recipe.spec.target)}</Badge>
                 )}
               </button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Delete recipe ${recipe.name}`}
+                data-testid={`recipe-delete-${recipe.name}`}
+                onClick={() => onDelete(recipe.name)}
+              >
+                <Trash2 className="size-4" aria-hidden="true" />
+              </Button>
             </li>
           );
         })}

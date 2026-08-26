@@ -1619,6 +1619,33 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expectRecipeArchive(download);
   });
 
+  await test.step("delete the recipe, and watch the list and the count answer", async () => {
+    /*
+     * The last verb a recipe has, after the export that needed it has run:
+     * the row's control, the confirmation, the real `DELETE`, and the view
+     * back to its invitation with the tab no longer counting. The editor was
+     * holding this recipe, so its closing is part of what is asserted.
+     */
+    // The export dialog is still up, and deliberately: it holds the outcome so
+    // the badge can announce it once the poll has stopped, which means it closes
+    // the way every other dialog here does rather than on its own. So this step
+    // starts by doing what the person who has just taken the download does. The
+    // walk dismisses a dialog this way once already, when the batch is deleted.
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("export-dialog")).toHaveCount(0);
+
+    await page.getByTestId("dataset-tab-preprocessing").click();
+    await expect(page.getByTestId("recipe-editor")).toBeVisible();
+    await page.getByTestId(`recipe-delete-${RECIPE}`).click();
+    await expect(page.getByTestId("delete-recipe-dialog")).toContainText(`Delete ${RECIPE}?`);
+    await page.getByTestId("delete-recipe-submit").click();
+
+    await expect(page.getByTestId("delete-recipe-dialog")).toHaveCount(0);
+    await expect(page.getByTestId("recipes-empty")).toBeVisible();
+    await expect(page.getByTestId("recipe-editor")).toHaveCount(0);
+    await expect(page.getByTestId("dataset-tab-preprocessing")).toContainText("0");
+  });
+
   await test.step("edit the connection, and watch the row answer for it", async () => {
     /*
      * A stub cannot referee this body, because it is written by whoever wrote
@@ -1633,14 +1660,6 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * transcription. Last in the walk and nothing is put back, since no later
      * step reads this connection.
      */
-    // The export dialog is still up, and deliberately: it holds the outcome so
-    // the badge can announce it once the poll has stopped, which means it closes
-    // the way every other dialog here does rather than on its own. So this step
-    // starts by doing what the person who has just taken the download does. The
-    // walk dismisses a dialog this way once already, in the delete step.
-    await page.keyboard.press("Escape");
-    await expect(page.getByTestId("export-dialog")).toHaveCount(0);
-
     await page.getByTestId("rail-models").click();
     await expect(page.getByTestId("models-screen")).toBeVisible();
     // Two locators because the row's id is its name and the rename moves it.
@@ -1700,7 +1719,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     /*
      * **The aborted API calls, pinned rather than filtered away.**
      *
-     * Both entries answer `204 No Content`, and Chromium reports every such
+     * Every entry answers `204 No Content`, and Chromium reports every such
      * request as `net::ERR_ABORTED` — there is no body for the renderer to read,
      * so the network stack tears the stream down and files it as cancelled.
      * Measured, not assumed, for the first one: the deletion is committed (the
@@ -1713,9 +1732,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * sends; the step that calls it asserts the batch is gone from the table and
      * the trunk did not move, which is what "committed" means there. The
      * annotation delete had no coverage before this walk at all, because nothing
-     * in the browser had ever deleted an annotation.
+     * in the browser had ever deleted an annotation. The recipe delete is the
+     * third, committed the same way: the view was back at its invitation and
+     * the tab had stopped counting before the walk moved on.
      *
-     * Asserted as an exact list, in walk order: a *third* aborted call, or one on
+     * Asserted as an exact list, in walk order: a *fourth* aborted call, or one on
      * another route, is the shape of a request the app really did abandon, and
      * that is worth failing on.
      *
@@ -1727,6 +1748,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     expect(abortedApiCalls).toEqual([
       expect.stringMatching(/^DELETE .*\/batches\/[0-9a-f-]+$/),
       expect.stringMatching(/^DELETE .*\/annotations$/),
+      expect.stringMatching(/^DELETE .*\/preprocessing-recipes\/[^/]+$/),
     ]);
     /*
      * **The refused API calls, pinned rather than merely tolerated.**
