@@ -28,6 +28,7 @@ from visionset.kernel.ports.metadata_store import (
 )
 from visionset.kernel.ports.model_provider import ModelProvider
 from visionset.kernel.ports.point_segmenter import PointSegmenter
+from visionset.kernel.ports.preprocessing import PreprocessingDriver
 from visionset.kernel.ports.progress_reporter import ProgressReporter
 from visionset.kernel.ports.provider import Provider, Runner, WeightsSource
 from visionset.kernel.ports.video_processor import (
@@ -53,6 +54,7 @@ __all__ = [
     "MetadataStore",
     "ModelProvider",
     "PointSegmenter",
+    "PreprocessingDriver",
     "ProgressReporter",
     "Provider",
     "Repository",

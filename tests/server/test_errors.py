@@ -108,6 +108,8 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "SchemaHasNoDetectableClass": (409, "SCHEMA_HAS_NO_DETECTABLE_CLASS"),
     "UnserializableManifest": (409, "UNSERIALIZABLE_MANIFEST"),
     "LossyExportNotConsented": (409, "LOSSY_EXPORT_NOT_CONSENTED"),
+    "AugmentationRequiresSplit": (409, "AUGMENTATION_REQUIRES_SPLIT"),
+    "PreprocessingStepUnsupportedGeometry": (409, "PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY"),
     # 422 — the payload itself is wrong
     "AnnotationNotFromModel": (422, "ANNOTATION_NOT_FROM_MODEL"),
     "InvalidName": (422, "INVALID_NAME"),
