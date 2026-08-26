@@ -450,3 +450,4 @@ export {
   type ExportTargetSelectProps,
 } from "./patterns/ExportTargetSelect.js";
 export { describeTargetDrops } from "./data/refusals.js";
+export { StaticAnnotationOverlay, type StaticAnnotationOverlayProps } from "./patterns/StaticAnnotationOverlay.js";
