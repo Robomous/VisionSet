@@ -49,6 +49,7 @@ export const sidebar = [
           { slug: "architecture/backend/inference" },
           { slug: "architecture/backend/providers" },
           { slug: "architecture/backend/formats" },
+          { slug: "architecture/backend/preprocessing-drivers" },
         ],
       },
       {

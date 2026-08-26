@@ -174,6 +174,7 @@ scaled to match, and the response is never cached: the spec is the request's own
 | `PreprocessingRecipeNotFound` | The project has no recipe under that name. 404. |
 | `PreprocessingRecipeNameTaken` | Another recipe of the project carries that name, or a rename lands on one. Checked before writing and refused by a unique index, the `ReleaseTagTaken` shape. 409. |
 | `InvalidName` | The name is not a slug: lowercase letters, digits, dots, hyphens and underscores, starting with a letter or digit, at most 64 characters. 422. |
+| `VALIDATION_ERROR` | The spec breaks the grammar: two resize steps, a resize after an augmentation, an augmentation repeated, augmentation steps with `variants_per_asset` 0, or variants with no augmentation step. The rule that was broken is the message, in the words above. Refused by the spec model itself, so every surface says the same thing. 422. |
 | `AugmentationRequiresSplit` | The recipe augments and the release was published without a split recipe. Raised at pre-flight and at export. 409. |
 | `PreprocessingStepUnsupportedGeometry` | A step met a geometry outside the set it declares it can transform - every step declares `supported_geometries` the way an exporter does, and today the one exclusion is `rot90` over a polyline. Carries `step`, `geometry` and the first `asset_id`. 409. |
 | `ExportSourceUnreadable` | A step needs the source's pixel size and the manifest never recorded one, or the asset's bytes are gone. 409. |

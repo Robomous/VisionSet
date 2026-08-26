@@ -230,6 +230,10 @@ visionset export --project road-signs --release v1.0 \
   --target yolo11 --out ./yolo --allow-lossy
 ```
 
+To resize every image, or write augmented variants of the train fold beside their sources, add
+`--recipe NAME` naming a pre-processing recipe of the project - `--recipe letterbox-640` on the
+command above; [preprocessing.md](preprocessing.md) is where a recipe is written.
+
 `--allow-lossy` is required here and the refusal without it is not bureaucracy. A YOLO label row
 is a class index and coordinates, so attributes, confidence and provenance never survive.
 VisionSet works out exactly what that costs *before* writing anything, tells you by class with
