@@ -160,6 +160,7 @@ run_generated() {
   step "openapi drift" openapi_is_current
   step "generated client drift" pnpm generate:client:check
   step "mcp tool reference drift" uv run python scripts/export_mcp_tools.py --check
+  step "export target catalog drift" uv run python scripts/export_target_catalog.py --check
   step "version sync" pnpm version:check
   # `tests/fixtures/wire_annotations.json` is deliberately absent: its gate is
   # `tests/server/test_wire_fixtures.py`, so the `python` group already runs it.

@@ -35,9 +35,10 @@ visionset job pre-label JOB_ID CONNECTION [--minimum-confidence FLOAT] [--replac
 visionset release publish --tag T --project P [--split TRAIN,VAL,TEST] [--seed N]
 visionset release list --project P
 visionset release verify TAG --project P
-visionset export --project P --release TAG --format F --out DIR [--allow-lossy]
-visionset export --project P --release TAG --format F --check   # writes nothing; exit 1 = it loses something
+visionset export --project P --release TAG --target T|--format F --out DIR [--allow-lossy]
+visionset export --project P --release TAG --target T|--format F --check   # writes nothing; exit 1 = it loses something
 visionset format list                                    # no --workspace: it opens nothing
+visionset target list                                    # the models a release can be exported for
 
 visionset backfill-thumbnails --project P
 visionset token create --name NAME
@@ -201,9 +202,10 @@ the callback would have to *precede* the subcommand - `visionset --workspace X t
 ci` would work and `visionset token create --name ci --workspace X` would fail with "No such
 option". Nobody types the first one.
 
-`--json` is per command for the identical reason, and so is every other option here. Three
-commands do without `--workspace`, each because it needs none: `visionset format list` reads
-installed distributions, which is a fact about the process, and `visionset inference size` asks
+`--json` is per command for the identical reason, and so is every other option here. Four
+commands do without `--workspace`, each because it needs none: `visionset format list` and
+`visionset target list` read installed distributions, which is a fact about the process, and
+`visionset inference size` asks
 the publishing hub about a model that no row has to name yet; `visionset init` takes a positional
 `PATH`,
 because it names where to *make* a workspace rather than which one to use — and for that reason it
@@ -419,9 +421,14 @@ lifecycle must be drivable from a script, not because this is how labelling happ
 `release publish --tag T --project P [--split TRAIN,VAL,TEST] [--seed N]` → `ReleaseService.publish`.
 `release list --project P`, and `release verify TAG --project P`, whose **exit code is the answer**.
 
-`export --project P --release TAG --format F --out DIR [--allow-lossy]` resolves the format through
-the plugin registry and hands the instance to `ReleaseService.export` - the kernel is forbidden from
-finding a plugin itself. `format list` says which are installed.
+`export --project P --release TAG --target T|--format F --out DIR [--allow-lossy]` resolves the
+target or the format through the plugin registry and hands the instance to `ReleaseService.export` -
+the kernel is forbidden from finding a plugin itself. `--target` names the model the release will
+train and resolves to the format that writes for it; `--format` names a format and addresses no
+trainer. Exactly one of the two: both or neither is a usage error at exit 2. `format list` says
+which formats are installed and `target list` which models can be trained on their output, each
+with the format it resolves to; both take `--json`, whose shape is the wire's. `--format yolo`, the
+former name of `ultralytics`, still works for one release and prints a deprecation line on stderr.
 
 A release tag is **case-sensitive** where a project name is not: a tag is an identifier, not a label
 somebody reads. `--allow-lossy` is a third gate word beside `--yes` and `--allow-destructive`, never
