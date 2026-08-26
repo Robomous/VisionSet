@@ -559,7 +559,11 @@ Both are reachable on the same route, and they differ in `detail`:
   payload parsed, and a kernel rule rejected it. `detail` is usually `null`.
 
 Most malformed input arrives as the first: a `LabelClass` that cannot be constructed never
-reaches a service to be refused by one.
+reaches a service to be refused by one. The export address is one more of the first kind:
+`POST /releases/{id}/export` and `GET /releases/{id}/export-compatibility` take exactly one of
+`target` and `format`, and both or neither is a 422 `VALIDATION_ERROR` whose single error has
+`loc: ["query"]`, `msg: "give exactly one of target and format"` and an `input` echoing the two
+values as sent.
 
 A refusal from a **bulk write** carries `detail.index` - the position in the array you sent of
 the item that caused it:

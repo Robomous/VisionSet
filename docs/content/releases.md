@@ -648,11 +648,13 @@ will not write two lanes claiming the same one of its four mask slots. Both name
 both are the same `ExportSourceUnreadable` the YOLO exporter raises for a class the schema does
 not declare.
 
-**YOLO, COCO and VOC carry no polyline at all**, and that is checked rather than assumed
-(`test_the_three_general_formats_declare_polyline_truthfully`). YOLO and VOC reduce a *polygon*
-to its bounding box, which is defensible because a polygon encloses an area a box approximates;
-an open path encloses nothing, so a box drawn round it would be an invention. COCO's
-`segmentation` is a closed ring and it has no open-path primitive. All three therefore report a
+**The YOLO dialects, COCO and VOC carry no polyline at all**, and that is checked rather than
+assumed (`test_the_general_formats_declare_polyline_truthfully`). `yolov5-yaml` and `voc` reduce a
+*polygon* to its bounding box, which is defensible because a polygon encloses an area a box
+approximates; an open path encloses nothing, so a box drawn round it would be an invention.
+`ultralytics` writes a polygon as its vertices - its presence is what selects the `segment` layout,
+and its `degraded_geometries` is empty - but has no row for an open path either. COCO's
+`segmentation` is a closed ring and it has no open-path primitive. All four therefore report a
 polyline class as **dropped**, and their label files contain no trace of one.
 
 ### The destination is the caller's
