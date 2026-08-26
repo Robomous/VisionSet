@@ -20,6 +20,7 @@ path rather than imported by name.
 from __future__ import annotations
 
 import importlib.util
+import re
 import shutil
 import sys
 from collections.abc import Iterator
@@ -125,6 +126,19 @@ def test_the_export_wrote_where_it_was_told(summary: Any) -> None:
         "yolov5-yaml",
     )
     assert Path(summary.export_directory).is_dir()
+
+
+def test_the_recipe_export_reports_its_hash_and_wrote_a_train_variant(summary: Any) -> None:
+    """A recipe named on `export_release` reaches the result, the report and the disk.
+
+    Two of four assets are released and the split puts one in the train fold, so
+    exactly one variant is written — named for its source, traced to it in the
+    mapping, and with a label file beside its image. The example asserts the
+    files exist; this pins the shape it read them by.
+    """
+    assert re.fullmatch(r"[0-9a-f]{64}", summary.recipe_hash)
+    assert summary.augmented_files == 1
+    assert re.fullmatch(r"labels/train/[0-9a-f]{64}-aug1\.txt", summary.augmented_label)
 
 
 def test_a_domain_refusal_arrives_as_a_result_and_names_no_retry(summary: Any) -> None:

@@ -14,7 +14,9 @@ test failure.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -110,4 +112,21 @@ def test_it_leaves_the_export_directory_it_was_given(destination: Path, workspac
     # ``dummy`` writes nothing, so the directory is empty — but it exists, which
     # is what proves the export ran rather than being skipped.
     assert (destination / "export").is_dir()
+    assert workspace.is_dir()
+
+
+def test_it_leaves_a_recipe_export_with_its_report_and_train_variants(
+    destination: Path, workspace: Path
+) -> None:
+    # ``--recipe`` on a ``--target`` export: the report at the root names the
+    # recipe under its hash, and the train fold — three of six under the
+    # script's 0.5 split — carries one ``-aug1`` variant per image, label and all.
+    exported = destination / "export-yolo11"
+    report = json.loads((exported / "visionset-export-report.json").read_text(encoding="utf-8"))
+    assert report["preprocessing"]["recipe_name"] == "yolo-640"
+    assert re.fullmatch(r"[0-9a-f]{64}", report["preprocessing"]["recipe_hash"])
+    variants = sorted(exported.glob("labels/train/*-aug1.txt"))
+    assert len(variants) == 3
+    for label in variants:
+        assert (exported / "images" / "train" / f"{label.stem}.png").is_file()
     assert workspace.is_dir()

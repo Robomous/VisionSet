@@ -19,6 +19,7 @@ from outside it), so it is loaded from its path rather than imported by name.
 from __future__ import annotations
 
 import importlib.util
+import re
 import shutil
 import sys
 from collections.abc import Iterator
@@ -110,3 +111,15 @@ def test_the_same_request_without_a_token_is_refused(summary: Any) -> None:
 def test_the_export_produced_an_archive(summary: Any) -> None:
     """`dummy` writes no files, so the zip is empty — but it is still a zip."""
     assert summary.export_bytes > 0
+
+
+def test_the_recipe_export_reports_its_hash_and_wrote_a_train_variant(summary: Any) -> None:
+    """A recipe named on `?recipe=` reaches the archive as a report and as files.
+
+    The example reads both out of the downloaded zip: `preprocessing.recipe_hash`
+    in `visionset-export-report.json`, and a `-aug1` label under `labels/train/`
+    beside its image — the train fold's variant, which is the only fold that
+    gets one.
+    """
+    assert re.fullmatch(r"[0-9a-f]{64}", summary.recipe_hash)
+    assert re.fullmatch(r"labels/train/[0-9a-f]{64}-aug1\.txt", summary.augmented_label)

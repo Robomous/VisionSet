@@ -116,12 +116,44 @@ visionset release publish --tag v1.0 --project road-signs --split 0.5,0.25,0.25
 visionset release verify v1.0 --project road-signs
 
 say "8. export in an installed format"
-# `dummy` is the only exporter this repository ships and it writes nothing, so a
-# file_count of 0 below is the honest report of an export that ran.
+# `dummy` writes nothing, so a file_count of 0 below is the honest report of an
+# export that ran.
 visionset format list
 visionset export --project road-signs --release v1.0 --format dummy --out "$DEST/export" --json
 
-say "9. the release as a program reads it"
+say "9. a recipe, and the same release exported for a model through it"
+# A recipe is a project resource named on the export; the export keeps the spec
+# by value, and its report says which one ran under which hash. Augmentation
+# runs on the train fold only, which is what the split in step 7 is for.
+# `--allow-lossy` because the format yolo11 resolves to declares itself lossy;
+# without it the export exits 1 and writes nothing.
+visionset recipe create yolo-640 --project road-signs \
+  --resize letterbox:640x640 --augment hflip --variants 1 --target yolo11
+visionset recipe list --project road-signs
+visionset export --project road-signs --release v1.0 --target yolo11 --recipe yolo-640 \
+  --allow-lossy --out "$DEST/export-yolo11" --json > "$DEST/export-yolo11.json"
+python3 - "$DEST/export-yolo11.json" "$DEST/export-yolo11" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+result = json.load(open(sys.argv[1], encoding="utf-8"))
+exported = Path(sys.argv[2])
+recipe_hash = result["preprocessing"]["recipe_hash"]
+assert re.fullmatch(r"[0-9a-f]{64}", recipe_hash), result["preprocessing"]
+assert result["preprocessing"]["recipe_name"] == "yolo-640", result["preprocessing"]
+assert result["augmented_file_count"] == 3, result
+report = json.loads((exported / "visionset-export-report.json").read_text(encoding="utf-8"))
+assert report["preprocessing"]["recipe_hash"] == recipe_hash, report["preprocessing"]
+variants = sorted(exported.glob("labels/train/*-aug1.txt"))
+assert len(variants) == 3, variants
+for label in variants:
+    assert (exported / "images" / "train" / f"{label.stem}.png").is_file(), label
+print(f"recipe {recipe_hash[:12]}… wrote {len(variants)} augmented train images and their labels")
+PY
+
+say "10. the release as a program reads it"
 visionset release list --project road-signs --json > "$DEST/releases.json"
 python3 - "$DEST/releases.json" <<'PY'
 import json
@@ -138,7 +170,7 @@ assert release["split"] == {"train": 0.5, "val": 0.25, "test": 0.25, "seed": 0},
 print("--json shapes are what the docs say they are")
 PY
 
-say "10. and a refusal, because a script has to be able to branch on one"
+say "11. and a refusal, because a script has to be able to branch on one"
 # A command inside an `if` condition does not trip `set -e`, which is what makes
 # demonstrating a failure safe. A release is never edited, so the second publish
 # under the same tag is refused with one sentence on stderr and exit 1.
