@@ -619,7 +619,10 @@ describe("the preview", () => {
     render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
 
     const grid = await screen.findByTestId("preview-grid");
-    expect(within(grid).getAllByTestId(/^preview-row-/)).toHaveLength(3);
+    const rows = within(grid).getAllByTestId(/^preview-row-/);
+    expect(rows).toHaveLength(3);
+    // Three cells and nothing else: the row spends its width on the images.
+    for (const row of rows) expect(row.children).toHaveLength(3);
     expect(screen.getByTestId("preview-aside").textContent).toBe("3 sample assets · seeded");
 
     await waitFor(() =>

@@ -436,8 +436,7 @@ function PreviewGrid({
 
   return (
     <div className="flex flex-col gap-2" data-testid="preview-grid">
-      <div className="grid grid-cols-[6rem_repeat(3,minmax(0,1fr))] gap-2 text-xs text-muted-foreground">
-        <span />
+      <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
         <span>Original</span>
         <span>After resize</span>
         <span>After augmentation</span>
@@ -445,12 +444,10 @@ function PreviewGrid({
       {samples.map((assetId, index) => (
         <div
           key={assetId}
-          className="grid grid-cols-[6rem_repeat(3,minmax(0,1fr))] items-center gap-2"
+          className="grid grid-cols-3 items-center gap-2"
           data-testid={`preview-row-${index}`}
+          title={`Sample ${assetId.slice(0, 8)}`}
         >
-          <span className="truncate font-mono text-xs text-muted-foreground" title={assetId}>
-            {assetId.slice(0, 8)}
-          </span>
           <PreviewCell
             projectId={projectId}
             assetId={assetId}
