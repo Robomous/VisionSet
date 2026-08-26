@@ -203,12 +203,13 @@ curvelanes      yes
 dummy           no
 openlane-2d     yes
 tusimple        yes
+ultralytics     yes
 voc             yes
-yolo            yes
+yolov5-yaml     yes
 ```
 
 The five lane formats write polylines, `classification` writes image-level tags, and the rest write
-boxes and polygons; the whole set is described in [releases.md](releases.md#exporting). Run the
+boxes and polygons (`yolo` is still accepted as an alias of `ultralytics` for one release); the whole set is described in [releases.md](releases.md#exporting). Run the
 command rather than trusting this listing — it reads installed entry-point metadata, so a
 third-party plugin appears in it too.
 
@@ -216,25 +217,25 @@ Then export:
 
 ```bash
 visionset export --project road-signs --release v1.0 \
-  --format yolo --out ./yolo --allow-lossy
+  --format ultralytics --out ./yolo --allow-lossy
 ```
 
-`--allow-lossy` is required here and the refusal without it is not bureaucracy. YOLO writes five
-numbers per label, so attributes, confidence and provenance never survive - and its
-`supported_geometries` is boxes only, so the `lane` polygons you drew are written as their bounding
-boxes. VisionSet works out exactly what that costs *before* writing anything, tells you by class
-with counts, and writes the same report into the export as
-`visionset-export-report.json`.
+`--allow-lossy` is required here and the refusal without it is not bureaucracy. A YOLO label row
+is a class index and coordinates, so attributes, confidence and provenance never survive.
+VisionSet works out exactly what that costs *before* writing anything, tells you by class with
+counts, and writes the same report into the export as `visionset-export-report.json`.
 
-It says which of two different things happens to each class, because they are different decisions:
+The layout follows what you drew: because the release holds polygons, this is a segment dataset,
+and the `lane` polygons are written as their vertices. A `weather` tag beside a box is not in the
+labels at all - a label file has nowhere to put a label with no location - and the report says so:
 
 ```
-Written in a reduced form by yolo: lane (37). See visionset-export-report.json.
-Not carried by yolo: weather (12). See visionset-export-report.json.
+Not carried by ultralytics: weather (12). See visionset-export-report.json.
 ```
 
-The `lane` polygons *are* in your labels, as boxes; the `weather` tags are not in them at all -
-YOLO has nowhere to put a label with no location.
+Export the same release as `yolov5-yaml` instead and the polygons are reduced to their bounding
+boxes, which the report calls *written in a reduced form* rather than not carried - they are two
+different decisions, and the report distinguishes them.
 
 Choose `--format coco` instead and no consent is needed at all: COCO carries boxes and polygons
 natively, and everything it has no field for rides in a `visionset` object per annotation. That
@@ -243,13 +244,14 @@ contrast is the whole reason both formats exist. See [releases.md](releases.md#e
 What lands in `./yolo`:
 
 ```
-data.yaml                     classes, in your schema's order
+data.yaml                     path: ., the folds, and classes in your schema's order
 images/train/…  images/val/…  images/test/…
 labels/train/…  labels/val/…  labels/test/…
 visionset-export-report.json  what this format could not carry
 ```
 
-That directory is a dataset `ultralytics` will load as it stands. You are done.
+That directory is a dataset `ultralytics` will load as it stands, from inside the directory
+(`path: .` resolves against the working directory of the process that loads it). You are done.
 
 ---
 

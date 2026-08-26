@@ -682,7 +682,7 @@ jobs:
       # suppresses the count line — which is the line that would show this job
       # quietly shrinking to nothing.
       - name: The reference readers load the exports
-        run: uv run pytest tests/formats/test_yolo_smoke.py tests/formats/test_coco_smoke.py
+        run: uv run pytest tests/formats/test_ultralytics_roundtrip.py tests/formats/test_coco_smoke.py
 
   # #49's performance benchmark: frame times during pan, zoom and drag over 200
   # boxes and 20 polygons of 32 vertices on a 4K asset, plus a CPU-throttling

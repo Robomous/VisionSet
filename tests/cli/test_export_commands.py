@@ -109,8 +109,8 @@ def test_format_list_names_the_installed_exporters() -> None:
     assert result.exit_code == 0, result.output
     rows = result.stdout.splitlines()
     assert rows[0].split() == ["NAME", "LOSSY"]
-    # Sorted by name, so `bdd100k-lane` leads and `yolo` closes. Five of the ten
-    # are the lane family, and every one of them is lossy — a lane file has
+    # Sorted by name, so `bdd100k-lane` leads and `yolov5-yaml` closes. Five of
+    # the eleven are the lane family, and every one of them is lossy — a lane file has
     # fields for a lane and none for an annotation's attributes or confidence.
     assert [row.split() for row in rows[1:]] == [
         ["bdd100k-lane", "yes"],
@@ -121,8 +121,9 @@ def test_format_list_names_the_installed_exporters() -> None:
         ["dummy", "no"],
         ["openlane-2d", "yes"],
         ["tusimple", "yes"],
+        ["ultralytics", "yes"],
         ["voc", "yes"],
-        ["yolo", "yes"],
+        ["yolov5-yaml", "yes"],
     ]
 
 
@@ -220,9 +221,20 @@ def test_format_list_json_is_the_envelope() -> None:
             "modalities": ["image"],
         },
         {
-            # Lossy for a different reason from `yolo`'s: a VOC `<object>`
-            # has a fixed set of children its consumers index by tag name, so
-            # there is nowhere to put an attribute or a confidence.
+            # Lossy because a label row is a class index and coordinates:
+            # attributes, confidence and provenance never survive, whatever a
+            # release happens to hold. Boxes, polygons and tags each arrive
+            # intact in the layout the release selects.
+            "name": "ultralytics",
+            "lossy": True,
+            "geometries": ["bbox", "classification_tag", "polygon"],
+            "degraded_geometries": [],
+            "modalities": ["image"],
+        },
+        {
+            # Lossy for a different reason: a VOC `<object>` has a fixed set
+            # of children its consumers index by tag name, so there is nowhere
+            # to put an attribute or a confidence.
             "name": "voc",
             "lossy": True,
             "geometries": ["bbox"],
@@ -230,11 +242,9 @@ def test_format_list_json_is_the_envelope() -> None:
             "modalities": ["image"],
         },
         {
-            "name": "yolo",
+            # Detection only, so a polygon is reduced to its box.
+            "name": "yolov5-yaml",
             "lossy": True,
-            # Lossy because a
-            # label row is five numbers: attributes, confidence and provenance
-            # never survive, whatever a release happens to hold.
             "geometries": ["bbox"],
             "degraded_geometries": ["polygon"],
             "modalities": ["image"],

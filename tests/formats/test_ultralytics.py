@@ -1,4 +1,4 @@
-"""The YOLO detection exporter, against a release built the way a project builds one.
+"""The ``ultralytics`` dialect, against a release built the way a project builds one.
 
 Golden-file rather than assertion-by-field: the deliverable of a format plugin is
 a directory somebody else's tool reads, so what is worth pinning is the bytes.
@@ -24,7 +24,7 @@ from uuid import UUID, uuid4
 import pytest
 from tests.fixtures.media import write_image
 
-from visionset.formats.yolo import DATA_FILENAME, YoloDetectionExporter
+from visionset.formats.ultralytics import DATA_FILENAME, UltralyticsExporter
 from visionset.kernel import ExportSourceUnreadable
 from visionset.kernel.domain import (
     Annotation,
@@ -121,7 +121,7 @@ class Fixture:
         return self.releases.publish(dataset_id, tag, split=split).id
 
     def export(self, release_id: UUID, dest: Path) -> Path:
-        self.releases.export(release_id, YoloDetectionExporter(), dest, allow_lossy=True)
+        self.releases.export(release_id, UltralyticsExporter(), dest, allow_lossy=True)
         return dest
 
     def close(self) -> None:
@@ -164,12 +164,12 @@ def test_the_class_index_is_the_schema_order_not_the_alphabet(tmp_path: Path) ->
 
     assert (out / DATA_FILENAME).read_text(encoding="utf-8") == (
         "# Written by VisionSet. Class order is the release's frozen schema.\n"
+        "path: .\n"
         "train: images/train\n"
         # No recipe means one undivided set, and `val` is required — so it names
         # the training images, which says "there is no held-out set" where an
         # omitted key would say "this file is malformed".
         "val: images/train\n"
-        "nc: 3\n"
         "names:\n"
         '  0: "sign"\n'
         '  1: "lane"\n'
@@ -190,7 +190,7 @@ def test_a_class_nobody_used_still_has_its_index(tmp_path: Path) -> None:
     fixture.close()
 
     written = (out / DATA_FILENAME).read_text(encoding="utf-8")
-    assert "nc: 3" in written
+    assert "nc:" not in written
     assert '  1: "lane"' in written
     assert '  2: "weather"' in written
 
@@ -250,14 +250,43 @@ def test_an_asset_with_nothing_on_it_gets_an_empty_file_not_no_file(tmp_path: Pa
     ]
 
 
-def test_a_polygon_is_written_as_its_bounding_box(tmp_path: Path) -> None:
-    """The polygon-to-box conversion, reachable only because `lossy` is true."""
+def test_a_polygon_selects_the_segment_layout_and_keeps_its_vertices(tmp_path: Path) -> None:
+    """The task is derived: one polygon anywhere, and the whole export is a segment dataset.
+
+    A box on the same release is then written as its four corners rather than
+    as ``cx cy w h`` — the same rectangle, spelled the way a segment row is.
+    """
     fixture = Fixture(tmp_path)
     lane = Annotation(
         asset_id=uuid4(),
         label_class="lane",
         schema_version=1,
         geometry=PolygonGeometry(points=[(8.0, 12.0), (24.0, 12.0), (16.0, 36.0)]),
+        provenance="human",
+    )
+    fixture.label({0: [lane, _box(x=8, y=12, width=16, height=24)]})
+    out = fixture.export(fixture.publish(), tmp_path / "out")
+    fixture.close()
+
+    rows = [
+        path.read_text(encoding="utf-8")
+        for path in sorted((out / "labels" / "train").iterdir())
+        if path.read_text(encoding="utf-8")
+    ]
+    (written,) = rows
+    assert sorted(written.splitlines()) == [
+        "0 0.125000 0.250000 0.375000 0.250000 0.375000 0.750000 0.125000 0.750000",
+        "1 0.125000 0.250000 0.375000 0.250000 0.250000 0.750000",
+    ]
+
+
+def test_a_polygon_hanging_off_the_edge_is_clamped_vertex_by_vertex(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    lane = Annotation(
+        asset_id=uuid4(),
+        label_class="lane",
+        schema_version=1,
+        geometry=PolygonGeometry(points=[(-8.0, 12.0), (24.0, 12.0), (16.0, 60.0)]),
         provenance="human",
     )
     fixture.label({0: [lane]})
@@ -269,31 +298,79 @@ def test_a_polygon_is_written_as_its_bounding_box(tmp_path: Path) -> None:
         for path in sorted((out / "labels" / "train").iterdir())
         if path.read_text(encoding="utf-8")
     ]
-    # x in [8, 24] → centre 16/64 = 0.25, width 16/64; y in [12, 36] → 24/48, 24/48.
-    assert rows == ["1 0.250000 0.500000 0.250000 0.500000\n"]
+    assert rows == ["1 0.000000 0.250000 0.375000 0.250000 0.250000 1.000000\n"]
 
 
-def test_a_classification_tag_produces_no_row_at_all(tmp_path: Path) -> None:
-    """A detection dataset has nowhere to put a label with no location.
-
-    Dropped rather than given an invented box covering the image, which would be
-    a training target nobody drew.
-    """
-    fixture = Fixture(tmp_path)
-    tag = Annotation(
+def _tag() -> Annotation:
+    return Annotation(
         asset_id=uuid4(),
         label_class="weather",
         schema_version=1,
         geometry=ClassificationGeometry(),
         provenance="human",
     )
-    fixture.label({0: [tag]})
+
+
+def test_a_tag_beside_a_box_produces_no_row_at_all(tmp_path: Path) -> None:
+    """A detection dataset has nowhere to put a label with no location.
+
+    Dropped rather than given an invented box covering the image, which would be
+    a training target nobody drew. The box is what keeps this a detect export.
+    """
+    fixture = Fixture(tmp_path)
+    fixture.label({0: [_tag()], 1: [_box(x=1, y=1, width=4, height=4)]})
     out = fixture.export(fixture.publish(), tmp_path / "out")
     fixture.close()
 
-    assert all(
-        path.read_text(encoding="utf-8") == "" for path in (out / "labels" / "train").iterdir()
+    rows = [
+        path.read_text(encoding="utf-8")
+        for path in (out / "labels" / "train").iterdir()
+        if path.read_text(encoding="utf-8")
+    ]
+    assert rows == ["0 0.046875 0.062500 0.062500 0.083333\n"]
+
+
+def test_a_release_holding_only_tags_is_written_as_a_class_tree(tmp_path: Path) -> None:
+    """The classify layout: ``<fold>/<class>/<image>``, no ``data.yaml``, no label files.
+
+    Every tag-capable class gets a directory whether or not anything was tagged
+    with it, so the class list a trainer reads off the tree is the schema's;
+    a class that cannot carry a tag gets none. An image tagged twice is written
+    once under each class.
+    """
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(
+        fixture.project.id,
+        [*CLASSES, LabelClass(name="time-of-day", geometries=(GeometryType.CLASSIFICATION_TAG,))],
     )
+    fixture.label(
+        {0: [_tag(), _tag().model_copy(update={"label_class": "time-of-day"})], 1: [_tag()]}
+    )
+    release_id = fixture.publish()
+    manifest = fixture.releases.manifest(release_id)
+    out = fixture.export(release_id, tmp_path / "out")
+    fixture.close()
+
+    assert not (out / DATA_FILENAME).exists()
+    assert not (out / "labels").exists()
+    assert sorted(path.name for path in (out / "train").iterdir()) == ["time-of-day", "weather"]
+    tagged = {asset.content_hash for asset in manifest.assets if asset.annotations}
+    assert {path.stem for path in (out / "train" / "weather").iterdir()} == tagged
+    assert len(list((out / "train" / "time-of-day").iterdir())) == 1
+
+
+def test_a_class_that_cannot_name_a_directory_is_refused_by_name(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(
+        fixture.project.id,
+        [*CLASSES, LabelClass(name="day/night", geometries=(GeometryType.CLASSIFICATION_TAG,))],
+    )
+    fixture.label({0: [_tag()]})
+    release_id = fixture.publish()
+
+    with pytest.raises(ExportSourceUnreadable, match="day/night"):
+        fixture.export(release_id, tmp_path / "out")
+    fixture.close()
 
 
 def test_a_box_hanging_off_the_edge_is_clamped_into_the_image(tmp_path: Path) -> None:
@@ -354,7 +431,7 @@ def test_bytes_that_are_not_an_image_this_format_can_write_are_refused_by_name(
         return BytesIO(b"not a picture at all")
 
     with pytest.raises(ExportSourceUnreadable, match=str(manifest.assets[0].asset_id)):
-        YoloDetectionExporter().export(
+        UltralyticsExporter().export(
             _release_of(fixture, release_id), manifest, tmp_path / "out", content=pretend
         )
 
@@ -378,7 +455,7 @@ def test_a_missing_blob_aborts_rather_than_writing_a_dataset_that_is_short(
 
     with pytest.raises(ExportSourceUnreadable, match=str(manifest.assets[0].asset_id)):
         fixture.releases.export(
-            release_id, YoloDetectionExporter(), tmp_path / "out", allow_lossy=True
+            release_id, UltralyticsExporter(), tmp_path / "out", allow_lossy=True
         )
     fixture.close()
 
@@ -409,7 +486,7 @@ def test_an_undeclared_manifest_class_aborts_before_a_label_index_is_written(
     dest = tmp_path / "out"
 
     with pytest.raises(ExportSourceUnreadable, match="undeclared"):
-        YoloDetectionExporter().export(
+        UltralyticsExporter().export(
             fixture.releases.get(release_id),
             malformed,
             dest,
@@ -475,10 +552,7 @@ def test_every_fold_a_release_has_is_named_in_data_yaml(tmp_path: Path) -> None:
     written = (out / DATA_FILENAME).read_text(encoding="utf-8")
     for fold in ("train", "val", "test"):
         assert f"{fold}: images/{fold}" in written
-    # And no `path`, deliberately: ultralytics resolves a relative `path` against
-    # the loading process's working directory, so `path: .` would break the moment
-    # the export was copied anywhere. Omitted, it falls back to the yaml's parent.
-    assert "path:" not in written
+    assert "path: .\n" in written
 
 
 # --- the whole tree -----------------------------------------------------------
@@ -497,9 +571,9 @@ def test_a_known_release_produces_exactly_these_files(tmp_path: Path) -> None:
     assert _tree(out) == {
         DATA_FILENAME: (
             "# Written by VisionSet. Class order is the release's frozen schema.\n"
+            "path: .\n"
             "train: images/train\n"
             "val: images/train\n"
-            "nc: 3\n"
             "names:\n"
             '  0: "sign"\n'
             '  1: "lane"\n'

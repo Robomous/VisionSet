@@ -196,19 +196,19 @@ against one format's declaration and returns an `ExportCompatibility`:
 
 ```json
 {
-  "release_id": "…", "format": "yolo", "compatible": false,
+  "release_id": "…", "format": "yolov5-yaml", "compatible": false,
   "format_is_lossy": true,
   "excluded_annotations": 40, "excluded_assets": 40,
   "degraded_annotations": 1204, "degraded_assets": 310,
   "classes": [
     {"label_class": "lane", "geometry": "polygon", "status": "degraded",
      "annotations": 1204, "assets": 310,
-     "reason": "yolo writes a polygon as its bounding box; the shape is lost"},
+     "reason": "yolov5-yaml writes a polygon as its bounding box; the shape is lost"},
     {"label_class": "sign", "geometry": "bbox", "status": "supported",
      "annotations": 8800, "assets": 2400, "reason": null},
     {"label_class": "weather", "geometry": "classification_tag", "status": "dropped",
      "annotations": 40, "assets": 40,
-     "reason": "yolo cannot place a classification_tag and drops it"}
+     "reason": "yolov5-yaml cannot place a classification_tag and drops it"}
   ]
 }
 ```
@@ -245,7 +245,7 @@ The fix is vocabulary rather than capability. `Exporter` declares two geometry s
 
 - **`supported_geometries`** - written as they stand.
 - **`degraded_geometries`** - written, having lost something the kernel could represent. `{polygon}`
-  for `yolo` and `voc`; empty for `coco`, which writes a polygon as a polygon, and empty for
+  for `yolov5-yaml` and `voc`; empty for `coco`, which writes a polygon as a polygon, and empty for
   `dummy`, which writes nothing at all. The two sets are disjoint, and `supported` wins if a plugin
   says both, because resolving a contradiction towards the weaker claim would report a loss that
   does not happen.
@@ -308,10 +308,16 @@ the plugin runs (a plugin that clears its own subdirectory would otherwise take 
 when an earlier run left one behind. That is what keeps "an exporter that writes nothing reports
 zero" true, and keeps exporting twice into one directory agreeing with itself.
 
-### The YOLO detection format
+### The YOLO dialects
 
-`yolo` is the first format here that writes anything, and it is a rewrite of v1's rather than a
-port. The layout:
+Two formats write a YOLO dataset, and they differ only in the grammar of `data.yaml`. Each is a
+*dialect*: the wire identifier `format_name` names the descriptor grammar, and the model a person
+will train - the *target* - resolves to exactly one dialect. `ultralytics` is what every trainer
+from YOLOv3 to YOLO26 in the Ultralytics line reads; `yolov5-yaml` is the older grammar YOLOv7
+reads. `yolo`, the former name of `ultralytics`, is accepted as an alias for one release and then
+removed.
+
+The layout both share:
 
 ```
 data.yaml
@@ -328,7 +334,9 @@ index by sorting the names it found in the labels, so a class nobody had used ye
 `data.yaml` - and, worse, drawing the first box of a new class *renumbered every other class*. A
 model trained against one export and evaluated against the next is then wrong with nothing to
 report it. Here the order is `Manifest.classes`, the project's authored schema order frozen at
-publication, and every class gets an index whether or not anything uses it.
+publication, and every class gets an index whether or not anything uses it. Indices are positions
+in that order, so they are contiguous from zero by construction - a class carries no number of
+its own that could leave a gap.
 
 **A read failure aborts.** v1 wrapped the image read in `except Exception: pass` and wrote the
 label file anyway, so one lost object produced a training set silently short of an image and
@@ -344,29 +352,62 @@ suffix, which makes the mapping depend on iteration order and lets one picture i
 directories land twice. A hash is stable across machines and runs and cannot collide. The cost is
 that the names are not human-readable, which a directory destined for a trainer does not need.
 
-Three details of `data.yaml` are ultralytics' contract rather than ours, and each was measured
-against its source rather than assumed:
+#### `ultralytics`
 
-- **There is no `path:` key.** Ultralytics resolves a relative `path` against its own datasets
-  directory or the working directory of whatever process loads the file - so the obvious `path: .`
-  breaks the moment the export is copied. Omitted, it falls back to the yaml's own parent, which
-  is what makes the directory movable.
-- **`train` and `val` are both required**, and a missing key is a `SyntaxError` rather than a
-  default. A release published without a recipe is one undivided set, so `val` names the training
-  images: that says "there is no held-out set", where omitting the key says "this file is
-  malformed". `test` is optional and is written only when it has something in it.
-- **`images/` → `labels/` is a string substitution on the resolved image path**, not a configured
-  location, so those two directory names are load-bearing.
+The descriptor is `path: .`, one key per fold present, and `names` as a mapping from index:
 
-An asset with nothing on it gets an **empty** label file rather than none: ultralytics reads a
-missing file as "nobody looked" and an empty one as "somebody looked and there is nothing here",
-and a detector needs the second.
+```yaml
+path: .
+train: images/train
+val: images/val
+test: images/test
+names:
+  0: "sign"
+  1: "lane"
+```
 
-`yolo` is `lossy = True` unconditionally, because a label row is five numbers - attributes,
-confidence and provenance never survive - so every export in this format asks for consent. Its
-`supported_geometries` is `{bbox}`: a polygon is still written, as its axis-aligned bounding box,
-but its shape is gone, so #65's report counts it as not carried and says which classes and how
-many. A classification tag has no location at all and is dropped rather than given an invented box.
+There is no `nc`; the trainer counts the mapping. `train` and `val` are both required by the
+trainer, so a release published without a recipe - one undivided set - still declares `val` and
+points it at the training images: that says "there is no held-out set", where omitting the key
+would say "this file is malformed". `test` is written only when it has something in it. `path: .`
+resolves against the working directory of the process that loads the file, so a training run
+starts from inside the export directory. `images/` → `labels/` is a string substitution on the
+resolved image path, not a configured location, so those two directory names are load-bearing.
+
+**The task is derived from the release, never chosen.** One export is written for one of the
+trainer's tasks:
+
+- `segment` when the release holds any polygon - every polygon is written as its vertices and
+  every box as its four corners, so nothing located is reduced;
+- `classify` when the release holds classification tags and no box or polygon - the export is
+  then the class tree the trainer reads, `<fold>/<class>/<image>`, one copy of an image per tag
+  it carries, with a directory for every tag-capable class whether or not anything used it, and
+  no `data.yaml`;
+- `detect` otherwise - `class cx cy w h` per box, clamped into the image.
+
+`supported_geometries` is `{bbox, polygon, classification_tag}` and `degraded_geometries` is
+empty. A tag beside a located label has no layout to land in and is not written; `lossy = True`,
+so consent is always asked. An asset with nothing on it gets an **empty** label file rather than
+none: ultralytics reads a missing file as "nobody looked" and an empty one as "somebody looked and
+there is nothing here", and a detector needs the second.
+
+#### `yolov5-yaml`
+
+The descriptor has no `path` key, every split path starts `./` and resolves against the yaml's
+own directory, `nc` is an integer, and `names` is a list:
+
+```yaml
+train: ./images/train
+val: ./images/val
+test: ./images/test
+nc: 2
+names: ["sign", "lane"]
+```
+
+Detection only, always. `supported_geometries` is `{bbox}` and `degraded_geometries` is
+`{polygon}`: a polygon is written as its axis-aligned bounding box, and the report counts it as
+written in a reduced form and says which classes and how many. A classification tag has no
+location and is dropped rather than given an invented box.
 
 ### The COCO format
 
@@ -578,7 +619,7 @@ prints that list without opening a workspace at all.
 
 `--allow-lossy` is the third gate word, never folded into `--yes` or `--allow-destructive`. And
 `dummy` writes nothing, so a `file_count` of 0 in its report is an export that ran, not one that
-failed. The real ones are [YOLO](#the-yolo-detection-format), [COCO](#the-coco-format) and
+failed. The real ones are [the YOLO dialects](#the-yolo-dialects), [COCO](#the-coco-format) and
 [VOC](#the-pascal-voc-format) below.
 
 When an export does leave something behind, the names go to **stderr** with the rest of the prose,
@@ -649,11 +690,11 @@ indistinguishable from a real recipe that said so.
 
 **Export is queued**, and this document used to record the opposite. The limit was that
 launch-and-poll needs a row to poll and a row needs a table; #328 gave the product a generic one,
-so the argument expired. `yolo` writes one file per image and copies the pixels, which is minutes
+so the argument expired. `ultralytics` writes one file per image and copies the pixels, which is minutes
 of work behind a request with no way to report progress and every proxy's timeout in front of it.
 
 ```
-POST /releases/{id}/export?format=yolo   →  202 Accepted
+POST /releases/{id}/export?format=ultralytics   →  202 Accepted
                                             Location: /background-jobs/{job_id}
 
 GET  /background-jobs/{job_id}           →  200 { "state": "running",   … }
