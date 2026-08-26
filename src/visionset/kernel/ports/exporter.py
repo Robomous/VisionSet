@@ -1,8 +1,13 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import BinaryIO, Protocol, runtime_checkable
 
-from visionset.kernel.domain import GeometryType, Manifest, Release
+from visionset.kernel.domain import ExportTarget, GeometryType, Manifest, Release
+from visionset.kernel.errors import (
+    ExportTargetConflict,
+    ExportTargetNotFound,
+    InvalidExportTarget,
+)
 
 ContentReader = Callable[[str], BinaryIO]
 """Resolve one content hash to the bytes behind it, for the duration of a call.
@@ -136,6 +141,22 @@ class Exporter(Protocol):
     #: ``image``.
     supported_modalities: frozenset[str]
 
+    #: Which models a person can train on this format's output.
+    #:
+    #: At least one, so every installed format is reachable through the one
+    #: target control a surface renders — an exporter with no target would be a
+    #: format nothing can address. A non-YOLO format declares a single target
+    #: named after its own ``format_name``, family ``other``, so exporting to it
+    #: is the same gesture as exporting to a trainer.
+    #:
+    #: Names are unique across every installed plugin — :func:`resolve_target`
+    #: is what turns one into an exporter — and each target's
+    #: ``supported_geometries`` stays within the exporter's own, which
+    #: :func:`validate_targets` checks: a target is a promise about this
+    #: exporter's output, and one promising a geometry the format never writes
+    #: would make the catalog describe files that do not appear.
+    targets: frozenset[ExportTarget]
+
     def export(
         self,
         release: Release,
@@ -144,3 +165,60 @@ class Exporter(Protocol):
         *,
         content: ContentReader,
     ) -> None: ...
+
+
+def validate_targets(exporter: Exporter) -> None:
+    """Check an exporter's target declarations against the exporter itself.
+
+    Every target's ``supported_geometries`` must be a subset of the exporter's
+    own, so a defective declaration is refused where it can be named rather
+    than surfacing as a catalog entry whose exports are missing what it
+    promised.
+
+    Raises:
+        InvalidExportTarget: a target claims a geometry the exporter does not
+            write.
+    """
+    for target in exporter.targets:
+        undeliverable = target.supported_geometries - exporter.supported_geometries
+        if undeliverable:
+            claimed = ", ".join(sorted(one.value for one in undeliverable))
+            raise InvalidExportTarget(
+                f"format {exporter.format_name!r} declares target {target.name!r} "
+                f"supporting geometries it does not write: {claimed}"
+            )
+
+
+def resolve_target(installed: Mapping[str, Exporter], name: str) -> tuple[Exporter, ExportTarget]:
+    """The exporter declaring that target, and the declaration itself.
+
+    Pure resolution over exporters already in hand, the way ``pick`` resolves a
+    format name: the kernel may not scan entry points, so whoever composed the
+    call passes what is installed.
+
+    Raises:
+        ExportTargetNotFound: no installed exporter declares the name.
+        ExportTargetConflict: more than one installed exporter declares it.
+    """
+    matches = [
+        (exporter, target)
+        for exporter in installed.values()
+        for target in exporter.targets
+        if target.name == name
+    ]
+    if not matches:
+        every = tuple(
+            sorted(target.name for exporter in installed.values() for target in exporter.targets)
+        )
+        known = ", ".join(every) or "none"
+        raise ExportTargetNotFound(
+            f"no installed exporter declares target {name!r}; installed targets: {known}",
+            installed=every,
+        )
+    if len(matches) > 1:
+        formats = ", ".join(sorted(exporter.format_name for exporter, _ in matches))
+        raise ExportTargetConflict(
+            f"target {name!r} is declared by more than one installed format ({formats}); "
+            "remove one of the distributions, or export by format name"
+        )
+    return matches[0]

@@ -18,3 +18,4 @@ def test_discovered_exporter_satisfies_the_port() -> None:
     exporter = exporter_cls()
     assert isinstance(exporter, Exporter)
     assert exporter.format_name == "dummy"
+    assert {target.name for target in exporter.targets} == {"dummy"}

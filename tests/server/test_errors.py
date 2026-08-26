@@ -69,6 +69,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "AssetNotInDataset": (404, "ASSET_NOT_IN_DATASET"),
     "NoSplitRecipe": (404, "NO_SPLIT_RECIPE"),
     "ExportFormatNotFound": (404, "EXPORT_FORMAT_NOT_FOUND"),
+    "ExportTargetNotFound": (404, "EXPORT_TARGET_NOT_FOUND"),
     # A release naming bytes an export cannot use. 409 rather than 500 for
     # `UnserializableManifest`'s reason — the request is fine, the stored state is
     # not — so the message naming the asset reaches the caller.
@@ -143,6 +144,8 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "LocalInferenceUnavailable": (500, "LOCAL_INFERENCE_UNAVAILABLE"),
     "InferenceOutOfMemory": (500, "INFERENCE_OUT_OF_MEMORY"),
     "InferenceConnectionNotRunnable": (500, "INFERENCE_CONNECTION_NOT_RUNNABLE"),
+    "ExportTargetConflict": (500, "EXPORT_TARGET_CONFLICT"),
+    "InvalidExportTarget": (500, "INVALID_EXPORT_TARGET"),
 }
 
 # A code outlives the class name it was derived from. Rename a class and its
