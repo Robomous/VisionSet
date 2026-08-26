@@ -42,6 +42,7 @@ export type { LabelClass } from "./palette.js";
 
 export { cn } from "./lib/cn.js";
 export { menuNoExit } from "./lib/motion.js";
+export { twoLineTrigger } from "./lib/select.js";
 
 // Primitives — Radix behaviour under shadcn Nova styling, iconed with Tabler.
 export { Button, buttonVariants } from "./primitives/button.js";

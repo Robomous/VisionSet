@@ -161,6 +161,7 @@ import {
 import { jobFailureProse, refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
 import { menuNoExit } from "../lib/motion";
+import { twoLineTrigger } from "../lib/select";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/button";
@@ -1316,7 +1317,7 @@ function ConnectionForm({
                         <SelectTrigger
                           id="connection-model"
                           data-testid="connection-model"
-                          className="h-auto min-h-8"
+                          className={twoLineTrigger}
                         >
                           <SelectValue placeholder="Choose a model" />
                         </SelectTrigger>

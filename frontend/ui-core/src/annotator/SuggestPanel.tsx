@@ -67,6 +67,8 @@ import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 import { EditorNotice } from "./EditorNotice";
+import { cn } from "../lib/cn";
+import { twoLineTrigger } from "../lib/select";
 import { Button } from "../primitives/button";
 import {
   Select,
@@ -463,7 +465,7 @@ function Through({
   return (
     <Select value={active.id} onValueChange={onChoose}>
       <SelectTrigger
-        className="mt-1 h-auto min-h-8"
+        className={cn(twoLineTrigger, "mt-1")}
         data-testid="suggest-connection-select"
         aria-label="Model"
       >

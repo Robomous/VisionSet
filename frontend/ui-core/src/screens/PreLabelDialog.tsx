@@ -105,6 +105,7 @@ import {
 import { Input } from "../primitives/input";
 import { Label } from "../primitives/label";
 import { FieldDescription, FieldError } from "../primitives/field";
+import { twoLineTrigger } from "../lib/select";
 import {
   Select,
   SelectContent,
@@ -472,7 +473,7 @@ export function PreLabelSettings({
             <SelectTrigger
               id="prelabel-model"
               data-testid="prelabel-model"
-              className="h-auto min-h-8"
+              className={twoLineTrigger}
             >
               <SelectValue />
             </SelectTrigger>

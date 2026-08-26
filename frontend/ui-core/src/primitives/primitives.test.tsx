@@ -17,6 +17,7 @@ import userEvent from "@testing-library/user-event";
 import type { JSX } from "react";
 import { describe, expect, it } from "vitest";
 
+import { twoLineTrigger } from "../lib/select";
 import { Alert, AlertDescription, AlertTitle } from "./alert";
 import { Badge } from "./badge";
 import { Button } from "./button";
@@ -129,7 +130,7 @@ describe("Select", () => {
   function pickOne(): JSX.Element {
     return (
       <Select defaultValue="a">
-        <SelectTrigger data-testid="model" className="h-auto min-h-8">
+        <SelectTrigger data-testid="model" className={twoLineTrigger}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -163,9 +164,15 @@ describe("Select", () => {
     // one-line control on Nova's contract height and lets a two-line one grow.
     const trigger = screen.getByTestId("model");
     expect(trigger.className).toContain("min-h-8");
-    expect(trigger.className).not.toMatch(/(^|\s)h-8(\s|$)/);
     // Nothing truncates: half a model id is not a model id.
     expect(trigger.className).not.toContain("truncate");
+    // `twoLineTrigger` names canonical's own modifier chains, so `cn`'s merge
+    // replaces the fixed height and the value clamp rather than stacking beside
+    // them — a real check of the merge at render, not an echo of the constant.
+    expect(trigger.className).toContain("data-[size=default]:h-auto");
+    expect(trigger.className).toContain("line-clamp-none");
+    expect(trigger.className).not.toContain("data-[size=default]:h-8");
+    expect(trigger.className).not.toContain("line-clamp-1");
   });
 
   it("floors the open list at the closed control's width", async () => {

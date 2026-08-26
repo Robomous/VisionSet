@@ -80,6 +80,7 @@ import {
   formatGeometries,
   menuNoExit,
   toast,
+  twoLineTrigger,
 } from "@visionset/ui-core";
 import { MousePointer2, Plus, Square, Trash2 } from "lucide-react";
 import type { JSX, ReactNode } from "react";
@@ -300,7 +301,7 @@ export function Styleguide(): JSX.Element {
             <div className="flex flex-col gap-1.5 md:col-span-2">
               <Label htmlFor="sg-model">Model</Label>
               <Select defaultValue="facebook/sam2.1-hiera-base-plus">
-                <SelectTrigger id="sg-model" className="h-auto min-h-8">
+                <SelectTrigger id="sg-model" className={twoLineTrigger}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
