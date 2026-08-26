@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-56 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+58 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -63,7 +63,9 @@ error envelope, and the three gate words.
 | `check_export` | `project`, `tag`, `target`?, `format`?, `recipe`? | Say what a target or a format would drop from a release, without writing anything. |
 | `export_release` | `project`, `tag`, `dest`, `target`?, `format`?, `allow_lossy`?, `recipe`? | Write a release to a local directory, for a target or in one of the installed formats. |
 | `list_preprocessing_recipes` | `project` | List a project's pre-processing recipes, oldest first, each with its whole spec. |
+| `get_preprocessing_recipe` | `project`, `name` | Read one pre-processing recipe by name, with its whole spec. |
 | `create_preprocessing_recipe` | `project`, `name`, `spec` | Store a named pre-processing recipe on a project, for `export_release` to apply. |
+| `update_preprocessing_recipe` | `project`, `name`, `spec`, `new_name`? | Replace a pre-processing recipe's spec whole, and rename it when `new_name` is given. |
 | `list_inference_connections` | — | List this workspace's model connections, oldest first. |
 | `model_download_size` | `model_id`, `model_revision` | How big fetching that model's weights would be. Nothing is downloaded. |
 | `create_inference_connection` | `name`, `connection_type`, `model_id`, `model_revision`, `device`?, `precision`?, `endpoint_url`?, `provider_id`?, `credential_env`? | Configure a connection. Nothing is downloaded and nothing is contacted. |
