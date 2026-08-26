@@ -79,6 +79,7 @@ export const BATCH_ACTION = {
 
 export const JOB_ACTION = {
   start: "start",
+  preLabel: "pre_label",
   complete: "complete",
 } as const satisfies Record<string, JobAction>;
 

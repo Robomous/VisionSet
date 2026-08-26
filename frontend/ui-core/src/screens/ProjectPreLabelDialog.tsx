@@ -43,8 +43,28 @@ import {
   usePreLabelProject,
   type Batch,
   type GeometryType,
-  type ProjectPreLabelOut,
+  type PreLabelFanOutOut,
 } from "./queries";
+
+/**
+ * One row per job. A batch that fanned out to several jobs would otherwise
+ * repeat its name over indistinguishable rows, so a row past the first for
+ * that batch is suffixed by its 1-based position among them.
+ */
+function resultRows(
+  items: PreLabelFanOutOut["items"],
+): readonly { item: PreLabelFanOutOut["items"][number]; label: string }[] {
+  const counts = new Map<string, number>();
+  for (const item of items) counts.set(item.batch_id, (counts.get(item.batch_id) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  return items.map((item) => {
+    const position = (seen.get(item.batch_id) ?? 0) + 1;
+    seen.set(item.batch_id, position);
+    const label =
+      (counts.get(item.batch_id) ?? 0) > 1 ? `${item.batch_name} · job ${position}` : item.batch_name;
+    return { item, label };
+  });
+}
 
 export interface ProjectPreLabelButtonProps {
   readonly projectId: string;
@@ -111,7 +131,7 @@ function ProjectPreLabelDialog({
   const [checked, setChecked] = useState<ReadonlySet<string>>(
     () => new Set(batches.filter((one) => one.progress.unannotated > 0).map((one) => one.id)),
   );
-  const [result, setResult] = useState<ProjectPreLabelOut | null>(null);
+  const [result, setResult] = useState<PreLabelFanOutOut | null>(null);
   const launch = usePreLabelProject(projectId);
   const active = candidates.find((row) => row.id === connectionId) ?? candidates[0];
   const shapes = active?.produces ?? [];
@@ -249,13 +269,13 @@ function ProjectPreLabelDialog({
           </div>
         ) : (
           <ul className="flex flex-col gap-1 text-sm" data-testid="project-prelabel-result">
-            {result.items.map((item) => (
-              <li key={item.batch_id} className="flex items-center justify-between gap-2">
+            {resultRows(result.items).map(({ item, label }) => (
+              <li key={item.annotation_job_id} className="flex items-center justify-between gap-2">
                 <Button
                   variant="link"
                   onClick={() => onOpenBatch(item.batch_id)}
                 >
-                  {item.batch_name}
+                  {label}
                 </Button>
                 <span className="text-xs text-muted-foreground">
                   {item.joined ? "already running — joined" : "queued"}

@@ -1,5 +1,5 @@
 /**
- * Pre-labeling a batch: the surface `text_detect` was an orphan without.
+ * Pre-labeling a job: the surface `text_detect` was an orphan without.
  *
  * ## Prompt affinity, not confidence
  *
@@ -20,9 +20,10 @@
  * replace, below — the route's own rule, and it is stronger than
  * `progress.unannotated` alone: a labeled, skipped and restored asset reads
  * `unannotated` again without losing its boxes, and the route passes it over
- * too. So `progress.unannotated`, the count shown here, is an upper bound on
- * what a run will touch rather than an exact one — which is why the string
- * below says "up to".
+ * too. So the job's own `progress.unannotated`, the count shown here, is an
+ * upper bound on what a run will touch rather than an exact one — which is why
+ * the string below says "up to". It is the *job's* progress and never the
+ * batch's: a run reaches this job's assets alone.
  *
  * ## The prompt is named, not described — and it is read per model
  *
@@ -58,13 +59,13 @@
  * a polling predicate — so this holds the job in state and shows it, on
  * `ExportDialog`'s precedent, rather than closing over an outcome nobody saw.
  *
- * A run also outlives the *dialog*: `batch.pre_label_run` is `BatchOut`'s own
+ * A run also outlives the *dialog*: `job.pre_label_run` is `JobOut`'s own
  * memory of the most recent one, live or settled, on `ConnectionJob`'s
  * reasoning. Reopening this dialog after a cancelled run, a failure, or a run
  * that finished must not read as a blank form with a smaller count and no sign
  * anything happened — so every render here is driven by a `RunView` resolved
- * from *either* source: the job this session launched, when there is one, and
- * the batch's own remembered run otherwise. Watching the remembered job's id
+ * from *either* source: the run this session launched, when there is one, and
+ * the job's own remembered run otherwise. Watching the remembered run's id
  * also means a run still genuinely in flight — started elsewhere — keeps
  * polling here rather than sitting frozen at whatever the initial read caught.
  *
@@ -88,7 +89,7 @@ import { useEffect, useState, type JSX } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 
-import { BATCH_ACTION, declares } from "../data/capabilities";
+import { JOB_ACTION, declares } from "../data/capabilities";
 import { producesProse } from "../data/geometryCategory";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
@@ -111,15 +112,17 @@ import {
 } from "../primitives/Select";
 import type { BadgeTone, Segment } from "./batchState";
 import type { KnownMembers } from "../generated/api";
+import { jobKeys, useJobProgress } from "../annotator/jobQueries";
 import {
   batchKeys,
   isLiveJobState,
   useBackgroundJob,
-  usePreLabelBatch,
+  usePreLabelJob,
   usePreLabelPlan,
   type Batch,
   type BackgroundJob,
   type GeometryType,
+  type Job,
   type PreLabelExclusion,
   type PreLabelPlan,
   type PreLabelRun,
@@ -252,8 +255,8 @@ function blockedReason(view: RunView | null, preLabeled: number): string {
   if (view !== null && view.state === "succeeded") {
     const labeled = view.assetsLabeled;
     return labeled === null
-      ? `This batch has been pre-labeled — nothing here is untouched for a run to reach.${replaceHint}`
-      : `This batch has been pre-labeled — ${labeled} asset${labeled === 1 ? "" : "s"} labeled, and nothing here is untouched for another run to reach.${replaceHint}`;
+      ? `This job has been pre-labeled — nothing here is untouched for a run to reach.${replaceHint}`
+      : `This job has been pre-labeled — ${labeled} asset${labeled === 1 ? "" : "s"} labeled, and nothing here is untouched for another run to reach.${replaceHint}`;
   }
   return preLabeled === 0
     ? "Nothing here is untouched — there is nothing left for a run to touch."
@@ -536,15 +539,24 @@ export function PreLabelSettings({
 
 export interface PreLabelButtonProps {
   readonly batch: Batch;
+  readonly job: Job;
+  /** Which job of the batch this is, as the row beside it counts them. */
+  readonly ordinal: number;
   readonly className?: string;
   /** Where "Edit these frames" sends the gallery once a run has succeeded. */
   readonly onSegment: (segment: Segment) => void;
 }
 
-/** The header's trigger, gated on the batch's own declaration and nothing else. */
-export function PreLabelButton({ batch, className, onSegment }: PreLabelButtonProps): JSX.Element | null {
+/** The job panel's trigger, gated on the job's own declaration and nothing else. */
+export function PreLabelButton({
+  batch,
+  job,
+  ordinal,
+  className,
+  onSegment,
+}: PreLabelButtonProps): JSX.Element | null {
   const [open, setOpen] = useState(false);
-  if (!declares(batch, BATCH_ACTION.preLabel)) return null;
+  if (!declares(job, JOB_ACTION.preLabel)) return null;
 
   return (
     <>
@@ -552,14 +564,16 @@ export function PreLabelButton({ batch, className, onSegment }: PreLabelButtonPr
         variant="secondary"
         size="sm"
         className={className}
-        data-testid={`pre-label-${batch.name}`}
+        data-testid={`pre-label-${job.id}`}
         onClick={() => setOpen(true)}
       >
         <Sparkles className="size-4" aria-hidden="true" />
         Pre-label
       </Button>
       <PreLabelDialog
-        batch={open ? batch : null}
+        batch={batch}
+        job={open ? job : null}
+        ordinal={ordinal}
         onClose={() => setOpen(false)}
         onSegment={onSegment}
       />
@@ -569,15 +583,20 @@ export function PreLabelButton({ batch, className, onSegment }: PreLabelButtonPr
 
 function PreLabelDialog({
   batch,
+  job,
+  ordinal,
   onClose,
   onSegment,
 }: {
-  readonly batch: Batch | null;
+  readonly batch: Batch;
+  /** `null` while the dialog is closed — the job is what opens it. */
+  readonly job: Job | null;
+  readonly ordinal: number;
   readonly onClose: () => void;
   readonly onSegment: (segment: Segment) => void;
 }): JSX.Element {
   const queries = useQueryClient();
-  const connections = useConnections(batch !== null);
+  const connections = useConnections(job !== null);
   const candidates: readonly Connection[] = (connections.data?.items ?? []).filter((row) =>
     row.capabilities.includes(TEXT_DETECT),
   );
@@ -587,18 +606,18 @@ function PreLabelDialog({
   // The shapes left *out*, so "everything ticked" is the empty set on every
   // model and a change of model starts from every shape again.
   const [unticked, setUnticked] = useState<ReadonlySet<GeometryType>>(NO_SHAPES);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const remembered = batch?.pre_label_run ?? null;
-  // Guards the second invalidation so a job polled past its own settling does
+  const [runId, setRunId] = useState<string | null>(null);
+  const remembered = job?.pre_label_run ?? null;
+  // Guards the second invalidation so a run polled past its own settling does
   // not re-fire it on every subsequent tick — `ExportDialog`'s `saved` for the
   // same reason: the *transition* into `succeeded` is what matters, not every
   // read that finds it there. Seeded from the remembered run's own settledness
-  // so a batch reopened onto an already-finished run does not read as a fresh
+  // so a job reopened onto an already-finished run does not read as a fresh
   // transition and re-invalidate a batch nothing changed about.
   const [settled, setSettled] = useState<boolean>(
     () => remembered !== null && isSettled(remembered.state),
   );
-  const preLabel = usePreLabelBatch(batch?.id ?? "");
+  const preLabel = usePreLabelJob(batch.id, job?.id ?? "");
   const active = candidates.find((row) => row.id === connectionId) ?? candidates[0];
   const shapes = active?.produces ?? [];
   const selection = selectedShapes(shapes, unticked);
@@ -610,28 +629,29 @@ function PreLabelDialog({
   // checkboxes is the whole answer, and a read with no selection would be a
   // plan for every shape.
   const plan = usePreLabelPlan(
-    batch?.id,
-    batch?.schema_version,
+    batch.id,
+    batch.schema_version,
     active?.id,
-    batch !== null && !noShape,
+    job !== null && !noShape,
     selection,
   );
-  // The job this session launched if there is one, otherwise the batch's own
+  // The run this session launched if there is one, otherwise the job's own
   // remembered run — watched by its id so a run still genuinely in flight,
   // started elsewhere, keeps polling here rather than sitting frozen.
-  const watchedJobId = jobId ?? remembered?.job_id ?? null;
-  const job = useBackgroundJob(watchedJobId);
-  const launched = job.data ?? null;
+  const watchedRunId = runId ?? remembered?.job_id ?? null;
+  const run = useBackgroundJob(watchedRunId);
+  const launched = run.data ?? null;
   const view: RunView | null =
     launched !== null ? viewFromJob(launched) : remembered !== null ? viewFromRun(remembered) : null;
   const mode = modeOf(view);
 
-  const untouched = batch?.progress.unannotated ?? 0;
-  // `progress.total`, not `asset_count`: the sentence is about assets a run's
-  // progress can move, and the two only diverge for a draft — which cannot
-  // declare `pre_label` at all.
-  const total = batch?.progress.total ?? 0;
-  const preLabeled = batch?.progress.pre_labeled ?? 0;
+  // The **job's** counts, never the batch's: a run reaches this job's assets and
+  // no others, so a batch-wide count here would offer to label frames somebody
+  // else is holding.
+  const progress = useJobProgress(job?.id ?? null);
+  const untouched = progress.data?.unannotated ?? 0;
+  const total = progress.data?.total ?? 0;
+  const preLabeled = progress.data?.pre_labeled ?? 0;
   // A launch would be a guaranteed no-op: only untouched assets are ever
   // eligible, whichever verb offers the press — unless a replace is asked for,
   // which reaches the pre-labeled frames an earlier run wrote and nobody edited.
@@ -659,22 +679,28 @@ function PreLabelDialog({
   // refuses on the same gate, so pressing Start could only reproduce it.
   const launchDisabled =
     running || active === undefined || !validConfidence || blocked || plan.isError || noShape;
-  // The primitive the effect is actually a function of, not the object that
-  // carries it — a `useBatch` refetch elsewhere on the page can mint a new
-  // `Batch` with the same id, and that identity churn must not matter here.
-  const batchId = batch?.id ?? null;
+  // The primitives the effect is actually a function of, not the objects that
+  // carry them — a `useBatch` or jobs refetch elsewhere on the page can mint a
+  // new `Batch` or `Job` with the same id, and that identity churn must not
+  // matter here.
+  const batchId = batch.id;
+  const jobId = job?.id ?? null;
   const viewState = view?.state ?? null;
 
   useEffect(() => {
-    if (settled || viewState === null || !isSettled(viewState) || batchId === null) return;
+    if (settled || viewState === null || !isSettled(viewState) || jobId === null) return;
     setSettled(true);
     if (viewState !== "succeeded") return;
     void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
     void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
-  }, [settled, viewState, batchId, queries]);
+    // The job's own row and its counts: what a run wrote moves both, and the
+    // row beside this dialog is where the next reader looks.
+    void queries.invalidateQueries({ queryKey: batchKeys.jobs(batchId) });
+    void queries.invalidateQueries({ queryKey: jobKeys.progress(jobId) });
+  }, [settled, viewState, batchId, jobId, queries]);
 
   function submit(): void {
-    if (batch === null || active === undefined) return;
+    if (job === null || active === undefined) return;
     // Reset the settle guard before every launch, `Continue`/`Run again`/`Try
     // again` included — otherwise a retry after a failure would settle a
     // second time with the guard already tripped, and its own success would
@@ -687,7 +713,7 @@ function PreLabelDialog({
         replaceModelLabels: replacing,
         geometries: selection,
       },
-      { onSuccess: (queued) => setJobId(queued.id) },
+      { onSuccess: (queued) => setRunId(queued.id) },
     );
   }
 
@@ -711,7 +737,7 @@ function PreLabelDialog({
   }
 
   function close(): void {
-    setJobId(null);
+    setRunId(null);
     setReplace(false);
     setUnticked(NO_SHAPES);
     setSettled(false);
@@ -719,9 +745,11 @@ function PreLabelDialog({
   }
 
   return (
-    <Dialog open={batch !== null} onOpenChange={(next) => !next && close()}>
+    <Dialog open={job !== null} onOpenChange={(next) => !next && close()}>
       <DialogContent data-testid="pre-label-dialog">
-        <DialogTitle>Pre-label {batch?.name}</DialogTitle>
+        <DialogTitle>
+          Pre-label {batch.name} · job {ordinal}
+        </DialogTitle>
         <DialogDescription>
           Asks the model about every asset nothing has touched yet — and, if you ask it to,
           the frames it pre-labeled before — under the classes named below. What it finds
@@ -824,7 +852,7 @@ function PreLabelDialog({
                     </span>
                   </label>
                   <FieldHint>
-                    Frames anyone has edited, confirmed or skipped in this batch are never
+                    Frames anyone has edited, confirmed or skipped in this job are never
                     touched. This cannot be undone.
                   </FieldHint>
                 </div>

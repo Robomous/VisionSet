@@ -23,7 +23,7 @@
  */
 
 import { useState, type JSX } from "react";
-import { Play, SquareCheck } from "lucide-react";
+import { SquareCheck } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
@@ -333,9 +333,8 @@ export function ApproveDialog({
  * gallery send the identical mutation rather than two spellings of it.
  *
  * Deliberately does not navigate. Landing back on the gallery re-reads the
- * batch as `in_annotation`, and the header then offers Pre-label beside Open
- * annotator — the choice a batch of any size is worth making explicitly, not
- * one a jump straight into the annotator would skip past.
+ * batch as `in_annotation`, and the job panels then offer Start annotating and
+ * Pre-label per job.
  */
 export function StartAnnotatingButton({
   batch,
@@ -356,7 +355,6 @@ export function StartAnnotatingButton({
         disabled={start.isPending}
         onClick={() => start.mutate()}
       >
-        <Play className="size-4" aria-hidden="true" />
         {start.isPending ? "Starting…" : "Start annotating"}
       </Button>
       {refusal !== null && (

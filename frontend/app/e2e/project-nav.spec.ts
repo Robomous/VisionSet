@@ -16,6 +16,7 @@ const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
 const DATASET = "44444444-4444-4444-8444-444444444444";
 const JOB = "33333333-3333-4333-8333-333333333333";
+const OTHER_JOB = "55555555-5555-4555-8555-555555555555";
 
 const NO_PROGRESS = {
   unannotated: 0,
@@ -53,8 +54,24 @@ const PIXEL = Buffer.from(
   "base64",
 );
 
-/** One project, one open batch, one job — enough for every route this suite visits. */
-async function serveApi(page: Page): Promise<void> {
+/** A panel of the open batch's jobs accordion, waiting to be started. */
+function pendingJob(id: string): Wire["JobOut"] {
+  return {
+    id,
+    batch_id: BATCH,
+    state: "pending",
+    assignee: null,
+    asset_count: 3,
+    allowed_actions: jobActions("pending"),
+    pre_label_run: null,
+  };
+}
+
+/**
+ * One project, one open batch, and the jobs cut from it — enough for every route
+ * this suite visits. The job ids decide where the `Annotate` control lands.
+ */
+async function serveApi(page: Page, jobs: readonly string[] = [JOB]): Promise<void> {
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^\/api/, "");
 
@@ -116,10 +133,18 @@ async function serveApi(page: Page): Promise<void> {
           asset_count: 1,
           allowed_actions: jobActions("in_progress"),
           assignee: null,
+          pre_label_run: null,
         } satisfies Wire["JobOut"],
       });
     }
-    if (path === `/jobs/${JOB}/progress`) {
+    if (path === `/batches/${BATCH}/jobs`) {
+      return route.fulfill({
+        json: { items: jobs.map(pendingJob), total: jobs.length } satisfies Wire["JobPage"],
+      });
+    }
+    // Every job in the roster, not only the one the annotator opens: the
+    // accordion holds its panels shut until all of their counts have answered.
+    if (/^\/jobs\/[^/]+\/progress$/.test(path)) {
       return route.fulfill({
         json: { ...NO_PROGRESS, unannotated: 1, total: 1 } satisfies Wire["ProgressCounts"],
       });
@@ -166,6 +191,26 @@ async function openCold(page: Page, url: string): Promise<void> {
   await page.goto(url);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
+}
+
+/**
+ * The same cold open, held until the open batch's jobs have been answered.
+ *
+ * Where the `Annotate` control lands is decided by that answer, and its absence
+ * is not a failure but the fallback — the gallery. So a test that clicks before
+ * it arrives proves nothing either way. Nothing is fetched until the token is
+ * accepted, which is why the wait can be armed before the submit.
+ */
+async function openWithJobs(page: Page, url: string, jobs: readonly string[]): Promise<void> {
+  await serveApi(page, jobs);
+  await page.goto(url);
+  await page.getByTestId("token-input").fill("a-token");
+  const answered = page.waitForResponse((response) =>
+    new URL(response.url()).pathname.endsWith(`/batches/${BATCH}/jobs`),
+  );
+  await page.getByTestId("token-submit").click();
+  await answered;
+  await expect(page.getByTestId("go-annotate")).toBeVisible();
 }
 
 const SECTIONS = ["overview", "schema", "batches", "dataset"] as const;
@@ -224,6 +269,27 @@ for (const section of SECTIONS) {
     expect(await filledControls(page)).toBe(1);
   });
 }
+
+test("the filled control opens the open batch's one job", async ({ page }) => {
+  await openWithJobs(page, `/projects/${PROJECT}/overview`, [JOB]);
+  await page.getByTestId("go-annotate").click();
+  await expect(page.getByTestId("annotation-page")).toBeVisible();
+  // The job is the identity; the control names no frame, and the annotator then
+  // writes the frame it opened on into the address, as it does after any walk.
+  await expect(page).toHaveURL(new RegExp(`/jobs/${JOB}(\\?asset=[^&]+)?$`));
+});
+
+test("with more than one job the filled control lands on the gallery, where a job is chosen", async ({
+  page,
+}) => {
+  await openWithJobs(page, `/projects/${PROJECT}/overview`, [JOB, OTHER_JOB]);
+  await page.getByTestId("go-annotate").click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches/${BATCH}$`));
+  await expect(page.getByTestId("gallery")).toBeVisible();
+  // Both jobs are offered, one panel each; only the open one carries a door,
+  // which is why the count is of headers rather than of `start-job-*`.
+  await expect(page.getByTestId("job-panels").getByTestId(/^job-header-/)).toHaveCount(2);
+});
 
 test("the column frames the ingest flow and the batch gallery too, without a filled control of its own", async ({
   page,

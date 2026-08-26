@@ -55,6 +55,7 @@ import {
   checkGetActiveSchema,
   checkGetBatch,
   checkGetIngestJob,
+  checkGetJobProgress,
   checkGetProject,
   checkGetProjectDataset,
   checkGetProjectStats,
@@ -75,7 +76,7 @@ import {
   checkListSchemaVersions,
   checkListSources,
   checkCreateCorrectionBatch,
-  checkPreLabelBatch,
+  checkPreLabelJob,
   checkPreLabelPlan,
   checkPreLabelProjectBatches,
   checkPreviewSchemaChange,
@@ -96,6 +97,7 @@ import {
   checkVerifyRelease,
 } from "../generated/checks";
 import type { components } from "../generated/api";
+import { jobKeys } from "../annotator/jobQueries";
 import type { WireAnnotation } from "../annotator/jobQueries";
 
 export type Project = components["schemas"]["ProjectOut"];
@@ -916,14 +918,15 @@ export type AssetSort = components["schemas"]["AssetSort"];
 export interface AssetView {
   readonly progress?: readonly AssetProgress[];
   readonly sort: AssetSort;
+  readonly job?: string;
 }
 
 export const batchKeys = {
   batch: (batchId: string) => ["batches", batchId] as const,
   assets: (batchId: string) => ["batches", batchId, "assets"] as const,
-  /** One window's identity: the segment and the order are part of what was asked. */
+  /** One window's identity: the segment, the job and the order are part of what was asked. */
   assetsView: (batchId: string, view: AssetView) =>
-    ["batches", batchId, "assets", view.progress ?? "all", view.sort] as const,
+    ["batches", batchId, "assets", view.job ?? "any", view.progress ?? "all", view.sort] as const,
   jobs: (batchId: string) => ["batches", batchId, "jobs"] as const,
   // The pinned version, the model and the shape selection are all part of the
   // key because the plan is a function of all three: a re-pin must not leave a
@@ -1004,6 +1007,7 @@ export function useBatchAssets(batchId: string, view: AssetView = { sort: "membe
               limit: GALLERY_PAGE_SIZE,
               offset: pageParam,
               ...(view.progress === undefined ? {} : { progress: [...view.progress] }),
+              ...(view.job === undefined ? {} : { job: view.job }),
               sort: view.sort,
             },
           },
@@ -1062,6 +1066,88 @@ export function useAssignJob(batchId: string, jobId: string) {
       void queries.invalidateQueries({ queryKey: batchKeys.jobs(batchId) });
     },
   });
+}
+
+/** `pending → in_progress`: the job is taken. Only the job panel calls this. */
+export function useStartJob(batchId: string, jobId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await client.POST("/jobs/{job_id}/start", { params: { path: { job_id: jobId } } }),
+        checkStartJob,
+      ),
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: batchKeys.jobs(batchId) });
+      void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
+      void queries.invalidateQueries({ queryKey: jobKeys.progress(jobId) });
+    },
+  });
+}
+
+/** The jobs of several batches at once — what the project CTA needs to apply the job rule. */
+export function useJobsOfBatches(
+  batchIds: readonly string[],
+): ReadonlyMap<string, readonly Job[]> | undefined {
+  const client = useApiClient();
+  const results = useQueries({
+    queries: batchIds.map((batchId) => ({
+      queryKey: batchKeys.jobs(batchId),
+      queryFn: async () =>
+        unwrap(
+          await client.GET("/batches/{batch_id}/jobs", { params: { path: { batch_id: batchId } } }),
+          checkListBatchJobs,
+        ),
+    })),
+  });
+  if (results.some((one) => one.data === undefined)) return undefined;
+  return new Map(batchIds.map((batchId, at) => [batchId, results[at]?.data?.items ?? []]));
+}
+
+/**
+ * Several jobs' progress at once — what a batch's accordion needs, one row per job.
+ *
+ * **`counts` waits for every read to *settle*, not to succeed.** The accordion
+ * opens on the first job with work left, so opening off a half-read map opens the
+ * wrong job and moves under the pointer when the rest arrive — but a job whose
+ * progress *failed* is never going to arrive, and waiting on it left the whole
+ * accordion closed with nothing on screen to say why. A failed job is simply
+ * absent from the map: its header renders without counts and the default-open
+ * rule skips it.
+ *
+ * The first refusal comes back beside the map, because a caller that cannot see
+ * it has no way to tell "this job has no counts yet" from "this job's counts
+ * cannot be read at all".
+ */
+export function useJobsProgress(
+  jobIds: readonly string[],
+): {
+  readonly counts: ReadonlyMap<string, ProgressCounts> | undefined;
+  readonly error: Error | null;
+} {
+  const client = useApiClient();
+  const results = useQueries({
+    queries: jobIds.map((jobId) => ({
+      queryKey: jobKeys.progress(jobId),
+      queryFn: async () =>
+        unwrap(
+          await client.GET("/jobs/{job_id}/progress", { params: { path: { job_id: jobId } } }),
+          checkGetJobProgress,
+        ),
+    })),
+  });
+  const error = results.find((one) => one.error !== null)?.error ?? null;
+  if (results.some((one) => one.isPending)) return { counts: undefined, error };
+  return {
+    counts: new Map(
+      jobIds.flatMap((jobId, at) => {
+        const data = results[at]?.data;
+        return data === undefined ? [] : [[jobId, data] as const];
+      }),
+    ),
+    error,
+  };
 }
 
 /** `approved → in_annotation`, and `in_annotation → completed`. One-way. */
@@ -1215,22 +1301,17 @@ export interface PreLabelInput {
 }
 
 /**
- * Ask a model to label this batch's untouched assets — the `pre_label` action.
- *
- * Answers 202 with the background job to poll; nothing has landed yet. The
- * batch and its assets are invalidated here because a launch is itself a fact —
- * asking twice while one run is already in flight joins it rather than starting
- * a second — and invalidated again once `PreLabelDialog` sees that job succeed,
- * which is the moment the counts this route promised actually changed.
+ * Ask a model to label this job's untouched assets — the job's `pre_label` action.
+ * Answers 202 with the background job to poll; nothing has landed yet.
  */
-export function usePreLabelBatch(batchId: string) {
+export function usePreLabelJob(batchId: string, jobId: string) {
   const client = useApiClient();
   const queries = useQueryClient();
   return useMutation({
     mutationFn: async (input: PreLabelInput): Promise<BackgroundJob> =>
       unwrap(
-        await client.POST("/batches/{batch_id}/pre-label", {
-          params: { path: { batch_id: batchId } },
+        await client.POST("/jobs/{job_id}/pre-label", {
+          params: { path: { job_id: jobId } },
           body: {
             connection_id: input.connectionId,
             minimum_confidence: input.minimumConfidence,
@@ -1238,16 +1319,18 @@ export function usePreLabelBatch(batchId: string) {
             ...(input.geometries === null ? {} : { geometries: [...input.geometries] }),
           },
         }),
-        checkPreLabelBatch,
+        checkPreLabelJob,
       ),
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
+      void queries.invalidateQueries({ queryKey: batchKeys.jobs(batchId) });
+      void queries.invalidateQueries({ queryKey: jobKeys.progress(jobId) });
     },
   });
 }
 
-export type ProjectPreLabelOut = components["schemas"]["ProjectPreLabelOut"];
+export type PreLabelFanOutOut = components["schemas"]["PreLabelFanOutOut"];
 
 export interface ProjectPreLabelInput {
   readonly connectionId: string;
@@ -1268,7 +1351,7 @@ export function usePreLabelProject(projectId: string) {
   const client = useApiClient();
   const queries = useQueryClient();
   return useMutation({
-    mutationFn: async (input: ProjectPreLabelInput): Promise<ProjectPreLabelOut> =>
+    mutationFn: async (input: ProjectPreLabelInput): Promise<PreLabelFanOutOut> =>
       unwrap(
         await client.POST("/projects/{project_id}/batches/pre-label", {
           params: { path: { project_id: projectId } },
@@ -1493,13 +1576,16 @@ export function useBulkSetProgress(batchId: string) {
       }
       return { moved, refusals };
     },
-    onSettled: () => {
+    onSettled: (_data, _error, input) => {
       // On settled rather than on success: a partial failure still moved some
       // assets, and a screen showing the old value for those is a counter that
       // did not move. Both keys, because the counts live on the batch and the per-asset
       // state lives in the listing.
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
+      for (const jobId of new Set(input.targets.map((target) => target.jobId))) {
+        void queries.invalidateQueries({ queryKey: jobKeys.progress(jobId) });
+      }
     },
   });
 }
@@ -1598,9 +1684,15 @@ export function useBulkDiscardModelLabels(batchId: string) {
       }
       return { discarded, refusals };
     },
-    onSettled: () => {
+    onSettled: (_data, _error, targets) => {
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
+      // Discarding derives the frame back to `unannotated`, which is a per-job
+      // count — the accordion's headers and segment chips read it and nothing
+      // else re-fetches it.
+      for (const jobId of new Set(targets.map((target) => target.jobId))) {
+        void queries.invalidateQueries({ queryKey: jobKeys.progress(jobId) });
+      }
     },
   });
 }

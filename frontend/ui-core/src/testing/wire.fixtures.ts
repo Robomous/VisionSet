@@ -38,8 +38,8 @@ const BATCH_ACTIONS: Record<BatchState, readonly BatchAction[]> = {
 
 /** `job_actions`, given an open batch and whether every asset has settled. */
 const JOB_ACTIONS: Record<JobState, readonly JobAction[]> = {
-  pending: ["start"],
-  in_progress: ["complete"],
+  pending: ["start", "pre_label"],
+  in_progress: ["pre_label", "complete"],
   completed: [],
 };
 

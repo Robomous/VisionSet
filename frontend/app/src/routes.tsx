@@ -295,6 +295,7 @@ function Project(): JSX.Element {
       hrefFor={(next) => PARENT.section(projectId, next)}
       onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
       onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
+      onOpenJob={(jobId) => void navigate(`/jobs/${jobId}`)}
       // A deleted project's own URL is a 404 waiting to happen, so the parent is
       // where to land — and `replace`, because Back should not walk into it.
       onDeleted={() => void navigate(PARENT.projects, { replace: true })}
@@ -318,6 +319,9 @@ function Project(): JSX.Element {
  * The asset travels as a query parameter, not a path segment: `/jobs/:jobId` is the
  * annotator's identity and the asset is *where to start*, which a person can change
  * with the next/previous buttons without the URL becoming a lie.
+ *
+ * `onOpenJob` is the job row's door: the job is the identity and no `?asset=` is
+ * named, so the annotator opens on the job's first frame.
  */
 function Gallery(): JSX.Element {
   const { projectId, batchId } = useParams();
@@ -336,6 +340,7 @@ function Gallery(): JSX.Element {
           if (asset.job_id === null || asset.job_id === undefined) return;
           void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
         }}
+        onOpenJob={(jobId) => void navigate(`/jobs/${jobId}`)}
         // The approve dialog's SCHEMA_NOT_FOUND remedy: the schema section of
         // the project, and spelling that URL is this file's job.
         onOpenSchema={() => void navigate(PARENT.schema(projectId))}
