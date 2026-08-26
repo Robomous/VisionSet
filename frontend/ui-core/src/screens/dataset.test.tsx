@@ -10,7 +10,7 @@
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
@@ -713,6 +713,16 @@ describe("export, and the third gate word", () => {
     const badge = await exportWith("running");
     expect(badge.textContent).toContain("Exporting");
     expect(badge.className).toContain("text-primary");
+  });
+
+  it("shows no failure while the export is still queued or running", async () => {
+    // A job that has not settled has nothing to explain yet; the failure
+    // sentence belongs to a job that stopped, never to one still working.
+    await exportWith("queued");
+    expect(screen.queryByTestId("export-job-error")).toBeNull();
+    cleanup();
+    await exportWith("running");
+    expect(screen.queryByTestId("export-job-error")).toBeNull();
   });
 
   it("says a finished export is done, in the success token (#391)", async () => {
