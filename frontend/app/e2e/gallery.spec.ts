@@ -732,6 +732,31 @@ test("the chosen density survives a reload", async ({ page }) => {
   await expect(page.getByTestId("density")).toHaveValue("0");
 });
 
+// --- one job, and several ----------------------------------------------------
+
+test("a one-job batch draws its job flat: no accordion, one bar, the job's controls under the header", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent);
+
+  await expect(page.getByTestId("job-panels")).toHaveCount(0);
+  await expect(page.getByTestId(/^job-header-/)).toHaveCount(0);
+  const workspace = page.getByTestId("job-workspace");
+  await expect(workspace).toBeVisible();
+  // The batch bar is the page's one bar; the strip below it is the breakdown.
+  await expect(page.getByRole("progressbar")).toHaveCount(1);
+  await expect(page.getByTestId("batch-progress-row").getByRole("progressbar")).toHaveCount(1);
+  await expect(workspace.getByTestId("timeline")).toBeVisible();
+  // The door, Pre-label's slot and the assignee line are the job's, under the
+  // header — and none of them is the page's filled control.
+  await expect(workspace.getByTestId(`start-job-${JOB}`)).toHaveAttribute("data-variant", "secondary");
+  await expect(workspace.getByTestId(`assignee-${JOB}`)).toContainText("Unassigned");
+  await expect(page.getByTestId("gallery").locator('[data-variant="primary"]')).toHaveCount(0);
+  await expect(workspace.getByTestId("segments")).toBeVisible();
+  await expect(workspace.getByTestId("tile-asset-0")).toBeVisible();
+});
+
 // --- the accordion -----------------------------------------------------------
 
 test("a two-job batch shows only the open job's tiles, and opening the other header swaps them", async ({

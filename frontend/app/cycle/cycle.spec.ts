@@ -473,23 +473,25 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("state-cycle-batch")).toHaveText("in progress");
   });
 
-  await test.step("the job panel is the way in: start the one job, and it opens", async () => {
-    // Only the panel's door is driven here: the cycle server has no `text_detect`
-    // model, so the pre-label half of the panel is exercised against the server suite.
+  await test.step("the job's door is the way in: start the one job, and it opens", async () => {
+    // Only the door is driven here: the cycle server has no `text_detect` model,
+    // so the pre-label half of the job's controls is exercised against the
+    // server suite.
     await openProject(page, PROJECT, "batches");
     await page.getByTestId("open-batch-cycle-batch").click();
     await expect(page.getByTestId("gallery")).toBeVisible();
-    // The header offers no door of its own any more; the job panel does.
+    // The header offers no door of its own; the job's controls do. Approved
+    // with no partition, the batch has one job, so there is no accordion to
+    // choose from — the job sits flat under the header, and the batch bar is
+    // the page's one bar.
     await expect(page.getByTestId("start-annotating")).toHaveCount(0);
-    const panels = page.getByTestId("job-panels");
-    await expect(panels).toBeVisible();
-    // One job, with every frame still to do, so the accordion opens on it — and
-    // the collapsed row is the overview even so.
-    const header = panels.getByTestId(/^job-header-/);
-    await expect(header).toHaveAttribute("aria-expanded", "true");
-    await expect(header).toContainText("Job 1");
-    await expect(header).toContainText("pending");
-    const door = panels.getByTestId(/^job-panel-/).getByTestId(/^start-job-/);
+    await expect(page.getByTestId("job-panels")).toHaveCount(0);
+    await expect(page.getByTestId(/^job-header-/)).toHaveCount(0);
+    const workspace = page.getByTestId("job-workspace");
+    await expect(workspace).toBeVisible();
+    await expect(page.getByRole("progressbar")).toHaveCount(1);
+    await expect(workspace.getByTestId(/^assignee-/)).toContainText("Unassigned");
+    const door = workspace.getByTestId(/^start-job-/);
     await expect(door).toHaveText("Annotate");
     const jobId = (await door.getAttribute("data-testid"))!.replace("start-job-", "");
     await door.click();
@@ -501,9 +503,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page).toHaveURL(new RegExp(`/jobs/${jobId}(\\?asset=[0-9a-f-]+)?$`));
     await page.getByTestId("back").click();
     await expect(page.getByTestId("gallery")).toBeVisible();
-    // Started: the header says so, and the door now continues rather than starts.
-    await expect(panels.getByTestId(/^job-header-/)).toContainText("in progress");
-    await expect(panels.getByTestId(/^job-panel-/).getByTestId(/^start-job-/)).toHaveText(
+    // Started: the door now continues rather than starts.
+    await expect(page.getByTestId("job-workspace").getByTestId(/^start-job-/)).toHaveText(
       "Continue",
     );
   });
@@ -526,9 +527,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // visible rather than hover-gated, which a touch device would never reach.
     // What matters is that the annotator is reachable **by clicking**, with no id
     // read out of the API and no URL typed.
-    // Inside the open panel: the frames belong to a job now, and three is the
+    // Inside the job's workspace: the frames belong to a job, and three is the
     // whole batch only because this batch was cut into one.
-    const tiles = page.getByTestId(/^job-panel-/).getByTestId(/^tile-/);
+    const tiles = page.getByTestId("job-workspace").getByTestId(/^tile-/);
     await expect(tiles).toHaveCount(3);
     const third = tiles.nth(2);
     await expect(third).not.toHaveAttribute("data-pending", "true");
