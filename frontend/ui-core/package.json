@@ -21,7 +21,8 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src && pnpm run typecheck"
+    "lint": "eslint src && pnpm run typecheck",
+    "shadcn:add": "bash ../../scripts/shadcn_add.sh"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
