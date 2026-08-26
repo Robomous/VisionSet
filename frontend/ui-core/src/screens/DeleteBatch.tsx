@@ -39,7 +39,7 @@ import { useState, type JSX } from "react";
 import { BATCH_ACTION, declares, withheldBecause } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
-import { menuNoExit } from "../lib/motion";
+import { menuSurface } from "../lib/menu";
 import { Button } from "../primitives/button";
 import {
   Dialog,
@@ -94,7 +94,7 @@ export function BatchOverflowMenu({
             <MoreHorizontal aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align={align} className={cn(menuNoExit, "w-64")}>
+        <DropdownMenuContent align={align} className={cn(menuSurface, "w-64")}>
           {/*
             Disabled-with-reason rather than hidden: there *is* an operation
             behind this and a state that would enable it, which is the whole

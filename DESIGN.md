@@ -188,7 +188,7 @@ primitive targets):
 | Button — hover | default `hover:bg-primary/80`; secondary `color-mix(in oklch, var(--secondary), var(--foreground) 5%)`; destructive soft |
 | Input | `h-8 rounded-lg border-input px-2.5 text-base md:text-sm`; dark theme `bg-input/30` |
 | Badge | `h-5 px-2 text-xs rounded-4xl`; icons `size-3`; variants are shadcn's (`default secondary destructive outline ghost link`) plus `success` and `warning` in the destructive recipe. A square label is `variant="outline" className="rounded-md"` at the call site |
-| Menu — surface | `dark` subtree + `bg-popover p-1 rounded-lg ring-1 ring-foreground/10 shadow-md`, `min-w-32`, `duration-100` enter and **no exit** — the no-exit half is `menuNoExit`, applied at the call site, not the canonical file; see *Motion* |
+| Menu — surface | `dark` subtree + `bg-popover p-1 rounded-lg ring-1 ring-foreground/10 shadow-md`, `min-w-32` as a floor with the width **sized to the items** (not to the trigger), `duration-100` enter and **no exit** — both overrides are `menuSurface`, applied at the call site, not the canonical file; see *Motion* |
 | Menu — item | `px-1.5 py-1 text-sm rounded-md focus:bg-accent focus:text-accent-foreground`; destructive item soft |
 | Card | `rounded-xl ring-1 ring-foreground/10 text-sm`; `--card-spacing` = `--spacing(4)` (16px; 12px at the `sm` size); footer `bg-muted/50` |
 | Dialog — overlay | `bg-black/10 supports-backdrop-filter:backdrop-blur-xs duration-100` |
@@ -288,10 +288,15 @@ that tempo is normal, and it is where the behaviour was measured.
 
 The canonical `dropdown-menu.tsx` animates out like any other floating surface, and the
 snapshot gate holds it there — so the fix cannot live in the primitive, and lives in one
-constant instead. Every `DropdownMenuContent` call site applies `menuNoExit`
-(`frontend/ui-core/src/lib/motion.ts`, `data-closed:animate-none!`, exported from
+constant instead. Every `DropdownMenuContent` call site applies `menuSurface`
+(`frontend/ui-core/src/lib/menu.ts`, `data-closed:animate-none! w-auto`, exported from
 `@visionset/ui-core`) to cancel the exit, and `frontend/app/e2e/annotate.spec.ts` holds
-the two presses that would catch a call site that dropped it. `SelectContent` and
+the two presses that would catch a call site that dropped it. The same constant carries
+the width override, because canonical also pins the surface to
+`w-(--radix-dropdown-menu-trigger-width)` — behind an icon-sized trigger that is the
+128px floor, and every item longer than it wraps. Both facts are one rule (a menu that
+behaves like a menu) and travel together, so a call site cannot take the motion half and
+forget the geometry. `SelectContent` and
 `TooltipContent` keep animating out, unchanged: a surface that genuinely needs an exit —
 one whose trigger cannot be pressed again straight away, as a modal's cannot, or the
 tooltip's, which a hover has no toggle to swallow — never takes the constant.

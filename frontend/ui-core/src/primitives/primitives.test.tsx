@@ -17,6 +17,7 @@ import userEvent from "@testing-library/user-event";
 import type { JSX } from "react";
 import { describe, expect, it } from "vitest";
 
+import { menuSurface } from "../lib/menu";
 import { progressAria } from "../lib/progress";
 import { twoLineTrigger } from "../lib/select";
 import { Alert, AlertDescription, AlertTitle } from "./alert";
@@ -342,16 +343,23 @@ describe("DropdownMenu", () => {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" aria-label="Actions" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent>
+        <DropdownMenuContent className={menuSurface}>
           <DropdownMenuItem>Check integrity of this connection</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>,
     );
     await user.click(screen.getByRole("button", { name: "Actions" }));
     const classes = (await screen.findByRole("menu")).className.split(" ");
-    // Canonical also carries `w-(--radix-dropdown-menu-trigger-width)`, so the
-    // surface tracks the trigger's width as a floor rather than an equality —
-    // `min-w-32` is the assertable part of that contract.
+    // Canonical pins the surface to the trigger with
+    // `w-(--radix-dropdown-menu-trigger-width)`, which behind this icon-sized
+    // button is the 128px floor — long items wrap. `menuSurface` is in the same
+    // utility group, so tailwind-merge drops canonical's at render and the
+    // rendered class list is the assertion: this is the merge, not a hope about
+    // cascade order.
+    expect(classes).toContain("w-auto");
+    expect(classes).not.toContain("w-(--radix-dropdown-menu-trigger-width)");
+    // The floor is a different group and survives, which is what keeps a
+    // one-word menu from collapsing to its widest item.
     expect(classes).toContain("min-w-32");
   });
 });

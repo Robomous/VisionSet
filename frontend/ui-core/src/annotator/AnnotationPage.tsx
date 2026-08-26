@@ -155,7 +155,7 @@ import {
 import type { OpenMember } from "../generated/api.js";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { menuNoExit } from "../lib/motion";
+import { menuSurface } from "../lib/menu";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/button";
@@ -2409,7 +2409,7 @@ function Workspace({
                 <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className={menuNoExit}>
+            <DropdownMenuContent align="end" className={menuSurface}>
               {/* `Save and stay`, reabsorbed — `xl:hidden` is the exact inverse of
                   the button's `hidden xl:inline-flex`, so the control exists once
                   at every width. Gated on `frameVerbs` for the same reason the

@@ -79,7 +79,7 @@ import {
   TooltipTrigger,
   classColor,
   formatGeometries,
-  menuNoExit,
+  menuSurface,
   toast,
   twoLineTrigger,
 } from "@visionset/ui-core";
@@ -501,7 +501,7 @@ export function Styleguide(): JSX.Element {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">Actions</Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className={menuNoExit}>
+              <DropdownMenuContent align="start" className={menuSurface}>
                 <DropdownMenuItem>Rename</DropdownMenuItem>
                 <DropdownMenuItem>Duplicate schema</DropdownMenuItem>
                 <DropdownMenuSeparator />

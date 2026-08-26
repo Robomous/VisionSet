@@ -41,7 +41,7 @@ export { CLASS_FILL_OPACITY, classColor } from "./palette.js";
 export type { LabelClass } from "./palette.js";
 
 export { cn } from "./lib/cn.js";
-export { menuNoExit } from "./lib/motion.js";
+export { menuSurface } from "./lib/menu.js";
 export { twoLineTrigger } from "./lib/select.js";
 export { progressAria } from "./lib/progress.js";
 
