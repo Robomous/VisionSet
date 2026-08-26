@@ -15,7 +15,7 @@ const lines = (text) => text.split(/\r?\n/).map((l) => l.trimEnd());
 // the only permitted difference — that is the whole of the "do not modify
 // shadcn's code" rule, in a form a machine can check.
 export function additiveOnly(snapshot, actual) {
-  const want = lines(snapshot).filter((l) => l !== "");
+  const want = lines(snapshot);
   const have = lines(actual);
   let cursor = 0;
   for (const line of want) {
@@ -30,6 +30,8 @@ test("additiveOnly accepts an added line and refuses a changed one", () => {
   assert.equal(additiveOnly("a\nb\n", "a\nx\nb\n").ok, true);
   assert.equal(additiveOnly("a\nb\n", "a\nB\n").ok, false);
   assert.equal(additiveOnly("a\nb\n", "b\na\n").ok, false);
+  assert.equal(additiveOnly("a\n\nb\n", "a\nb\n").ok, false);
+  assert.equal(additiveOnly("a\r\nb  \r\n", "a\nb\n").ok, true);
 });
 
 const primitives = readdirSync(PRIMITIVES).filter((f) => f.endsWith(".tsx") && !f.endsWith(".test.tsx"));
