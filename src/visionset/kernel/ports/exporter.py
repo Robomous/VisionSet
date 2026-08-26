@@ -170,23 +170,52 @@ class Exporter(Protocol):
 def validate_targets(exporter: Exporter) -> None:
     """Check an exporter's target declarations against the exporter itself.
 
-    Every target's ``supported_geometries`` must be a subset of the exporter's
-    own, so a defective declaration is refused where it can be named rather
-    than surfacing as a catalog entry whose exports are missing what it
-    promised.
+    Every target's ``supported_geometries`` must stay within what the exporter
+    writes at all — its ``supported_geometries`` and its
+    ``degraded_geometries`` together — so a defective declaration is refused
+    where it can be named rather than surfacing as a catalog entry whose
+    exports are missing what it promised. Degraded counts because a target
+    carries what reaches the output, reduced or not: a format writing every
+    lane resampled still has a target that carries lanes.
 
     Raises:
         InvalidExportTarget: a target claims a geometry the exporter does not
             write.
     """
+    written = exporter.supported_geometries | exporter.degraded_geometries
     for target in exporter.targets:
-        undeliverable = target.supported_geometries - exporter.supported_geometries
+        undeliverable = target.supported_geometries - written
         if undeliverable:
             claimed = ", ".join(sorted(one.value for one in undeliverable))
             raise InvalidExportTarget(
                 f"format {exporter.format_name!r} declares target {target.name!r} "
                 f"supporting geometries it does not write: {claimed}"
             )
+
+
+def validate_installed(installed: Mapping[str, Exporter]) -> None:
+    """Check every installed exporter's declarations, and that no target name is shared.
+
+    The registry-wide half of the contract :func:`validate_targets` checks per
+    plugin: a target name resolves to exactly one exporter, so two plugins
+    declaring one name would make the catalog ambiguous before anybody asked
+    for it.
+
+    Raises:
+        InvalidExportTarget: a plugin declares a target it cannot deliver.
+        ExportTargetConflict: two plugins declare a target under one name.
+    """
+    declared_by: dict[str, str] = {}
+    for exporter in installed.values():
+        validate_targets(exporter)
+        for target in exporter.targets:
+            other = declared_by.setdefault(target.name, exporter.format_name)
+            if other != exporter.format_name:
+                formats = ", ".join(sorted((other, exporter.format_name)))
+                raise ExportTargetConflict(
+                    f"target {target.name!r} is declared by more than one installed format "
+                    f"({formats}); remove one of the distributions"
+                )
 
 
 def resolve_target(installed: Mapping[str, Exporter], name: str) -> tuple[Exporter, ExportTarget]:

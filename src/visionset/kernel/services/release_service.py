@@ -50,6 +50,7 @@ from pydantic import ValidationError
 
 from visionset import __version__
 from visionset.kernel.domain import (
+    IMPLEMENTED_GEOMETRIES,
     Annotation,
     AnnotationSchema,
     Asset,
@@ -59,6 +60,7 @@ from visionset.kernel.domain import (
     Dataset,
     ExportCompatibility,
     ExportResult,
+    ExportTarget,
     GeometryType,
     Manifest,
     ManifestAnnotation,
@@ -802,7 +804,12 @@ def _write_report(dest: Path, compatibility: ExportCompatibility) -> None:
     )
 
 
-def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> ExportCompatibility:
+def _compatibility(
+    release: Release,
+    manifest: Manifest,
+    exporter: Exporter,
+    target: ExportTarget | None = None,
+) -> ExportCompatibility:
     """Judge one manifest against one format's declared capabilities.
 
     Pure, and takes the manifest rather than reading one, so the two callers —
@@ -836,6 +843,12 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
     snapshot alone. Recorded rather than skipped quietly; a modality a format
     cannot open would have to become a field on ``ManifestAsset``, behind a
     ``MANIFEST_VERSION`` bump, which is its own decision.
+
+    **A target narrows the format.** Given one, a geometry the format writes
+    whole but the target's task set does not accept is reported dropped, and
+    consent for it rides on ``allow_lossy`` like every other loss. A geometry
+    no annotation can carry today is never a row, with or without a target:
+    a target listing pose is describing a trainer, not a loss.
     """
     # Keyed by class *and* geometry: a class accepting both boxes and polygons
     # gets one row per shape, because a boxes-only format writes one whole and
@@ -844,7 +857,8 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
     per_shape: dict[tuple[str, GeometryType], tuple[int, set[UUID]]] = {}
     for declared in manifest.classes:
         for geometry in declared.geometries:
-            per_shape[(declared.name, geometry)] = (0, set())
+            if geometry in IMPLEMENTED_GEOMETRIES:
+                per_shape[(declared.name, geometry)] = (0, set())
 
     counts = {status: 0 for status in ClassExportStatus}
     touched: dict[ClassExportStatus, set[UUID]] = {status: set() for status in ClassExportStatus}
@@ -859,7 +873,7 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
                 count + 1,
                 assets | {asset.asset_id},
             )
-            status = _status_of(geometry, exporter)
+            status = _status_of(geometry, exporter, target)
             counts[status] += 1
             touched[status].add(asset.asset_id)
 
@@ -867,10 +881,10 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
         ClassCompatibility(
             label_class=name,
             geometry=geometry,
-            status=_status_of(geometry, exporter),
+            status=_status_of(geometry, exporter, target),
             annotations=count,
             assets=len(assets),
-            reason=_reason_for(_status_of(geometry, exporter), geometry, exporter),
+            reason=_reason_for(_status_of(geometry, exporter, target), geometry, exporter, target),
         )
         for (name, geometry), (count, assets) in per_shape.items()
     )
@@ -893,8 +907,14 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
     )
 
 
-def _status_of(geometry: GeometryType, exporter: Exporter) -> ClassExportStatus:
+def _status_of(
+    geometry: GeometryType, exporter: Exporter, target: ExportTarget | None
+) -> ClassExportStatus:
     """What this format does with this geometry, from its own two declarations.
+
+    A target, when given, can only take away: a geometry the format writes
+    whole is dropped when the target does not carry it, because the export is
+    addressed to a trainer that has no task for it.
 
     ``supported`` wins when a plugin declares a geometry in both sets. They are
     documented as disjoint, and a plugin claiming a geometry is simultaneously
@@ -903,6 +923,8 @@ def _status_of(geometry: GeometryType, exporter: Exporter) -> ClassExportStatus:
     happen, which is the mirror of the bug this function was rewritten for.
     """
     if geometry in exporter.supported_geometries:
+        if target is not None and geometry not in target.supported_geometries:
+            return ClassExportStatus.DROPPED
         return ClassExportStatus.SUPPORTED
     if geometry in exporter.degraded_geometries:
         return ClassExportStatus.DEGRADED
@@ -910,7 +932,10 @@ def _status_of(geometry: GeometryType, exporter: Exporter) -> ClassExportStatus:
 
 
 def _reason_for(
-    status: ClassExportStatus, geometry: GeometryType, exporter: Exporter
+    status: ClassExportStatus,
+    geometry: GeometryType,
+    exporter: Exporter,
+    target: ExportTarget | None = None,
 ) -> str | None:
     """One sentence saying what happens to this class, or ``None`` if nothing does.
 
@@ -929,6 +954,8 @@ def _reason_for(
     if status is ClassExportStatus.SUPPORTED:
         return None
     if status is ClassExportStatus.DROPPED:
+        if target is not None and geometry in exporter.supported_geometries:
+            return f"{target.label} does not accept a {geometry.value}, so the export drops it"
         return f"{exporter.format_name} cannot place a {geometry.value} and drops it"
     if GeometryType.BBOX in exporter.supported_geometries:
         return (
