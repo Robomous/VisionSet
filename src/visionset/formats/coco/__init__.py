@@ -54,6 +54,7 @@ from visionset.formats._layout import (
     folds_of,
     write_image,
 )
+from visionset.formats._targets import self_target
 from visionset.kernel.domain import (
     BboxGeometry,
     GeometryType,
@@ -114,6 +115,8 @@ class CocoExporter:
     degraded_geometries: frozenset[GeometryType] = frozenset()
 
     supported_modalities = frozenset({"image"})
+
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,

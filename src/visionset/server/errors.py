@@ -71,6 +71,8 @@ from visionset.kernel import (
     EntityNotFound,
     ExportFormatNotFound,
     ExportSourceUnreadable,
+    ExportTargetConflict,
+    ExportTargetNotFound,
     GeometryNotProduced,
     InferenceConnectionInvalid,
     InferenceConnectionModelFixed,
@@ -86,6 +88,7 @@ from visionset.kernel import (
     IngestJobNotFound,
     InvalidAnnotation,
     InvalidAttributeValue,
+    InvalidExportTarget,
     InvalidName,
     InvalidPartition,
     InvalidSchema,
@@ -240,6 +243,12 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # missing a tool it should have"; it is "there is no such thing here", and
     # ``GET /formats`` is what says which things there are.
     ExportFormatNotFound: ErrorRule(404, "EXPORT_FORMAT_NOT_FOUND"),
+    # The same reading one vocabulary over: the caller named a target no
+    # installed exporter declares. No route raises it yet — the target routes are
+    # not built — mapped anyway for BATCH_IMMUTABLE's reason: the
+    # exact-correspondence test keeps this table total, and an unmapped kernel
+    # error would answer 500 the day a route appears.
+    ExportTargetNotFound: ErrorRule(404, "EXPORT_TARGET_NOT_FOUND"),
     # A preview that was never rendered, which is not damage: a thumbnail hash is
     # a cache key, so NULL is an ordinary state with three causes and one remedy.
     # A 404 rather than an empty 200 because the caller asked for a specific
@@ -454,6 +463,15 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     InferenceConnectionNotRunnable: ErrorRule(
         500, "INFERENCE_CONNECTION_NOT_RUNNABLE", expose_message=True
     ),
+    # A deployment condition on NOT_RUNNABLE's reading: two installed
+    # distributions claim one target name, and no edit to the request changes
+    # what is installed. No route raises it yet; mapped for BATCH_IMMUTABLE's
+    # reason.
+    ExportTargetConflict: ErrorRule(500, "EXPORT_TARGET_CONFLICT"),
+    # A defective installed plugin — a target promising geometries its own
+    # exporter never writes — which is nothing a caller can fix. No route
+    # raises it yet; mapped for BATCH_IMMUTABLE's reason.
+    InvalidExportTarget: ErrorRule(500, "INVALID_EXPORT_TARGET"),
 }
 
 ERROR_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {

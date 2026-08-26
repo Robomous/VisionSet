@@ -58,6 +58,7 @@ from pathlib import Path
 from typing import Final
 
 from visionset.formats._layout import IMAGES_DIRNAME, folds_of, write_image
+from visionset.formats._targets import self_target
 from visionset.kernel.domain import (
     ClassificationGeometry,
     GeometryType,
@@ -106,6 +107,8 @@ class ClassificationExporter:
 
     #: A classification dataset is a directory of pictures.
     supported_modalities = frozenset({"image"})
+
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,

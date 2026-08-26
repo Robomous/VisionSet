@@ -7,7 +7,12 @@ implement these; the kernel never imports an implementation directly.
 from visionset.kernel.ports.auth_provider import AuthProvider
 from visionset.kernel.ports.blob_store import BlobStore
 from visionset.kernel.ports.event_bus import EventBus
-from visionset.kernel.ports.exporter import ContentReader, Exporter
+from visionset.kernel.ports.exporter import (
+    ContentReader,
+    Exporter,
+    resolve_target,
+    validate_targets,
+)
 from visionset.kernel.ports.image_processor import (
     DEFAULT_THUMBNAIL_MAX_EDGE,
     THUMBNAIL_FORMAT,
@@ -55,4 +60,6 @@ __all__ = [
     "UnitOfWork",
     "VideoProcessor",
     "WeightsSource",
+    "resolve_target",
+    "validate_targets",
 ]
