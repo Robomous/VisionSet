@@ -91,12 +91,13 @@ preset, so `bg-primary` in a component here and `bg-primary` in a screen mean
 the same colour by construction. There is no `tailwind.config.js` in this
 repository and there must not be one - the tokens would acquire a second home.
 
-Three gates hold this: `tokens.test.ts` asserts `styles.css` and `tokens.ts`
+Four gates hold this: `tokens.test.ts` asserts `styles.css` and `tokens.ts`
 agree, declaration for declaration, and that no retired token has returned;
 `tests/scripts/design_tokens.test.mjs` scans every tracked frontend file for a
 raw colour in a class string, refuses a second `tailwind.config.js`, confines
 `brand` to its two identity sites, and holds `components.json` to the
-schema-supported field set; `tests/scripts/docs_links.test.mjs`
+schema-supported field set; `tests/scripts/shadcn_canonical.test.mjs` holds
+every primitive to its CLI snapshot; `tests/scripts/docs_links.test.mjs`
 keeps [`DESIGN.md`](../../../../DESIGN.md)'s own cross-references honest.
 
 ## Libraries
@@ -106,10 +107,10 @@ visual-design rule. The current choices:
 
 | Concern | Choice |
 | --- | --- |
-| UI primitives | Radix (+ shadcn-style composition with `cva` and `cn`) - the open-code shadcn maintenance model is the direction: a primitive is VisionSet-owned source in `frontend/ui-core/src/primitives/`, edited directly, not a package dependency upgraded blindly |
+| UI primitives | Radix (+ shadcn-style composition with `cva` and `cn`) - the open-code shadcn maintenance model is the direction: a primitive is VisionSet-owned source in `frontend/ui-core/src/primitives/`, edited directly, not a package dependency upgraded blindly — each file there is the shadcn CLI's own output (snapshot in `shadcn/`), edited only by adding lines. The dependency is the `radix-ui` umbrella package, not the scoped `@radix-ui/react-*` packages it replaces |
 | Icons | `lucide-react`, and nothing else: the primitives, the screens and the annotation workspace all draw from it, and no package declares a second icon library |
-| Styling | Tailwind v4, CSS-first `@theme`, on the shadcn preset `b3bXyyPdWj` - no `tailwind.config.js`, ever |
-| Toasts | sonner |
+| Styling | Tailwind v4, CSS-first `@theme`, on the shadcn preset `b2iH` - no `tailwind.config.js`, ever |
+| Toasts | sonner, with `next-themes` because the canonical `sonner.tsx` reads the theme through it |
 | Component tests | vitest + jsdom + @testing-library/react |
 | Server state | TanStack Query v5 |
 
