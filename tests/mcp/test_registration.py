@@ -67,6 +67,8 @@ SHIPPED = {
     "check_export",
     "export_release",
     "list_export_targets",
+    "list_preprocessing_recipes",
+    "create_preprocessing_recipe",
     "list_formats",
     "list_inference_connections",
     "model_download_size",
@@ -83,7 +85,12 @@ deliberate edit in two places. The ship-vs-fold decision is the whole point of
 a set computed from the table would agree with itself no matter what
 landed."""
 
-DESTRUCTIVE = {"delete_batch", "delete_project", "delete_inference_connection"}
+DESTRUCTIVE = {
+    "delete_batch",
+    "delete_project",
+    "delete_inference_connection",
+    "delete_preprocessing_recipe",
+}
 """Offered only when the server was started with ``--allow-destructive``.
 
 Absent from the listing by default rather than present and gated, because
