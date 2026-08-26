@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from visionset.formats._targets import self_target
 from visionset.formats.registry import exporter, exporters, pick
 from visionset.kernel.domain import Annotation, GeometryType, Manifest, Release
 from visionset.kernel.errors import ExportFormatNotFound
@@ -38,6 +39,7 @@ class _AnExporter:
     supported_geometries = frozenset(GeometryType)
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,
@@ -57,6 +59,30 @@ def test_the_shipped_dummy_exporter_is_discovered() -> None:
 def test_a_discovered_exporter_declares_whether_it_is_lossy() -> None:
     """Discovery must return a plugin carrying every member of the port."""
     assert exporters()["dummy"].lossy is False
+
+
+def test_a_discovered_exporter_declares_its_targets() -> None:
+    (target,) = exporters()["dummy"].targets
+
+    assert target.name == "dummy"
+    assert target.tasks == frozenset()
+
+
+def test_every_installed_exporter_stays_discovered() -> None:
+    """Discovery filters on the port, so one missing member silently drops a
+    plugin from every surface — this is what would say which one."""
+    assert set(exporters()) >= {
+        "dummy",
+        "yolo",
+        "coco",
+        "voc",
+        "classification",
+        "tusimple",
+        "curvelanes",
+        "bdd100k-lane",
+        "culane",
+        "openlane-2d",
+    }
 
 
 def test_exporters_are_keyed_by_what_they_call_themselves() -> None:
@@ -130,3 +156,31 @@ def test_a_plugin_missing_the_lossy_member_is_not_an_exporter() -> None:
             return None
 
     assert not isinstance(_Outdated(), Exporter)
+
+
+def test_a_plugin_missing_the_targets_member_is_not_an_exporter() -> None:
+    """An exporter with no target would be a format no target control can reach.
+
+    Unlike ``_Outdated`` above, this plugin carries every *other* member of the
+    port, so what fails the check is ``targets`` alone.
+    """
+    from visionset.kernel.ports import Exporter
+
+    class _Targetless:
+        format_name = "targetless"
+        lossy = False
+        supported_geometries = frozenset(GeometryType)
+        degraded_geometries: frozenset[GeometryType] = frozenset()
+        supported_modalities = frozenset({"image"})
+
+        def export(
+            self,
+            release: Release,
+            manifest: Manifest,
+            dest: Path,
+            *,
+            content: ContentReader,
+        ) -> None:
+            return None
+
+    assert not isinstance(_Targetless(), Exporter)

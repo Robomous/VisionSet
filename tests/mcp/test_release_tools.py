@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from tests.mcp._flow import BBOX, SCHEMA_CLASSES, call, error, open_batch, payload
 
+from visionset.formats._targets import self_target
 from visionset.kernel.domain import GeometryType
 from visionset.kernel.ports import ContentReader, Exporter
 from visionset.kernel.services import EXPORT_REPORT_FILENAME
@@ -352,6 +353,7 @@ class LossyExporter:
     supported_geometries = frozenset(GeometryType)
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,
@@ -413,6 +415,7 @@ class PolygonsOnlyExporter:
     supported_geometries = frozenset({GeometryType.POLYGON})
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,

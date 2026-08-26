@@ -66,6 +66,14 @@ from visionset.kernel.domain.events import (
     IngestCompleted,
     ReleasePublished,
 )
+from visionset.kernel.domain.export_target import (
+    TARGET_NAME_PATTERN,
+    ExportTarget,
+    PreprocessingHints,
+    ResizeStrategy,
+    TargetFamily,
+    Task,
+)
 from visionset.kernel.domain.geometry import (
     IMPLEMENTED_GEOMETRIES,
     BboxGeometry,
@@ -379,6 +387,12 @@ __all__ = [
     "ClassExportStatus",
     "ExportCompatibility",
     "ExportResult",
+    "ExportTarget",
+    "PreprocessingHints",
+    "ResizeStrategy",
+    "TargetFamily",
+    "Task",
+    "TARGET_NAME_PATTERN",
     "Geometry",
     "GeometryType",
     "ImageFormat",

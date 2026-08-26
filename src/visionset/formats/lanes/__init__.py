@@ -52,6 +52,7 @@ from visionset.formats._layout import (
     folds_of,
     write_image,
 )
+from visionset.formats._targets import self_target
 from visionset.formats.lanes._core import (
     BDD100K_CATEGORIES,
     CULANE_SLOTS,
@@ -106,6 +107,11 @@ class TuSimpleExporter:
 
     supported_modalities = frozenset({"image"})
 
+    #: The one self-named target whose geometries are not the supported set:
+    #: that set is empty here, everything arriving degraded, and a target must
+    #: carry at least one geometry — so it names the polyline this format writes.
+    targets = self_target(format_name, frozenset({GeometryType.POLYLINE}))
+
     def export(
         self,
         release: Release,
@@ -138,6 +144,8 @@ class CurveLanesExporter:
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
+    targets = self_target(format_name, supported_geometries)
+
     def export(
         self,
         release: Release,
@@ -163,6 +171,8 @@ class Bdd100kLaneExporter:
     supported_geometries = frozenset({GeometryType.POLYLINE})
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
+
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,
@@ -196,6 +206,8 @@ class CuLaneExporter:
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
+    targets = self_target(format_name, supported_geometries)
+
     def export(
         self,
         release: Release,
@@ -228,6 +240,8 @@ class OpenLane2dExporter:
     supported_geometries = frozenset({GeometryType.POLYLINE})
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
+
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,

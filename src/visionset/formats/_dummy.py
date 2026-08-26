@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from visionset.formats._targets import self_target
 from visionset.kernel.domain import GeometryType, Manifest, Release
 from visionset.kernel.ports import ContentReader
 
@@ -39,6 +40,8 @@ class DummyExporter:
     #: Likewise. ``image`` is the only modality anything produces today; a set
     #: that named it would have to grow when the domain does.
     supported_modalities = frozenset({"image", "video", "point_cloud"})
+
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,

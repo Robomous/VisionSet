@@ -774,6 +774,54 @@ class ExportFormatNotFound(VisionSetError):
     """
 
 
+class ExportTargetNotFound(VisionSetError):
+    """No installed exporter declares a target with that name.
+
+    ``ExportFormatNotFound``'s sibling one vocabulary over: a format is what an
+    exporter calls itself, a target is a model the exporter declares it can
+    write for, and a caller may name either. Like that one, this is the caller
+    naming something that is not there — installing a distribution whose
+    exporter declares the target is what fixes it.
+    """
+
+    installed: tuple[str, ...] | None = None
+    """Every target name the installed exporters declare, sorted.
+
+    A class attribute with a ``None`` default and **not** a constructor
+    parameter, exactly as ``LossyExportNotConsented.compatibility`` is — so this
+    error stays constructible from one message. ``resolve_target`` sets it as a
+    keyword.
+    """
+
+    def __init__(self, message: str, *, installed: tuple[str, ...] | None = None) -> None:
+        super().__init__(message)
+        if installed is not None:
+            self.installed = installed
+
+
+class ExportTargetConflict(VisionSetError):
+    """Two installed exporters declare a target under one name.
+
+    Names resolve to exactly one exporter, so a duplicated one no longer
+    identifies anything and picking either plugin would be a guess. Not a
+    ``ExportTargetNotFound``: the target is very much there, twice, and the
+    remedy is to remove one of the distributions rather than to install one.
+    The message names the formats making the claim.
+    """
+
+
+class InvalidExportTarget(VisionSetError):
+    """An exporter declares a target it cannot deliver.
+
+    A target's ``supported_geometries`` must stay within the declaring
+    exporter's own, because the target is a promise about that exporter's
+    output — one claiming a geometry the exporter never writes would make the
+    catalog describe files that do not appear. Raised by ``validate_targets``,
+    which is a check on the *declaration*: nothing about the caller's request
+    is wrong, the installed plugin is.
+    """
+
+
 class ExportSourceUnreadable(VisionSetError):
     """A release names bytes an export cannot use: gone, or not decodable.
 
