@@ -392,8 +392,12 @@ Two formats write a YOLO dataset, and they differ only in the grammar of `data.y
 *dialect*: the wire identifier `format_name` names the descriptor grammar, and the model a person
 will train - the *target* - resolves to exactly one dialect. `ultralytics` is what every trainer
 from YOLOv3 to YOLO26 in the Ultralytics line reads; `yolov5-yaml` is the older grammar YOLOv7
-reads. `yolo`, the former name of `ultralytics`, is accepted as an alias for one release and then
-removed; `visionset export --format yolo` says so on stderr and continues.
+reads. `yolo`, the former name of `ultralytics`, is accepted as an alias until the release after
+next, and then removed. Every surface resolves it to the same plugin and reports `format_name` as
+`ultralytics`; only the CLI warns, because `visionset export --format yolo` has a stderr to say
+so on. `POST /releases/{id}/export?format=yolo` and `export_release(format="yolo")` accept it
+silently, the response carrying no deprecation text at all - a warning has no field to land in
+on a 202 or in a tool result.
 
 The layout both share:
 

@@ -340,6 +340,13 @@ GET  /background-jobs/{job_id}           →  200 { "state": "running",   "proce
 GET  /background-jobs/{job_id}/artifact  →  200 application/zip
 ```
 
+`format=yolo`, the former name of `ultralytics`, is still accepted on this route and on
+`export-compatibility` until the release after next: it resolves to the same plugin, the job's
+`result.format` and the compatibility report's `format` read `ultralytics`, and no deprecation
+text appears anywhere in the response. Only the CLI warns, on stderr. The MCP `export_release`
+tool behaves as this route does. Address the export by `target` where you can; the alias is a
+grace period, not a second name.
+
 The two surfaces are separate because they describe different things. An ingest job knows what it
 is *about* - a source, a batch - and publishes those as fields a client can navigate. A background
 job is about whatever its payload says, so it publishes `type` and `result` instead. What they
