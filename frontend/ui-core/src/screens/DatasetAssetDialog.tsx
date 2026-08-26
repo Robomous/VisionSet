@@ -14,26 +14,14 @@
  * inventory — every label is drawn there — and a list of forty rows saying
  * "box · model" beside it would repeat the overlay in words.
  *
- * The overlay is exact by construction rather than by measurement. The picture
- * box is given the asset's own aspect ratio, the `<img>` fills it and the `<svg>`
- * carries a `viewBox` of the asset's pixel size, so user units map onto the
- * rendered picture uniformly at every dialog width without a `ResizeObserver`.
- * An asset whose dimensions are not recorded gets the picture and no overlay,
- * because coordinates without a frame cannot be placed.
+ * The overlay is `StaticAnnotationOverlay`, exact by construction rather than by
+ * measurement. An asset whose dimensions are not recorded gets the picture and
+ * no overlay, because coordinates without a frame cannot be placed.
  */
 
 import { ChevronLeft, ChevronRight, Eye, EyeOff, Trash2 } from "lucide-react";
-import { useState, type CSSProperties, type JSX, type KeyboardEvent } from "react";
-import {
-  BboxShape,
-  PolygonShape,
-  PolylineShape,
-  STROKE_PX,
-  parseGeometry,
-  parseLabelClass,
-  type Geometry,
-  type LabelClass,
-} from "@visionset/annotator";
+import { useState, type JSX, type KeyboardEvent } from "react";
+import { parseLabelClass, type LabelClass } from "@visionset/annotator";
 
 import { AssetImage } from "../annotator/AssetImage";
 import type { WireAnnotation } from "../annotator/jobQueries";
@@ -43,6 +31,7 @@ import { classColor } from "../palette";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { DescriptionList, DescriptionRow } from "../patterns/DataDisplay";
+import { StaticAnnotationOverlay } from "../patterns/StaticAnnotationOverlay";
 import {
   Dialog,
   DialogContent,
@@ -125,7 +114,7 @@ export function DatasetAssetDialog({
               projectId={projectId}
               asset={asset}
               annotations={showLabels ? (annotations.data ?? []) : []}
-              colorOf={colorOf}
+              classes={[...declared.values()]}
             />
           </div>
 
@@ -205,12 +194,12 @@ function Picture({
   projectId,
   asset,
   annotations,
-  colorOf,
+  classes,
 }: {
   readonly projectId: string;
   readonly asset: DatasetAsset;
   readonly annotations: readonly WireAnnotation[];
-  readonly colorOf: (labelClass: string) => string;
+  readonly classes: readonly LabelClass[];
 }): JSX.Element {
   const width = asset.width;
   const height = asset.height;
@@ -231,80 +220,20 @@ function Picture({
     );
   }
 
-  // The stage scales its stroke variables with the zoom; a static viewer has no
-  // zoom, so the stroke is a fraction of the picture's width instead, and stays
-  // the same apparent weight however large the dialog draws it.
-  const stroke = Math.max(1, (STROKE_PX * width) / 800);
-  const strokeVars = {
-    "--vs-stroke": `${stroke}px`,
-    "--vs-stroke-selected": `${stroke}px`,
-  } as CSSProperties;
-
   return (
-    <div
-      data-testid="preview-picture"
-      className="relative w-full"
-      style={{ aspectRatio: `${width} / ${height}`, maxWidth: `calc(80vh * ${width / height})` }}
-    >
-      <AssetImage projectId={projectId} assetId={asset.id}>
-        {(src) => (
-          <img
-            data-testid="preview-image"
-            src={src}
-            alt={alt}
-            className="absolute inset-0 size-full rounded-md object-contain"
-          />
-        )}
-      </AssetImage>
-      <svg
-        data-testid="preview-overlay"
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="xMidYMid meet"
-        className="pointer-events-none absolute inset-0 size-full"
-        style={strokeVars}
-        aria-hidden="true"
-      >
-        {annotations.map((annotation) => (
-          <Shape
-            key={annotation.id}
-            annotation={annotation}
-            color={colorOf(annotation.label_class)}
-          />
-        ))}
-      </svg>
-    </div>
-  );
-}
-
-function Shape({
-  annotation,
-  color,
-}: {
-  readonly annotation: WireAnnotation;
-  readonly color: string;
-}): JSX.Element | null {
-  const geometry = geometryOf(annotation);
-  if (geometry === null || geometry.type === "classification_tag") return null;
-  return (
-    <g data-testid={`preview-shape-${annotation.id}`} data-geometry={geometry.type}>
-      {geometry.type === "bbox" ? (
-        <BboxShape geometry={geometry} color={color} hot={false} selected={false} />
-      ) : geometry.type === "polygon" ? (
-        <PolygonShape geometry={geometry} color={color} hot={false} selected={false} />
-      ) : (
-        <PolylineShape geometry={geometry} color={color} hot={false} selected={false} />
+    <AssetImage projectId={projectId} assetId={asset.id}>
+      {(src) => (
+        <StaticAnnotationOverlay
+          width={width}
+          height={height}
+          src={src}
+          alt={alt}
+          annotations={annotations}
+          classes={classes}
+        />
       )}
-    </g>
+    </AssetImage>
   );
-}
-
-/** `null` for a geometry the engine does not draw — a stored shape is never a reason to fail the page. */
-function geometryOf(annotation: WireAnnotation): Geometry | null {
-  try {
-    return parseGeometry(annotation.geometry);
-  } catch {
-    return null;
-  }
 }
 
 function Metadata({ asset }: { readonly asset: DatasetAsset }): JSX.Element {
