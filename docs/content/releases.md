@@ -862,7 +862,8 @@ carries the identical body under `detail.compatibility`.
 ## In the browser
 
 `@visionset/ui-core`'s dataset screen carries the stats, the release timeline, the
-publish dialog and export. Three things it takes from this page rather than
+publish dialog, the project's [pre-processing recipes](preprocessing.md) and export -
+addressed to a target model, with a recipe chosen beside it. Three things it takes from this page rather than
 re-deciding: a release is immutable, so nothing offers an edit; verification is **on
 demand**, because it re-reads every blob; and a split's fractions are compared with
 the same tolerance the kernel uses, since `0.7 + 0.15 + 0.15` is not `1.0`.

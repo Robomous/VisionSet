@@ -11,8 +11,9 @@ change that fights one is wrong - the boundary does not move to make a build pas
 ### Kernel purity
 
 `visionset.kernel` never imports `visionset.server`, `visionset.cli`,
-`visionset.mcp`, `visionset.formats`, `visionset.wire`, `visionset.jobs` or
-`visionset.inference`, nor `fastapi`, `typer`, `mcp` or `uvicorn`.
+`visionset.mcp`, `visionset.formats`, `visionset.wire`, `visionset.jobs`,
+`visionset.inference` or `visionset.preprocessing`, nor `fastapi`, `typer`, `mcp` or
+`uvicorn`.
 
 - **Contract** - `[[tool.importlinter.contracts]]` in
   [`pyproject.toml`](../../../pyproject.toml), run by `uv run lint-imports`.

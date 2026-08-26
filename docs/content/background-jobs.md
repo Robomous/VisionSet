@@ -193,7 +193,8 @@ each had to argue it in its own module.
 
 ## Why `visionset.jobs` is not in the kernel
 
-The export handler resolves an `Exporter` through `visionset.formats.registry`,
+The export handler resolves an `Exporter` through `visionset.formats.registry` (and
+the pre-processing drivers a recipe needs through `visionset.preprocessing.registry`),
 and import-linter forbids `visionset.kernel` from importing it - the same wall
 that makes `ReleaseService.export` take an instance rather than a format name. So
 handlers sit one package out, beside `visionset.formats` and `visionset.wire`.

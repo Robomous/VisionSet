@@ -79,7 +79,7 @@ it, and what twelve real agent runs did with it - see
 
 ## The tools
 
-Forty-nine tools are offered by default, in the order an agent meets them, plus the three
+Fifty-six tools are offered by default, in the order an agent meets them, plus the four
 below that are offered only on request — see
 [above](#destructive-tools-are-not-offered-unless-you-ask).
 [mcp-tools.md](mcp-tools.md) is the complete listing, generated from the server itself; this
@@ -362,16 +362,18 @@ out of the object to pick the variant, and omitting it fails. Always send
 ## What is not here, and why
 
 Fifty candidate tools were recorded across the four REST tasks; thirty of them shipped and
-twenty did not. Twenty-seven have been added since, every one of them because a surface grew a
+twenty did not. Thirty have been added since, every one of them because a surface grew a
 capability an agent had no way to reach. The larger groups say what that looks like: the four
 batch-composition tools above; the seven inference-connection tools, closing the Models page's
 SDK-first parity; the four schema-draft tools above, because composing a schema across several
-calls needs somewhere to hold a class before it is finished; the three deletions, which are
+calls needs somewhere to hold a class before it is finished; the four deletions, which are
 advertised only on request; the pre-labeling trio, `pre_label_job` beside the two fan-outs,
 closing the last capability declared with no consumer; `check_export`, the plan-before-apply
-half of an export on the `preview_schema_change` precedent; and `list_export_targets`, because
+half of an export on the `preview_schema_change` precedent; `list_export_targets`, because
 `export_release` takes a target name and an agent has to be able to read the catalog it comes
-from. That is fifty-four offered by default and fifty-seven in all. The parity rule means
+from; and the three recipe tools, because `export_release` takes a recipe by name and an agent
+has to be able to write one and read the names back. That is fifty-six offered by default and
+sixty in all. The parity rule means
 *evaluated*, not *implemented* — tool-selection accuracy degrades with count, so a tool ships
 only when an agent has a reason to reach for it that no neighbour covers.
 

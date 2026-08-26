@@ -25,7 +25,8 @@ without a server, an account, or your pixels leaving the machine.
 | **Annotate** | boxes, polygons and classification tags in the browser, with undo/redo, keyboard-first tools, and a headless engine underneath that the UI is only one renderer of. |
 | **Version** | schema versions are immutable and every label records the one it was judged against. A release freezes the whole thing into a manifest; publish twice from unchanged data and the bytes are identical. |
 | **Split** | a stored recipe rather than a materialised assignment, keyed on **content hash** — so two copies of one image cannot straddle a train/test boundary. |
-| **Export** | YOLO, COCO, Pascal VOC and [the lane family](docs/content/releases.md#the-lane-formats), each declaring what it can carry. VisionSet works out exactly what a format would drop *before* writing anything, and refuses to drop it silently. |
+| **Export** | addressed to [the model you will train](docs/content/releases.md#export-targets) — the Ultralytics YOLO line, YOLOv7, COCO, Pascal VOC, classification and [the lane family](docs/content/releases.md#the-lane-formats) — each format declaring what it can carry. VisionSet works out exactly what a target would drop *before* writing anything, and refuses to drop it silently. |
+| **Pre-process** | a named [recipe](docs/content/preprocessing.md) applied at export: resize every image, and write augmented variants of the training images beside their sources. The release stays untouched, and the export report records the recipe it ran with. |
 | **Auto-label** | a model you configure and fetch yourself, never one that arrives on its own. Click a point and SAM 2 proposes the shape under it; type words and Grounding DINO finds what they name. Every suggestion is a proposal until you accept it, and an accepted one records which model produced it. |
 | **Automate** | one SDK under everything, reachable as a Python API, a REST API, a CLI, and an MCP server an agent can drive. |
 
@@ -58,7 +59,7 @@ labelling:
     "env": { "VISIONSET_WORKSPACE": "/path/to/workspace" } } } }
 ```
 
-The whole cycle as tools, plus the two deletions that are offered only when the server is started
+The whole cycle as tools, plus the four deletions that are offered only when the server is started
 with `--allow-destructive` — because a `confirm` parameter is documented in the same listing an
 agent reads before choosing, and four of four measured runs sent it on the first call. See
 [docs/content/mcp.md](docs/content/mcp.md) for how a client is configured and why each tool exists,
@@ -76,7 +77,7 @@ visionset batch approve "$BATCH" --jobs-of 100 && visionset batch start "$BATCH"
 # …annotate, then…
 visionset batch complete "$BATCH" && visionset batch promote "$BATCH"
 visionset release publish --tag v1.0 --project road-signs --split 0.7,0.15,0.15
-visionset export --project road-signs --release v1.0 --format yolo --out ./out --allow-lossy
+visionset export --project road-signs --release v1.0 --target yolo11 --out ./out --allow-lossy
 ```
 
 Every command takes `--json` for scripting, and the shapes are the REST API's. See
@@ -109,9 +110,11 @@ src/visionset/          Single Python distribution (one wheel, one import namesp
   wire/                 The JSON shapes the CLI and MCP publish (gated against the REST models)
   server/               FastAPI — exposes the SDK via REST; openapi.json is a committed contract
   cli/                  Typer CLI (`visionset` console script)
-  mcp/                  MCP server (stdio) — 38 agent tools over the same SDK
-  formats/              Exporter plugins: yolo, coco, voc, classification and the five lane
-                        formats (entry-point group `visionset.formats`)
+  mcp/                  MCP server (stdio) — 56 agent tools over the same SDK, four more on request
+  formats/              Exporter plugins: ultralytics, yolov5-yaml, coco, voc, classification and
+                        the five lane formats (entry-point group `visionset.formats`)
+  preprocessing/        Pre-processing drivers: Pillow resize and augmentation behind the
+                        `PreprocessingDriver` port (entry-point group `visionset.preprocessing`)
   jobs/                 Handlers for work that outlives a request: ingest, export, weights
   inference/            Where a model connection becomes a running model (optional runtime)
   _static/              Compiled UI bundle lands here at build time (ships in the wheel)

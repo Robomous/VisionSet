@@ -12,7 +12,7 @@ flowchart TB
     Guard["guarded()\nwraps every body"]
     Doc["inspect.cleandoc\ndescription="]
     Ann["ToolAnnotations\nread / write hints"]
-    Tools["projects · schemas · sources · batches\njobs · assets · annotations\ndatasets · releases · formats"]
+    Tools["projects · schemas · sources · batches\njobs · assets · annotations\ndatasets · releases · formats · preprocessing · inference"]
     Dtools["DESTRUCTIVE_TOOLS\nregistered only on request"]
 
     Main --> Guard
