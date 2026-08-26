@@ -44,6 +44,7 @@ from tests.server._flow import (
 )
 from tests.server._jobs import InlineDispatcher
 
+from visionset.formats._targets import self_target
 from visionset.kernel.domain import MANIFEST_VERSION
 from visionset.kernel.services.release_service import EXPORT_REPORT_FILENAME
 
@@ -448,6 +449,36 @@ def test_an_export_can_be_addressed_to_a_target_instead_of_a_format(
         "images/listing.txt",
         EXPORT_REPORT_FILENAME,
     }
+
+
+class _UltralyticsNamed(WritingExporter):
+    """What the alias resolves to: the plugin installed under the current name."""
+
+    format_name = "ultralytics"
+    targets = self_target(format_name, WritingExporter.supported_geometries)
+
+
+def test_the_former_yolo_name_exports_through_ultralytics_without_a_warning(
+    client: TestClient, release: str
+) -> None:
+    """The alias is honoured silently here: a warning has nowhere to go on a 202."""
+    with_exporters(client.app, _UltralyticsNamed())
+
+    launched = client.post(f"/releases/{release}/export", params={"format": "yolo"})
+    assert launched.status_code == 202, launched.text
+    settled = client.get(f"/background-jobs/{launched.json()['id']}").json()
+
+    assert settled["state"] == "succeeded", settled
+    assert settled["result"]["format"] == "ultralytics"
+    assert settled["result"]["target"] is None
+    for body in (launched.text, json.dumps(settled)):
+        assert "deprecat" not in body.lower()
+        assert "warning" not in body.lower()
+    compatibility = client.get(
+        f"/releases/{release}/export-compatibility", params={"format": "yolo"}
+    )
+    assert compatibility.status_code == 200, compatibility.text
+    assert compatibility.json()["format"] == "ultralytics"
 
 
 def test_both_target_and_format_is_422_and_so_is_neither(client: TestClient, release: str) -> None:

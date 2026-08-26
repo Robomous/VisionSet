@@ -170,8 +170,10 @@ class Exporter(Protocol):
 def validate_targets(exporter: Exporter) -> None:
     """Check an exporter's target declarations against the exporter itself.
 
-    Every target's ``supported_geometries`` must stay within what the exporter
-    writes at all — its ``supported_geometries`` and its
+    There must be at least one, because the target control is the one gesture
+    every surface renders and an exporter declaring none would be installed
+    yet unreachable. Every target's ``supported_geometries`` must stay within
+    what the exporter writes at all — its ``supported_geometries`` and its
     ``degraded_geometries`` together — so a defective declaration is refused
     where it can be named rather than surfacing as a catalog entry whose
     exports are missing what it promised. Degraded counts because a target
@@ -179,9 +181,14 @@ def validate_targets(exporter: Exporter) -> None:
     lane resampled still has a target that carries lanes.
 
     Raises:
-        InvalidExportTarget: a target claims a geometry the exporter does not
-            write.
+        InvalidExportTarget: the exporter declares no target, or a target
+            claims a geometry the exporter does not write.
     """
+    if not exporter.targets:
+        raise InvalidExportTarget(
+            f"format {exporter.format_name!r} declares no export target, so nothing "
+            f"can address it; declare at least one"
+        )
     written = exporter.supported_geometries | exporter.degraded_geometries
     for target in exporter.targets:
         undeliverable = target.supported_geometries - written

@@ -79,7 +79,23 @@ class ImageWriter:
     supported_geometries = frozenset(GeometryType)
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
-    targets: frozenset[ExportTarget] = frozenset()
+    targets = frozenset(
+        {
+            ExportTarget(
+                name="image-writer",
+                label="image-writer",
+                family=TargetFamily.OTHER,
+                tasks=frozenset(),
+                supported_geometries=frozenset(GeometryType),
+                hints=PreprocessingHints(
+                    recommended_size=None,
+                    recommended_strategy=None,
+                    trainer_resizes=True,
+                    augmentation_common=False,
+                ),
+            )
+        }
+    )
 
     def __init__(self) -> None:
         self.handed: Manifest | None = None

@@ -340,6 +340,13 @@ GET  /background-jobs/{job_id}           →  200 { "state": "running",   "proce
 GET  /background-jobs/{job_id}/artifact  →  200 application/zip
 ```
 
+`format=yolo`, the former name of `ultralytics`, is still accepted on this route and on
+`export-compatibility` until the release after next: it resolves to the same plugin, the job's
+`result.format` and the compatibility report's `format` read `ultralytics`, and no deprecation
+text appears anywhere in the response. Only the CLI warns, on stderr. The MCP `export_release`
+tool behaves as this route does. Address the export by `target` where you can; the alias is a
+grace period, not a second name.
+
 The two surfaces are separate because they describe different things. An ingest job knows what it
 is *about* - a source, a batch - and publishes those as fields a client can navigate. A background
 job is about whatever its payload says, so it publishes `type` and `result` instead. What they
@@ -552,7 +559,11 @@ Both are reachable on the same route, and they differ in `detail`:
   payload parsed, and a kernel rule rejected it. `detail` is usually `null`.
 
 Most malformed input arrives as the first: a `LabelClass` that cannot be constructed never
-reaches a service to be refused by one.
+reaches a service to be refused by one. The export address is one more of the first kind:
+`POST /releases/{id}/export` and `GET /releases/{id}/export-compatibility` take exactly one of
+`target` and `format`, and both or neither is a 422 `VALIDATION_ERROR` whose single error has
+`loc: ["query"]`, `msg: "give exactly one of target and format"` and an `input` echoing the two
+values as sent.
 
 A refusal from a **bulk write** carries `detail.index` - the position in the array you sent of
 the item that caused it:

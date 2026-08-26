@@ -352,6 +352,33 @@ def test_an_export_can_be_addressed_to_a_target(
     assert written["target"] == "dummy"
 
 
+def test_the_former_yolo_name_exports_through_ultralytics_without_a_warning(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The alias resolves to the plugin installed under its current name, and the
+    result says nothing about it: the CLI is the one surface that warns."""
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    dest = tmp_path / "exports" / "yolo"
+
+    outcome = call(
+        "export_release",
+        project=named,
+        tag="v1.0",
+        format="yolo",
+        allow_lossy=True,
+        dest=str(dest),
+    )
+    result = payload(outcome)
+
+    assert (result["format"], result["target"]) == ("ultralytics", None)
+    assert result["compatibility"]["format"] == "ultralytics"
+    assert (dest / "data.yaml").is_file()
+    rendered = outcome.model_dump_json().lower()
+    assert "deprecat" not in rendered
+    assert "warning" not in rendered
+
+
 @pytest.mark.parametrize("tool", ["check_export", "export_release"])
 @pytest.mark.parametrize(
     "address", [{}, {"target": "dummy", "format": "dummy"}], ids=["neither", "both"]

@@ -24,12 +24,13 @@ from uuid import UUID, uuid4
 import pytest
 from tests.fixtures.media import write_image
 
-from visionset.formats.ultralytics import DATA_FILENAME, UltralyticsExporter
+from visionset.formats.ultralytics import DATA_FILENAME, TARGETS, UltralyticsExporter
 from visionset.kernel import ExportSourceUnreadable
 from visionset.kernel.domain import (
     Annotation,
     BboxGeometry,
     ClassificationGeometry,
+    ExportTarget,
     GeometryType,
     LabelClass,
     PolygonGeometry,
@@ -120,8 +121,10 @@ class Fixture:
         dataset_id = self.projects.get_dataset(self.project.id).id
         return self.releases.publish(dataset_id, tag, split=split).id
 
-    def export(self, release_id: UUID, dest: Path) -> Path:
-        self.releases.export(release_id, UltralyticsExporter(), dest, allow_lossy=True)
+    def export(self, release_id: UUID, dest: Path, *, target: ExportTarget | None = None) -> Path:
+        self.releases.export(
+            release_id, UltralyticsExporter(), dest, allow_lossy=True, target=target
+        )
         return dest
 
     def close(self) -> None:
@@ -357,6 +360,81 @@ def test_a_release_holding_only_tags_is_written_as_a_class_tree(tmp_path: Path) 
     tagged = {asset.content_hash for asset in manifest.assets if asset.annotations}
     assert {path.stem for path in (out / "train" / "weather").iterdir()} == tagged
     assert len(list((out / "train" / "time-of-day").iterdir())) == 1
+
+
+def _target(name: str) -> ExportTarget:
+    (found,) = (one for one in TARGETS if one.name == name)
+    return found
+
+
+def test_a_tags_only_release_addressed_to_a_detect_target_is_not_a_class_tree(
+    tmp_path: Path,
+) -> None:
+    """The task follows the target, not the dialect.
+
+    The dialect can lay out ``classify``, but ``yolov10`` has no such task and
+    carries no tag, so the service hands the plugin a manifest with no tag in
+    it and the export is the detect layout with nothing on its images.
+    """
+    fixture = Fixture(tmp_path)
+    fixture.label({0: [_tag()], 1: [_tag()]})
+    out = fixture.export(fixture.publish(), tmp_path / "out", target=_target("yolov10"))
+    fixture.close()
+
+    assert (out / DATA_FILENAME).exists()
+    assert not (out / "train").exists()
+    labels = sorted((out / "labels" / "train").iterdir())
+    assert len(labels) == 3
+    assert all(path.read_text(encoding="utf-8") == "" for path in labels)
+
+
+def test_a_polygon_release_addressed_to_a_detect_target_is_written_as_detect(
+    tmp_path: Path,
+) -> None:
+    """A polygon selects ``segment`` only when the target carries it; ``yolov10`` does not."""
+    fixture = Fixture(tmp_path)
+    lane = Annotation(
+        asset_id=uuid4(),
+        label_class="lane",
+        schema_version=1,
+        geometry=PolygonGeometry(points=[(8.0, 12.0), (24.0, 12.0), (16.0, 36.0)]),
+        provenance="human",
+    )
+    fixture.label({0: [lane, _box(x=8, y=12, width=16, height=24)]})
+    out = fixture.export(fixture.publish(), tmp_path / "out", target=_target("yolov10"))
+    fixture.close()
+
+    rows = [
+        path.read_text(encoding="utf-8")
+        for path in sorted((out / "labels" / "train").iterdir())
+        if path.read_text(encoding="utf-8")
+    ]
+    (written,) = rows
+    assert written.splitlines() == ["0 0.250000 0.500000 0.250000 0.500000"]
+
+
+def test_a_polygon_release_addressed_to_a_segment_target_keeps_its_vertices(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    lane = Annotation(
+        asset_id=uuid4(),
+        label_class="lane",
+        schema_version=1,
+        geometry=PolygonGeometry(points=[(8.0, 12.0), (24.0, 12.0), (16.0, 36.0)]),
+        provenance="human",
+    )
+    fixture.label({0: [lane]})
+    out = fixture.export(fixture.publish(), tmp_path / "out", target=_target("yolov5"))
+    fixture.close()
+
+    rows = [
+        path.read_text(encoding="utf-8")
+        for path in sorted((out / "labels" / "train").iterdir())
+        if path.read_text(encoding="utf-8")
+    ]
+    (written,) = rows
+    assert written.splitlines() == ["1 0.125000 0.250000 0.375000 0.250000 0.250000 0.750000"]
 
 
 def test_a_class_that_cannot_name_a_directory_is_refused_by_name(tmp_path: Path) -> None:

@@ -336,7 +336,7 @@ quietly leaving the impression that a terminal can label images.
 | Annotate | `add_annotations` with every edge multiplied by `scale`, then `set_asset_progress` for the rest, then `complete_job` |
 | Trunk | `complete_batch` → `promote_batch` → `dataset_stats` |
 | Release | `publish_release`, `list_releases`, `verify_release` |
-| Export | `list_formats` → `export_release(dest=…)` - a directory, not an archive |
+| Export | `list_formats` → `export_release(format="dummy", dest=…)` - a directory, not an archive; a `format` addresses no trainer, so this is the plain-format call and the Recipe row below is the same release addressed by `target` |
 | Recipe | `create_preprocessing_recipe`, `list_preprocessing_recipes`, then `export_release(target="yolo11", recipe="yolo-640", allow_lossy=True, dest=…)` - the result's `preprocessing` names the recipe under its hash and maps the train fold's `-aug1` variant to its source, and both files are on disk |
 | Refusal | `publish_release` on the same tag → a **result** carrying an error envelope, `retry_with` null |
 

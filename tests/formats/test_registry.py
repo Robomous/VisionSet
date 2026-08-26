@@ -9,15 +9,24 @@ part a reader would not expect a registry to need.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from importlib.metadata import EntryPoint
 from pathlib import Path
 
 import pytest
 
 from visionset.formats._targets import self_target
 from visionset.formats.registry import exporter, exporters, pick
-from visionset.kernel.domain import Annotation, GeometryType, Manifest, Release
-from visionset.kernel.errors import ExportFormatNotFound
-from visionset.kernel.ports import ContentReader
+from visionset.kernel.domain import (
+    Annotation,
+    ExportTarget,
+    GeometryType,
+    Manifest,
+    Release,
+    TargetFamily,
+    Task,
+)
+from visionset.kernel.errors import ExportFormatNotFound, InvalidExportTarget
+from visionset.kernel.ports import ContentReader, Exporter
 
 
 class _AnImporter:
@@ -66,6 +75,57 @@ def test_a_discovered_exporter_declares_its_targets() -> None:
 
     assert target.name == "dummy"
     assert target.tasks == frozenset()
+
+
+#: Every YOLO trainer this build addresses, with the tasks each accepts. The
+#: catalog table in `docs/content/releases.md` is generated from the same
+#: declarations, so a dropped or narrowed target would only ever show up
+#: there as a diff nobody reads; this is the assertion that fails instead.
+YOLO_TARGETS = {
+    "yolo26": {
+        Task.DETECT,
+        Task.SEGMENT,
+        Task.SEMANTIC,
+        Task.DEPTH,
+        Task.CLASSIFY,
+        Task.POSE,
+        Task.OBB,
+    },
+    "yolo12": {Task.DETECT, Task.SEGMENT, Task.CLASSIFY, Task.POSE, Task.OBB},
+    "yolo11": {Task.DETECT, Task.SEGMENT, Task.CLASSIFY, Task.POSE, Task.OBB},
+    "yolov10": {Task.DETECT},
+    "yolov9": {Task.DETECT, Task.SEGMENT},
+    "yolov8": {Task.DETECT, Task.SEGMENT, Task.CLASSIFY, Task.POSE, Task.OBB},
+    "yolov7": {Task.DETECT},
+    "yolov6": {Task.DETECT},
+    "yolov5": {Task.DETECT, Task.SEGMENT, Task.CLASSIFY},
+    "yolov3": {Task.DETECT},
+}
+
+
+def test_the_yolo_targets_are_exactly_these_ten_with_these_tasks() -> None:
+    declared = {
+        target.name: set(target.tasks)
+        for plugin in exporters().values()
+        for target in plugin.targets
+        if target.family is not TargetFamily.OTHER
+    }
+
+    assert declared == YOLO_TARGETS
+
+
+def test_a_yolo_target_carries_a_geometry_for_each_task_the_dialect_lays_out() -> None:
+    """``segment`` without polygons, or ``classify`` without tags, is a task no export can reach."""
+    behind = {
+        Task.DETECT: GeometryType.BBOX,
+        Task.SEGMENT: GeometryType.POLYGON,
+        Task.CLASSIFY: GeometryType.CLASSIFICATION_TAG,
+    }
+    for plugin in exporters().values():
+        for target in plugin.targets:
+            for task, geometry in behind.items():
+                if task in target.tasks:
+                    assert geometry in target.supported_geometries, (target.name, task)
 
 
 def test_every_installed_exporter_stays_discovered() -> None:
@@ -177,6 +237,30 @@ def test_a_plugin_missing_the_lossy_member_is_not_an_exporter() -> None:
             return None
 
     assert not isinstance(_Outdated(), Exporter)
+
+
+class _Targetless(_AnExporter):
+    """Carries every member of the port, and declares nothing under ``targets``."""
+
+    format_name = "targetless"
+    targets: frozenset[ExportTarget] = frozenset()
+
+
+def test_a_plugin_declaring_no_target_is_refused_at_the_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The port's ``isinstance`` filter cannot see an empty set; the scan's validation must."""
+    from visionset.formats import registry
+
+    assert isinstance(_Targetless(), Exporter)
+    shipped = tuple(registry.entry_points(group="visionset.formats"))
+    defective = EntryPoint(
+        name="targetless", value=f"{__name__}:_Targetless", group="visionset.formats"
+    )
+    monkeypatch.setattr(registry, "entry_points", lambda *, group: (*shipped, defective))
+
+    with pytest.raises(InvalidExportTarget, match="'targetless'"):
+        registry.exporters()
 
 
 def test_a_plugin_missing_the_targets_member_is_not_an_exporter() -> None:
