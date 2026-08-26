@@ -607,40 +607,37 @@ export function AddClassDialog({
           {session.length > 0 && (
             <ul className="flex flex-wrap gap-1.5" data-testid="session-classes" aria-label="Classes to publish">
               {session.map((entry) => (
-                <Badge
-                  key={entry.name}
-                  variant="secondary"
-                  className="pr-1"
-                  data-testid={`session-class-${entry.name}`}
-                >
-                  <span
-                    aria-hidden="true"
-                    className="size-2 shrink-0 rounded-full"
-                    style={{
-                      background: classColor(
-                        { ...entry, color: entry.color ?? null, attributes: [] },
-                        entry.name,
-                      ),
-                    }}
-                  />
-                  {entry.name}
-                  <span className="text-muted-foreground">
-                    {formatGeometries(entry.geometries)}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${entry.name}`}
-                    data-testid={`session-remove-${entry.name}`}
-                    disabled={pending}
-                    className="rounded-full p-0.5 text-muted-foreground hover:bg-card hover:text-foreground disabled:cursor-not-allowed"
-                    onClick={() => {
-                      const banked = session.filter((held) => held.name !== entry.name);
-                      setSession(banked);
-                      onBank?.(banked);
-                    }}
-                  >
-                    <X className="size-3" aria-hidden="true" />
-                  </button>
+                <Badge asChild key={entry.name} variant="secondary" className="pr-1">
+                  <li data-testid={`session-class-${entry.name}`}>
+                    <span
+                      aria-hidden="true"
+                      className="size-2 shrink-0 rounded-full"
+                      style={{
+                        background: classColor(
+                          { ...entry, color: entry.color ?? null, attributes: [] },
+                          entry.name,
+                        ),
+                      }}
+                    />
+                    {entry.name}
+                    <span className="text-muted-foreground">
+                      {formatGeometries(entry.geometries)}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${entry.name}`}
+                      data-testid={`session-remove-${entry.name}`}
+                      disabled={pending}
+                      className="rounded-full p-0.5 text-muted-foreground hover:bg-card hover:text-foreground disabled:cursor-not-allowed"
+                      onClick={() => {
+                        const banked = session.filter((held) => held.name !== entry.name);
+                        setSession(banked);
+                        onBank?.(banked);
+                      }}
+                    >
+                      <X className="size-3" aria-hidden="true" />
+                    </button>
+                  </li>
                 </Badge>
               ))}
             </ul>
