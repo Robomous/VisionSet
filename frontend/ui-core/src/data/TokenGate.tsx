@@ -49,7 +49,7 @@ import { Key } from "lucide-react";
 import { useEffect, useState, type FormEvent, type JSX, type ReactNode } from "react";
 
 import { createApiClient } from "../client";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../primitives/Card";
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
 import { useApiSession } from "./ApiProvider";
@@ -154,7 +154,7 @@ export function TokenForm(): JSX.Element {
             </div>
             <Button
               type="submit"
-              variant="primary"
+              variant="default"
               data-testid="token-submit"
               disabled={checking || value.trim() === ""}
             >

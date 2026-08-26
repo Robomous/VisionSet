@@ -27,7 +27,7 @@ import { Play, SquareCheck } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
@@ -146,7 +146,7 @@ export function CompleteBatchButton({
   return (
     <div className={className ?? "flex flex-col items-end gap-1"}>
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid={`complete-${batch.name}`}
         disabled={outstanding > 0 || finish.isPending}
@@ -303,11 +303,11 @@ export function ApproveDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" data-testid="approve-cancel" onClick={onClose}>
+          <Button variant="outline" data-testid="approve-cancel" onClick={onClose}>
             Cancel
           </Button>
           <Button
-            variant="primary"
+            variant="default"
             data-testid="approve-submit"
             disabled={approve.isPending || (kind === "by_size" && !(count >= 1))}
             onClick={submit}
@@ -350,7 +350,7 @@ export function StartAnnotatingButton({
   return (
     <div className={className ?? "flex flex-col items-end gap-1"}>
       <Button
-        variant="primary"
+        variant="default"
         size="sm"
         data-testid="start-batch"
         disabled={start.isPending}

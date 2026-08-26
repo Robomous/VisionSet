@@ -36,7 +36,7 @@ import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
@@ -113,7 +113,7 @@ export function CorrectionButton({
   return (
     <>
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         className={className}
         data-testid={`correct-${batch.name}`}
@@ -247,11 +247,11 @@ function CorrectionDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose} disabled={create.isPending}>
+          <Button variant="outline" onClick={onClose} disabled={create.isPending}>
             Cancel
           </Button>
           <Button
-            variant="primary"
+            variant="default"
             data-testid="correction-submit"
             disabled={create.isPending || value.trim() === ""}
             onClick={submit}

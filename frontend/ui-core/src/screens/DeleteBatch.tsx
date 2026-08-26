@@ -38,7 +38,7 @@ import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares, withheldBecause } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
@@ -171,7 +171,7 @@ function DeleteBatchDialog({
           <FieldError data-testid="delete-batch-error">{refusalProse(remove.error)}</FieldError>
         )}
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button

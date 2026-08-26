@@ -157,7 +157,7 @@ import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -484,7 +484,7 @@ function TooNarrow({
           : {
               action: (
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   data-testid="too-narrow-gallery"
                   onClick={() => onOpenGallery(destination.project_id, destination.id)}
                 >
@@ -2090,7 +2090,7 @@ function Workspace({
             */}
             {!frameVerbs ? null : skipped ? (
               <Button
-                variant="secondary"
+                variant="outline"
                 size="sm"
                 className="min-w-27"
                 data-testid="unskip"
@@ -2102,7 +2102,7 @@ function Workspace({
               </Button>
             ) : (
               <Button
-                variant="secondary"
+                variant="outline"
                 size="sm"
                 className="min-w-27"
                 data-testid="skip"
@@ -2174,7 +2174,7 @@ function Workspace({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    variant="primary"
+                    variant="default"
                     size="sm"
                     className={
                       finishWithheld === null ? "min-w-36" : "min-w-36 cursor-not-allowed opacity-40"
@@ -2262,7 +2262,7 @@ function Workspace({
                 in the one place that cannot go stale.
               */
               <Button
-                variant="primary"
+                variant="default"
                 size="sm"
                 className="min-w-36"
                 data-testid="save-and-next"
@@ -2367,7 +2367,7 @@ function Workspace({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   size="sm"
                   className="hidden lg:inline-flex"
                   data-testid={reviewAction.testId}

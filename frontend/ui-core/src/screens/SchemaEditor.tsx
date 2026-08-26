@@ -104,7 +104,7 @@ import { asApiError } from "../data/errors";
 import { classBlockers, describeClassCount, refusalProse } from "../data/refusals";
 import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
 import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/Card";
 import {
   Dialog,
@@ -751,7 +751,7 @@ export function SchemaEditor({
             }}
           />
           <Button
-            variant="secondary"
+            variant="outline"
             data-testid="add-class"
             disabled={draftLocked}
             onClick={addClass}
@@ -763,7 +763,7 @@ export function SchemaEditor({
             // `secondary`: the project's navigation holds the one filled
             // control of the project shell, and a section's own actions sit
             // a weight below it. Still never disabled for "nothing to save".
-            variant="secondary"
+            variant="outline"
             data-testid="save-schema"
             // Never disabled for "nothing to save" — `save` answers that with a
             // toast. It is also disabled while a removal preview, flush, or
@@ -1347,7 +1347,7 @@ function OrphanBlockersDialog({
           {framesListed ? " — the frames carrying them are under “Frames in the way”, below the editor" : ""}.
         </DialogDescription>
         <DialogFooter>
-          <Button variant="secondary" data-testid="orphan-close" onClick={onClose}>
+          <Button variant="outline" data-testid="orphan-close" onClick={onClose}>
             Close
           </Button>
         </DialogFooter>
@@ -1411,7 +1411,7 @@ function DestructiveDialog({
           while they are in it.
         </DialogDescription>
         <DialogFooter>
-          <Button variant="secondary" onClick={onCancel}>
+          <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
           <Button

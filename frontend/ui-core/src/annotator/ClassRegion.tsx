@@ -63,7 +63,7 @@ import { useState, type JSX, type RefObject } from "react";
 
 import { formatGeometries, geometryLabel } from "../data/geometryCategory";
 import { classColor } from "../palette";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { Input } from "../primitives/Input";
 import { CLASS_ROW_PX, ClassListRow } from "../patterns/DataDisplay";
 

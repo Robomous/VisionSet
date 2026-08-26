@@ -42,7 +42,7 @@ import { Async } from "../data/Async";
 import { readStep, writePref } from "../data/prefs";
 import type { AssetProgress } from "../annotator/jobQueries";
 import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
@@ -709,7 +709,7 @@ function BatchHeader({
             has no route back. See `BatchLifecycle`.
           */}
           {declares(batch, BATCH_ACTION.approve) && (
-            <Button variant="primary" size="sm" data-testid="approve-batch" onClick={onApprove}>
+            <Button variant="default" size="sm" data-testid="approve-batch" onClick={onApprove}>
               Approve batch
             </Button>
           )}
@@ -725,7 +725,7 @@ function BatchHeader({
           {startsAnnotation && batch !== undefined && <StartAnnotatingButton batch={batch} />}
           {!startsAnnotation && onStartAnnotating !== undefined && openable && (
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               data-testid="start-annotating"
               onClick={onStartAnnotating}
@@ -1491,7 +1491,7 @@ function BulkBar({
       </span>
 
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="bulk-skip"
         disabled={skippable.length === 0 || bulk.isPending}
@@ -1503,7 +1503,7 @@ function BulkBar({
       </Button>
 
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="bulk-restore"
         disabled={restorable.length === 0 || bulk.isPending}
@@ -1521,7 +1521,7 @@ function BulkBar({
         `return_to_annotator` pressed one frame at a time in the annotator.
       */}
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="bulk-return"
         disabled={returnable.length === 0 || bulk.isPending}
@@ -1533,7 +1533,7 @@ function BulkBar({
       </Button>
 
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="bulk-confirm"
         disabled={confirmable.length === 0 || bulk.isPending}
@@ -1545,7 +1545,7 @@ function BulkBar({
       </Button>
 
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="bulk-discard"
         disabled={discardable.length === 0 || discard.isPending}
@@ -1564,7 +1564,7 @@ function BulkBar({
         thing a person cannot see from the tiles.
       */}
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="bulk-remove"
         disabled={!removable || removalIds.length === 0 || remove.isPending}
@@ -1763,7 +1763,7 @@ function RemoveFromBatchDialog({
             holds them. Only this batch stops listing them.
           </DialogDescription>
         <DialogFooter>
-          <Button variant="secondary" onClick={onCancel} data-testid="remove-cancel">
+          <Button variant="outline" onClick={onCancel} data-testid="remove-cancel">
             Cancel
           </Button>
           <Button variant="destructive" onClick={onConfirm} disabled={pending} data-testid="remove-confirm">
@@ -1799,7 +1799,7 @@ function DiscardModelLabelsDialog({
           back to unannotated, where a new pre-labeling run reaches them again.
         </DialogDescription>
         <DialogFooter>
-          <Button variant="secondary" onClick={onCancel} data-testid="discard-cancel">
+          <Button variant="outline" onClick={onCancel} data-testid="discard-cancel">
             Cancel
           </Button>
           <Button variant="destructive" onClick={onConfirm} disabled={pending} data-testid="discard-confirm">

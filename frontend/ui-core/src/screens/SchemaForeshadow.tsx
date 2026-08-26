@@ -22,7 +22,7 @@
 import type { JSX } from "react";
 
 import { Alert, AlertDescription } from "../primitives/alert";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { useProjectReadiness } from "./queries";
 
 export function SchemaForeshadow({

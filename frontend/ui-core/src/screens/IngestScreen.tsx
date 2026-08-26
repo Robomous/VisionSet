@@ -141,7 +141,7 @@ import { parentLabel } from "../patterns/parentLabel";
 import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
 import { Badge } from "../primitives/badge";
 import type { BadgeTone } from "./batchState";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { Card, CardContent } from "../primitives/Card";
 import { Progress } from "../primitives/Feedback";
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
@@ -531,7 +531,7 @@ export function IngestScreen({
                 <div className="flex justify-end">
                   <Button
                     type="submit"
-                    variant="primary"
+                    variant="default"
                     data-testid="register-source"
                     // Explained by adjacency (`DESIGN.md` principle 9): with no
                     // files the dropzone above says what to do, and with a bad
@@ -650,13 +650,13 @@ export function IngestScreen({
                         restart — the registered source stays on the server
                         (registration is idempotent, nothing to undo), but every
                         setting on this screen resets with the files. */}
-                    <Button variant="ghost" data-testid="back-to-files" onClick={again}>
+                    <Button type="button" variant="ghost" data-testid="back-to-files" onClick={again}>
                       <ArrowLeft aria-hidden="true" />
                       Change files
                     </Button>
                     <Button
                       type="submit"
-                      variant="primary"
+                      variant="default"
                       data-testid="start-ingest"
                       disabled={start.isPending}
                     >
@@ -888,6 +888,7 @@ function SelectionPanel({
           )}
         </div>
         <Button
+          type="button"
           variant="ghost"
           size="icon"
           data-testid="clear-files"
@@ -1058,7 +1059,7 @@ function RunCard({
             {job.state === "failed" && (
               <div>
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   data-testid="resume-ingest"
                   disabled={resume.isPending}
                   onClick={() => resume.mutate(job.id)}
@@ -1163,7 +1164,7 @@ function Outcome({
       </p>
       <div className="flex flex-wrap gap-2">
         {batchId !== null && onOpenBatch !== undefined && (
-          <Button variant="primary" data-testid="open-batch" onClick={() => onOpenBatch(batchId)}>
+          <Button variant="default" data-testid="open-batch" onClick={() => onOpenBatch(batchId)}>
             <FolderOpen aria-hidden="true" />
             Open batch
           </Button>
@@ -1171,11 +1172,11 @@ function Outcome({
         {/* Back to step 2, source kept: the same frames into a different batch
             is a real second run — registration is idempotent and content
             addressing makes re-reading free. */}
-        <Button variant="secondary" data-testid="rerun-source" onClick={onRerun}>
+        <Button variant="outline" data-testid="rerun-source" onClick={onRerun}>
           <RotateCw aria-hidden="true" />
           Ingest into another batch
         </Button>
-        <Button variant="secondary" data-testid="ingest-another" onClick={onAgain}>
+        <Button variant="outline" data-testid="ingest-another" onClick={onAgain}>
           <Upload aria-hidden="true" />
           Ingest another source
         </Button>

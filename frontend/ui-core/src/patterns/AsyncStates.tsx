@@ -22,7 +22,7 @@ import type { JSX, ReactNode } from "react";
 
 import { cn } from "../lib/cn";
 import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { Skeleton } from "../primitives/Feedback";
 
 export interface LoadingStateProps {
@@ -136,7 +136,7 @@ export function ErrorState({
         </p>
       )}
       {onRetry !== undefined && (
-        <Button variant="secondary" size="sm" className="mt-3" onClick={onRetry}>
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onRetry}>
           {retryLabel}
         </Button>
       )}

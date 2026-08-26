@@ -49,7 +49,7 @@ import { ChevronDown, Database, Grid3x3, Layers, MoreHorizontal, Network, Pencil
 import { cva } from "class-variance-authority";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -235,7 +235,7 @@ function Cta({ annotate, onIngest, contentOwnsTheAction = false, layout }: Proje
   if (onIngest === undefined) return null;
   return (
     <Button
-      variant={contentOwnsTheAction ? "secondary" : "primary"}
+      variant={contentOwnsTheAction ? "outline" : "default"}
       data-testid="go-ingest"
       className={wide}
       onClick={onIngest}
@@ -265,7 +265,7 @@ function AnnotateAction({
   const [only] = targets;
   if (targets.length === 1 && only !== undefined) {
     return (
-      <Button variant="primary" data-testid="go-annotate" className={className} onClick={() => onOpen(only.id)}>
+      <Button variant="default" data-testid="go-annotate" className={className} onClick={() => onOpen(only.id)}>
         <Pencil className="size-4" aria-hidden="true" />
         Annotate
       </Button>
@@ -276,7 +276,7 @@ function AnnotateAction({
       <DropdownMenuTrigger asChild>
         {/* Same testid and variant as the jumping form: one control with two
             shapes, and the chevron is what tells them apart. */}
-        <Button variant="primary" data-testid="go-annotate" className={className}>
+        <Button variant="default" data-testid="go-annotate" className={className}>
           <Pencil className="size-4" aria-hidden="true" />
           Annotate
           <ChevronDown className="size-4" aria-hidden="true" />

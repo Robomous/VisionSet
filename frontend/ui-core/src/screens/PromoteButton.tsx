@@ -48,7 +48,7 @@ import type { JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { FieldError } from "../primitives/Input";
 import { usePromoteBatch, type Batch } from "./queries";
 
@@ -110,7 +110,7 @@ export function PromoteButton({
   return (
     <div className={className ?? "flex flex-col items-end gap-1"}>
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid={`promote-${batch.name}`}
         disabled={promote.isPending}

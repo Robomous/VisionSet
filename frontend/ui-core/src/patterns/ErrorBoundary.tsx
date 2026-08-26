@@ -41,7 +41,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 import { refusalProse } from "../data/refusals.js";
-import { Button } from "../primitives/Button.js";
+import { Button } from "../primitives/button.js";
 import { EmptyState } from "./AsyncStates.js";
 
 export interface ErrorBoundaryProps {
@@ -94,11 +94,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 module-level failure, and it is the honest fallback when the
                 first button does nothing.
               */}
-              <Button variant="primary" data-testid="error-boundary-retry" onClick={this.reset}>
+              <Button variant="default" data-testid="error-boundary-retry" onClick={this.reset}>
                 Try again
               </Button>
               <Button
-                variant="secondary"
+                variant="outline"
                 data-testid="error-boundary-reload"
                 onClick={() => window.location.reload()}
               >

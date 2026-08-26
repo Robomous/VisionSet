@@ -30,7 +30,7 @@ import { useState, type FormEvent, type JSX } from "react";
 import { Async } from "../data/Async";
 import { refusalProse } from "../data/refusals";
 import { formatWhen } from "../lib/format";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
@@ -85,7 +85,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
             A project owns a schema, its batches and one dataset.
           </p>
         </div>
-        <Button variant="primary" data-testid="new-project" onClick={() => setCreating(true)}>
+        <Button variant="default" data-testid="new-project" onClick={() => setCreating(true)}>
           <FolderPlus aria-hidden="true" />
           New project
         </Button>
@@ -103,7 +103,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
           // One filled action per view — and the header's is the one that
           // survives when the list fills up.
           action: (
-            <Button variant="secondary" onClick={() => setCreating(true)}>
+            <Button variant="outline" onClick={() => setCreating(true)}>
               New project
             </Button>
           ),
@@ -301,12 +301,12 @@ export function CreateProjectDialog({
             <FieldError data-testid="create-error">{refusal(create.error)}</FieldError>
           )}
           <DialogFooter>
-            <Button variant="secondary" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
             <Button
               type="submit"
-              variant="primary"
+              variant="default"
               data-testid="create-submit"
               disabled={name.trim() === "" || create.isPending}
             >
@@ -341,7 +341,7 @@ function DeleteProjectDialog({
           <FieldError data-testid="delete-error">{refusal(remove.error)}</FieldError>
         )}
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button

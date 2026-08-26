@@ -94,7 +94,7 @@ import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
 import { Alert, AlertDescription } from "../primitives/alert";
 import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
@@ -397,7 +397,7 @@ export function PromptClasses({ plan }: { readonly plan: PreLabelPlan | null }):
  */
 function DeadStart(): JSX.Element {
   return (
-    <Button variant="secondary" data-testid="prelabel-submit" disabled>
+    <Button variant="outline" data-testid="prelabel-submit" disabled>
       Start
     </Button>
   );
@@ -550,7 +550,7 @@ export function PreLabelButton({ batch, className, onSegment }: PreLabelButtonPr
   return (
     <>
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         className={className}
         data-testid={`pre-label-${batch.name}`}
@@ -858,14 +858,14 @@ function PreLabelDialog({
           {mode === "running" && (
             // The run keeps going in the background — closing only stops
             // watching it, so this is the one button and it is the primary one.
-            <Button variant="primary" onClick={close}>
+            <Button variant="default" onClick={close}>
               Close
             </Button>
           )}
 
           {mode !== "running" && (
             <>
-              <Button variant="secondary" onClick={close}>
+              <Button variant="outline" onClick={close}>
                 Close
               </Button>
 
@@ -875,7 +875,7 @@ function PreLabelDialog({
                 // button already on screen rather than replace it with another.
                 <>
                   <Button
-                    variant={blocked ? "secondary" : "primary"}
+                    variant={blocked ? "outline" : "default"}
                     data-testid="prelabel-submit"
                     disabled={launchDisabled}
                     onClick={submit}
@@ -883,7 +883,7 @@ function PreLabelDialog({
                     {running ? "Labeling…" : "Start"}
                   </Button>
                   {blocked && preLabeled > 0 && (
-                    <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
+                    <Button variant="default" data-testid="prelabel-edit" onClick={goToPreLabeled}>
                       Edit these frames
                     </Button>
                   )}
@@ -896,7 +896,7 @@ function PreLabelDialog({
                     // Quiet, deliberately: the next real step is correcting what
                     // this run already produced, not launching another one over it.
                     <Button
-                      variant="secondary"
+                      variant="outline"
                       data-testid="prelabel-run-again"
                       disabled={launchDisabled}
                       onClick={submit}
@@ -906,7 +906,7 @@ function PreLabelDialog({
                   ) : (
                     <DeadStart />
                   )}
-                  <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
+                  <Button variant="default" data-testid="prelabel-edit" onClick={goToPreLabeled}>
                     Edit these frames
                   </Button>
                 </>
@@ -917,7 +917,7 @@ function PreLabelDialog({
                   <>
                     <div className="flex flex-col items-end gap-1">
                       <Button
-                        variant="primary"
+                        variant="default"
                         data-testid="prelabel-continue"
                         disabled={launchDisabled}
                         onClick={submit}
@@ -931,7 +931,7 @@ function PreLabelDialog({
                       </FieldHint>
                     </div>
                     {blocked && preLabeled > 0 && (
-                      <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
+                      <Button variant="default" data-testid="prelabel-edit" onClick={goToPreLabeled}>
                         Edit these frames
                       </Button>
                     )}
@@ -944,7 +944,7 @@ function PreLabelDialog({
                 (offering ? (
                   <>
                     <Button
-                      variant="primary"
+                      variant="default"
                       data-testid="prelabel-retry"
                       disabled={launchDisabled}
                       onClick={submit}
@@ -952,7 +952,7 @@ function PreLabelDialog({
                       Try again
                     </Button>
                     {blocked && preLabeled > 0 && (
-                      <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
+                      <Button variant="default" data-testid="prelabel-edit" onClick={goToPreLabeled}>
                         Edit these frames
                       </Button>
                     )}

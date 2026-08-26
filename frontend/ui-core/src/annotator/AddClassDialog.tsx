@@ -93,7 +93,7 @@ import { refusalProse } from "../data/refusals";
 import { classColor } from "../palette";
 import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
 import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
@@ -562,7 +562,7 @@ export function AddClassDialog({
               version, or clear the slate.
               <div className="mt-2">
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   data-testid="discard-resumed"
                   disabled={pending}
                   onClick={() => {
@@ -789,7 +789,7 @@ export function AddClassDialog({
                 still waiting on the promise that closes it.
               */}
               <Button
-                variant="secondary"
+                variant="outline"
                 data-testid="keep-editing"
                 disabled={pending}
                 onClick={() => setDiscarding(false)}
@@ -831,7 +831,7 @@ export function AddClassDialog({
             </>
           ) : (
             <>
-              <Button variant="secondary" data-testid="add-class-cancel" onClick={requestClose} disabled={pending}>
+              <Button variant="outline" data-testid="add-class-cancel" onClick={requestClose} disabled={pending}>
                 Cancel
               </Button>
               {/*
@@ -842,7 +842,7 @@ export function AddClassDialog({
                 publish time.
               */}
               <Button
-                variant="secondary"
+                variant="outline"
                 data-testid="add-another"
                 disabled={pending || !readyForm}
                 onClick={addAnother}
@@ -854,7 +854,7 @@ export function AddClassDialog({
                 </kbd>
               </Button>
               <Button
-                variant="primary"
+                variant="default"
                 data-testid="add-class-submit"
                 // Disabled only for states a label cannot explain: nothing to
                 // publish, a duplicate in the form, a schema that has not loaded,

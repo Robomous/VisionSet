@@ -24,7 +24,7 @@ import type { JSX } from "react";
 
 import { geometryLabel, groupGeometries } from "../data/geometryCategory";
 import { classColor, hexColor } from "../palette";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { FieldHint, Input, Label } from "../primitives/Input";
 import {
   Select,

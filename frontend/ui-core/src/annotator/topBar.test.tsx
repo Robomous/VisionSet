@@ -452,7 +452,7 @@ describe("the single review action", () => {
 /**
  * The filled slot: exactly one weight on the bar.
  *
- * `variant="primary"` is the one weight on the bar, so "exactly one filled
+ * `variant="default"` is the one weight on the bar, so "exactly one filled
  * control" is a claim about `bg-primary` rather than about a `data-` attribute
  * nobody styles from — asserting a marker the design does not read would pass
  * over a bar with two coral buttons on it.

@@ -203,11 +203,11 @@ export function Styleguide(): JSX.Element {
 
         <Section title="Buttons" description="Five variants, four sizes.">
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" data-testid="button-primary">
+            <Button variant="default" data-testid="button-primary">
               <Plus className="size-4" aria-hidden="true" />
               New project
             </Button>
-            <Button variant="secondary">Cancel</Button>
+            <Button variant="outline">Cancel</Button>
             <Button variant="ghost">Ghost</Button>
             <Button variant="destructive">
               <Trash2 className="size-4" aria-hidden="true" />
@@ -219,7 +219,7 @@ export function Styleguide(): JSX.Element {
           <div className="flex flex-wrap items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="primary" size="icon" aria-label="Select (V)">
+                <Button variant="default" size="icon" aria-label="Select (V)">
                   <MousePointer2 className="size-4" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
@@ -457,7 +457,7 @@ export function Styleguide(): JSX.Element {
             title="Overview"
             meta="11 images · ingested Aug 7, 2026"
             actions={
-              <Button variant="secondary">
+              <Button variant="outline">
                 <Plus className="size-4" aria-hidden="true" />
                 Ingest
               </Button>
@@ -483,7 +483,7 @@ export function Styleguide(): JSX.Element {
                   releases. Blobs are never deleted.
                 </DialogDescription>
                 <DialogFooter>
-                  <Button variant="secondary">Cancel</Button>
+                  <Button variant="outline">Cancel</Button>
                   <Button variant="destructive">Delete</Button>
                 </DialogFooter>
               </DialogContent>
@@ -491,7 +491,7 @@ export function Styleguide(): JSX.Element {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="secondary">Actions</Button>
+                <Button variant="outline">Actions</Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuItem>Rename</DropdownMenuItem>
@@ -502,7 +502,7 @@ export function Styleguide(): JSX.Element {
             </DropdownMenu>
 
             <Button
-              variant="secondary"
+              variant="outline"
               data-testid="open-toast"
               onClick={() => toast("Release v0.3 published")}
             >
@@ -520,7 +520,7 @@ export function Styleguide(): JSX.Element {
             <EmptyState
               title="No batches yet"
               description="Ingest images or a video to create the first one."
-              action={<Button variant="primary">Ingest</Button>}
+              action={<Button variant="default">Ingest</Button>}
             />
             <ErrorState
               code="SCHEMA_CHANGE_WOULD_ORPHAN"

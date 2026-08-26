@@ -48,7 +48,7 @@ import { refusalProse } from "../data/refusals";
 import { classColor } from "../palette";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { Skeleton } from "../primitives/Feedback";
 import { DistributionBar, StatCard, ThumbnailGrid } from "../patterns/DataDisplay";
 import { AssetThumbnail } from "./AssetThumbnail";
@@ -365,7 +365,7 @@ function FirstRun({
               // `secondary`: the project header's "Ingest" is on screen right
               // above this one, same label and same handler, so a filled button
               // here would render the identical action twice.
-              <Button variant="secondary" data-testid="overview-ingest" onClick={onIngest}>
+              <Button variant="outline" data-testid="overview-ingest" onClick={onIngest}>
                 <Upload aria-hidden="true" />
                 Ingest
               </Button>
@@ -393,7 +393,7 @@ function FirstRun({
         action={
           <div className="flex flex-col items-center gap-2">
             {onOpenSchema !== undefined && (
-              <Button variant="primary" data-testid="first-run-cta" onClick={onOpenSchema}>
+              <Button variant="default" data-testid="first-run-cta" onClick={onOpenSchema}>
                 <Tags aria-hidden="true" />
                 Define classes
               </Button>

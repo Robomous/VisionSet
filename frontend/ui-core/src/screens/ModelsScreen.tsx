@@ -162,7 +162,7 @@ import { jobFailureProse, refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Card,
   CardAction,
@@ -246,7 +246,7 @@ export function ModelsScreen(): JSX.Element {
             by every project in this workspace.
           </p>
         </div>
-        <Button variant="primary" data-testid="new-connection" onClick={() => setCreating(true)}>
+        <Button variant="default" data-testid="new-connection" onClick={() => setCreating(true)}>
           <Plug aria-hidden="true" />
           Add model
         </Button>
@@ -262,7 +262,7 @@ export function ModelsScreen(): JSX.Element {
           // `secondary`, not `primary`: the header's "Add model" is on screen
           // and opens the same dialog. One filled action per view.
           action: (
-            <Button variant="secondary" onClick={() => setCreating(true)}>
+            <Button variant="outline" onClick={() => setCreating(true)}>
               Add model
             </Button>
           ),
@@ -697,7 +697,7 @@ export function ConnectionCard({
             control may exist is still `allowed_actions` and nothing else.
           */}
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
             data-testid="download-weights"
             disabled={busy}
@@ -1498,12 +1498,12 @@ function ConnectionForm({
               <FieldError data-testid="connection-error">{refusalProse(failure)}</FieldError>
             )}
             <DialogFooter>
-              <Button variant="secondary" onClick={onClose}>
+              <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
               <Button
                 type="submit"
-                variant="primary"
+                variant="default"
                 data-testid="connection-submit"
                 disabled={!complete || pending}
               >
@@ -1671,7 +1671,7 @@ function DeleteConnectionDialog({
           </FieldError>
         )}
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button

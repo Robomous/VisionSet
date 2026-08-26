@@ -74,7 +74,7 @@ import { useApiClient } from "../data/ApiProvider";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { formatCount, formatWhen } from "../lib/format";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { DEFAULT_PROJECT_SECTION, PROJECT_SECTIONS, type ProjectSection } from "../patterns/ProjectNav";
@@ -540,7 +540,7 @@ function Section({
 }): JSX.Element | null {
   const headerIngest: ReactNode =
     ingestInHeader === undefined ? undefined : (
-      <Button variant="secondary" data-testid="go-ingest" onClick={ingestInHeader}>
+      <Button variant="outline" data-testid="go-ingest" onClick={ingestInHeader}>
         <Upload className="size-4" aria-hidden="true" />
         Ingest
       </Button>

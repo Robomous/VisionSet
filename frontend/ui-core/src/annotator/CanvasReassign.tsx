@@ -57,7 +57,7 @@ import type { AnnotatorStore, Geometry, Viewport } from "@visionset/annotator";
 import { Tag } from "lucide-react";
 import type { JSX } from "react";
 
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { DropdownMenu, DropdownMenuTrigger } from "../primitives/Menu";
 import { ReassignMenu } from "./ReassignMenu";
 
@@ -124,7 +124,7 @@ export function CanvasReassign({
       >
         <DropdownMenuTrigger asChild>
           <Button
-            variant="secondary"
+            variant="outline"
             size="icon-xs"
             className="shadow-sm"
             aria-label={`Reassign the selected ${subject.label_class}`}

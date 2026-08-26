@@ -52,7 +52,7 @@ import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
 import { Badge } from "../primitives/badge";
 import type { BadgeTone } from "./batchState";
 import { SectionHeader } from "../patterns/SectionHeader";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/Card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
 import {
@@ -151,7 +151,7 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
           // `secondary`: the project's navigation holds the page's filled
           // action. One filled action per view.
           <Button
-            variant="secondary"
+            variant="outline"
             data-testid="publish-release"
             disabled={dataset.data === undefined}
             onClick={() => setPublishing(true)}
@@ -343,7 +343,7 @@ function TrunkAssets({
               {offset + 1}&ndash;{Math.min(offset + TRUNK_PAGE_SIZE, total)} of {total}
             </span>
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               data-testid="trunk-previous"
               disabled={offset === 0}
@@ -352,7 +352,7 @@ function TrunkAssets({
               Previous
             </Button>
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               data-testid="trunk-next"
               disabled={offset + TRUNK_PAGE_SIZE >= total}
@@ -544,7 +544,7 @@ function RemoveAssetDialog({
           <FieldError data-testid="remove-asset-error">{refusalProse(remove.error)}</FieldError>
         )}
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button
@@ -610,12 +610,12 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" data-testid={`export-${release.tag}`} onClick={() => setExporting(true)}>
+          <Button variant="outline" size="sm" data-testid={`export-${release.tag}`} onClick={() => setExporting(true)}>
             <Download className="size-4" aria-hidden="true" />
             Export
           </Button>
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
             data-testid={`manifest-${release.tag}`}
             disabled={manifest.isPending}
@@ -875,12 +875,12 @@ function PublishDialog({
           )}
 
           <DialogFooter>
-            <Button variant="secondary" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
             <Button
               type="submit"
-              variant="primary"
+              variant="default"
               data-testid="publish-submit"
               disabled={tag.trim() === "" || publish.isPending || (split && !balanced)}
             >
@@ -1138,11 +1138,11 @@ function ExportDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button
-            variant="primary"
+            variant="default"
             data-testid="export-submit"
             // The consent gate: while the API is asking, the button stays shut until
             // the box is ticked. It is `allow_lossy` and never `confirm`.

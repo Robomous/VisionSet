@@ -54,7 +54,7 @@ import { formatCount, formatPercent, formatWhen } from "../lib/format";
 import { ErrorState } from "../patterns/AsyncStates";
 import { StatCard } from "../patterns/DataDisplay";
 import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import { Skeleton } from "../primitives/Feedback";
 import { CreateProjectDialog } from "./ProjectsScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
@@ -133,11 +133,11 @@ export function HomeScreen({
         </div>
         {/*
           The page's one filled button when there is nothing to carry on with.
-          With a resume card on screen this steps back to `secondary`, because
+          With a resume card on screen this steps back to `outline`, because
           two filled buttons is the same rule broken from the other side.
         */}
         <Button
-          variant={page.resume === null ? "primary" : "secondary"}
+          variant={page.resume === null ? "default" : "outline"}
           data-testid="home-new-project"
           onClick={() => setCreating(true)}
         >
@@ -203,7 +203,7 @@ function FirstRun({ onCreate }: { readonly onCreate: () => void }): JSX.Element 
           A project is where a schema, its batches and its dataset live.
         </p>
       </div>
-      <Button variant="primary" data-testid="home-create-project" onClick={onCreate}>
+      <Button variant="default" data-testid="home-create-project" onClick={onCreate}>
         <Plus aria-hidden="true" />
         Create project
       </Button>
@@ -315,7 +315,7 @@ function Resume({
           </span>
         </div>
         {act !== undefined && (
-          <Button variant="primary" className="ml-auto" data-testid="home-resume-cta" onClick={act}>
+          <Button variant="default" className="ml-auto" data-testid="home-resume-cta" onClick={act}>
             <Play aria-hidden="true" />
             {RESUME_LABEL[resume.kind]}
           </Button>

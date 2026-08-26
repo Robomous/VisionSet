@@ -21,7 +21,7 @@ import { BATCH_ACTION, declares } from "../data/capabilities";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
 import { Alert, AlertDescription } from "../primitives/alert";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
@@ -67,7 +67,7 @@ export function ProjectPreLabelButton({
   return (
     <>
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="project-prelabel"
         onClick={() => setOpen(true)}
@@ -270,11 +270,11 @@ function ProjectPreLabelDialog({
         <DialogFooter>
           {result === null ? (
             <>
-              <Button variant="secondary" onClick={onClose}>
+              <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
               <Button
-                variant="primary"
+                variant="default"
                 data-testid="project-prelabel-start"
                 disabled={!canStart}
                 onClick={start}
@@ -283,7 +283,7 @@ function ProjectPreLabelDialog({
               </Button>
             </>
           ) : (
-            <Button variant="primary" onClick={onClose}>
+            <Button variant="default" onClick={onClose}>
               Close
             </Button>
           )}

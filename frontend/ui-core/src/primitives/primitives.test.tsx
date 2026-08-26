@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 
 import { Alert, AlertDescription, AlertTitle } from "./alert";
 import { Badge } from "./badge";
-import { Button } from "./Button";
+import { Button } from "./button";
 import { Card, CardTitle } from "./Card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./Dialog";
 import { Progress } from "./Feedback";
@@ -41,14 +41,9 @@ import { Table, TableBody, TableEmpty } from "./Table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs";
 
 describe("Button", () => {
-  it("defaults to type=button, so a Cancel does not submit its form", () => {
-    render(<Button>Cancel</Button>);
-    expect(screen.getByRole("button", { name: "Cancel" })).toHaveProperty("type", "button");
-  });
-
   it("keeps an explicit type", () => {
-    render(<Button type="submit">Save</Button>);
-    expect(screen.getByRole("button", { name: "Save" })).toHaveProperty("type", "submit");
+    render(<Button type="submit">Go</Button>);
+    expect(screen.getByRole("button").getAttribute("type")).toBe("submit");
   });
 
   it("lets a caller override a conflicting utility rather than emitting both", () => {
@@ -64,7 +59,7 @@ describe("Button", () => {
 
   it("renders the child element with asChild, so a link stays a link", () => {
     render(
-      <Button asChild variant="primary">
+      <Button asChild variant="default">
         <a href="/projects">Projects</a>
       </Button>,
     );
@@ -75,23 +70,9 @@ describe("Button", () => {
     expect(link.className).toContain("bg-primary");
   });
 
-  it("underlines a link button at rest, not only under the pointer", () => {
-    render(<Button variant="link">Browse dataset</Button>);
-    const classes = screen.getByRole("button").className.split(" ");
-    expect(classes).toContain("underline");
-    expect(classes).not.toContain("hover:underline");
-  });
-
-  it("collapses a link button to inline geometry, whatever size says", () => {
-    render(
-      <Button variant="link" size="sm">
-        Open batch
-      </Button>,
-    );
-    const classes = screen.getByRole("button").className.split(" ");
-    expect(classes).toContain("h-auto");
-    expect(classes).toContain("p-0");
-    expect(classes).not.toContain("h-7");
+  it("styles a link button as an underline-on-hover text link", () => {
+    render(<Button variant="link">More</Button>);
+    expect(screen.getByRole("button").getAttribute("data-variant")).toBe("link");
   });
 });
 

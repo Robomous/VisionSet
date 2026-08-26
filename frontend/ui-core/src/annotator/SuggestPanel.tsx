@@ -67,7 +67,7 @@ import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 import { EditorNotice } from "./EditorNotice";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Select,
   SelectContent,
@@ -273,7 +273,7 @@ export function SuggestPanel({
             control and leaves the explanation — never a dead button. */}
         {copy.action !== null && onConfigure !== undefined && (
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
             className="mt-1 self-start"
             data-testid="suggest-configure"
@@ -377,7 +377,7 @@ export function SuggestPanel({
           Click again to refine it — alt-click to take a part away.
         </p>
         <div className="mt-1 flex gap-2">
-          <Button variant="primary" size="sm" data-testid="suggest-accept" onClick={onAccept}>
+          <Button variant="default" size="sm" data-testid="suggest-accept" onClick={onAccept}>
             <Check className="size-4" aria-hidden="true" />
             Accept
             <Chip>↵</Chip>
