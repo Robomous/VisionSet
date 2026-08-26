@@ -54,6 +54,7 @@ from pydantic import ValidationError
 from visionset import __version__
 from visionset.kernel.domain import (
     IMPLEMENTED_GEOMETRIES,
+    SHOWCASE_SEED,
     Annotation,
     AnnotationSchema,
     Asset,
@@ -844,6 +845,7 @@ def transformed_bytes(
     *,
     content_hash: str,
     variant: int,
+    showcase: bool = False,
 ) -> bytes:
     """One image through the recipe's steps, for one variant.
 
@@ -851,12 +853,14 @@ def transformed_bytes(
     variants ``1..n`` only, each seeded from the recipe, the source and the
     variant index so the pixels land where ``transform_manifest`` put the
     labels. Shared by the export seam and the preview, which is what makes a
-    preview show what an export will write.
+    preview show what an export will write. ``showcase`` hands the drivers
+    ``SHOWCASE_SEED`` instead, the preview's way of showing each step at its
+    declared strength; an export never sets it.
 
     Raises:
         PreprocessingDriverNotFound: no driver in ``drivers`` applies a step.
     """
-    seed = variant_seed(recipe_hash(spec), content_hash, variant)
+    seed = SHOWCASE_SEED if showcase else variant_seed(recipe_hash(spec), content_hash, variant)
     image = source
     for step in spec.steps:
         if isinstance(step, ResizeStep) or (isinstance(step, AugmentStep) and variant > 0):

@@ -130,7 +130,9 @@ def preview_preprocessing(
     train fold, so every variant the spec declares can be seen whether or not a
     release exists. The image is capped to 512 pixels on its longer side, with
     the annotations scaled to match, and comes back base64-encoded beside its
-    `media_type`. Never cached: the spec is the request's own.
+    `media_type`. Never cached: the spec is the request's own. With `showcase`
+    true the variant's draws are fixed at each step's declared strength, so
+    the picture shows what a step does rather than one seeded draw of it.
 
     An unknown project is 404 `PROJECT_NOT_FOUND` and an asset outside it 404
     `ASSET_NOT_FOUND`. A step that cannot transform a geometry the asset carries
@@ -141,7 +143,12 @@ def preview_preprocessing(
     applies is 500 `PREPROCESSING_DRIVER_NOT_FOUND`.
     """
     preview = PreprocessingRecipeService(workspace).preview(
-        project_id, body.spec.to_domain(), body.asset_id, variant=body.variant, drivers=drivers
+        project_id,
+        body.spec.to_domain(),
+        body.asset_id,
+        variant=body.variant,
+        drivers=drivers,
+        showcase=body.showcase,
     )
     response.headers["Cache-Control"] = _NO_STORE
     return PreprocessingPreviewOut.of(preview)

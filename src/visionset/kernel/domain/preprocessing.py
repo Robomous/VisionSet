@@ -14,6 +14,12 @@ geometry transform and the pixel driver read the same positions, which is what
 keeps a variant's annotations on its pixels. Byte stability is promised within
 one environment only; the geometry arithmetic here is exact everywhere.
 
+A preview that wants to *show* a step rather than one draw of it passes
+:data:`SHOWCASE_SEED` where a variant seed goes: both draw functions answer it
+with the step at its declared strength — one quarter turn, brightness and
+contrast at ``1 + amount`` — through the same code path an export takes, so
+nothing about the pixel or geometry side is special-cased for a screen.
+
 Every step declares the geometries it can transform, the way an exporter
 declares ``supported_geometries``: :data:`AUGMENT_GEOMETRIES` is the table per
 augmentation, and each step reads it back as ``supported_geometries``. The
@@ -39,6 +45,13 @@ from visionset.kernel.domain.schema import GeometryType
 
 EVERY_GEOMETRY: Final[frozenset[GeometryType]] = frozenset(GeometryType)
 """What a step that moves every coordinate the same way can transform."""
+
+SHOWCASE_SEED: Final = b"showcase"
+"""The seed a preview passes to see a step at its declared strength.
+
+Eight bytes where :func:`variant_seed` always digests thirty-two, so no
+export can produce it by accident. Never written by an export.
+"""
 
 
 class ResizeStep(BaseModel):
@@ -201,7 +214,10 @@ def brightness_contrast_factors(seed: bytes, amount: float) -> tuple[float, floa
     whatever other steps the recipe holds, so adding a step never re-rolls the
     others. Word 0 is read by nothing; the positions here are load-bearing,
     because moving one would re-roll every variant an export already wrote.
+    :data:`SHOWCASE_SEED` answers ``(1 + amount, 1 + amount)``.
     """
+    if seed == SHOWCASE_SEED:
+        return (1.0 + amount, 1.0 + amount)
     return (
         1.0 - amount + 2.0 * amount * _fraction(seed, 1),
         1.0 - amount + 2.0 * amount * _fraction(seed, 2),
@@ -212,8 +228,11 @@ def rot90_quarter_turns(seed: bytes) -> int:
     """How many counter-clockwise quarter turns this variant rotates: 1, 2 or 3.
 
     Never 0 — a rot90 step that drew no rotation would emit the base image
-    under a variant's name. Reads word 3 of the seed.
+    under a variant's name. Reads word 3 of the seed; :data:`SHOWCASE_SEED`
+    answers one turn.
     """
+    if seed == SHOWCASE_SEED:
+        return 1
     return 1 + _word(seed, 3) % 3
 
 

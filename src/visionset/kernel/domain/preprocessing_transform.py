@@ -30,6 +30,7 @@ from visionset.kernel.domain.geometry import (
     PolylineGeometry,
 )
 from visionset.kernel.domain.preprocessing import (
+    SHOWCASE_SEED,
     AugmentOp,
     AugmentStep,
     RecipeSpec,
@@ -186,7 +187,11 @@ class PreprocessingPreview(BaseModel):
 
 
 def transform_manifest(
-    manifest: Manifest, spec: RecipeSpec, folds: SplitAssignment | None
+    manifest: Manifest,
+    spec: RecipeSpec,
+    folds: SplitAssignment | None,
+    *,
+    showcase: bool = False,
 ) -> TransformedView:
     """Every file one recipe makes of one manifest, geometry included.
 
@@ -194,6 +199,10 @@ def transform_manifest(
     must never validate on a variant of an image it trained on — so a spec
     that augments requires ``folds``. Base images are emitted for every asset
     whatever its fold, resized when the spec says so.
+
+    ``showcase`` replaces every variant's seed with :data:`SHOWCASE_SEED`, so
+    each augmentation lands at its declared strength rather than one draw of
+    it — a preview's way of showing what a step does. An export never sets it.
 
     Raises:
         AugmentationRequiresSplit: the spec asks for variants and ``folds`` is
@@ -222,7 +231,7 @@ def transform_manifest(
         if fold != "train":
             continue
         for k in range(1, spec.variants_per_asset + 1):
-            seed = variant_seed(spec_hash, asset.content_hash, k)
+            seed = SHOWCASE_SEED if showcase else variant_seed(spec_hash, asset.content_hash, k)
             files.append(_variant_file(asset, resize, augments, variant=k, seed=seed))
     return TransformedView(files=tuple(files))
 
