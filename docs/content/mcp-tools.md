@@ -31,7 +31,7 @@ error envelope, and the three gate words.
 | `backfill_thumbnails` | `project` | Render the previews that are missing for a project's assets. |
 | `list_batches` | `project` | List a project's batches with where each one's assets have got to. |
 | `get_batch` | `batch_id` | Read one batch: its state, its schema pin, its progress and its jobs. |
-| `approve_batch` | `batch_id`, `jobs_of`? | Freeze a batch, pin the project's active schema, and cut it into jobs. |
+| `approve_batch` | `batch_id`, `jobs_of`?, `start`? | Freeze a batch, pin the project's active schema, and cut it into jobs. |
 | `start_batch` | `batch_id` | Open an approved batch for annotation. |
 | `get_pre_label_plan` | `batch_id`, `connection`, `geometries`? | Which classes a pre-labeling run of that connection over this batch would ask about, which it would leave out, and what shapes it would write. |
 | `pre_label_batch` | `batch_id`, `connection`, `minimum_confidence`?, `replace_model_labels`?, `geometries`? | Ask a model to label every untouched asset in a batch, one run per open job. |
@@ -51,7 +51,7 @@ error envelope, and the three gate words.
 | `delete_annotations` | `job_id`, `annotation_ids` | Remove annotations from a job. All succeed together or none are removed. |
 | `set_asset_progress` | `job_id`, `asset_id`, `progress` | Record where one asset of a job has got to, without writing annotations. |
 | `complete_job` | `job_id` | Close a job, once every one of its assets has been settled. |
-| `complete_batch` | `batch_id` | Close a batch, once every one of its jobs is complete. |
+| `complete_batch` | `batch_id`, `promote`? | Close a batch, once every one of its jobs is complete. |
 | `promote_batch` | `batch_id` | Move a completed batch's finished assets into the project's dataset. |
 | `create_correction_batch` | `batch_id`, `name`, `asset_ids`? | Start a draft batch that corrects a completed one. |
 | `dataset_stats` | `project` | Count what is in a project's dataset, class by class. |
