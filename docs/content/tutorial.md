@@ -89,6 +89,13 @@ which somebody is going to label.
 
 ```bash
 BATCH=<the id ingest printed>
+visionset batch approve "$BATCH" --jobs-of 100 --start
+```
+
+That is two moves in one command - `approve`, then `start` - and the same batch can be walked in
+two commands when you want to look at the jobs before anybody opens them:
+
+```bash
 visionset batch approve "$BATCH" --jobs-of 100
 visionset batch start "$BATCH"
 ```
@@ -150,12 +157,12 @@ the batch, then promote:
 
 ```bash
 visionset job complete <job-id>
-visionset batch complete "$BATCH"
-visionset batch promote "$BATCH"
+visionset batch complete "$BATCH" --promote
 ```
 
-`complete` on the batch refuses while any job is still open: "derived" here means *recomputed*,
-not automatic. **Promotion** is what moves assets into the trunk - a union against what is already
+`--promote` is `batch promote` made right after `batch complete`; the two commands, one after
+the other, do the same. `complete` on the batch refuses while any job is still open: "derived"
+here means *recomputed*, not automatic. **Promotion** is what moves assets into the trunk - a union against what is already
 there, so promoting twice adds nothing and re-promoting after a curator removed something puts it
 back.
 

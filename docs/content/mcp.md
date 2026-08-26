@@ -118,14 +118,14 @@ page groups them by what they are for.
 | `create_batch` | Start a draft over a chosen set of a project's assets. |
 | `add_batch_assets` | Put assets into a draft. |
 | `remove_batch_assets` | Take assets out of a draft. Deletes nothing. |
-| `approve_batch` | Freeze it, pin the schema, cut it into jobs. |
+| `approve_batch` | Freeze it, pin the schema, cut it into jobs. `start: true` opens it for annotation in the same call, and `started` in the answer says whether that happened. |
 | `start_batch` | Open it for annotation. |
 | `get_pre_label_plan` | Which classes a run of a connection would ask about, which it would leave out, and what shapes it writes. |
 | `pre_label_batch` | Ask a model to label every untouched asset of a batch, one run per open job; one outcome per job. Blocks until it is done. |
 | `pre_label_project` | The same, over every open batch of a project or the named ones; one outcome per open job. Blocks until done. |
 | `repin_batch` | Move its schema pin onto the current active version. |
 | `list_batch_assets` | What is in it, paged, with each asset's job and progress. `job_id` narrows it to one job's frames. |
-| `complete_batch` | Close it, once every job is complete. |
+| `complete_batch` | Close it, once every job is complete. `promote: true` moves the finished assets into the dataset in the same call, and `promoted` in the answer counts them. |
 | `promote_batch` | Move the finished assets into the dataset. |
 | `create_correction_batch` | Start a draft that corrects a completed one. |
 
@@ -133,6 +133,19 @@ A batch is born from an ingest in the ordinary case, and the three composition t
 the other one: picking a subset by hand, which is what the browser's gallery does and what an
 agent doing the same work needs. All three are `draft` only, because past approval the batch
 is already cut into jobs — see [batches.md](batches.md).
+
+`approve_batch` and `complete_batch` each take the next step of the walk as a parameter, on the
+`job_started` principle below: a move an agent asked for is made and reported, never made behind
+it. `start: true` on `approve_batch` is `start_batch` in the same call, and `promote: true` on
+`complete_batch` is `promote_batch` in the same call; `started` and `promoted` in the answers say
+what each did, so an agent reading only the answer knows which state the batch is in and how
+many assets entered the dataset - `promoted` is zero when nothing was asked to move and zero
+again when the trunk already held every asset, since promotion is a union. The first step
+commits before the second is attempted: a refusal is the second step's own, and it leaves the
+batch where the first step put it - `approved`, or `completed` - which `get_batch` confirms. The
+one refusal the composed forms meet in practice is approval's own, a project with no schema,
+which leaves the batch a draft. `start_batch` and `promote_batch` are unchanged for a caller that
+wants the steps apart.
 
 ### Jobs and annotations
 

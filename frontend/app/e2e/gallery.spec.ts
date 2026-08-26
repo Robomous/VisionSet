@@ -224,6 +224,9 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
   // What this run has removed, so the listing and the counts move with the
   // DELETE the same way the server's would.
   const removed = new Set<string>();
+  // What a promotion moved into the trunk, read back by the batch the way the
+  // server derives `promoted_asset_count` per read.
+  let promoted = 0;
 
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -371,10 +374,40 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           asset_count: counts.total - removed.size,
           progress: counts,
           allowed_actions: batchActions(current),
-          promoted_asset_count: 0,
+          promoted_asset_count: promoted,
           parent_batch_id: null,
           pre_label_run: null,
         } satisfies Wire["BatchOut"],
+      });
+    }
+    if (request.method() === "POST" && path === `/batches/${BATCH}/promote`) {
+      // Only finished work is promoted, and the kernel says so before this
+      // fixture would — a page that promoted first would meet the real refusal.
+      if (current !== "completed") {
+        return route.fulfill({
+          status: 409,
+          json: { code: "BATCH_NOT_COMPLETE", message: `batch 'drive-01' is '${current}'` },
+        });
+      }
+      promoted = counts.annotated;
+      return route.fulfill({
+        json: {
+          items: Array.from({ length: promoted }, (_, at) => ({
+            id: `asset-${at}`,
+            project_id: PROJECT,
+            modality: "image",
+            content_hash: `${at}`.padStart(8, "0") + "deadbeef",
+            width: 1280,
+            height: 720,
+            format: "jpeg",
+            source_id: null,
+            frame_index: at,
+            frame_timestamp: null,
+            thumbnail_hash: null,
+            ingested_at: "2026-08-01T09:00:00Z",
+          })),
+          total: promoted,
+        } satisfies Wire["AssetPage"],
       });
     }
     if (request.method() === "DELETE" && path === `/batches/${BATCH}/assets`) {
@@ -730,6 +763,38 @@ test("the chosen density survives a reload", async ({ page }) => {
   // is where the two would look the same if the preference had been put beside
   // the token.
   await expect(page.getByTestId("density")).toHaveValue("0");
+});
+
+// --- two steps as one --------------------------------------------------------
+
+test("Complete and promote finishes the job, closes the batch, promotes, and says all three", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent, { settled: true });
+
+  const composed = page.getByTestId("complete-promote-drive-01");
+  await expect(composed).toHaveAttribute("data-variant", "secondary");
+  await composed.click();
+
+  // In order, and the job first: the batch refuses while its job is open.
+  const line = page.getByTestId("completed-drive-01");
+  await expect(line).toHaveText(
+    "Completed, finishing 1 job. Promoted 3 assets to the dataset. 45 skipped frames stayed out.",
+  );
+  const posts = sent
+    .filter((request) => request.method() === "POST")
+    .map((request) => new URL(request.url()).pathname.replace(/^\/api/, ""));
+  expect(posts).toEqual([
+    `/jobs/${JOB}/complete`,
+    `/batches/${BATCH}/complete`,
+    `/batches/${BATCH}/promote`,
+  ]);
+  // The batch is `completed` now and declares no `complete`, so the button is
+  // gone — the line that says what it did is not.
+  await expect(composed).toHaveCount(0);
+  await expect(page.getByTestId("batch-state")).toHaveText("completed");
+  await expect(page.getByTestId("complete-promote-open-dataset-drive-01")).toBeVisible();
 });
 
 // --- one job, and several ----------------------------------------------------

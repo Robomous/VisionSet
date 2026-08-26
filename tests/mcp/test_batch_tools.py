@@ -18,6 +18,7 @@ from tests.mcp._flow import (
     ingested,
     open_batch,
     payload,
+    project,
     schema,
 )
 
@@ -108,6 +109,113 @@ def test_a_batch_cannot_be_completed_while_a_job_is_outstanding(
     # Derived means recomputed, not automatic.
     _, batch_id, _ = open_batch(monkeypatch, tmp_path, count=2)
     assert error(call("complete_batch", batch_id=batch_id))["message"]
+
+
+# --- approve with start, complete with promote --------------------------------
+
+
+def test_approving_with_start_opens_the_batch_and_says_so(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id = ingested(monkeypatch, tmp_path, count=2)
+
+    approved = payload(call("approve_batch", batch_id=batch_id, start=True))
+
+    assert approved["state"] == "in_annotation"
+    assert approved["started"] is True
+    assert approved["schema_version"] == 1
+    assert [j["state"] for j in approved["jobs"]] == ["pending"]
+    assert payload(call("get_batch", batch_id=batch_id))["state"] == "in_annotation"
+
+
+def test_approving_without_start_reports_that_nothing_was_started(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id = ingested(monkeypatch, tmp_path, count=2)
+    approved = payload(call("approve_batch", batch_id=batch_id))
+    assert approved["state"] == "approved"
+    assert approved["started"] is False
+
+
+def test_approving_with_start_and_no_schema_refuses_and_leaves_a_draft(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = project(monkeypatch, tmp_path)
+    write_images(tmp_path / "incoming", count=1)
+    batch_id = payload(call("ingest", project=named, path=str(tmp_path / "incoming")))["batch_id"]
+
+    refusal = error(call("approve_batch", batch_id=batch_id, start=True))
+
+    assert "schema" in refusal["message"]
+    assert payload(call("get_batch", batch_id=batch_id))["state"] == "draft"
+
+
+def _finished(job_id: str) -> None:
+    """Every asset of the job marked ``annotated`` and the job closed."""
+    for asset in payload(call("next_pending_assets", job_id=job_id, count=100))["items"]:
+        payload(
+            call("set_asset_progress", job_id=job_id, asset_id=asset["id"], progress="annotated")
+        )
+    payload(call("complete_job", job_id=job_id))
+
+
+def test_completing_with_promote_fills_the_trunk_and_counts_what_moved(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=2)
+    _finished(job_id)
+
+    completed = payload(call("complete_batch", batch_id=batch_id, promote=True))
+
+    assert completed["state"] == "completed"
+    assert completed["promoted"] == 2
+    assert completed["promoted_asset_count"] == 2
+    assert payload(call("promote_batch", batch_id=batch_id)) == {"items": [], "total": 0}
+
+
+def test_completing_without_promote_moves_nothing_into_the_trunk(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=2)
+    _finished(job_id)
+
+    completed = payload(call("complete_batch", batch_id=batch_id))
+
+    assert completed["state"] == "completed"
+    assert completed["promoted"] == 0
+    assert completed["promoted_asset_count"] == 0
+
+
+def test_completing_with_promote_over_assets_already_in_the_trunk_counts_zero(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Promotion has no refusal of its own once `complete` has succeeded — `promote`
+    needs only `completed` — so the outcome left to pin is the idempotent one: a
+    second batch over assets the trunk already holds closes, and `promoted` is
+    zero rather than an error."""
+    named, first, job_id = open_batch(monkeypatch, tmp_path, count=2)
+    _finished(job_id)
+    payload(call("complete_batch", batch_id=first, promote=True))
+    again = payload(call("ingest", project=named, path=str(tmp_path / "incoming")))
+    second = str(again["batch_id"])
+    opened = payload(call("approve_batch", batch_id=second, start=True))
+    _finished(str(opened["jobs"][0]["id"]))
+
+    completed = payload(call("complete_batch", batch_id=second, promote=True))
+
+    assert completed["state"] == "completed"
+    assert completed["promoted"] == 0
+    assert completed["promoted_asset_count"] == 2
+
+
+def test_completing_with_promote_while_a_job_is_outstanding_promotes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, _ = open_batch(monkeypatch, tmp_path, count=2)
+    assert error(call("complete_batch", batch_id=batch_id, promote=True))["message"]
+    read = payload(call("get_batch", batch_id=batch_id))
+    assert read["state"] == "in_annotation"
+    assert read["promoted_asset_count"] == 0
 
 
 def test_listing_batch_assets_names_the_job_each_belongs_to(

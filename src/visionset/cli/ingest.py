@@ -27,6 +27,12 @@ needs, which is the whole one-datum rule::
 
     BATCH=$(visionset ingest ./incoming --project road-signs)
 
+``--start`` keeps that rule and takes the batch through ``approve`` (one job)
+and ``start`` in the same run, borrowing ``cli/batches.py``'s two halves so the
+lines it prints are the ones those commands print. The ingest has committed
+before approval is attempted; a project with no schema refuses there and leaves
+the draft the ingest made, which the output names.
+
 ``backfill-thumbnails`` lives here rather than under a group because it has no
 object group to join and it is the other half of what ingest writes: a preview is
 a cache, so a missing one is a thing to fill in later rather than a failure to
@@ -45,9 +51,21 @@ from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption, resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.kernel.domain import IngestFailure, IngestFailureKind, IngestResult, TimeRange
+from visionset.cli.batches import (
+    approved_note,
+    batch_document,
+    second_step,
+    start_after_approval,
+)
+from visionset.kernel.domain import (
+    BatchState,
+    IngestFailure,
+    IngestFailureKind,
+    IngestResult,
+    TimeRange,
+)
 from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS
-from visionset.kernel.services import IngestService, SourceService
+from visionset.kernel.services import BatchService, IngestService, SourceService
 
 _FAILURE_COLUMNS: Final = ("FILE", "KIND", "REASON")
 
@@ -145,6 +163,14 @@ def ingest(
             help="Name the batch this run fills. Defaults to the source's own name.",
         ),
     ] = None,
+    start: Annotated[
+        bool,
+        typer.Option(
+            "--start",
+            help="Also approve the batch as one job and open it for annotation, as "
+            "`batch approve --start` would. With --json, prints the started batch.",
+        ),
+    ] = False,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -156,6 +182,10 @@ def ingest(
 
     Files are addressed by content, so ingesting the same bytes twice gives one
     asset. That is what makes re-running this safe after an interruption.
+
+    `--start` follows with `batch approve` (one job) and `batch start`. The
+    ingest is committed before approval is attempted, so a refused approval — a
+    project with no schema — leaves a draft batch, and the output names it.
     """
     # ``typer.Option`` can express ``min=`` but not Click's ``min_open``, so a
     # ``gt=0`` bound has to be checked here. It has to be checked *somewhere*:
@@ -188,7 +218,23 @@ def ingest(
             )
         note(f"Reading {registered.kind.value.replace('_', ' ')} {source}…")
         result = IngestService(service).ingest(registered.id, batch_name=batch_name)
+        if start:
+            if not json_out:
+                _report(result)
+            with second_step("approve", result.batch_id, BatchState.DRAFT.value):
+                approved = BatchService(service).approve(result.batch_id, None)
+            if not json_out:
+                approved_note(service, approved)
+            started = start_after_approval(service, approved)
+            started_document = batch_document(service, started)
 
+    if start:
+        if json_out:
+            document(started_document)
+            return
+        note(f"Batch {started.id} is now {started.state.value}.")
+        typer.echo(str(started.id))
+        return
     if json_out:
         document(
             {

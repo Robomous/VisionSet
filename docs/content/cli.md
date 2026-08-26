@@ -19,12 +19,13 @@ visionset schema draft set FILE --project P [--kind K] [--note TEXT] [--revision
 visionset schema draft clear --project P [--kind K]
 visionset schema draft publish --project P [--kind K] [--revision N] [--allow-destructive]
 
-visionset ingest PATH --project P [--fps N] [--range S:E]... [--batch-name NAME]
+visionset ingest PATH --project P [--fps N] [--range S:E]... [--batch-name NAME] [--start]
 visionset batch list --project P
-visionset batch approve BATCH_ID [--jobs-of N]
+visionset batch approve BATCH_ID [--jobs-of N] [--start]
 visionset batch pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE]...
 visionset project pre-label PROJECT CONNECTION [--batch BATCH_ID]... [--minimum-confidence FLOAT] [--geometry SHAPE]...
-visionset batch start|complete|promote BATCH_ID
+visionset batch start|promote BATCH_ID
+visionset batch complete BATCH_ID [--promote]
 
 visionset job list --batch BATCH_ID
 visionset job next JOB_ID [-n COUNT]
@@ -69,11 +70,9 @@ visionset project create road-signs
 visionset schema apply schema.json --project road-signs
 BATCH=$(visionset ingest ./incoming --project road-signs)
 
-visionset batch approve "$BATCH" --jobs-of 100
-visionset batch start "$BATCH"
+visionset batch approve "$BATCH" --jobs-of 100 --start
 # …annotate, in the app or through `visionset job mark`…
-visionset batch complete "$BATCH"
-visionset batch promote "$BATCH"
+visionset batch complete "$BATCH" --promote
 
 visionset release publish --tag v1.0 --project road-signs --split 0.7,0.15,0.15
 visionset release verify v1.0 --project road-signs && \
@@ -366,6 +365,21 @@ and touching ranges merged. The run is **synchronous**, and there is no
 `list --project P`, then the one-way walk `approve [--jobs-of N]` → `start` → `complete`, then
 `promote`. Each maps to the `BatchService` method of the same name, except `promote`, which is
 `DatasetService.promote` - it takes a *batch* id and derives the dataset, which is why it lives here.
+
+**Two of the walk's steps carry the next one as a flag.** `approve --start` approves and then
+starts; `complete --promote` completes and then promotes; `ingest --start` ingests, approves as one
+job, and starts. Each is the two commands it names, made one after the other, and nothing new
+in the kernel: `start` requires only `approved`, and `promote` only `completed`, so the second
+step is legal exactly when the first succeeded. The first step commits before the second is
+attempted, and a refusal in the second prints the first step's line, then the refusal as the
+single-step command would print it, then a line naming which step refused and the state the
+batch is actually in - `The approve step refused; batch … is draft.` - so nothing has to be
+guessed from the exit code. The commonest refusal is `ingest --start` into a project with no
+schema, which leaves the draft the ingest made. Plain output prints both outcomes; `--json`
+prints the batch document the walk ended on, except `complete --promote --json`, which prints
+`{"batch": …, "promoted": …}` - the closed batch beside the page of assets that entered the
+dataset. Stdout stays the batch id alone in every composed form, so `BATCH=$(visionset ingest
+./incoming --project P --start)` hands the next command an open batch.
 
 `pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry
 SHAPE]...` blocks and calls `visionset.inference.pre_label` inline because a terminal has no

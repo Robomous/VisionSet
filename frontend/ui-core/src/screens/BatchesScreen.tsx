@@ -42,6 +42,7 @@ import { Button } from "../primitives/Button";
 import { FieldError } from "../primitives/Input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
+import { ApproveAndStartButton } from "./ComposedTransitions";
 import { BATCH_STATE_VARIANT, batchStateLabel } from "./batchState";
 import { SchemaForeshadow } from "./SchemaForeshadow";
 import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
@@ -187,6 +188,10 @@ export function BatchesScreen({
                         it is the only irreversible one — so it goes where you go
                         looking for it, not beside what you press next. */}
                     <div className="flex items-start justify-end gap-1">
+                      {/* Beside the row's own step rather than inside its branch:
+                          the control keeps the first step's outcome on screen
+                          after the batch's declaration has moved on. */}
+                      <ApproveAndStartButton batch={batch} projectId={projectId} />
                       <Lifecycle
                         batch={{ ...batch, projectId }}
                         corrections={

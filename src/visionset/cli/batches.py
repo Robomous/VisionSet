@@ -5,6 +5,14 @@ Six commands: ``list``, then the one-way walk ``approve`` → ``start`` →
 ``complete``, then ``promote``; ``pre-label`` invokes shared inference inline,
 because a terminal has no dispatcher.
 
+**A composed flag is two of those calls behind one command, never a new
+transition.** ``approve --start`` and ``complete --promote`` make the first
+call, and on its success the second; ``ingest --start`` reaches in here for the
+same two. Each step commits on its own, so a refused second step leaves the
+first one's state in place and the output names it — the kernel's own
+``start`` requires only ``approved``, and ``promote`` only ``completed``, which
+is what makes the pair safe to chain without any new rule.
+
 **There is no ``batch create``, and none of the membership commands.** A batch is
 born from an ingest; curating one out of an arbitrary subset of assets has no
 caller until a gallery exists to pick that subset in. ``BatchService`` still has
@@ -26,8 +34,10 @@ the same reason its route hangs off ``/batches/{id}``.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict
-from typing import Annotated, Final
+from typing import Annotated, Any, Final
 from uuid import UUID
 
 import typer
@@ -46,9 +56,12 @@ from visionset.inference import (
     pre_label,
     shapes_prose,
 )
+from visionset.kernel import VisionSetError
 from visionset.kernel.domain import (
     SETTLED_PROGRESS,
+    Asset,
     AssetProgress,
+    Batch,
     BySize,
     GeometryType,
     Partition,
@@ -94,7 +107,7 @@ _ACTOR: Final = "cli"
 
 
 def _echo(batch_id: UUID, state: str, json_out: bool, payload: dict[str, object]) -> None:
-    """One shape for the four lifecycle commands: the batch, or a line and its id."""
+    """One shape for a lifecycle move: the batch, or a line and its id."""
     if json_out:
         document(payload)
         return
@@ -111,6 +124,44 @@ def _promoted(service: WorkspaceService, project_id: UUID) -> frozenset[UUID]:
     """
     dataset = ProjectService(service).get_dataset(project_id)
     return DatasetService(service).member_asset_ids(dataset.id)
+
+
+def batch_document(service: WorkspaceService, batch: Batch) -> dict[str, Any]:
+    """One batch as ``--json`` prints it, with its progress and its trunk membership read."""
+    counts = JobService(service).batch_progress(batch.id)
+    pre_labeled = BatchService(service).latest_pre_label_job(batch.id)
+    return wire.batch(
+        batch, counts, promoted=_promoted(service, batch.project_id), pre_labeled=pre_labeled
+    )
+
+
+def approved_note(service: WorkspaceService, approved: Batch) -> None:
+    """The line approval prints: the pin, and how many jobs it cut."""
+    job_count = len(BatchService(service).jobs(approved.id))
+    note(
+        f"Approved batch {approved.name!r} against schema version "
+        f"{approved.schema_version}, in {job_count} job(s)."
+    )
+
+
+@contextmanager
+def second_step(step: str, batch_id: UUID, state: str) -> Iterator[None]:
+    """A later step of a composed command: a refusal says where the batch stands.
+
+    The earlier step has already committed, so the refusal's sentence alone would
+    leave a reader guessing whether anything moved.
+    """
+    try:
+        yield
+    except VisionSetError:
+        note(f"The {step} step refused; batch {batch_id} is {state}.")
+        raise
+
+
+def start_after_approval(service: WorkspaceService, approved: Batch) -> Batch:
+    """The ``start`` half of a composed approval, for ``approve --start`` and ``ingest --start``."""
+    with second_step("start", approved.id, approved.state.value):
+        return BatchService(service).start(approved.id)
 
 
 @batch_app.command("list")
@@ -173,6 +224,13 @@ def batch_approve(
             help="Cut into jobs of this many assets. Default: one job for the whole batch.",
         ),
     ] = None,
+    start: Annotated[
+        bool,
+        typer.Option(
+            "--start",
+            help="Also open the batch for annotation once it is approved, as `batch start` would.",
+        ),
+    ] = False,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -181,25 +239,27 @@ def batch_approve(
     Approval is one-way. There is no route back to `draft`, because the jobs are
     already partitioned against the pinned schema version — and a later
     `schema apply` does not move that pin.
+
+    `--start` follows with `batch start`. Approval is committed before the start
+    is attempted, so a start that is refused leaves an approved batch, and the
+    output says so.
     """
     # ``min=1`` rather than a check in the body: ``BySize.size`` is ``gt=0``, and
     # a pydantic ``ValidationError`` from constructing one is not a
     # ``VisionSetError``, so Click has to refuse zero before the domain sees it.
     partition: Partition | None = None if jobs_of is None else BySize(size=jobs_of)
     with opened_workspace(workspace) as service:
-        batches = BatchService(service)
-        approved = batches.approve(batch, partition)
-        counts = JobService(service).batch_progress(approved.id)
-        job_count = len(batches.jobs(approved.id))
-        promoted = _promoted(service, approved.project_id)
+        approved = BatchService(service).approve(batch, partition)
+        if not json_out:
+            approved_note(service, approved)
+        final = start_after_approval(service, approved) if start else approved
+        payload = batch_document(service, final)
     if json_out:
-        document(wire.batch(approved, counts, promoted=promoted))
+        document(payload)
         return
-    note(
-        f"Approved batch {approved.name!r} against schema version "
-        f"{approved.schema_version}, in {job_count} job(s)."
-    )
-    typer.echo(str(approved.id))
+    if start:
+        note(f"Batch {final.id} is now {final.state.value}.")
+    typer.echo(str(final.id))
 
 
 @batch_app.command("start")
@@ -327,6 +387,14 @@ def batch_pre_label(
 @batch_app.command("complete")
 def batch_complete(
     batch: BatchArgument,
+    promote: Annotated[
+        bool,
+        typer.Option(
+            "--promote",
+            help="Also move the finished assets into the dataset once the batch is closed, as "
+            "`batch promote` would.",
+        ),
+    ] = False,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -334,19 +402,29 @@ def batch_complete(
 
     Derived means recomputed, not automatic: this reads the jobs and refuses
     while any is outstanding.
+
+    `--promote` follows with `batch promote`. With `--json` the document is then
+    `{"batch": …, "promoted": …}` — the closed batch beside the page of assets
+    that entered the dataset — and stdout otherwise stays the batch id alone.
     """
     with opened_workspace(workspace) as service:
-        batches = BatchService(service)
-        completed = batches.complete(batch)
-        counts = JobService(service).batch_progress(completed.id)
-        promoted = _promoted(service, completed.project_id)
-        pre_labeled = batches.latest_pre_label_job(completed.id)
-    _echo(
-        completed.id,
-        completed.state.value,
-        json_out,
-        wire.batch(completed, counts, promoted=promoted, pre_labeled=pre_labeled),
-    )
+        completed = BatchService(service).complete(batch)
+        if not json_out:
+            note(f"Batch {completed.id} is now {completed.state.value}.")
+        entered: list[Asset] = []
+        if promote:
+            with second_step("promote", completed.id, completed.state.value):
+                entered = DatasetService(service).promote(completed.id, actor=_ACTOR)
+        payload = batch_document(service, completed)
+    if json_out:
+        if promote:
+            document({"batch": payload, "promoted": wire.page([wire.asset(a) for a in entered])})
+        else:
+            document(payload)
+        return
+    if promote:
+        note(f"Promoted {len(entered)} asset(s) into the dataset.")
+    typer.echo(str(completed.id))
 
 
 @batch_app.command("promote")

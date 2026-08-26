@@ -120,7 +120,7 @@
  * run still say which batch holds what it managed to read.
  */
 
-import { ArrowLeft, Film, FolderOpen, Image, RefreshCw, RotateCw, TriangleAlert, Upload, X } from "lucide-react";
+import { ArrowLeft, Film, Image, RefreshCw, RotateCw, TriangleAlert, Upload, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useEffect,
@@ -153,6 +153,7 @@ import {
   SelectValue,
 } from "../primitives/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import { OutcomeNextStep } from "./ComposedTransitions";
 import { SchemaForeshadow } from "./SchemaForeshadow";
 import { ClipRangeTimeline } from "./ClipRangeTimeline";
 import { probeClip, type ClipProbe } from "./clipProbe";
@@ -689,7 +690,9 @@ export function IngestScreen({
         >
           <RunCard
             job={job.data ?? null}
+            projectId={projectId}
             {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+            {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
             onAgain={again}
             onRerun={rerun}
           />
@@ -989,12 +992,16 @@ function Fact({ label, value }: { readonly label: string; readonly value: string
 
 function RunCard({
   job,
+  projectId,
   onOpenBatch,
+  onOpenSchema,
   onAgain,
   onRerun,
 }: {
   readonly job: IngestJob | null;
+  readonly projectId: string;
   readonly onOpenBatch?: (batchId: string) => void;
+  readonly onOpenSchema?: () => void;
   readonly onAgain: () => void;
   readonly onRerun: () => void;
 }): JSX.Element {
@@ -1078,7 +1085,9 @@ function RunCard({
             {(job.state === "completed" || job.state === "failed") && (
               <Outcome
                 job={job}
+                projectId={projectId}
                 {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+                {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
                 onAgain={onAgain}
                 onRerun={onRerun}
               />
@@ -1104,12 +1113,16 @@ function RunCard({
  */
 function Outcome({
   job,
+  projectId,
   onOpenBatch,
+  onOpenSchema,
   onAgain,
   onRerun,
 }: {
   readonly job: IngestJob;
+  readonly projectId: string;
   readonly onOpenBatch?: (batchId: string) => void;
+  readonly onOpenSchema?: () => void;
   readonly onAgain: () => void;
   readonly onRerun: () => void;
 }): JSX.Element {
@@ -1148,13 +1161,15 @@ function Outcome({
           </>
         )}
       </p>
+      {batchId !== null && (
+        <OutcomeNextStep
+          projectId={projectId}
+          batchId={batchId}
+          {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+          {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
+        />
+      )}
       <div className="flex flex-wrap gap-2">
-        {batchId !== null && onOpenBatch !== undefined && (
-          <Button variant="primary" data-testid="open-batch" onClick={() => onOpenBatch(batchId)}>
-            <FolderOpen aria-hidden="true" />
-            Open batch
-          </Button>
-        )}
         {/* Back to step 2, source kept: the same frames into a different batch
             is a real second run — registration is idempotent and content
             addressing makes re-reading free. */}

@@ -250,6 +250,15 @@ def approve_batch(
             ),
         ),
     ] = None,
+    start: Annotated[
+        bool,
+        Field(
+            description=(
+                "Also open the batch for annotation once it is approved — `start_batch` in "
+                "the same call. Omit to leave it `approved` and start it later."
+            )
+        ),
+    ] = False,
 ) -> dict[str, Any]:
     """Freeze a batch, pin the project's active schema, and cut it into jobs.
 
@@ -259,15 +268,22 @@ def approve_batch(
     is the one you want annotations judged against.
 
     Refuses if the batch has no assets, if it is not a draft, or if the project
-    has no schema at all. Then call `start_batch` to open it for work.
+    has no schema at all — and a refusal leaves the batch a draft. Pass `start`
+    to open it for work in the same call; without it, call `start_batch` next.
+    `started` in the answer says whether that happened. Approval is committed
+    before the start is attempted, so a refused start leaves an `approved`
+    batch that `start_batch` can still open.
     """
     # `ge=1` on the parameter rather than a check in the body: `BySize.size` is
     # `gt=0`, and constructing one with zero raises a pydantic ValidationError,
     # which is not a VisionSetError and would never reach the error envelope.
     partition: Partition | None = None if jobs_of is None else BySize(size=jobs_of)
     with opened_workspace() as workspace:
-        approved = BatchService(workspace).approve(identifier(batch_id, what="batch_id"), partition)
-        return _batch_payload(workspace, approved.id)
+        batches = BatchService(workspace)
+        approved = batches.approve(identifier(batch_id, what="batch_id"), partition)
+        if start:
+            batches.start(approved.id)
+        return {**_batch_payload(workspace, approved.id), "started": start}
 
 
 def start_batch(batch_id: BatchRef) -> dict[str, Any]:
@@ -618,16 +634,32 @@ def repin_batch(
         return _batch_payload(workspace, repinned.id)
 
 
-def complete_batch(batch_id: BatchRef) -> dict[str, Any]:
+def complete_batch(
+    batch_id: BatchRef,
+    promote: Annotated[
+        bool,
+        Field(
+            description=(
+                "Also move the finished assets into the dataset once the batch is closed — "
+                "`promote_batch` in the same call. Omit to promote later."
+            )
+        ),
+    ] = False,
+) -> dict[str, Any]:
     """Close a batch, once every one of its jobs is complete.
 
     Derived means recomputed, not automatic: this reads the jobs and refuses
     while any is outstanding, so complete the jobs first. A completed batch is
-    what `promote_batch` requires.
+    what `promote_batch` requires; pass `promote` to make that call here, and
+    `promoted` in the answer counts the assets that entered the dataset — zero
+    when nothing was asked to move, and zero again when the trunk already held
+    them all, since promotion is a union. Completion is committed before the
+    promotion is attempted.
     """
     with opened_workspace() as workspace:
         completed = BatchService(workspace).complete(identifier(batch_id, what="batch_id"))
-        return _batch_payload(workspace, completed.id)
+        entered = DatasetService(workspace).promote(completed.id, actor=_ACTOR) if promote else []
+        return {**_batch_payload(workspace, completed.id), "promoted": len(entered)}
 
 
 def create_correction_batch(
