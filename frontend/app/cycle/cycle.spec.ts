@@ -28,15 +28,17 @@
  * install of ffmpeg and a decode inside a five-minute budget, for coverage that
  * exists. Recorded rather than skipped quietly.
  *
- * **The export is `dummy`, which writes nothing.** It is the only installed
- * exporter until M6, and `file_count: 0` is an export that ran. What is proved here
- * is the *round trip* — the request carries the format, the response is an archive,
- * and the browser saves it — which is exactly the part real exporters will inherit.
+ * **The export is addressed to a target, and the archive is opened.** The release
+ * holds a box, a polygon and a polyline; `yolo11` takes the first two and drops the
+ * third, so the walk meets the real lossy consent — the sentence naming the target
+ * and the count — before the archive arrives, and then reads `data.yaml` out of
+ * the download to see the class map the trainer would.
  */
 
 import { expect, test, type Download, type Page, type TestInfo } from "@playwright/test";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { inflateRawSync } from "node:zlib";
 
 import { saveNow } from "../e2e/_frame";
 import { emptyWorkspace } from "./_workspace";
@@ -1448,31 +1450,49 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId(`verified-${TAG}`)).toContainText("Intact");
   });
 
-  await test.step("export through the dummy format and download the archive", async () => {
+  await test.step("export for yolo11, consent to the polyline it drops, and download", async () => {
     await page.getByTestId(`export-${TAG}`).click();
-    await page.getByTestId("export-format").click();
+    await page.getByTestId("export-target").click();
 
-    // The five lane plugins, discovered by the *running server* through the
-    // real entry-point group rather than by an import in a test — and each
-    // declaring itself lossy, which is the one thing the picker shows about a
-    // format before you choose it. A lane format that arrived silently unmarked
-    // would let somebody export a release believing nothing was dropped.
+    // The catalog the *running server* derived through the real entry-point
+    // group, under its three headings. The lane plugins have no task vocabulary,
+    // so their second line is the geometry they carry — which is the one thing
+    // the picker says about them before you choose, and what tells somebody a
+    // lane format will not take their boxes.
+    const listbox = page.getByRole("listbox");
+    await expect(listbox.getByRole("group").first()).toContainText("Ultralytics YOLO");
+    await expect(listbox).toContainText("Community YOLO");
+    await expect(listbox).toContainText("Other formats");
     for (const lane of [/tusimple/, /culane/, /openlane-2d/]) {
-      await expect(page.getByRole("option", { name: lane })).toContainText("(lossy)");
+      await expect(page.getByRole("option", { name: lane })).toContainText("polyline");
     }
+    // The retired alias is a format the route still accepts, never a target.
+    await expect(page.getByRole("option", { name: /^yolo$/ })).toHaveCount(0);
 
-    await page.getByRole("option", { name: /dummy/ }).click();
+    await page.getByRole("option", { name: /YOLO11/ }).click();
+    await expect(page.getByTestId("lossy-hint")).toContainText("YOLO11");
+
+    // The release holds a `centerline` polyline and YOLO11 takes boxes, tags
+    // and polygons, so the launch is refused with the report and the banner
+    // says what the target accepts and what this release loses — the kernel's
+    // counts, in the kernel's order, not the browser's.
+    await page.getByTestId("export-submit").click();
+    const consent = page.getByTestId("lossy-consent");
+    await expect(consent).toContainText("YOLO11 accepts boxes, tags and polygons");
+    await expect(consent).toContainText("1 polyline would be dropped.");
+    await expect(consent.getByTestId("lossy-classes")).toContainText("centerline");
+    await expect(page.getByTestId("export-submit")).toBeDisabled();
+    await consent.getByTestId("lossy-checkbox").check();
 
     // **Three requests behind one click.** The launch answers 202 with
     // a job id, the screen polls `/background-jobs/{id}` until it succeeds, and
-    // only then fetches the artifact and saves it. The assertion is unchanged
-    // because the *outcome* is unchanged — which is the point of waiting on the
-    // download event rather than on any of the steps that produce it.
+    // only then fetches the artifact and saves it — which is the point of waiting
+    // on the download event rather than on any of the steps that produce it.
     //
     // It is also the only place the whole queue runs for real: a spawned worker
-    // opens this workspace, resolves the `dummy` exporter through the entry-point
-    // group, and writes into `exports/`. Every other test of that path runs the
-    // handler inline.
+    // opens this workspace, resolves the target's exporter through the
+    // entry-point group, and writes into `exports/`. Every other test of that
+    // path runs the handler inline.
     const [download] = await Promise.all([
       page.waitForEvent("download"),
       page.getByTestId("export-submit").click(),
@@ -1611,6 +1631,12 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * wherever it is present. `curatedSizeRefused` carries what the form rendered,
      * so the expectation follows the installation instead of guessing at it.
      *
+     * The last entry is the export's own 409: the first launch is addressed to
+     * `yolo11` without `allow_lossy`, and the release holds a polyline that
+     * target drops, so the refusal is the consent question itself — the one
+     * refusal in the walk a person is meant to see. Exactly one, because the
+     * retry carries the flag.
+     *
      * Anything else — a route that starts refusing, a 404 that becomes a 500, a
      * second refusal from a route allowed one — fails here with its method, its
      * path and its status in the message. Before this list existed every one of
@@ -1620,6 +1646,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     const schema = /^GET \/projects\/[0-9a-f-]+\/schema 404$/;
     const curatedDraft = /^GET \/projects\/[0-9a-f-]+\/schema\/drafts\/curated 404$/;
     const annotationDraft = /^GET \/projects\/[0-9a-f-]+\/schema\/drafts\/annotation 404$/;
+    const lossyLaunch = /^POST \/releases\/[0-9a-f-]+\/export 409$/;
     expect(refusedApiCalls).toEqual([
       expect.stringMatching(schema),
       expect.stringMatching(curatedDraft),
@@ -1628,6 +1655,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       ...(curatedSizeRefused ? ["GET /inference/download-size 500"] : []),
       expect.stringMatching(annotationDraft),
       expect.stringMatching(annotationDraft),
+      expect.stringMatching(lossyLaunch),
     ]);
     // And the icon is genuinely served under the mount, rather than absent and
     // unnoticed: `vite preview` would answer 200 with `index.html` here, which is
@@ -1750,17 +1778,57 @@ async function drawPolygon(page: Page): Promise<void> {
 }
 
 /**
- * The archive arrived and is a zip.
+ * The archive arrived, is a zip, and carries the descriptor a trainer reads first.
  *
- * `dummy` writes nothing, so the *contents* are not the claim — `file_count: 0` is
- * an export that ran. What is asserted is that the browser received a download with
- * the right name and a zip's own four magic bytes, which is the part every real
- * exporter inherits.
+ * The download is named for the target, and `data.yaml` inside it maps class ids
+ * to the schema's names in schema order — the shape `ultralytics` writes and the
+ * one thing that decides whether a training run reads the labels as the right
+ * classes. Read out of the bytes the browser saved rather than off the server's
+ * disk, because the download is what a person has.
  */
 async function expectArchive(download: Download): Promise<void> {
-  expect(download.suggestedFilename()).toBe(`${TAG}-dummy.zip`);
+  expect(download.suggestedFilename()).toBe(`${TAG}-yolo11.zip`);
   const saved = await download.path();
   expect(saved).not.toBeNull();
-  const head = readFileSync(saved as string).subarray(0, 2).toString("latin1");
-  expect(head).toBe("PK");
+  const archive = readFileSync(saved as string);
+  expect(archive.subarray(0, 2).toString("latin1")).toBe("PK");
+
+  const descriptor = zipEntry(archive, "data.yaml").toString("utf8");
+  expect(descriptor).toMatch(/^names:$/m);
+  expect(descriptor).toMatch(/^\s+0: "vehicle"$/m);
+  expect(descriptor).toMatch(/^\s+1: "lane"$/m);
+}
+
+/**
+ * One file out of a zip, by name — enough of the format to read a descriptor.
+ *
+ * Walks the central directory from the end-of-central-directory record, which
+ * is where a zip says what it holds, then inflates the entry from its local
+ * header. Stored and deflated entries are the two `shutil.make_archive` writes.
+ */
+function zipEntry(archive: Buffer, name: string): Buffer {
+  let end = archive.length - 22;
+  while (end >= 0 && archive.readUInt32LE(end) !== 0x06054b50) end -= 1;
+  expect(end, "end-of-central-directory record").toBeGreaterThanOrEqual(0);
+  const entries = archive.readUInt16LE(end + 10);
+  let offset = archive.readUInt32LE(end + 16);
+  for (let index = 0; index < entries; index += 1) {
+    expect(archive.readUInt32LE(offset)).toBe(0x02014b50);
+    const method = archive.readUInt16LE(offset + 10);
+    const compressed = archive.readUInt32LE(offset + 20);
+    const nameLength = archive.readUInt16LE(offset + 28);
+    const extraLength = archive.readUInt16LE(offset + 30);
+    const commentLength = archive.readUInt16LE(offset + 32);
+    const local = archive.readUInt32LE(offset + 42);
+    const entryName = archive.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
+    if (entryName === name) {
+      expect(archive.readUInt32LE(local)).toBe(0x04034b50);
+      const start =
+        local + 30 + archive.readUInt16LE(local + 26) + archive.readUInt16LE(local + 28);
+      const bytes = archive.subarray(start, start + compressed);
+      return method === 8 ? inflateRawSync(bytes) : Buffer.from(bytes);
+    }
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  throw new Error(`${name} is not in the archive`);
 }
