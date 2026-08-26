@@ -75,9 +75,7 @@ export {
   SheetTrigger,
   type SheetContentProps,
 } from "./primitives/Dialog.js";
-// `tabsListVariants` stays unexported: `TabsList`'s own `variant` prop is the
-// public surface, and the `cva` behind it is `Tabs.tsx`'s implementation detail.
-export { Tabs, TabsContent, TabsList, TabsTrigger } from "./primitives/Tabs.js";
+export { Tabs, TabsContent, TabsList, tabsListVariants, TabsTrigger } from "./primitives/tabs.js";
 export {
   Select,
   SelectContent,

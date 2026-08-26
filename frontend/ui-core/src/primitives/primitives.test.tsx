@@ -38,7 +38,7 @@ import {
   SelectValue,
 } from "./Select";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "./table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs";
 
 describe("Button", () => {
   it("keeps an explicit type", () => {

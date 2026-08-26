@@ -54,7 +54,7 @@ import type { BadgeTone } from "./batchState";
 import { SectionHeader } from "../patterns/SectionHeader";
 import { Button } from "../primitives/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/tabs";
 import {
   Dialog,
   DialogContent,
@@ -186,7 +186,7 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
             more than a scroll does. The padding pair keeps the focus ring off
             the scroller's clip. */}
         <div className="min-w-0 overflow-x-auto pb-1.5 -mb-1.5">
-        <TabsList variant="line">
+        <TabsList variant="line" className="w-full justify-start border-b">
           <TabsTrigger value="overview" data-testid="dataset-tab-overview">
             Overview
           </TabsTrigger>

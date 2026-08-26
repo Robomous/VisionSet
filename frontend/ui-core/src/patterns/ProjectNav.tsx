@@ -57,7 +57,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../primitives/Menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/tabs";
 
 /**
  * The four sections of a project, in the order work happens in: what a project
@@ -209,7 +209,7 @@ function Strip(props: ProjectNavProps): JSX.Element {
         <Overflow {...props} />
       </div>
       <div className="min-w-0 overflow-x-auto pb-1.5 -mb-1.5">
-        <TabsList variant="line">
+        <TabsList variant="line" className="w-full justify-start border-b">
           {sections.map((section) => {
             const { label, icon: Icon } = SECTION_LABELS[section];
             return (
