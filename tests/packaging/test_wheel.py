@@ -187,6 +187,9 @@ def test_the_entry_points_ship_so_the_command_and_the_plugins_exist(
     assert "[visionset.formats]" in declared
     for plugin in ("dummy", "ultralytics", "yolov5-yaml", "coco", "voc"):
         assert f"{plugin} = visionset.formats." in declared
+    assert "[visionset.preprocessing]" in declared
+    for plugin in ("pillow-resize", "pillow-augment"):
+        assert f"{plugin} = visionset.preprocessing.pillow:" in declared
 
 
 # --- what is not -------------------------------------------------------------
