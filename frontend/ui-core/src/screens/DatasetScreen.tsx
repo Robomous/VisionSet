@@ -1001,7 +1001,9 @@ function ExportDialog({
   const lost = failure !== null && needsConsent ? lostClasses(failure.detail) : null;
   const running = exportRelease.isPending || (job.data !== undefined && !isSettled(job.data));
   const stopped =
-    job.data !== undefined && job.data.state !== "succeeded" ? job.data : null;
+    job.data !== undefined && isSettled(job.data) && job.data.state !== "succeeded"
+      ? job.data
+      : null;
 
   function run(allowLossy: boolean): void {
     setSaved(false);
