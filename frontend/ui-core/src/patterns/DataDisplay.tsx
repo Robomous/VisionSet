@@ -14,7 +14,7 @@
  * - **`EmptyState`** is in `patterns/AsyncStates.tsx`, and is already icon +
  *   title + description + one action — the spec, down to the "one primary
  *   action, two is a decision" comment.
- * - **Chip** is `primitives/Badge.tsx`. It already carries the tinted-fill and
+ * - **Chip** is `primitives/badge.tsx`. It already carries the tinted-fill and
  *   neutral-outline variants the header chips want.
  *
  * A second spelling of either would be the failure the "one spelling" rule

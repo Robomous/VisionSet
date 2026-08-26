@@ -46,7 +46,7 @@ export { menuSurface } from "./lib/menu.js";
 export { twoLineTrigger } from "./lib/select.js";
 export { progressAria } from "./lib/progress.js";
 
-// Primitives — Radix behaviour under shadcn Nova styling, iconed with Tabler.
+// Primitives — Radix behaviour under shadcn Nova styling, iconed with lucide.
 export { Button, buttonVariants } from "./primitives/button.js";
 export {
   Card,
