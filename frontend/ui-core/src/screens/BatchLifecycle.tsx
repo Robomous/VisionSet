@@ -67,17 +67,27 @@ import {
 export function BatchProgressBar({
   counts,
   detailed = true,
+  draft = false,
   ...rest
 }: {
   readonly counts: ProgressCounts;
   /** The gallery header states one sentence; the batch table lists every state. */
   readonly detailed?: boolean;
+  /** A draft has no jobs, so a count of work "to do" would name work that does not exist yet. */
+  readonly draft?: boolean;
 } & { readonly "data-testid"?: string }): JSX.Element {
   const share = annotatedShare(counts);
   return (
     <div className="flex flex-col gap-1" {...rest}>
-      <Progress aria-label="Annotation progress" value={share.percent} />
-      {detailed ? (
+      <Progress
+        aria-label="Annotation progress"
+        value={share.percent}
+        variant="success"
+        className="h-2 border border-border"
+      />
+      {draft ? (
+        <span className="text-xs text-muted-foreground">Not approved yet</span>
+      ) : detailed ? (
         <span className="text-xs text-muted-foreground">
           {counts.annotated} annotated · {counts.skipped} skipped · {counts.accepted} accepted ·{" "}
           {counts.unannotated} to do

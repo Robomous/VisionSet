@@ -59,6 +59,20 @@ const PIXEL = Buffer.from(
  * Everything is static: this suite asks one question — where does the way out
  * go? — and nothing about it depends on state moving.
  */
+const BATCH_OUT = {
+  id: BATCH,
+  project_id: PROJECT,
+  name: "drive-01",
+  state: "in_annotation",
+  allowed_actions: batchActions("in_annotation"),
+  promoted_asset_count: 0,
+  parent_batch_id: null,
+  pre_label_run: null,
+  schema_version: 1,
+  asset_count: 1,
+  progress: { ...NO_PROGRESS, unannotated: 1, total: 1 },
+} satisfies Wire["BatchOut"];
+
 async function serveApi(page: Page): Promise<void> {
   await page.route("**/api/**", (route) => {
     const request = route.request();
@@ -119,23 +133,10 @@ async function serveApi(page: Page): Promise<void> {
         json: { ...NO_PROGRESS, unannotated: 1, total: 1 } satisfies Wire["ProgressCounts"],
       });
     }
-    if (path === `/batches/${BATCH}`) {
-      return route.fulfill({
-        json: {
-          id: BATCH,
-          project_id: PROJECT,
-          name: "drive-01",
-          state: "in_annotation",
-          allowed_actions: batchActions("in_annotation"),
-          promoted_asset_count: 0,
-          parent_batch_id: null,
-          pre_label_run: null,
-          schema_version: 1,
-          asset_count: 1,
-          progress: { ...NO_PROGRESS, unannotated: 1, total: 1 },
-        } satisfies Wire["BatchOut"],
-      });
+    if (path === `/projects/${PROJECT}/batches`) {
+      return route.fulfill({ json: { items: [BATCH_OUT], total: 1 } satisfies Wire["BatchPage"] });
     }
+    if (path === `/batches/${BATCH}`) return route.fulfill({ json: BATCH_OUT });
     if (path === `/batches/${BATCH}/assets`) {
       return route.fulfill({
         json: {
@@ -372,4 +373,45 @@ test("the dataset is one press from every other section", async ({ page }) => {
   }
   await page.getByTestId("nav-dataset").click();
   await expect(page.getByTestId("dataset-screen")).toBeVisible();
+});
+
+/** A CSS colour as the sRGB bytes it paints, so two spellings of one token compare equal. */
+async function channelsOf(page: Page, colour: string): Promise<readonly number[]> {
+  return page.evaluate((value) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = value;
+    ctx.fillRect(0, 0, 1, 1);
+    return Array.from(ctx.getImageData(0, 0, 1, 1).data);
+  }, colour);
+}
+
+test("a batch row's progress fills with the success colour on a bordered muted track", async ({
+  page,
+}) => {
+  await openCold(page, `/projects/${PROJECT}/batches`);
+  await expect(page.getByTestId("batches-screen")).toBeVisible();
+
+  const bar = page.getByRole("progressbar", { name: "Annotation progress" }).first();
+  await expect(bar).toBeVisible();
+  const tokens = await page.evaluate(() => {
+    const style = getComputedStyle(document.documentElement);
+    return {
+      success: style.getPropertyValue("--success"),
+      muted: style.getPropertyValue("--muted"),
+      border: style.getPropertyValue("--border"),
+    };
+  });
+  const painted = async (locator: typeof bar, prop: string): Promise<readonly number[]> =>
+    channelsOf(page, await locator.evaluate((node, p) => getComputedStyle(node).getPropertyValue(p), prop));
+
+  expect(await painted(bar.locator("> *").first(), "background-color")).toEqual(
+    await channelsOf(page, tokens.success),
+  );
+  expect(await painted(bar, "background-color")).toEqual(await channelsOf(page, tokens.muted));
+  expect(await painted(bar, "border-top-color")).toEqual(await channelsOf(page, tokens.border));
+  // 8px, so an empty track is still a visible shape and not a hairline.
+  expect(await bar.evaluate((node) => node.getBoundingClientRect().height)).toBe(8);
 });

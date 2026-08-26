@@ -227,6 +227,7 @@ function JobHeader({
         <Progress
           aria-label="Annotation progress"
           value={share.percent}
+          variant="success"
           className="min-w-0 flex-1"
         />
       )}

@@ -12,28 +12,39 @@
  */
 
 import * as ProgressPrimitive from "@radix-ui/react-progress";
-import { forwardRef, type ComponentPropsWithoutRef, type ElementRef, type HTMLAttributes, type JSX } from "react";
+import { cva, type VariantProps } from "class-variance-authority";
+import type { ComponentProps, HTMLAttributes, JSX } from "react";
 import { Toaster as SonnerToaster, toast } from "sonner";
 
 import { cn } from "../lib/cn";
 import { cssVar } from "../tokens";
 
-export const Progress = forwardRef<
-  ElementRef<typeof ProgressPrimitive.Root>,
-  ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>
->(function Progress({ className, value, ...props }, ref) {
+// `primary`, not `brand`: the fill is a functional control — the thing a person
+// watches to know work is happening — and brand is identity, never a functional
+// colour. `success` is the batch-state family's settled colour, for a bar that
+// measures annotation rather than a transfer.
+const progressFill = cva("h-full w-full flex-1 transition-transform", {
+  variants: {
+    variant: {
+      primary: "bg-primary",
+      success: "bg-success",
+    },
+  },
+  defaultVariants: { variant: "primary" },
+});
+
+export type ProgressProps = ComponentProps<typeof ProgressPrimitive.Root> &
+  VariantProps<typeof progressFill>;
+
+export function Progress({ className, value, variant, ...props }: ProgressProps): JSX.Element {
   return (
     <ProgressPrimitive.Root
-      ref={ref}
       value={value}
       className={cn("relative h-1 w-full overflow-hidden rounded-full bg-muted", className)}
       {...props}
     >
       <ProgressPrimitive.Indicator
-        // `primary`, not `brand`: the fill is a functional control — the thing
-        // a person watches to know work is happening — and brand is identity,
-        // never a functional colour.
-        className="h-full w-full flex-1 bg-primary transition-transform"
+        className={progressFill({ variant })}
         // The width is data, so it is a style rather than a class: Tailwind cannot
         // generate a utility for a number it will not see until runtime, and a
         // `w-[${n}%]` string is the one arbitrary value that silently produces
@@ -42,7 +53,7 @@ export const Progress = forwardRef<
       />
     </ProgressPrimitive.Root>
   );
-});
+}
 
 export function Skeleton({ className, ...props }: HTMLAttributes<HTMLDivElement>): JSX.Element {
   return (

@@ -179,7 +179,7 @@ export function BatchesScreen({
                       : `v${batch.schema_version}`}
                   </TableCell>
                   <TableCell>
-                    <BatchProgressBar counts={batch.progress} />
+                    <BatchProgressBar counts={batch.progress} draft={batch.state === "draft"} />
                   </TableCell>
                   <TableCell className="text-right">
                     {/* The forward action, then `⋯`. Deleting is the one thing a
