@@ -51,6 +51,7 @@ import {
   LIGHT_THEME,
   LoadingState,
   Progress,
+  progressAria,
   PROJECT_SECTIONS,
   ProjectEyebrow,
   ProjectNav,
@@ -356,7 +357,7 @@ export function Styleguide(): JSX.Element {
           </div>
           <div className="max-w-md">
             <p className="mb-1 text-xs text-muted-foreground">Ingest — 240 of 412</p>
-            <Progress value={58} aria-label="Ingest progress" />
+            <Progress value={58} {...progressAria(58)} aria-label="Ingest progress" />
           </div>
         </Section>
 
@@ -609,7 +610,7 @@ export function Styleguide(): JSX.Element {
           </div>
         </Section>
       </div>
-      <Toaster />
+      <Toaster position="bottom-right" />
     </TooltipProvider>
   );
 }

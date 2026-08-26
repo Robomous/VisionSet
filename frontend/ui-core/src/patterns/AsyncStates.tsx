@@ -23,7 +23,7 @@ import type { JSX, ReactNode } from "react";
 import { cn } from "../lib/cn";
 import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
 import { Button } from "../primitives/button";
-import { Skeleton } from "../primitives/Feedback";
+import { Skeleton } from "../primitives/skeleton";
 
 export interface LoadingStateProps {
   /** How many placeholder rows. Match the shape being waited for. */

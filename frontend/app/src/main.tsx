@@ -94,7 +94,7 @@ createRoot(container).render(
         <ApiProvider baseUrl={API_BASE_URL}>
           <TooltipProvider>
             <AppRoutes />
-            <Toaster />
+            <Toaster position="bottom-right" />
           </TooltipProvider>
         </ApiProvider>
       </BrowserRouter>

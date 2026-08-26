@@ -55,7 +55,7 @@ import { ErrorState } from "../patterns/AsyncStates";
 import { StatCard } from "../patterns/DataDisplay";
 import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/button";
-import { Skeleton } from "../primitives/Feedback";
+import { Skeleton } from "../primitives/skeleton";
 import { CreateProjectDialog } from "./ProjectsScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
 import {

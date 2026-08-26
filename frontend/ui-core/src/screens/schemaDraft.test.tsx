@@ -28,7 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
-import { Toaster } from "../primitives/Feedback";
+import { Toaster } from "../primitives/sonner";
 import { writeToken } from "../data/session";
 import { ProjectScreen } from "./ProjectScreen";
 
@@ -94,6 +94,16 @@ beforeEach(() => {
   sent = [];
   bodies = new Map();
   writeToken("a-token");
+  // The mounted `Toaster` reads `next-themes`' `useTheme()`, which resolves to
+  // `"system"` with no provider mounted and asks `matchMedia` for the answer.
+  // jsdom has none, and the read happens inside a mount effect, so without a
+  // stand-in it takes the whole tree down with it.
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    media: query,
+    matches: true,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
     sent.push(request);

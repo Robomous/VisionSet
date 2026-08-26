@@ -49,7 +49,7 @@ import { classColor } from "../palette";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { Button } from "../primitives/button";
-import { Skeleton } from "../primitives/Feedback";
+import { Skeleton } from "../primitives/skeleton";
 import { DistributionBar, StatCard, ThumbnailGrid } from "../patterns/DataDisplay";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { imbalanceNote } from "./imbalance";

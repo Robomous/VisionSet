@@ -136,6 +136,7 @@ import {
 import { refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
 import { formatBytes, formatCount } from "../lib/format";
+import { progressAria } from "../lib/progress";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
 import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
@@ -143,7 +144,7 @@ import { Badge } from "../primitives/badge";
 import type { BadgeTone } from "./batchState";
 import { Button } from "../primitives/button";
 import { Card, CardContent } from "../primitives/card";
-import { Progress } from "../primitives/Feedback";
+import { Progress } from "../primitives/progress";
 import { Input } from "../primitives/input";
 import { Label } from "../primitives/label";
 import { FieldDescription, FieldError } from "../primitives/field";
@@ -1005,6 +1006,14 @@ function Fact({ label, value }: { readonly label: string; readonly value: string
   );
 }
 
+/** A clip has no denominator until it is over: `VideoMetadata` carries no frame count, by design. */
+function ingestPercent(job: IngestJob): number {
+  if (job.total === null || job.total === undefined) {
+    return job.state === "completed" ? 100 : 0;
+  }
+  return Math.round((job.processed / Math.max(job.total, 1)) * 100);
+}
+
 function RunCard({
   job,
   onOpenBatch,
@@ -1028,20 +1037,13 @@ function RunCard({
             <div className="flex flex-col gap-1">
               <p className="text-xs text-muted-foreground" data-testid="run-progress">
                 {job.total === null || job.total === undefined
-                  ? // A clip has no denominator until it is over: `VideoMetadata`
-                    // carries no frame count, by design.
-                    `${job.processed} extracted`
+                  ? `${job.processed} extracted`
                   : `${job.processed} of ${job.total}`}
               </p>
               <Progress
                 aria-label="Ingest progress"
-                value={
-                  job.total === null || job.total === undefined
-                    ? job.state === "completed"
-                      ? 100
-                      : 0
-                    : Math.round((job.processed / Math.max(job.total, 1)) * 100)
-                }
+                value={ingestPercent(job)}
+                {...progressAria(ingestPercent(job))}
               />
             </div>
 

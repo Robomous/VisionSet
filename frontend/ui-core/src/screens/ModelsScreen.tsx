@@ -161,6 +161,7 @@ import {
 import { jobFailureProse, refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
 import { menuNoExit } from "../lib/motion";
+import { progressAria } from "../lib/progress";
 import { twoLineTrigger } from "../lib/select";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/badge";
@@ -174,7 +175,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../primitives/card";
-import { Progress } from "../primitives/Feedback";
+import { Progress } from "../primitives/progress";
 import {
   Dialog,
   DialogContent,
@@ -823,7 +824,12 @@ function RunProgress({
   return (
     <div className="flex w-56 flex-col gap-1" data-testid={testId}>
       {percent !== null && (
-        <Progress value={percent} data-testid={`${testId}-bar`} data-phase={phase} />
+        <Progress
+          value={percent}
+          {...progressAria(percent)}
+          data-testid={`${testId}-bar`}
+          data-phase={phase}
+        />
       )}
       {/*
         Tabular figures, `DESIGN.md`'s Numbers rule: the number changes every two

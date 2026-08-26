@@ -233,7 +233,7 @@ import {
   useSchemaComparison,
   useSchemaDraft,
 } from "../screens/queries";
-import { toast } from "../primitives/Feedback";
+import { toast } from "sonner";
 
 /**
  * The frame-level *review* actions, in the order they take their slot.

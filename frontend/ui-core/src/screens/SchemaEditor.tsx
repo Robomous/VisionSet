@@ -118,7 +118,7 @@ import { Label } from "../primitives/label";
 import { ClassFields, swatchOf } from "../patterns/ClassFields";
 import { ClassListRow } from "../patterns/DataDisplay";
 import { formatCount, formatWhen } from "../lib/format";
-import { toast } from "../primitives/Feedback";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,

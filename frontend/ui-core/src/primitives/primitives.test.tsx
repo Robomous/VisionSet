@@ -17,6 +17,7 @@ import userEvent from "@testing-library/user-event";
 import type { JSX } from "react";
 import { describe, expect, it } from "vitest";
 
+import { progressAria } from "../lib/progress";
 import { twoLineTrigger } from "../lib/select";
 import { Alert, AlertDescription, AlertTitle } from "./alert";
 import { Badge } from "./badge";
@@ -29,7 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./dropdown-menu";
-import { Progress } from "./Feedback";
+import { Progress } from "./progress";
 import { FieldError } from "./field";
 import { Input } from "./input";
 import { Label } from "./label";
@@ -282,7 +283,10 @@ describe("Tabs", () => {
 
 describe("Progress", () => {
   it("reports its value to assistive technology, not only as a width", () => {
-    render(<Progress value={42} aria-label="Ingest" />);
+    // Canonical `Progress` reads `value` only to size the indicator and never
+    // forwards it to Radix's `Root`, so `progressAria` says it again — every
+    // caller in the product spreads it beside `value` for exactly this reason.
+    render(<Progress value={42} {...progressAria(42)} aria-label="Ingest" />);
     expect(screen.getByRole("progressbar", { name: "Ingest" }).getAttribute("aria-valuenow")).toBe(
       "42",
     );

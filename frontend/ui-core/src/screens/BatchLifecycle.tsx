@@ -27,6 +27,7 @@ import { Play, SquareCheck } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
+import { progressAria } from "../lib/progress";
 import { Button } from "../primitives/button";
 import {
   Dialog,
@@ -38,7 +39,7 @@ import {
 import { Input } from "../primitives/input";
 import { Label } from "../primitives/label";
 import { FieldDescription, FieldError } from "../primitives/field";
-import { Progress } from "../primitives/Feedback";
+import { Progress } from "../primitives/progress";
 import {
   Select,
   SelectContent,
@@ -78,7 +79,7 @@ export function BatchProgressBar({
   const share = annotatedShare(counts);
   return (
     <div className="flex flex-col gap-1" {...rest}>
-      <Progress aria-label="Annotation progress" value={share.percent} />
+      <Progress aria-label="Annotation progress" value={share.percent} {...progressAria(share.percent)} />
       {detailed ? (
         <span className="text-xs text-muted-foreground">
           {counts.annotated} annotated · {counts.skipped} skipped · {counts.accepted} accepted ·{" "}

@@ -43,6 +43,7 @@ export type { LabelClass } from "./palette.js";
 export { cn } from "./lib/cn.js";
 export { menuNoExit } from "./lib/motion.js";
 export { twoLineTrigger } from "./lib/select.js";
+export { progressAria } from "./lib/progress.js";
 
 // Primitives — Radix behaviour under shadcn Nova styling, iconed with Tabler.
 export { Button, buttonVariants } from "./primitives/button.js";
@@ -70,7 +71,7 @@ export {
   FieldSet,
   FieldTitle,
 } from "./primitives/field.js";
-export { Combobox, type ComboboxFooter, type ComboboxProps } from "./primitives/Combobox.js";
+export { Combobox, type ComboboxFooter, type ComboboxProps } from "./patterns/Combobox.js";
 export { Badge, badgeVariants } from "./primitives/badge.js";
 export { Alert, AlertAction, AlertDescription, AlertTitle } from "./primitives/alert.js";
 export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "./primitives/dialog.js";
@@ -94,7 +95,10 @@ export {
   DropdownMenuTrigger,
 } from "./primitives/dropdown-menu.js";
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./primitives/tooltip.js";
-export { Progress, Skeleton, Toaster, toast } from "./primitives/Feedback.js";
+export { Progress } from "./primitives/progress.js";
+export { Skeleton } from "./primitives/skeleton.js";
+export { Toaster } from "./primitives/sonner.js";
+export { toast } from "sonner";
 export {
   Table,
   TableBody,
