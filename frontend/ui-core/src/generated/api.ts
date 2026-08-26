@@ -239,9 +239,11 @@ export interface paths {
          *     An offset past the end is an empty list and a 200, never a 404. The 404 belongs
          *     to the batch itself, which is resolved first: an unknown one is `BATCH_NOT_FOUND`.
          *
-         *     `job_id` and `progress` are null while the batch is a draft, because a draft
-         *     has no jobs — so a `progress` filter over a draft matches nothing. Bytes are
-         *     not here: an asset is named by its hashes, and
+         *     `job` narrows to the assets one job carries, composing with `progress`; a job
+         *     this batch does not have is 404 `JOB_NOT_FOUND`. `job_id` and `progress` on
+         *     each item are null while the batch is a draft, which has no jobs — so there,
+         *     a `progress` filter or a `job` filter matches nothing rather than refusing.
+         *     Bytes are not here: an asset is named by its hashes, and
          *     `GET /projects/{project_id}/assets/{asset_id}/content` is what serves them.
          */
         get: operations["list_batch_assets"];
@@ -427,6 +429,16 @@ export interface paths {
          * Pre Label Batch
          * @description Ask a model to label every untouched asset in this batch, and answer at once.
          *
+         *     **One row per open job, and the job is the unit.** This launch fans out over
+         *     the batch's jobs that are still open and queues for each the same
+         *     `annotation.pre_label` row `POST /jobs/{job_id}/pre-label` queues, or joins
+         *     the one already queued or running for that job (`joined`). A finished job is
+         *     passed over, so a batch whose every job is complete answers an empty page.
+         *     Each row is polled, cancelled and remembered per job:
+         *     `GET /background-jobs/{id}` for progress counted in that job's assets,
+         *     `JobOut.pre_label_run` afterwards. Nothing here reports one total across
+         *     jobs, because nothing here is one run.
+         *
          *     The `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:
          *     nobody judged them, so they arrive editable and correctable rather than
          *     claiming to be somebody's work — and, being unjudged, they never reach the
@@ -438,11 +450,11 @@ export interface paths {
          *     that still carries annotations from an earlier round that was skipped and
          *     then restored: that sequence deletes no labels, so progress alone does not
          *     prove an asset untouched. A run never writes over what a person did in this
-         *     batch, and never writes twice over what a model did — a plain second run
+         *     job, and never writes twice over what a model did — a plain second run
          *     extends an earlier one onto whatever is still untouched.
          *     `replace_model_labels` widens it to every frame still `pre_labeled` and
          *     supersedes those labels with this run's answer, one frame per transaction;
-         *     a frame anyone edited, confirmed or skipped in this batch is never touched,
+         *     a frame anyone edited, confirmed or skipped in this job is never touched,
          *     and a frame the model now finds nothing on returns to `unannotated`. A
          *     replacing request arriving while a run is in flight joins that run,
          *     whichever flag it carries.
@@ -467,14 +479,14 @@ export interface paths {
          *     and it is kept on the queued row, so a run claimed later executes what was
          *     asked.
          *
-         *     **202, not 200.** A batch is hundreds of forward passes, so this follows the
+         *     **202, not 200.** A job is hundreds of forward passes, so this follows the
          *     launch-and-poll contract the export and weight-download routes use: poll `GET
-         *     /background-jobs/{id}` — the `Location` header names it — until `state` is
-         *     `succeeded`, then re-read the batch's assets. Progress on the row is counted
-         *     in assets.
+         *     /background-jobs/{id}` for each row until `state` is `succeeded`, then
+         *     re-read the batch's assets. Progress on a row is counted in assets. There is
+         *     no `Location` header, because there is no single row for it to name.
          *
          *     **Everything a caller can be told now is told now**, and no refusal creates a
-         *     job — so a caller holding a job id holds one that will run. These refusals
+         *     row — so a caller holding a row's id holds one that will run. These refusals
          *     are about the request, and the caller can act on each. They are checked in
          *     this order, and it is the order `pre_label` itself checks in, so a request
          *     wrong about the connection and the batch both always names the connection:
@@ -494,10 +506,11 @@ export interface paths {
          *     `WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no
          *     state here a caller can change, so the remedy is the one the message names.
          *
-         *     **Asking twice joins the run already in flight rather than starting a second
-         *     one.** A request arriving while this batch has a pre-labeling run queued or
-         *     running is answered with that run's id, so a double-click and a second tab
-         *     watch one run instead of paying for the same inference twice.
+         *     **Asking twice joins the runs already in flight rather than starting second
+         *     ones.** A request arriving while a job here has a pre-labeling run queued or
+         *     running is answered with that run's row and `joined` true, so a double-click
+         *     and a second tab watch one run per job instead of paying for the same
+         *     inference twice.
          */
         post: operations["pre_label_batch"];
         delete?: never;
@@ -1645,6 +1658,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/jobs/{job_id}/pre-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pre Label Job
+         * @description Ask a model to label every untouched asset in this job, and answer at once.
+         *
+         *     The `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:
+         *     nobody judged them, so they arrive editable and correctable rather than
+         *     claiming to be somebody's work — and, being unjudged, they never reach the
+         *     Dataset until a person has taken them over.
+         *
+         *     **Only assets nothing has touched — which is stronger than reading
+         *     `unannotated`.** An asset already `pre_labeled`, annotated, skipped,
+         *     awaiting review or accepted is passed over, and so is an `unannotated` one
+         *     that still carries annotations from an earlier round that was skipped and
+         *     then restored: that sequence deletes no labels, so progress alone does not
+         *     prove an asset untouched. A run never writes over what a person did in this
+         *     job, and never writes twice over what a model did — a plain second run
+         *     extends an earlier one onto whatever is still untouched.
+         *     `replace_model_labels` widens it to every frame still `pre_labeled` and
+         *     supersedes those labels with this run's answer, one frame per transaction;
+         *     a frame anyone edited, confirmed or skipped in this job is never touched,
+         *     and a frame the model now finds nothing on returns to `unannotated`. A
+         *     replacing request arriving while a run is in flight joins that run,
+         *     whichever flag it carries.
+         *
+         *     **The batch's pinned schema is the prompt, narrowed to what this run
+         *     writes.** The model is asked for each class the schema declares that admits
+         *     one of the shapes the run writes and demands no attribute a prediction
+         *     cannot supply; an answer naming one of those classes, matched
+         *     case-insensitively, is written under the schema's own spelling, and an
+         *     answer naming none of them is discarded. A schema with no such class has
+         *     nowhere for a prediction to land and is refused — so the same schema is
+         *     askable of a model that answers polygons and refused for one that answers
+         *     boxes. `GET /batches/{batch_id}/pre-label` with the same `connection_id`
+         *     (and the same `geometries`) reads the narrowing before launching.
+         *
+         *     **What the run writes is every shape the model produces, unless
+         *     `geometries` says which.** A model declaring both a box and a polygon
+         *     writes both for every region it answers with — the kernel writes one
+         *     annotation per emitted region and pairs nothing — and `geometries` filters
+         *     that to the shapes named: a region in any other shape is discarded and
+         *     counted in `regions_discarded`. The selection is per run, not per class,
+         *     and it is kept on the queued row, so a run claimed later executes what was
+         *     asked.
+         *
+         *     **202, not 200.** A job is hundreds of forward passes, so this follows the
+         *     launch-and-poll contract the export and weight-download routes use: poll `GET
+         *     /background-jobs/{id}` — the `Location` header names it — until `state` is
+         *     `succeeded`, then re-read the job's assets. Progress on the row is counted
+         *     in assets, and `JobOut.pre_label_run` remembers the same row afterwards.
+         *
+         *     **Everything a caller can be told now is told now**, and no refusal creates a
+         *     job — so a caller holding a job id holds one that will run. These refusals
+         *     are about the request, and the caller can act on each. They are checked in
+         *     this order, and it is the order `pre_label` itself checks in, so a request
+         *     wrong about the connection and the job both always names the connection:
+         *     an unknown connection is 404 `INFERENCE_CONNECTION_NOT_FOUND`; a
+         *     connection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` — its
+         *     weights not here, or its endpoint not yet asked what it answers; a
+         *     connection whose model answers places rather than words is 422
+         *     `UNSUPPORTED_PROMPT`; a `geometries` naming a shape the model does not
+         *     produce is 422 `GEOMETRY_NOT_PRODUCED`. An unknown job is 404
+         *     `JOB_NOT_FOUND`; a job whose batch is not `in_annotation` is 409
+         *     `BATCH_NOT_IN_ANNOTATION`; a job already `completed` is 409 `JOB_FINISHED`,
+         *     and there is no remedy on this route — settled work is corrected through a
+         *     new batch rather than reopened. A pinned schema with no class the selected
+         *     shapes can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+         *
+         *     Two failures are about this installation rather than about the request, and
+         *     answer 500 carrying the message that says which: a machine without the
+         *     optional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the
+         *     exact command that installs it, and a workspace whose records no longer
+         *     hold together — a batch pinned to a schema version that is not stored — is
+         *     `WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no
+         *     state here a caller can change, so the remedy is the one the message names.
+         *
+         *     **Asking twice joins the run already in flight rather than starting a second
+         *     one.** A request arriving while this job has a pre-labeling run queued or
+         *     running is answered with that run's id, so a double-click and a second tab
+         *     watch one run instead of paying for the same inference twice — and so does
+         *     `POST /batches/{batch_id}/pre-label`, whose fan-out reaches this same job.
+         */
+        post: operations["pre_label_job"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs/{job_id}/progress": {
         parameters: {
             query?: never;
@@ -1965,15 +2075,18 @@ export interface paths {
          * Pre Label Project Batches
          * @description Ask a model to label every untouched asset across this project's open batches.
          *
-         *     **One row per batch, and the batch stays the unit.** This launch fans out
-         *     over the project's batches that are open for annotation — every one of
-         *     them, or exactly the `batch_ids` named — and for each one queues the same
-         *     `annotation.pre_label` job `POST /batches/{batch_id}/pre-label` queues, or
-         *     joins the one already queued or running for that batch (`joined`). Each
-         *     row is polled, cancelled and remembered per batch, exactly as a
-         *     single-batch launch is: `GET /background-jobs/{id}` for progress counted
-         *     in that batch's assets, `BatchOut.pre_label_run` afterwards. Nothing here
-         *     reports one total across batches, because nothing here is one run.
+         *     **One row per open job of each selected batch, and the job is the unit.**
+         *     This launch fans out over the project's batches that are open for
+         *     annotation — every one of them, or exactly the `batch_ids` named — and
+         *     within each over the jobs still open, queueing for each the same
+         *     `annotation.pre_label` row `POST /jobs/{job_id}/pre-label` queues, or
+         *     joining the one already queued or running for that job (`joined`). A
+         *     finished job is passed over, so a selected batch whose every job is
+         *     complete contributes no row. Each row is polled, cancelled and remembered
+         *     per job, exactly as a single-job launch is: `GET /background-jobs/{id}`
+         *     for progress counted in that job's assets, `JobOut.pre_label_run`
+         *     afterwards. Nothing here reports one total across jobs, because nothing
+         *     here is one run.
          *
          *     **Refused whole, up front, and no refusal creates a row.** The connection
          *     is checked first, as the single-batch launch checks it: an unknown
@@ -4130,10 +4243,10 @@ export interface components {
         };
         /**
          * JobAction
-         * @description What can be asked of an annotation job.
+         * @description What can be asked of an annotation job. Declaration order is display order.
          * @enum {string}
          */
-        JobAction: "start" | "complete" | (string & {});
+        JobAction: "start" | "pre_label" | "complete" | (string & {});
         /**
          * JobAssign
          * @description The name to record for this job, or null to clear it.
@@ -4144,7 +4257,8 @@ export interface components {
         };
         /**
          * JobOut
-         * @description One annotator's unit of work over a segment of a batch.
+         * @description One annotator's unit of work over a segment of a batch, and its most recent
+         *     pre-labeling run, `null` where none ever ran.
          */
         JobOut: {
             /** Allowed Actions */
@@ -4163,6 +4277,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            pre_label_run: components["schemas"]["PreLabelRunOut"] | null;
             state: components["schemas"]["AnnotationJobState"];
         };
         /**
@@ -4335,6 +4450,37 @@ export interface components {
          */
         PreLabelExclusionReason: "no_producible_geometry" | "required_attribute" | (string & {});
         /**
+         * PreLabelFanOutItemOut
+         * @description One job's row in a launch that fanned out over several.
+         */
+        PreLabelFanOutItemOut: {
+            /**
+             * Annotation Job Id
+             * Format: uuid
+             */
+            annotation_job_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Name */
+            batch_name: string;
+            job: components["schemas"]["BackgroundJobOut"];
+            /** Joined */
+            joined: boolean;
+        };
+        /**
+         * PreLabelFanOutOut
+         * @description Every job the launch fanned out over, one row each, in batch then segment order.
+         */
+        PreLabelFanOutOut: {
+            /** Items */
+            items: components["schemas"]["PreLabelFanOutItemOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
          * PreLabelPlanOut
          * @description The words a run would ask a model for over this batch, and the shapes it would write.
          *
@@ -4386,16 +4532,19 @@ export interface components {
         };
         /**
          * PreLabelRunOut
-         * @description A batch's most recent pre-labeling run: which job, how far, and what it found.
+         * @description The most recent pre-labeling run: which job, how far, and what it found.
          *
-         *     Present whenever pre-labeling has ever been asked for on this batch, and
-         *     describing the most recent run — including one this session did not launch.
-         *     A dialog reopened after a reload, in a second tab, or after a run started
-         *     from the terminal reads the same state from here rather than from a job id
-         *     a component happened to keep.
+         *     `annotation_job_id` is the job the run is over; `job_id` is the queue row to
+         *     poll.
+         *
+         *     Present whenever pre-labeling has ever been asked for, and describing the
+         *     most recent run — including one this session did not launch. A dialog
+         *     reopened after a reload, in a second tab, or after a run started from the
+         *     terminal reads the same state from here rather than from a job id a
+         *     component happened to keep.
          *
          *     **Assets, where a download counts bytes and a check counts files.** The
-         *     handler owns a loop over the batch's untouched assets and knows the whole
+         *     handler owns a loop over the job's untouched assets and knows the whole
          *     set before the first forward pass, so both its progress and its total are
          *     counted in the unit its own work is over.
          *
@@ -4408,6 +4557,11 @@ export interface components {
          *     contract is to write only where nothing has been written.
          */
         PreLabelRunOut: {
+            /**
+             * Annotation Job Id
+             * Format: uuid
+             */
+            annotation_job_id: string;
             /** Annotations Replaced */
             annotations_replaced: number | null;
             /** Assets Labeled */
@@ -4517,32 +4671,6 @@ export interface components {
         ProjectPage: {
             /** Items */
             items: components["schemas"]["ProjectOut"][];
-            /** Total */
-            total: number;
-        };
-        /**
-         * ProjectPreLabelItemOut
-         * @description One batch's row in a project-wide launch.
-         */
-        ProjectPreLabelItemOut: {
-            /**
-             * Batch Id
-             * Format: uuid
-             */
-            batch_id: string;
-            /** Batch Name */
-            batch_name: string;
-            job: components["schemas"]["BackgroundJobOut"];
-            /** Joined */
-            joined: boolean;
-        };
-        /**
-         * ProjectPreLabelOut
-         * @description Every batch the launch fanned out over, one row each, in selection order.
-         */
-        ProjectPreLabelOut: {
-            /** Items */
-            items: components["schemas"]["ProjectPreLabelItemOut"][];
             /** Total */
             total: number;
         };
@@ -5750,6 +5878,8 @@ export interface operations {
                 progress?: components["schemas"]["AssetProgress"][] | null;
                 /** @description `membership` is stored order; `confidence` is lowest model confidence first, unscored last, ties in membership order. */
                 sort?: components["schemas"]["AssetSort"];
+                /** @description Keep only the assets this job carries. Omit for the whole batch. */
+                job?: string | null;
             };
             header?: never;
             path: {
@@ -6298,7 +6428,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BackgroundJobOut"];
+                    "application/json": components["schemas"]["PreLabelFanOutOut"];
                 };
             };
             /** @description Missing or invalid bearer token */
@@ -8891,6 +9021,86 @@ export interface operations {
             };
         };
     };
+    pre_label_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_job_progress: {
         parameters: {
             query?: never;
@@ -9888,7 +10098,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectPreLabelOut"];
+                    "application/json": components["schemas"]["PreLabelFanOutOut"];
                 };
             };
             /** @description Missing or invalid bearer token */
@@ -11741,7 +11951,7 @@ export interface KnownMembers {
   AssetAction: "annotate" | "skip" | "restore" | "confirm" | "submit_for_review" | "accept" | "return_to_annotator";
   BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "pre_label" | "edit_membership" | "delete";
   ConnectionAction: "download_weights" | "check_integrity" | "test_endpoint" | "update" | "update_model" | "delete";
-  JobAction: "start" | "complete";
+  JobAction: "start" | "pre_label" | "complete";
   ModelCapability: "point_suggest" | "text_detect";
   PreLabelExclusionReason: "no_producible_geometry" | "required_attribute";
   SuggestParameter: "tolerance";

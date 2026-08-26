@@ -1136,6 +1136,25 @@ def test_a_progress_filter_over_a_draft_is_an_empty_page(client: TestClient, ing
     assert body == {"items": [], "total": 0}
 
 
+def test_a_job_filter_lists_only_that_jobs_assets(client: TestClient, ingested: str) -> None:
+    client.post(f"/batches/{ingested}/approve", json={"partition": {"kind": "by_size", "size": 2}})
+    first = client.get(f"/batches/{ingested}/jobs").json()["items"][0]["id"]
+
+    page = client.get(f"/batches/{ingested}/assets", params={"job": first}).json()
+
+    assert page["total"] == 2
+    assert {one["job_id"] for one in page["items"]} == {first}
+
+
+def test_a_job_of_another_batch_is_404(client: TestClient, ingested: str) -> None:
+    client.post(f"/batches/{ingested}/approve", json={"partition": {"kind": "by_size", "size": 2}})
+
+    response = client.get(f"/batches/{ingested}/assets", params={"job": str(uuid4())})
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "JOB_NOT_FOUND"
+
+
 def test_sorting_by_confidence_puts_the_weakest_first_and_unscored_last(
     client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:

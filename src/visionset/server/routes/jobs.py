@@ -19,20 +19,24 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Query
+from fastapi import Query, Response, status
 
+from visionset.inference import require_detectable_schema
 from visionset.kernel.services import JobService
-from visionset.server.dependencies import WorkspaceDep, protected_router
+from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
     AssetOut,
     AssetPage,
     AssetProgressOut,
     AssetProgressSet,
+    BackgroundJobOut,
     JobAssign,
     JobOut,
+    PreLabelRequest,
     ProgressCounts,
 )
+from visionset.server.routes._prelabel import launch, selected_produces, text_detect_connection
 
 router = protected_router(prefix="/jobs", tags=["jobs"])
 
@@ -55,7 +59,11 @@ def get_job(workspace: WorkspaceDep, job_id: UUID) -> JobOut:
     job's work is judged against, which a job id alone does not.
     """
     jobs = JobService(workspace)
-    return JobOut.of(jobs.get(job_id), batch=jobs.batch(job_id))
+    return JobOut.of(
+        jobs.get(job_id),
+        batch=jobs.batch(job_id),
+        pre_label_run=jobs.latest_pre_label_run(job_id),
+    )
 
 
 @router.get("/{job_id}/progress", responses=documented(404))
@@ -78,7 +86,122 @@ def start_job(workspace: WorkspaceDep, job_id: UUID) -> JobOut:
     is already in progress or finished never starts again.
     """
     jobs = JobService(workspace)
-    return JobOut.of(jobs.start(job_id), batch=jobs.batch(job_id))
+    return JobOut.of(
+        jobs.start(job_id),
+        batch=jobs.batch(job_id),
+        pre_label_run=jobs.latest_pre_label_run(job_id),
+    )
+
+
+@router.post(
+    "/{job_id}/pre-label",
+    status_code=status.HTTP_202_ACCEPTED,
+    responses=documented(404, 409),
+)
+def pre_label_job(
+    workspace: WorkspaceDep,
+    runner: RunnerDep,
+    response: Response,
+    job_id: UUID,
+    body: PreLabelRequest,
+) -> BackgroundJobOut:
+    """Ask a model to label every untouched asset in this job, and answer at once.
+
+    The `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:
+    nobody judged them, so they arrive editable and correctable rather than
+    claiming to be somebody's work — and, being unjudged, they never reach the
+    Dataset until a person has taken them over.
+
+    **Only assets nothing has touched — which is stronger than reading
+    `unannotated`.** An asset already `pre_labeled`, annotated, skipped,
+    awaiting review or accepted is passed over, and so is an `unannotated` one
+    that still carries annotations from an earlier round that was skipped and
+    then restored: that sequence deletes no labels, so progress alone does not
+    prove an asset untouched. A run never writes over what a person did in this
+    job, and never writes twice over what a model did — a plain second run
+    extends an earlier one onto whatever is still untouched.
+    `replace_model_labels` widens it to every frame still `pre_labeled` and
+    supersedes those labels with this run's answer, one frame per transaction;
+    a frame anyone edited, confirmed or skipped in this job is never touched,
+    and a frame the model now finds nothing on returns to `unannotated`. A
+    replacing request arriving while a run is in flight joins that run,
+    whichever flag it carries.
+
+    **The batch's pinned schema is the prompt, narrowed to what this run
+    writes.** The model is asked for each class the schema declares that admits
+    one of the shapes the run writes and demands no attribute a prediction
+    cannot supply; an answer naming one of those classes, matched
+    case-insensitively, is written under the schema's own spelling, and an
+    answer naming none of them is discarded. A schema with no such class has
+    nowhere for a prediction to land and is refused — so the same schema is
+    askable of a model that answers polygons and refused for one that answers
+    boxes. `GET /batches/{batch_id}/pre-label` with the same `connection_id`
+    (and the same `geometries`) reads the narrowing before launching.
+
+    **What the run writes is every shape the model produces, unless
+    `geometries` says which.** A model declaring both a box and a polygon
+    writes both for every region it answers with — the kernel writes one
+    annotation per emitted region and pairs nothing — and `geometries` filters
+    that to the shapes named: a region in any other shape is discarded and
+    counted in `regions_discarded`. The selection is per run, not per class,
+    and it is kept on the queued row, so a run claimed later executes what was
+    asked.
+
+    **202, not 200.** A job is hundreds of forward passes, so this follows the
+    launch-and-poll contract the export and weight-download routes use: poll `GET
+    /background-jobs/{id}` — the `Location` header names it — until `state` is
+    `succeeded`, then re-read the job's assets. Progress on the row is counted
+    in assets, and `JobOut.pre_label_run` remembers the same row afterwards.
+
+    **Everything a caller can be told now is told now**, and no refusal creates a
+    job — so a caller holding a job id holds one that will run. These refusals
+    are about the request, and the caller can act on each. They are checked in
+    this order, and it is the order `pre_label` itself checks in, so a request
+    wrong about the connection and the job both always names the connection:
+    an unknown connection is 404 `INFERENCE_CONNECTION_NOT_FOUND`; a
+    connection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` — its
+    weights not here, or its endpoint not yet asked what it answers; a
+    connection whose model answers places rather than words is 422
+    `UNSUPPORTED_PROMPT`; a `geometries` naming a shape the model does not
+    produce is 422 `GEOMETRY_NOT_PRODUCED`. An unknown job is 404
+    `JOB_NOT_FOUND`; a job whose batch is not `in_annotation` is 409
+    `BATCH_NOT_IN_ANNOTATION`; a job already `completed` is 409 `JOB_FINISHED`,
+    and there is no remedy on this route — settled work is corrected through a
+    new batch rather than reopened. A pinned schema with no class the selected
+    shapes can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.
+
+    Two failures are about this installation rather than about the request, and
+    answer 500 carrying the message that says which: a machine without the
+    optional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the
+    exact command that installs it, and a workspace whose records no longer
+    hold together — a batch pinned to a schema version that is not stored — is
+    `WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no
+    state here a caller can change, so the remedy is the one the message names.
+
+    **Asking twice joins the run already in flight rather than starting a second
+    one.** A request arriving while this job has a pre-labeling run queued or
+    running is answered with that run's id, so a double-click and a second tab
+    watch one run instead of paying for the same inference twice — and so does
+    `POST /batches/{batch_id}/pre-label`, whose fan-out reaches this same job.
+    """
+    connection = text_detect_connection(workspace, body.connection_id)
+    produces = selected_produces(connection, body.geometries)
+    job, batch = JobService(workspace).require_pre_labelable(job_id)
+    require_detectable_schema(workspace, batch, produces)
+    row, _ = launch(
+        workspace,
+        job,
+        batch,
+        connection_id=body.connection_id,
+        minimum_confidence=body.minimum_confidence,
+        replace_model_labels=body.replace_model_labels,
+        geometries=None if body.geometries is None else frozenset(body.geometries),
+    )
+    # Woken even when the answer is a run that already existed: what came back
+    # may be `queued`, and the dispatcher it waits for sleeps on its own interval.
+    runner.wake()
+    response.headers["Location"] = f"/background-jobs/{row.id}"
+    return BackgroundJobOut.of(row)
 
 
 @router.post("/{job_id}/complete", responses=documented(404, 409))
@@ -100,7 +223,11 @@ def complete_job(workspace: WorkspaceDep, job_id: UUID) -> JobOut:
     derives that from all of them.
     """
     jobs = JobService(workspace)
-    return JobOut.of(jobs.complete(job_id), batch=jobs.batch(job_id))
+    return JobOut.of(
+        jobs.complete(job_id),
+        batch=jobs.batch(job_id),
+        pre_label_run=jobs.latest_pre_label_run(job_id),
+    )
 
 
 @router.put("/{job_id}/assignee", responses=documented(404))
@@ -112,7 +239,9 @@ def assign_job(workspace: WorkspaceDep, job_id: UUID, body: JobAssign) -> JobOut
     """
     service = JobService(workspace)
     job = service.assign(job_id, body.assignee)
-    return JobOut.of(job, batch=service.batch(job_id))
+    return JobOut.of(
+        job, batch=service.batch(job_id), pre_label_run=service.latest_pre_label_run(job_id)
+    )
 
 
 @router.get("/{job_id}/next", responses=documented(404))

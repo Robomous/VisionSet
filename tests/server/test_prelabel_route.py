@@ -26,7 +26,7 @@ from visionset.inference import weights as weights_module
 from visionset.inference.registry import capabilities, registered, served
 from visionset.jobs import prelabel as prelabel_handler
 from visionset.kernel.domain import DownloadSize, GeometryType, ModelCapability
-from visionset.server.routes import batches as batches_routes
+from visionset.server.routes import _prelabel as prelabel_routes
 from visionset.server.routes import inference as inference_routes
 
 #: A plain box class with no required attribute, so it is exactly what
@@ -86,7 +86,7 @@ def _local_setup_is_faked(monkeypatch: pytest.MonkeyPatch) -> None:
     size lookup a create form reads before anybody commits to a download.
     """
     monkeypatch.setattr(inference_routes, "require_local_inference", lambda: None)
-    monkeypatch.setattr(batches_routes, "require_local_inference", lambda: None)
+    monkeypatch.setattr(prelabel_routes, "require_local_inference", lambda: None)
     monkeypatch.setattr(weights_module, "download", lambda connection, *, into, on_bytes=None: into)
     monkeypatch.setattr(
         weights_module,
@@ -157,6 +157,9 @@ class OpenBatch:
     project_id: str
     id: str
     connection_id: str
+    #: The batch's first annotation job — empty for a batch nobody has approved,
+    #: which has no jobs to name.
+    job_id: str = ""
 
 
 def _open_batch(
@@ -176,7 +179,12 @@ def _open_batch(
     connection_id = _connection(client, runner, monkeypatch, family=family, capability=capability)
     assert client.post(f"/batches/{batch_id}/approve").status_code == 200
     assert client.post(f"/batches/{batch_id}/start").status_code == 200
-    return OpenBatch(project_id=project_id, id=batch_id, connection_id=connection_id)
+    return OpenBatch(
+        project_id=project_id,
+        id=batch_id,
+        connection_id=connection_id,
+        job_id=client.get(f"/batches/{batch_id}/jobs").json()["items"][0]["id"],
+    )
 
 
 @pytest.fixture()
@@ -257,7 +265,78 @@ def test_pre_labeling_answers_202_and_points_at_the_job(
     )
 
     assert response.status_code == 202, response.text
+    assert response.json()["items"][0]["job"]["type"] == "annotation.pre_label"
+
+
+def test_pre_labeling_a_job_answers_202_and_points_at_the_job(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = client.post(
+        f"/jobs/{in_annotation_batch.job_id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id, "minimum_confidence": 0.35},
+    )
+    assert response.status_code == 202, response.text
     assert response.headers["location"] == f"/background-jobs/{response.json()['id']}"
+
+
+def test_the_job_remembers_its_run(client: TestClient, in_annotation_batch: OpenBatch) -> None:
+    launched = client.post(
+        f"/jobs/{in_annotation_batch.job_id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id},
+    ).json()
+    job = client.get(f"/jobs/{in_annotation_batch.job_id}").json()
+    assert job["pre_label_run"]["job_id"] == launched["id"]
+    assert job["pre_label_run"]["annotation_job_id"] == in_annotation_batch.job_id
+    listed = client.get(f"/batches/{in_annotation_batch.id}/jobs").json()["items"][0]
+    assert listed["pre_label_run"]["job_id"] == launched["id"]
+
+
+def test_an_open_job_declares_pre_label_and_a_finished_one_does_not(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    job_id = in_annotation_batch.job_id
+    assert "pre_label" in client.get(f"/jobs/{job_id}").json()["allowed_actions"]
+
+    for asset in client.get(f"/batches/{in_annotation_batch.id}/assets").json()["items"]:
+        client.put(f"/jobs/{job_id}/assets/{asset['id']}/progress", json={"progress": "skipped"})
+    assert client.post(f"/jobs/{job_id}/start").status_code == 200
+    assert client.post(f"/jobs/{job_id}/complete").status_code == 200
+
+    assert "pre_label" not in client.get(f"/jobs/{job_id}").json()["allowed_actions"]
+
+
+def test_a_finished_job_is_refused_and_queues_nothing(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    job_id = in_annotation_batch.job_id
+    for asset in client.get(f"/batches/{in_annotation_batch.id}/assets").json()["items"]:
+        client.put(f"/jobs/{job_id}/assets/{asset['id']}/progress", json={"progress": "skipped"})
+    assert client.post(f"/jobs/{job_id}/start").status_code == 200
+    assert client.post(f"/jobs/{job_id}/complete").status_code == 200
+    before = _pre_label_job_count(client)
+
+    response = client.post(
+        f"/jobs/{job_id}/pre-label", json={"connection_id": in_annotation_batch.connection_id}
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "JOB_FINISHED"
+    assert _pre_label_job_count(client) == before
+
+
+def test_the_batch_launch_fans_out_one_row_per_open_job(
+    client: TestClient, in_annotation_batch: OpenBatch
+) -> None:
+    response = client.post(
+        f"/batches/{in_annotation_batch.id}/pre-label",
+        json={"connection_id": in_annotation_batch.connection_id},
+    )
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["annotation_job_id"] == in_annotation_batch.job_id
+    assert body["items"][0]["batch_id"] == in_annotation_batch.id
+    assert body["items"][0]["joined"] is False
 
 
 def test_asking_twice_joins_the_run_already_in_flight(
@@ -271,7 +350,7 @@ def test_asking_twice_joins_the_run_already_in_flight(
     with api_client(tmp_path / "ws", dispatcher=manual) as client:
         manual.bind(client.app.state.workspace_handle)
         monkeypatch.setattr(inference_routes, "require_local_inference", lambda: None)
-        monkeypatch.setattr(batches_routes, "require_local_inference", lambda: None)
+        monkeypatch.setattr(prelabel_routes, "require_local_inference", lambda: None)
         monkeypatch.setattr(
             weights_module, "download", lambda connection, *, into, on_bytes=None: into
         )
@@ -292,7 +371,8 @@ def test_asking_twice_joins_the_run_already_in_flight(
         second = client.post(f"/batches/{batch.id}/pre-label", json=body)
 
         assert first.status_code == second.status_code == 202
-        assert first.json()["id"] == second.json()["id"]
+        assert first.json()["items"][0]["job"]["id"] == second.json()["items"][0]["job"]["id"]
+        assert second.json()["items"][0]["joined"] is True
         assert _pre_label_job_count(client) == 1
 
 
@@ -334,7 +414,7 @@ def test_a_settled_run_is_readable_with_no_job_id_of_its_own(
 
     run = reopened["pre_label_run"]
     assert run is not None
-    assert run["job_id"] == launched["id"]
+    assert run["job_id"] == launched["items"][0]["job"]["id"]
     assert run["state"] == "failed"
     assert run["error"]
     assert run["annotations_replaced"] is None
@@ -375,11 +455,12 @@ def test_the_replace_flag_defaults_off_and_reaches_the_run_when_set(
         json={"connection_id": in_annotation_batch.connection_id, "replace_model_labels": True},
     )
     assert flagged.status_code == 202, flagged.text
-    assert flagged.json()["id"] != plain.json()["id"]
+    flagged_row = flagged.json()["items"][0]["job"]["id"]
+    assert flagged_row != plain.json()["items"][0]["job"]["id"]
     assert captured["replace_model_labels"] is True
 
     run = client.get(f"/batches/{in_annotation_batch.id}").json()["pre_label_run"]
-    assert run["job_id"] == flagged.json()["id"]
+    assert run["job_id"] == flagged_row
     assert run["state"] == "succeeded"
     assert run["annotations_replaced"] == 2
 
@@ -740,7 +821,7 @@ def test_an_http_connection_that_answers_words_is_not_gated_on_the_local_runtime
     def _never() -> None:
         raise AssertionError("the local runtime must not be demanded for an http connection")
 
-    monkeypatch.setattr(batches_routes, "require_local_inference", _never)
+    monkeypatch.setattr(prelabel_routes, "require_local_inference", _never)
     with serving_endpoint(capability="text_detect") as endpoint:
         made = client.post(
             "/inference/connections",
@@ -842,6 +923,7 @@ def test_the_project_launch_fans_out_one_row_per_open_batch(
     body = response.json()
     assert body["total"] == 2
     assert [item["batch_id"] for item in body["items"]] == [in_annotation_batch.id, second]
+    assert all(item["annotation_job_id"] for item in body["items"])
     assert all(item["job"]["type"] == "annotation.pre_label" for item in body["items"])
     assert all(item["joined"] is False for item in body["items"])
     assert {item["batch_name"] for item in body["items"]} == {

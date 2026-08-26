@@ -453,7 +453,7 @@ def progress_counts(counts: Mapping[AssetProgress, int]) -> dict[str, Any]:
 
 
 def pre_label_run(value: PreLabelRun) -> dict[str, Any]:
-    """A batch's most recent pre-labeling run: which job, how far, and what it found.
+    """An annotation job's most recent pre-labeling run: how far it got, and what it found.
 
     Assets, on ``weight_download``'s and ``integrity_check``'s terms: the
     handler's own unit, named where its job type is known. ``stopped_early``,
@@ -462,6 +462,7 @@ def pre_label_run(value: PreLabelRun) -> dict[str, Any]:
     cancelled run still carries them, a failed one never does.
     """
     return {
+        "annotation_job_id": str(value.annotation_job_id),
         "job_id": str(value.job_id),
         "state": value.state.value,
         "assets_processed": value.assets_processed,
@@ -531,13 +532,23 @@ def batch(
     }
 
 
-def job(value: AnnotationJob, *, batch_id: UUID, batch_state: BatchState) -> dict[str, Any]:
+def job(
+    value: AnnotationJob,
+    *,
+    batch_id: UUID,
+    batch_state: BatchState,
+    pre_labeled: PreLabelRun | None = None,
+) -> dict[str, Any]:
     """One segment of a batch. ``task_group_id`` and the per-asset map are absent.
 
     ``batch_state`` is not published here — ``BatchOut`` owns it — but nothing can
     be said about what this job may do without it: both of its actions need the
     batch open. The per-asset map stays unpublished and is still *read*, because
     ``complete`` is refined by whether every asset has settled.
+
+    ``pre_labeled`` is this job's own most recent pre-labeling run, on the same
+    terms ``batch``'s own field reads the batch's: a caller with no view of the
+    queue passes nothing and ``pre_label_run`` is null.
     """
     return {
         "id": str(value.id),
@@ -551,6 +562,7 @@ def job(value: AnnotationJob, *, batch_id: UUID, batch_state: BatchState) -> dic
                 value.state, batch_state=batch_state, progress=value.progress.values()
             )
         ],
+        "pre_label_run": None if pre_labeled is None else pre_label_run(pre_labeled),
     }
 
 
