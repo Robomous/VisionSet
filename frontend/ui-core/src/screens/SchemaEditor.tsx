@@ -102,7 +102,8 @@ import { useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 import { formatGeometries } from "../data/geometryCategory";
 import { asApiError } from "../data/errors";
 import { classBlockers, describeClassCount, refusalProse } from "../data/refusals";
-import { Alert, Badge } from "../primitives/Badge";
+import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
+import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/Button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/Card";
 import {
@@ -777,12 +778,9 @@ export function SchemaEditor({
       </div>
 
       {flow.kind === "preview-error" && (
-        <Alert
-          variant="destructive"
-          title="Could not preview this change"
-          data-testid="schema-preview-error"
-        >
-          {refusalProse(flow.error)}
+        <Alert variant="destructive" data-testid="schema-preview-error">
+          <AlertTitle>Could not preview this change</AlertTitle>
+          <AlertDescription>{refusalProse(flow.error)}</AlertDescription>
         </Alert>
       )}
 
@@ -877,8 +875,9 @@ export function SchemaEditor({
           is, and typing is unaffected either way. Still rendered rather than
           swallowed, in the same register as a publish failure below. */}
       {draftFailure !== null && !staleDraft && (
-        <Alert variant="destructive" title="Could not save this change" data-testid="schema-draft-error">
-          {refusalProse(draftSaveError)}
+        <Alert variant="destructive" data-testid="schema-draft-error">
+          <AlertTitle>Could not save this change</AlertTitle>
+          <AlertDescription>{refusalProse(draftSaveError)}</AlertDescription>
         </Alert>
       )}
 
@@ -893,16 +892,20 @@ export function SchemaEditor({
       {failure !== null &&
         failure.code !== STALE_DRAFT &&
         (failure.code !== WOULD_ORPHAN || shownBlockers === null) && (
-          <Alert variant="destructive" title="Could not save this version" data-testid="schema-error">
-            {refusalProse(publish.error)}
+          <Alert variant="destructive" data-testid="schema-error">
+            <AlertTitle>Could not save this version</AlertTitle>
+            <AlertDescription>{refusalProse(publish.error)}</AlertDescription>
           </Alert>
         )}
 
       {past !== undefined ? (
         <PastVersion declared={past} />
       ) : classes.length === 0 ? (
-        <Alert title="No classes yet">
+        <Alert>
+          <AlertTitle>No classes yet</AlertTitle>
+          <AlertDescription>
           A class is a label plus the one geometry it carries — picking a class picks a tool.
+          </AlertDescription>
         </Alert>
       ) : (
         // 240px and then everything else. `minmax(0, 1fr)` rather than `1fr`, so a
@@ -1153,7 +1156,7 @@ function VersionDiff({
         <li key={index} className="flex items-start gap-2 text-xs">
           {/* The kernel's own words — they are accurate — sentence-cased for a
               badge. `detail` below stays verbatim; see the docstring. */}
-          <Badge variant={change.kind === "destructive" ? "destructive" : "neutral"}>
+          <Badge variant={change.kind === "destructive" ? "destructive" : "secondary"}>
             {change.kind === "destructive" ? "Destructive" : change.kind === "additive" ? "Additive" : change.kind}
           </Badge>
           <span className="text-muted-foreground">{change.detail}</span>
@@ -1173,8 +1176,11 @@ function VersionDiff({
 function PastVersion({ declared }: { readonly declared: SchemaVersion }): JSX.Element {
   if (declared.classes.length === 0) {
     return (
-      <Alert title="No classes">
+      <Alert>
+        <AlertTitle>No classes</AlertTitle>
+        <AlertDescription>
         Version {declared.version} declares nothing. A project can publish an empty contract.
+        </AlertDescription>
       </Alert>
     );
   }

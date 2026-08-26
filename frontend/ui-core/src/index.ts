@@ -55,13 +55,8 @@ export {
 } from "./primitives/Card.js";
 export { FieldError, FieldHint, Input, Label, Textarea } from "./primitives/Input.js";
 export { Combobox, type ComboboxFooter, type ComboboxProps } from "./primitives/Combobox.js";
-export {
-  Alert,
-  Badge,
-  badgeVariants,
-  type AlertProps,
-  type BadgeProps,
-} from "./primitives/Badge.js";
+export { Badge, badgeVariants } from "./primitives/badge.js";
+export { Alert, AlertAction, AlertDescription, AlertTitle } from "./primitives/alert.js";
 export {
   Dialog,
   DialogClose,

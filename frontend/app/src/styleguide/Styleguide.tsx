@@ -337,15 +337,15 @@ export function Styleguide(): JSX.Element {
 
         <Section title="Badges and status" description="The domain's states, as intents.">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge>draft</Badge>
-            <Badge variant="accent">in_annotation</Badge>
+            <Badge variant="secondary">draft</Badge>
+            <Badge variant="default">in_annotation</Badge>
             <Badge variant="success">completed</Badge>
             <Badge variant="warning">stale</Badge>
             <Badge variant="outline">outline</Badge>
             <Badge variant="destructive">failed</Badge>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="quiet">quiet — a fact, not a state</Badge>
+            <Badge variant="outline" className="rounded-md">quiet — a fact, not a state</Badge>
           </div>
           <div className="max-w-md">
             <p className="mb-1 text-xs text-muted-foreground">Ingest — 240 of 412</p>
@@ -377,7 +377,7 @@ export function Styleguide(): JSX.Element {
                     <TableRow key={batch.name}>
                       <TableCell className="font-medium">{batch.name}</TableCell>
                       <TableCell>
-                        <Badge variant={batch.state === "in_annotation" ? "accent" : "neutral"}>
+                        <Badge variant={batch.state === "in_annotation" ? "default" : "secondary"}>
                           {batch.state}
                         </Badge>
                       </TableCell>

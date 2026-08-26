@@ -156,7 +156,7 @@ import type { OpenMember } from "../generated/api.js";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
-import { Badge } from "../primitives/Badge";
+import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/Button";
 import {
   DropdownMenu,
@@ -2986,21 +2986,23 @@ function PinBadge({
 
   return (
     <div ref={root} className="relative">
-      <button
-        type="button"
-        data-testid="pinned-schema"
-        aria-expanded={open}
-        aria-label={`Schema v${pinned}, pinned by this batch`}
-        className="rounded-full border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-        onClick={() => onOpenChange(!open)}
-      >
-        v{pinned}
-        {/* The dot is a *tell*, not the answer — it appears only once the panel
-            has been opened and learned there is a gap, because a badge that
-            fetched on arrival to decide whether to show a dot would be the very
-            request this whole surface is arranged not to make. */}
-        {behind && <span className="ml-1 inline-block size-1.5 rounded-full bg-primary align-middle" aria-hidden="true" />}
-      </button>
+      <Badge asChild variant="outline" className="font-mono">
+        <button
+          type="button"
+          data-testid="pinned-schema"
+          aria-expanded={open}
+          aria-label={`Schema v${pinned}, pinned by this batch`}
+          className="hover:bg-muted hover:text-foreground"
+          onClick={() => onOpenChange(!open)}
+        >
+          v{pinned}
+          {/* The dot is a *tell*, not the answer — it appears only once the panel
+              has been opened and learned there is a gap, because a badge that
+              fetched on arrival to decide whether to show a dot would be the very
+              request this whole surface is arranged not to make. */}
+          {behind && <span className="ml-1 inline-block size-1.5 rounded-full bg-primary align-middle" aria-hidden="true" />}
+        </button>
+      </Badge>
 
       {open && (
         <div
@@ -3170,7 +3172,7 @@ function SaveState({
   }
   if (dirty) {
     return (
-      <Badge variant="accent" data-testid="save-state">
+      <Badge variant="default" data-testid="save-state">
         unsaved
       </Badge>
     );

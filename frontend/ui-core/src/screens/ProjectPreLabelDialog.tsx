@@ -20,7 +20,7 @@ import { useMemo, useState, type JSX } from "react";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
-import { Alert } from "../primitives/Badge";
+import { Alert, AlertDescription } from "../primitives/alert";
 import { Button } from "../primitives/Button";
 import {
   Dialog,
@@ -235,15 +235,17 @@ function ProjectPreLabelDialog({
 
             {refused.length > 0 && (
               <Alert data-testid="project-prelabel-blocked">
+                <AlertDescription>
                 {refused.length === 1
                   ? `${refused[0]!.name} cannot be pre-labeled as planned — uncheck it, or change the model or the shapes, to start.`
                   : `${refused.map((one) => one.name).join(", ")} cannot be pre-labeled as planned — uncheck them, or change the model or the shapes, to start.`}
+                </AlertDescription>
               </Alert>
             )}
 
             {launch.isError && (
               <Alert variant="destructive" data-testid="project-prelabel-error">
-                {refusalProse(launch.error)}
+                <AlertDescription>{refusalProse(launch.error)}</AlertDescription>
               </Alert>
             )}
           </div>

@@ -92,7 +92,8 @@ import { BATCH_ACTION, declares } from "../data/capabilities";
 import { producesProse } from "../data/geometryCategory";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
-import { Alert, Badge } from "../primitives/Badge";
+import { Alert, AlertDescription } from "../primitives/alert";
+import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/Button";
 import {
   Dialog,
@@ -146,11 +147,11 @@ const JOB_STATE_LABEL: Record<string, string> = {
 };
 
 const JOB_STATE_VARIANT: Record<string, BadgeTone> = {
-  queued: "neutral",
-  running: "accent",
+  queued: "secondary",
+  running: "default",
   succeeded: "success",
   failed: "destructive",
-  cancelled: "neutral",
+  cancelled: "secondary",
 };
 
 /** The five faces of this dialog, over the watched run and nothing else. */
@@ -741,7 +742,7 @@ function PreLabelDialog({
           {view !== null && (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <Badge
-                variant={JOB_STATE_VARIANT[view.state] ?? "neutral"}
+                variant={JOB_STATE_VARIANT[view.state] ?? "secondary"}
                 data-testid="prelabel-job-state"
               >
                 {JOB_STATE_LABEL[view.state] ?? view.state}
@@ -840,7 +841,7 @@ function PreLabelDialog({
 
           {blocked && mode !== "running" && (
             <Alert data-testid="prelabel-blocked-reason">
-              {blockedReason(view, preLabeled)}
+              <AlertDescription>{blockedReason(view, preLabeled)}</AlertDescription>
             </Alert>
           )}
 

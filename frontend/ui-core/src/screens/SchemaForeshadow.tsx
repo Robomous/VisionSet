@@ -21,7 +21,7 @@
 
 import type { JSX } from "react";
 
-import { Alert } from "../primitives/Badge";
+import { Alert, AlertDescription } from "../primitives/alert";
 import { Button } from "../primitives/Button";
 import { useProjectReadiness } from "./queries";
 
@@ -37,6 +37,7 @@ export function SchemaForeshadow({
   if (readiness === null || readiness.hasSchema) return null;
   return (
     <Alert data-testid="schema-foreshadow">
+      <AlertDescription>
       <span>You can ingest now — you&rsquo;ll need labels before annotating.</span>
       {onOpenSchema !== undefined && (
         <Button
@@ -48,6 +49,7 @@ export function SchemaForeshadow({
           Define your labels
         </Button>
       )}
+      </AlertDescription>
     </Alert>
   );
 }

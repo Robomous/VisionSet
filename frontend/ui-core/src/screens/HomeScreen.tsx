@@ -53,7 +53,7 @@ import { refusalProse } from "../data/refusals";
 import { formatCount, formatPercent, formatWhen } from "../lib/format";
 import { ErrorState } from "../patterns/AsyncStates";
 import { StatCard } from "../patterns/DataDisplay";
-import { Badge } from "../primitives/Badge";
+import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/Button";
 import { Skeleton } from "../primitives/Feedback";
 import { CreateProjectDialog } from "./ProjectsScreen";

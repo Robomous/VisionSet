@@ -138,7 +138,8 @@ import { cn } from "../lib/cn";
 import { formatBytes, formatCount } from "../lib/format";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
-import { Alert, Badge } from "../primitives/Badge";
+import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
+import { Badge } from "../primitives/badge";
 import type { BadgeTone } from "./batchState";
 import { Button } from "../primitives/Button";
 import { Card, CardContent } from "../primitives/Card";
@@ -210,14 +211,14 @@ function runStateLabel(state: string): string {
  * the *type*: a colour outside `BadgeTone` fails to compile.
  */
 const RUN_STATE_VARIANT: Record<string, BadgeTone> = {
-  pending: "accent",
-  running: "accent",
+  pending: "default",
+  running: "default",
   completed: "success",
   failed: "destructive",
 };
 
 function runStateVariant(state: string): BadgeTone {
-  return RUN_STATE_VARIANT[state] ?? "neutral";
+  return RUN_STATE_VARIANT[state] ?? "secondary";
 }
 
 /**
@@ -568,7 +569,7 @@ export function IngestScreen({
                     <span className="text-sm font-medium" title={source.name}>
                       {sourceLabel(source.name)}
                     </span>
-                    <Badge>{source.kind}</Badge>
+                    <Badge variant="secondary">{source.kind}</Badge>
                   </div>
 
                   {source.video !== null && source.video !== undefined && (
@@ -1042,8 +1043,9 @@ function RunCard({
             </div>
 
             {job.error !== null && job.error !== undefined && (
-              <Alert variant="destructive" title="The run stopped" data-testid="run-error">
-                {job.error}
+              <Alert variant="destructive" data-testid="run-error">
+                <AlertTitle>The run stopped</AlertTitle>
+                <AlertDescription>{job.error}</AlertDescription>
               </Alert>
             )}
 
@@ -1078,12 +1080,9 @@ function RunCard({
                   reason: same screen, two different things that went wrong.
                 */}
                 {resume.isError && (
-                  <Alert
-                    variant="destructive"
-                    title="That resume was refused"
-                    data-testid="resume-error"
-                  >
-                    {refusalProse(resume.error)}
+                  <Alert variant="destructive" data-testid="resume-error">
+                    <AlertTitle>That resume was refused</AlertTitle>
+                    <AlertDescription>{refusalProse(resume.error)}</AlertDescription>
                   </Alert>
                 )}
               </div>
@@ -1220,15 +1219,14 @@ function Partials({
   if (partials.length === 0) return null;
 
   return (
-    <Alert
-      title={
+    <Alert data-testid="partials">
+      <AlertTitle>
         <span className="flex items-center gap-2">
           <TriangleAlert className="size-4 text-warning" aria-hidden="true" />
           Some of what you ingested was damaged
         </span>
-      }
-      data-testid="partials"
-    >
+      </AlertTitle>
+      <AlertDescription>
       <ul className="flex flex-col gap-2">
         {partials.map((failure, index) => (
           <li key={`${failure.name}-${index}`} data-testid={`partial-${index}`}>
@@ -1244,6 +1242,7 @@ function Partials({
           </li>
         ))}
       </ul>
+      </AlertDescription>
     </Alert>
   );
 }
@@ -1285,7 +1284,7 @@ function Failures({
           </Badge>
         )}
         {unsupported.length > 0 && (
-          <Badge data-testid="unsupported-count">{unsupported.length} unsupported</Badge>
+          <Badge variant="secondary" data-testid="unsupported-count">{unsupported.length} unsupported</Badge>
         )}
       </p>
       <Table>
@@ -1303,7 +1302,7 @@ function Failures({
                 {basename(failure.name)}
               </TableCell>
               <TableCell>
-                <Badge variant={failure.kind === "corrupt" ? "destructive" : "neutral"}>
+                <Badge variant={failure.kind === "corrupt" ? "destructive" : "secondary"}>
                   {failureKindLabel(failure.kind)}
                 </Badge>
               </TableCell>

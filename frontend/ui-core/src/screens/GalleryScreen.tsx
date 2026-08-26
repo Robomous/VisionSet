@@ -41,7 +41,7 @@ import { Check, Eraser, Eye, Play, SkipForward, Trash2, Undo2, X } from "lucide-
 import { Async } from "../data/Async";
 import { readStep, writePref } from "../data/prefs";
 import type { AssetProgress } from "../annotator/jobQueries";
-import { Badge } from "../primitives/Badge";
+import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/Button";
 import {
   Dialog,
@@ -676,7 +676,7 @@ function BatchHeader({
             </h1>
             {batch !== undefined && (
               <Badge
-                variant={BATCH_STATE_VARIANT[batch.state] ?? "neutral"}
+                variant={BATCH_STATE_VARIANT[batch.state] ?? "secondary"}
                 data-testid="batch-state"
               >
                 {batchStateLabel(batch.state)}

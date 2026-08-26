@@ -161,7 +161,7 @@ import {
 import { jobFailureProse, refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
-import { Badge } from "../primitives/Badge";
+import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/Button";
 import {
   Card,
@@ -614,7 +614,7 @@ export function ConnectionCard({
           <ul className="flex flex-wrap gap-1.5" aria-label="What it does" data-testid="connection-abilities">
             {abilities.map((label) => (
               <li key={label}>
-                <Badge variant="quiet" data-testid="ability-label">
+                <Badge variant="outline" className="rounded-md" data-testid="ability-label">
                   {label}
                 </Badge>
               </li>

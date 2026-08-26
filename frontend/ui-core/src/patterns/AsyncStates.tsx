@@ -21,7 +21,7 @@ import { Inbox, TriangleAlert } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 import { cn } from "../lib/cn";
-import { Alert } from "../primitives/Badge";
+import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
 import { Button } from "../primitives/Button";
 import { Skeleton } from "../primitives/Feedback";
 
@@ -122,16 +122,14 @@ export function ErrorState({
   ];
 
   return (
-    <Alert
-      variant="destructive"
-      title={
+    <Alert variant="destructive" className={className}>
+      <AlertTitle>
         <span className="flex items-center gap-2">
           <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
           {message}
         </span>
-      }
-      className={className}
-    >
+      </AlertTitle>
+      <AlertDescription>
       {meta.length > 0 && (
         <p className="font-mono text-xs" data-testid="error-code">
           {meta.join(" · ")}
@@ -142,6 +140,7 @@ export function ErrorState({
           {retryLabel}
         </Button>
       )}
+      </AlertDescription>
     </Alert>
   );
 }

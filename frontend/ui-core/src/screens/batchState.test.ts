@@ -263,9 +263,9 @@ describe("the status colour vocabulary (#391)", () => {
     // batch somebody is annotating is the *healthy* majority state, so painting
     // it amber would make a list of ordinary work read as a list of problems.
     // The near-black is the action colour: it says "the work is here".
-    expect(BATCH_STATE_VARIANT.in_annotation).toBe("accent");
+    expect(BATCH_STATE_VARIANT.in_annotation).toBe("default");
     expect(BATCH_STATE_VARIANT.completed).toBe("success");
-    expect(BATCH_STATE_VARIANT.draft).toBe("neutral");
+    expect(BATCH_STATE_VARIANT.draft).toBe("secondary");
   });
 });
 

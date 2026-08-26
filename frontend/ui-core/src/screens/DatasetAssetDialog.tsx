@@ -40,7 +40,7 @@ import type { WireAnnotation } from "../annotator/jobQueries";
 import { refusalProse } from "../data/refusals";
 import { formatWhen } from "../lib/format";
 import { classColor } from "../palette";
-import { Badge } from "../primitives/Badge";
+import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/Button";
 import { DescriptionList, DescriptionRow } from "../patterns/DataDisplay";
 import {

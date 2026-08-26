@@ -17,7 +17,8 @@ import userEvent from "@testing-library/user-event";
 import type { JSX } from "react";
 import { describe, expect, it } from "vitest";
 
-import { Alert, Badge } from "./Badge";
+import { Alert, AlertDescription, AlertTitle } from "./alert";
+import { Badge } from "./badge";
 import { Button } from "./Button";
 import { Card, CardTitle } from "./Card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./Dialog";
@@ -95,26 +96,22 @@ describe("Button", () => {
 });
 
 describe("Alert and Badge", () => {
-  it("announces a destructive alert and stays quiet for an informational one", () => {
-    const { rerender } = render(<Alert variant="destructive" title="PROJECT_NOT_FOUND" />);
-    expect(screen.getByRole("alert")).toHaveProperty("textContent", "PROJECT_NOT_FOUND");
-
-    rerender(<Alert title="Nothing to do yet" />);
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-
-  it("renders a node title, which the native attribute could not hold", () => {
+  it("announces an alert, and composes its title and description", () => {
     render(
-      <Alert variant="destructive" title={<span data-testid="icon">!</span>}>
-        the message
+      <Alert variant="destructive">
+        <AlertTitle>Refused</AlertTitle>
+        <AlertDescription>because</AlertDescription>
       </Alert>,
     );
-    expect(screen.getByTestId("icon")).not.toBeNull();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Refused");
+    expect(alert.textContent).toContain("because");
   });
 
-  it("gives a badge the accent only through the accent variant", () => {
-    render(<Badge variant="accent">annotated</Badge>);
-    expect(screen.getByText("annotated").className).toContain("border-primary");
+  it("marks a badge with its variant, so a style can be keyed on data rather than colour", () => {
+    render(<Badge variant="success">done</Badge>);
+    expect(screen.getByText("done").getAttribute("data-variant")).toBe("success");
+    expect(screen.getByText("done").getAttribute("data-slot")).toBe("badge");
   });
 });
 

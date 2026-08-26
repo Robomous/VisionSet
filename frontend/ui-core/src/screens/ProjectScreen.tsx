@@ -73,7 +73,7 @@ import { Async } from "../data/Async";
 import { useApiClient } from "../data/ApiProvider";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { Badge } from "../primitives/Badge";
+import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/Button";
 import { formatCount, formatWhen } from "../lib/format";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
@@ -951,7 +951,7 @@ function VersionRow({
     <TableRow data-testid={`version-${entry.version}`} {...(nested ? { "data-nested": "true" } : {})}>
       <TableCell className={`flex items-center gap-2${nested ? " pl-8" : ""}`}>
         v{entry.version}
-        {entry.version === active && <Badge variant="accent">active</Badge>}
+        {entry.version === active && <Badge variant="default">active</Badge>}
       </TableCell>
       {/* Both are null for a version published before the fields existed, and nothing backfills
           either — an em dash is the honest rendering of a moment nobody recorded. */}
@@ -1024,7 +1024,7 @@ function AnnotationRun({
               <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
             )}
             v{oldest.version}–v{newest.version}
-            {newest.version === active && <Badge variant="accent">active</Badge>}
+            {newest.version === active && <Badge variant="default">active</Badge>}
           </button>
         </TableCell>
         <TableCell className="text-muted-foreground">

@@ -48,7 +48,8 @@ import { useEffect, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
-import { Alert, Badge } from "../primitives/Badge";
+import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
+import { Badge } from "../primitives/badge";
 import type { BadgeTone } from "./batchState";
 import { SectionHeader } from "../patterns/SectionHeader";
 import { Button } from "../primitives/Button";
@@ -191,11 +192,11 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
           </TabsTrigger>
           <TabsTrigger value="assets" data-testid="dataset-tab-assets">
             Assets
-            {stats.data !== undefined && <Badge>{stats.data.asset_count}</Badge>}
+            {stats.data !== undefined && <Badge variant="secondary">{stats.data.asset_count}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="releases" data-testid="dataset-tab-releases">
             Releases
-            {releases.data !== undefined && <Badge>{releases.data.total}</Badge>}
+            {releases.data !== undefined && <Badge variant="secondary">{releases.data.total}</Badge>}
           </TabsTrigger>
         </TabsList>
         </div>
@@ -589,9 +590,9 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
         <CardTitle className="flex items-center gap-2">
           <Tag className="size-4 text-muted-foreground" aria-hidden="true" />
           {release.tag}
-          <Badge>v{release.schema_version}</Badge>
+          <Badge variant="secondary">v{release.schema_version}</Badge>
           {release.split !== null && release.split !== undefined && (
-            <Badge variant="accent" data-testid={`split-${release.tag}`}>
+            <Badge variant="default" data-testid={`split-${release.tag}`}>
               split
             </Badge>
           )}
@@ -700,9 +701,12 @@ function Verification({
 }): JSX.Element {
   if (!report.manifest_intact) {
     return (
-      <Alert variant="destructive" title="The manifest itself does not match its hash" data-testid={`verified-${tag}`}>
+      <Alert variant="destructive" data-testid={`verified-${tag}`}>
+        <AlertTitle>The manifest itself does not match its hash</AlertTitle>
+        <AlertDescription>
         Nothing else could be checked — every count in this release is derived from a
         document that is not the one its hash names.
+        </AlertDescription>
       </Alert>
     );
   }
@@ -715,10 +719,13 @@ function Verification({
     );
   }
   return (
-    <Alert variant="destructive" title="This release cannot be reproduced" data-testid={`verified-${tag}`}>
+    <Alert variant="destructive" data-testid={`verified-${tag}`}>
+      <AlertTitle>This release cannot be reproduced</AlertTitle>
+      <AlertDescription>
       {report.missing.length} missing · {report.corrupt.length} corrupt ·{" "}
       {report.cache_mismatches.length} cache mismatch
       {report.cache_mismatches.length === 1 ? "" : "es"} of {report.checked} checked.
+      </AlertDescription>
     </Alert>
   );
 }
@@ -912,11 +919,11 @@ const JOB_STATE_LABEL: Record<string, string> = {
 };
 
 const JOB_STATE_VARIANT: Record<string, BadgeTone> = {
-  queued: "neutral",
-  running: "accent",
+  queued: "secondary",
+  running: "default",
   succeeded: "success",
   failed: "destructive",
-  cancelled: "neutral",
+  cancelled: "secondary",
 };
 
 
@@ -1065,7 +1072,7 @@ function ExportDialog({
               below stay: a badge is the glance, prose is the answer. */}
           {shownState !== null && (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant={JOB_STATE_VARIANT[shownState] ?? "neutral"} data-testid="export-job-state">
+              <Badge variant={JOB_STATE_VARIANT[shownState] ?? "secondary"} data-testid="export-job-state">
                 {JOB_STATE_LABEL[shownState] ?? shownState}
               </Badge>
               {job.data?.total !== null && job.data?.total !== undefined && (
@@ -1077,11 +1084,9 @@ function ExportDialog({
           )}
 
           {needsConsent && (
-            <Alert
-              variant="destructive"
-              title="Some shapes cannot be exported"
-              data-testid="lossy-consent"
-            >
+            <Alert variant="destructive" data-testid="lossy-consent">
+              <AlertTitle>Some shapes cannot be exported</AlertTitle>
+              <AlertDescription>
               <p>{refusalProse(failure)}</p>
               {lost !== null && lost.length > 0 && (
                 <ul className="mt-2 list-disc pl-5 text-sm" data-testid="lossy-classes">
@@ -1105,6 +1110,7 @@ function ExportDialog({
                 />
                 Export anyway, accepting that the copy is incomplete.
               </label>
+              </AlertDescription>
             </Alert>
           )}
 
