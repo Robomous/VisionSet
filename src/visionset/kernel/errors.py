@@ -1375,3 +1375,21 @@ class PreprocessingDriverNotFound(VisionSetError):
         super().__init__(message)
         if installed is not None:
             self.installed = installed
+
+
+class PreprocessingRecipeNotFound(VisionSetError):
+    """The project has no pre-processing recipe under that name.
+
+    Names are unique per project and compared exactly, so this is the one
+    answer to a name nobody created, a name deleted since, and a name that
+    belongs to another project.
+    """
+
+
+class PreprocessingRecipeNameTaken(VisionSetError):
+    """Another recipe of this project already carries that name.
+
+    The ``ReleaseTagTaken`` rule for a recipe: checked before writing so the
+    caller gets a sentence, and refused by a unique index so a race cannot slip
+    past the check. Renaming onto a taken name is the same refusal.
+    """

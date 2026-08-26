@@ -368,6 +368,7 @@ class SqlUnitOfWork:
         self.dataset_members = SqlRepository(session, m.DATASET_MEMBERS)
         self.dataset_changes = SqlRepository(session, m.DATASET_CHANGES)
         self.releases = SqlRepository(session, m.RELEASES)
+        self.preprocessing_recipes = SqlRepository(session, m.PREPROCESSING_RECIPES)
         self.tokens = SqlRepository(session, m.TOKENS)
         self.jobs = SqlRepository(session, m.BACKGROUND_JOBS)
         self.inference_connections = SqlRepository(session, m.INFERENCE_CONNECTIONS)

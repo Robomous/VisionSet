@@ -169,11 +169,12 @@ MIGRATIONS: list[Migration] = [
     Migration(version=14, name="project_created_at", upgrade=_add_project_created_at),
     Migration(version=15, name="connection_origin", upgrade=_add_connection_origin),
     Migration(version=16, name="source_clip_ranges", upgrade=_reshape_source_origin_index),
+    Migration(version=17, name="preprocessing_recipes", upgrade=_add_preprocessing_recipes),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 16
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 17
 ```
 
-**Generation 1 is the baseline, and the fifteen entries after it are ordinary migrations.** A long
+**Generation 1 is the baseline, and the sixteen entries after it are ordinary migrations.** A long
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus
@@ -186,7 +187,7 @@ force again for every entry appended after the baseline.
 `tests/kernel/test_migrations.py` that builds an old-looking file. The failure is the silent
 kind: a column left in place makes its own migration find the column already there and return
 early, so `test_a_fresh_database_and_a_migrated_one_have_the_same_schema` compares a file
-against itself and passes while proving nothing. The table-creating migrations - 4, 6 and 10 -
+against itself and passes while proving nothing. The table-creating migrations - 4, 6, 10 and 17 -
 are the standing exception: dropping a whole table in the helper would exercise SQLite rather
 than this module.
 
@@ -210,6 +211,8 @@ docstring says which, so a reader does not mistake an honest absence for a forgo
 Migration 16 adds no column at all: it reshapes the source-origin index to carry the
 canonical-ranges term, and backfills nothing — a row written before ranges existed has no
 `$.ranges` key, which the new index reads as the same `''` a whole-clip selection stores.
+Migration 17 creates the `preprocessing_recipes` table whole and backfills nothing: no recipe
+existed before it, and an export that applied none is what every earlier export was.
 
 **There are no downgrade paths, deliberately.** Nothing walks a file backwards and the
 tests no longer do either. A downgrade is a compatibility promise and a promise is owed

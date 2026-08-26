@@ -13,6 +13,7 @@ from visionset.kernel.services.dataset_service import DatasetService
 from visionset.kernel.services.inference_connection_service import InferenceConnectionService
 from visionset.kernel.services.ingest_service import IngestService
 from visionset.kernel.services.job_service import JobService
+from visionset.kernel.services.preprocessing_recipe_service import PreprocessingRecipeService
 from visionset.kernel.services.project_service import ProjectService
 from visionset.kernel.services.release_service import EXPORT_REPORT_FILENAME, ReleaseService
 from visionset.kernel.services.schema_draft_service import SchemaDraftService
@@ -39,6 +40,7 @@ __all__ = [
     "InferenceConnectionService",
     "IngestService",
     "JobService",
+    "PreprocessingRecipeService",
     "ProjectService",
     "ReleaseService",
     "SchemaDraftService",

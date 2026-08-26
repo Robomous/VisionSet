@@ -53,6 +53,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "ProjectNotFound": (404, "PROJECT_NOT_FOUND"),
     "SchemaNotFound": (404, "SCHEMA_NOT_FOUND"),
     "SchemaDraftNotFound": (404, "SCHEMA_DRAFT_NOT_FOUND"),
+    "PreprocessingRecipeNotFound": (404, "PREPROCESSING_RECIPE_NOT_FOUND"),
     "BatchNotFound": (404, "BATCH_NOT_FOUND"),
     "JobNotFound": (404, "JOB_NOT_FOUND"),
     "IngestJobNotFound": (404, "INGEST_JOB_NOT_FOUND"),
@@ -85,6 +86,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     # 409 — well-formed request, the resource's state refuses it
     "ProjectNameTaken": (409, "PROJECT_NAME_TAKEN"),
     "ReleaseTagTaken": (409, "RELEASE_TAG_TAKEN"),
+    "PreprocessingRecipeNameTaken": (409, "PREPROCESSING_RECIPE_NAME_TAKEN"),
     "TokenNameTaken": (409, "TOKEN_NAME_TAKEN"),
     "InferenceConnectionNameTaken": (409, "INFERENCE_CONNECTION_NAME_TAKEN"),
     "WorkspaceAlreadyExists": (409, "WORKSPACE_ALREADY_EXISTS"),

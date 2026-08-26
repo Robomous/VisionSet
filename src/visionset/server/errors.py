@@ -106,6 +106,8 @@ from visionset.kernel import (
     NoSplitRecipe,
     NotAWorkspace,
     PreprocessingDriverNotFound,
+    PreprocessingRecipeNameTaken,
+    PreprocessingRecipeNotFound,
     PreprocessingStepUnsupportedGeometry,
     ProjectNameTaken,
     ProjectNotFound,
@@ -257,11 +259,13 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # A 404 rather than an empty 200 because the caller asked for a specific
     # thing that is not there, and because the remedy is real — a backfill.
     ThumbnailNotCached: ErrorRule(404, "THUMBNAIL_NOT_CACHED"),
+    PreprocessingRecipeNotFound: ErrorRule(404, "PREPROCESSING_RECIPE_NOT_FOUND"),
     # --- 409: well-formed request, the resource's state refuses it ---------
     ProjectNameTaken: ErrorRule(409, "PROJECT_NAME_TAKEN"),
     ReleaseTagTaken: ErrorRule(409, "RELEASE_TAG_TAKEN"),
     TokenNameTaken: ErrorRule(409, "TOKEN_NAME_TAKEN"),
     InferenceConnectionNameTaken: ErrorRule(409, "INFERENCE_CONNECTION_NAME_TAKEN"),
+    PreprocessingRecipeNameTaken: ErrorRule(409, "PREPROCESSING_RECIPE_NAME_TAKEN"),
     WorkspaceAlreadyExists: ErrorRule(409, "WORKSPACE_ALREADY_EXISTS"),
     WorkspaceNotEmpty: ErrorRule(409, "WORKSPACE_NOT_EMPTY"),
     # Retryable, but immediately rather than after a wait — a re-read lands on
