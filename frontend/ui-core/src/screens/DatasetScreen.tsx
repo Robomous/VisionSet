@@ -587,7 +587,7 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
   return (
     <Card data-testid={`release-${release.tag}`}>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle role="heading" aria-level={3} className="flex items-center gap-2">
           <Tag className="size-4 text-muted-foreground" aria-hidden="true" />
           {release.tag}
           <Badge variant="secondary">v{release.schema_version}</Badge>

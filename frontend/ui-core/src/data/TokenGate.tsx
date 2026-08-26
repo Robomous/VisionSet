@@ -122,7 +122,7 @@ export function TokenForm(): JSX.Element {
     <div className="flex min-h-screen items-center justify-center p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle role="heading" aria-level={2} className="flex items-center gap-2">
             <Key className="size-4 text-primary" aria-hidden="true" />
             Connect to a workspace
           </CardTitle>
