@@ -179,9 +179,16 @@ def list_asset_batches(workspace: WorkspaceDep, project_id: UUID, asset_id: UUID
     jobs = JobService(workspace)
     promoted = _promoted(workspace, project_id)
     found = batches.holding(asset.id)
+    pre_label_runs = batches.pre_label_runs()
     return BatchPage(
         items=[
-            BatchOut.of(batch, jobs.batch_progress(batch.id), promoted=promoted) for batch in found
+            BatchOut.of(
+                batch,
+                jobs.batch_progress(batch.id),
+                promoted=promoted,
+                pre_label_run=pre_label_runs.get(batch.id),
+            )
+            for batch in found
         ],
         total=len(found),
     )

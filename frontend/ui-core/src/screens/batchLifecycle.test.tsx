@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
-import { ApproveDialog } from "./BatchLifecycle";
+import { ApproveDialog, BatchProgressBar } from "./BatchLifecycle";
 import type { Batch } from "./queries";
 import { batchActions } from "../testing/wire.fixtures.js";
 
@@ -180,5 +180,39 @@ describe("the approve dialog's refusals", () => {
     await userEvent.click(screen.getByTestId("approve-submit"));
     await waitFor(() => expect(closed).toHaveBeenCalledOnce());
     expect(screen.queryByTestId("approve-schema-missing")).toBeNull();
+  });
+});
+
+describe("BatchProgressBar", () => {
+  const COUNTS = {
+    total: 11,
+    unannotated: 4,
+    pre_labeled: 0,
+    annotated: 7,
+    skipped: 0,
+    review_pending: 0,
+    accepted: 0,
+  };
+
+  it("draws annotation as a success fill on a bordered track, above the counts", () => {
+    render(<BatchProgressBar counts={COUNTS} />);
+    const bar = screen.getByRole("progressbar", { name: "Annotation progress" });
+    expect(bar.getAttribute("aria-valuenow")).toBe("64");
+    expect(bar.className).toContain("h-2");
+    expect(bar.className).toContain("border");
+    expect((bar.firstElementChild as Element).className).toContain("bg-success");
+    expect(screen.getByText(/7 annotated · 0 skipped · 0 accepted · 4 to do/)).toBeTruthy();
+  });
+
+  it("says a draft is not approved yet rather than counting work it has no jobs for", () => {
+    render(
+      <BatchProgressBar
+        counts={{ ...COUNTS, unannotated: 11, annotated: 0, total: 11 }}
+        draft
+      />,
+    );
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("0");
+    expect(screen.getByText("Not approved yet")).toBeTruthy();
+    expect(screen.queryByText(/to do/)).toBeNull();
   });
 });

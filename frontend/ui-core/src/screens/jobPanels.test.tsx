@@ -334,11 +334,13 @@ describe("which panel opens", () => {
     await screen.findByTestId(`job-panel-${JOB_B}`);
 
     // A job that has stopped existing cannot stay open, and holding its id would
-    // leave the accordion closed over a batch that has jobs.
+    // leave the screen closed over a batch that has a job. Down to one, there is
+    // no accordion to hold open at all: the remaining job's frames sit flat.
     roster = [job(JOB_A, 2)];
     await refetch(["batches"]);
 
-    expect(await screen.findByTestId(`job-panel-${JOB_A}`)).toBeTruthy();
+    expect(await screen.findByTestId("job-workspace")).toBeTruthy();
+    expect(screen.queryByTestId("job-panels")).toBeNull();
     expect(screen.queryByTestId(`job-header-${JOB_B}`)).toBeNull();
   });
 
@@ -437,7 +439,42 @@ describe("the collapsed header is the overview", () => {
     stubs();
     renderGallery();
     const row = await screen.findByTestId(`job-row-${JOB_B}`);
-    expect(row.textContent).toContain("—");
+    expect(row.textContent).toContain("Unassigned");
+  });
+
+  it("points aria-controls at a panel only while that panel exists", async () => {
+    // A closed panel is unmounted, so an id pointing at it would point at
+    // nothing; `aria-expanded="false"` with no `aria-controls` is the honest
+    // shape, and the open header names the region it controls.
+    stubs();
+    renderGallery();
+    await screen.findByTestId(`job-panel-${JOB_A}`);
+    const open = screen.getByTestId(`job-header-${JOB_A}`);
+    const closed = screen.getByTestId(`job-header-${JOB_B}`);
+    expect(open.getAttribute("aria-controls")).toBe(`job-panel-${JOB_A}`);
+    expect(document.getElementById(`job-panel-${JOB_A}`)).not.toBeNull();
+    expect(closed.getAttribute("aria-expanded")).toBe("false");
+    expect(closed.hasAttribute("aria-controls")).toBe(false);
+  });
+
+  it("restores a job's filter and order when its panel reopens", async () => {
+    stubs();
+    renderGallery();
+    await screen.findByTestId(`job-panel-${JOB_A}`);
+    await userEvent.click(screen.getByTestId("segment-done"));
+    await userEvent.selectOptions(screen.getByTestId("sort-order"), "confidence");
+    expect(screen.getByTestId("segment-done").getAttribute("aria-pressed")).toBe("true");
+
+    await userEvent.click(screen.getByTestId(`job-header-${JOB_B}`));
+    await screen.findByTestId(`job-panel-${JOB_B}`);
+    // The other job starts from the default: what was chosen was chosen for A.
+    expect(screen.getByTestId("segment-all").getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getByTestId("sort-order") as HTMLSelectElement).value).toBe("membership");
+
+    await userEvent.click(screen.getByTestId(`job-header-${JOB_A}`));
+    await screen.findByTestId(`job-panel-${JOB_A}`);
+    expect(screen.getByTestId("segment-done").getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getByTestId("sort-order") as HTMLSelectElement).value).toBe("confidence");
   });
 
   it("moves between headers with the arrow keys", async () => {

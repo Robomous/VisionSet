@@ -726,58 +726,70 @@ virtualizes **rows** (a row is what the browser lays out; virtualizing tiles ins
 CSS grid means reimplementing the grid). The column count is measured with a
 `ResizeObserver` rather than guessed from a second breakpoint list.
 
-#### The jobs accordion
+#### One job, and several
 
-**Once a batch has jobs, its frames are shown per job, and at most one job is open at a
-time.** A batch is partitioned, and a person works one part of it: a batch-wide grid beneath a
-per-job control would put two scopes for the same frames on one screen, where the control
-names a job and the grid, the counts and the timeline answer for everybody. One open panel is
-one scope - its chips, its timeline and its tiles all count the same job - which is why
-opening a panel closes the one that was open. **Every panel may be closed**: clicking the open
-header collapses it, and an accordion with nothing open is the batch read as an index of its
-jobs.
+**Once a batch has jobs, its frames are shown per job.** A batch is partitioned, and a person
+works one part of it: a batch-wide grid beneath a per-job control would put two scopes for the
+same frames on one screen, where the control names a job and the grid, the counts and the
+timeline answer for everybody. The scope is always one job - its chips, its timeline and its
+tiles all count the same job.
 
-The panel open on arrival is **the first job with work left** - frames still unannotated
-or only pre-labeled - and the first job otherwise, so landing on a batch lands on
-something to do rather than on a job somebody has finished. Nothing is remembered across
-reloads: the rule recomputes from counts that are read anyway, and a remembered panel is
-stale the moment somebody else works the job.
+**The common batch has one job, and then there is no accordion.** A one-row accordion is a
+header nobody can choose between, a bar repeating the batch's own, and a sentence naming a
+job nobody else has. So with exactly one job the job's controls sit directly under the batch
+header - the way into the annotator, `Pre-label`, and the assignee as an editable line
+(*Assigned to Dana*, or *Unassigned*, the name itself the control) - followed by that job's
+segment chips, order select, timeline and frames, inside one bordered panel. The batch's own
+progress bar above is the page's one bar; the timeline is the breakdown.
 
-**A collapsed header is the overview**, so a job is picked without opening it: ordinal,
-frame count, state, `A of F annotated`, who is working it, and a thin progress bar. The
-accordion is rendered only once jobs exist, the same `showsProgress` gate the progress bar
-above it uses, so a draft needs no empty state of its own. The assignee is a plain editable
-name, not an account: `JobService.assign` gates on nothing, so the control is always
-live, and clearing it is the same operation with `null`. A failed read shows its
-error instead of the accordion silently vanishing - an empty list and a failed one look
-identical to the naive `undefined`-or-zero-items check, and only one of them means
-there is nothing to assign.
+**From two jobs the gallery is an accordion, and at most one job is open at a time.** One open
+panel is one scope, which is why opening a panel closes the one that was open. **Every panel
+may be closed**: clicking the open header collapses it, and an accordion with nothing open is
+the batch read as an index of its jobs. The panel open on arrival is **the first job with work
+left** - frames still unannotated or only pre-labeled - and the first job otherwise, so
+landing on a batch lands on something to do rather than on a job somebody has finished.
+Nothing is remembered across reloads: the rule recomputes from counts that are read anyway,
+and a remembered panel is stale the moment somebody else works the job.
 
-**The open panel holds, in order:** the way into the annotator, `Pre-label` and the
-assignee; the segment chips, counting *that job* from `GET /jobs/{id}/progress` rather
-than the batch; the order select; that job's timeline; and only that job's frames, from
-`GET /batches/{id}/assets?job=`. Frame numbers stay batch-wide, because a frame's number
-is its place in the batch and renumbering per job would give one picture two names.
+**A collapsed header is the overview**, so a job is picked without opening it: ordinal, frame
+count, state, `A of F annotated`, a thin progress bar, and who is working it - *Unassigned*
+when nobody is. The assignee is a plain editable name, not an account: `JobService.assign`
+gates on nothing, so the control is always live, and clearing it is the same operation with
+`null`. In the accordion the editor is a button in the open panel, because the header is an
+overview and changing it is one of the things a panel is opened for. Jobs are rendered only
+once they exist, the same `showsProgress` gate the progress bar above uses, so a draft needs
+no empty state of its own. A failed read shows its error instead of the jobs silently
+vanishing - an empty list and a failed one look identical to the naive `undefined`-or-zero-
+items check, and only one of them means there is nothing to assign.
 
-**Thumbnail size is one setting and is rendered outside the panels** - it is a property
-of how a grid is read rather than of a job, and it is the same persisted preference
-either way. It sits on the batch's own progress row in the header, right of the progress bar
-and on the line of its `A of F annotated` readout: the last row above the accordion that is
-about the batch rather than about one job. A draft, which has no progress row, keeps it in the
-toolbar over its flat grid. The segment filter is the opposite: it belongs to the panel and **resets to
-`All` when the open job changes**, because a filter carried across shows an empty panel
-for a job with nothing in that state, which reads as a job with no frames.
+**The open panel holds, in order,** exactly what the one-job panel holds: the way into the
+annotator, `Pre-label` and the assignee; the segment chips, counting *that job* from
+`GET /jobs/{id}/progress` rather than the batch; the order select; that job's timeline; and
+only that job's frames, from `GET /batches/{id}/assets?job=`. Frame numbers stay batch-wide,
+because a frame's number is its place in the batch and renumbering per job would give one
+picture two names.
 
-**A draft batch has no accordion** - one flat grid, with the membership tools and
-selection over it - because it has no jobs, and there is nothing to partition its frames
-by.
+**Thumbnail size is one setting and is rendered outside the jobs** - it is a property of how
+a grid is read rather than of a job, and it is the same persisted preference either way. It
+sits on the batch's own progress row in the header, right of the progress bar and on the line
+of its `A of F annotated` readout: the last row above the frames that is about the batch
+rather than about one job. A draft, which has no progress row, keeps it in the toolbar over
+its flat grid. The segment filter, the order and the selection are the opposite: they belong
+to the job, and **each job keeps its own** - a closed panel is unmounted, and reopening it
+restores the filter, the order and the selection that were chosen in it, while the other job
+starts from `All`. A filter carried across jobs would show an empty panel for a job with
+nothing in that state, which reads as a job with no frames.
 
-Each header is a `<button>` carrying `aria-expanded` and naming the panel it controls,
-and the panel is labelled by its header. **↑/↓ move between headers, Home/End reach the
-first and last, Enter or Space opens the focused one - or closes it, when it is the open
-one.** The arrow keys are what make the
-accordion navigable at all: the open panel is a whole grid, so tabbing from one header to
-the next crosses every tile in between.
+**A draft batch has no jobs** - one flat grid, with the membership tools and selection over
+it - because there is nothing to partition its frames by.
+
+Each accordion header is a `<button>` carrying `aria-expanded`; the open one names the panel
+it controls, and a closed header carries no `aria-controls`, because its panel is unmounted
+and an id pointing at nothing is a broken reference rather than a closed one. The panel is
+labelled by its header. **↑/↓ move between headers, Home/End reach the first and last, Enter
+or Space opens the focused one - or closes it, when it is the open one.** The arrow keys are
+what make the accordion navigable at all: the open panel is a whole grid, so tabbing from one
+header to the next crosses every tile in between.
 
 #### The way in
 
@@ -785,14 +797,15 @@ the next crosses every tile in between.
 transition rather than a door.** That press is `POST /batches/{id}/start`, the batch's own next
 step declared as `start` in its `allowed_actions` - the same mutation the Batches row sends, so
 the table and the gallery are one spelling of it - and it navigates nowhere: landing back on the
-gallery re-reads the batch as `in_annotation`, and the job panels are then what open it. There is
-no icon on it; it is a state change, not a link.
+gallery re-reads the batch as `in_annotation`, and the job's own door is then what opens it.
+There is no icon on it; it is a state change, not a link.
 
-**Once the batch is open, the way into the annotator is the job's own panel, because only a job
+**Once the batch is open, the way into the annotator is the job's own door, because only a job
 answers which frames.** A batch is partitioned, so a header control would have to pick a job
-silently, and the panel is already where that choice is made.
-Each panel carries one control, secondary rather than filled — the batch's own step in the header
-is the page's one filled control — and its word is read from that job: **`Annotate`** where
+silently; with one job the door sits under the header, and with several it is in the open panel,
+where that choice is made. Each job carries one door, secondary rather than filled — the batch's
+own step in the header is the page's one filled control while it has one, and the navigation
+column's Annotate once the batch is open — and its word is read from that job: **`Annotate`** where
 the job declares `start`, which takes the job (`POST /jobs/{id}/start`) and then opens it;
 **`Continue`** while it is `in_progress`, the word for a job somebody is already inside; and
 **`View`** otherwise, for a `completed` job or a `pending` one of a batch nobody has opened,
@@ -852,7 +865,7 @@ screen's whole subject has stopped existing.
 
 #### Pre-labeling: the surface `text_detect` was declared for
 
-**The control sits in a job's panel, gated on `pre_label` in that job's own `allowed_actions`** -
+**The control sits with the job's controls, gated on `pre_label` in that job's own `allowed_actions`** -
 never on the batch's state read locally, the same rule every control on this screen follows. A
 batch's frames are partitioned into jobs and a run reaches one job's assets, so the job is what
 declares the action and what the dialog is opened over; the dialog is titled for both, *Pre-label

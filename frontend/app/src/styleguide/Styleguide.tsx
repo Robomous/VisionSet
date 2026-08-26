@@ -351,6 +351,17 @@ export function Styleguide(): JSX.Element {
             <p className="mb-1 text-xs text-muted-foreground">Ingest — 240 of 412</p>
             <Progress value={58} aria-label="Ingest progress" />
           </div>
+          <div className="max-w-md">
+            <p className="mb-1 text-xs text-muted-foreground">
+              Annotation — 7 of 11 annotated (64%); the batch surfaces' variant
+            </p>
+            <Progress
+              value={64}
+              aria-label="Annotation progress"
+              variant="success"
+              className="h-2 border border-border"
+            />
+          </div>
         </Section>
 
         <Section

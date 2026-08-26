@@ -299,6 +299,30 @@ describe("Progress", () => {
       "42",
     );
   });
+
+  it("fills with the functional colour by default and with success when asked", () => {
+    const { rerender } = render(<Progress value={42} aria-label="Ingest" />);
+    const fill = (): Element => screen.getByRole("progressbar").firstElementChild as Element;
+    expect(fill().className).toContain("bg-primary");
+    expect(fill().className).not.toContain("bg-success");
+    rerender(<Progress value={42} aria-label="Ingest" variant="success" />);
+    expect(fill().className).toContain("bg-success");
+    expect(fill().className).not.toContain("bg-primary");
+  });
+
+  it("hands its ref to the track element", () => {
+    let track: HTMLDivElement | null = null;
+    render(
+      <Progress
+        value={7}
+        aria-label="Ingest"
+        ref={(node) => {
+          track = node;
+        }}
+      />,
+    );
+    expect(track).toBe(screen.getByRole("progressbar"));
+  });
 });
 
 describe("Dialog", () => {

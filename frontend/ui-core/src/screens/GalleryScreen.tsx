@@ -3,16 +3,15 @@
  *
  * What it holds is the chrome around the frames: the header's provenance line
  * and the one setting that is about looking rather than working, the thumbnail
- * size. **Once the batch has jobs, the frames themselves are inside a job** — see
- * `JobPanels`, which owns the accordion, its filters, its timeline and its grid.
- * A draft has no jobs, so it keeps the flat grid it always had.
+ * size. **Once the batch has jobs, the frames themselves belong to a job** —
+ * flat under the header when the batch has one job, inside an accordion from
+ * two; see `JobPanels`. A draft has no jobs, so it keeps the flat grid it
+ * always had.
  */
 
 import { useState, type JSX, type ReactNode } from "react";
-import { Play } from "lucide-react";
 
 import { readStep, writePref } from "../data/prefs";
-import type { AssetProgress } from "../annotator/jobQueries";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { FieldError } from "../primitives/Input";
@@ -32,21 +31,17 @@ import {
 } from "./BatchLifecycle";
 import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
 import { BatchOverflowMenu } from "./DeleteBatch";
-import { JobPanels } from "./JobPanels";
+import { DensityControl, Toolbar } from "./GalleryControls";
+import { JobPanels, SingleJobWorkspace, type JobPanelsProps } from "./JobPanels";
 import { PromoteButton } from "./PromoteButton";
-import { BATCH_ACTION, JOB_ACTION, declares } from "../data/capabilities";
+import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import {
   BATCH_STATE_VARIANT,
   batchStateLabel,
   earliestArrival,
   hasJobs,
-  progressCellClass,
-  progressLabel,
   relativeAge,
-  SEGMENT_LABEL,
-  SEGMENTS,
-  type Segment,
 } from "./batchState";
 import {
   GALLERY_PAGE_SIZE,
@@ -54,11 +49,8 @@ import {
   useBatchJobs,
   useBatches,
   useSource,
-  useStartJob,
-  type AssetSort,
   type Batch,
   type BatchAsset,
-  type Job,
 } from "./queries";
 
 export interface GalleryScreenProps {
@@ -222,8 +214,11 @@ export function GalleryScreen({
 
       {showsProgress && jobs.isError && <FieldError>{refusalProse(jobs.error)}</FieldError>}
 
+      {/* One job is the batch: its controls and frames sit right under the
+          header, and the batch bar above is the page's one bar. The accordion
+          exists from two jobs, where choosing between them is the point. */}
       {showsProgress && batch.data !== undefined && roster.length > 0 && (
-        <JobPanels
+        <Jobs
           projectId={projectId}
           batch={batch.data}
           jobs={roster}
@@ -270,6 +265,14 @@ export function GalleryScreen({
         {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
       />
     </div>
+  );
+}
+
+function Jobs({ jobs, ...rest }: JobPanelsProps): JSX.Element {
+  return jobs.length === 1 ? (
+    <SingleJobWorkspace jobs={jobs} {...rest} />
+  ) : (
+    <JobPanels jobs={jobs} {...rest} />
   );
 }
 
@@ -391,9 +394,9 @@ function BatchHeader({
           )}
           {/*
             The batch's own next step, answered from `allowed_actions`. The way
-            *into* the annotator is not here: a batch's frames are partitioned
-            into jobs, so which frames to open is a question only a job can
-            answer — see `JobPanels`.
+            *into* the annotator is not among these: a batch's frames are
+            partitioned into jobs, so the door is the job's, drawn under this
+            header with the rest of the job's controls — see `JobPanels`.
           */}
           {startsAnnotation && batch !== undefined && <StartAnnotatingButton batch={batch} />}
           {/*
@@ -483,284 +486,6 @@ function BatchHeader({
       )}
     </header>
   );
-}
-
-// --- the way into a job -------------------------------------------------------
-
-/**
- * The way into one job. A `pending` job is taken (`start`) and then opened, so
- * `in_progress` means somebody has it open; anything else only opens. The label
- * says which: Annotate, Continue, View. Never the page's filled control — the
- * batch's own step in the header is, and a row of them would be several.
- */
-export function StartJobButton({
-  batchId,
-  job,
-  onOpenJob,
-}: {
-  readonly batchId: string;
-  readonly job: Job;
-  readonly onOpenJob: (jobId: string) => void;
-}): JSX.Element {
-  const start = useStartJob(batchId, job.id);
-  const starts = declares(job, JOB_ACTION.start);
-  // `Continue` is only ever the word for a job somebody is inside. A `pending`
-  // job that does not declare `start` — every job of an `approved` batch — is
-  // not continuable and not startable from here, so it reads as what it is.
-  const label = starts ? "Annotate" : job.state === "in_progress" ? "Continue" : "View";
-  return (
-    <div className="flex flex-col gap-1">
-      <Button
-        variant="secondary"
-        size="sm"
-        data-testid={`start-job-${job.id}`}
-        disabled={start.isPending}
-        onClick={() => {
-          if (!starts) {
-            onOpenJob(job.id);
-            return;
-          }
-          start.mutate(undefined, { onSuccess: () => onOpenJob(job.id) });
-        }}
-      >
-        {starts && <Play className="size-4" aria-hidden="true" />}
-        {start.isPending ? "Starting…" : label}
-      </Button>
-      {start.isError && <FieldError>{refusalProse(start.error)}</FieldError>}
-    </div>
-  );
-}
-
-// --- toolbar -----------------------------------------------------------------
-
-/**
- * The five segments, the order, and the density ladder — and it is mounted twice
- * with a different half of itself each time.
- *
- * The segments and the order belong to **one job**, inside its panel; the density
- * belongs to the **screen** and is rendered once above the accordion. So each
- * mount says which half it is, and the props for the other half are the ones it
- * does not pass.
- *
- * The counts come off a `ProgressCounts` — the job's, or the batch's for a draft
- * — and never off the loaded pages: the pages are a window onto a collection that
- * can hold fifty thousand, and a filter whose counts described the hundred in
- * memory would be a filter that lies about what it filters. `segmentCounts` owns
- * the grouping and the argument for it.
- */
-export function Toolbar({
-  segment = "all",
-  counts,
-  onSegment,
-  sort = "membership",
-  onSort,
-  density = DEFAULT_DENSITY,
-  onDensity,
-  showSegments,
-  showDensity = true,
-}: {
-  readonly segment?: Segment;
-  /**
-   * Absent while the counts are in flight, and for a job whose progress read was
-   * refused. The chips and the order select are drawn without their numbers
-   * rather than withheld — the *numbers* are what is missing, and a panel with no
-   * way to filter or order is a panel one failed read has made unusable.
-   */
-  readonly counts?: Record<Segment, number>;
-  readonly onSegment?: (next: Segment) => void;
-  readonly sort?: AssetSort;
-  readonly onSort?: (next: AssetSort) => void;
-  readonly density?: number;
-  readonly onDensity?: (step: number) => void;
-  /**
-   * False for a draft, and for the shared size control above the accordion. Every
-   * frame in a draft is in the same state — there is nothing to filter *between* —
-   * and the counts behind the segments are the documented zeros a batch with no
-   * jobs reports, so five segments reading `(0)` over a full grid is the screen
-   * contradicting itself.
-   */
-  readonly showSegments: boolean;
-  /**
-   * False inside a job panel. How big the thumbnails are is one setting for the
-   * screen, so a copy of it in each panel would be four answers to one question.
-   */
-  readonly showDensity?: boolean;
-}): JSX.Element {
-  return (
-    <div
-      className={
-        showSegments
-          ? "flex flex-wrap items-center justify-between gap-3"
-          : "flex flex-wrap items-center justify-end gap-3"
-      }
-    >
-      {showSegments && (
-        <>
-          {/* The row above already wraps, but the control is one joined pill and
-              is wider than the narrowest viewport on its own. It scrolls within
-              its own row rather than widening the page — the project navigation's
-              answer to the same shape — because squashing five state filters
-              costs more than a scroll does. The padding pair keeps the focus ring
-              off the scroller's clip. */}
-          <div className="max-w-full overflow-x-auto pb-1.5 -mb-1.5">
-          <div
-            className="inline-flex rounded-md border border-border p-0.5"
-            role="group"
-            aria-label="Filter frames by state"
-            data-testid="segments"
-          >
-            {SEGMENTS.map((one) => (
-              <button
-                key={one}
-                type="button"
-                aria-pressed={segment === one}
-                data-testid={`segment-${one}`}
-                onClick={() => onSegment?.(one)}
-                className={
-                  segment === one
-                    ? "rounded-sm bg-primary px-3 py-1 text-xs font-medium text-primary-foreground " +
-                      "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                    : "rounded-sm px-3 py-1 text-xs text-muted-foreground hover:text-foreground " +
-                      "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                }
-              >
-                {SEGMENT_LABEL[one]}
-                {counts === undefined ? "" : ` (${counts[one]})`}
-              </button>
-            ))}
-          </div>
-          </div>
-
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            Order
-            <select
-              data-testid="sort-order"
-              aria-label="Order frames"
-              value={sort}
-              onChange={(event) => onSort?.(event.target.value as AssetSort)}
-              className="rounded-sm border border-border bg-card px-2 py-1 text-xs text-foreground"
-            >
-              <option value="membership">Frame order</option>
-              <option value="confidence">Lowest prompt affinity first</option>
-            </select>
-          </label>
-        </>
-      )}
-
-      {showDensity && onDensity !== undefined && (
-        <DensityControl density={density} onDensity={onDensity} />
-      )}
-    </div>
-  );
-}
-
-/**
- * How big the thumbnails are — one setting for the screen, wherever it is drawn.
- *
- * A native range input, not a Radix slider: `@radix-ui/react-slider` is not a
- * dependency and this task adds none. The native control is also keyboard
- * operable and announced correctly for free, which a div with a drag handler
- * would have had to earn back.
- *
- * It is its own component because the two paths mount it in different places: a
- * draft has it in the toolbar over its flat grid, and a batch with jobs has it on
- * the header's progress row, where it is the only thing above the accordion that
- * is not about one job.
- */
-function DensityControl({
-  density,
-  onDensity,
-}: {
-  readonly density: number;
-  readonly onDensity: (step: number) => void;
-}): JSX.Element {
-  return (
-    <label className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-      Thumbnail size
-      <input
-        type="range"
-        min={0}
-        max={DENSITY_STEPS.length - 1}
-        step={1}
-        value={density}
-        data-testid="density"
-        aria-label="Thumbnail size"
-        onChange={(event) => onDensity(Number(event.target.value))}
-        className="h-1 w-32 cursor-pointer accent-primary"
-      />
-    </label>
-  );
-}
-
-// --- timeline ----------------------------------------------------------------
-
-/**
- * One cell per loaded frame, coloured by its **exact** state.
- *
- * Deliberately not the segmented grouping: the toolbar groups because "is there
- * work left" is the right thing to filter by, and this strip is the one place you
- * can see a whole batch's states side by side. Clicking scrolls the grid to that
- * frame and marks it, so the eye can find it after the jump.
- *
- * The time labels read the frames' own `frame_timestamp`, which is the locator
- * that survives a re-decomposition, and render nothing rather than deriving
- * seconds from a sampling rate that may not exist — a bunch of stills has no fps
- * and no timestamps, and a timeline of "0s → 0s" over it would be a fabrication.
- */
-export function Timeline({
-  assets,
-  onPick,
-  highlighted,
-}: {
-  readonly assets: readonly BatchAsset[];
-  readonly onPick: (assetId: string) => void;
-  readonly highlighted: string | null;
-}): JSX.Element | null {
-  if (assets.length === 0) return null;
-  const start = assets[0]?.frame_timestamp;
-  const end = assets[assets.length - 1]?.frame_timestamp;
-
-  return (
-    <div className="flex items-center gap-2" data-testid="timeline">
-      <span className="w-10 shrink-0 text-right font-mono text-xs text-muted-foreground">
-        {start === null || start === undefined ? "" : `${Math.round(start)}s`}
-      </span>
-      <div className="flex h-4 min-w-0 flex-1 gap-px overflow-hidden rounded-sm">
-        {assets.map((asset) => (
-          <button
-            key={asset.id}
-            type="button"
-            data-testid={`timeline-${asset.id}`}
-            aria-label={`Frame ${asset.frame_index ?? "?"}, ${progressLabel(asset.progress)}`}
-            onClick={() => onPick(asset.id)}
-            className={cellClass(asset.progress, asset.id === highlighted)}
-          />
-        ))}
-      </div>
-      <span className="w-10 shrink-0 font-mono text-xs text-muted-foreground">
-        {end === null || end === undefined ? "" : `${Math.round(end)}s`}
-      </span>
-    </div>
-  );
-}
-
-/**
- * A timeline cell, from the same vocabulary the cards use.
- *
- * One vocabulary for both, so a colour on the strip and a dot on a card cannot
- * come to mean different things — and that vocabulary is *semantic*
- * rather than a monochrome ramp off `primary`. A ramp is a quantity: it says
- * how far along a frame is and cannot say what kind of state it is in, so
- * `accepted` and `annotated` come out the same near-black and
- * `review_pending` is that near-black at 40%, which reads as "less annotated"
- * rather than as "waiting on somebody".
- *
- * The colour lives in `batchState.ts`; what stays here is the geometry and the
- * highlight ring, which are the strip's own.
- */
-function cellClass(progress: AssetProgress | null | undefined, isHighlighted: boolean): string {
-  const ring = isHighlighted ? " ring-2 ring-ring" : "";
-  return `h-full min-w-0 flex-1 ${progressCellClass(progress)}${ring}`;
 }
 
 export { columnsFor } from "./FrameGrid";

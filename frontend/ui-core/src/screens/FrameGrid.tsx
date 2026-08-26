@@ -139,6 +139,12 @@ export interface FrameGridProps {
   readonly onLoaded?: (assets: readonly BatchAsset[]) => void;
   /** The selection, for a host whose own controls act on it. */
   readonly onSelectionChange?: (selected: ReadonlySet<string>) => void;
+  /**
+   * What is selected when the grid mounts. A host that remembers a job's
+   * selection while its panel is closed hands it back here on reopening; read
+   * once, so the host's copy never fights the grid's own.
+   */
+  readonly initialSelection?: ReadonlySet<string>;
   /** Lets a timeline pick scroll the grid: filled with a function that scrolls to an asset id. */
   readonly scrollRef?: RefObject<((assetId: string) => void) | null>;
   /** What to say when the whole batch is empty — only an unfiltered view can. */
@@ -157,11 +163,14 @@ export function FrameGrid({
   onCorrect,
   onLoaded,
   onSelectionChange,
+  initialSelection,
   scrollRef,
   emptyBatch,
 }: FrameGridProps): JSX.Element {
   const assets = useBatchAssets(batchId, view);
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [selected, setSelected] = useState<ReadonlySet<string>>(
+    () => initialSelection ?? new Set(),
+  );
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const anchor = useRef<number | null>(null);
 
