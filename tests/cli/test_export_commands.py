@@ -25,12 +25,14 @@ from tests.cli._flow import (
     published_release,
     run,
     started_batch,
+    usage_error,
     workspace,
 )
 from typer.testing import CliRunner
 
 from visionset.cli.main import app
 from visionset.formats import registry
+from visionset.formats._targets import self_target
 from visionset.kernel.domain import (
     Annotation,
     BboxGeometry,
@@ -60,6 +62,7 @@ class LossyExporter:
     supported_geometries = frozenset(GeometryType)
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,
@@ -155,6 +158,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "geometries": ["polyline"],
             "degraded_geometries": [],
             "modalities": ["image"],
+            "targets": ["bdd100k-lane"],
         },
         {
             # The one format whose content is tags: a box has a location it
@@ -165,6 +169,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "geometries": ["classification_tag"],
             "degraded_geometries": [],
             "modalities": ["image"],
+            "targets": ["classification"],
         },
         {
             # Lossless: boxes and polygons are native, and everything COCO
@@ -174,6 +179,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "geometries": ["bbox", "polygon"],
             "degraded_geometries": [],
             "modalities": ["image"],
+            "targets": ["coco"],
         },
         {
             "name": "culane",
@@ -181,6 +187,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "geometries": ["polyline"],
             "degraded_geometries": [],
             "modalities": ["image"],
+            "targets": ["culane"],
         },
         {
             "name": "curvelanes",
@@ -188,6 +195,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "geometries": ["polyline"],
             "degraded_geometries": [],
             "modalities": ["image"],
+            "targets": ["curvelanes"],
         },
         {
             "name": "dummy",
@@ -204,6 +212,7 @@ def test_format_list_json_is_the_envelope() -> None:
             ],
             "degraded_geometries": [],
             "modalities": ["image", "point_cloud", "video"],
+            "targets": ["dummy"],
         },
         {
             "name": "openlane-2d",
@@ -211,6 +220,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "geometries": ["polyline"],
             "degraded_geometries": [],
             "modalities": ["image"],
+            "targets": ["openlane-2d"],
         },
         {
             # The one lane format that does not write the vertices it was given.
@@ -219,6 +229,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "geometries": [],
             "degraded_geometries": ["polyline"],
             "modalities": ["image"],
+            "targets": ["tusimple"],
         },
         {
             # Lossy because a label row is a class index and coordinates:
@@ -230,6 +241,17 @@ def test_format_list_json_is_the_envelope() -> None:
             "geometries": ["bbox", "classification_tag", "polygon"],
             "degraded_geometries": [],
             "modalities": ["image"],
+            "targets": [
+                "yolo11",
+                "yolo12",
+                "yolo26",
+                "yolov10",
+                "yolov3",
+                "yolov5",
+                "yolov6",
+                "yolov8",
+                "yolov9",
+            ],
         },
         {
             # Lossy for a different reason: a VOC `<object>` has a fixed set
@@ -240,6 +262,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "geometries": ["bbox"],
             "degraded_geometries": ["polygon"],
             "modalities": ["image"],
+            "targets": ["voc"],
         },
         {
             # Detection only, so a polygon is reduced to its box.
@@ -248,6 +271,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "geometries": ["bbox"],
             "degraded_geometries": ["polygon"],
             "modalities": ["image"],
+            "targets": ["yolov7"],
         },
     ]
 
@@ -383,6 +407,7 @@ class BoxesOnlyExporter:
     supported_geometries = frozenset({GeometryType.CLASSIFICATION_TAG})
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,
@@ -654,3 +679,176 @@ def test_the_refusal_names_the_flag_a_person_types(
     # …and it names the one command that answers the question the refusal raises
     # and cannot itself answer.
     assert "--check" in result.stderr
+
+
+# --- addressing a target -----------------------------------------------------
+
+
+def test_an_export_can_be_addressed_to_a_target(root: Path, tmp_path: Path) -> None:
+    """The self-target of a format is the format, so the run is the same export by another name."""
+    name = published_release(root, tmp_path)
+    out = tmp_path / "out"
+
+    result = run(
+        root, "export", "-p", name, "--release", "v1.0", "--target", "dummy", "--out", str(out)
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == str(out)
+    written = json.loads((out / EXPORT_REPORT_FILENAME).read_text(encoding="utf-8"))
+    assert (written["format"], written["target"]) == ("dummy", "dummy")
+
+
+def test_target_json_carries_the_target_beside_the_format(root: Path, tmp_path: Path) -> None:
+    name = published_release(root, tmp_path)
+
+    result = run(
+        root,
+        "export",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--target",
+        "dummy",
+        "--out",
+        str(tmp_path / "out"),
+        "--json",
+    )
+
+    assert result.exit_code == 0, result.output
+    document = json.loads(result.stdout)
+    assert (document["format"], document["target"]) == ("dummy", "dummy")
+    assert document["compatibility"]["target"] == "dummy"
+
+
+@pytest.mark.parametrize(
+    "address",
+    [(), ("--target", "dummy", "--format", "dummy")],
+    ids=["neither", "both"],
+)
+def test_target_and_format_are_one_choice_at_exit_two(
+    root: Path, tmp_path: Path, address: tuple[str, ...]
+) -> None:
+    name = published_release(root, tmp_path)
+
+    result = run(
+        root, "export", "-p", name, "--release", "v1.0", *address, "--out", str(tmp_path / "out")
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "Give exactly one of --target and --format." in usage_error(result)
+
+
+def test_an_unknown_target_exits_one_naming_what_is_installed(root: Path, tmp_path: Path) -> None:
+    name = published_release(root, tmp_path)
+
+    result = run(
+        root,
+        "export",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--target",
+        "yolo99",
+        "--out",
+        str(tmp_path / "out"),
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "yolo11" in result.stderr
+
+
+def test_the_former_format_name_still_works_and_says_it_is_going(
+    root: Path, tmp_path: Path
+) -> None:
+    name = published_release(root, tmp_path)
+
+    result = run(
+        root,
+        "export",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--format",
+        "yolo",
+        "--allow-lossy",
+        "--out",
+        str(tmp_path / "out"),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "--format yolo is deprecated" in result.stderr
+    assert "--format ultralytics" in result.stderr
+    assert result.stdout.strip() == str(tmp_path / "out")
+    assert (tmp_path / "out" / "data.yaml").is_file()
+
+
+def test_the_current_format_name_prints_no_deprecation(root: Path, tmp_path: Path) -> None:
+    name = published_release(root, tmp_path)
+
+    result = run(
+        root,
+        "export",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--format",
+        "ultralytics",
+        "--allow-lossy",
+        "--out",
+        str(tmp_path / "out"),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "deprecated" not in result.stderr
+
+
+# --- target list ---------------------------------------------------------------
+
+
+def test_target_list_names_every_target_with_the_format_it_resolves_to() -> None:
+    result = CliRunner().invoke(app, ["target", "list"])
+
+    assert result.exit_code == 0, result.output
+    lines = result.stdout.splitlines()
+    assert lines[0].split() == ["NAME", "LABEL", "FAMILY", "FORMAT", "TASKS", "GEOMETRIES"]
+    rows = {line.split()[0]: line.split() for line in lines[1:]}
+    assert rows["yolo11"][1:4] == ["YOLO11", "ultralytics-yolo", "ultralytics"]
+    assert rows["yolov7"][3] == "yolov5-yaml"
+    assert rows["coco"][1:4] == ["coco", "other", "coco"]
+
+
+def test_target_list_needs_no_workspace_at_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["target", "list"])
+    assert result.exit_code == 0, result.output
+
+
+def test_target_list_json_is_the_catalog_the_other_surfaces_publish() -> None:
+    result = CliRunner().invoke(app, ["target", "list", "--json"])
+
+    assert result.exit_code == 0, result.output
+    document = json.loads(result.stdout)
+    assert document["total"] == len(document["items"])
+    rows = {row["name"]: row for row in document["items"]}
+    assert rows["yolo11"] == {
+        "name": "yolo11",
+        "label": "YOLO11",
+        "family": "ultralytics-yolo",
+        "format": "ultralytics",
+        "tasks": ["classify", "detect", "obb", "pose", "segment"],
+        "geometries": ["bbox", "classification_tag", "polygon"],
+        "hints": {
+            "recommended_size": [640, 640],
+            "recommended_strategy": "letterbox",
+            "trainer_resizes": True,
+            "augmentation_common": True,
+        },
+    }
+    assert [row["name"] for row in document["items"]] == sorted(rows)

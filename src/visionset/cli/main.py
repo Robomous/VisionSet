@@ -19,6 +19,7 @@ from visionset.cli.projects import project_app
 from visionset.cli.releases import release_app
 from visionset.cli.schemas import schema_app
 from visionset.cli.server import server
+from visionset.cli.targets import target_app
 from visionset.cli.tokens import token_app
 
 app = typer.Typer(
@@ -50,6 +51,7 @@ app.add_typer(job_app, name="job")
 app.add_typer(release_app, name="release")
 app.command("export")(export)
 app.add_typer(format_app, name="format")
+app.add_typer(target_app, name="target")
 app.command("backfill-thumbnails")(backfill_thumbnails)
 app.add_typer(token_app, name="token")
 app.add_typer(inference_app, name="inference")
