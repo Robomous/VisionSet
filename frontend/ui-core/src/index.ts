@@ -445,7 +445,10 @@ export { useExportTargets, type ExportTarget } from "./screens/queries.js";
 export {
   ExportTargetSelect,
   exportTargetMeta,
+  EXPORT_TARGET_FAMILIES,
+  exportTargetFamily,
   groupExportTargets,
+  type ExportTargetFamily,
   type ExportTargetGroup,
   type ExportTargetSelectProps,
 } from "./patterns/ExportTargetSelect.js";

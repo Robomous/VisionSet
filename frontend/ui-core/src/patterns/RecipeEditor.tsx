@@ -36,7 +36,7 @@ import {
   type RecipeDraft,
   type ResizeChoice,
 } from "../screens/recipeDraft";
-import { ExportTargetSelect } from "./ExportTargetSelect";
+import { ExportTargetSelect, exportTargetFamily } from "./ExportTargetSelect";
 import { StepMarker, type StepState } from "./StepMarker";
 
 const STRATEGIES: readonly { readonly value: ResizeChoice; readonly label: string }[] = [
@@ -418,16 +418,10 @@ function SizeField({
 
 /** `Ultralytics YOLO · detect, segment · data.yaml (ultralytics)` */
 export function targetSubtitle(target: ExportTarget): string {
-  const family = FAMILY_WORDS[target.family] ?? target.family;
+  const family = exportTargetFamily(target.family).word;
   const tasks = target.tasks.length === 0 ? "no task vocabulary" : target.tasks.join(", ");
   return `${family} · ${tasks} · writes ${target.format}`;
 }
-
-const FAMILY_WORDS: Record<string, string> = {
-  "ultralytics-yolo": "Ultralytics YOLO",
-  "community-yolo": "Community YOLO",
-  other: "Other format",
-};
 
 /** `Carries boxes and polygons · 12 classes` */
 export function targetCarries(target: ExportTarget, classCount: number | undefined): string {
