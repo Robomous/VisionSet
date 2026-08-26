@@ -59,7 +59,12 @@ from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.formats import registry
 from visionset.kernel.domain import ExportCompatibility, ExportTarget
 from visionset.kernel.ports import Exporter, resolve_target
-from visionset.kernel.services import EXPORT_REPORT_FILENAME, ReleaseService
+from visionset.kernel.services import (
+    EXPORT_REPORT_FILENAME,
+    PreprocessingRecipeService,
+    ReleaseService,
+)
+from visionset.preprocessing import registry as preprocessing_registry
 
 
 def export(
@@ -107,6 +112,16 @@ def export(
             help="Accept a format that cannot carry everything the release holds.",
         ),
     ] = False,
+    recipe: Annotated[
+        str | None,
+        typer.Option(
+            "--recipe",
+            help=(
+                "A pre-processing recipe of the project, by name. "
+                "`visionset recipe list` says which."
+            ),
+        ),
+    ] = None,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -121,6 +136,12 @@ def export(
     report — what is carried, what arrives coarser, what is dropped and why — and
     exits 1 if the format would lose anything, so
     `visionset export --check ... && visionset export ...` means something.
+
+    `--recipe` applies one of the project's pre-processing recipes: every image
+    is resized as the recipe says, and augmented variants are written for the
+    train fold. `--check` with a recipe also refuses now what the export would
+    refuse — augmentation over a release published without a split, or a step
+    that cannot move a geometry the release carries.
     """
     # A usage error rather than a domain one, so Click formats it and it exits 2:
     # nothing has been resolved yet, no workspace has been opened, and the mistake
@@ -138,8 +159,15 @@ def export(
         # name, and ``opened_workspace`` is what turns one into a sentence and exit 1.
         plugin, addressed = _resolve(target, format_name)
         found = resolve_release(service, project, release)
+        spec = (
+            None
+            if recipe is None
+            else PreprocessingRecipeService(service).for_release(found.id, recipe).spec
+        )
         if check:
-            report = ReleaseService(service).check_export(found.id, plugin, target=addressed)
+            report = ReleaseService(service).check_export(
+                found.id, plugin, target=addressed, recipe=spec
+            )
             _report(report, json_out=json_out)
             # **The same predicate `ReleaseService.export` gates on**, and not
             # `report.compatible` alone: a format that declares itself lossy asks
@@ -156,7 +184,14 @@ def export(
         # mypy cannot see through it across the `with`.
         assert out is not None
         result = ReleaseService(service).export(
-            found.id, plugin, out, allow_lossy=allow_lossy, target=addressed
+            found.id,
+            plugin,
+            out,
+            allow_lossy=allow_lossy,
+            target=addressed,
+            recipe=spec,
+            recipe_name=recipe,
+            drivers=None if spec is None else preprocessing_registry.drivers(),
         )
     if json_out:
         document(wire.export_result(result))
@@ -165,6 +200,11 @@ def export(
         f"Exported {found.tag!r} as {result.format_name}: "
         f"{result.file_count} file(s), {result.total_bytes} byte(s)."
     )
+    if result.preprocessing is not None:
+        note(
+            f"Recipe {recipe!r} applied: {result.source_file_count} source image(s), "
+            f"{result.augmented_file_count} augmented variant(s)."
+        )
     # On stderr with the rest of the prose, so `visionset export ... | xargs`
     # still gets exactly the directory. Named classes with a count rather than a
     # total, because "polygon, 1204" is what somebody acts on and a bare total is

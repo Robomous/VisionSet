@@ -15,6 +15,7 @@ from visionset.cli.ingest import backfill_thumbnails, ingest
 from visionset.cli.init import init
 from visionset.cli.jobs import job_app
 from visionset.cli.mcp import mcp
+from visionset.cli.preprocessing import recipe_app
 from visionset.cli.projects import project_app
 from visionset.cli.releases import release_app
 from visionset.cli.schemas import schema_app
@@ -52,6 +53,7 @@ app.add_typer(release_app, name="release")
 app.command("export")(export)
 app.add_typer(format_app, name="format")
 app.add_typer(target_app, name="target")
+app.add_typer(recipe_app, name="recipe")
 app.command("backfill-thumbnails")(backfill_thumbnails)
 app.add_typer(token_app, name="token")
 app.add_typer(inference_app, name="inference")
