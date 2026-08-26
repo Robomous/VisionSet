@@ -75,7 +75,7 @@ visionset schema apply schema.json --project road-signs
 BATCH=$(visionset ingest ./incoming --project road-signs)
 visionset batch approve "$BATCH" --jobs-of 100 --start
 # …annotate, then…
-visionset batch complete "$BATCH" && visionset batch promote "$BATCH"
+visionset batch complete "$BATCH" --promote
 visionset release publish --tag v1.0 --project road-signs --split 0.7,0.15,0.15
 visionset export --project road-signs --release v1.0 --target yolo11 --out ./out --allow-lossy
 ```
