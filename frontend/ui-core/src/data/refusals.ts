@@ -154,6 +154,10 @@ export const REFUSAL_PROSE: Record<string, string> = {
   LOSSY_EXPORT_NOT_CONSENTED: "This target cannot take every shape in the dataset.",
   EXPORT_FORMAT_NOT_FOUND: "No exporter for that format is installed on this server.",
   EXPORT_TARGET_NOT_FOUND: "No installed exporter writes for that model.",
+  EXPORT_TARGET_CONFLICT:
+    "Two installed export plugins claim that model's name — remove one of them before exporting.",
+  INVALID_EXPORT_TARGET:
+    "An installed export plugin declares a model it cannot write for — check the installed export plugins.",
   UNSERIALIZABLE_MANIFEST: "This release's manifest cannot be read back — the workspace may be damaged.",
   EMPTY_RELEASE: "This dataset has no frames yet — promote a completed batch first.",
   // The dialog lists the classes beside this, from the refusal's own `blockers`.

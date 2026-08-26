@@ -1300,4 +1300,27 @@ describe("export, and the recipe beside the target", () => {
     expect(said).toContain("cannot follow a polyline");
     expect(said).not.toContain("PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY");
   });
+
+  // The two 500s a misdeclared export plugin raises. Neither is a rule the
+  // person broke, so the sentence has to say where the problem is.
+  it.each([
+    ["EXPORT_TARGET_CONFLICT", "two export plugins declare target 'dummy'", "Two installed export plugins"],
+    ["INVALID_EXPORT_TARGET", "target 'dummy' claims geometry 'polyline'", "cannot write for"],
+  ])("renders %s as prose", async (code, message, expected) => {
+    baseline();
+    handlers.push((request) =>
+      request.method === "POST" && request.url.includes("/export")
+        ? { status: 500, body: { code, message } }
+        : undefined,
+    );
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
+    await userEvent.click(screen.getByTestId("export-submit"));
+
+    const said = (await screen.findByTestId("export-error")).textContent ?? "";
+    expect(said).toContain(expected);
+    expect(document.body.textContent).not.toContain(code);
+  });
 });
