@@ -98,8 +98,10 @@ other encoding a PNG. No metadata travels.
 ## Determinism, and its scope
 
 Variant `k` of an asset is seeded by `sha256(f"{recipe_hash}:{content_hash}:{k}")`, and every
-draw - whether `hflip` mirrors, the brightness and contrast factors, how many quarter turns
-`rot90` makes - reads a fixed position of that digest. The same recipe over the same bytes
+draw - the brightness and contrast factors, how many quarter turns `rot90` makes - reads a fixed
+position of that digest. `hflip` draws nothing and always mirrors, for the reason `rot90` never
+draws zero turns: a variant that came out identical to its source would be the base image under a
+variant's name. The same recipe over the same bytes
 therefore draws the same variant on any machine, and the geometry arithmetic is exact
 everywhere.
 

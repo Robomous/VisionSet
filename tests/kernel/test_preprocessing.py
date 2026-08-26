@@ -18,7 +18,6 @@ from visionset.kernel.domain import (
     ResizeStep,
     ResizeStrategy,
     brightness_contrast_factors,
-    hflip_applied,
     recipe_hash,
     rot90_quarter_turns,
     variant_seed,
@@ -182,11 +181,6 @@ def test_a_variant_seed_is_deterministic_and_distinct_per_variant_and_image() ->
     assert seed != variant_seed("recipe", "image", 2)
     assert seed != variant_seed("recipe", "other", 1)
     assert seed != variant_seed("other", "image", 1)
-
-
-def test_hflip_reads_bit_zero_of_the_seed() -> None:
-    assert hflip_applied(bytes([0x01]) + bytes(31)) is True
-    assert hflip_applied(bytes([0xFE]) + bytes(31)) is False
 
 
 def test_brightness_and_contrast_read_words_one_and_two() -> None:

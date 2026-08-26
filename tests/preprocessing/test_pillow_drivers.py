@@ -17,7 +17,6 @@ from visionset.kernel.domain import (
     ResizeStep,
     ResizeStrategy,
     brightness_contrast_factors,
-    hflip_applied,
     letterbox_fit,
     rot90_quarter_turns,
     variant_seed,
@@ -235,16 +234,17 @@ def test_variant_zero_is_the_base_image_re_encoded() -> None:
     assert _white_pixels(out) == {(3, 7)}
 
 
-def test_hflip_mirrors_exactly_when_the_kernel_says_so() -> None:
+@pytest.mark.parametrize("k", [1, 2, 3])
+def test_hflip_mirrors_every_variant_whatever_the_seed(k: int) -> None:
     step = AugmentStep(op=AugmentOp.HFLIP)
-    flipping = _seed_where(hflip_applied)
-    keeping = _seed_where(lambda seed: not hflip_applied(seed))
+    source = _marked((40, 30), (3, 7))
 
-    flipped = _open(AUGMENT.apply(step, _marked((40, 30), (3, 7)), seed=flipping, variant=1))
-    kept = _open(AUGMENT.apply(step, _marked((40, 30), (3, 7)), seed=keeping, variant=1))
+    seed = variant_seed("recipe", "content", k)
 
-    assert _white_pixels(flipped) == {(40 - 1 - 3, 7)}
-    assert _white_pixels(kept) == {(3, 7)}
+    data = AUGMENT.apply(step, source, seed=seed, variant=k)
+
+    assert data != source
+    assert _white_pixels(_open(data)) == {(40 - 1 - 3, 7)}
 
 
 @pytest.mark.parametrize("turns", [1, 2, 3])

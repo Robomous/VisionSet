@@ -20,9 +20,9 @@ class PreprocessingDriver(Protocol):
     ``seed`` is the variant's digest from ``variant_seed`` and ``variant`` its
     index; a resize, or any step applied to variant 0, is deterministic and
     reads neither. Everything random must be derived from the seed through the
-    kernel's draw functions — ``hflip_applied``,
-    ``brightness_contrast_factors``, ``rot90_quarter_turns`` — so the pixels
-    land where the geometry transform already put the annotations.
+    kernel's draw functions — ``brightness_contrast_factors`` and
+    ``rot90_quarter_turns``; ``hflip`` draws nothing and always mirrors — so
+    the pixels land where the geometry transform already put the annotations.
     """
 
     step_kinds: frozenset[str]

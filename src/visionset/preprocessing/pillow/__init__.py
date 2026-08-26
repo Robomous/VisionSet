@@ -33,7 +33,6 @@ from visionset.kernel.domain import (
     ResizeStrategy,
     Step,
     brightness_contrast_factors,
-    hflip_applied,
     letterbox_fit,
     rot90_quarter_turns,
 )
@@ -172,11 +171,12 @@ def _letterboxed(source: Image.Image, step: ResizeStep) -> Image.Image:
 class PillowAugmentDriver:
     """``augment`` steps: mirror, brightness then contrast, or a quarter turn.
 
-    Every draw comes from the kernel — ``hflip_applied``,
-    ``brightness_contrast_factors``, ``rot90_quarter_turns`` — over the seed
-    the caller passes, so the pixels land where the geometry transform put the
-    labels. Variant 0 is the base image and is returned untouched apart from
-    orientation and re-encoding, which is what a step applied to it means.
+    Every draw comes from the kernel — ``brightness_contrast_factors``,
+    ``rot90_quarter_turns``; a mirror is not drawn, every hflip variant
+    mirrors — over the seed the caller passes, so the pixels land where the
+    geometry transform put the labels. Variant 0 is the base image and is
+    returned untouched apart from orientation and re-encoding, which is what a
+    step applied to it means.
     """
 
     step_kinds: frozenset[str] = frozenset({"augment"})
@@ -193,7 +193,7 @@ class PillowAugmentDriver:
 
 def _augmented(source: Image.Image, step: AugmentStep, seed: bytes) -> Image.Image:
     if step.op is AugmentOp.HFLIP:
-        return ImageOps.mirror(source) if hflip_applied(seed) else source
+        return ImageOps.mirror(source)
     if step.op is AugmentOp.BRIGHTNESS_CONTRAST:
         brightness, contrast = brightness_contrast_factors(seed, step.amount)
         brightened = ImageEnhance.Brightness(source).enhance(brightness)

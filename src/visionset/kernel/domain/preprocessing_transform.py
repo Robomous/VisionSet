@@ -34,7 +34,6 @@ from visionset.kernel.domain.preprocessing import (
     AugmentStep,
     RecipeSpec,
     ResizeStep,
-    hflip_applied,
     recipe_hash,
     rot90_quarter_turns,
     variant_seed,
@@ -277,7 +276,7 @@ def _variant_file(
     for step in augments:
         _refuse_unsupported(asset, step, geometries)
         if step.op is AugmentOp.HFLIP:
-            if hflip_applied(seed) and _any_coordinates(geometries):
+            if _any_coordinates(geometries):
                 mirror_width = float(_known_width(width, asset, step.name))
                 geometries = [_mirrored(geometry, mirror_width) for geometry in geometries]
         elif step.op is AugmentOp.ROT90:

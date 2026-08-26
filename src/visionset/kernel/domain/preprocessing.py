@@ -7,11 +7,12 @@ does to every image, and :func:`recipe_hash` names that value the way
 carry the same hash whatever order the fields were written in.
 
 Everything random about a variant is derived, never drawn: :func:`variant_seed`
-turns ``(recipe, image, k)`` into a digest, and the three draw functions read
-fixed positions of that digest. The geometry transform and the pixel driver
-read the same positions, which is what keeps a variant's annotations on its
-pixels. Byte stability is promised within one environment only; the geometry
-arithmetic here is exact everywhere.
+turns ``(recipe, image, k)`` into a digest, and the two draw functions read
+fixed positions of that digest — ``hflip`` draws nothing, because a variant
+that drew no mirror would be the base image under a variant's name. The
+geometry transform and the pixel driver read the same positions, which is what
+keeps a variant's annotations on its pixels. Byte stability is promised within
+one environment only; the geometry arithmetic here is exact everywhere.
 
 Every step declares the geometries it can transform, the way an exporter
 declares ``supported_geometries``: :data:`AUGMENT_GEOMETRIES` is the table per
@@ -90,7 +91,7 @@ class AugmentStep(BaseModel):
 
     ``amount`` bounds the brightness and contrast factors — each is drawn
     uniformly from ``[1 - amount, 1 + amount]`` — and means nothing to
-    ``hflip`` or ``rot90``, whose draws have no magnitude.
+    ``hflip``, which always mirrors, or ``rot90``, whose draw has no magnitude.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -193,17 +194,13 @@ def variant_seed(recipe_hash: str, content_hash: str, k: int) -> bytes:
     return hashlib.sha256(f"{recipe_hash}:{content_hash}:{k}".encode()).digest()
 
 
-def hflip_applied(seed: bytes) -> bool:
-    """Whether this variant mirrors, read off bit 0 of the seed."""
-    return bool(seed[0] & 1)
-
-
 def brightness_contrast_factors(seed: bytes, amount: float) -> tuple[float, float]:
     """This variant's brightness and contrast factors, in ``[1 - amount, 1 + amount]``.
 
     Brightness reads word 1 of the seed and contrast word 2 — fixed positions,
     whatever other steps the recipe holds, so adding a step never re-rolls the
-    others.
+    others. Word 0 is read by nothing; the positions here are load-bearing,
+    because moving one would re-roll every variant an export already wrote.
     """
     return (
         1.0 - amount + 2.0 * amount * _fraction(seed, 1),

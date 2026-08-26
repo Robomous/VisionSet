@@ -29,7 +29,6 @@ from visionset.kernel.domain import (
     ResizeStrategy,
     SplitAssignment,
     TransformedFile,
-    hflip_applied,
     letterbox_fit,
     recipe_hash,
     rot90_quarter_turns,
@@ -93,16 +92,6 @@ def _spec(*steps: ResizeStep | AugmentStep, variants: int = 0) -> RecipeSpec:
 def _geometry_of(file: TransformedFile, kind: type[Geometry]) -> Geometry:
     (match,) = [one.geometry for one in file.annotations if isinstance(one.geometry, kind)]
     return match
-
-
-def _content_hash_where_hflip(spec: RecipeSpec, *, applied: bool) -> str:
-    """A content hash whose variant-1 seed draws hflip the way the test wants."""
-    spec_hash = recipe_hash(spec)
-    for candidate in range(1000):
-        content_hash = f"content-{candidate}"
-        if hflip_applied(variant_seed(spec_hash, content_hash, 1)) is applied:
-            return content_hash
-    raise AssertionError("a thousand seeds never drew the wanted bit")
 
 
 # --- letterbox arithmetic ---------------------------------------------------
@@ -196,8 +185,8 @@ def test_without_a_resize_the_base_file_keeps_the_source_size() -> None:
 # --- augmentation × geometry ----------------------------------------------
 
 
-def _only_variant(spec: RecipeSpec, *geometries: Geometry, applied: bool = True) -> TransformedFile:
-    asset = _asset(*geometries, content_hash=_content_hash_where_hflip(spec, applied=applied))
+def _only_variant(spec: RecipeSpec, *geometries: Geometry) -> TransformedFile:
+    asset = _asset(*geometries)
     view = transform_manifest(_manifest(asset), spec, _train(asset))
     (variant,) = [file for file in view.files if file.variant == 1]
     return variant
@@ -205,7 +194,7 @@ def _only_variant(spec: RecipeSpec, *geometries: Geometry, applied: bool = True)
 
 def test_hflip_mirrors_in_the_frame_width_and_keeps_polyline_order() -> None:
     spec = _spec(AugmentStep(op=AugmentOp.HFLIP), variants=1)
-    variant = _only_variant(spec, *EVERY_GEOMETRY, applied=True)
+    variant = _only_variant(spec, *EVERY_GEOMETRY)
 
     assert (variant.width, variant.height) == (100, 200)
     assert _geometry_of(variant, BboxGeometry) == BboxGeometry(
@@ -220,11 +209,15 @@ def test_hflip_mirrors_in_the_frame_width_and_keeps_polyline_order() -> None:
     assert _geometry_of(variant, ClassificationGeometry) == TAG
 
 
-def test_hflip_not_drawn_leaves_the_variant_unmirrored() -> None:
+@pytest.mark.parametrize("content_hash", [f"content-{candidate}" for candidate in range(8)])
+def test_an_hflip_variant_is_never_its_source(content_hash: str) -> None:
+    """Whatever the seed draws, a variant mirrors: an unmirrored one would copy the base image."""
     spec = _spec(AugmentStep(op=AugmentOp.HFLIP), variants=1)
-    variant = _only_variant(spec, BBOX, POLYLINE, applied=False)
-    assert _geometry_of(variant, BboxGeometry) == BBOX
-    assert _geometry_of(variant, PolylineGeometry) == POLYLINE
+    asset = _asset(BBOX, POLYLINE, content_hash=content_hash)
+    view = transform_manifest(_manifest(asset), spec, _train(asset))
+    (variant,) = [file for file in view.files if file.variant == 1]
+    assert _geometry_of(variant, BboxGeometry) != BBOX
+    assert _geometry_of(variant, PolylineGeometry) != POLYLINE
 
 
 def test_brightness_contrast_changes_no_geometry_and_no_size() -> None:
@@ -337,7 +330,7 @@ def test_rot90_swaps_the_size_of_a_tag_only_asset_without_needing_coordinates() 
 def test_steps_compose_in_recipe_order_resize_first() -> None:
     resize = ResizeStep(strategy=ResizeStrategy.STRETCH, width=200, height=100)
     spec = _spec(resize, AugmentStep(op=AugmentOp.HFLIP), variants=1)
-    variant = _only_variant(spec, BBOX, applied=True)
+    variant = _only_variant(spec, BBOX)
     # Stretched to (20, 10, 60, 20) in a 200-wide frame, then mirrored: x = 200 − 20 − 60.
     assert (variant.width, variant.height) == (200, 100)
     assert _geometry_of(variant, BboxGeometry) == BboxGeometry(
