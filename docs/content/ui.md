@@ -186,7 +186,8 @@ A project has four sections - Overview, Schema, Batches, Dataset - and they are
 **navigation**, not four things stacked in one column (#171): at `lg` and above a
 column between the rail and the content, below `lg` a tab strip above it, one
 component (`ProjectNav`) drawing whichever layout `ProjectShell`'s `matchMedia`
-answer hands it. The navigation carries the one filled control (Annotate, or Ingest in its
+answer hands it. The navigation carries the one filled control (Annotate - straight into a
+batch's one job, or onto the gallery to pick one - or Ingest in its
 place) and the overflow, and is only as wide as those; the project's identity is an
 eyebrow above the content - the name and the active-version chip, identity and not navigation -
 and the content opens under the section's own header: its title as the page `h1`, one
@@ -718,22 +719,92 @@ was lost. It draws a placeholder, and offers no button: the remedy,
 
 **Paging and virtualization are two problems and both are solved.** `limit`/`offset`
 bound the *response*, so the network side is `useInfiniteQuery` - and "have I seen
-everything" is `seen < total`, because `total` is the size of the whole batch and
-does not move. Ten pages fetched is still ten pages in the DOM, so the render side
+everything" is `seen < total`, because `total` is the size of what the request
+matched - the whole batch, or one job's frames where `job=` narrows it - and does
+not move while you page it. Ten pages fetched is still ten pages in the DOM, so the render side
 virtualizes **rows** (a row is what the browser lays out; virtualizing tiles inside a
 CSS grid means reimplementing the grid). The column count is measured with a
 `ResizeObserver` rather than guessed from a second breakpoint list.
 
-#### The jobs strip
+#### The jobs accordion
 
-One row per job - ordinal, frame count, state, and who is working it - rendered
-only once jobs exist, the same `showsProgress` gate the progress bar above it uses,
-so a draft needs no empty state of its own. The assignee is a plain editable name,
-not an account: `JobService.assign` gates on nothing, so the control is always
+**Once a batch has jobs, its frames are shown per job, and at most one job is open at a
+time.** A batch is partitioned, and a person works one part of it: a batch-wide grid beneath a
+per-job control would put two scopes for the same frames on one screen, where the control
+names a job and the grid, the counts and the timeline answer for everybody. One open panel is
+one scope - its chips, its timeline and its tiles all count the same job - which is why
+opening a panel closes the one that was open. **Every panel may be closed**: clicking the open
+header collapses it, and an accordion with nothing open is the batch read as an index of its
+jobs.
+
+The panel open on arrival is **the first job with work left** - frames still unannotated
+or only pre-labeled - and the first job otherwise, so landing on a batch lands on
+something to do rather than on a job somebody has finished. Nothing is remembered across
+reloads: the rule recomputes from counts that are read anyway, and a remembered panel is
+stale the moment somebody else works the job.
+
+**A collapsed header is the overview**, so a job is picked without opening it: ordinal,
+frame count, state, `A of F annotated`, who is working it, and a thin progress bar. The
+accordion is rendered only once jobs exist, the same `showsProgress` gate the progress bar
+above it uses, so a draft needs no empty state of its own. The assignee is a plain editable
+name, not an account: `JobService.assign` gates on nothing, so the control is always
 live, and clearing it is the same operation with `null`. A failed read shows its
-error instead of the strip silently vanishing - an empty list and a failed one look
+error instead of the accordion silently vanishing - an empty list and a failed one look
 identical to the naive `undefined`-or-zero-items check, and only one of them means
 there is nothing to assign.
+
+**The open panel holds, in order:** the way into the annotator, `Pre-label` and the
+assignee; the segment chips, counting *that job* from `GET /jobs/{id}/progress` rather
+than the batch; the order select; that job's timeline; and only that job's frames, from
+`GET /batches/{id}/assets?job=`. Frame numbers stay batch-wide, because a frame's number
+is its place in the batch and renumbering per job would give one picture two names.
+
+**Thumbnail size is one setting and is rendered outside the panels** - it is a property
+of how a grid is read rather than of a job, and it is the same persisted preference
+either way. It sits on the batch's own progress row in the header, right of the progress bar
+and on the line of its `A of F annotated` readout: the last row above the accordion that is
+about the batch rather than about one job. A draft, which has no progress row, keeps it in the
+toolbar over its flat grid. The segment filter is the opposite: it belongs to the panel and **resets to
+`All` when the open job changes**, because a filter carried across shows an empty panel
+for a job with nothing in that state, which reads as a job with no frames.
+
+**A draft batch has no accordion** - one flat grid, with the membership tools and
+selection over it - because it has no jobs, and there is nothing to partition its frames
+by.
+
+Each header is a `<button>` carrying `aria-expanded` and naming the panel it controls,
+and the panel is labelled by its header. **↑/↓ move between headers, Home/End reach the
+first and last, Enter or Space opens the focused one - or closes it, when it is the open
+one.** The arrow keys are what make the
+accordion navigable at all: the open panel is a whole grid, so tabbing from one header to
+the next crosses every tile in between.
+
+#### The way in
+
+**The gallery header carries `Start annotating` only for an `approved` batch, and there it is the
+transition rather than a door.** That press is `POST /batches/{id}/start`, the batch's own next
+step declared as `start` in its `allowed_actions` - the same mutation the Batches row sends, so
+the table and the gallery are one spelling of it - and it navigates nowhere: landing back on the
+gallery re-reads the batch as `in_annotation`, and the job panels are then what open it. There is
+no icon on it; it is a state change, not a link.
+
+**Once the batch is open, the way into the annotator is the job's own panel, because only a job
+answers which frames.** A batch is partitioned, so a header control would have to pick a job
+silently, and the panel is already where that choice is made.
+Each panel carries one control, secondary rather than filled — the batch's own step in the header
+is the page's one filled control — and its word is read from that job: **`Annotate`** where
+the job declares `start`, which takes the job (`POST /jobs/{id}/start`) and then opens it;
+**`Continue`** while it is `in_progress`, the word for a job somebody is already inside; and
+**`View`** otherwise, for a `completed` job or a `pending` one of a batch nobody has opened,
+neither of which is startable from here. Beside it sits **Pre-label**, gated on `pre_label` in
+that job's own `allowed_actions` and absent otherwise
+([below](#pre-labeling-the-surface-text_detect-was-declared-for)).
+
+**The project's `Annotate` control follows the same rule one level up.** It opens the batch that
+is open for annotation - straight into that batch's one job where it has exactly one, and onto
+the gallery to pick a job otherwise. With two or more batches open it reads `Annotate ▾` and the
+menu still lists batches, because the batch decides which schema version the work is judged
+against; picking one then applies the same rule, its single job or its gallery.
 
 ### Batches, and a machine that only goes forwards
 
@@ -781,11 +852,13 @@ screen's whole subject has stopped existing.
 
 #### Pre-labeling: the surface `text_detect` was declared for
 
-Gated on `pre_label` in the batch's own `allowed_actions`, never on the batch's state read
-locally - the same rule every control on this screen follows. It is the reason the
-capability stopped being an orphan: a connection could declare `text_detect` from the day the
-Models page (then named Inference) described the ability, and nothing in the app ever asked one
-until this control existed to.
+**The control sits in a job's panel, gated on `pre_label` in that job's own `allowed_actions`** -
+never on the batch's state read locally, the same rule every control on this screen follows. A
+batch's frames are partitioned into jobs and a run reaches one job's assets, so the job is what
+declares the action and what the dialog is opened over; the dialog is titled for both, *Pre-label
+BATCH · job N*. It is the reason the capability stopped being an orphan: a connection could
+declare `text_detect` from the day the Models page (then named Inference) described the ability,
+and nothing in the app ever asked one until this control existed to.
 
 The model select is narrowed to connections whose `capabilities` include `text_detect`, read
 off the wire rather than guessed from a name or a model id, on `inferenceQueries.ts`'s standing
@@ -794,7 +867,9 @@ never "confidence" or "accuracy": a text-prompt model scores how well a region m
 it was asked for, a point-prompt model's suggest tool scores mask quality against a click, and
 the two run on different scales - 37-78% observed for the first, 68-98% for the second - so a
 bare percentage next to a shape would not say which one it was on. The dialog states how many
-of the batch's assets are untouched, because that is what the run will actually consider - an
+of **the job's** assets are untouched, read from `GET /jobs/{id}/progress` and never from the
+batch's counts, because that is what the run will actually consider and a batch-wide number here
+would offer to label frames somebody else is holding - an
 asset already pre-labeled, annotated, skipped, awaiting review or accepted is passed over, and a
 label that lands enters at `pre_labeled`, never `annotated`, so an annotator corrects a machine's
 guess rather than inheriting it silently as their own work.
@@ -817,24 +892,27 @@ that refusal and leaves `Start` dead rather than waiting for the press to produc
 the minimum prompt affinity, the prompt classes, and the count of what a run would consider -
 sits below whichever summary the mode wrote, in every mode with something left to reach:
 during a run too, with its fields and the tick disabled, and under a `done`, `stopped` or
-`failed` summary whenever the batch has an untouched asset left, whether or not anything here
-is pre-labeled. Where the batch holds
+`failed` summary whenever the job has an untouched asset left, whether or not anything in it
+is pre-labeled. Where the job holds
 pre-labeled frames, under it sits **Replace the model labels on N pre-labeled frame(s)**,
-unticked, saying that frames anyone has edited, confirmed or skipped in this batch are never
+unticked, saying that frames anyone has edited, confirmed or skipped in this job are never
 touched and that this cannot be undone. Ticked, the count line adds that the run also replaces
 the model labels on those N frames, and the launch -
-`Start`, `Run again`, `Continue` or `Try again` - goes live. A batch with nothing untouched left
+`Start`, `Run again`, `Continue` or `Try again` - goes live. A job with nothing untouched left
 and the box unticked has no run to launch at all, so the press is disabled and the notice names
 the tick as what would give the run something to do. A settled run's summary reports how many
 earlier model regions it replaced.
 
-The route answers `202` with a background job, on the export and weight-download routes'
-contract, and the dialog polls it exactly as `ExportDialog` polls an export: nothing here waits
-for the run to finish, but nothing closes over an outcome unseen either. Every refusal the route
-can produce reaches the dialog as prose - a batch that stopped being `in_annotation` under the
-press, a connection whose model answers places rather than words, a pinned schema with no class
-a detection can be written as, and a local runtime that is not installed, whose message carries
-the exact `pip install` to run.
+`POST /jobs/{id}/pre-label` answers `202` with a background job, on the export and
+weight-download routes' contract, and the dialog polls it exactly as `ExportDialog` polls an
+export: nothing here waits for the run to finish, but nothing closes over an outcome unseen
+either. A dialog reopened after a reload, in a second tab, or over a run launched from a
+terminal reads `JobOut.pre_label_run` - the job's own memory of its most recent run - rather
+than an id a component happened to keep. Every refusal the route can produce reaches the dialog
+as prose - a job whose batch stopped being `in_annotation` under the press, a job somebody
+completed under it, a connection whose model answers places rather than words, a pinned schema
+with no class a detection can be written as, and a local runtime that is not installed, whose
+message carries the exact `pip install` to run.
 
 #### Pre-labeling every open batch from the Batches tab
 
@@ -844,12 +922,15 @@ otherwise. The dialog takes the same model and prompt-affinity controls as the g
 (one component, one copy of the prose), then a checklist of the batches that declare the action,
 each with its untouched count and checked by default when that count is above zero. Start posts
 `POST /projects/{id}/batches/pre-label` with exactly the checked ids, so what runs is what was
-seen; the answer is one row per batch, and the dialog lists each as queued or as having joined a
-run already in flight, each name a link into its gallery. The batch stays the unit: the row in
-the table shows a **pre-labeling…** mark while that batch's own `pre_label_run` is live, and the
-gallery's dialog reads the same run afterwards. A refusal - a pin with no class the model's
-shapes can be written as, naming the batch to leave out - renders as prose in the dialog, and no
-batch is launched.
+seen. **The pick is per batch and the launch is per job**: the answer holds one row for every
+open job of every checked batch, and the dialog lists each as queued or as having joined a run
+already in flight, under its batch's name and linking into that gallery, so a batch cut into
+three jobs contributes three rows - each read as `BATCH · job N`, since a batch that fanned out
+would otherwise repeat one name over rows nothing tells apart. The row in the table shows a **pre-labeling…** mark while the
+batch's `pre_label_run` - the newest run across its jobs - is live, and each job's own dialog
+reads that job's run afterwards. A refusal - a pin with no class the model's shapes can be
+written as, naming the batch to leave out - renders as prose in the dialog, and no job is
+launched.
 
 #### Reviewing a pre-labeled batch
 

@@ -303,7 +303,9 @@ is why those sets are named rather than written inline. Promotion is the cleares
 assets into the trunk and leaves the batch exactly where it was. `pre_label` is declared from
 the batch's state alone, on `complete`'s precedent - whether the local runtime is installed and
 whether the pinned schema has a class a detection can land on are not facts about the batch, and
-hiding the control on either ground would leave their refusals nowhere to be shown.
+hiding the control on either ground would leave their refusals nowhere to be shown. A `JobOut`
+declares `pre_label` on the same precedent, from the job's own openness and the batch's - it is
+the declaration a control that launches a run reads, since the run is over a job.
 
 **`delete` is declared last, and it is the one action that ends the batch rather than moving it
 along.** It was withdrawn in #331, when the rule and `BatchService.delete` were real but nothing
@@ -324,12 +326,15 @@ declaring differently depending on which endpoint answered - is worse than one h
 
 ## Pre-labeling
 
-A batch that is `in_annotation` can ask a text-prompt model to label its **untouched** assets -
-`unannotated`, and carrying no annotations at all. An asset already `pre_labeled` - unless the run
+A job of a batch that is `in_annotation` can ask a text-prompt model to label its **untouched**
+assets - `unannotated`, and carrying no annotations at all. The job is the unit a run is over: a
+batch's frames are partitioned into jobs, so the set of frames a run reaches is a question only a
+job answers, and `JobAction.PRE_LABEL` is declared on an open job of an `in_annotation` batch.
+An asset already `pre_labeled` - unless the run
 is asked to replace, below - `annotated`, `skipped`, `review_pending` or `accepted` is passed over,
 and so is an `unannotated` one that still carries a person's boxes from an earlier round that was
 skipped and then restored - progress alone does not prove untouched, since that sequence deletes
-nothing. Either way, a run never writes over what a person did in this batch, and it supersedes an
+nothing. Either way, a run never writes over what a person did in this job, and it supersedes an
 earlier run's own labels only where it is asked to - the second-run paragraph below.
 
 **An asset somebody starts working while a run is still going is passed over too, not fatal.** The
@@ -360,10 +365,13 @@ lists. It takes the connection (`?connection_id=`), because the prompt is a prop
 detector — and answers `produces`, the shapes the run will write; the dialog re-reads it when the
 model changes. A batch whose schema has no askable class at all is refused with the same
 `SCHEMA_HAS_NO_DETECTABLE_CLASS` the launch answers, rather than reported as an empty prompt.
-At a terminal `visionset batch pre-label` writes the same two lines to stderr before the first
-forward pass. The MCP tool `get_pre_label_plan` answers the same two halves, and there alone the
-plan also travels *in* the outcome: `pre_label_batch` blocks until the run is done and returns it
-under `plan`, so an agent that asked for nothing it expected never needs a second call.
+The plan is a property of the batch's pin and the model, so it is the same for every job of the
+batch and the route stays batch-scoped. At a terminal `visionset batch pre-label` writes the same
+two lines to stderr once, before the first job's first forward pass. The MCP tool
+`get_pre_label_plan` answers the same two halves, and there alone the plan also travels *in* the
+outcome: `pre_label_job` returns it under `plan`, and `pre_label_batch` returns one `items` entry
+per job each carrying its own, so an agent that asked for nothing it expected never needs a second
+call.
 
 **What a run writes is every shape the model produces, unless the request says which.** A model
 declares the shapes it answers in (`ConnectionOut.produces`); a model declaring both a box and a
@@ -401,7 +409,7 @@ nothing on what already landed. `replace_model_labels` - the request field, the 
 and `--replace-model-labels` at a terminal - widens that reach to every frame still
 `pre_labeled`: the model's earlier labels there are deleted and the new ones land in the same
 transaction, one frame at a time, so no frame is ever briefly bare. A frame anybody edited,
-confirmed or skipped in this batch is passed over whatever the flag says, and a `pre_labeled`
+confirmed or skipped in this job is passed over whatever the flag says, and a `pre_labeled`
 frame the second run finds nothing on returns to `unannotated`. Both the outcome and
 `pre_label_run` carry `annotations_replaced`, the count of earlier model labels the run
 superseded.
@@ -416,31 +424,39 @@ leaves only whole assets entered: an asset's labels and progress state commit to
 later run considers only assets still untouched - plus, where it is asked to replace, those
 still `pre_labeled`.
 
-**The batch remembers its own run.** `BatchService.latest_pre_label_job` reads the queue for the
-most recent `annotation.pre_label` job naming this batch - live or settled - and projects it as
+**The job remembers its own run.** `JobService.latest_pre_label_run` reads the queue for the most
+recent `annotation.pre_label` row naming this job - live or settled - and projects it as
 `PreLabelRun`, on `ConnectionJob`'s reasoning: a run outlives the request that launched it, so a
-reload, a second tab or a run started at a terminal can only be shown by the batch itself saying
+reload, a second tab or a run started at a terminal can only be shown by the job itself saying
 so. Counted in assets, the unit this handler works in, and carrying the outcome
 `prelabel.py`'s `run` returns once the job has settled - `stopped_early`, `assets_labeled`,
 `annotations_replaced`, `regions_discarded`, `regions_out_of_bounds` - so a client can tell a
-cancelled run from an untouched batch. Derived, never stored, and published on `BatchOut` as
-`pre_label_run`, `null` where none ever ran.
+cancelled run from an untouched job. Derived, never stored, and published on `JobOut` as
+`pre_label_run`, `null` where none ever ran; the row names both ids, `annotation_job_id` for the
+job it is over and `job_id` for the queue row to poll. `BatchOut.pre_label_run` is the newest run
+across the batch's jobs, read from the same queue in one pass by
+`BatchService.pre_label_runs`, and it is what a batch listing shows a `pre-labeling…` mark from.
 
-**Beyond one batch, the batch is still the unit.** `POST /projects/{id}/batches/pre-label` fans a
-launch out over the project's batches that are `in_annotation` - every one of them, or exactly
-the `batch_ids` it names - and queues, or joins, the same `annotation.pre_label` row per batch
-that the single-batch launch does. The answer is one row per batch (`job`, and `joined` when a
-run was already in flight for it); each is polled, cancelled and remembered per batch, and
-`BatchOut.pre_label_run` reads it afterwards exactly as if that batch had been launched alone.
-There is no project-level total because there is no project-level run. The request is refused
-whole, up front, and no refusal creates a row: a named batch outside the project (404), a named
-batch that is not open or a project with no open batch (409 `BATCH_NOT_IN_ANNOTATION`; an empty
-`batch_ids` names nothing and is refused the same way), or any selected batch whose pin holds no
-class a shape the model produces can be written as (409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`, naming
-the batch, so it can be left out by name). Assets that sit in no batch are not reached: a model's
-labels are written through an open job, so the answer there is to cut a batch first. `visionset
-project pre-label` and the MCP tool `pre_label_project` run the same selection inline, one batch
-after another.
+**Beyond one job, the job is still the unit.** `POST /batches/{id}/pre-label` fans a launch out
+over the batch's jobs that are still open, and `POST /projects/{id}/batches/pre-label` fans out
+over the project's batches that are `in_annotation` - every one of them, or exactly the
+`batch_ids` it names - and within each over that batch's open jobs. Both queue, or join, per job
+the same `annotation.pre_label` row `POST /jobs/{job_id}/pre-label` queues, and both answer
+`PreLabelFanOutOut`: one item per open job, naming `batch_id`, `batch_name`, `annotation_job_id`,
+the queue row under `job`, and `joined` where a run was already in flight for that job. A
+finished job is passed over, so a batch whose every job is complete contributes no item. Each row
+is polled, cancelled and remembered per job, and `JobOut.pre_label_run` reads it afterwards
+exactly as if that job had been launched alone. There is no batch-level or project-level total,
+because neither is one run. A batch launch is refused on the batch (409 `BATCH_NOT_IN_ANNOTATION`
+for one that is not open); the project launch is refused whole, up front, and no refusal creates
+a row: a named batch outside the project (404), a named batch that is not open or a project with
+no open batch (409 `BATCH_NOT_IN_ANNOTATION`; an empty `batch_ids` names nothing and is refused
+the same way), or any selected batch whose pin holds no class a shape the model produces can be
+written as (409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`, naming the batch, so it can be left out by
+name). Assets that sit in no batch are not reached: a model's labels are written through an open
+job, so the answer there is to cut a batch first. `visionset batch pre-label` and `visionset
+project pre-label`, and the MCP tools `pre_label_batch` and `pre_label_project`, run the same
+selection inline, one job after another.
 
 ## What approval and completion announce
 
@@ -525,7 +541,7 @@ The [API](api.md) is this service with the curation half left off.
 ```
 GET  /projects/{id}/batches                          → 200 BatchPage
 GET  /batches/{id}                                   → 200 BatchOut, with per-state counts
-                                                        and the batch's own pre_label_run
+                                                        and the newest pre_label_run of its jobs
 POST /batches/{id}/approve   { "partition": … }      → 200 BatchOut
 POST /batches/{id}/start                             → 200 BatchOut
 POST /batches/{id}/repin?allow_destructive=          → 200 BatchOut
@@ -535,7 +551,9 @@ GET  /batches/{id}/pre-label?connection_id=&geometries=   → 200 PreLabelPlanOu
                                                         `produces` (the selection, if one)
 POST /batches/{id}/pre-label { "connection_id": …, "minimum_confidence": …,
                                "replace_model_labels": …, "geometries": … }
-                                                     → 202 BackgroundJobOut
+                                                     → 202 PreLabelFanOutOut, one row per open
+                                                        job; `POST /jobs/{id}/pre-label` is the
+                                                        same launch over a single job
 POST /batches/{id}/promote                           → 200 AssetPage, the assets that entered
 GET  /batches/{id}/jobs                              → 200 JobPage
 GET  /batches/{id}/assets?limit=&offset=&progress=&sort=   → 200 BatchAssetPage

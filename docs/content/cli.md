@@ -30,6 +30,7 @@ visionset job list --batch BATCH_ID
 visionset job next JOB_ID [-n COUNT]
 visionset job progress|start|complete JOB_ID
 visionset job mark JOB_ID ASSET_ID --progress STATE
+visionset job pre-label JOB_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE]...
 
 visionset release publish --tag T --project P [--split TRAIN,VAL,TEST] [--seed N]
 visionset release list --project P
@@ -364,7 +365,10 @@ and touching ranges merged. The run is **synchronous**, and there is no
 
 `pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry
 SHAPE]...` blocks and calls `visionset.inference.pre_label` inline because a terminal has no
-dispatcher. Before the first forward pass it names the classes it is about to ask for, the shape
+dispatcher, once per open job of the batch: a run is over one job's assets, so the batch command
+is a loop, each job announced by id on stderr and reported on its own line, with the total
+`annotations_written` on stdout. A batch whose every job is finished says so and writes `0`.
+Before the first job's first forward pass it names the classes it is about to ask for, the shape
 or shapes what it finds will land as, and every class of the pinned schema it is leaving out with
 the reason - a class the prompt omits labels nothing, and afterwards there is only the silence to
 explain. `--replace-model-labels` widens the run to frames a previous run labeled and nobody has
@@ -373,18 +377,20 @@ label(s)`. `--geometry SHAPE`, repeated for several, writes only those of the sh
 produces - a model answering a box and a polygon for every region writes both unless told
 otherwise - and a shape the model does not produce is refused before anything runs; omitted, the
 run writes every shape the model produces. Progress and the summary are written to stderr; normal
-stdout contains `annotations_written`. With `--json`, the command prints the complete outcome
-instead, including `regions_discarded` for unmappable model labels and regions in a shape left
-out, and `regions_out_of_bounds` for mapped regions without overlap with a measured asset.
+stdout contains `annotations_written`. With `--json`, `items` holds one outcome per job, each
+under its own `job_id`, and `annotations_written` the total - every outcome including
+`regions_discarded` for unmappable model labels and regions in a shape left out, and
+`regions_out_of_bounds` for mapped regions without overlap with a measured asset.
 
 `project pre-label PROJECT CONNECTION [--batch BATCH_ID]... [--minimum-confidence FLOAT]
 [--geometry SHAPE]...` is the same run over every batch of the project that is open for
-annotation - or exactly the `--batch` ids given - one after another, each announced and reported
-by name on stderr, with the total `annotations_written` on stdout, and `--geometry` applying to
-every one of them. The selection is refused whole before the first forward pass: a batch outside
-the project, a named batch that is not open, a project with no open batch, or a pin with no class
-a shape the run writes can be written as (the message names the batch). With `--json`, `items`
-holds one outcome per batch and `annotations_written` the total.
+annotation - or exactly the `--batch` ids given - one after another and, within each, one open
+job after another; every batch is announced and reported by name on stderr, with the total
+`annotations_written` on stdout, and `--geometry` applies to all of them. The selection is refused
+whole before the first forward pass: a batch outside the project, a named batch that is not open,
+a project with no open batch, or a pin with no class a shape the run writes can be written as (the
+message names the batch). With `--json`, `items` holds one outcome per job, each carrying its
+`batch_id`, `batch_name` and `job_id`, and `annotations_written` the total.
 
 `--jobs-of N` is the `BySize` partition; with no flag the batch becomes one job. There is no
 `batch create` and no membership editing: a batch is born from an ingest. See
@@ -395,8 +401,15 @@ holds one outcome per batch and `annotations_written` the total.
 `list --batch B`, `next JOB [-n N]`, `progress JOB`, `start JOB`, `mark JOB ASSET --progress STATE`,
 `complete JOB`. Each is one `JobService` call.
 
-**`--progress annotated` records that somebody labeled an asset, and the CLI writes no labels** -
-geometry comes from a canvas or a model, not from typing. A release published off a batch driven
+`pre-label JOB_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry
+SHAPE]...` is `batch pre-label`'s run over the one job named, on the same options and the same
+inline execution, and it is what that command loops. A `completed` job is refused rather than
+passed over - naming one job is a decision to run it. With `--json` the outcome carries the
+`job_id` beside the counts.
+
+**`--progress annotated` records that somebody labeled an asset, and no command here but
+`pre-label` writes a label** - geometry comes from a canvas or a model, not from typing. A
+release published off a batch driven
 this way reports `annotation_count: 0`, and its manifest says so. These commands exist because the
 lifecycle must be drivable from a script, not because this is how labelling happens. See
 [jobs.md](jobs.md#at-a-terminal).
