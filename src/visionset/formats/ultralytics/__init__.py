@@ -146,7 +146,12 @@ TARGETS: Final[frozenset[ExportTarget]] = frozenset(
             _EVERYTHING,
         ),
         _target("yolov6", "YOLOv6", frozenset({Task.DETECT}), frozenset({GeometryType.BBOX})),
-        _target("yolov5", "YOLOv5", frozenset({Task.DETECT}), frozenset({GeometryType.BBOX})),
+        _target(
+            "yolov5",
+            "YOLOv5",
+            frozenset({Task.DETECT, Task.SEGMENT, Task.CLASSIFY}),
+            _EVERYTHING,
+        ),
         _target("yolov3", "YOLOv3", frozenset({Task.DETECT}), frozenset({GeometryType.BBOX})),
     }
 )

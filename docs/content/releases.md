@@ -356,7 +356,7 @@ The catalog this build ships, generated from the declarations by
 | `yolo26` | YOLO26 | `ultralytics-yolo` | `ultralytics` | classify, depth, detect, obb, pose, segment, semantic | bbox, classification_tag, polygon | 640×640 | letterbox |
 | `yolov10` | YOLOv10 | `ultralytics-yolo` | `ultralytics` | detect | bbox | 640×640 | letterbox |
 | `yolov3` | YOLOv3 | `ultralytics-yolo` | `ultralytics` | detect | bbox | 640×640 | letterbox |
-| `yolov5` | YOLOv5 | `ultralytics-yolo` | `ultralytics` | detect | bbox | 640×640 | letterbox |
+| `yolov5` | YOLOv5 | `ultralytics-yolo` | `ultralytics` | classify, detect, segment | bbox, classification_tag, polygon | 640×640 | letterbox |
 | `yolov6` | YOLOv6 | `ultralytics-yolo` | `ultralytics` | detect | bbox | 640×640 | letterbox |
 | `yolov7` | YOLOv7 | `community-yolo` | `yolov5-yaml` | detect | bbox | 640×640 | letterbox |
 | `yolov8` | YOLOv8 | `ultralytics-yolo` | `ultralytics` | classify, detect, obb, pose, segment | bbox, classification_tag, polygon | 640×640 | letterbox |
