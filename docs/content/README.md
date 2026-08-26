@@ -36,7 +36,7 @@ If you are new to VisionSet, start with [install.md](install.md), then continue 
 | [annotations.md](annotations.md) | The labels themselves: the one door, the batch's pinned version, the five hard rejects, attribute values, progress derived from the annotations, and the editor's shortcut table |
 | [media.md](media.md) | Decoding raw media: the two processor ports, the accepted image formats, the orientation policy for stills and clips, pinned thumbnails and seek-free frame extraction, and what their determinism does and does not promise |
 | [datasets.md](datasets.md) | The curated trunk: promotion from a completed batch, what `skipped` keeps out, curation without a `confirm=`, and the append-only change log |
-| [releases.md](releases.md) | The immutable artifact: what a manifest is and is not, why two publishes agree byte for byte, hash verification, and the seeded split recipe |
+| [releases.md](releases.md) | The immutable artifact: what a manifest is and is not, why two publishes agree byte for byte, hash verification, and the seeded split recipe - then exporting: targets and the dialects they resolve to, what a format can carry and what a target narrows, the consent gate, and the report every export writes |
 | [preprocessing.md](preprocessing.md) | The optional stage at export: resize and augmentation recipes, the grammar, what moves geometry and what moves pixels, determinism and its scope, the train-only rule, and the report |
 | [events.md](events.md) | Domain events: subscribing by type, why emission follows the commit, at-most-once delivery, and what an isolated subscriber failure does |
 | [persistence.md](persistence.md) | The metadata store: repositories, unit of work, table layout, migrations and `format_version` |

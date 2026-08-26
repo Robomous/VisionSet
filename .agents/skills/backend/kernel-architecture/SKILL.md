@@ -40,9 +40,10 @@ Four import-linter contracts in `pyproject.toml`, plus a fresh-process test unde
 
 1. **Kernel purity** — `visionset.kernel` never imports `visionset.server`, `visionset.cli`,
    `visionset.mcp`, `visionset.formats`, `visionset.wire`, `visionset.jobs`,
-   `visionset.inference`, nor `fastapi` / `typer` / `mcp` / `uvicorn`. The kernel decides what
-   exists; publication shapes, background handlers and the inference composition root all sit on
-   the other side of that line.
+   `visionset.inference`, `visionset.preprocessing`, nor `fastapi` / `typer` / `mcp` /
+   `uvicorn`. The kernel decides what exists; publication shapes, background handlers, the
+   inference composition root and the pre-processing driver registry all sit on the other side
+   of that line.
 2. **Delivery clients are siblings** — `server`, `cli`, and `mcp` never import each other.
    Shared logic moves down into the kernel, never sideways.
 3. **Job handlers are below the surfaces** — `visionset.jobs` imports no delivery package.

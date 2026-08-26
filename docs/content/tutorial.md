@@ -213,11 +213,14 @@ boxes and polygons (`yolo` is still accepted as an alias of `ultralytics` for on
 command rather than trusting this listing — it reads installed entry-point metadata, so a
 third-party plugin appears in it too.
 
-Then export:
+An export is addressed to the model you will train rather than to a format. `visionset target
+list` prints the catalog - `yolo11` resolves to `ultralytics`, `yolov7` to `yolov5-yaml`, and
+every other format to a target named after itself - and `--target` takes one of those names in
+place of `--format`; exactly one of the two is given. Then export:
 
 ```bash
 visionset export --project road-signs --release v1.0 \
-  --format ultralytics --out ./yolo --allow-lossy
+  --target yolo11 --out ./yolo --allow-lossy
 ```
 
 `--allow-lossy` is required here and the refusal without it is not bureaucracy. A YOLO label row

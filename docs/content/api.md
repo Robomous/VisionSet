@@ -105,10 +105,16 @@ GET    /releases/{release_id}
 GET    /releases/{release_id}/manifest                    bytes
 GET    /releases/{release_id}/verify
 GET    /releases/{release_id}/assignment
-GET    /releases/{release_id}/export-compatibility        ?target=|format=, exactly one
-POST   /releases/{release_id}/export                      ?target=|format=&allow_lossy=, launch
+GET    /releases/{release_id}/export-compatibility        ?target=|format=, exactly one; &recipe=
+POST   /releases/{release_id}/export                      ?target=|format=&allow_lossy=&recipe=, launch
 GET    /formats
 GET    /export-targets                                    the models a release can be exported for
+GET    /projects/{project_id}/preprocessing-recipes       the project's pre-processing recipes
+POST   /projects/{project_id}/preprocessing-recipes
+GET    /projects/{project_id}/preprocessing-recipes/{name}
+PUT    /projects/{project_id}/preprocessing-recipes/{name}   whole-value; a rename is `name` in the body
+DELETE /projects/{project_id}/preprocessing-recipes/{name}   no confirmation gate
+POST   /projects/{project_id}/preprocessing-preview       one asset through a spec; never cached
 
 GET    /inference/connections
 POST   /inference/connections

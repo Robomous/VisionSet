@@ -20,8 +20,10 @@ The kernel never resolves a name. `ReleaseService.export` takes an `Exporter`
 **instance**, because the `Kernel purity` contract forbids
 `visionset.kernel` importing `visionset.formats` - a plugin registry is discovery,
 and the kernel is the part that must not do any. So the surface holding the name
-does the lookup, always through `registry.exporter(name)` rather than a dict, so a
-typo answers a `VisionSetError` rather than a `KeyError` and a traceback.
+does the lookup - `registry.pick(installed, name)` for a format, which also says
+whether the name was a deprecated alias, and the port's own `resolve_target` for a
+target - never through a dict, so a typo answers a `VisionSetError` rather than a
+`KeyError` and a traceback.
 
 ## What ships
 
@@ -54,6 +56,32 @@ The last two are disjoint, and a geometry in neither is not written at all. Thre
 states rather than two, because a boolean answers "is this written?" and "is this
 written intact?" with one word - and a caller consenting to lose three annotations
 would receive two of them back as boxes.
+
+Beside them sits `targets`: the models the format writes for, each a frozen
+`ExportTarget` with its tasks, the geometries an export addressed to it carries, and
+the pre-processing hints a recipe editor preselects. A format that is not a trainer's
+declares one target named after itself, so every surface renders one control. The
+registry validates the declarations at the scan - a target promising a geometry the
+format never writes, or one name declared by two formats, is refused there - and the
+kernel derives the catalog `GET /export-targets`, `visionset target list` and
+`list_export_targets` all render. [`docs/content/releases.md`](../../releases.md#export-targets)
+carries the catalog and the narrowing rule.
+
+## The sibling group: preprocessing drivers
+
+[`src/visionset/preprocessing/`](../../../../src/visionset/preprocessing/) is the
+same mechanism one port over. `PreprocessingDriver`
+([`kernel/ports/preprocessing.py`](../../../../src/visionset/kernel/ports/preprocessing.py))
+is the port a pixel engine implements - `step_kinds` and `apply(step, image, *, seed,
+variant)` - and `preprocessing.registry` scans the `visionset.preprocessing`
+entry-point group, keeps what satisfies the port and keys it by step kind, with
+`drivers()`, `pick()`, `driver_for()` and `driver()` mirroring the format registry's
+shape. The two built-in drivers, `pillow-resize` and `pillow-augment`, live in
+[`pillow/`](../../../../src/visionset/preprocessing/pillow/). The kernel takes driver
+instances through `ReleaseService.export(..., drivers=)` and never a name, and the
+purity contract forbids it importing this package for the reason it forbids
+`formats`. [`docs/content/preprocessing.md`](../../preprocessing.md) covers what a
+recipe is and what the drivers promise.
 
 A plugin also gets a `ContentReader` and never a `BlobStore`: a reader can read
 where the port could also `put`, and a plugin that could write into the content

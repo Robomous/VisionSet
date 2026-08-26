@@ -53,7 +53,7 @@ fields were written in.
 | Step | Fields | What it does |
 | --- | --- | --- |
 | `resize` | `strategy` (`letterbox` or `stretch`), `width`, `height` (32 to 8192), `pad_value` (0 to 255, default 114) | Every exported image, base and variant, lands at `width × height`. `stretch` scales each axis on its own; `letterbox` keeps the aspect, scales to fit, and pads the rest with `pad_value` - the grey YOLO trainers letterbox with themselves. |
-| `augment` | `op` (`hflip`, `brightness_contrast`, `rot90`), `amount` (0 to 0.5, default 0.2) | One augmentation applied when generating variants. `amount` bounds the brightness and contrast factors and means nothing to the other two. |
+| `augment` | `op` (`hflip`, `brightness_contrast`, `rot90`), `amount` (above 0 and at most 0.5, default 0.2) | One augmentation applied when generating variants. `amount` bounds the brightness and contrast factors and means nothing to the other two. |
 
 Cross-field rules, refused with the rule named: at most one `resize` step, and it comes first;
 each `op` at most once; an `augment` step needs `variants_per_asset` of at least 1; and

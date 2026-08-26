@@ -1,7 +1,7 @@
 # The backend
 
 The Python distribution in [`src/visionset/`](../../../../src/visionset/) contains
-eight packages. They are not peers. The core defines the domain, the next layer
+nine packages. They are not peers. The core defines the domain, the next layer
 makes that domain usable by callers, and the outer layer exposes protocols.
 
 ## The stack
@@ -19,6 +19,7 @@ flowchart TB
         Jobs["jobs\nbackground handlers"]
         Inference["inference\nmodel adapters"]
         Formats["formats\nexporter plugins"]
+        Preprocessing["preprocessing\npixel drivers"]
     end
 
     Kernel["kernel\ndomain · ports · services · adapters"]
@@ -31,6 +32,10 @@ flowchart TB
     Cli --> Formats
     Jobs --> Formats
     Jobs --> Inference
+    Server --> Preprocessing
+    Cli --> Preprocessing
+    Mcp --> Preprocessing
+    Jobs --> Preprocessing
     Server --> Kernel
     Cli --> Kernel
     Mcp --> Kernel
@@ -38,6 +43,7 @@ flowchart TB
     Jobs --> Kernel
     Inference --> Kernel
     Formats --> Kernel
+    Preprocessing --> Kernel
 ```
 
 Read the diagram as a dependency graph: an arrow is "may import". Nothing points
@@ -52,6 +58,7 @@ upward, and the three surfaces do not point at each other.
 | [`cli`](../../../../src/visionset/cli/) | Typer. The whole cycle from a shell. | [cli.md](cli.md) |
 | [`mcp`](../../../../src/visionset/mcp/) | The MCP tool surface, for agents. | [mcp.md](mcp.md) |
 | [`formats`](../../../../src/visionset/formats/) | Exporter plugins, discovered by entry point. | [formats.md](formats.md) |
+| [`preprocessing`](../../../../src/visionset/preprocessing/) | Pre-processing drivers - the Pillow resize and augmentation engines behind the `PreprocessingDriver` port - discovered over the `visionset.preprocessing` entry-point group the way exporters are. | [formats.md](formats.md#the-sibling-group-preprocessing-drivers) |
 | [`wire`](../../../../src/visionset/wire/) | The JSON shapes the CLI and MCP publish. | [wire.md](wire.md) |
 | [`jobs`](../../../../src/visionset/jobs/) | Handlers for work that outlives a request. | [jobs.md](jobs.md) |
 | [`inference`](../../../../src/visionset/inference/) | Where a model connection becomes a running model, and which model families could run next. | [inference.md](inference.md) |
@@ -64,7 +71,7 @@ the graph above. They are run by `uv run lint-imports`, which
 
 | Contract | What it forbids |
 | --- | --- |
-| Kernel purity | `visionset.kernel` importing `server`, `cli`, `mcp`, `formats`, `wire`, `jobs`, `inference`, or `fastapi` / `typer` / `mcp` / `uvicorn` |
+| Kernel purity | `visionset.kernel` importing `server`, `cli`, `mcp`, `formats`, `wire`, `jobs`, `inference`, `preprocessing`, or `fastapi` / `typer` / `mcp` / `uvicorn` |
 | Delivery clients are siblings | `server`, `cli` and `mcp` importing each other |
 | Job handlers are below the surfaces | `visionset.jobs` importing any delivery package or web framework |
 | Inference adapters are below the surfaces | `visionset.inference` importing any delivery package, or `visionset.jobs` |

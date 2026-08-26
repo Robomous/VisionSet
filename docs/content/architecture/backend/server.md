@@ -39,7 +39,7 @@ invented at a call site.
 | Module | Holds |
 | --- | --- |
 | [`main.py`](../../../../src/visionset/server/main.py) | `create_app()`, the static bundle mount, the SPA deep-link fallback |
-| [`routes/`](../../../../src/visionset/server/routes/) | one module per resource - projects, schemas, sources, ingest, batches, jobs, annotations, assets, datasets, releases, formats, background jobs, inference |
+| [`routes/`](../../../../src/visionset/server/routes/) | one module per resource - projects, schemas, sources, ingest, batches, jobs, annotations, assets, datasets, releases, formats and export targets, preprocessing recipes, background jobs, inference |
 | [`models.py`](../../../../src/visionset/server/models.py) | the pydantic request and response models `openapi.json` is generated from |
 | [`errors.py`](../../../../src/visionset/server/errors.py) | `ERROR_RULES` - every domain error's status and code |
 | [`dependencies.py`](../../../../src/visionset/server/dependencies.py) | which workspace a request serves, and the bearer-token gate |

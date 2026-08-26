@@ -73,7 +73,8 @@ See `README.md` for the monorepo map and `CONTRIBUTING.md` for the full check li
 
 1. **Kernel purity** — `visionset.kernel` never imports a delivery package (`visionset.server`,
    `visionset.cli`, `visionset.mcp`), nor `visionset.formats`, `visionset.wire`,
-   `visionset.jobs`, `visionset.inference`, nor `fastapi`/`typer`/`mcp`/`uvicorn`. Enforced by
+   `visionset.jobs`, `visionset.inference`, `visionset.preprocessing`, nor
+   `fastapi`/`typer`/`mcp`/`uvicorn`. Enforced by
    four import-linter contracts in `pyproject.toml` plus a fresh-process test in
    `tests/architecture/`; the full contract list and its reasoning are in the
    `kernel-architecture` skill.

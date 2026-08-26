@@ -29,7 +29,11 @@ nothing was being distributed. This is the first version that is.
   and named `<hash>-aug<k>`; a recipe that augments refuses a release published without a split
   (`AUGMENTATION_REQUIRES_SPLIT`), and a step refuses a geometry it cannot move
   (`PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`). Workspace format version 17 adds the
-  `preprocessing_recipes` table.
+  `preprocessing_recipes` table. In the browser, **Pre-processing** is the Dataset section's
+  fourth view, between Assets and Releases: the project's recipes as a list, an editor whose
+  resize step is preselected from the chosen target's hints, and a preview of three sample
+  assets through the export's own path; the Export dialog gains a **Pre-processing recipe**
+  control, `None` by default.
 
 - **Export targets: a release is exported for the model it will train.** Part of the
   export-targets epic (#784). Every installed format declares the targets it writes for, and the
@@ -41,7 +45,10 @@ nothing was being distributed. This is the first version that is.
   its trainer has a task for - the drop is reported, consented through `allow_lossy`, and honoured
   in the output - and the compatibility report, the export result and the job payload all record
   `target` beside `format`. The target table in `docs/content/releases.md` is generated from the
-  catalog by `scripts/export_target_catalog.py`, behind a drift gate.
+  catalog by `scripts/export_target_catalog.py`, behind a drift gate. The browser's Export
+  dialog chooses a **Target model** rather than a format - the catalog grouped by family, each
+  option saying what the model accepts - and its lossy consent names the target and what the
+  release would lose to it.
 
 - **A schema version records which kind of work published it** (#368). New nullable
   `provenance` on `AnnotationSchema`: `curated` for a version somebody sat down and designed,
@@ -111,9 +118,15 @@ nothing was being distributed. This is the first version that is.
   `pydantic-settings` object. The default is **one** worker, and that is a property of the store
   rather than a cautious guess: SQLite has a single writer and a run writes progress as it goes.
 
+### Deprecated
+
+- **The `yolo` format name.** `ultralytics` is its name now; `yolo` is accepted as an alias for
+  this release only and is removed in the next. `visionset export --format yolo` prints a
+  deprecation line on stderr and continues, and the browser's export dialog never offers it.
+
 ### Changed
 
-- **`yolo` format renamed `ultralytics`; `yolo` accepted as an alias until the next release.**
+- **`yolo` format renamed `ultralytics`.**
   Part of the export-targets epic (#784). The dialect now derives its task from the release -
   segment when it holds a polygon, classify when it holds only classification tags, detect
   otherwise - and its `data.yaml` carries `path: .`, one key per fold present, and `names` as a

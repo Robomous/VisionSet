@@ -40,9 +40,11 @@ downward instead - which is the whole reason [`visionset.wire`](wire.md) is its 
 package rather than a `cli/_json.py`.
 
 Resolving a format name to an exporter plugin happens *here*, not in the kernel:
-`visionset.formats.registry.exporter(name)`, never a dict lookup, because a
-`KeyError` is outside the `VisionSetError` tree and would answer a typo with a
-traceback.
+`visionset.formats.registry.pick(installed, name)` for a format and the port's
+`resolve_target` for a target, never a dict lookup, because a `KeyError` is outside
+the `VisionSetError` tree and would answer a typo with a traceback. The
+pre-processing drivers an export applies are resolved the same way, through
+`visionset.preprocessing.registry`.
 
 ## Related
 

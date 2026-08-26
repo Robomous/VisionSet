@@ -143,7 +143,7 @@ row's metrics for nothing.
 to nothing else** — one declaration, and a consumer must not add a gap of its own. The
 primitive owns it because that is the direction nobody can forget. It knows two values: the
 segmented switch keeps Nova's 8px, and a `line` bar — navigation over a page's content, as on
-the dataset's three views or the project's strip below `lg` — takes the layout unit, 16px.
+the dataset's four views or the project's strip below `lg` — takes the layout unit, 16px.
 Asserted by measurement rather than by a class string.
 
 No panel repeats its own tab's name as a heading: the tab already labels the panel, so a
