@@ -69,6 +69,7 @@ import {
   checkListBlockingAssets,
   checkListDatasetAssetAnnotations,
   checkListDatasetAssets,
+  checkListExportTargets,
   checkListFormats,
   checkListProjectAssets,
   checkListProjects,
@@ -1790,6 +1791,7 @@ export type DatasetStats = components["schemas"]["DatasetStatsOut"];
 export type Release = components["schemas"]["ReleaseOut"];
 export type ReleaseVerification = components["schemas"]["ReleaseVerificationOut"];
 export type Format = components["schemas"]["FormatOut"];
+export type ExportTarget = components["schemas"]["ExportTargetOut"];
 export type SplitRecipe = components["schemas"]["SplitRecipeBody"];
 
 export const datasetKeys = {
@@ -1805,6 +1807,7 @@ export const datasetKeys = {
   releases: (datasetId: string) => ["datasets", datasetId, "releases"] as const,
   verification: (releaseId: string) => ["releases", releaseId, "verify"] as const,
   formats: () => ["formats"] as const,
+  exportTargets: () => ["export-targets"] as const,
 };
 
 /**
@@ -1970,6 +1973,21 @@ export function useFormats() {
 }
 
 /**
+ * The models a release can be exported for, each naming the installed format
+ * that writes for it. Derived from the same plugin set as `useFormats`, so it
+ * goes stale on the same clock.
+ */
+export function useExportTargets() {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: datasetKeys.exportTargets(),
+    queryFn: async () =>
+      unwrap(await client.GET("/export-targets", {}), checkListExportTargets),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
  * Cut a draft batch that corrects a completed one.
  *
  * **The forward-only model's one write.** A completed batch has no exit — the
@@ -2113,22 +2131,27 @@ export function useVerifyRelease(releaseId: string): UseQueryResult<ReleaseVerif
  * a contract, and this one guards emitting an *incomplete copy* of something that
  * stays intact.
  *
- * There is no pre-export validation endpoint, so the consent flow is the schema
- * editor's shape: attempt, read `LOSSY_EXPORT_NOT_CONSENTED` off the 409, ask, and
- * retry with the flag. `FormatOut.lossy` says which formats can produce it —
- * declared by the format, because a bbox-only format loses a polygon whether or
- * not today's dataset holds one.
+ * `GET /releases/{id}/export-compatibility` would answer the question up front,
+ * and nothing here calls it: the consent flow is attempt, read
+ * `LOSSY_EXPORT_NOT_CONSENTED` off the 409, ask, and retry with the flag — the
+ * 409 carries the same report the preview route would. `FormatOut.lossy` says
+ * which formats can produce it — declared by the format, because a bbox-only
+ * format loses a polygon whether or not today's dataset holds one.
+ *
+ * Addressed to a **target** — the model the release will train — never to a
+ * format: the route takes exactly one of the two, and a target is what the
+ * catalog offers a person.
  */
 export function useExportRelease(releaseId: string) {
   const client = useApiClient();
   return useMutation({
-    mutationFn: async (input: { format: string; allowLossy?: boolean }) =>
+    mutationFn: async (input: { target: string; allowLossy?: boolean }) =>
       unwrap(
         await client.POST("/releases/{release_id}/export", {
           params: {
             path: { release_id: releaseId },
             query: {
-              format: input.format,
+              target: input.target,
               ...(input.allowLossy === true ? { allow_lossy: true } : {}),
             },
           },

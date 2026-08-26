@@ -4,8 +4,8 @@
  * The claim worth the file is the **third gate word**. `confirm=` guards destroying
  * data, `allow_destructive=` guards narrowing a contract, and `allow_lossy=` guards
  * emitting an incomplete copy of something that stays intact — and the kernel is
- * emphatic that the three are never caught together. There is no pre-export
- * validation route, so the consent flow is attempt → read the 409 → ask → retry
+ * emphatic that the three are never caught together. The dialog does not call the
+ * compatibility route, so the consent flow is attempt → read the 409 → ask → retry
  * with the flag, and the test drives all four steps.
  */
 
@@ -24,6 +24,62 @@ const API = "http://visionset.test";
 // server serializes them every time, which is why the contract types them as always
 // present rather than optional.
 const FORMAT_REST = { geometries: [], modalities: [], degraded_geometries: [], targets: [] } as const;
+const HINTS = {
+  recommended_size: [640, 640],
+  recommended_strategy: "letterbox",
+  trainer_resizes: true,
+  augmentation_common: true,
+} as const;
+const NO_HINTS = {
+  recommended_size: null,
+  recommended_strategy: null,
+  trainer_resizes: true,
+  augmentation_common: false,
+} as const;
+
+/**
+ * A catalog with one target under each heading, and two under the first so the
+ * order within a group is visible. `dummy` carries no task vocabulary, so its
+ * second line has to come from its geometries — the other branch of the meta.
+ */
+const TARGETS = [
+  {
+    name: "dummy",
+    label: "dummy",
+    family: "other",
+    format: "dummy",
+    tasks: [],
+    geometries: ["bbox", "polygon"],
+    hints: NO_HINTS,
+  },
+  {
+    name: "yolo11",
+    label: "YOLO11",
+    family: "ultralytics-yolo",
+    format: "ultralytics",
+    tasks: ["detect", "segment", "classify", "pose", "obb"],
+    geometries: ["bbox", "polygon", "classification_tag"],
+    hints: HINTS,
+  },
+  {
+    name: "yolov10",
+    label: "YOLOv10",
+    family: "ultralytics-yolo",
+    format: "ultralytics",
+    tasks: ["detect"],
+    geometries: ["bbox"],
+    hints: HINTS,
+  },
+  {
+    name: "yolov7",
+    label: "YOLOv7",
+    family: "community-yolo",
+    format: "yolov5-yaml",
+    tasks: ["detect"],
+    geometries: ["bbox"],
+    hints: HINTS,
+  },
+];
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const DATASET = "22222222-2222-4222-8222-222222222222";
@@ -184,8 +240,16 @@ function baseline(): void {
   on("GET", /\/assets$/, { status: 200, body: { items: [ASSET_ROW], total: 1 } });
   on("GET", /\/formats$/, {
     status: 200,
-    body: { items: [{ name: "dummy", lossy: false, ...FORMAT_REST }, { name: "yolo", lossy: true, ...FORMAT_REST }], total: 2 },
+    body: {
+      items: [
+        { name: "dummy", lossy: false, ...FORMAT_REST, targets: ["dummy"] },
+        { name: "ultralytics", lossy: true, ...FORMAT_REST, targets: ["yolo11", "yolov10"] },
+        { name: "yolov5-yaml", lossy: true, ...FORMAT_REST, targets: ["yolov7"] },
+      ],
+      total: 3,
+    },
   });
+  on("GET", /\/export-targets$/, { status: 200, body: { items: TARGETS, total: TARGETS.length } });
 }
 
 describe("the dataset view", () => {
@@ -418,7 +482,48 @@ describe("downloading a manifest", () => {
 });
 
 describe("export, and the third gate word", () => {
-  it("exports cleanly without any consent when the format loses nothing", async () => {
+  it("groups the catalog by family and says what each target takes", async () => {
+    baseline();
+
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+    await userEvent.click(screen.getByTestId("export-target"));
+
+    const listbox = await screen.findByRole("listbox");
+    // The three headings, in the order a person training a model reads them.
+    const headings = within(listbox)
+      .getAllByRole("group")
+      .map((group) => group.textContent ?? "");
+    expect(headings[0]).toMatch(/^Ultralytics YOLO/);
+    expect(headings[1]).toMatch(/^Community YOLO/);
+    expect(headings[2]).toMatch(/^Other formats/);
+    // Each option's second line: the tasks a model accepts, or, for a format
+    // with no task vocabulary, the geometries it carries.
+    expect(screen.getByRole("option", { name: /YOLO11/ }).textContent).toContain(
+      "detect · segment · classify · pose · obb",
+    );
+    expect(screen.getByRole("option", { name: /dummy/ }).textContent).toContain("box · polygon");
+    // The retired alias is not a target and never appears.
+    expect(screen.queryByRole("option", { name: /^yolo$/ })).toBeNull();
+  });
+
+  it("says when lossiness could not be read, rather than leaving the hint out silently", async () => {
+    on("GET", /\/formats$/, { status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
+    baseline();
+
+    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /YOLOv10/ }));
+
+    const said = (await screen.findByTestId("lossy-unknown")).textContent ?? "";
+    expect(said).toContain("YOLOv10");
+    expect(screen.queryByTestId("lossy-hint")).toBeNull();
+    // The picker still stands: the catalog answered, only the lossiness did not.
+    expect(screen.getByTestId("export-submit")).toHaveProperty("disabled", false);
+  });
+
+  it("exports cleanly without any consent when the target loses nothing", async () => {
     baseline();
     handlers.push((request) =>
       request.method === "POST" && request.url.includes("/export")
@@ -428,13 +533,17 @@ describe("export, and the third gate word", () => {
 
     render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
-    await userEvent.click(screen.getByTestId("export-format"));
+    await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
     await userEvent.click(screen.getByTestId("export-submit"));
 
-    await waitFor(() => expect(sent.some((r) => r.url.includes("/export"))).toBe(true));
-    const request = sent.find((r) => r.url.includes("/export"));
-    expect(new URL(request?.url ?? "").searchParams.get("format")).toBe("dummy");
+    // `/export-targets` is a GET that also matches `/export`; the launch is the POST.
+    const launch = () => sent.find((r) => r.method === "POST" && r.url.includes("/export"));
+    await waitFor(() => expect(launch()).not.toBeUndefined());
+    const request = launch();
+    // The target, never the format: the route takes exactly one of the two.
+    expect(new URL(request?.url ?? "").searchParams.get("target")).toBe("dummy");
+    expect(new URL(request?.url ?? "").searchParams.get("format")).toBeNull();
     // Never sent unasked. `allow_lossy` is a gate word, not a default.
     expect(new URL(request?.url ?? "").searchParams.get("allow_lossy")).toBeNull();
   });
@@ -450,17 +559,18 @@ describe("export, and the third gate word", () => {
             status: 409,
             body: {
               code: "LOSSY_EXPORT_NOT_CONSENTED",
-              message: "yolo cannot express polygon annotations.",
+              message: "ultralytics cannot express polygon annotations for yolov10.",
               detail: {
                 compatibility: {
                   release_id: RELEASE,
-                  format: "yolo",
+                  format: "ultralytics",
+                  target: "yolov10",
                   compatible: false,
                   format_is_lossy: true,
-                  excluded_annotations: 0,
-                  excluded_assets: 0,
-                  degraded_annotations: 12,
-                  degraded_assets: 3,
+                  excluded_annotations: 1204,
+                  excluded_assets: 3,
+                  degraded_annotations: 0,
+                  degraded_assets: 0,
                   classes: [
                     {
                       label_class: "car",
@@ -473,10 +583,10 @@ describe("export, and the third gate word", () => {
                     {
                       label_class: "lane",
                       geometry: "polygon",
-                      status: "degraded",
-                      annotations: 12,
+                      status: "excluded",
+                      annotations: 1204,
                       assets: 3,
-                      reason: "yolo writes a polygon as its bounding box; the shape is lost",
+                      reason: "YOLOv10 accepts detect only; a polygon has no line to be written as",
                     },
                   ],
                 },
@@ -487,21 +597,25 @@ describe("export, and the third gate word", () => {
 
     render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
-    await userEvent.click(screen.getByTestId("export-format"));
-    await userEvent.click(await screen.findByRole("option", { name: /yolo/ }));
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /YOLOv10/ }));
     // The format declares it, so the warning is there before anything is attempted.
-    expect(screen.getByTestId("lossy-hint")).not.toBeNull();
+    expect(screen.getByTestId("lossy-hint").textContent).toContain("YOLOv10");
 
     await userEvent.click(screen.getByTestId("export-submit"));
 
     const consent = await screen.findByTestId("lossy-consent");
-    expect(consent.textContent).toContain("cannot express every shape");
+    // The sentence names the target, what it accepts, and how much of this
+    // release it would drop — summed from the report, not from the message.
+    expect(consent.textContent).toContain("YOLOv10 accepts boxes only");
+    // The thousands separator is the locale's, so any one of them is accepted.
+    expect(consent.textContent).toMatch(/1[,.\s]?204 polygons would be dropped\./);
     expect(consent.textContent).not.toContain("LOSSY_EXPORT_NOT_CONSENTED");
     // What is being consented to, from the refusal's own report: the classes the
-    // format loses, each with how much, and not the ones it keeps.
+    // target loses, each with how much, and not the ones it keeps.
     const lost = within(consent).getByTestId("lossy-classes");
-    expect(lost.textContent).toContain("lane: 12 annotations across 3 assets.");
-    expect(lost.textContent).toContain("the shape is lost");
+    expect(lost.textContent).toContain("lane: 1,204 annotations across 3 assets.");
+    expect(lost.textContent).toContain("no line to be written as");
     expect(lost.textContent).not.toContain("car");
     // Shut until the box is ticked — the gate is the consent, not the click.
     expect(screen.getByTestId("export-submit")).toHaveProperty("disabled", true);
@@ -568,7 +682,7 @@ describe("export, and the third gate word", () => {
 
     render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
-    await userEvent.click(screen.getByTestId("export-format"));
+    await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
     await userEvent.click(screen.getByTestId("export-submit"));
 
@@ -624,13 +738,13 @@ describe("export, and the third gate word", () => {
 });
 
 /**
- * The two ways the format list arrives with nothing in it.
+ * The two ways the target catalog arrives with nothing in it.
  *
  * They are different facts and the dialog owes a different sentence to each. A
- * failed `GET /formats` is a request that never got an answer; a successful
- * `{items: [], total: 0}` is an answer, and it says this server has no exporter
- * plugins installed. Falling both through the same `?? []` gives a
- * combobox with an empty popover and no message anywhere — the swallowed-refusal
+ * failed `GET /export-targets` is a request that never got an answer; a
+ * successful `{items: [], total: 0}` is an answer, and it says this server has
+ * no exporter plugins installed. Falling both through the same `?? []` gives a
+ * picker with an empty popover and no message anywhere — the swallowed-refusal
  * pattern `ui-capabilities` bans, and the visible signature of an install whose
  * exporters are not discoverable.
  *
@@ -638,15 +752,15 @@ describe("export, and the third gate word", () => {
  * and not the other one's. A single test proving "something appears" would pass
  * against a component that answered both with the same alert.
  */
-describe("a format list with nothing in it", () => {
+describe("a target catalog with nothing in it", () => {
   /** The first matching handler wins, so a failing one must be registered first. */
-  function formatsFail(answer: Answer): void {
-    on("GET", /\/formats$/, answer);
+  function targetsFail(answer: Answer): void {
+    on("GET", /\/export-targets$/, answer);
     baseline();
   }
 
-  it("says a failed formats request failed, in the shared vocabulary (#440)", async () => {
-    formatsFail({
+  it("says a failed catalog request failed, in the shared vocabulary (#440)", async () => {
+    targetsFail({
       status: 503,
       body: { code: "WORKSPACE_BUSY", message: "Another writer holds the workspace." },
     });
@@ -654,7 +768,7 @@ describe("a format list with nothing in it", () => {
     render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
 
-    const said = (await screen.findByTestId("export-formats-error")).textContent ?? "";
+    const said = (await screen.findByTestId("export-targets-error")).textContent ?? "";
     // The product's sentence for the code, not the kernel's identifier.
     expect(said).toContain("workspace is busy");
     expect(said).not.toContain("WORKSPACE_BUSY");
@@ -662,61 +776,59 @@ describe("a format list with nothing in it", () => {
     expect(screen.getByTestId("export-submit")).toHaveProperty("disabled", true);
   });
 
-  it("does not leave a silently empty combobox where the failure is (#440)", async () => {
-    formatsFail({ status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
+  it("does not leave a silently empty picker where the failure is (#440)", async () => {
+    targetsFail({ status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
 
     render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
-    await screen.findByTestId("export-formats-error");
+    await screen.findByTestId("export-targets-error");
 
     // A control offering nothing, beside a message saying why there is nothing,
     // is the same unanswerable question over again.
-    expect(screen.queryByTestId("export-format")).toBeNull();
+    expect(screen.queryByTestId("export-target")).toBeNull();
   });
 
   it("offers the request again, and asking again asks the server (#440)", async () => {
-    formatsFail({ status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
+    targetsFail({ status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
 
     render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
-    const failed = await screen.findByTestId("export-formats-error");
+    const failed = await screen.findByTestId("export-targets-error");
 
-    const before = sent.filter((r) => new URL(r.url).pathname.endsWith("/formats")).length;
+    const asked = () =>
+      sent.filter((r) => new URL(r.url).pathname.endsWith("/export-targets")).length;
+    const before = asked();
     await userEvent.click(within(failed).getByRole("button", { name: /try again/i }));
 
-    await waitFor(() =>
-      expect(
-        sent.filter((r) => new URL(r.url).pathname.endsWith("/formats")).length,
-      ).toBeGreaterThan(before),
-    );
+    await waitFor(() => expect(asked()).toBeGreaterThan(before));
   });
 
   it("calls an empty install an empty install, not a failure (#440)", async () => {
-    on("GET", /\/formats$/, { status: 200, body: { items: [], total: 0 } });
+    on("GET", /\/export-targets$/, { status: 200, body: { items: [], total: 0 } });
     baseline();
 
     render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
 
-    const said = (await screen.findByTestId("export-formats-empty")).textContent ?? "";
+    const said = (await screen.findByTestId("export-targets-empty")).textContent ?? "";
     // An invitation, not an apology — and it names what would fix it.
     expect(said).toContain("exporter");
     // The other state's rendering is absent. This is the half that a single
     // shared "nothing here" alert would fail.
-    expect(screen.queryByTestId("export-formats-error")).toBeNull();
-    expect(screen.queryByTestId("export-format")).toBeNull();
+    expect(screen.queryByTestId("export-targets-error")).toBeNull();
+    expect(screen.queryByTestId("export-target")).toBeNull();
   });
 
-  it("still lists the formats when there are formats (#440)", async () => {
+  it("still lists the targets when there are targets (#440)", async () => {
     baseline();
 
     render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
     await userEvent.click(await screen.findByTestId("export-v1"));
 
-    // The success path keeps its combobox and neither of the two explanations.
-    expect(await screen.findByTestId("export-format")).not.toBeNull();
-    expect(screen.queryByTestId("export-formats-error")).toBeNull();
-    expect(screen.queryByTestId("export-formats-empty")).toBeNull();
+    // The success path keeps its picker and neither of the two explanations.
+    expect(await screen.findByTestId("export-target")).not.toBeNull();
+    expect(screen.queryByTestId("export-targets-error")).toBeNull();
+    expect(screen.queryByTestId("export-targets-empty")).toBeNull();
   });
 });
 
