@@ -2239,6 +2239,40 @@ describe("the schema editor's two panels", () => {
     expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(2);
     expect(screen.queryByTestId("class-name-1")).not.toBeNull();
   });
+
+  it("removes a class that was never named without asking the server", async () => {
+    withClasses(CLASSES);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-list");
+    await userEvent.click(screen.getByTestId("add-class"));
+    const before = sent.filter((request) => request.url.endsWith("/schema/preview")).length;
+
+    await userEvent.click(screen.getByTestId("remove-class-2"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(2),
+    );
+    expect(sent.filter((request) => request.url.endsWith("/schema/preview"))).toHaveLength(before);
+    expect(screen.queryByTestId("schema-preview-error")).toBeNull();
+  });
+
+  it("leaves an unnamed class out of the removal preview it cannot be part of", async () => {
+    withClasses(CLASSES);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-list");
+    await userEvent.click(screen.getByTestId("add-class"));
+
+    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
+    await userEvent.click(screen.getByTestId("remove-class-1"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(2),
+    );
+    const request = sent.find((sentRequest) => sentRequest.url.endsWith("/schema/preview"));
+    if (request === undefined) throw new Error("Expected a schema preview request");
+    expect(JSON.parse(bodies.get(request) ?? "")).toEqual({ classes: [CLASSES[0]] });
+    expect(screen.queryByTestId("schema-preview-error")).toBeNull();
+  });
 });
 
 describe("the project view's sections", () => {
