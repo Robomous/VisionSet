@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from tests.mcp._flow import BBOX, call, error, ingested, open_batch, payload, tool_schemas
+from tests.mcp.test_batch_tools import _connection, _predicting
 
 
 def _add(job_id: str, asset_id: str) -> dict[str, Any]:
@@ -83,6 +84,35 @@ def test_a_job_names_the_batch_and_the_schema_its_work_is_judged_against(
     assert job["batch_state"] == "in_annotation"
     assert job["schema_version"] == 1
     assert job["progress"]["unannotated"] == 2
+
+
+def test_pre_labeling_a_job_blocks_and_returns_what_it_wrote(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, _batch_id, job_id = open_batch(monkeypatch, tmp_path, count=3)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+
+    out = payload(call("pre_label_job", job_id=job_id, connection=connection_id))
+
+    assert out["job_id"] == job_id
+    assert out["assets_labeled"] == 3
+    assert "plan" in out
+
+
+def test_pre_labeling_a_completed_job_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=1)
+    asset_id = payload(call("list_batch_assets", batch_id=batch_id))["items"][0]["id"]
+    payload(call("set_asset_progress", job_id=job_id, asset_id=asset_id, progress="skipped"))
+    payload(call("complete_job", job_id=job_id))
+    connection_id = _connection()
+    _predicting(monkeypatch)
+
+    refused = error(call("pre_label_job", job_id=job_id, connection=connection_id))
+
+    assert "does not re-open" in refused["message"]
 
 
 def test_next_pending_returns_only_unannotated_assets_and_shrinks_as_you_work(

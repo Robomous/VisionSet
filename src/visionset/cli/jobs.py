@@ -1,8 +1,9 @@
 # usage: from visionset.cli.jobs import job_app
 """``visionset job`` — the annotator's unit of work, driven from a shell.
 
-Six commands, each one service call: ``list``, ``next``, ``progress``, ``start``,
-``mark``, ``complete``.
+Seven commands: ``list``, ``next``, ``progress``, ``start``, ``mark``,
+``complete``, and ``pre-label``, which invokes shared inference inline because a
+terminal has no dispatcher — ``batch pre-label``'s pattern, one job down.
 
 ``next`` and ``mark`` are what make "the full cycle without touching Python"
 true: a batch cannot be completed until every asset has settled, and nothing else
@@ -23,6 +24,7 @@ previous command's stdout.
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Annotated, Final
 from uuid import UUID
 
@@ -31,8 +33,11 @@ import typer
 from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
+from visionset.cli.batches import GeometryOption, announce_plan, selected_geometries
+from visionset.cli.inference import ConnectionArgument, _resolve
+from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, pre_label
 from visionset.kernel.domain import AssetProgress
-from visionset.kernel.services import BatchService, JobService
+from visionset.kernel.services import BatchService, InferenceConnectionService, JobService
 
 job_app = typer.Typer(help="Drive annotation jobs.", no_args_is_help=True)
 
@@ -63,8 +68,18 @@ def job_list(
         # need the batch open, so ``allowed_actions`` cannot be answered without it.
         found = batches.get(batch)
         jobs = batches.jobs(batch)
+        runs = JobService(service).pre_label_runs()
     if json_out:
-        document(wire.page([wire.job(j, batch_id=found.id, batch_state=found.state) for j in jobs]))
+        document(
+            wire.page(
+                [
+                    wire.job(
+                        j, batch_id=found.id, batch_state=found.state, pre_labeled=runs.get(j.id)
+                    )
+                    for j in jobs
+                ]
+            )
+        )
         return
     table(
         _COLUMNS,
@@ -141,8 +156,9 @@ def job_start(
         service_jobs = JobService(service)
         started = service_jobs.start(job)
         batch = service_jobs.batch(started.id)
+        run = service_jobs.latest_pre_label_run(started.id)
     if json_out:
-        document(wire.job(started, batch_id=batch.id, batch_state=batch.state))
+        document(wire.job(started, batch_id=batch.id, batch_state=batch.state, pre_labeled=run))
         return
     note(f"Job {started.id} is now {started.state.value}.")
     typer.echo(str(started.id))
@@ -189,8 +205,64 @@ def job_complete(
         service_jobs = JobService(service)
         completed = service_jobs.complete(job)
         batch = service_jobs.batch(completed.id)
+        run = service_jobs.latest_pre_label_run(completed.id)
     if json_out:
-        document(wire.job(completed, batch_id=batch.id, batch_state=batch.state))
+        document(wire.job(completed, batch_id=batch.id, batch_state=batch.state, pre_labeled=run))
         return
     note(f"Job {completed.id} is now {completed.state.value}.")
     typer.echo(str(completed.id))
+
+
+@job_app.command("pre-label")
+def job_pre_label(
+    job: JobArgument,
+    connection: ConnectionArgument,
+    minimum_confidence: Annotated[
+        float,
+        typer.Option(
+            "--minimum-confidence",
+            min=0.0,
+            max=1.0,
+            help="The floor a prediction must clear to be written, in [0, 1].",
+        ),
+    ] = DEFAULT_MINIMUM_CONFIDENCE,
+    replace_model_labels: Annotated[
+        bool,
+        typer.Option(
+            "--replace-model-labels",
+            help="Also rewrite the model labels on frames still pre-labeled (nobody has "
+            "touched them). Cannot be undone.",
+        ),
+    ] = False,
+    geometry: GeometryOption = None,
+    json_out: JsonOption = False,
+    workspace: WorkspaceOption = None,
+) -> None:
+    """Ask a model to label every untouched asset in one job of an open batch.
+
+    Blocks because a terminal has no dispatcher to claim an enqueued run.
+    """
+    with opened_workspace(workspace) as service:
+        outcome = pre_label(
+            service,
+            job_id=job,
+            connection_id=_resolve(InferenceConnectionService(service), connection),
+            minimum_confidence=minimum_confidence,
+            replace_model_labels=replace_model_labels,
+            geometries=selected_geometries(geometry),
+            on_plan=announce_plan,
+            on_progress=lambda done, total: note(f"Pre-labeling {done}/{total} asset(s)."),
+        )
+    if json_out:
+        document({"job_id": str(job), **asdict(outcome)})
+        return
+    replaced = (
+        f", replaced {outcome.annotations_replaced} earlier model label(s)"
+        if outcome.annotations_replaced
+        else ""
+    )
+    note(
+        f"Pre-labeled {outcome.assets_labeled} asset(s), "
+        f"wrote {outcome.annotations_written} annotation(s){replaced}."
+    )
+    typer.echo(str(outcome.annotations_written))

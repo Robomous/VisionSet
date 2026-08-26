@@ -403,9 +403,10 @@ def test_pre_label_json_emits_the_complete_outcome(
 ) -> None:
     _, batch = started_batch(root, tmp_path)
 
-    outcome = payload(root, "batch", "pre-label", batch, _connection(root))
+    body = payload(root, "batch", "pre-label", batch, _connection(root))
 
-    assert outcome == {
+    assert body["items"][0] == {
+        "job_id": jobs_of(root, batch)[0],
         "assets_considered": 6,
         "assets_labeled": 6,
         "annotations_written": 6,
@@ -416,6 +417,51 @@ def test_pre_label_json_emits_the_complete_outcome(
         "regions_discarded": 0,
         "regions_out_of_bounds": 0,
     }
+
+
+def test_batch_pre_label_json_reports_one_item_per_job(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    _, batch = started_batch(root, tmp_path)
+    job = jobs_of(root, batch)[0]
+
+    body = payload(root, "batch", "pre-label", batch, _connection(root))
+
+    assert [item["job_id"] for item in body["items"]] == [job]
+    assert body["annotations_written"] == body["items"][0]["annotations_written"]
+
+
+def test_batch_pre_label_runs_a_job_at_a_time_across_two_jobs(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    _, batch = started_batch(root, tmp_path, jobs_of=3)
+    jobs = jobs_of(root, batch)
+
+    body = payload(root, "batch", "pre-label", batch, _connection(root))
+
+    assert [item["job_id"] for item in body["items"]] == jobs
+    assert [item["annotations_written"] for item in body["items"]] == [3, 3]
+    assert body["annotations_written"] == 6
+
+
+def test_batch_pre_label_with_no_open_job_notes_it_and_echoes_zero(
+    root: Path, tmp_path: Path
+) -> None:
+    # Every job closed but the batch itself still ``in_annotation`` — reachable
+    # because ``batch complete`` is a separate, deliberate step.
+    _, batch = started_batch(root, tmp_path)
+    for job in jobs_of(root, batch):
+        ok(root, "job", "start", job)
+        for line in ok(root, "job", "next", job, "-n", "100").splitlines()[1:]:
+            ok(root, "job", "mark", job, line.split()[0], "--progress", "annotated")
+        ok(root, "job", "complete", job)
+    connection = _connection(root)
+
+    result = run(root, "batch", "pre-label", batch, connection)
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == "0\n"
+    assert "No open job to pre-label." in result.stderr
 
 
 def test_pre_label_replace_model_labels_rewrites_the_first_runs_frames(
@@ -430,8 +476,8 @@ def test_pre_label_replace_model_labels_rewrites_the_first_runs_frames(
     assert result.exit_code == 0, result.output
     assert result.stdout == "6\n"
     assert "replaced 6 earlier model label(s)" in result.stderr
-    outcome = payload(root, "batch", "pre-label", batch, connection, "--replace-model-labels")
-    assert outcome["annotations_replaced"] == 6
+    body = payload(root, "batch", "pre-label", batch, connection, "--replace-model-labels")
+    assert body["items"][0]["annotations_replaced"] == 6
 
 
 def test_batch_pre_label_help_lists_the_replace_option() -> None:
@@ -496,10 +542,10 @@ def test_pre_label_without_geometry_writes_every_shape_the_model_produces(
 ) -> None:
     batch = _both_shapes_batch(root, tmp_path)
 
-    outcome = payload(root, "batch", "pre-label", batch, _connection(root))
+    body = payload(root, "batch", "pre-label", batch, _connection(root))
 
-    assert outcome["annotations_written"] == 12
-    assert outcome["regions_discarded"] == 0
+    assert body["items"][0]["annotations_written"] == 12
+    assert body["items"][0]["regions_discarded"] == 0
 
 
 def test_pre_label_geometry_json_counts_the_discarded_shape(
@@ -507,10 +553,10 @@ def test_pre_label_geometry_json_counts_the_discarded_shape(
 ) -> None:
     batch = _both_shapes_batch(root, tmp_path)
 
-    outcome = payload(root, "batch", "pre-label", batch, _connection(root), "--geometry", "polygon")
+    body = payload(root, "batch", "pre-label", batch, _connection(root), "--geometry", "polygon")
 
-    assert outcome["annotations_written"] == 6
-    assert outcome["regions_discarded"] == 6
+    assert body["items"][0]["annotations_written"] == 6
+    assert body["items"][0]["regions_discarded"] == 6
 
 
 def test_pre_label_geometry_repeats(
@@ -518,7 +564,7 @@ def test_pre_label_geometry_repeats(
 ) -> None:
     batch = _both_shapes_batch(root, tmp_path)
 
-    outcome = payload(
+    body = payload(
         root,
         "batch",
         "pre-label",
@@ -530,8 +576,8 @@ def test_pre_label_geometry_repeats(
         "polygon",
     )
 
-    assert outcome["annotations_written"] == 12
-    assert outcome["regions_discarded"] == 0
+    assert body["items"][0]["annotations_written"] == 12
+    assert body["items"][0]["regions_discarded"] == 0
 
 
 def test_pre_label_geometry_outside_what_the_model_produces_exits_1(
@@ -648,8 +694,14 @@ def test_project_pre_label_runs_every_open_batch(
     assert result.stdout == "8\n"
     assert "Pre-labeling 'stills' 6/6 asset(s)." in result.stderr
     assert "Pre-labeling 'more' 2/2 asset(s)." in result.stderr
-    assert "Batch 'stills': pre-labeled 6 asset(s), wrote 6 annotation(s)." in result.stderr
-    assert "Batch 'more': pre-labeled 2 asset(s), wrote 2 annotation(s)." in result.stderr
+    assert (
+        f"Batch 'stills' job {jobs_of(root, first)[0]}: "
+        "pre-labeled 6 asset(s), wrote 6 annotation(s)." in result.stderr
+    )
+    assert (
+        f"Batch 'more' job {jobs_of(root, second)[0]}: "
+        "pre-labeled 2 asset(s), wrote 2 annotation(s)." in result.stderr
+    )
     assert "Pre-labeled 2 batch(es), wrote 8 annotation(s)." in result.stderr
     listed = {row["id"]: row for row in payload(root, "batch", "list", "-p", name)["items"]}
     assert listed[first]["progress"]["pre_labeled"] == 6
@@ -681,6 +733,10 @@ def test_project_pre_label_json_lists_one_outcome_per_batch(
 
     assert [item["batch_id"] for item in outcome["items"]] == [first, second]
     assert [item["batch_name"] for item in outcome["items"]] == ["stills", "more"]
+    assert [item["job_id"] for item in outcome["items"]] == [
+        jobs_of(root, first)[0],
+        jobs_of(root, second)[0],
+    ]
     assert [item["annotations_written"] for item in outcome["items"]] == [6, 2]
     assert outcome["annotations_written"] == 8
 

@@ -1,4 +1,4 @@
-"""``visionset job`` — the six commands that make the lifecycle drivable."""
+"""``visionset job`` — the seven commands that make the lifecycle drivable."""
 
 from __future__ import annotations
 
@@ -12,12 +12,16 @@ from tests.cli._flow import (
     ok,
     payload,
     run,
+    runner,
     started_batch,
     usage_error,
     workspace,
 )
+from tests.cli.test_batch_commands import _connection, _FakePool, _FakePredictor
 
-from visionset.kernel.domain import AssetProgress
+from visionset.cli.main import app
+from visionset.inference import prelabel as prelabel_module
+from visionset.kernel.domain import AssetProgress, GeometryType
 from visionset.kernel.services import WORKSPACE_ENV_VAR
 
 
@@ -30,6 +34,19 @@ def _no_ambient_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture()
 def root(tmp_path: Path) -> Path:
     return workspace(tmp_path)
+
+
+@pytest.fixture()
+def predicting(monkeypatch: pytest.MonkeyPatch) -> _FakePredictor:
+    """``test_batch_commands``'s fixture, redefined here: an imported fixture
+    shadowed by a same-named parameter reads as an unused import to ruff."""
+    predictor = _FakePredictor()
+    monkeypatch.setattr(
+        prelabel_module,
+        "resident",
+        lambda: _FakePool(predictor, produces=frozenset({GeometryType.BBOX})),
+    )
+    return predictor
 
 
 def _assets(root: Path, job: str) -> list[str]:
@@ -189,3 +206,55 @@ def test_completing_a_job_does_not_complete_its_batch(root: Path, tmp_path: Path
         ok(root, "job", "mark", job, asset, "--progress", "annotated")
     ok(root, "job", "complete", job)
     assert payload(root, "batch", "list", "-p", name)["items"][0]["state"] == "in_annotation"
+
+
+# --- pre-label ---------------------------------------------------------------
+
+
+def test_job_pre_label_writes_the_named_jobs_untouched_assets(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    _, batch = started_batch(root, tmp_path, jobs_of=3)
+    job, other = jobs_of(root, batch)
+    connection = _connection(root)
+
+    result = run(root, "job", "pre-label", job, connection)
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == "3\n"
+    assert "Pre-labeling 1/3 asset(s)." in result.stderr
+    assert "Pre-labeled 3 asset(s), wrote 3 annotation(s)." in result.stderr
+    assert payload(root, "job", "progress", job)["pre_labeled"] == 3
+    assert payload(root, "job", "progress", other)["pre_labeled"] == 0
+
+
+def test_job_pre_label_json_emits_the_job_id(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    _, batch = started_batch(root, tmp_path)
+    job = jobs_of(root, batch)[0]
+
+    outcome = payload(root, "job", "pre-label", job, _connection(root))
+
+    assert outcome["job_id"] == job
+    assert outcome["annotations_written"] == 6
+
+
+def test_job_pre_label_refuses_a_completed_job(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    _, batch = started_batch(root, tmp_path)
+    job = jobs_of(root, batch)[0]
+    ok(root, "job", "start", job)
+    for asset in _assets(root, job):
+        ok(root, "job", "mark", job, asset, "--progress", "annotated")
+    ok(root, "job", "complete", job)
+
+    result = run(root, "job", "pre-label", job, _connection(root))
+
+    assert result.exit_code == 1, result.output
+    assert result.stdout == ""
+
+
+def test_job_help_lists_pre_label() -> None:
+    assert "pre-label" in runner.invoke(app, ["job", "--help"]).stdout

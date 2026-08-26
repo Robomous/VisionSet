@@ -101,6 +101,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (batches.get_pre_label_plan, READS),
     (batches.pre_label_batch, WRITES),
     (batches.pre_label_project, WRITES),
+    (jobs.pre_label_job, WRITES),
     (batches.repin_batch, WRITES),
     (batches.list_batch_assets, READS),
     (batches.create_batch, WRITES),
