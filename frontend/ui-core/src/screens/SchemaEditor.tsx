@@ -112,7 +112,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
+} from "../primitives/dialog";
 import { Input } from "../primitives/input";
 import { Label } from "../primitives/label";
 import { ClassFields, swatchOf } from "../patterns/ClassFields";

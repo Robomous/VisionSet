@@ -45,7 +45,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
+} from "../primitives/dialog";
 import { FieldError } from "../primitives/field";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../primitives/Menu";
 import { useDeleteBatch, type Batch } from "./queries";

@@ -28,7 +28,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
+} from "../primitives/dialog";
 import { Label } from "../primitives/label";
 import { FieldError } from "../primitives/field";
 import {

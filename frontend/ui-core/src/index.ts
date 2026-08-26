@@ -71,24 +71,7 @@ export {
 export { Combobox, type ComboboxFooter, type ComboboxProps } from "./primitives/Combobox.js";
 export { Badge, badgeVariants } from "./primitives/badge.js";
 export { Alert, AlertAction, AlertDescription, AlertTitle } from "./primitives/alert.js";
-export {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogOverlay,
-  DialogPortal,
-  DialogTitle,
-  DialogTrigger,
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-  SheetTrigger,
-  type SheetContentProps,
-} from "./primitives/Dialog.js";
+export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "./primitives/dialog.js";
 export { Tabs, TabsContent, TabsList, tabsListVariants, TabsTrigger } from "./primitives/tabs.js";
 export {
   Select,

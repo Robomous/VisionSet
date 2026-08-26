@@ -21,7 +21,7 @@ import { Alert, AlertDescription, AlertTitle } from "./alert";
 import { Badge } from "./badge";
 import { Button } from "./button";
 import { Card, CardTitle } from "./card";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./Dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./dialog";
 import { Progress } from "./Feedback";
 import { FieldError } from "./field";
 import { Input } from "./input";

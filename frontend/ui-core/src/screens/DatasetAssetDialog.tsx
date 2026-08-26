@@ -49,7 +49,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
+} from "../primitives/dialog";
 import { useActiveSchema, useDatasetAssetAnnotations, type DatasetAsset } from "./queries";
 
 export interface DatasetAssetDialogProps {
