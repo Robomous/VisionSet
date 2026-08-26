@@ -113,13 +113,25 @@ function assetRow(id: string) {
   };
 }
 
+/** One rendering, carrying one placed box so the overlay has something to draw. */
 function previewRow(assetId: string, variant: number) {
   return {
     asset_id: assetId,
     variant,
     width: 512,
     height: 384,
-    annotations: [],
+    annotations: [
+      {
+        id: variant === 0 ? "box-1" : `box-1-aug${variant}`,
+        label_class: "car",
+        schema_version: 1,
+        geometry: { type: "bbox", x: 10, y: 20, width: 100, height: 50 },
+        attributes: {},
+        provenance: "human",
+        model_ref: null,
+        confidence: null,
+      },
+    ],
     image_base64: "aGVsbG8=",
     media_type: "image/png",
   };
@@ -540,8 +552,13 @@ describe("the preview", () => {
     expect(specs).toContainEqual({ variant: 0, steps: ["resize"] });
     expect(specs).toContainEqual({ variant: 1, steps: ["resize", "augment", "augment"] });
     expect(previews.some((r) => bodyOf(r)["asset_id"] === ASSET_D)).toBe(false);
-    const image = screen.getByTestId("preview-0-original").querySelector("img");
+    const original = screen.getByTestId("preview-0-original");
+    const image = original.querySelector("img");
     expect(image?.getAttribute("src")).toBe("data:image/png;base64,aGVsbG8=");
+    // The placed label, drawn by the static overlay in the rendering's own frame.
+    expect(within(original).getByTestId("preview-overlay").getAttribute("viewBox")).toBe("0 0 512 384");
+    expect(within(original).getByTestId("preview-shape-box-1")).not.toBeNull();
+    expect(within(screen.getByTestId("preview-0-augment")).getByTestId("preview-shape-box-1-aug1")).not.toBeNull();
     expect(screen.getByTestId("recipe-step-preview").getAttribute("data-state")).toBe("complete");
   });
 

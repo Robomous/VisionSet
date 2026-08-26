@@ -274,10 +274,12 @@ three assets when no release has one. Three columns: the asset as it is, after t
 step alone, and the first augmented variant; a stage the recipe does not have says so
 (*No resize step*) rather than repeating the original. Each cell is one request keyed on
 the spec it renders, and the spec settles for 400 ms before a cell asks, so typing `640`
-does not pay for `6` and `64`. The cell shows the rendered image and nothing over it; the
-response carries the placed annotations for the static overlay pattern to paint when it
-lands. A refused rendering — `UNSUPPORTED_MEDIA` for an asset that is not a JPEG, PNG or
-WebP — is prose in the cell.
+does not pay for `6` and `64`. The cell is the member dialog's own picture-with-labels
+mechanism (`patterns/StaticAnnotationOverlay.tsx`): the rendered image, and the response's
+placed annotations drawn over it in the rendering's own pixel frame with the schema's class
+colours — a box after a letterbox sits where the export writes it. A rendering without a
+size shows the picture alone. A refused rendering — `UNSUPPORTED_MEDIA` for an asset that is
+not a JPEG, PNG or WebP — is prose in the cell.
 
 Save is a create for a new draft and a whole-replace `PUT` at the recipe's current name for
 an open one; Discard puts the stored spec back; `PREPROCESSING_RECIPE_NAME_TAKEN` and every
