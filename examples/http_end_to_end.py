@@ -40,6 +40,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from dataclasses import dataclass
 from email.message import Message
 from hashlib import sha256
@@ -98,6 +99,8 @@ class Summary:
     manifest_bytes: int
     verified: bool
     export_bytes: int
+    recipe_hash: str
+    augmented_label: str
     content_hash_matched: bool
     unauthorized_code: str
 
@@ -485,6 +488,52 @@ def _walk(client: Client, base_url: str, downloads: Path) -> Summary:
     (downloads / "release.zip").write_bytes(archive)
     _say(f"export settled after {export_polls} polls: {len(archive)} bytes of zip to {downloads}")
 
+    # (9b) Export it again for a model, through a pre-processing recipe. A
+    # recipe is a project resource, named on the export, and the export keeps
+    # the spec by value: the report inside the archive carries it under its
+    # hash. Augmentation runs on the train fold only, which is why the release
+    # above was published with a split.
+    recipe = client.json(
+        "POST",
+        f"/projects/{project}/preprocessing-recipes",
+        201,
+        json_body={
+            "name": "yolo-640",
+            "spec": {
+                "target": "yolo11",
+                "steps": [
+                    {"kind": "resize", "strategy": "letterbox", "width": 640, "height": 640},
+                    {"kind": "augment", "op": "hflip"},
+                ],
+                "variants_per_asset": 1,
+            },
+        },
+    )
+    assert recipe["name"] == "yolo-640", recipe
+    # The format `yolo11` resolves to declares itself lossy, so the first launch
+    # is the consent question — answered on the request, before any job exists
+    # — and the retry is the identical call plus `allow_lossy`.
+    addressed = f"/releases/{release['id']}/export?target=yolo11&recipe=yolo-640"
+    refused_export = client.json("POST", addressed, 409)
+    assert refused_export["code"] == "LOSSY_EXPORT_NOT_CONSENTED", refused_export
+    _, _, launched_recipe = client.request("POST", f"{addressed}&allow_lossy=true", 202)
+    recipe_job = json.loads(launched_recipe)["id"]
+    settled_recipe, _ = _poll_job(client, recipe_job)
+    assert settled_recipe["result"]["target"] == "yolo11", settled_recipe
+    _, _, yolo_archive = client.request("GET", f"/background-jobs/{recipe_job}/artifact", 200)
+    (downloads / "release-yolo11.zip").write_bytes(yolo_archive)
+    with zipfile.ZipFile(BytesIO(yolo_archive)) as opened:
+        report = json.loads(opened.read("visionset-export-report.json"))
+        names = opened.namelist()
+    recipe_hash = report["preprocessing"]["recipe_hash"]
+    assert recipe_hash == settled_recipe["result"]["recipe_hash"], report["preprocessing"]
+    assert report["preprocessing"]["spec"] == recipe["spec"], report["preprocessing"]
+    augmented_label = next(
+        name for name in names if name.startswith("labels/train/") and name.endswith("-aug1.txt")
+    )
+    assert augmented_label.replace("labels/", "images/", 1).removesuffix(".txt") + ".png" in names
+    _say(f"exported for yolo11 under recipe {recipe_hash[:12]}…: {augmented_label} written")
+
     # (10) And reach the pixels. A gallery renders these directly, so the media
     # type has to be right and the bytes have to be the originals — asserted by
     # hashing what came back against the hash the asset listing reported.
@@ -522,6 +571,8 @@ def _walk(client: Client, base_url: str, downloads: Path) -> Summary:
         manifest_bytes=len(manifest),
         verified=verified,
         export_bytes=len(archive),
+        recipe_hash=recipe_hash,
+        augmented_label=augmented_label,
         content_hash_matched=content_matched,
         unauthorized_code=refused["code"],
     )

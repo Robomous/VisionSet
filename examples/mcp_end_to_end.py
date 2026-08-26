@@ -39,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import json
 import shutil
 import sys
 from dataclasses import dataclass
@@ -102,6 +103,9 @@ class Summary:
     verified: bool
     formats: tuple[str, ...]
     export_directory: str
+    recipe_hash: str
+    augmented_files: int
+    augmented_label: str
     republish_retry_with: Any
 
 
@@ -370,6 +374,56 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
         assert Path(exported["directory"]).is_dir(), exported
         _say(f"release {TAG} verified {verified}, exported to {exported['directory']}")
 
+        # (7b) Once more for a model, through a pre-processing recipe. The
+        # recipe is a project resource named on the export; the export keeps
+        # the spec by value, and the result says what it produced. `yolo11`
+        # resolves to a format that declares itself lossy, so the launch
+        # carries `allow_lossy` — `check_export` would say the same first.
+        recipe = ok(
+            await tool(
+                "create_preprocessing_recipe",
+                project=PROJECT,
+                name="yolo-640",
+                spec={
+                    "target": "yolo11",
+                    "steps": [
+                        {"kind": "resize", "strategy": "letterbox", "width": 640, "height": 640},
+                        {"kind": "augment", "op": "hflip"},
+                    ],
+                    "variants_per_asset": 1,
+                },
+            )
+        )
+        listed_recipes = ok(await tool("list_preprocessing_recipes", project=PROJECT))
+        assert [row["name"] for row in listed_recipes["items"]] == ["yolo-640"], listed_recipes
+        with_recipe = ok(
+            await tool(
+                "export_release",
+                project=PROJECT,
+                tag=TAG,
+                target="yolo11",
+                recipe="yolo-640",
+                allow_lossy=True,
+                dest=str(export / "yolo11"),
+            )
+        )
+        preprocessing = with_recipe["preprocessing"]
+        assert preprocessing["recipe_name"] == "yolo-640", preprocessing
+        assert preprocessing["spec"] == recipe["spec"], preprocessing
+        recipe_hash = preprocessing["recipe_hash"]
+        # One train-fold image under this split, so one variant beside it,
+        # named for its source and traced back to it in the mapping.
+        assert with_recipe["augmented_file_count"] == 1, with_recipe
+        variant = next(row for row in preprocessing["mapping"] if row["variant"] == 1)
+        assert variant["file"] == f"images/train/{variant['source_content_hash']}-aug1.png", variant
+        augmented_label = f"labels/train/{variant['source_content_hash']}-aug1.txt"
+        yolo_dir = Path(with_recipe["directory"])
+        assert (yolo_dir / variant["file"]).is_file(), variant
+        assert (yolo_dir / augmented_label).is_file(), augmented_label
+        report = json.loads((yolo_dir / "visionset-export-report.json").read_text(encoding="utf-8"))
+        assert report["preprocessing"]["recipe_hash"] == recipe_hash, report["preprocessing"]
+        _say(f"exported for yolo11 under recipe {recipe_hash[:12]}…: {augmented_label} written")
+
         # (8) And the walk ends on a refusal it also asserts. A release is
         # immutable, so the tag cannot be reused — and the envelope carries
         # `retry_with` rather than a code, because "which flag would make this
@@ -398,6 +452,9 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
             verified=verified,
             formats=formats,
             export_directory=exported["directory"],
+            recipe_hash=recipe_hash,
+            augmented_files=with_recipe["augmented_file_count"],
+            augmented_label=augmented_label,
             republish_retry_with=reused["retry_with"],
         )
 
