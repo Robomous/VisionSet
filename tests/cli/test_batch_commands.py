@@ -303,6 +303,135 @@ def test_complete_closes_a_finished_batch(root: Path, tmp_path: Path) -> None:
     assert payload(root, "batch", "list", "-p", name)["items"][0]["state"] == "completed"
 
 
+# --- approve --start ---------------------------------------------------------
+
+
+def _state(root: Path, name: str, batch: str) -> str:
+    listed = {row["id"]: row for row in payload(root, "batch", "list", "-p", name)["items"]}
+    return str(listed[batch]["state"])
+
+
+def test_approve_start_opens_the_batch_and_reports_both_steps(root: Path, tmp_path: Path) -> None:
+    name, batch = ingested_batch(root, tmp_path)
+
+    result = run(root, "batch", "approve", batch, "--start")
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == f"{batch}\n"
+    assert "Approved batch 'stills' against schema version 1, in 1 job(s)." in result.stderr
+    assert f"Batch {batch} is now in_annotation." in result.stderr
+    assert _state(root, name, batch) == "in_annotation"
+
+
+def test_approve_start_json_prints_the_started_batch(root: Path, tmp_path: Path) -> None:
+    _, batch = ingested_batch(root, tmp_path)
+    document = payload(root, "batch", "approve", batch, "--jobs-of", "3", "--start")
+    assert document["id"] == batch
+    assert document["state"] == "in_annotation"
+    assert document["schema_version"] == 1
+    assert len(jobs_of(root, batch)) == 2
+
+
+def test_approve_start_without_a_schema_refuses_and_leaves_a_draft(
+    root: Path, tmp_path: Path
+) -> None:
+    """The refusal is approve's own: nothing has moved, and the output says so."""
+    project(root, "bare")
+    batch = ok(root, "ingest", str(stills(tmp_path)), "--project", "bare")
+
+    result = run(root, "batch", "approve", batch, "--start")
+
+    assert result.exit_code == 1, result.output
+    assert result.stdout == ""
+    assert "Error:" in result.stderr
+    assert "in_annotation" not in result.stderr
+    assert _state(root, "bare", batch) == "draft"
+
+
+# --- complete --promote ------------------------------------------------------
+
+
+def _finish_jobs(root: Path, batch: str) -> None:
+    """Every asset of every job marked ``annotated`` and every job closed."""
+    for job in jobs_of(root, batch):
+        ok(root, "job", "start", job)
+        for line in ok(root, "job", "next", job, "-n", "100").splitlines()[1:]:
+            ok(root, "job", "mark", job, line.split()[0], "--progress", "annotated")
+        ok(root, "job", "complete", job)
+
+
+def test_complete_promote_closes_the_batch_and_fills_the_trunk(root: Path, tmp_path: Path) -> None:
+    name, batch = started_batch(root, tmp_path)
+    _finish_jobs(root, batch)
+
+    result = run(root, "batch", "complete", batch, "--promote")
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == f"{batch}\n"
+    assert f"Batch {batch} is now completed." in result.stderr
+    assert "Promoted 6 asset(s) into the dataset." in result.stderr
+    assert _trunk_size(root, name) == 6
+
+
+def test_complete_promote_json_carries_the_batch_and_the_promoted_page(
+    root: Path, tmp_path: Path
+) -> None:
+    _, batch = started_batch(root, tmp_path)
+    _finish_jobs(root, batch)
+
+    document = payload(root, "batch", "complete", batch, "--promote")
+
+    assert document["batch"]["id"] == batch
+    assert document["batch"]["state"] == "completed"
+    assert document["batch"]["promoted_asset_count"] == 6
+    assert document["promoted"]["total"] == 6
+    assert len(document["promoted"]["items"]) == 6
+
+
+def test_complete_promote_over_assets_already_in_the_trunk_promotes_nothing(
+    root: Path, tmp_path: Path
+) -> None:
+    """Promotion has no refusal of its own once `complete` has succeeded — `start`
+    needs only `approved` and `promote` only `completed` — so the outcome left to
+    pin is the idempotent one: a second batch over assets the trunk already
+    holds closes, and the promote step reports zero rather than failing."""
+    name, first = completed_batch(root, tmp_path)
+    ok(root, "batch", "promote", first)
+    second = ok(
+        root, "ingest", str(tmp_path / "incoming"), "--project", name, "--batch-name", "again"
+    )
+    ok(root, "batch", "approve", second, "--start")
+    _finish_jobs(root, second)
+
+    result = run(root, "batch", "complete", second, "--promote")
+
+    assert result.exit_code == 0, result.output
+    assert f"Batch {second} is now completed." in result.stderr
+    assert "Promoted 0 asset(s) into the dataset." in result.stderr
+    assert payload(root, "batch", "promote", second) == {"items": [], "total": 0}
+    assert _trunk_size(root, name) == 6
+
+
+def test_complete_promote_with_an_outstanding_job_refuses_and_promotes_nothing(
+    root: Path, tmp_path: Path
+) -> None:
+    name, batch = started_batch(root, tmp_path)
+
+    result = run(root, "batch", "complete", batch, "--promote")
+
+    assert result.exit_code == 1, result.output
+    assert result.stdout == ""
+    assert "Error:" in result.stderr
+    assert _trunk_size(root, name) == 0
+
+
+def test_batch_help_lists_the_composed_flags() -> None:
+    approve = runner.invoke(app, ["batch", "approve", "--help"], env=RENDERING, color=True)
+    complete = runner.invoke(app, ["batch", "complete", "--help"], env=RENDERING, color=True)
+    assert "--start" in plain(approve.output)
+    assert "--promote" in plain(complete.output)
+
+
 # --- pre-label ---------------------------------------------------------------
 
 

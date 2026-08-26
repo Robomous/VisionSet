@@ -114,6 +114,52 @@ def test_ingesting_the_same_folder_twice_creates_no_new_assets(root: Path, tmp_p
     assert _sources(root) == [SourceKind.IMAGE_DIRECTORY]
 
 
+# --- --start: ingest, approve, start, in one line ----------------------------
+
+
+def _state(root: Path, name: str, batch: str) -> str:
+    listed = {row["id"]: row for row in payload(root, "batch", "list", "-p", name)["items"]}
+    return str(listed[batch]["state"])
+
+
+def test_start_opens_the_batch_it_filled_and_reports_every_step(root: Path, tmp_path: Path) -> None:
+    result = run(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--start")
+
+    assert result.exit_code == 0, result.output
+    batch = result.stdout.strip()
+    assert "\n" not in batch
+    assert "Ingested 6 new and 0 already-known assets" in result.stderr
+    assert "Approved batch 'incoming' against schema version 1, in 1 job(s)." in result.stderr
+    assert f"Batch {batch} is now in_annotation." in result.stderr
+    assert _state(root, "road-signs", batch) == "in_annotation"
+
+
+def test_start_json_prints_the_started_batch(root: Path, tmp_path: Path) -> None:
+    document = payload(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--start")
+    assert document["state"] == "in_annotation"
+    assert document["schema_version"] == 1
+    assert document["asset_count"] == 6
+    assert _state(root, "road-signs", document["id"]) == "in_annotation"
+
+
+def test_start_without_a_schema_names_the_step_that_refused_and_the_draft_it_left(
+    root: Path, tmp_path: Path
+) -> None:
+    """The ingest has already committed when approve refuses, so the batch exists
+    and the output has to say so — the refusal's sentence alone would leave a
+    reader guessing whether anything was written."""
+    ok(root, "project", "create", "bare")
+
+    result = run(root, "ingest", str(stills(tmp_path)), "-p", "bare", "--start")
+
+    assert result.exit_code == 1, result.output
+    assert result.stdout == ""
+    assert "Error:" in result.stderr
+    listed = payload(root, "batch", "list", "-p", "bare")["items"]
+    assert [b["state"] for b in listed] == ["draft"]
+    assert f"The approve step refused; batch {listed[0]['id']} is draft." in result.stderr
+
+
 # --- refusals Click has to make ----------------------------------------------
 
 
