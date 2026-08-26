@@ -1345,3 +1345,33 @@ class PreprocessingStepUnsupportedGeometry(VisionSetError):
             self.geometry = geometry
         if asset_id is not None:
             self.asset_id = asset_id
+
+
+class PreprocessingDriverNotFound(VisionSetError):
+    """No installed driver applies steps of that kind.
+
+    ``ExportFormatNotFound``'s shape for the pre-processing registry, which
+    lives in ``visionset.preprocessing`` for the same reason the format
+    registry lives outside the kernel: the kernel takes driver *instances* and
+    may not scan entry points itself. The class lives here anyway, with every
+    other refusal, so that no surface invents a second error shape for it.
+
+    Unlike a format, a step kind is not something a caller can mistype — the
+    recipe grammar admits only the kinds this distribution ships drivers for —
+    so reaching this means the installation is missing a plugin it was built
+    with. What is wrong is the machine, on ``MediaToolUnavailable``'s terms,
+    and the message names the kind and lists the drivers that are installed.
+    """
+
+    installed: tuple[str, ...] | None = None
+    """Every step kind an installed driver applies, sorted.
+
+    A class attribute with a ``None`` default and not a constructor parameter,
+    as ``ExportTargetNotFound.installed`` is, so this error stays constructible
+    from one message. The registry sets it as a keyword.
+    """
+
+    def __init__(self, message: str, *, installed: tuple[str, ...] | None = None) -> None:
+        super().__init__(message)
+        if installed is not None:
+            self.installed = installed

@@ -568,7 +568,7 @@ sentence. The real message and traceback go to the server log under the same id 
 greps one string, and a response body never becomes a channel for filesystem paths, SQL text, or
 a stack trace.
 
-Eight errors opt out and expose their real message, each because that message *is* the remedy:
+Nine errors opt out and expose their real message, each because that message *is* the remedy:
 
 | Code | Why the message is published |
 | --- | --- |
@@ -580,6 +580,7 @@ Eight errors opt out and expose their real message, each because that message *i
 | `INFERENCE_CONNECTION_NOT_RUNNABLE` | Says which of the two things nothing installed here can run - a recorded driver that is not installed, or a model family (declared by the config, or by the endpoint) no installed driver serves - and lists what is installed instead. A fact about the installation rather than about the request, and one that changes when a driver is installed. |
 | `INFERENCE_OUT_OF_MEMORY` | Names which memory ran out - the device's or the machine's - and the ways off it, which are not the same ways: a full device can be answered by moving the connection to the CPU, and a full machine is only made worse by it. No generic sentence can carry that. |
 | `INFERENCE_ENDPOINT_UNAVAILABLE` | Names the endpoint an `http` connection points at and what it did - unreachable, timed out, a bad status, or a body outside the contract - which is the whole remedy: look at the endpoint, not at this connection or this machine. |
+| `PREPROCESSING_DRIVER_NOT_FOUND` | Names the recipe step kind no installed driver applies and lists the kinds that are installed. A fact about the installation rather than about the request: the recipe grammar admits only the kinds this distribution ships drivers for, so reaching it means a plugin the build was made with is missing. |
 
 A **mapped** 5xx keeps its own code (`WORKSPACE_CORRUPT`, `CONSTRAINT_VIOLATED`). An exception no
 rule covers - a bug - gets `INTERNAL_ERROR`. That difference is how the two are told apart in a
@@ -614,7 +615,7 @@ argument for branching on `code`.
 | **422** | `VALIDATION_ERROR` · `ASSET_NOT_IN_BATCH` · `ANNOTATION_NOT_FROM_MODEL` · `INVALID_NAME` · `INFERENCE_CONNECTION_INVALID` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` · `DUPLICATE_CLASSIFICATION_TAG` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `UNKNOWN_JOB_TYPE` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` · `UNSUPPORTED_PROMPT` · `PROMPT_POINT_OUT_OF_BOUNDS` · `GEOMETRY_NOT_PRODUCED` |
 | **502** | `INFERENCE_ENDPOINT_UNAVAILABLE` |
 | **503** | `WORKSPACE_BUSY` |
-| **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `MEDIA_TOOL_UNAVAILABLE` · `LOCAL_INFERENCE_UNAVAILABLE` · `INFERENCE_CONNECTION_NOT_RUNNABLE` · `INFERENCE_OUT_OF_MEMORY` · `EXPORT_TARGET_CONFLICT` · `INVALID_EXPORT_TARGET` · `INTERNAL_ERROR` |
+| **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `MEDIA_TOOL_UNAVAILABLE` · `LOCAL_INFERENCE_UNAVAILABLE` · `INFERENCE_CONNECTION_NOT_RUNNABLE` · `INFERENCE_OUT_OF_MEMORY` · `EXPORT_TARGET_CONFLICT` · `INVALID_EXPORT_TARGET` · `PREPROCESSING_DRIVER_NOT_FOUND` · `INTERNAL_ERROR` |
 
 Every row but `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED` and
 `INTERNAL_ERROR` — the five the framework and the auth guard raise — comes from `ERROR_RULES`
