@@ -163,6 +163,19 @@ beforeEach(() => {
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
+  // Canonical `TooltipProvider` defaults `delayDuration` to 0, so the tool strip
+  // this test opens mounts its tooltips immediately. Nova's `TooltipContent`
+  // renders a Radix `Arrow`, and the popper measures it through
+  // `@radix-ui/react-use-size`, which reaches for `ResizeObserver`
+  // unconditionally on mount. jsdom has none. See `toolPalette.test.tsx`.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    },
+  );
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
 

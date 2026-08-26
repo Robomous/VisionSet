@@ -1014,6 +1014,21 @@ function ingestPercent(job: IngestJob): number {
   return Math.round((job.processed / Math.max(job.total, 1)) * 100);
 }
 
+/** Bound once, so `value` and the `aria-valuenow` canonical `Progress` drops never disagree. */
+function IngestProgress({ job }: { readonly job: IngestJob }): JSX.Element {
+  const percent = ingestPercent(job);
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-xs text-muted-foreground" data-testid="run-progress">
+        {job.total === null || job.total === undefined
+          ? `${job.processed} extracted`
+          : `${job.processed} of ${job.total}`}
+      </p>
+      <Progress aria-label="Ingest progress" value={percent} {...progressAria(percent)} />
+    </div>
+  );
+}
+
 function RunCard({
   job,
   onOpenBatch,
@@ -1034,18 +1049,7 @@ function RunCard({
           <p className="text-sm text-muted-foreground">Starting…</p>
         ) : (
           <>
-            <div className="flex flex-col gap-1">
-              <p className="text-xs text-muted-foreground" data-testid="run-progress">
-                {job.total === null || job.total === undefined
-                  ? `${job.processed} extracted`
-                  : `${job.processed} of ${job.total}`}
-              </p>
-              <Progress
-                aria-label="Ingest progress"
-                value={ingestPercent(job)}
-                {...progressAria(ingestPercent(job))}
-              />
-            </div>
+            <IngestProgress job={job} />
 
             {job.error !== null && job.error !== undefined && (
               <Alert variant="destructive" data-testid="run-error">
