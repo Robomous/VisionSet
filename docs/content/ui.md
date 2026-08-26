@@ -907,6 +907,34 @@ it means typing tuples of UUIDs. Its `kind` is always sent explicitly - a
 discriminated union's tag emitted by default reads as optional in the schema while
 pydantic needs it in the dict to pick a variant.
 
+#### Two steps as one
+
+Two pairs of lifecycle steps are offered as one control, on the screens where a person
+takes them together. **Approve and start** takes a draft through `approved` to
+`in_annotation`, cut into one job - the common batch; a batch that needs splitting still
+goes through *Approve*, whose dialog is where a partition is chosen. It sits on a draft's
+row in the batch table, secondary like every row action, and on the ingest run card once
+a run settles, where it is the card's one filled control and *Open batch* steps down
+beside it. **Complete and promote** closes the batch and moves its work into the trunk;
+it sits in the gallery header beside *Complete*, withheld the same way while any frame is
+still to do, and says what the press moved in the same sentence *Promote* uses.
+
+Neither is a new transition. Each control sends the two requests a person could send one
+at a time, in order, and stops where the kernel stops it: a refusal on the second step
+leaves the batch where the first step put it, and the control says so - the first step's
+outcome as a line (*Approved against v3*, *Completed, finishing 1 job*), the second
+step's refusal beneath it in the shared vocabulary, never in its place. The line stays
+once the batch's own declaration has moved on, because it is the only thing on the
+screen that explains the state the batch is now in.
+
+*Approve and start* is offered only while the project has an active schema. Approval pins
+one, and `allowed_actions` cannot say whether there is one to pin: that is a fact about
+the project rather than a state of the batch, so the surface reads the schema itself.
+Without one, a draft's row keeps its existing controls and the run card says in words
+what approving needs, with the way to the schema section beside it, and keeps *Open
+batch* filled. Only a schema that does not exist counts as none - any other failure of
+that read says nothing about the project, and the card offers what it always did.
+
 #### Deleting a batch, behind `⋯` and at two anchors
 
 The one control on either of these screens that ends a batch rather than moving it

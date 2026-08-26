@@ -404,6 +404,16 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // Walking back through the project to find the batch instead would be a suite
     // finding it by another road, which cannot notice that the screen offers none.
     await expect(page.getByTestId("run-outcome")).toContainText("cycle-batch");
+    // The project declared a schema before this ingest, so the card's filled
+    // control is the composed step — approve as one job and open for work —
+    // and *Open batch* steps down beside it. The walk keeps to the two-step
+    // road below, which is the one that exercises the partition dialog.
+    await expect(page.getByTestId("approve-start-cycle-batch")).toHaveAttribute(
+      "data-variant",
+      "primary",
+    );
+    await expect(page.getByTestId("open-batch")).toHaveAttribute("data-variant", "secondary");
+    await expect(page.getByTestId("approve-needs-schema")).toHaveCount(0);
     await page.getByTestId("open-batch").click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/batches\/[0-9a-f-]+$/);
   });
@@ -471,6 +481,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await openProject(page, PROJECT, "batches");
     await expect(page.getByTestId("batches-table")).toBeVisible();
     await expect(page.getByTestId("batch-cycle-batch")).toContainText("pending approval");
+    // A draft row offers the composed step too, secondary like every row action.
+    await expect(page.getByTestId("approve-start-cycle-batch")).toHaveAttribute(
+      "data-variant",
+      "secondary",
+    );
 
     await page.getByTestId("approve-cycle-batch").click();
     await page.getByTestId("approve-submit").click();
@@ -495,6 +510,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // choose from — the job sits flat under the header, and the batch bar is
     // the page's one bar.
     await expect(page.getByTestId("start-annotating")).toHaveCount(0);
+    // The composed closing move sits beside Complete and is withheld the same
+    // way while every frame is still to do.
+    await expect(page.getByTestId("complete-promote-cycle-batch")).toBeDisabled();
     await expect(page.getByTestId("job-panels")).toHaveCount(0);
     await expect(page.getByTestId(/^job-header-/)).toHaveCount(0);
     const workspace = page.getByTestId("job-workspace");

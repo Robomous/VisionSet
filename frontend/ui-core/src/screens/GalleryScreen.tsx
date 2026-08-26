@@ -29,6 +29,7 @@ import {
   CompleteBatchButton,
   StartAnnotatingButton,
 } from "./BatchLifecycle";
+import { CompleteAndPromoteButton } from "./ComposedTransitions";
 import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
 import { BatchOverflowMenu } from "./DeleteBatch";
 import { DensityControl, Toolbar } from "./GalleryControls";
@@ -445,6 +446,14 @@ function BatchHeader({
           )}
           {batch !== undefined && batch.state === "in_annotation" && (
             <CompleteBatchButton batch={batch} className="flex flex-col items-end gap-1" />
+          )}
+          {batch !== undefined && (
+            <CompleteAndPromoteButton
+              batch={batch}
+              projectId={projectId}
+              className="flex flex-col items-end gap-1"
+              {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
+            />
           )}
           {/*
             The overflow, and it holds exactly one thing. Rename, re-sample
