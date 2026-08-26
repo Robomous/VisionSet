@@ -148,6 +148,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "InferenceConnectionNotRunnable": (500, "INFERENCE_CONNECTION_NOT_RUNNABLE"),
     "ExportTargetConflict": (500, "EXPORT_TARGET_CONFLICT"),
     "InvalidExportTarget": (500, "INVALID_EXPORT_TARGET"),
+    "PreprocessingDriverNotFound": (500, "PREPROCESSING_DRIVER_NOT_FOUND"),
 }
 
 # A code outlives the class name it was derived from. Rename a class and its
@@ -240,6 +241,9 @@ def test_message_exposure_is_opt_in_and_only_for_5xx() -> None:
         # neighbours: the message names the endpoint and what it did, which is
         # the whole remedy.
         "InferenceEndpointUnavailable",
+        # INFERENCE_CONNECTION_NOT_RUNNABLE's shape for pre-processing: a step
+        # kind no installed driver applies, listing the drivers that are.
+        "PreprocessingDriverNotFound",
     }
     assert all(rule.status >= 500 for rule in ERROR_RULES.values() if rule.expose_message)
 

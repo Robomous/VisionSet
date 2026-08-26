@@ -105,6 +105,7 @@ from visionset.kernel import (
     MissingRequiredAttribute,
     NoSplitRecipe,
     NotAWorkspace,
+    PreprocessingDriverNotFound,
     PreprocessingStepUnsupportedGeometry,
     ProjectNameTaken,
     ProjectNotFound,
@@ -485,6 +486,15 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # exporter never writes — which is nothing a caller can fix. No route
     # raises it yet; mapped for BATCH_IMMUTABLE's reason.
     InvalidExportTarget: ErrorRule(500, "INVALID_EXPORT_TARGET"),
+    # A recipe step kind with no installed driver. The grammar admits only the
+    # kinds this distribution ships drivers for, so a caller cannot reach this
+    # by naming something wrong — the installation is missing a plugin it was
+    # built with. MEDIA_TOOL_UNAVAILABLE's status and its exposed message, which
+    # lists what is installed. No route raises it yet; mapped for
+    # BATCH_IMMUTABLE's reason.
+    PreprocessingDriverNotFound: ErrorRule(
+        500, "PREPROCESSING_DRIVER_NOT_FOUND", expose_message=True
+    ),
 }
 
 ERROR_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {

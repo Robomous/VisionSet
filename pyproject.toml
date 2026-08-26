@@ -136,6 +136,13 @@ openlane-2d = "visionset.formats.lanes:OpenLane2dExporter"
 # Inference driver discovery. A third-party distribution registers its own
 # provider in this same group, and pins the VisionSet it was built for in its
 # ordinary `dependencies` — discovery reads that pin and skips a mismatch.
+# The pixel side of a pre-processing recipe, one driver per step kind. Discovered
+# the way exporters are, so a distribution can register a driver for a kind the
+# built-ins do not apply.
+[project.entry-points."visionset.preprocessing"]
+pillow-resize = "visionset.preprocessing.pillow:PillowResizeDriver"
+pillow-augment = "visionset.preprocessing.pillow:PillowAugmentDriver"
+
 [project.entry-points."visionset.providers"]
 sam = "visionset.inference.sam_provider:SamProvider"
 grounding-dino = "visionset.inference.transformers_provider:GroundingDinoProvider"
@@ -257,6 +264,10 @@ forbidden_modules = [
     # implementation. The kernel knows the configuration and the protocol; what
     # runs is on the other side of this line.
     "visionset.inference",
+    # The pre-processing driver registry and the Pillow drivers behind the
+    # `PreprocessingDriver` port. Same direction as `visionset.formats`: the kernel
+    # takes driver instances, and discovery stays on the other side of the line.
+    "visionset.preprocessing",
     "fastapi",
     "typer",
     "mcp",
