@@ -506,15 +506,21 @@ otherwise loop, which is the shape `SchemaChangeWouldOrphan` already argues for.
 
 ```bash
 visionset batch list --project road-signs
-visionset batch approve "$BATCH" --jobs-of 100
+visionset batch approve "$BATCH" --jobs-of 100 [--start]
 visionset batch start "$BATCH"
 visionset batch pre-label "$BATCH" CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE ...]
-visionset batch complete "$BATCH"
+visionset batch complete "$BATCH" [--promote]
 visionset batch promote "$BATCH"
 ```
 
 Each is one service call, and the listing carries the progress counts because a batch's name and
-state do not say whether anybody has started on it.
+state do not say whether anybody has started on it. `--start` and `--promote` are the next
+command made in the same run - `approve` then `start`, `complete` then `promote` - and
+`ingest --start` is `approve` (one job) then `start` on the batch it filled. No transition is
+added for them: `start` needs only `approved` and `promote` only `completed`, so the second call
+is legal whenever the first succeeded, and each commits on its own. A refused second step
+leaves the first step's state in place and the output names it. The MCP tools carry the same
+pair as `start` and `promote` parameters, reported back as `started` and `promoted`.
 
 **`--jobs-of N` is `BySize`; with no flag the batch becomes one job.** There is no flag for
 `BySegments`, and that is a decision rather than an omission: its own contract is that the caller
