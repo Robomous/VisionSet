@@ -21,6 +21,7 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from visionset.kernel.domain.schema import GeometryType
+from visionset.kernel.domain.vocabulary import OpenVocabulary
 
 TARGET_NAME_PATTERN: Final = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 """What a target may be called: a lowercase slug, as typed in a URL or a flag.
@@ -30,8 +31,13 @@ never a display string. The label field is where capitals and spaces belong.
 """
 
 
-class Task(StrEnum):
-    """A trainer-side task an export target accepts."""
+class Task(OpenVocabulary):
+    """A trainer-side task an export target accepts.
+
+    Open on the wire because it travels only as a target's task list, which a
+    client renders member by member: a trainer gaining a task must not cost an
+    older client the whole catalog.
+    """
 
     DETECT = "detect"
     SEGMENT = "segment"

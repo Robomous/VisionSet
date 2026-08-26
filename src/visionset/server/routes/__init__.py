@@ -64,6 +64,7 @@ ROUTERS: Final[tuple[APIRouter, ...]] = (
     releases.project_router,
     releases.router,
     formats.router,
+    formats.targets_router,
     # Outside the pipeline order too, and for its own reason: a connection is not
     # a stage of the data's life but a piece of this workspace's configuration,
     # which the pipeline reads rather than produces.

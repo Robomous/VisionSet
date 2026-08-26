@@ -13,6 +13,18 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Export targets: a release is exported for the model it will train.** Part of the
+  export-targets epic (#784). Every installed format declares the targets it writes for, and the
+  catalog is served on every surface: `GET /export-targets`, `visionset target list` and the
+  `list_export_targets` tool, with `FormatOut.targets` naming each format's own. `POST
+  /releases/{id}/export` and `GET /releases/{id}/export-compatibility` take `target` beside
+  `format`, exactly one of the two; `visionset export --target` and the `target` parameter of
+  `export_release` and `check_export` do the same. A target narrows its format to the geometries
+  its trainer has a task for - the drop is reported, consented through `allow_lossy`, and honoured
+  in the output - and the compatibility report, the export result and the job payload all record
+  `target` beside `format`. The target table in `docs/content/releases.md` is generated from the
+  catalog by `scripts/export_target_catalog.py`, behind a drift gate.
+
 - **A schema version records which kind of work published it** (#368). New nullable
   `provenance` on `AnnotationSchema`: `curated` for a version somebody sat down and designed,
   `annotation` for one that fell out of adding a class part-way through labeling. It gates

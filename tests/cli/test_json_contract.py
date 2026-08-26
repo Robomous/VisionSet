@@ -61,6 +61,7 @@ from tests.fixtures.samples import (
 
 from visionset import wire
 from visionset.formats._dummy import DummyExporter
+from visionset.formats.ultralytics import UltralyticsExporter
 from visionset.inference import PreLabelExcludedClass, PreLabelExclusionReason, PreLabelPlan
 from visionset.kernel.domain import (
     AnnotationSummary,
@@ -181,6 +182,23 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
         models.ReleaseVerificationOut,
     ),
     ("export_format", wire.export_format(DummyExporter()), models.FormatOut),
+    (
+        "export_target",
+        wire.export_target(next(iter(DummyExporter().targets)), DummyExporter()),
+        models.ExportTargetOut,
+    ),
+    # Both halves of the hints: the self-target's, where nothing is recommended,
+    # and a trainer's, where a size and a strategy are.
+    (
+        "preprocessing_hints_empty",
+        wire.preprocessing_hints(next(iter(DummyExporter().targets)).hints),
+        models.PreprocessingHintsOut,
+    ),
+    (
+        "preprocessing_hints_populated",
+        wire.preprocessing_hints(next(iter(UltralyticsExporter().targets)).hints),
+        models.PreprocessingHintsOut,
+    ),
     # The compatibility report is published by all three surfaces, so it is gated like every
     # other shared shape — and the on-disk copy is checked against the wire
     # projection in `tests/kernel/test_release_service.py`, which closes the loop.

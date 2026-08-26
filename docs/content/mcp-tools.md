@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-53 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+54 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -59,8 +59,9 @@ error envelope, and the three gate words.
 | `list_releases` | `project` | List a project's releases, newest last, with everything each one publishes. |
 | `verify_release` | `project`, `tag` | Re-read and re-hash everything a release names, and report what is wrong. |
 | `list_formats` | — | List the export formats installed in this VisionSet, and whether each is lossy. |
-| `check_export` | `project`, `tag`, `format` | Say what a format would drop from a release, without writing anything. |
-| `export_release` | `project`, `tag`, `format`, `dest`, `allow_lossy`? | Write a release to a local directory in one of the installed formats. |
+| `list_export_targets` | — | List the models a release can be exported for, each with the format that writes for it. |
+| `check_export` | `project`, `tag`, `target`?, `format`? | Say what a target or a format would drop from a release, without writing anything. |
+| `export_release` | `project`, `tag`, `dest`, `target`?, `format`?, `allow_lossy`? | Write a release to a local directory, for a target or in one of the installed formats. |
 | `list_inference_connections` | — | List this workspace's model connections, oldest first. |
 | `model_download_size` | `model_id`, `model_revision` | How big fetching that model's weights would be. Nothing is downloaded. |
 | `create_inference_connection` | `name`, `connection_type`, `model_id`, `model_revision`, `device`?, `precision`?, `endpoint_url`?, `provider_id`?, `credential_env`? | Configure a connection. Nothing is downloaded and nothing is contacted. |

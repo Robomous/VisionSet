@@ -66,6 +66,7 @@ SHIPPED = {
     "verify_release",
     "check_export",
     "export_release",
+    "list_export_targets",
     "list_formats",
     "list_inference_connections",
     "model_download_size",

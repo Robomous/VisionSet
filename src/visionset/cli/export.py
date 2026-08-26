@@ -1,13 +1,19 @@
 # usage: from visionset.cli.export import export
-"""``visionset export`` — a release, an installed format, a directory.
+"""``visionset export`` — a release, a target or an installed format, a directory.
 
 The kernel takes a plugin instance; it does not find one. ``ReleaseService.export``
 is handed an ``Exporter``, because import-linter forbids ``visionset.kernel``
 importing ``visionset.formats`` — a plugin registry is discovery at runtime, and
 the kernel is the part that must not do any. So resolving a *name* to a plugin is
 the surface's job, and this module does it the one supported way:
-``formats.registry.exporter(name)``, never a dict lookup, because a ``KeyError``
-is outside the ``VisionSetError`` tree and would answer a typo with a traceback.
+``registry.pick`` for a format and ``resolve_target`` for a target, never a dict
+lookup, because a ``KeyError`` is outside the ``VisionSetError`` tree and would
+answer a typo with a traceback.
+
+**``--target`` and ``--format`` are one choice, not two flags.** A target is the
+model the release will train and resolves to the format that writes for it; a
+format addresses no trainer. Giving both, or neither, is a usage error at exit
+2, because the mistake is on the command line and nothing has been opened yet.
 
 **``--allow-lossy`` is a third gate word, never folded into ``--yes``.** ``--yes``
 guards destroying data and ``--allow-destructive`` guards narrowing a contract;
@@ -50,8 +56,9 @@ from visionset.cli._errors import EXIT_ANSWER_IS_NO
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption, resolve_release
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.formats.registry import exporter
-from visionset.kernel.domain import ExportCompatibility
+from visionset.formats import registry
+from visionset.kernel.domain import ExportCompatibility, ExportTarget
+from visionset.kernel.ports import Exporter, resolve_target
 from visionset.kernel.services import EXPORT_REPORT_FILENAME, ReleaseService
 
 
@@ -62,8 +69,21 @@ def export(
     # of the module. Typer takes the flag's spelling from the option, not the
     # parameter, so ``--format`` is unaffected.
     format_name: Annotated[
-        str, typer.Option("--format", "-f", help="An installed exporter's name.")
-    ],
+        str | None,
+        typer.Option(
+            "--format",
+            "-f",
+            help="An installed format's name. `visionset format list` says which.",
+        ),
+    ] = None,
+    target: Annotated[
+        str | None,
+        typer.Option(
+            "--target",
+            "-t",
+            help="The model to train, resolved to its format. `visionset target list` says which.",
+        ),
+    ] = None,
     out: Annotated[
         Path | None,
         typer.Option(
@@ -90,9 +110,11 @@ def export(
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
-    """Write a release out in an installed format.
+    """Write a release out for a target, or in an installed format.
 
-    `visionset format list` says which formats are installed. A name that is not
+    Exactly one of `--target` and `--format`. `visionset target list` says which
+    models can be trained on what this installation writes, and
+    `visionset format list` which formats are installed; a name that is not
     among them is refused with the list, at exit 1.
 
     With `--check` nothing is written: it prints the per-class compatibility
@@ -105,15 +127,19 @@ def export(
     # is in the command line rather than in the workspace.
     if not check and out is None:
         raise typer.BadParameter("Required unless --check is given.", param_hint="--out")
+    if (target is None) == (format_name is None):
+        raise typer.BadParameter(
+            "Give exactly one of --target and --format.", param_hint="--target / --format"
+        )
 
     with opened_workspace(workspace) as service:
-        # Inside the block on purpose: ``ExportFormatNotFound`` is a
-        # ``VisionSetError`` naming every installed format, and ``opened_workspace``
-        # is what turns it into one sentence and exit 1.
-        plugin = exporter(format_name)
+        # Inside the block on purpose: ``ExportFormatNotFound`` and
+        # ``ExportTargetNotFound`` are ``VisionSetError``s naming every installed
+        # name, and ``opened_workspace`` is what turns one into a sentence and exit 1.
+        plugin, addressed = _resolve(target, format_name)
         found = resolve_release(service, project, release)
         if check:
-            report = ReleaseService(service).check_export(found.id, plugin)
+            report = ReleaseService(service).check_export(found.id, plugin, target=addressed)
             _report(report, json_out=json_out)
             # **The same predicate `ReleaseService.export` gates on**, and not
             # `report.compatible` alone: a format that declares itself lossy asks
@@ -129,7 +155,9 @@ def export(
         # `out` is not None here — the guard above is what makes that true, and
         # mypy cannot see through it across the `with`.
         assert out is not None
-        result = ReleaseService(service).export(found.id, plugin, out, allow_lossy=allow_lossy)
+        result = ReleaseService(service).export(
+            found.id, plugin, out, allow_lossy=allow_lossy, target=addressed
+        )
     if json_out:
         document(wire.export_result(result))
         return
@@ -158,6 +186,27 @@ def export(
             f"See {EXPORT_REPORT_FILENAME}."
         )
     typer.echo(str(result.directory))
+
+
+def _resolve(target: str | None, format_name: str | None) -> tuple[Exporter, ExportTarget | None]:
+    """The plugin the command line named, and the target when it named one.
+
+    A format reached through a former name still works, and says so on stderr:
+    the alias is honoured for one release, and a script that types it should
+    learn that here rather than from the release that removes it.
+    """
+    # Through the module, so a test can substitute the scan the way the job handler lets it.
+    installed = registry.exporters()
+    if target is not None:
+        return resolve_target(installed, target)
+    assert format_name is not None
+    plugin, alias = registry.pick(installed, format_name)
+    if alias is not None:
+        note(
+            f"--format {alias} is deprecated and will be removed in the next release; "
+            f"use --format {plugin.format_name}."
+        )
+    return plugin, None
 
 
 def _report(report: ExportCompatibility, *, json_out: bool) -> None:

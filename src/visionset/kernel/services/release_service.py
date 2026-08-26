@@ -347,8 +347,15 @@ class ReleaseService:
 
     # --- handing the snapshot to a format plugin ---------------------------
 
-    def check_export(self, release_id: UUID, exporter: Exporter) -> ExportCompatibility:
+    def check_export(
+        self, release_id: UUID, exporter: Exporter, *, target: ExportTarget | None = None
+    ) -> ExportCompatibility:
         """What this format would drop from this release, before anything is written.
+
+        ``target`` narrows the question to one trainer: a geometry the format
+        writes but the target has no task for is reported dropped, and the
+        report names the target it answers for. Without one the format alone
+        is judged.
 
         Computed from the **frozen manifest**, never from live membership: an
         export describes a release, and a release is a snapshot. Two runs against
@@ -376,10 +383,15 @@ class ReleaseService:
         """
         release = self.get(release_id)
         manifest = self._read_manifest(release)
-        return _compatibility(release, manifest, exporter)
+        return _compatibility(release, manifest, exporter, target)
 
     def require_export_consent(
-        self, release_id: UUID, exporter: Exporter, *, allow_lossy: bool
+        self,
+        release_id: UUID,
+        exporter: Exporter,
+        *,
+        allow_lossy: bool,
+        target: ExportTarget | None = None,
     ) -> ExportCompatibility:
         """The compatibility report, or refuse because the caller has not consented.
 
@@ -407,7 +419,7 @@ class ReleaseService:
         """
         release = self.get(release_id)
         manifest = self._read_manifest(release)
-        compatibility = _compatibility(release, manifest, exporter)
+        compatibility = _compatibility(release, manifest, exporter, target)
         if (exporter.lossy or not compatibility.compatible) and not allow_lossy:
             raise LossyExportNotConsented(
                 f"format {exporter.format_name!r} cannot carry everything release "
@@ -423,8 +435,15 @@ class ReleaseService:
         dest: Path,
         *,
         allow_lossy: bool = False,
+        target: ExportTarget | None = None,
     ) -> ExportResult:
         """Write this release into ``dest`` in the exporter's format.
+
+        ``target`` addresses the export to one trainer. The plugin is handed the
+        manifest with every annotation the target has no task for removed, so
+        the output holds exactly what the report says it holds: the port has no
+        word for a target, and a drop the report promises must not depend on
+        every plugin reading a declaration it cannot see.
 
         Takes an ``Exporter`` **instance**, never a format name, and that is the
         one place this service differs from every other read here. Plugins are
@@ -468,11 +487,13 @@ class ReleaseService:
         """
         release = self.get(release_id)
         manifest = self._read_manifest(release)
-        compatibility = self.require_export_consent(release_id, exporter, allow_lossy=allow_lossy)
+        compatibility = self.require_export_consent(
+            release_id, exporter, allow_lossy=allow_lossy, target=target
+        )
         dest.mkdir(parents=True, exist_ok=True)
         exporter.export(
             release,
-            manifest,
+            manifest if target is None else _addressed_to(manifest, target),
             dest,
             content=_content_reader(manifest, self._workspace.blob_store),
         )
@@ -492,6 +513,7 @@ class ReleaseService:
             compatibility=compatibility,
             release_id=release.id,
             format_name=exporter.format_name,
+            target=None if target is None else target.name,
             directory=dest,
             file_count=len(written),
             total_bytes=sum(path.stat().st_size for path in written),
@@ -894,6 +916,7 @@ def _compatibility(
     return ExportCompatibility(
         release_id=release.id,
         format_name=exporter.format_name,
+        target=None if target is None else target.name,
         # Degraded counts against `compatible` exactly as dropped does: a polygon
         # arriving as a box has lost its shape, and the caller is asked before
         # that happens rather than told after.
@@ -904,6 +927,30 @@ def _compatibility(
         degraded_annotations=degraded,
         degraded_assets=len(touched[ClassExportStatus.DEGRADED]),
         classes=classes,
+    )
+
+
+def _addressed_to(manifest: Manifest, target: ExportTarget) -> Manifest:
+    """The manifest with every annotation the target does not carry removed.
+
+    The classes stay: a class index is the frozen schema's, and a target that
+    drops every polygon of a class still has that class in its vocabulary.
+    """
+    return manifest.model_copy(
+        update={
+            "assets": tuple(
+                asset.model_copy(
+                    update={
+                        "annotations": tuple(
+                            one
+                            for one in asset.annotations
+                            if GeometryType(one.geometry.type) in target.supported_geometries
+                        )
+                    }
+                )
+                for asset in manifest.assets
+            )
+        }
     )
 
 

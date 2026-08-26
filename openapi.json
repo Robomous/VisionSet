@@ -2777,7 +2777,7 @@
         "type": "object"
       },
       "ExportCompatibilityOut": {
-        "description": "What one format would drop from one release, worked out before writing.",
+        "description": "What one format would drop from one release, worked out before writing.\n\n`target` names the trainer the release was judged for, and is null when it\nwas judged against the format alone.",
         "properties": {
           "classes": {
             "items": {
@@ -2818,6 +2818,17 @@
             "format": "uuid",
             "title": "Release Id",
             "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
           }
         },
         "required": [
@@ -2832,6 +2843,77 @@
           "classes"
         ],
         "title": "ExportCompatibilityOut",
+        "type": "object"
+      },
+      "ExportTargetOut": {
+        "description": "One model a person can train on, and the installed format that writes for it.\n\n`name` is what `POST /releases/{release_id}/export?target=` takes; `format`\nis the format it resolves to, one of `GET /formats`. `tasks` is the trainer's\nown vocabulary and may name tasks no geometry here can feed; `geometries` is\nwhat an export addressed to this target carries.",
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "geometries": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Geometries",
+            "type": "array"
+          },
+          "hints": {
+            "$ref": "#/components/schemas/PreprocessingHintsOut"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "tasks": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            },
+            "title": "Tasks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "family",
+          "format",
+          "hints"
+        ],
+        "title": "ExportTargetOut",
+        "type": "object"
+      },
+      "ExportTargetPage": {
+        "description": "A page of export targets.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExportTargetOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ExportTargetPage",
         "type": "object"
       },
       "FormatOut": {
@@ -2868,6 +2950,14 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "targets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
           }
         },
         "required": [
@@ -3880,6 +3970,57 @@
         ],
         "title": "Precision",
         "type": "string"
+      },
+      "PreprocessingHintsOut": {
+        "description": "What a target's trainer expects of its input images. Hints, never requirements.\n\n`recommended_size` is `[width, height]`. `trainer_resizes` says the trainer\nresizes on its own, so resizing beforehand is an optimization rather than a\nneed; `augmentation_common` says augmentation is the ordinary practice when\ntraining this target.",
+        "properties": {
+          "augmentation_common": {
+            "title": "Augmentation Common",
+            "type": "boolean"
+          },
+          "recommended_size": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Size"
+          },
+          "recommended_strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Strategy"
+          },
+          "trainer_resizes": {
+            "title": "Trainer Resizes",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "trainer_resizes",
+          "augmentation_common"
+        ],
+        "title": "PreprocessingHintsOut",
+        "type": "object"
       },
       "ProgressCounts": {
         "description": "How many assets sit in each annotation state.",
@@ -5230,6 +5371,21 @@
         ],
         "title": "SuggestionOut",
         "type": "object"
+      },
+      "Task": {
+        "description": "A trainer-side task an export target accepts.\n\nOpen on the wire because it travels only as a target's task list, which a\nclient renders member by member: a trainer gaining a task must not cost an\nolder client the whole catalog.",
+        "enum": [
+          "detect",
+          "segment",
+          "classify",
+          "pose",
+          "obb",
+          "semantic",
+          "depth"
+        ],
+        "title": "Task",
+        "type": "string",
+        "x-visionset-open": true
       },
       "VideoProvenanceOut": {
         "description": "What a clip turned out to be, and the cut it is decomposed by.\n\n`ranges` is the canonical form of the selection the source was registered\nwith \u2014 clamped to the clip, sorted, overlaps merged \u2014 and empty means the\nwhole clip. Like `extraction_fps`, it is part of the source's identity.",
@@ -8066,9 +8222,76 @@
         ]
       }
     },
+    "/export-targets": {
+      "get": {
+        "description": "Every model this server can export a release for, by name.\n\nThe catalog is derived from the installed formats: each declares the targets\nit writes for, and every installed format declares at least one, so nothing\nexportable is missing from this list. `name` is what\n`POST /releases/{release_id}/export?target=` takes, and `format` is the\ninstalled format that export resolves to.\n\n`geometries` is what an export addressed to the target carries \u2014 never wider\nthan its format writes, and narrower where the trainer has no task for a\nshape. `tasks` is the trainer's own vocabulary and may name tasks nothing\nhere can feed. `hints` is what the trainer expects of its images, for a\nclient that offers to prepare them.",
+        "operationId": "list_export_targets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportTargetPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Export Targets",
+        "tags": [
+          "formats"
+        ]
+      }
+    },
     "/formats": {
       "get": {
-        "description": "Every export format installed on this server, by name.\n\n`name` is what `POST /releases/{release_id}/export?format=` takes.\n\n`lossy` says the format cannot carry everything the kernel can represent \u2014\nsome geometry, attribute kind, or per-annotation provenance is dropped. It is\na property of the format rather than of any one release, so it is answered\nhere and not per export, and exporting in one requires `allow_lossy=true`.\n\nNever empty in practice: a built-in no-op format ships with VisionSet so the\nplugin path is exercised even before a real exporter is installed.",
+        "description": "Every export format installed on this server, by name.\n\n`name` is what `POST /releases/{release_id}/export?format=` takes. `targets`\nnames the models this format writes for; `GET /export-targets` carries each\none in full.\n\n`lossy` says the format cannot carry everything the kernel can represent \u2014\nsome geometry, attribute kind, or per-annotation provenance is dropped. It is\na property of the format rather than of any one release, so it is answered\nhere and not per export, and exporting in one requires `allow_lossy=true`.\n\nNever empty in practice: a built-in no-op format ships with VisionSet so the\nplugin path is exercised even before a real exporter is installed.",
         "operationId": "list_formats",
         "responses": {
           "200": {
@@ -13757,7 +13980,7 @@
     },
     "/releases/{release_id}/export": {
       "post": {
-        "description": "Queue the release for writing, and answer at once with the job to poll.\n\n**202, not 200, and this is a breaking change to this one endpoint.** It used\nto block until the exporter finished and answer with the archive. A real\nexporter walks every asset in a release and copies its bytes, which is\nminutes of work behind a request that has no way to report progress and every\nproxy's timeout in front of it. So this now follows the launch-and-poll\ncontract the ingest routes have always used: poll\n`GET /background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state`\nis `succeeded`, then `GET /background-jobs/{id}/artifact` for the archive.\n\n**Everything a caller can be told now is still told now.** Which formats\nexist is a property of this deployment \u2014 `GET /formats` lists what is\ninstalled \u2014 and an unknown name is 404 `EXPORT_FORMAT_NOT_FOUND` on this\nrequest. A format that cannot carry everything the release holds is 409\n`LOSSY_EXPORT_NOT_CONSENTED` on this request too, and retrying is the\nidentical call plus `allow_lossy=true`. An unknown release is 404\n`RELEASE_NOT_FOUND`. None of the three creates a job, so a caller holding a\njob id holds one that will run.\n\nA POST because it does work and writes files, though it changes nothing a\nlater read can see: the release is immutable, and re-exporting overwrites the\nprevious archive.",
+        "description": "Queue the release for writing, and answer at once with the job to poll.\n\n**202, not 200, and this is a breaking change to this one endpoint.** It used\nto block until the exporter finished and answer with the archive. A real\nexporter walks every asset in a release and copies its bytes, which is\nminutes of work behind a request that has no way to report progress and every\nproxy's timeout in front of it. So this now follows the launch-and-poll\ncontract the ingest routes have always used: poll\n`GET /background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state`\nis `succeeded`, then `GET /background-jobs/{id}/artifact` for the archive.\n\n**Exactly one of `target` and `format`.** A target is the model the\nrelease will train \u2014 `GET /export-targets` lists them \u2014 and resolves to\nthe format that writes for it; a format addresses no trainer. Both or\nneither is a 422 `VALIDATION_ERROR`. An export addressed to a target\ncarries only the geometries its trainer has a task for, and the report it\nwrites names the target.\n\n**Everything a caller can be told now is still told now.** Which targets\nand formats exist is a property of this deployment, and an unknown name is\n404 `EXPORT_TARGET_NOT_FOUND` or 404 `EXPORT_FORMAT_NOT_FOUND` on this\nrequest. A format that cannot carry everything the release holds is 409\n`LOSSY_EXPORT_NOT_CONSENTED` on this request too, and retrying is the\nidentical call plus `allow_lossy=true`. An unknown release is 404\n`RELEASE_NOT_FOUND`. None of these creates a job, so a caller holding a\njob id holds one that will run. A target two installed formats both\ndeclare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest blob\nis gone is 500 `WORKSPACE_CORRUPT`.\n\nA POST because it does work and writes files, though it changes nothing a\nlater read can see: the release is immutable, and re-exporting overwrites the\nprevious archive.",
         "operationId": "export_release",
         "parameters": [
           {
@@ -13771,17 +13994,6 @@
             }
           },
           {
-            "description": "Which installed format to write. `GET /formats` lists them.",
-            "in": "query",
-            "name": "format",
-            "required": true,
-            "schema": {
-              "description": "Which installed format to write. `GET /formats` lists them.",
-              "title": "Format",
-              "type": "string"
-            }
-          },
-          {
             "description": "Required when the format cannot carry everything the release holds.",
             "in": "query",
             "name": "allow_lossy",
@@ -13791,6 +14003,42 @@
               "description": "Required when the format cannot carry everything the release holds.",
               "title": "Allow Lossy",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "An export target's name. `GET /export-targets` lists them.",
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An export target's name. `GET /export-targets` lists them.",
+              "title": "Target"
+            }
+          },
+          {
+            "description": "An installed format's name. `GET /formats` lists them.",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An installed format's name. `GET /formats` lists them.",
+              "title": "Format"
             }
           }
         ],
@@ -13879,7 +14127,7 @@
     },
     "/releases/{release_id}/export-compatibility": {
       "get": {
-        "description": "Say what the named format would drop from this release, without writing anything.\n\nThe pre-flight for `POST /releases/{release_id}/export`: same release, same\nformat name, same document the export refuses with and writes into its own\noutput. A client showing a consent dialog asks this first; one that would\nrather find out by being refused does not have to.\n\n`compatible` is the answer. It is not the same question as the format's\n`lossy` flag, which `GET /formats` publishes: that is the format's blanket\nstatement about everything a capability list cannot see, while this is about\nthe labels *this* release actually holds. Export asks for `allow_lossy=true`\nwhen either says so.\n\nA GET because it writes nothing and answers the same thing every time \u2014 a\nrelease is immutable, so this response is as stable as the release is.",
+        "description": "Say what the named target or format would drop from this release, without writing anything.\n\nThe pre-flight for `POST /releases/{release_id}/export`: same release, same\naddress, same document the export refuses with and writes into its own\noutput. A client showing a consent dialog asks this first; one that would\nrather find out by being refused does not have to.\n\nExactly one of `target` and `format`. A target narrows its format to the\ngeometries its trainer has a task for, so a report for `target=yolov10`\ncan say `dropped` where one for `format=ultralytics` says `supported`;\n`target` on the report says which question it answers. An unknown target is\n404 `EXPORT_TARGET_NOT_FOUND`, an unknown format 404 `EXPORT_FORMAT_NOT_FOUND`,\nan unknown release 404 `RELEASE_NOT_FOUND`. A target two installed formats\nboth declare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest\nblob is gone is 500 `WORKSPACE_CORRUPT`; neither is something the request\ncan fix.\n\n`compatible` is the answer. It is not the same question as the format's\n`lossy` flag, which `GET /formats` publishes: that is the format's blanket\nstatement about everything a capability list cannot see, while this is about\nthe labels *this* release actually holds. Export asks for `allow_lossy=true`\nwhen either says so.\n\nA GET because it writes nothing and answers the same thing every time \u2014 a\nrelease is immutable, so this response is as stable as the release is.",
         "operationId": "check_export",
         "parameters": [
           {
@@ -13893,14 +14141,39 @@
             }
           },
           {
-            "description": "Which installed format to write. `GET /formats` lists them.",
+            "description": "An export target's name. `GET /export-targets` lists them.",
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An export target's name. `GET /export-targets` lists them.",
+              "title": "Target"
+            }
+          },
+          {
+            "description": "An installed format's name. `GET /formats` lists them.",
             "in": "query",
             "name": "format",
-            "required": true,
+            "required": false,
             "schema": {
-              "description": "Which installed format to write. `GET /formats` lists them.",
-              "title": "Format",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An installed format's name. `GET /formats` lists them.",
+              "title": "Format"
             }
           }
         ],

@@ -127,6 +127,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (releases.list_releases, READS),
     (releases.verify_release, READS),
     (formats.list_formats, READS),
+    (formats.list_export_targets, READS),
     (releases.check_export, READS),
     (releases.export_release, WRITES),
     # After the cycle, not in it: connections are workspace configuration —

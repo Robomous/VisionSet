@@ -184,10 +184,22 @@ export const checkClassCompatibilityOut: Check<Schemas["ClassCompatibilityOut"]>
   /*#__PURE__*/ object({ "annotations": [true, isInteger], "assets": [true, isInteger], "geometry": [true, checkGeometryType], "label_class": [true, isString], "reason": [false, either([isString, isNull] as const)], "status": [true, checkClassExportStatus] } as const);
 
 export const checkExportCompatibilityOut: Check<Schemas["ExportCompatibilityOut"]> =
-  /*#__PURE__*/ object({ "classes": [true, arrayOf(checkClassCompatibilityOut)], "compatible": [true, isBoolean], "degraded_annotations": [true, isInteger], "degraded_assets": [true, isInteger], "excluded_annotations": [true, isInteger], "excluded_assets": [true, isInteger], "format": [true, isString], "format_is_lossy": [true, isBoolean], "release_id": [true, isString] } as const);
+  /*#__PURE__*/ object({ "classes": [true, arrayOf(checkClassCompatibilityOut)], "compatible": [true, isBoolean], "degraded_annotations": [true, isInteger], "degraded_assets": [true, isInteger], "excluded_annotations": [true, isInteger], "excluded_assets": [true, isInteger], "format": [true, isString], "format_is_lossy": [true, isBoolean], "release_id": [true, isString], "target": [false, either([isString, isNull] as const)] } as const);
+
+export const checkPreprocessingHintsOut: Check<Schemas["PreprocessingHintsOut"]> =
+  /*#__PURE__*/ object({ "augmentation_common": [true, isBoolean], "recommended_size": [false, either([tuple([isInteger, isInteger] as const), isNull] as const)], "recommended_strategy": [false, either([isString, isNull] as const)], "trainer_resizes": [true, isBoolean] } as const);
+
+export const checkTask: Check<Schemas["Task"]> =
+  /*#__PURE__*/ openOneOf(["detect", "segment", "classify", "pose", "obb", "semantic", "depth"] as const);
+
+export const checkExportTargetOut: Check<Schemas["ExportTargetOut"]> =
+  /*#__PURE__*/ object({ "family": [true, isString], "format": [true, isString], "geometries": [true, arrayOf(isString)], "hints": [true, checkPreprocessingHintsOut], "label": [true, isString], "name": [true, isString], "tasks": [true, arrayOf(checkTask)] } as const);
+
+export const checkExportTargetPage: Check<Schemas["ExportTargetPage"]> =
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkExportTargetOut)], "total": [true, isInteger] } as const);
 
 export const checkFormatOut: Check<Schemas["FormatOut"]> =
-  /*#__PURE__*/ object({ "degraded_geometries": [true, arrayOf(isString)], "geometries": [true, arrayOf(isString)], "lossy": [true, isBoolean], "modalities": [true, arrayOf(isString)], "name": [true, isString] } as const);
+  /*#__PURE__*/ object({ "degraded_geometries": [true, arrayOf(isString)], "geometries": [true, arrayOf(isString)], "lossy": [true, isBoolean], "modalities": [true, arrayOf(isString)], "name": [true, isString], "targets": [true, arrayOf(isString)] } as const);
 
 export const checkFormatPage: Check<Schemas["FormatPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkFormatOut)], "total": [true, isInteger] } as const);
@@ -433,6 +445,7 @@ export const checkListBlockingAssets = checkBlockingAssetPage;
 export const checkListDatasetAssetAnnotations = checkAnnotationPage;
 export const checkListDatasetAssets = checkDatasetAssetPage;
 export const checkListDatasetChanges = checkDatasetChangePage;
+export const checkListExportTargets = checkExportTargetPage;
 export const checkListFormats = checkFormatPage;
 export const checkListInferenceConnections = checkConnectionPage;
 export const checkListIngestJobs = checkIngestJobPage;

@@ -96,6 +96,7 @@ from visionset.kernel.domain import (
     DraftAttribute,
     DraftLabelClass,
     ExportCompatibility,
+    ExportTarget,
     Geometry,
     GeometryType,
     ImageFormat,
@@ -116,6 +117,7 @@ from visionset.kernel.domain import (
     PolylineGeometry,
     Precision,
     PreLabelRun,
+    PreprocessingHints,
     Project,
     ProjectPreview,
     ProjectStats,
@@ -136,6 +138,7 @@ from visionset.kernel.domain import (
     SplitAssignment,
     SplitRecipe,
     SuggestParameter,
+    Task,
     VideoProvenance,
     WeightDownload,
     WorkspaceSummary,
@@ -2118,10 +2121,15 @@ class ClassCompatibilityOut(BaseModel):
 # ``format_name`` is the wire's word, matching the query parameter a caller just
 # sent.
 class ExportCompatibilityOut(BaseModel):
-    """What one format would drop from one release, worked out before writing."""
+    """What one format would drop from one release, worked out before writing.
+
+    `target` names the trainer the release was judged for, and is null when it
+    was judged against the format alone.
+    """
 
     release_id: UUID
     format: str
+    target: str | None = None
     compatible: bool
     format_is_lossy: bool
     # Dropped only; degraded annotations are counted separately below.
@@ -2136,6 +2144,7 @@ class ExportCompatibilityOut(BaseModel):
         return cls(
             release_id=compatibility.release_id,
             format=compatibility.format_name,
+            target=compatibility.target,
             compatible=compatibility.compatible,
             format_is_lossy=compatibility.format_is_lossy,
             excluded_annotations=compatibility.excluded_annotations,
@@ -2184,6 +2193,9 @@ class FormatOut(BaseModel):
     # `yolov5-yaml` that answer leaves out that a polygon is written at all.
     degraded_geometries: list[str] = []
     modalities: list[str] = []
+    # The names of the targets this format writes for. `GET /export-targets`
+    # carries each one in full.
+    targets: list[str] = []
 
     @classmethod
     def of(cls, exporter: Exporter) -> Self:
@@ -2193,11 +2205,76 @@ class FormatOut(BaseModel):
             geometries=sorted(one.value for one in exporter.supported_geometries),
             degraded_geometries=sorted(one.value for one in exporter.degraded_geometries),
             modalities=sorted(exporter.supported_modalities),
+            targets=sorted(one.name for one in exporter.targets),
         )
 
 
 class FormatPage(Page[FormatOut]):
     """A page of export formats."""
+
+
+class PreprocessingHintsOut(BaseModel):
+    """What a target's trainer expects of its input images. Hints, never requirements.
+
+    `recommended_size` is `[width, height]`. `trainer_resizes` says the trainer
+    resizes on its own, so resizing beforehand is an optimization rather than a
+    need; `augmentation_common` says augmentation is the ordinary practice when
+    training this target.
+    """
+
+    recommended_size: tuple[int, int] | None = None
+    recommended_strategy: str | None = None
+    trainer_resizes: bool
+    augmentation_common: bool
+
+    @classmethod
+    def of(cls, hints: PreprocessingHints) -> Self:
+        return cls(
+            recommended_size=hints.recommended_size,
+            recommended_strategy=(
+                None if hints.recommended_strategy is None else hints.recommended_strategy.value
+            ),
+            trainer_resizes=hints.trainer_resizes,
+            augmentation_common=hints.augmentation_common,
+        )
+
+
+# `family` is a plain string rather than an enum: it is a scalar a client
+# groups by, and the open-vocabulary marker is reserved for values that travel
+# only as list members. A new family therefore arrives as a new string, never
+# as a refused response.
+class ExportTargetOut(BaseModel):
+    """One model a person can train on, and the installed format that writes for it.
+
+    `name` is what `POST /releases/{release_id}/export?target=` takes; `format`
+    is the format it resolves to, one of `GET /formats`. `tasks` is the trainer's
+    own vocabulary and may name tasks no geometry here can feed; `geometries` is
+    what an export addressed to this target carries.
+    """
+
+    name: str
+    label: str
+    family: str
+    format: str
+    tasks: list[Task] = []
+    geometries: list[str] = []
+    hints: PreprocessingHintsOut
+
+    @classmethod
+    def of(cls, target: ExportTarget, exporter: Exporter) -> Self:
+        return cls(
+            name=target.name,
+            label=target.label,
+            family=target.family.value,
+            format=exporter.format_name,
+            tasks=sorted(target.tasks),
+            geometries=sorted(one.value for one in target.supported_geometries),
+            hints=PreprocessingHintsOut.of(target.hints),
+        )
+
+
+class ExportTargetPage(Page[ExportTargetOut]):
+    """A page of export targets."""
 
 
 # --- inference providers ------------------------------------------------------

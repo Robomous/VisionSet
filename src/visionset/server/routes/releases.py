@@ -25,16 +25,19 @@ Handlers are ``def``, not ``async def``, for the reason ``projects.py`` gives.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Annotated, Any, Final
 from uuid import UUID
 
-from fastapi import Query, Response, status
+from fastapi import Depends, Query, Response, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import StreamingResponse
 
 from visionset.formats.registry import pick
 from visionset.jobs.export import JOB_TYPE as export_job_type
 from visionset.jobs.export import payload_for as export_payload_for
-from visionset.kernel.domain import BackgroundJobSpec
+from visionset.kernel.domain import BackgroundJobSpec, ExportTarget
+from visionset.kernel.ports import Exporter, resolve_target
 from visionset.kernel.services import ReleaseService
 from visionset.server.dependencies import (
     ExportersDep,
@@ -67,10 +70,48 @@ _MANIFEST_RESPONSE: Final[dict[int | str, dict[str, Any]]] = {
     }
 }
 
-FormatQuery = Annotated[
-    str,
-    Query(description="Which installed format to write. `GET /formats` lists them."),
+TargetQuery = Annotated[
+    str | None,
+    Query(description="An export target's name. `GET /export-targets` lists them."),
 ]
+
+FormatQuery = Annotated[
+    str | None,
+    Query(description="An installed format's name. `GET /formats` lists them."),
+]
+
+
+@dataclass(frozen=True, slots=True)
+class ExportAddress:
+    """Which trainer or which format an export is for. Exactly one of the two."""
+
+    target: str | None
+    format: str | None
+
+
+def _address(target: TargetQuery = None, format: FormatQuery = None) -> ExportAddress:
+    """The pair, refused as a 422 ``VALIDATION_ERROR`` unless exactly one is given.
+
+    A dependency rather than two loose parameters on each route, so the rule
+    between them is stated once and refused in the shape every other malformed
+    request answers with — ``loc`` is ``["query"]`` because neither name alone
+    is the mistake.
+    """
+    if (target is None) == (format is None):
+        raise RequestValidationError(
+            [
+                {
+                    "type": "value_error",
+                    "loc": ("query",),
+                    "msg": "give exactly one of target and format",
+                    "input": {"target": target, "format": format},
+                }
+            ]
+        )
+    return ExportAddress(target=target, format=format)
+
+
+AddressQuery = Annotated[ExportAddress, Depends(_address)]
 
 #: A gate, so it is a query parameter and the route never pre-checks it — the
 #: flag goes to the service and the kernel's own refusal carries the code. A
@@ -221,14 +262,24 @@ def check_export(
     workspace: WorkspaceDep,
     exporters: ExportersDep,
     release_id: UUID,
-    format: FormatQuery,
+    address: AddressQuery,
 ) -> ExportCompatibilityOut:
-    """Say what the named format would drop from this release, without writing anything.
+    """Say what the named target or format would drop from this release, without writing anything.
 
     The pre-flight for `POST /releases/{release_id}/export`: same release, same
-    format name, same document the export refuses with and writes into its own
+    address, same document the export refuses with and writes into its own
     output. A client showing a consent dialog asks this first; one that would
     rather find out by being refused does not have to.
+
+    Exactly one of `target` and `format`. A target narrows its format to the
+    geometries its trainer has a task for, so a report for `target=yolov10`
+    can say `dropped` where one for `format=ultralytics` says `supported`;
+    `target` on the report says which question it answers. An unknown target is
+    404 `EXPORT_TARGET_NOT_FOUND`, an unknown format 404 `EXPORT_FORMAT_NOT_FOUND`,
+    an unknown release 404 `RELEASE_NOT_FOUND`. A target two installed formats
+    both declare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest
+    blob is gone is 500 `WORKSPACE_CORRUPT`; neither is something the request
+    can fix.
 
     `compatible` is the answer. It is not the same question as the format's
     `lossy` flag, which `GET /formats` publishes: that is the format's blanket
@@ -239,9 +290,30 @@ def check_export(
     A GET because it writes nothing and answers the same thing every time — a
     release is immutable, so this response is as stable as the release is.
     """
+    exporter, target = _addressed(exporters, address)
     return ExportCompatibilityOut.of(
-        ReleaseService(workspace).check_export(release_id, pick(exporters, format)[0])
+        ReleaseService(workspace).check_export(release_id, exporter, target=target)
     )
+
+
+def _addressed(
+    exporters: dict[str, Exporter], address: ExportAddress
+) -> tuple[Exporter, ExportTarget | None]:
+    """The exporter an address names, and the target when it named one.
+
+    Through ``pick`` and ``resolve_target`` rather than by indexing: a
+    ``KeyError`` is outside the ``VisionSetError`` tree and would answer 500 to
+    a caller who mistyped a name.
+
+    Raises:
+        ExportFormatNotFound: ``format`` names nothing installed.
+        ExportTargetNotFound: ``target`` names nothing any installed format declares.
+        ExportTargetConflict: two installed formats declare ``target``.
+    """
+    if address.target is not None:
+        return resolve_target(exporters, address.target)
+    assert address.format is not None
+    return pick(exporters, address.format)[0], None
 
 
 @router.post(
@@ -255,7 +327,7 @@ def export_release(
     runner: RunnerDep,
     response: Response,
     release_id: UUID,
-    format: FormatQuery,
+    address: AddressQuery,
     allow_lossy: AllowLossyQuery = False,
 ) -> BackgroundJobOut:
     """Queue the release for writing, and answer at once with the job to poll.
@@ -269,32 +341,45 @@ def export_release(
     `GET /background-jobs/{id}` — the `Location` header names it — until `state`
     is `succeeded`, then `GET /background-jobs/{id}/artifact` for the archive.
 
-    **Everything a caller can be told now is still told now.** Which formats
-    exist is a property of this deployment — `GET /formats` lists what is
-    installed — and an unknown name is 404 `EXPORT_FORMAT_NOT_FOUND` on this
+    **Exactly one of `target` and `format`.** A target is the model the
+    release will train — `GET /export-targets` lists them — and resolves to
+    the format that writes for it; a format addresses no trainer. Both or
+    neither is a 422 `VALIDATION_ERROR`. An export addressed to a target
+    carries only the geometries its trainer has a task for, and the report it
+    writes names the target.
+
+    **Everything a caller can be told now is still told now.** Which targets
+    and formats exist is a property of this deployment, and an unknown name is
+    404 `EXPORT_TARGET_NOT_FOUND` or 404 `EXPORT_FORMAT_NOT_FOUND` on this
     request. A format that cannot carry everything the release holds is 409
     `LOSSY_EXPORT_NOT_CONSENTED` on this request too, and retrying is the
     identical call plus `allow_lossy=true`. An unknown release is 404
-    `RELEASE_NOT_FOUND`. None of the three creates a job, so a caller holding a
-    job id holds one that will run.
+    `RELEASE_NOT_FOUND`. None of these creates a job, so a caller holding a
+    job id holds one that will run. A target two installed formats both
+    declare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest blob
+    is gone is 500 `WORKSPACE_CORRUPT`.
 
     A POST because it does work and writes files, though it changes nothing a
     later read can see: the release is immutable, and re-exporting overwrites the
     previous archive.
     """
-    # ``pick`` rather than ``exporters[format]``: a ``KeyError`` is outside the
-    # ``VisionSetError`` tree and would answer 500 to a caller who mistyped a
-    # format name. One wording for the refusal, and it lives in the registry.
-    exporter, _ = pick(exporters, format)
+    exporter, target = _addressed(exporters, address)
     # Synchronously, before the job exists: a refusal a request can make is a
     # refusal the request makes. Discovering the consent gate in a
     # worker would put a 409 on a row somebody has to go and read. The worker
     # checks again; that one is the guarantee, this one is the answer.
-    ReleaseService(workspace).require_export_consent(release_id, exporter, allow_lossy=allow_lossy)
+    ReleaseService(workspace).require_export_consent(
+        release_id, exporter, allow_lossy=allow_lossy, target=target
+    )
     job = workspace.job_queue.enqueue(
         BackgroundJobSpec(
             type=export_job_type,
-            payload=export_payload_for(release_id, format, allow_lossy=allow_lossy),
+            payload=export_payload_for(
+                release_id,
+                exporter.format_name,
+                target=None if target is None else target.name,
+                allow_lossy=allow_lossy,
+            ),
             idempotent=True,
         )
     )

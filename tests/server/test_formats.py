@@ -76,6 +76,9 @@ def test_the_listing_uses_the_envelope_like_every_other_collection(
                 # left out that a polygon is written at all.
                 "degraded_geometries": [],
                 "modalities": ["image"],
+                # A format that is its own target: `GET /export-targets`
+                # carries the row in full.
+                "targets": ["writing"],
             }
         ],
         "total": 1,
@@ -85,3 +88,60 @@ def test_the_listing_uses_the_envelope_like_every_other_collection(
 def test_the_listing_is_protected(client: TestClient) -> None:
     with TestClient(client.app) as anonymous:
         assert anonymous.get("/formats").status_code == 401
+
+
+# --- the target catalog --------------------------------------------------------
+
+
+def test_the_catalog_flattens_every_target_with_the_format_that_writes_for_it(
+    client: TestClient,
+) -> None:
+    with_exporters(client.app, WritingExporter(), LossyExporter())
+
+    body = client.get("/export-targets").json()
+
+    assert [row["name"] for row in body["items"]] == ["lossy", "writing"]
+    assert body["total"] == 2
+    lossy, writing = body["items"]
+    assert lossy == {
+        "name": "lossy",
+        "label": "lossy",
+        "family": "other",
+        "format": "lossy",
+        "tasks": [],
+        "geometries": sorted(one.value for one in GeometryType),
+        "hints": {
+            "recommended_size": None,
+            "recommended_strategy": None,
+            "trainer_resizes": True,
+            "augmentation_common": False,
+        },
+    }
+    assert writing["format"] == "writing"
+
+
+def test_the_shipped_catalog_names_every_yolo_target_and_the_dialect_each_resolves_to(
+    client: TestClient,
+) -> None:
+    """No override: the real entry-point scan, so the catalog is the one a deployment serves."""
+    rows = {row["name"]: row for row in client.get("/export-targets").json()["items"]}
+
+    assert rows["yolo11"]["format"] == "ultralytics"
+    assert rows["yolo11"]["family"] == "ultralytics-yolo"
+    assert rows["yolo11"]["tasks"] == ["classify", "detect", "obb", "pose", "segment"]
+    assert rows["yolo11"]["geometries"] == ["bbox", "classification_tag", "polygon"]
+    assert rows["yolo11"]["hints"] == {
+        "recommended_size": [640, 640],
+        "recommended_strategy": "letterbox",
+        "trainer_resizes": True,
+        "augmentation_common": True,
+    }
+    assert rows["yolov7"]["format"] == "yolov5-yaml"
+    # Every installed format is reachable through the catalog.
+    formats = {row["name"] for row in client.get("/formats").json()["items"]}
+    assert {row["format"] for row in rows.values()} == formats
+
+
+def test_the_catalog_is_protected(client: TestClient) -> None:
+    with TestClient(client.app) as anonymous:
+        assert anonymous.get("/export-targets").status_code == 401

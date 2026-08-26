@@ -132,6 +132,9 @@ jobs:
       - name: MCP tool reference drift gate
         run: uv run python scripts/export_mcp_tools.py --check
 
+      - name: Export target catalog drift gate
+        run: uv run python scripts/export_target_catalog.py --check
+
       # `-n auto` resolves to the runner's core count. The suite has no expensive
       # test to remove — ~63 ms mean, no fat tail — so parallelism is the only
       # thing that makes this step faster, and it is ~90% of the run's critical

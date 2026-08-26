@@ -1,5 +1,5 @@
 # usage: from visionset.mcp import formats
-"""``list_formats`` — which exporters are installed, and which of them lose things.
+"""``list_formats`` and ``list_export_targets`` — what this installation can write.
 
 Discovery is over the ``visionset.formats`` entry-point group, so a third-party
 distribution's exporter is indistinguishable from a built-in here. Nothing is
@@ -28,3 +28,21 @@ def list_formats() -> dict[str, Any]:
     """
     installed = exporters()
     return wire.page([wire.export_format(installed[name]) for name in sorted(installed)])
+
+
+def list_export_targets() -> dict[str, Any]:
+    """List the models a release can be exported for, each with the format that writes for it.
+
+    Call this before `export_release` when you know what will be trained — the
+    `name` here is exactly what that tool's `target` parameter takes, and it
+    resolves to `format` without you naming it. `list_formats` is the same
+    installation seen from the format's side.
+
+    `geometries` is what an export addressed to the target carries — never
+    wider than its format writes, and narrower where the trainer has no task
+    for a shape. `tasks` is the trainer's own vocabulary and may name tasks
+    nothing here can feed. `hints` is what the trainer expects of its images:
+    a recommended size and resize strategy, whether the trainer resizes on its
+    own, and whether augmentation is the ordinary practice.
+    """
+    return wire.page(wire.export_targets(exporters()))

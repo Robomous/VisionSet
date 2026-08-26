@@ -843,6 +843,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/export-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Export Targets
+         * @description Every model this server can export a release for, by name.
+         *
+         *     The catalog is derived from the installed formats: each declares the targets
+         *     it writes for, and every installed format declares at least one, so nothing
+         *     exportable is missing from this list. `name` is what
+         *     `POST /releases/{release_id}/export?target=` takes, and `format` is the
+         *     installed format that export resolves to.
+         *
+         *     `geometries` is what an export addressed to the target carries — never wider
+         *     than its format writes, and narrower where the trainer has no task for a
+         *     shape. `tasks` is the trainer's own vocabulary and may name tasks nothing
+         *     here can feed. `hints` is what the trainer expects of its images, for a
+         *     client that offers to prepare them.
+         */
+        get: operations["list_export_targets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/formats": {
         parameters: {
             query?: never;
@@ -854,7 +886,9 @@ export interface paths {
          * List Formats
          * @description Every export format installed on this server, by name.
          *
-         *     `name` is what `POST /releases/{release_id}/export?format=` takes.
+         *     `name` is what `POST /releases/{release_id}/export?format=` takes. `targets`
+         *     names the models this format writes for; `GET /export-targets` carries each
+         *     one in full.
          *
          *     `lossy` says the format cannot carry everything the kernel can represent —
          *     some geometry, attribute kind, or per-annotation provenance is dropped. It is
@@ -2683,14 +2717,23 @@ export interface paths {
          *     `GET /background-jobs/{id}` — the `Location` header names it — until `state`
          *     is `succeeded`, then `GET /background-jobs/{id}/artifact` for the archive.
          *
-         *     **Everything a caller can be told now is still told now.** Which formats
-         *     exist is a property of this deployment — `GET /formats` lists what is
-         *     installed — and an unknown name is 404 `EXPORT_FORMAT_NOT_FOUND` on this
+         *     **Exactly one of `target` and `format`.** A target is the model the
+         *     release will train — `GET /export-targets` lists them — and resolves to
+         *     the format that writes for it; a format addresses no trainer. Both or
+         *     neither is a 422 `VALIDATION_ERROR`. An export addressed to a target
+         *     carries only the geometries its trainer has a task for, and the report it
+         *     writes names the target.
+         *
+         *     **Everything a caller can be told now is still told now.** Which targets
+         *     and formats exist is a property of this deployment, and an unknown name is
+         *     404 `EXPORT_TARGET_NOT_FOUND` or 404 `EXPORT_FORMAT_NOT_FOUND` on this
          *     request. A format that cannot carry everything the release holds is 409
          *     `LOSSY_EXPORT_NOT_CONSENTED` on this request too, and retrying is the
          *     identical call plus `allow_lossy=true`. An unknown release is 404
-         *     `RELEASE_NOT_FOUND`. None of the three creates a job, so a caller holding a
-         *     job id holds one that will run.
+         *     `RELEASE_NOT_FOUND`. None of these creates a job, so a caller holding a
+         *     job id holds one that will run. A target two installed formats both
+         *     declare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest blob
+         *     is gone is 500 `WORKSPACE_CORRUPT`.
          *
          *     A POST because it does work and writes files, though it changes nothing a
          *     later read can see: the release is immutable, and re-exporting overwrites the
@@ -2712,12 +2755,22 @@ export interface paths {
         };
         /**
          * Check Export
-         * @description Say what the named format would drop from this release, without writing anything.
+         * @description Say what the named target or format would drop from this release, without writing anything.
          *
          *     The pre-flight for `POST /releases/{release_id}/export`: same release, same
-         *     format name, same document the export refuses with and writes into its own
+         *     address, same document the export refuses with and writes into its own
          *     output. A client showing a consent dialog asks this first; one that would
          *     rather find out by being refused does not have to.
+         *
+         *     Exactly one of `target` and `format`. A target narrows its format to the
+         *     geometries its trainer has a task for, so a report for `target=yolov10`
+         *     can say `dropped` where one for `format=ultralytics` says `supported`;
+         *     `target` on the report says which question it answers. An unknown target is
+         *     404 `EXPORT_TARGET_NOT_FOUND`, an unknown format 404 `EXPORT_FORMAT_NOT_FOUND`,
+         *     an unknown release 404 `RELEASE_NOT_FOUND`. A target two installed formats
+         *     both declare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest
+         *     blob is gone is 500 `WORKSPACE_CORRUPT`; neither is something the request
+         *     can fix.
          *
          *     `compatible` is the answer. It is not the same question as the format's
          *     `lossy` flag, which `GET /formats` publishes: that is the format's blanket
@@ -4005,6 +4058,9 @@ export interface components {
         /**
          * ExportCompatibilityOut
          * @description What one format would drop from one release, worked out before writing.
+         *
+         *     `target` names the trainer the release was judged for, and is null when it
+         *     was judged against the format alone.
          */
         ExportCompatibilityOut: {
             /** Classes */
@@ -4028,6 +4084,48 @@ export interface components {
              * Format: uuid
              */
             release_id: string;
+            /** Target */
+            target?: string | null;
+        };
+        /**
+         * ExportTargetOut
+         * @description One model a person can train on, and the installed format that writes for it.
+         *
+         *     `name` is what `POST /releases/{release_id}/export?target=` takes; `format`
+         *     is the format it resolves to, one of `GET /formats`. `tasks` is the trainer's
+         *     own vocabulary and may name tasks no geometry here can feed; `geometries` is
+         *     what an export addressed to this target carries.
+         */
+        ExportTargetOut: {
+            /** Family */
+            family: string;
+            /** Format */
+            format: string;
+            /**
+             * Geometries
+             * @default []
+             */
+            geometries: string[];
+            hints: components["schemas"]["PreprocessingHintsOut"];
+            /** Label */
+            label: string;
+            /** Name */
+            name: string;
+            /**
+             * Tasks
+             * @default []
+             */
+            tasks: components["schemas"]["Task"][];
+        };
+        /**
+         * ExportTargetPage
+         * @description A page of export targets.
+         */
+        ExportTargetPage: {
+            /** Items */
+            items: components["schemas"]["ExportTargetOut"][];
+            /** Total */
+            total: number;
         };
         /**
          * FormatOut
@@ -4053,6 +4151,11 @@ export interface components {
             modalities: string[];
             /** Name */
             name: string;
+            /**
+             * Targets
+             * @default []
+             */
+            targets: string[];
         };
         /**
          * FormatPage
@@ -4604,6 +4707,28 @@ export interface components {
          * @enum {string}
          */
         Precision: "fp16" | "fp32";
+        /**
+         * PreprocessingHintsOut
+         * @description What a target's trainer expects of its input images. Hints, never requirements.
+         *
+         *     `recommended_size` is `[width, height]`. `trainer_resizes` says the trainer
+         *     resizes on its own, so resizing beforehand is an optimization rather than a
+         *     need; `augmentation_common` says augmentation is the ordinary practice when
+         *     training this target.
+         */
+        PreprocessingHintsOut: {
+            /** Augmentation Common */
+            augmentation_common: boolean;
+            /** Recommended Size */
+            recommended_size?: [
+                number,
+                number
+            ] | null;
+            /** Recommended Strategy */
+            recommended_strategy?: string | null;
+            /** Trainer Resizes */
+            trainer_resizes: boolean;
+        };
         /**
          * ProgressCounts
          * @description How many assets sit in each annotation state.
@@ -5290,6 +5415,16 @@ export interface components {
             /** Regions */
             regions: components["schemas"]["SuggestedRegion"][];
         };
+        /**
+         * Task
+         * @description A trainer-side task an export target accepts.
+         *
+         *     Open on the wire because it travels only as a target's task list, which a
+         *     client renders member by member: a trainer gaining a task must not cost an
+         *     older client the whole catalog.
+         * @enum {string}
+         */
+        Task: "detect" | "segment" | "classify" | "pose" | "obb" | "semantic" | "depth" | (string & {});
         /**
          * VideoProvenanceOut
          * @description What a clip turned out to be, and the cut it is decomposed by.
@@ -7235,6 +7370,62 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_export_targets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportTargetPage"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11444,11 +11635,13 @@ export interface operations {
     };
     export_release: {
         parameters: {
-            query: {
-                /** @description Which installed format to write. `GET /formats` lists them. */
-                format: string;
+            query?: {
                 /** @description Required when the format cannot carry everything the release holds. */
                 allow_lossy?: boolean;
+                /** @description An export target's name. `GET /export-targets` lists them. */
+                target?: string | null;
+                /** @description An installed format's name. `GET /formats` lists them. */
+                format?: string | null;
             };
             header?: never;
             path: {
@@ -11525,9 +11718,11 @@ export interface operations {
     };
     check_export: {
         parameters: {
-            query: {
-                /** @description Which installed format to write. `GET /formats` lists them. */
-                format: string;
+            query?: {
+                /** @description An export target's name. `GET /export-targets` lists them. */
+                target?: string | null;
+                /** @description An installed format's name. `GET /formats` lists them. */
+                format?: string | null;
             };
             header?: never;
             path: {
@@ -11955,4 +12150,5 @@ export interface KnownMembers {
   ModelCapability: "point_suggest" | "text_detect";
   PreLabelExclusionReason: "no_producible_geometry" | "required_attribute";
   SuggestParameter: "tolerance";
+  Task: "detect" | "segment" | "classify" | "pose" | "obb" | "semantic" | "depth";
 }

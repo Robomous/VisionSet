@@ -20,10 +20,10 @@ import { writeToken } from "../data/session";
 import { DatasetScreen } from "./DatasetScreen";
 
 const API = "http://visionset.test";
-// The three list fields `FormatOut` declares with a default. A default means the
+// The four list fields `FormatOut` declares with a default. A default means the
 // server serializes them every time, which is why the contract types them as always
 // present rather than optional.
-const FORMAT_REST = { geometries: [], modalities: [], degraded_geometries: [] } as const;
+const FORMAT_REST = { geometries: [], modalities: [], degraded_geometries: [], targets: [] } as const;
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const DATASET = "22222222-2222-4222-8222-222222222222";
