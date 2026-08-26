@@ -79,7 +79,7 @@ import { formatCount, formatWhen } from "../lib/format";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { DEFAULT_PROJECT_SECTION, PROJECT_SECTIONS, type ProjectSection } from "../patterns/ProjectNav";
 import { SectionHeader } from "../patterns/SectionHeader";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { BatchesScreen } from "./BatchesScreen";
 import { DatasetScreen } from "./DatasetScreen";
 import { AssetThumbnail } from "./AssetThumbnail";

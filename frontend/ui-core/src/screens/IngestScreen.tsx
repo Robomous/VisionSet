@@ -152,7 +152,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../primitives/Select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { SchemaForeshadow } from "./SchemaForeshadow";
 import { ClipRangeTimeline } from "./ClipRangeTimeline";
 import { probeClip, type ClipProbe } from "./clipProbe";

@@ -102,12 +102,13 @@ export { Progress, Skeleton, Toaster, toast } from "./primitives/Feedback.js";
 export {
   Table,
   TableBody,
+  TableCaption,
   TableCell,
-  TableEmpty,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
-} from "./primitives/Table.js";
+} from "./primitives/table.js";
 
 // The three states every async surface owes.
 export {

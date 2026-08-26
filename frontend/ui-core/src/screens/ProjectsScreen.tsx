@@ -39,7 +39,7 @@ import {
   DialogTitle,
 } from "../primitives/Dialog";
 import { FieldError, FieldHint, Input, Label, Textarea } from "../primitives/Input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { AssetThumbnail, ThumbnailPlaceholder } from "./AssetThumbnail";
 import { useCreateProject, useDeleteProject, useProjects, type Project } from "./queries";
 

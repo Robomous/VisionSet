@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./Select";
-import { Table, TableBody, TableEmpty } from "./Table";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "./table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs";
 
 describe("Button", () => {
@@ -193,13 +193,17 @@ describe("Card and Table", () => {
   it("keeps the table's header while the body is empty", () => {
     render(
       <Table>
-        <TableBody>
-          <TableEmpty colSpan={3}>No batches yet</TableEmpty>
-        </TableBody>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>State</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody />
       </Table>,
     );
-    expect(screen.getByRole("table")).not.toBeNull();
-    expect(screen.getByText("No batches yet")).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Name" })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "State" })).not.toBeNull();
   });
 });
 
