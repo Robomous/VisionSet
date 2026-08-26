@@ -17,7 +17,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from tests.formats.test_yolo import Fixture, _box
+from tests.formats.test_ultralytics import Fixture, _box
 
 from visionset.formats.voc import (
     ANNOTATIONS_DIRNAME,

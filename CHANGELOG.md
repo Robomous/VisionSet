@@ -83,6 +83,15 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **`yolo` format renamed `ultralytics`; `yolo` accepted as an alias until the next release.**
+  Part of the export-targets epic (#784). The dialect now derives its task from the release -
+  segment when it holds a polygon, classify when it holds only classification tags, detect
+  otherwise - and its `data.yaml` carries `path: .`, one key per fold present, and `names` as a
+  mapping with no `nc`. A second dialect, `yolov5-yaml`, writes the YOLOv5 descriptor grammar
+  (`./` paths, `nc`, `names` as a list) for YOLOv7. Every exporter now declares the targets it
+  writes for, and the registry refuses a target declared by two formats or one promising a
+  geometry its format never writes.
+
 - **A schema version that only widens the contract now moves every open batch onto it** (#381).
   A batch is judged against the version it pinned at approval, and that pin used to move only
   when somebody asked for it. Publishing an additive version now takes every batch in

@@ -135,7 +135,7 @@ def check_export(
     `excluded_annotations` counts those labels and `excluded_assets` how many
     assets arrive with at least one of them missing. `degraded` is **in the
     output, reduced**: a polygon written as its axis-aligned bounding box, which
-    is what `yolo` and `voc` do, counted by `degraded_annotations` and
+    is what `yolov5-yaml` and `voc` do, counted by `degraded_annotations` and
     `degraded_assets`. Read `reason` for the sentence that says which.
 
     `compatible` true means this format loses nothing from this release, and

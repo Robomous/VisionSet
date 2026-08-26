@@ -73,7 +73,8 @@ def test_every_installed_exporter_stays_discovered() -> None:
     plugin from every surface — this is what would say which one."""
     assert set(exporters()) >= {
         "dummy",
-        "yolo",
+        "ultralytics",
+        "yolov5-yaml",
         "coco",
         "voc",
         "classification",
@@ -117,7 +118,27 @@ def test_the_refusal_says_none_rather_than_nothing_when_none_are_installed() -> 
 def test_picking_returns_the_instance_it_was_given() -> None:
     plugin = _AnExporter()
 
-    assert pick({"an-exporter": plugin}, "an-exporter") is plugin
+    assert pick({"an-exporter": plugin}, "an-exporter") == (plugin, None)
+
+
+def test_the_former_yolo_name_still_picks_ultralytics_and_says_it_is_an_alias() -> None:
+    """One release of grace: the plugin, and the marker a surface turns into a warning."""
+    installed = exporters()
+
+    plugin, deprecated_alias = pick(installed, "yolo")
+
+    assert plugin is installed["ultralytics"]
+    assert deprecated_alias == "yolo"
+    assert pick(installed, "ultralytics") == (plugin, None)
+
+
+def test_an_alias_is_not_a_key_of_the_format_list() -> None:
+    assert "yolo" not in exporters()
+
+
+def test_the_alias_still_refuses_when_its_target_is_not_installed() -> None:
+    with pytest.raises(ExportFormatNotFound, match="'yolo'"):
+        pick({"an-exporter": _AnExporter()}, "yolo")
 
 
 def test_an_importer_is_not_an_exporter() -> None:

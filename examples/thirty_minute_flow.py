@@ -38,6 +38,7 @@ written and checked structurally, and the final assertion says it was skipped.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -100,7 +101,7 @@ CLASSES: tuple[LabelClass, ...] = (
 
 SPLIT = SplitRecipe(train=0.7, val=0.15, test=0.15, seed=42)
 
-FORMAT_NAME = "yolo"
+FORMAT_NAME = "ultralytics"
 
 ULTRALYTICS_REQUIRED_ENV = "VISIONSET_REQUIRE_ULTRALYTICS"
 
@@ -349,7 +350,7 @@ def _class_names(data_yaml: Path) -> tuple[str, ...]:
     """The ``names:`` block, read without a YAML library.
 
     The document is this build's own and its shape is pinned by
-    ``tests/formats/test_yolo.py``; parsing it with a dependency the wheel does
+    ``tests/formats/test_ultralytics.py``; parsing it with a dependency the wheel does
     not have would make this script need one.
     """
     found: list[str] = []
@@ -385,7 +386,10 @@ def _ultralytics_loads(export: Path) -> bool:
         print("    ultralytics is not installed — the load check was skipped", flush=True)
         return False
 
-    loaded = check_det_dataset(str(export / "data.yaml"), autodownload=False)
+    # ``path: .`` in the descriptor resolves against the loading process's
+    # working directory, so the trainer is asked from inside the export.
+    with contextlib.chdir(export):
+        loaded = check_det_dataset("data.yaml", autodownload=False)
     for fold in ("train", "val"):
         resolved = Path(str(loaded[fold]))
         if not resolved.is_dir() or not any(resolved.iterdir()):

@@ -30,7 +30,7 @@ from visionset.formats.registry import exporters
 #: Registered in pyproject.toml and shipped with the distribution, so any
 #: environment with VisionSet's metadata has all three. Deliberately not the whole
 #: list: this asserts the plugin path works, not that the set never grows.
-BUILT_IN_EXPORTERS = {"yolo", "coco", "voc"}
+BUILT_IN_EXPORTERS = {"ultralytics", "yolov5-yaml", "coco", "voc"}
 
 
 def test_the_built_in_exporters_are_discoverable_in_this_environment() -> None:

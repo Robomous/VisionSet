@@ -2180,7 +2180,7 @@ class FormatOut(BaseModel):
     geometries: list[str] = []
     # Geometries this format writes in a reduced form — a polygon arriving as its
     # bounding box. Without it `geometries` reads as the whole answer, and for
-    # `yolo` that answer leaves out that a polygon is written at all.
+    # `yolov5-yaml` that answer leaves out that a polygon is written at all.
     degraded_geometries: list[str] = []
     modalities: list[str] = []
 

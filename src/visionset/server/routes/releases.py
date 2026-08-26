@@ -240,7 +240,7 @@ def check_export(
     release is immutable, so this response is as stable as the release is.
     """
     return ExportCompatibilityOut.of(
-        ReleaseService(workspace).check_export(release_id, pick(exporters, format))
+        ReleaseService(workspace).check_export(release_id, pick(exporters, format)[0])
     )
 
 
@@ -285,7 +285,7 @@ def export_release(
     # ``pick`` rather than ``exporters[format]``: a ``KeyError`` is outside the
     # ``VisionSetError`` tree and would answer 500 to a caller who mistyped a
     # format name. One wording for the refusal, and it lives in the registry.
-    exporter = pick(exporters, format)
+    exporter, _ = pick(exporters, format)
     # Synchronously, before the job exists: a refusal a request can make is a
     # refusal the request makes. Discovering the consent gate in a
     # worker would put a 409 on a row somebody has to go and read. The worker

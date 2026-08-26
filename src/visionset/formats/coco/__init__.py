@@ -26,7 +26,7 @@ Three faults are inherited from v1's shared base class and fixed the same way th
 YOLO exporter fixes them — categories from the frozen schema rather than from the
 annotations present, a read failure that aborts rather than being swallowed, and
 pixel dimensions that are required rather than defaulted to ``(1, 1)``. See
-:mod:`visionset.formats.yolo` for what each of those costs when it is wrong.
+:mod:`visionset.formats.ultralytics` for what each of those costs when it is wrong.
 
 **This format is not lossy, and that is the point of having it.**
 ``supported_geometries`` is ``{bbox, polygon}``, and everything COCO has no field
@@ -100,7 +100,7 @@ class CocoExporter:
     #: Nothing the domain can represent is dropped: geometry is native, and
     #: everything COCO has no field for rides in a ``visionset`` object per
     #: annotation. A release of boxes and polygons therefore exports without
-    #: consent, which is the contrast with ``yolo`` and the reason both exist.
+    #: consent, which is the contrast with the YOLO dialects and the reason both exist.
     lossy = False
 
     #: The two geometries COCO instances describe. A classification tag has no

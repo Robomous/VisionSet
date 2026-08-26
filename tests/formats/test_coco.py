@@ -20,7 +20,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from tests.formats.test_yolo import CLASSES, Fixture, _box
+from tests.formats.test_ultralytics import CLASSES, Fixture, _box
 
 from visionset.formats.coco import ANNOTATIONS_DIRNAME, CocoExporter
 from visionset.kernel import ExportSourceUnreadable, LossyExportNotConsented

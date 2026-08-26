@@ -29,14 +29,14 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from tests.formats.test_yolo import CLASSES, Fixture, _box
+from tests.formats.test_ultralytics import CLASSES, Fixture, _box
 
 from visionset.formats.classification import LABELS_FILENAME as CLASSIFICATION_LABELS
 from visionset.formats.coco import ANNOTATIONS_DIRNAME as COCO_ANNOTATIONS_DIRNAME
 from visionset.formats.lanes import LABELS_DIRNAME as LANE_LABELS_DIRNAME
 from visionset.formats.registry import exporters
+from visionset.formats.ultralytics import DATA_FILENAME, LABELS_DIRNAME
 from visionset.formats.voc import ANNOTATIONS_DIRNAME as VOC_ANNOTATIONS_DIRNAME
-from visionset.formats.yolo import DATA_FILENAME, LABELS_DIRNAME
 from visionset.kernel.domain import (
     Annotation,
     ClassExportStatus,
@@ -98,13 +98,17 @@ def _yolo_counts(root: Path) -> Counter[str]:
     """Every label row, by class name, resolved through ``data.yaml``'s own index.
 
     Through the index rather than by position, because reading the file the way
-    ultralytics reads it is the point: a row's meaning is ``names[index]``, and a
-    test that assumed the schema order would agree with a wrong export.
+    a trainer reads it is the point: a row's meaning is ``names[index]``, and a
+    test that assumed the schema order would agree with a wrong export. Both
+    spellings of ``names`` are read — the ``ultralytics`` mapping and the
+    ``yolov5-yaml`` list — so one counter serves both dialects.
     """
     names: dict[int, str] = {}
     for line in (root / DATA_FILENAME).read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
-        if stripped[:1].isdigit() and ":" in stripped:
+        if stripped.startswith("names: ["):
+            names = dict(enumerate(json.loads(stripped.removeprefix("names:").strip())))
+        elif stripped[:1].isdigit() and ":" in stripped:
             index, name = stripped.split(":", 1)
             names[int(index)] = json.loads(name.strip())
     found: Counter[str] = Counter()
@@ -149,11 +153,27 @@ def _classification_counts(root: Path) -> Counter[str]:
 
 #: How to count what each format actually wrote, keyed by ``format_name``.
 COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
-    "yolo": _yolo_counts,
+    "ultralytics": _yolo_counts,
+    "yolov5-yaml": _yolo_counts,
     "voc": _voc_counts,
     "coco": _coco_counts,
     "classification": _classification_counts,
 }
+
+#: Formats whose layout depends on what the release holds, and are therefore
+#: compared per layout rather than against ``DRAWING``.
+#:
+#: The ``ultralytics`` dialect derives its task from the manifest: any polygon
+#: makes a segment export, tags with no located label make a class tree, and
+#: anything else is detect. Its geometry declarations are what each layout
+#: carries intact, so ``DRAWING`` — a tag beside boxes — is the one shape whose
+#: report cannot be read off those declarations: the tag is dropped by the
+#: derivation while the declaration calls it supported. That shape is pinned
+#: below as what it is; the per-layout comparisons follow it.
+TASK_SWITCHING = frozenset({"ultralytics"})
+
+#: The formats ``DRAWING`` is compared against in the parametrized tests.
+STATIC = sorted(set(COUNTERS) - TASK_SWITCHING)
 
 
 def _installed() -> dict[str, Exporter]:
@@ -199,7 +219,7 @@ def test_a_non_writing_exporter_really_writes_nothing(tmp_path: Path, labelled: 
     labelled.close()
 
 
-@pytest.mark.parametrize("format_name", sorted(COUNTERS))
+@pytest.mark.parametrize("format_name", STATIC)
 def test_the_report_agrees_with_what_the_format_wrote(
     tmp_path: Path, labelled: Fixture, format_name: str
 ) -> None:
@@ -230,7 +250,7 @@ def test_the_report_agrees_with_what_the_format_wrote(
     assert set(written) <= {one.label_class for one in report.classes}
 
 
-@pytest.mark.parametrize("format_name", sorted(COUNTERS))
+@pytest.mark.parametrize("format_name", STATIC)
 def test_excluded_annotations_is_exactly_what_is_missing_from_the_output(
     tmp_path: Path, labelled: Fixture, format_name: str
 ) -> None:
@@ -250,7 +270,7 @@ def test_excluded_annotations_is_exactly_what_is_missing_from_the_output(
     assert report.excluded_annotations == held - sum(written.values())
 
 
-@pytest.mark.parametrize("format_name", sorted(COUNTERS))
+@pytest.mark.parametrize("format_name", STATIC)
 def test_a_reason_says_what_actually_happens_to_that_class(
     tmp_path: Path, labelled: Fixture, format_name: str
 ) -> None:
@@ -275,13 +295,13 @@ def test_a_reason_says_what_actually_happens_to_that_class(
 # --- the two formats the defect was found in ----------------------------------
 
 
-def test_yolo_reports_the_polygon_it_writes_as_degraded_not_excluded(
+def test_yolov5_yaml_reports_the_polygon_it_writes_as_degraded_not_excluded(
     tmp_path: Path, labelled: Fixture
 ) -> None:
     """The reproduction, in the numbers a two-valued model disagrees about."""
     release_id = labelled.publish()
     dest = tmp_path / "out"
-    report = _export(labelled, release_id, _installed()["yolo"], dest)
+    report = _export(labelled, release_id, _installed()["yolov5-yaml"], dest)
     written = _yolo_counts(dest)
     labelled.close()
 
@@ -491,11 +511,11 @@ def test_tusimple_calls_the_lane_it_resamples_degraded_and_the_others_do_not(
         assert _installed()[name].lossy
 
 
-@pytest.mark.parametrize("format_name", ["yolo", "coco", "voc"])
-def test_the_three_general_formats_declare_polyline_truthfully(
+@pytest.mark.parametrize("format_name", ["ultralytics", "yolov5-yaml", "coco", "voc"])
+def test_the_general_formats_declare_polyline_truthfully(
     tmp_path: Path, laned: Fixture, format_name: str
 ) -> None:
-    """What YOLO, COCO and VOC can genuinely do with an open path.
+    """What the YOLO dialects, COCO and VOC can genuinely do with an open path.
 
     The answer, verified against the bytes rather than assumed: **nothing**, and
     all three already said so. YOLO and VOC are box formats and reduce a *polygon*
@@ -550,7 +570,7 @@ def mixed(tmp_path: Path) -> Fixture:
     return fixture
 
 
-@pytest.mark.parametrize("format_name", sorted(COUNTERS))
+@pytest.mark.parametrize("format_name", STATIC)
 def test_a_class_labelled_two_ways_gets_a_report_row_for_each(
     tmp_path: Path, mixed: Fixture, format_name: str
 ) -> None:
@@ -582,18 +602,18 @@ def test_a_class_labelled_two_ways_gets_a_report_row_for_each(
     )
 
 
-def test_yolo_splits_one_mixed_class_into_a_whole_half_and_a_degraded_half(
+def test_yolov5_yaml_splits_one_mixed_class_into_a_whole_half_and_a_degraded_half(
     tmp_path: Path, mixed: Fixture
 ) -> None:
     """The verdicts themselves, named — the parametrized test above only compares counts.
 
-    Written against YOLO specifically because it is the format whose two answers
-    differ: ``supported_geometries`` is ``{bbox}`` and ``degraded_geometries`` is
-    ``{polygon}``, so one class produces one of each. COCO carries both and would
-    make the assertion vacuous.
+    Written against ``yolov5-yaml`` specifically because it is the format whose
+    two answers differ: ``supported_geometries`` is ``{bbox}`` and
+    ``degraded_geometries`` is ``{polygon}``, so one class produces one of each.
+    COCO carries both and would make the assertion vacuous.
     """
     release_id = mixed.publish()
-    report = _export(mixed, release_id, _installed()["yolo"], tmp_path / "out")
+    report = _export(mixed, release_id, _installed()["yolov5-yaml"], tmp_path / "out")
     mixed.close()
 
     verdicts = {one.geometry: one.status for one in report.classes if one.label_class == "sign"}
@@ -606,3 +626,114 @@ def test_yolo_splits_one_mixed_class_into_a_whole_half_and_a_degraded_half(
     assert report.excluded_annotations == 0
     assert report.degraded_annotations == 1
     assert report.compatible is False
+
+
+# --- the task-switching dialect ----------------------------------------------
+#
+# ``ultralytics`` is compared per layout: the report is read off static
+# declarations and the layout is derived from the release, so the comparison
+# holds a release at a time. Three releases, one per task, and then the one
+# shape the declarations cannot describe.
+
+#: Boxes and polygons and nothing else: a segment export.
+LOCATED_DRAWING: dict[int, list[Annotation]] = {
+    0: [_box(x=8, y=6, width=20, height=22), _polygon()],
+    1: [_box(x=2, y=2, width=10, height=10), _polygon([(30.0, 4.0), (44.0, 4.0), (44.0, 20.0)])],
+    2: [_box(x=1, y=1, width=8, height=8)],
+}
+
+#: Tags and nothing else: a class tree.
+TAGGED_DRAWING: dict[int, list[Annotation]] = {0: [_tag()], 1: [_tag()], 2: [_tag()]}
+
+
+def _class_tree_counts(root: Path) -> Counter[str]:
+    """Every image under every ``<fold>/<class>`` directory, by the class the directory names."""
+    found: Counter[str] = Counter()
+    for fold in ("train", "val", "test"):
+        if not (root / fold).is_dir():
+            continue
+        for class_dir in (root / fold).iterdir():
+            found[class_dir.name] += sum(1 for _ in class_dir.iterdir())
+    return found
+
+
+def _assert_agrees(report: ExportCompatibility, written: Counter[str]) -> None:
+    for declared in report.classes:
+        expected = 0 if declared.status is ClassExportStatus.DROPPED else declared.annotations
+        assert written[declared.label_class] == expected, (
+            f"ultralytics reports {declared.label_class!r} as {declared.status.value} "
+            f"with {declared.annotations} annotation(s), and wrote "
+            f"{written[declared.label_class]}"
+        )
+    assert set(written) <= {one.label_class for one in report.classes}
+    held = sum(one.annotations for one in report.classes)
+    assert report.excluded_annotations == held - sum(written.values())
+
+
+def test_ultralytics_segment_export_agrees_with_its_report(tmp_path: Path) -> None:
+    """Boxes and polygons both arrive intact, and the report says so."""
+    fixture = Fixture(tmp_path)
+    fixture.label(LOCATED_DRAWING)
+    release_id = fixture.publish()
+    dest = tmp_path / "out"
+    report = _export(fixture, release_id, _installed()["ultralytics"], dest)
+    written = _yolo_counts(dest)
+    fixture.close()
+
+    assert written == Counter({"sign": 3, "lane": 2})
+    assert (report.excluded_annotations, report.degraded_annotations) == (0, 0)
+    _assert_agrees(report, written)
+
+
+def test_ultralytics_detect_export_agrees_with_its_report(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.label(
+        {0: [_box(x=8, y=6, width=20, height=22)], 1: [_box(x=2, y=2, width=10, height=10)]}
+    )
+    release_id = fixture.publish()
+    dest = tmp_path / "out"
+    report = _export(fixture, release_id, _installed()["ultralytics"], dest)
+    written = _yolo_counts(dest)
+    fixture.close()
+
+    assert written == Counter({"sign": 2})
+    _assert_agrees(report, written)
+
+
+def test_ultralytics_classify_export_agrees_with_its_report(tmp_path: Path) -> None:
+    """One image per tag under the class directory, so the tree counts annotations."""
+    fixture = Fixture(tmp_path)
+    fixture.label(TAGGED_DRAWING)
+    release_id = fixture.publish()
+    dest = tmp_path / "out"
+    report = _export(fixture, release_id, _installed()["ultralytics"], dest)
+    written = _class_tree_counts(dest)
+    fixture.close()
+
+    assert written == Counter({"weather": 3})
+    _assert_agrees(report, written)
+
+
+def test_ultralytics_drops_a_tag_beside_a_box_though_its_declaration_carries_tags(
+    tmp_path: Path, labelled: Fixture
+) -> None:
+    """The one shape a static declaration cannot describe, pinned as what it is.
+
+    ``DRAWING`` holds a tag beside boxes and polygons, so the derived task is
+    segment and the tag has no layout to land in — it is not written. The
+    declaration still lists ``classification_tag`` as supported, because a
+    tags-only release is written as a class tree, so the report calls the tag
+    supported here and the output does not carry it. Consent is still asked,
+    because the format is lossy; what the report misstates is the one row.
+    """
+    release_id = labelled.publish()
+    dest = tmp_path / "out"
+    report = _export(labelled, release_id, _installed()["ultralytics"], dest)
+    written = _yolo_counts(dest)
+    labelled.close()
+
+    assert written == Counter({"sign": 3, "lane": 2})
+    (tag,) = [one for one in report.classes if one.label_class == "weather"]
+    assert tag.status is ClassExportStatus.SUPPORTED
+    assert tag.annotations == 1
+    assert _installed()["ultralytics"].lossy

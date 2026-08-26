@@ -326,7 +326,7 @@ GET  /ingest-jobs/{job_id}       →  200 { "state": "completed", "batch_id": �
 Export follows the same shape, over the generic surface #328 added:
 
 ```
-POST /releases/{id}/export?format=yolo   →  202 Accepted
+POST /releases/{id}/export?format=ultralytics   →  202 Accepted
                                             Location: /background-jobs/{job_id}
 
 GET  /background-jobs/{job_id}           →  200 { "state": "running",   "processed": 12, … }
