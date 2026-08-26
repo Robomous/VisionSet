@@ -171,7 +171,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "../primitives/Card";
+} from "../primitives/card";
 import { Progress } from "../primitives/Feedback";
 import {
   Dialog,

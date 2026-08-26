@@ -52,7 +52,7 @@ export {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "./primitives/Card.js";
+} from "./primitives/card.js";
 export { FieldError, FieldHint, Input, Label, Textarea } from "./primitives/Input.js";
 export { Combobox, type ComboboxFooter, type ComboboxProps } from "./primitives/Combobox.js";
 export { Badge, badgeVariants } from "./primitives/badge.js";

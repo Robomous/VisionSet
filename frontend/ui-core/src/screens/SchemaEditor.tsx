@@ -105,7 +105,7 @@ import { classBlockers, describeClassCount, refusalProse } from "../data/refusal
 import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
 import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/Card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/card";
 import {
   Dialog,
   DialogContent,

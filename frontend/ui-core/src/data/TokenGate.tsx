@@ -50,7 +50,7 @@ import { useEffect, useState, type FormEvent, type JSX, type ReactNode } from "r
 
 import { createApiClient } from "../client";
 import { Button } from "../primitives/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../primitives/Card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../primitives/card";
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
 import { useApiSession } from "./ApiProvider";
 import { refusalProse } from "./refusals";

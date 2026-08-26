@@ -53,7 +53,7 @@ import { Badge } from "../primitives/badge";
 import type { BadgeTone } from "./batchState";
 import { SectionHeader } from "../patterns/SectionHeader";
 import { Button } from "../primitives/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/Card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
 import {
   Dialog,

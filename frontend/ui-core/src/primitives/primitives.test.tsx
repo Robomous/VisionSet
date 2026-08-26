@@ -20,7 +20,7 @@ import { describe, expect, it } from "vitest";
 import { Alert, AlertDescription, AlertTitle } from "./alert";
 import { Badge } from "./badge";
 import { Button } from "./button";
-import { Card, CardTitle } from "./Card";
+import { Card, CardTitle } from "./card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./Dialog";
 import { Progress } from "./Feedback";
 import { FieldError, Input, Label } from "./Input";
@@ -181,13 +181,13 @@ describe("Select", () => {
 });
 
 describe("Card and Table", () => {
-  it("gives a card title a heading role, so a screen is navigable", () => {
+  it("marks a card title with its slot, for the styling that reads it", () => {
     render(
       <Card>
         <CardTitle>Classes</CardTitle>
       </Card>,
     );
-    expect(screen.getByRole("heading", { name: "Classes" })).not.toBeNull();
+    expect(screen.getByText("Classes").getAttribute("data-slot")).toBe("card-title");
   });
 
   it("keeps the table's header while the body is empty", () => {

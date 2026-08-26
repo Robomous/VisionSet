@@ -142,7 +142,7 @@ import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
 import { Badge } from "../primitives/badge";
 import type { BadgeTone } from "./batchState";
 import { Button } from "../primitives/button";
-import { Card, CardContent } from "../primitives/Card";
+import { Card, CardContent } from "../primitives/card";
 import { Progress } from "../primitives/Feedback";
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
 import {
