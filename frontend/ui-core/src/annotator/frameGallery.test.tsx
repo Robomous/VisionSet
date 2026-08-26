@@ -30,6 +30,7 @@ import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
 import { TooltipProvider } from "../primitives/tooltip";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
 const API = "http://visionset.test";
@@ -132,6 +133,9 @@ function answer(path: string): unknown {
 beforeEach(() => {
   sent.length = 0;
   writeToken("a-token");
+  // The top bar this file clicks through is a row of Tooltip triggers. See
+  // `testing/resizeObserver.ts`.
+  stubResizeObserver();
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
     matches: true,

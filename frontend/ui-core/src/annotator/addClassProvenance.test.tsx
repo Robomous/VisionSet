@@ -32,6 +32,7 @@ import { Toaster } from "../primitives/sonner";
 import { TooltipProvider } from "../primitives/tooltip";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
 const API = "http://visionset.test";
@@ -163,19 +164,9 @@ beforeEach(() => {
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
-  // Canonical `TooltipProvider` defaults `delayDuration` to 0, so the tool strip
-  // this test opens mounts its tooltips immediately. Nova's `TooltipContent`
-  // renders a Radix `Arrow`, and the popper measures it through
-  // `@radix-ui/react-use-size`, which reaches for `ResizeObserver`
-  // unconditionally on mount. jsdom has none. See `toolPalette.test.tsx`.
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe(): void {}
-      unobserve(): void {}
-      disconnect(): void {}
-    },
-  );
+  // The tool strip this test opens mounts its tooltips immediately. See
+  // `testing/resizeObserver.ts`.
+  stubResizeObserver();
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
 

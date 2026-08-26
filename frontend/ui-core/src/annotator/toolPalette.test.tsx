@@ -13,22 +13,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
 import { TooltipProvider } from "../primitives/tooltip";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { ToolPalette, toolChoices } from "./ToolPalette";
 
-// Canonical `TooltipProvider` defaults `delayDuration` to 0, so every button
-// press below — each one is a Tooltip trigger — opens its tooltip on the same
-// hover `userEvent.click` produces. Nova's `TooltipContent` renders a Radix
-// `Arrow`, and the popper measures it through `@radix-ui/react-use-size`,
-// which reaches for `ResizeObserver` unconditionally on mount. jsdom has none.
+// Every button below is a Tooltip trigger, and `userEvent.click` opens the
+// tooltip on its way to the press. See `testing/resizeObserver.ts`.
 beforeEach(() => {
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe(): void {}
-      unobserve(): void {}
-      disconnect(): void {}
-    },
-  );
+  stubResizeObserver();
 });
 
 afterEach(() => {

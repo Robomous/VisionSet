@@ -26,6 +26,7 @@ import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
 import { TooltipProvider } from "../primitives/tooltip";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
 const API = "http://visionset.test";
@@ -116,6 +117,9 @@ beforeEach(() => {
   batchState = "in_annotation";
   refuseWith = null;
   writeToken("a-token");
+  // The tool strip this file clicks through is a row of Tooltip triggers, and it
+  // is where this absence was first reported. See `testing/resizeObserver.ts`.
+  stubResizeObserver();
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
     matches: true,
