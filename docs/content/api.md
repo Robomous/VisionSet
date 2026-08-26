@@ -105,9 +105,10 @@ GET    /releases/{release_id}
 GET    /releases/{release_id}/manifest                    bytes
 GET    /releases/{release_id}/verify
 GET    /releases/{release_id}/assignment
-GET    /releases/{release_id}/export-compatibility        ?format=
-POST   /releases/{release_id}/export                      ?format=&allow_lossy=, launch
+GET    /releases/{release_id}/export-compatibility        ?target=|format=, exactly one
+POST   /releases/{release_id}/export                      ?target=|format=&allow_lossy=, launch
 GET    /formats
+GET    /export-targets                                    the models a release can be exported for
 
 GET    /inference/connections
 POST   /inference/connections
@@ -834,9 +835,10 @@ each is a decision somebody will otherwise try to "fix":
 - **Unknown keys pass.** `additionalProperties: false` constrains what the API *accepts*,
   not what it may one day *send*. A client that refused an added field would turn every
   backward-compatible release into a broken page.
-- **An unknown member of an *open* vocabulary passes.** Seven vocabularies carry
+- **An unknown member of an *open* vocabulary passes.** Eight vocabularies carry
   `x-visionset-open` in the spec — the four `allowed_actions` sets, `capabilities`,
-  `SuggestionOut.parameters`, and the reasons a class is left out of a pre-label prompt — and
+  `SuggestionOut.parameters`, the reasons a class is left out of a pre-label prompt, and the
+  tasks an export target accepts — and
   the generated check for one accepts a member this client
   never compiled against, exactly as it accepts an added field. Every other enum still
   refuses, and refuses the whole response with it: a value the client must *switch* on has no

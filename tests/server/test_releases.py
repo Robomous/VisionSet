@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -28,6 +29,7 @@ from tests.server._exports import (
     BoxesOnlyExporter,
     LossyExporter,
     PolygonsOnlyExporter,
+    TargetedExporter,
     WritingExporter,
     reset_exporters,
     with_exporters,
@@ -431,6 +433,92 @@ def test_exporting_streams_back_an_archive_of_what_the_plugin_wrote(
         "images/listing.txt",
         EXPORT_REPORT_FILENAME,
     }
+
+
+def test_an_export_can_be_addressed_to_a_target_instead_of_a_format(
+    client: TestClient, release: str
+) -> None:
+    """The self-target of a format is the format, so this is the same export by another name."""
+    with_exporters(client.app, WritingExporter())
+
+    response = exported(client, release, target="writing")
+
+    assert _names_in(response.content) == {
+        "manifest.json",
+        "images/listing.txt",
+        EXPORT_REPORT_FILENAME,
+    }
+
+
+def test_both_target_and_format_is_422_and_so_is_neither(client: TestClient, release: str) -> None:
+    with_exporters(client.app, WritingExporter())
+
+    both = client.post(
+        f"/releases/{release}/export", params={"format": "writing", "target": "writing"}
+    )
+    neither = client.post(f"/releases/{release}/export")
+
+    for response in (both, neither):
+        assert response.status_code == 422, response.text
+        body = response.json()
+        assert body["code"] == "VALIDATION_ERROR"
+        (error,) = body["detail"]["errors"]
+        assert (error["type"], error["loc"]) == ("value_error", ["query"])
+        assert error["msg"] == "give exactly one of target and format"
+    assert both.json()["detail"]["errors"][0]["input"] == {"target": "writing", "format": "writing"}
+    assert neither.json()["detail"]["errors"][0]["input"] == {"target": None, "format": None}
+
+
+def test_an_unknown_target_is_404_and_names_what_is_installed(
+    client: TestClient, release: str
+) -> None:
+    with_exporters(client.app, WritingExporter())
+
+    response = client.post(f"/releases/{release}/export", params={"target": "yolo99"})
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "EXPORT_TARGET_NOT_FOUND"
+    assert "writing" in response.json()["message"]
+
+
+def test_a_target_narrows_its_format_and_the_plugin_is_handed_only_what_it_carries(
+    client: TestClient, release: str
+) -> None:
+    """The release holds boxes; the trainer takes polygons; the format could write both."""
+    with_exporters(client.app, TargetedExporter())
+
+    refused = client.post(f"/releases/{release}/export", params={"target": "polygon-trainer"})
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "LOSSY_EXPORT_NOT_CONSENTED"
+    report = refused.json()["detail"]["compatibility"]
+    assert (report["format"], report["target"]) == ("targeted", "polygon-trainer")
+    (sign,) = [one for one in report["classes"] if one["status"] == "dropped"]
+    assert sign["reason"] == "Polygon trainer does not accept a bbox, so the export drops it"
+
+    # By format alone the same release is carried whole.
+    whole = client.get(f"/releases/{release}/export-compatibility", params={"format": "targeted"})
+    assert whole.json()["compatible"] is True
+    assert whole.json()["target"] is None
+
+    consented = exported(client, release, target="polygon-trainer", allow_lossy="true")
+    with zipfile.ZipFile(io.BytesIO(consented.content)) as archive:
+        assert archive.read("annotations.txt") == b"0"
+        written = json.loads(archive.read(EXPORT_REPORT_FILENAME))
+    assert written["target"] == "polygon-trainer"
+
+
+def test_the_job_carries_the_target_and_the_resolved_format(
+    client: TestClient, release: str
+) -> None:
+    with_exporters(client.app, TargetedExporter())
+
+    launched = client.post(
+        f"/releases/{release}/export", params={"target": "polygon-trainer", "allow_lossy": "true"}
+    )
+    settled = client.get(f"/background-jobs/{launched.json()['id']}").json()
+
+    assert settled["result"]["format"] == "targeted"
+    assert settled["result"]["target"] == "polygon-trainer"
 
 
 def test_an_unknown_format_is_404_and_names_what_is_installed(

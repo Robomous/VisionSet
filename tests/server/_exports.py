@@ -23,7 +23,17 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from visionset.formats import registry
-from visionset.kernel.domain import GeometryType, Manifest, Release
+from visionset.formats._targets import self_target
+from visionset.kernel.domain import (
+    ExportTarget,
+    GeometryType,
+    Manifest,
+    PreprocessingHints,
+    Release,
+    ResizeStrategy,
+    TargetFamily,
+    Task,
+)
 from visionset.kernel.ports import ContentReader, Exporter
 from visionset.server.dependencies import get_exporters
 
@@ -49,6 +59,7 @@ class WritingExporter:
     supported_geometries = frozenset(GeometryType)
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,
@@ -77,6 +88,7 @@ class LossyExporter:
     supported_geometries = frozenset(GeometryType)
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,
@@ -139,6 +151,7 @@ class BoxesOnlyExporter:
     supported_geometries = frozenset({GeometryType.BBOX})
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,
@@ -160,6 +173,7 @@ class PolygonsOnlyExporter:
     supported_geometries = frozenset({GeometryType.POLYGON})
     degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
+    targets = self_target(format_name, supported_geometries)
 
     def export(
         self,
@@ -170,3 +184,48 @@ class PolygonsOnlyExporter:
         content: ContentReader,
     ) -> None:
         (dest / "polygons.txt").write_text(str(len(manifest.assets)))
+
+
+class TargetedExporter:
+    """Writes boxes and polygons, and declares one trainer that takes only polygons.
+
+    The pair a target-addressed export exists for: the *format* carries the
+    release's boxes whole, so a drop reported under `target=polygon-trainer` is
+    the target's doing and nothing else's. The count it writes is what the
+    plugin was handed, which is how a test sees the narrowing over HTTP.
+    """
+
+    format_name = "targeted"
+    lossy = False
+
+    supported_geometries = frozenset({GeometryType.BBOX, GeometryType.POLYGON})
+    degraded_geometries: frozenset[GeometryType] = frozenset()
+    supported_modalities = frozenset({"image"})
+    targets = frozenset(
+        {
+            ExportTarget(
+                name="polygon-trainer",
+                label="Polygon trainer",
+                family=TargetFamily.COMMUNITY_YOLO,
+                tasks=frozenset({Task.SEGMENT}),
+                supported_geometries=frozenset({GeometryType.POLYGON}),
+                hints=PreprocessingHints(
+                    recommended_size=(640, 640),
+                    recommended_strategy=ResizeStrategy.STRETCH,
+                    trainer_resizes=True,
+                    augmentation_common=True,
+                ),
+            )
+        }
+    )
+
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
+        handed = sum(len(asset.annotations) for asset in manifest.assets)
+        (dest / "annotations.txt").write_text(str(handed))

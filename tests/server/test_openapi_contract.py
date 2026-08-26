@@ -385,11 +385,11 @@ def test_a_vocabulary_is_open_exactly_when_its_shape_allows_it() -> None:
     assert wrong == [], "\n".join(wrong)
 
 
-def test_the_open_set_is_the_seven_the_client_was_generated_for() -> None:
+def test_the_open_set_is_the_eight_the_client_was_generated_for() -> None:
     """The roster, so growing the set is a decision somebody makes on purpose.
 
     The gate above derives membership from shape and would stay green if the
-    contract grew a seventh. This one makes that arrive as a decision here, in the
+    contract grew a ninth. This one makes that arrive as a decision here, in the
     same review as the ``openapi.json`` diff and the widened union it produces in
     the generated client.
     """
@@ -407,4 +407,5 @@ def test_the_open_set_is_the_seven_the_client_was_generated_for() -> None:
         "ModelCapability",
         "PreLabelExclusionReason",
         "SuggestParameter",
+        "Task",
     }

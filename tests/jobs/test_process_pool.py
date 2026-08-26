@@ -63,7 +63,7 @@ def test_a_job_crosses_into_a_spawned_worker_and_reports_back(
     job = workspace.job_queue.enqueue(
         BackgroundJobSpec(
             type=JOB_TYPE,
-            payload=payload_for(uuid4(), "dummy", allow_lossy=False),
+            payload=payload_for(uuid4(), "dummy", target=None, allow_lossy=False),
             idempotent=True,
         )
     )

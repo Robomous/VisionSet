@@ -36,7 +36,7 @@ from pydantic import JsonValue
 from visionset.formats import registry
 from visionset.jobs.context import workspace_for
 from visionset.jobs.registry import HandlerRef, register
-from visionset.kernel.ports import ProgressReporter
+from visionset.kernel.ports import ProgressReporter, resolve_target
 from visionset.kernel.services import ReleaseService
 
 JOB_TYPE = "export.release"
@@ -50,16 +50,22 @@ HANDLER = register(HandlerRef(type=JOB_TYPE, func=f"{__name__}:run", idempotent=
 EXPORTS_DIRNAME: Final = "exports"
 
 
-def payload_for(release_id: UUID, format_name: str, *, allow_lossy: bool) -> dict[str, JsonValue]:
+def payload_for(
+    release_id: UUID, format_name: str, *, target: str | None, allow_lossy: bool
+) -> dict[str, JsonValue]:
     """The payload this handler expects, built where the type is known.
 
-    One place names these three keys and the same place reads them — a route
+    One place names these four keys and the same place reads them — a route
     spelling them by hand would be free to spell them differently, and the
-    mismatch would surface as a ``KeyError`` inside a worker.
+    mismatch would surface as a ``KeyError`` inside a worker. ``format`` is
+    the resolved format's own name even when the caller addressed a target,
+    so the worker resolves the same plugin the request was refused or
+    accepted against.
     """
     return {
         "release_id": str(release_id),
         "format": format_name,
+        "target": target,
         "allow_lossy": allow_lossy,
     }
 
@@ -99,6 +105,7 @@ def run(
 
     release_id = UUID(str(payload["release_id"]))
     format_name = str(payload["format"])
+    target_name = None if payload.get("target") is None else str(payload["target"])
     allow_lossy = bool(payload["allow_lossy"])
 
     workspace = workspace_for(workspace_root)
@@ -110,13 +117,15 @@ def run(
     # ``pick``, never ``exporters()[name]``: a ``KeyError`` is outside the
     # ``VisionSetError`` tree, and here it would fail a job with a traceback
     # instead of a sentence naming what is installed.
-    exporter, _ = registry.pick(registry.exporters(), format_name)
+    installed = registry.exporters()
+    exporter, _ = registry.pick(installed, format_name)
+    target = None if target_name is None else resolve_target(installed, target_name)[1]
 
     destination = workspace_root / EXPORTS_DIRNAME / str(release_id) / format_name
     # Cleared first, because the archive must describe *this* run.
     shutil.rmtree(destination, ignore_errors=True)
     result = ReleaseService(workspace).export(
-        release_id, exporter, destination, allow_lossy=allow_lossy
+        release_id, exporter, destination, allow_lossy=allow_lossy, target=target
     )
 
     archive = archive_path(workspace_root, release_id, format_name)
@@ -127,6 +136,7 @@ def run(
     return {
         "release_id": str(release_id),
         "format": result.format_name,
+        "target": result.target,
         "archive": str(archive.relative_to(workspace_root)),
         "file_count": result.file_count,
         "total_bytes": result.total_bytes,
