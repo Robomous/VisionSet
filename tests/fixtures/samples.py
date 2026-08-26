@@ -25,6 +25,8 @@ from visionset.kernel.domain import (
     Asset,
     AssetProgress,
     Attribute,
+    AugmentOp,
+    AugmentStep,
     Batch,
     BatchState,
     BboxGeometry,
@@ -40,6 +42,8 @@ from visionset.kernel.domain import (
     DraftAttribute,
     DraftLabelClass,
     ExportCompatibility,
+    ExportFileMapping,
+    ExportPreprocessing,
     ExportResult,
     GeometryType,
     ImageFormat,
@@ -52,10 +56,15 @@ from visionset.kernel.domain import (
     OrphanGuard,
     PolygonGeometry,
     PolylineGeometry,
+    PreprocessingPreview,
+    PreprocessingRecipe,
     Project,
     ProjectPreview,
+    RecipeSpec,
     Release,
     ReleaseVerification,
+    ResizeStep,
+    ResizeStrategy,
     SchemaChange,
     SchemaChangePreview,
     SchemaDiff,
@@ -67,6 +76,7 @@ from visionset.kernel.domain import (
     SplitRecipe,
     ThumbnailBackfill,
     TimeRange,
+    TransformedAnnotation,
     VideoMetadata,
     VideoProvenance,
 )
@@ -402,4 +412,75 @@ INFERENCE_CONNECTION = InferenceConnection(
     model_revision="abc123",
     endpoint_url="https://example.invalid/predict",
     setup_state=ConnectionSetupState.READY,
+)
+
+
+PREPROCESSING_SPEC = RecipeSpec(
+    target="yolo11",
+    steps=(
+        ResizeStep(strategy=ResizeStrategy.LETTERBOX, width=640, height=640, pad_value=114),
+        AugmentStep(op=AugmentOp.HFLIP),
+        AugmentStep(op=AugmentOp.BRIGHTNESS_CONTRAST, amount=0.3),
+    ),
+    variants_per_asset=2,
+)
+
+PREPROCESSING_RECIPE = PreprocessingRecipe(
+    project_id=PROJECT.id,
+    name="yolo-640",
+    spec=PREPROCESSING_SPEC,
+    created_at=_WHEN,
+    updated_at=_WHEN,
+)
+
+PREPROCESSING_PREVIEW = PreprocessingPreview(
+    asset_id=ASSET.id,
+    variant=1,
+    width=512,
+    height=512,
+    annotations=(
+        TransformedAnnotation(
+            id=f"{ANNOTATION.id}-aug1",
+            label_class=ANNOTATION.label_class,
+            schema_version=ANNOTATION.schema_version,
+            geometry=BBOX,
+            attributes=dict(ANNOTATION.attributes),
+            provenance=ANNOTATION.provenance,
+            model_ref=ANNOTATION.model_ref,
+            confidence=ANNOTATION.confidence,
+        ),
+    ),
+    image=b"\x89PNG\r\n\x1a\n" + b"\x00" * 8,
+    media_type="image/png",
+)
+
+EXPORT_PREPROCESSING = ExportPreprocessing(
+    recipe_name="yolo-640",
+    spec=PREPROCESSING_SPEC,
+    recipe_hash=_HASH,
+    pillow_version="12.0.0",
+    mapping=(
+        ExportFileMapping(
+            file="images/train/" + _HASH + ".jpg",
+            source_content_hash=_HASH,
+            exported_sha256="2" * 64,
+            variant=0,
+        ),
+        ExportFileMapping(
+            file="images/train/" + _HASH + "-aug1.jpg",
+            source_content_hash=_HASH,
+            exported_sha256="3" * 64,
+            variant=1,
+        ),
+    ),
+)
+
+EXPORT_RESULT_WITH_RECIPE = EXPORT_RESULT.model_copy(
+    update={
+        "source_file_count": 2,
+        "augmented_file_count": 1,
+        "source_annotation_count": 5,
+        "augmented_annotation_count": 3,
+        "preprocessing": EXPORT_PREPROCESSING,
+    }
 )

@@ -33,7 +33,7 @@ from visionset.formats.registry import exporters
 from visionset.inference.registry import registered
 from visionset.jobs import JobRunner
 from visionset.kernel.errors import VisionSetError
-from visionset.kernel.ports import AuthProvider, Exporter, Provider
+from visionset.kernel.ports import AuthProvider, Exporter, PreprocessingDriver, Provider
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR as WORKSPACE_ENV_VAR,
 )
@@ -43,6 +43,7 @@ from visionset.kernel.services import (
 from visionset.kernel.services import (
     resolve_workspace_root as resolve_workspace_root,
 )
+from visionset.preprocessing.registry import drivers
 from visionset.server import session
 from visionset.server.errors import ERROR_RESPONSES, code_for
 from visionset.server.settings import job_settings
@@ -273,6 +274,16 @@ def get_exporters() -> dict[str, Exporter]:
     return exporters()
 
 
+def get_drivers() -> Mapping[str, PreprocessingDriver]:
+    """Every installed pre-processing driver, keyed by the step kind it applies.
+
+    :func:`get_exporters`'s reason, one port over: the kernel takes driver
+    instances and may not scan the entry-point group itself, and a dependency
+    is what lets a test substitute a driver.
+    """
+    return drivers()
+
+
 def get_providers() -> Mapping[str, Provider]:
     """Every inference driver installed alongside this server, by provider id.
 
@@ -367,6 +378,8 @@ RunnerDep = Annotated[DispatcherHandle, Depends(get_job_runner)]
 """The dispatcher, for a route that launches work rather than doing it."""
 
 ExportersDep = Annotated[dict[str, Exporter], Depends(get_exporters)]
+
+DriversDep = Annotated[Mapping[str, PreprocessingDriver], Depends(get_drivers)]
 """The installed export formats, for a route that lists or runs one."""
 
 ProvidersDep = Annotated[Mapping[str, Provider], Depends(get_providers)]

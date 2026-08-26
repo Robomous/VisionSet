@@ -167,6 +167,25 @@ class TransformedView(BaseModel):
         return sum(1 for file in self.files if file.variant > 0)
 
 
+class PreprocessingPreview(BaseModel):
+    """One asset through a recipe, rendered for a person to look at.
+
+    ``image`` is the transformed bytes — the same bytes an export would write
+    for that variant, capped to a preview size — and ``annotations`` are placed
+    on them. ``media_type`` says what the bytes are encoded as.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    asset_id: UUID
+    variant: int = Field(ge=0)
+    width: int | None
+    height: int | None
+    annotations: tuple[TransformedAnnotation, ...] = ()
+    image: bytes
+    media_type: str
+
+
 def transform_manifest(
     manifest: Manifest, spec: RecipeSpec, folds: SplitAssignment | None
 ) -> TransformedView:

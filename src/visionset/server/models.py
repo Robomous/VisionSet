@@ -37,6 +37,7 @@ columns one at a time — applied to the wire.
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Iterable
 from collections.abc import Set as AbstractSet
 from datetime import datetime
@@ -71,6 +72,8 @@ from visionset.kernel.domain import (
     AttentionItem,
     AttentionKind,
     Attribute,
+    AugmentOp,
+    AugmentStep,
     BackgroundJob,
     BackgroundJobState,
     Batch,
@@ -118,12 +121,17 @@ from visionset.kernel.domain import (
     Precision,
     PreLabelRun,
     PreprocessingHints,
+    PreprocessingPreview,
+    PreprocessingRecipe,
     Project,
     ProjectPreview,
     ProjectStats,
     ProjectSummary,
+    RecipeSpec,
     Release,
     ReleaseVerification,
+    ResizeStep,
+    ResizeStrategy,
     ResumeKind,
     ResumeTarget,
     SchemaChange,
@@ -137,8 +145,10 @@ from visionset.kernel.domain import (
     SourceKind,
     SplitAssignment,
     SplitRecipe,
+    Step,
     SuggestParameter,
     Task,
+    TransformedAnnotation,
     VideoProvenance,
     WeightDownload,
     WorkspaceSummary,
@@ -2275,6 +2285,241 @@ class ExportTargetOut(BaseModel):
 
 class ExportTargetPage(Page[ExportTargetOut]):
     """A page of export targets."""
+
+
+# --- pre-processing recipes ---------------------------------------------------
+
+
+class ResizeStepBody(BaseModel):
+    """Bring every exported image to one size, by one strategy.
+
+    `pad_value` is the grey a letterbox pads with and means nothing to
+    `stretch`. Sizes are 32 to 8192 pixels a side.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["resize"] = "resize"
+    strategy: ResizeStrategy
+    width: int
+    height: int
+    pad_value: int = 114
+
+    @classmethod
+    def of(cls, step: ResizeStep) -> Self:
+        return cls(
+            strategy=step.strategy, width=step.width, height=step.height, pad_value=step.pad_value
+        )
+
+    def to_domain(self) -> ResizeStep:
+        return ResizeStep(
+            strategy=self.strategy, width=self.width, height=self.height, pad_value=self.pad_value
+        )
+
+
+class AugmentStepBody(BaseModel):
+    """One augmentation applied when generating variants.
+
+    `amount` bounds the brightness and contrast factors, drawn uniformly from
+    `[1 - amount, 1 + amount]`, and means nothing to `hflip` or `rot90`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["augment"] = "augment"
+    op: AugmentOp
+    amount: float = 0.2
+
+    @classmethod
+    def of(cls, step: AugmentStep) -> Self:
+        return cls(op=step.op, amount=step.amount)
+
+    def to_domain(self) -> AugmentStep:
+        return AugmentStep(op=self.op, amount=self.amount)
+
+
+StepBody = Annotated[ResizeStepBody | AugmentStepBody, Field(discriminator="kind")]
+
+
+def step_of(step: Step) -> ResizeStepBody | AugmentStepBody:
+    if isinstance(step, ResizeStep):
+        return ResizeStepBody.of(step)
+    return AugmentStepBody.of(step)
+
+
+class RecipeSpecBody(BaseModel):
+    """What a recipe does to every exported image, and how many variants it makes.
+
+    At most one `resize` step, and it comes first. `variants_per_asset` counts
+    augmented outputs — 0 to 8 — and requires at least one `augment` step,
+    which in turn requires at least one variant; each augmentation appears at
+    most once. `target` records which export target's hints the recipe was
+    written from and is informational: a recipe applies to any export.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: str | None = None
+    steps: list[StepBody] = []
+    variants_per_asset: int = 0
+
+    @model_validator(mode="after")
+    def _the_domain_accepts_it(self) -> Self:
+        self.to_domain()
+        return self
+
+    @classmethod
+    def of(cls, spec: RecipeSpec) -> Self:
+        return cls(
+            target=spec.target,
+            steps=[step_of(step) for step in spec.steps],
+            variants_per_asset=spec.variants_per_asset,
+        )
+
+    def to_domain(self) -> RecipeSpec:
+        return RecipeSpec(
+            target=self.target,
+            steps=tuple(step.to_domain() for step in self.steps),
+            variants_per_asset=self.variants_per_asset,
+        )
+
+
+class PreprocessingRecipeCreate(BaseModel):
+    """A new recipe: its name and what it does.
+
+    `name` is a slug — lowercase letters, digits, dots, hyphens and
+    underscores, starting with a letter or digit, at most 64 characters —
+    unique within the project.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    spec: RecipeSpecBody
+
+
+class PreprocessingRecipeUpdate(BaseModel):
+    """The whole recipe, replaced. `name` renames it when it differs from the path."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    spec: RecipeSpecBody
+
+
+class PreprocessingRecipeOut(BaseModel):
+    """A named pre-processing recipe of a project.
+
+    A recipe binds at export time — `POST /releases/{release_id}/export?recipe=`
+    takes `name` — and the export keeps the spec by value, so editing or
+    deleting a recipe never alters a past export. There is no state and no
+    `allowed_actions`: every operation is always offered.
+    """
+
+    id: UUID
+    project_id: UUID
+    name: str
+    spec: RecipeSpecBody
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def of(cls, recipe: PreprocessingRecipe) -> Self:
+        return cls(
+            id=recipe.id,
+            project_id=recipe.project_id,
+            name=recipe.name,
+            spec=RecipeSpecBody.of(recipe.spec),
+            created_at=recipe.created_at,
+            updated_at=recipe.updated_at,
+        )
+
+
+class PreprocessingRecipePage(Page[PreprocessingRecipeOut]):
+    """A page of pre-processing recipes."""
+
+
+class PreprocessingPreviewBody(BaseModel):
+    """One asset to render through a spec, and which variant of it.
+
+    `variant` 0 is the base image; `1` to `spec.variants_per_asset` are the
+    augmented outputs. A variant the spec does not make is refused.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    spec: RecipeSpecBody
+    asset_id: UUID
+    variant: int = 0
+
+    @model_validator(mode="after")
+    def _the_variant_exists(self) -> Self:
+        if self.variant < 0 or self.variant > self.spec.variants_per_asset:
+            raise ValueError(
+                f"variant {self.variant} is not one this spec makes; it makes 0 to "
+                f"{self.spec.variants_per_asset}"
+            )
+        return self
+
+
+class PreviewAnnotationOut(BaseModel):
+    """One label as the export would write it, placed on the transformed image.
+
+    `id` is the source annotation's id for the base image and `"{id}-aug{k}"`
+    for variant `k`, so a rendered label traces to the label it came from.
+    """
+
+    id: str
+    label_class: str
+    schema_version: int
+    geometry: GeometryBody
+    attributes: dict[str, bool | float | str]
+    provenance: Literal["human", "model", "import"]
+    model_ref: str | None
+    confidence: float | None
+
+    @classmethod
+    def of(cls, annotation: TransformedAnnotation) -> Self:
+        return cls(
+            id=annotation.id,
+            label_class=annotation.label_class,
+            schema_version=annotation.schema_version,
+            geometry=geometry_of(annotation.geometry),
+            attributes=dict(annotation.attributes),
+            provenance=annotation.provenance,
+            model_ref=annotation.model_ref,
+            confidence=annotation.confidence,
+        )
+
+
+class PreprocessingPreviewOut(BaseModel):
+    """One asset through a recipe, rendered for a screen.
+
+    `image_base64` is the transformed image, encoded as `media_type`, capped to
+    512 pixels on its longer side with `annotations` scaled to match. `width`
+    and `height` are the rendered size; they are null only when the asset never
+    recorded a size and no resize step decided one.
+    """
+
+    asset_id: UUID
+    variant: int
+    width: int | None
+    height: int | None
+    annotations: list[PreviewAnnotationOut]
+    image_base64: str
+    media_type: str
+
+    @classmethod
+    def of(cls, preview: PreprocessingPreview) -> Self:
+        return cls(
+            asset_id=preview.asset_id,
+            variant=preview.variant,
+            width=preview.width,
+            height=preview.height,
+            annotations=[PreviewAnnotationOut.of(one) for one in preview.annotations],
+            image_base64=base64.b64encode(preview.image).decode("ascii"),
+            media_type=preview.media_type,
+        )
 
 
 # --- inference providers ------------------------------------------------------

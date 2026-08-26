@@ -46,6 +46,7 @@ way key-set comparison cannot see.
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from datetime import UTC, datetime
@@ -96,6 +97,8 @@ from visionset.kernel.domain import (
     PolylineGeometry,
     PreLabelRun,
     PreprocessingHints,
+    PreprocessingPreview,
+    PreprocessingRecipe,
     Project,
     ProjectPreview,
     RecipeSpec,
@@ -111,6 +114,7 @@ from visionset.kernel.domain import (
     SplitRecipe,
     Step,
     ThumbnailBackfill,
+    TransformedAnnotation,
     VideoProvenance,
     WeightDownload,
     asset_actions,
@@ -809,6 +813,45 @@ def recipe_spec(value: RecipeSpec) -> dict[str, Any]:
         "target": value.target,
         "steps": [recipe_step(step) for step in value.steps],
         "variants_per_asset": value.variants_per_asset,
+    }
+
+
+def preprocessing_recipe(value: PreprocessingRecipe) -> dict[str, Any]:
+    """A named recipe of a project. Binds at export by ``name``; the export keeps the spec."""
+    return {
+        "id": str(value.id),
+        "project_id": str(value.project_id),
+        "name": value.name,
+        "spec": recipe_spec(value.spec),
+        "created_at": _moment(value.created_at),
+        "updated_at": _moment(value.updated_at),
+    }
+
+
+def transformed_annotation(value: TransformedAnnotation) -> dict[str, Any]:
+    """One label as an export writes it. ``id`` is a string: a variant's carries ``-aug{k}``."""
+    return {
+        "id": value.id,
+        "label_class": value.label_class,
+        "schema_version": value.schema_version,
+        "geometry": geometry(value.geometry),
+        "attributes": dict(value.attributes),
+        "provenance": value.provenance,
+        "model_ref": value.model_ref,
+        "confidence": value.confidence,
+    }
+
+
+def preprocessing_preview(value: PreprocessingPreview) -> dict[str, Any]:
+    """One asset through a recipe, rendered. **Surface-defined**: only the API answers it."""
+    return {
+        "asset_id": str(value.asset_id),
+        "variant": value.variant,
+        "width": value.width,
+        "height": value.height,
+        "annotations": [transformed_annotation(one) for one in value.annotations],
+        "image_base64": base64.b64encode(value.image).decode("ascii"),
+        "media_type": value.media_type,
     }
 
 

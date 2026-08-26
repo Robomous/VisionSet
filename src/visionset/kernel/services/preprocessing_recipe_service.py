@@ -21,26 +21,57 @@ takes an open :class:`WorkspaceService` and nothing else.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Final
 from uuid import UUID
 
-from visionset.kernel.domain import PreprocessingRecipe, Project, RecipeSpec, normalize_name
+from visionset.kernel.domain import (
+    Annotation,
+    Manifest,
+    ManifestAnnotation,
+    ManifestAsset,
+    PreprocessingPreview,
+    PreprocessingRecipe,
+    Project,
+    RecipeSpec,
+    ResizeStep,
+    ResizeStrategy,
+    SplitAssignment,
+    fit_within,
+    normalize_name,
+    transform_manifest,
+)
 from visionset.kernel.errors import (
+    AssetNotFound,
     ConstraintViolated,
+    ExportSourceUnreadable,
     InvalidName,
     PreprocessingRecipeNameTaken,
     PreprocessingRecipeNotFound,
     ProjectNotFound,
+    UnsupportedMedia,
 )
-from visionset.kernel.ports import UnitOfWork
+from visionset.kernel.ports import PreprocessingDriver, UnitOfWork, driver_for
 from visionset.kernel.services.dataset_service import DatasetService
-from visionset.kernel.services.release_service import ReleaseService
+from visionset.kernel.services.release_service import ReleaseService, transformed_bytes
 from visionset.kernel.services.workspace_service import WorkspaceService
 
 #: What a recipe name may look like: a slug, because it travels as a path
 #: segment and a command-line argument and is compared exactly.
 _SLUG: Final = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+
+#: The longest edge a preview is rendered at. A preview is for looking, and a
+#: 4K frame pushed through base64 for a thumbnail-sized cell is bandwidth
+#: spent on pixels nobody sees.
+PREVIEW_MAX_EDGE: Final = 512
+
+#: What the first bytes of a rendered preview say it is, for ``media_type``.
+_MEDIA_TYPES: Final[tuple[tuple[bytes, str], ...]] = (
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"RIFF", "image/webp"),
+)
 
 #: How SQLite words the name index's refusal — matched exactly, the
 #: ``ReleaseService`` precedent, so another constraint is never mistaken for it.
@@ -162,6 +193,84 @@ class PreprocessingRecipeService:
             uow.preprocessing_recipes.delete(stored.id)
             return stored
 
+    def preview(
+        self,
+        project_id: UUID,
+        spec: RecipeSpec,
+        asset_id: UUID,
+        *,
+        variant: int,
+        drivers: Mapping[str, PreprocessingDriver],
+        max_edge: int = PREVIEW_MAX_EDGE,
+    ) -> PreprocessingPreview:
+        """One asset through ``spec``, as the export would write it, sized for a screen.
+
+        The same kernel path as an export — ``transform_manifest`` for the
+        geometry, ``transformed_bytes`` for the pixels — over a one-asset
+        manifest with the asset in the train fold, so every variant the spec
+        declares can be looked at whether or not any release exists. The
+        result is then capped to ``max_edge`` on its longer side, labels and
+        pixels scaled together, which is the one step an export does not take.
+
+        ``variant`` 0 is the base image; ``1..variants_per_asset`` are the
+        augmented outputs. Asking for a variant the spec does not make is a
+        caller's error and is refused by the surface before it reaches here.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+            AssetNotFound: the asset is not in this project.
+            PreprocessingStepUnsupportedGeometry: a step cannot transform a
+                geometry the asset carries.
+            ExportSourceUnreadable: a step needs a source size the asset never
+                recorded, or the asset's bytes are not in the blob store.
+            PreprocessingDriverNotFound: no driver in ``drivers`` applies a step.
+            UnsupportedMedia: the rendered bytes are not a JPEG, PNG or WebP.
+        """
+        with self._workspace.unit_of_work() as uow:
+            self._require_project(uow, project_id)
+            asset = uow.assets.get(asset_id)
+            if asset is None or asset.project_id != project_id:
+                raise AssetNotFound(f"no asset {asset_id} in project {project_id}")
+            manifest_asset = ManifestAsset(
+                asset_id=asset.id,
+                content_hash=asset.content_hash,
+                uri=asset.uri,
+                width=asset.width,
+                height=asset.height,
+                annotations=tuple(
+                    _manifest_annotation(one) for one in uow.annotations.list(asset.id)
+                ),
+            )
+        manifest = Manifest(schema_version=1, assets=(manifest_asset,))
+        view = transform_manifest(manifest, spec, SplitAssignment(train=(asset.id,)))
+        file = next(one for one in view.files if one.variant == variant)
+        try:
+            with self._workspace.blob_store.get(asset.content_hash) as stream:
+                source = stream.read()
+        except FileNotFoundError as exc:
+            raise ExportSourceUnreadable(
+                f"asset {asset.id} ({asset.content_hash}) is not in the blob store"
+            ) from exc
+        image = transformed_bytes(
+            spec, drivers, source, content_hash=asset.content_hash, variant=variant
+        )
+        fitted = fit_within(file, max_edge)
+        if (fitted.width, fitted.height) != (file.width, file.height):
+            assert fitted.width is not None and fitted.height is not None
+            cap = ResizeStep(
+                strategy=ResizeStrategy.STRETCH, width=fitted.width, height=fitted.height
+            )
+            image = driver_for(drivers, cap.kind).apply(cap, image, seed=b"", variant=variant)
+        return PreprocessingPreview(
+            asset_id=asset.id,
+            variant=variant,
+            width=fitted.width,
+            height=fitted.height,
+            annotations=fitted.annotations,
+            image=image,
+            media_type=_media_type(image),
+        )
+
     def list(self, project_id: UUID) -> list[PreprocessingRecipe]:
         """Every recipe of the project, oldest first.
 
@@ -219,3 +328,23 @@ def _as_name_collision(
             f"another writer created a recipe named {name!r} first; choose another name"
         )
     return exc
+
+
+def _manifest_annotation(annotation: Annotation) -> ManifestAnnotation:
+    return ManifestAnnotation(
+        id=annotation.id,
+        label_class=annotation.label_class,
+        schema_version=annotation.schema_version,
+        geometry=annotation.geometry,
+        attributes=dict(annotation.attributes),
+        provenance=annotation.provenance,
+        model_ref=annotation.model_ref,
+        confidence=annotation.confidence,
+    )
+
+
+def _media_type(image: bytes) -> str:
+    for signature, media_type in _MEDIA_TYPES:
+        if image.startswith(signature):
+            return media_type
+    raise UnsupportedMedia("the rendered preview is not a JPEG, PNG or WebP")

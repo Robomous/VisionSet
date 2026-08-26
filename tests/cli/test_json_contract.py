@@ -39,12 +39,15 @@ from tests.fixtures.samples import (
     DATASET_STATS,
     EXPORT_COMPATIBILITY,
     EXPORT_RESULT,
+    EXPORT_RESULT_WITH_RECIPE,
     INFERENCE_CONNECTION,
     INGEST_FAILURE,
     INGEST_JOB,
     JOB,
     PARTIAL_EXTRACTION,
     POLYGON,
+    PREPROCESSING_PREVIEW,
+    PREPROCESSING_RECIPE,
     PROJECT,
     PROJECT_PREVIEW,
     RELEASE,
@@ -122,6 +125,16 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
         models.AttributeBody,
     ),
     ("schema_draft", wire.schema_draft(SCHEMA_DRAFT), models.SchemaDraftOut),
+    (
+        "preprocessing_recipe",
+        wire.preprocessing_recipe(PREPROCESSING_RECIPE),
+        models.PreprocessingRecipeOut,
+    ),
+    (
+        "preprocessing_preview",
+        wire.preprocessing_preview(PREPROCESSING_PREVIEW),
+        models.PreprocessingPreviewOut,
+    ),
     (
         "draft_label_class",
         wire.draft_label_class(SCHEMA_DRAFT.classes[0]),
@@ -299,10 +312,11 @@ def test_a_timestamp_keeps_its_microseconds_and_ends_in_z() -> None:
     "payload",
     [
         wire.export_result(EXPORT_RESULT),
+        wire.export_result(EXPORT_RESULT_WITH_RECIPE),
         wire.thumbnail_backfill(THUMBNAIL_BACKFILL),
         wire.schema_diff(SCHEMA_DIFF),
     ],
-    ids=["export_result", "thumbnail_backfill", "schema_diff"],
+    ids=["export_result", "export_result_with_recipe", "thumbnail_backfill", "schema_diff"],
 )
 def test_a_surface_defined_shape_still_serializes(payload: dict[str, Any]) -> None:
     # No route publishes any of the three, so there is nothing to be parity-gated
