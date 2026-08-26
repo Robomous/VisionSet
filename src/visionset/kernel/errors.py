@@ -811,14 +811,17 @@ class ExportTargetConflict(VisionSetError):
 
 
 class InvalidExportTarget(VisionSetError):
-    """An exporter declares a target it cannot deliver.
+    """An exporter's target declaration is defective.
 
-    A target's ``supported_geometries`` must stay within the declaring
-    exporter's own, because the target is a promise about that exporter's
-    output — one claiming a geometry the exporter never writes would make the
-    catalog describe files that do not appear. Raised by ``validate_targets``,
-    which is a check on the *declaration*: nothing about the caller's request
-    is wrong, the installed plugin is.
+    Either it declares no target at all — the target control is the one
+    gesture every surface renders, so such a format is installed yet
+    unreachable — or a target's ``supported_geometries`` reach outside the
+    declaring exporter's own. The second matters because the target is a
+    promise about that exporter's output, and one claiming a geometry the
+    exporter never writes would make the catalog describe files that do not
+    appear. Raised by ``validate_targets``, which is a check on the
+    *declaration*: nothing about the caller's request is wrong, the installed
+    plugin is.
     """
 
 

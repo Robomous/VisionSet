@@ -187,6 +187,25 @@ def test_a_target_declared_twice_is_a_conflict_naming_both_formats() -> None:
     assert "b-format" in str(refusal.value)
 
 
+def test_an_exporter_declaring_no_target_is_refused_by_name() -> None:
+    """A format nothing can address is a defect in the declaration, not a caller's error."""
+    plugin = _Format("a-format", frozenset({GeometryType.BBOX}), frozenset())
+
+    with pytest.raises(InvalidExportTarget) as refusal:
+        validate_targets(plugin)
+
+    assert "'a-format'" in str(refusal.value)
+    assert "no export target" in str(refusal.value)
+
+
+def test_the_installed_set_refuses_an_exporter_declaring_no_target() -> None:
+    sound = _Format("a-format", frozenset({GeometryType.BBOX}), frozenset({_target("a")}))
+    targetless = _Format("b-format", frozenset({GeometryType.BBOX}), frozenset())
+
+    with pytest.raises(InvalidExportTarget, match="'b-format'"):
+        validate_installed({"a-format": sound, "b-format": targetless})
+
+
 def test_a_target_within_its_exporter_validates() -> None:
     plugin = _Format(
         "a-format",

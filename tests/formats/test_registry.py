@@ -9,6 +9,7 @@ part a reader would not expect a registry to need.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from importlib.metadata import EntryPoint
 from pathlib import Path
 
 import pytest
@@ -17,14 +18,15 @@ from visionset.formats._targets import self_target
 from visionset.formats.registry import exporter, exporters, pick
 from visionset.kernel.domain import (
     Annotation,
+    ExportTarget,
     GeometryType,
     Manifest,
     Release,
     TargetFamily,
     Task,
 )
-from visionset.kernel.errors import ExportFormatNotFound
-from visionset.kernel.ports import ContentReader
+from visionset.kernel.errors import ExportFormatNotFound, InvalidExportTarget
+from visionset.kernel.ports import ContentReader, Exporter
 
 
 class _AnImporter:
@@ -235,6 +237,30 @@ def test_a_plugin_missing_the_lossy_member_is_not_an_exporter() -> None:
             return None
 
     assert not isinstance(_Outdated(), Exporter)
+
+
+class _Targetless(_AnExporter):
+    """Carries every member of the port, and declares nothing under ``targets``."""
+
+    format_name = "targetless"
+    targets: frozenset[ExportTarget] = frozenset()
+
+
+def test_a_plugin_declaring_no_target_is_refused_at_the_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The port's ``isinstance`` filter cannot see an empty set; the scan's validation must."""
+    from visionset.formats import registry
+
+    assert isinstance(_Targetless(), Exporter)
+    shipped = tuple(registry.entry_points(group="visionset.formats"))
+    defective = EntryPoint(
+        name="targetless", value=f"{__name__}:_Targetless", group="visionset.formats"
+    )
+    monkeypatch.setattr(registry, "entry_points", lambda *, group: (*shipped, defective))
+
+    with pytest.raises(InvalidExportTarget, match="'targetless'"):
+        registry.exporters()
 
 
 def test_a_plugin_missing_the_targets_member_is_not_an_exporter() -> None:

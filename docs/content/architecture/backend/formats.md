@@ -61,8 +61,14 @@ Beside them sits `targets`: the models the format writes for, each a frozen
 `ExportTarget` with its tasks, the geometries an export addressed to it carries, and
 the pre-processing hints a recipe editor preselects. A format that is not a trainer's
 declares one target named after itself, so every surface renders one control. The
-registry validates the declarations at the scan - a target promising a geometry the
-format never writes, or one name declared by two formats, is refused there - and the
+registry validates the declarations at the scan, and three rules are enforced there
+rather than at export time: an exporter declares at least one target, because a
+format with none is installed yet unreachable through the one control a surface
+renders; each target's geometries stay within the union of the exporter's
+`supported_geometries` and `degraded_geometries`, so the catalog never promises a
+file the format does not write; and a target name is declared by exactly one
+installed format, so resolving it is never a guess. The first two refuse with
+`InvalidExportTarget` and the third with `ExportTargetConflict`, and the
 kernel derives the catalog `GET /export-targets`, `visionset target list` and
 `list_export_targets` all render. [`docs/content/releases.md`](../../releases.md#export-targets)
 carries the catalog and the narrowing rule.
