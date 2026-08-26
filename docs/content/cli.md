@@ -35,8 +35,10 @@ visionset job pre-label JOB_ID CONNECTION [--minimum-confidence FLOAT] [--replac
 visionset release publish --tag T --project P [--split TRAIN,VAL,TEST] [--seed N]
 visionset release list --project P
 visionset release verify TAG --project P
-visionset export --project P --release TAG --target T|--format F --out DIR [--allow-lossy]
+visionset export --project P --release TAG --target T|--format F --out DIR [--allow-lossy] [--recipe NAME]
 visionset export --project P --release TAG --target T|--format F --check   # writes nothing; exit 1 = it loses something
+visionset recipe create NAME --project P --spec FILE | --resize letterbox:640x640 --augment hflip --variants 2 --target T
+visionset recipe list|show NAME|update NAME|delete NAME --project P
 visionset format list                                    # no --workspace: it opens nothing
 visionset target list                                    # the models a release can be exported for
 
@@ -458,6 +460,27 @@ visionset export --check -p road-signs --release v1.0 -f ultralytics && \
 means what it looks like. The table is on **stdout** and the summary on stderr, so `| cut` gets
 classes and nothing else; `--json` prints `visionset.wire.export_compatibility`, the same document
 the REST route and the MCP tool publish.
+
+### `visionset recipe`, and `export --recipe`
+
+`recipe create NAME --project P` stores a [pre-processing recipe](preprocessing.md) under a name,
+and `recipe list`, `recipe show NAME`, `recipe update NAME` and `recipe delete NAME` do what they
+say; `--json` shapes are the wire's, and `recipe show --json` prints under `spec` exactly what
+`--spec FILE` reads back. **Two ways to say what a recipe does, never both**: `--spec FILE` for
+a script, or the flag form at a prompt - `--resize letterbox:640x640` (`--pad` for the grey),
+`--augment hflip,brightness_contrast` (`--amount` for how far), `--variants 2`, `--target yolo11`.
+Mixing the file with a flag, or giving neither, is a usage error at exit 2, and so is a spec
+that breaks the recipe grammar - the rule is named. `recipe update` replaces the spec whole and
+takes `--rename`; `recipe delete` asks nothing, because every export that used the recipe kept
+its own copy.
+
+`export --recipe NAME` applies one: the recipe is resolved through the release's project, every
+image is resized as it says, and augmented variants of the train-fold images are written beside
+their sources. `--check` with a recipe also refuses now what the export would refuse -
+augmentation over a release published without a split, or a step that cannot move a geometry
+the release carries - at exit 1 with the reason. The human output adds one line naming the
+source and augmented counts; `--json` carries them as `source_file_count` and
+`augmented_file_count`, with the recipe under `preprocessing`.
 
 ### `visionset backfill-thumbnails`
 

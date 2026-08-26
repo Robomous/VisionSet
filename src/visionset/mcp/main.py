@@ -54,6 +54,7 @@ from visionset.mcp import (
     formats,
     inference,
     jobs,
+    preprocessing,
     projects,
     releases,
     schemas,
@@ -130,6 +131,8 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (formats.list_export_targets, READS),
     (releases.check_export, READS),
     (releases.export_release, WRITES),
+    (preprocessing.list_preprocessing_recipes, READS),
+    (preprocessing.create_preprocessing_recipe, WRITES),
     # After the cycle, not in it: connections are workspace configuration —
     # every project shares them — so they read as the appendix rather than as a
     # rung. Within the group, the order is the setup journey: see what is
@@ -159,6 +162,7 @@ DESTRUCTIVE_TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]]
     (batches.delete_batch, DESTROYS),
     (projects.delete_project, DESTROYS),
     (inference.delete_inference_connection, DESTROYS),
+    (preprocessing.delete_preprocessing_recipe, DESTROYS),
 )
 """Tools that destroy something, registered **only on request**.
 

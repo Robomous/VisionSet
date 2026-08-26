@@ -29,6 +29,7 @@ from visionset.kernel.domain import (
     InferenceConnection,
     IngestJob,
     OrphanGuard,
+    PreprocessingRecipe,
     Project,
     Release,
     SchemaDraft,
@@ -144,6 +145,16 @@ class UnitOfWork(Protocol):
 
     @property
     def releases(self) -> Repository[Release]: ...
+
+    @property
+    def preprocessing_recipes(self) -> Repository[PreprocessingRecipe]:
+        """A project's named pre-processing recipes, parented on the project.
+
+        ``list(project_id)`` is the read a name lookup goes through — a project
+        holds a handful of recipes, and a query by name on the port would be the
+        query language the port does not have.
+        """
+        ...
 
     @property
     def jobs(self) -> Repository[BackgroundJob]:

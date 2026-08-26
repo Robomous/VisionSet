@@ -20,7 +20,13 @@ from pathlib import Path
 from typing import Final
 from uuid import UUID
 
-from visionset.kernel.domain import Manifest, ManifestAsset, Release, assign_split
+from visionset.kernel.domain import (
+    Manifest,
+    ManifestAsset,
+    Release,
+    assign_split,
+    source_of_content_hash,
+)
 from visionset.kernel.errors import ExportSourceUnreadable
 from visionset.kernel.ports import ContentReader
 
@@ -70,7 +76,15 @@ def folds_of(release: Release, manifest: Manifest) -> dict[UUID, str]:
     """
     if release.split is None:
         return {asset.asset_id: DEFAULT_FOLD for asset in manifest.assets}
-    assignment = assign_split(release.split, manifest.assets)
+    # Over the base images only. A manifest handed to a plugin under a recipe
+    # also lists augmented variants, keyed ``<hash>-aug<k>`` and sharing their
+    # source's ``asset_id``; cutting over those would move the fold boundaries
+    # the release's own assignment drew, and looking the variant up by the id
+    # it shares is what keeps it in its source's fold.
+    bases = [
+        asset for asset in manifest.assets if source_of_content_hash(asset.content_hash)[1] == 0
+    ]
+    assignment = assign_split(release.split, bases)
     return {
         asset_id: fold
         for fold, members in zip(

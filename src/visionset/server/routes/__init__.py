@@ -33,6 +33,7 @@ from visionset.server.routes import (
     inference,
     ingest,
     jobs,
+    preprocessing_recipes,
     projects,
     providers,
     releases,
@@ -65,6 +66,8 @@ ROUTERS: Final[tuple[APIRouter, ...]] = (
     releases.router,
     formats.router,
     formats.targets_router,
+    preprocessing_recipes.router,
+    preprocessing_recipes.preview_router,
     # Outside the pipeline order too, and for its own reason: a connection is not
     # a stage of the data's life but a piece of this workspace's configuration,
     # which the pipeline reads rather than produces.

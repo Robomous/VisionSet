@@ -20,6 +20,7 @@ import hashlib
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -122,8 +123,8 @@ class PreprocessingRecipe(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    id: str
-    project_id: str
+    id: UUID = Field(default_factory=uuid4)
+    project_id: UUID
     name: str
     spec: RecipeSpec
     created_at: datetime

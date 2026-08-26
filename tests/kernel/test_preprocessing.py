@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -102,8 +103,7 @@ def test_a_spec_discriminates_steps_on_kind() -> None:
 def test_a_recipe_wraps_a_spec_with_its_identity() -> None:
     now = datetime.now(UTC)
     recipe = PreprocessingRecipe(
-        id="r1",
-        project_id="p1",
+        project_id=uuid4(),
         name="yolo-640",
         spec=RecipeSpec(target="yolo11", steps=(RESIZE,)),
         created_at=now,

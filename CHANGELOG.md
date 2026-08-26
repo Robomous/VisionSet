@@ -13,6 +13,24 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Pre-processing: resize and augmentation recipes applied at export.** Part of the
+  pre-processing epic (#785). A recipe is a named project resource - at most one resize step
+  (`letterbox` or `stretch`) followed by augmentation steps (`hflip`, `brightness_contrast`,
+  `rot90`) and a number of variants per train-fold image - served as
+  `/projects/{id}/preprocessing-recipes` with a preview at
+  `POST /projects/{id}/preprocessing-preview`, `visionset recipe`, and the
+  `create_preprocessing_recipe`, `list_preprocessing_recipes` and (behind `--allow-destructive`)
+  `delete_preprocessing_recipe` tools. An export names one beside its target - `recipe=` on the
+  export and compatibility routes, `visionset export --recipe`, `recipe` on `export_release` and
+  `check_export` - and keeps the spec by value: the job carries a snapshot, and the export report
+  gains a `preprocessing` block with the spec, its hash, the Pillow version and a mapping from
+  every written image to its source. `ExportResult` separates `source_file_count` and
+  `augmented_file_count` from the total. Augmented variants are written for the train fold only
+  and named `<hash>-aug<k>`; a recipe that augments refuses a release published without a split
+  (`AUGMENTATION_REQUIRES_SPLIT`), and a step refuses a geometry it cannot move
+  (`PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`). Workspace format version 17 adds the
+  `preprocessing_recipes` table.
+
 - **Export targets: a release is exported for the model it will train.** Part of the
   export-targets epic (#784). Every installed format declares the targets it writes for, and the
   catalog is served on every surface: `GET /export-targets`, `visionset target list` and the

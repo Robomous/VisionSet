@@ -1,4 +1,4 @@
-# usage: from visionset.kernel.domain import transform_manifest, letterbox_fit
+# usage: from visionset.kernel.domain import transform_manifest, plugin_manifest
 """What a recipe does to a manifest's geometry, worked out without a pixel.
 
 The kernel owns every coordinate an export writes: the pixel driver moves
@@ -15,8 +15,8 @@ is a hash-pinned contract and this document is derived and transient.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Literal
-from uuid import UUID
+from typing import Final, Literal
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -53,6 +53,17 @@ from visionset.kernel.errors import (
 )
 
 Fold = Literal["train", "val", "test"]
+
+#: What separates a source content hash from a variant index in the key an
+#: augmented file is read and named under: ``<hash>-aug<k>``. A content hash
+#: is hexadecimal, so the marker cannot occur inside one.
+VARIANT_MARKER: Final = "-aug"
+
+#: The namespace a variant's annotation id is derived in. A manifest annotation
+#: id is a UUID, and ``"{id}-aug{k}"`` is not one, so the manifest handed to a
+#: plugin carries ``uuid5(namespace, "{id}-aug{k}")`` — derived, not drawn, so
+#: two exports of one release agree on every id.
+VARIANT_ID_NAMESPACE: Final = uuid5(NAMESPACE_URL, "visionset:preprocessing:variant")
 
 
 class LetterboxFit(BaseModel):
@@ -154,6 +165,25 @@ class TransformedView(BaseModel):
     def augmented_file_count(self) -> int:
         """How many augmented variants the export writes, across all assets."""
         return sum(1 for file in self.files if file.variant > 0)
+
+
+class PreprocessingPreview(BaseModel):
+    """One asset through a recipe, rendered for a person to look at.
+
+    ``image`` is the transformed bytes — the same bytes an export would write
+    for that variant, capped to a preview size — and ``annotations`` are placed
+    on them. ``media_type`` says what the bytes are encoded as.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    asset_id: UUID
+    variant: int = Field(ge=0)
+    width: int | None
+    height: int | None
+    annotations: tuple[TransformedAnnotation, ...] = ()
+    image: bytes
+    media_type: str
 
 
 def transform_manifest(
@@ -396,3 +426,96 @@ def _rotated_once(geometry: Geometry, width: float) -> Geometry:
     if isinstance(geometry, PolygonGeometry):
         return PolygonGeometry(points=points)
     return PolylineGeometry(points=points)
+
+
+def variant_content_hash(content_hash: str, variant: int) -> str:
+    """The key an exported file is read and named under.
+
+    Variant 0 is the source hash itself, so a base image keeps its
+    original-hash-derived name; variant ``k`` is ``"{hash}-aug{k}"``, which is
+    both the name on disk and what the export's content reader resolves.
+    """
+    return content_hash if variant == 0 else f"{content_hash}{VARIANT_MARKER}{variant}"
+
+
+def source_of_content_hash(key: str) -> tuple[str, int]:
+    """The source hash and variant index a content key was built from."""
+    head, marker, tail = key.rpartition(VARIANT_MARKER)
+    if marker and tail.isdigit():
+        return head, int(tail)
+    return key, 0
+
+
+def plugin_manifest(manifest: Manifest, view: TransformedView) -> Manifest:
+    """The view as the manifest a plugin is handed: one asset per file to write.
+
+    The port speaks manifests and content hashes and has no word for a variant,
+    so each transformed file becomes a manifest asset. Its ``asset_id`` stays
+    the source's — which is what keeps a variant in its source's fold when the
+    plugin recomputes folds — and its ``content_hash`` is
+    :func:`variant_content_hash`, distinct per variant so the plugin names and
+    reads each file on its own. ``uri`` is copied from the source; ``width``
+    and ``height`` are the transformed size. Classes stay the manifest's.
+    """
+    sources = {asset.asset_id: asset for asset in manifest.assets}
+    return manifest.model_copy(
+        update={
+            "assets": tuple(
+                ManifestAsset(
+                    asset_id=file.asset_id,
+                    content_hash=variant_content_hash(file.content_hash, file.variant),
+                    uri=sources[file.asset_id].uri,
+                    width=file.width,
+                    height=file.height,
+                    annotations=tuple(
+                        _manifest_annotation(annotation, file.variant)
+                        for annotation in file.annotations
+                    ),
+                )
+                for file in view.files
+            )
+        }
+    )
+
+
+def _manifest_annotation(annotation: TransformedAnnotation, variant: int) -> ManifestAnnotation:
+    return ManifestAnnotation(
+        id=UUID(annotation.id) if variant == 0 else uuid5(VARIANT_ID_NAMESPACE, annotation.id),
+        label_class=annotation.label_class,
+        schema_version=annotation.schema_version,
+        geometry=annotation.geometry,
+        attributes=dict(annotation.attributes),
+        provenance=annotation.provenance,
+        model_ref=annotation.model_ref,
+        confidence=annotation.confidence,
+    )
+
+
+def fit_within(file: TransformedFile, max_edge: int) -> TransformedFile:
+    """The file scaled so its longer edge is at most ``max_edge``, aspect kept.
+
+    A preview's size cap, applied as the stretch arithmetic the export uses so
+    the annotations land where a resize driver asked for the same size would
+    put the pixels. A file already within the cap, or one with no recorded
+    size, is returned as it is.
+    """
+    if file.width is None or file.height is None or max(file.width, file.height) <= max_edge:
+        return file
+    scale = max_edge / max(file.width, file.height)
+    width, height = max(1, round(file.width * scale)), max(1, round(file.height * scale))
+    return file.model_copy(
+        update={
+            "width": width,
+            "height": height,
+            "annotations": tuple(
+                annotation.model_copy(
+                    update={
+                        "geometry": _scaled(
+                            annotation.geometry, width / file.width, height / file.height, 0.0, 0.0
+                        )
+                    }
+                )
+                for annotation in file.annotations
+            ),
+        }
+    )

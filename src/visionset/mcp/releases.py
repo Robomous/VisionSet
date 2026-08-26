@@ -38,10 +38,11 @@ from visionset import wire
 from visionset.formats import registry
 from visionset.kernel.domain import ExportTarget, SplitRecipe
 from visionset.kernel.ports import Exporter, resolve_target
-from visionset.kernel.services import ProjectService, ReleaseService
+from visionset.kernel.services import PreprocessingRecipeService, ProjectService, ReleaseService
 from visionset.mcp._errors import refused
 from visionset.mcp._resolve import ProjectRef, resolve_project, resolve_release
 from visionset.mcp._workspace import opened_workspace
+from visionset.preprocessing import registry as preprocessing_registry
 
 TagRef = Annotated[str, Field(description="The release tag. Compared case-sensitively.")]
 """Module-level for the ``inspect.signature`` reason."""
@@ -161,11 +162,24 @@ def _addressed(target: str | None, format: str | None) -> tuple[Exporter, Export
     return registry.pick(installed, format)[0], None
 
 
+RecipeRef = Annotated[
+    str | None,
+    Field(
+        description=(
+            "A pre-processing recipe of the project, by name. See "
+            "`list_preprocessing_recipes`. Omit to apply no transform."
+        )
+    ),
+]
+"""Module-level for the ``inspect.signature`` reason."""
+
+
 def check_export(
     project: ProjectRef,
     tag: TagRef,
     target: TargetRef = None,
     format: FormatRef = None,
+    recipe: RecipeRef = None,
 ) -> dict[str, Any]:
     """Say what a target or a format would drop from a release, without writing anything.
 
@@ -202,13 +216,25 @@ def check_export(
     `list_formats`. That flag covers everything a geometry list cannot see —
     attributes, confidence, provenance — and is true of the format forever;
     this is about the labels this release actually holds.
+
+    `recipe` names a pre-processing recipe of the project, and the check then
+    also refuses what `export_release` would refuse for it: augmentation over a
+    release published without a split, or a step that cannot move a geometry
+    the release carries. The report itself is unchanged by a recipe.
     """
     if (target is None) == (format is None):
         return refused("give exactly one of target and format")
     with opened_workspace() as workspace:
         release = resolve_release(workspace, project, tag)
         plugin, addressed = _addressed(target, format)
-        report = ReleaseService(workspace).check_export(release.id, plugin, target=addressed)
+        spec = (
+            None
+            if recipe is None
+            else PreprocessingRecipeService(workspace).for_release(release.id, recipe).spec
+        )
+        report = ReleaseService(workspace).check_export(
+            release.id, plugin, target=addressed, recipe=spec
+        )
     return wire.export_compatibility(report)
 
 
@@ -230,6 +256,7 @@ def export_release(
             )
         ),
     ] = False,
+    recipe: RecipeRef = None,
 ) -> dict[str, Any]:
     """Write a release to a local directory, for a target or in one of the installed formats.
 
@@ -260,6 +287,16 @@ def export_release(
     Every successful export also writes `visionset-export-report.json` into
     `dest`, saying what was and was not carried. It is the kernel's file, not the
     format's, and it is excluded from `file_count`.
+
+    `recipe` applies one of the project's pre-processing recipes — see
+    `list_preprocessing_recipes`: every image is resized as the recipe says and
+    augmented variants are written for the train fold, named `<hash>-aug<k>`
+    beside their source. The result separates `source_file_count` from
+    `augmented_file_count`, and `preprocessing` carries the recipe as it ran,
+    its hash, the Pillow version and a file-to-source mapping; the report on
+    disk carries the same. An augmenting recipe refuses a release published
+    without a split, and a step refuses a geometry it cannot move — call
+    `check_export` with the same `recipe` to find out first.
     """
     destination = Path(dest)
     # An exporter writes into `dest` and creates it if missing, so a path that
@@ -273,7 +310,19 @@ def export_release(
     with opened_workspace() as workspace:
         release = resolve_release(workspace, project, tag)
         plugin, addressed = _addressed(target, format)
+        spec = (
+            None
+            if recipe is None
+            else PreprocessingRecipeService(workspace).for_release(release.id, recipe).spec
+        )
         result = ReleaseService(workspace).export(
-            release.id, plugin, destination, allow_lossy=allow_lossy, target=addressed
+            release.id,
+            plugin,
+            destination,
+            allow_lossy=allow_lossy,
+            target=addressed,
+            recipe=spec,
+            recipe_name=recipe,
+            drivers=None if spec is None else preprocessing_registry.drivers(),
         )
     return wire.export_result(result)

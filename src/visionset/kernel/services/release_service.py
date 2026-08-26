@@ -41,11 +41,14 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO, Final
 from uuid import UUID
 
+from PIL import __version__ as PILLOW_VERSION
 from pydantic import ValidationError
 
 from visionset import __version__
@@ -54,27 +57,38 @@ from visionset.kernel.domain import (
     Annotation,
     AnnotationSchema,
     Asset,
+    AugmentStep,
     ClassCompatibility,
     ClassCount,
     ClassExportStatus,
     Dataset,
     ExportCompatibility,
+    ExportFileMapping,
+    ExportPreprocessing,
     ExportResult,
     ExportTarget,
     GeometryType,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
+    RecipeSpec,
     Release,
     ReleasePublished,
     ReleaseVerification,
+    ResizeStep,
     SplitAssignment,
     SplitRecipe,
+    TransformedView,
     assign_split,
     canonical_bytes,
     normalize_name,
+    plugin_manifest,
+    recipe_hash,
     sha256_hex,
+    source_of_content_hash,
+    transform_manifest,
     validate_schema_annotation,
+    variant_seed,
 )
 from visionset.kernel.errors import (
     ConstraintViolated,
@@ -88,7 +102,13 @@ from visionset.kernel.errors import (
     ReleaseTagTaken,
     WorkspaceCorrupt,
 )
-from visionset.kernel.ports import BlobStore, ContentReader, Exporter, UnitOfWork
+from visionset.kernel.ports import (
+    BlobStore,
+    Exporter,
+    PreprocessingDriver,
+    UnitOfWork,
+    driver_for,
+)
 from visionset.kernel.services.dataset_service import DatasetService, assets_of
 from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.workspace_service import WorkspaceService
@@ -348,7 +368,12 @@ class ReleaseService:
     # --- handing the snapshot to a format plugin ---------------------------
 
     def check_export(
-        self, release_id: UUID, exporter: Exporter, *, target: ExportTarget | None = None
+        self,
+        release_id: UUID,
+        exporter: Exporter,
+        *,
+        target: ExportTarget | None = None,
+        recipe: RecipeSpec | None = None,
     ) -> ExportCompatibility:
         """What this format would drop from this release, before anything is written.
 
@@ -356,6 +381,13 @@ class ReleaseService:
         writes but the target has no task for is reported dropped, and the
         report names the target it answers for. Without one the format alone
         is judged.
+
+        ``recipe`` is checked here too, as :meth:`export` will check it: the
+        geometry transform runs over what the export would hand the plugin, so
+        a step that cannot move a label this release carries, or augmentation
+        against a release with no split, refuses now rather than in a worker.
+        The report itself says nothing about the recipe — what a format drops
+        is decided before any transform.
 
         Computed from the **frozen manifest**, never from live membership: an
         export describes a release, and a release is a snapshot. Two runs against
@@ -379,11 +411,20 @@ class ReleaseService:
 
         Raises:
             ReleaseNotFound: no such release in this workspace.
+            AugmentationRequiresSplit: the recipe augments and the release was
+                published without a split recipe.
+            PreprocessingStepUnsupportedGeometry: a recipe step cannot
+                transform a geometry the export would carry.
+            ExportSourceUnreadable: a recipe step needs a source size the
+                manifest never recorded.
             WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
         """
         release = self.get(release_id)
         manifest = self._read_manifest(release)
-        return _compatibility(release, manifest, exporter, target)
+        compatibility = _compatibility(release, manifest, exporter, target)
+        if recipe is not None:
+            _transformed(release, manifest, target, recipe)
+        return compatibility
 
     def require_export_consent(
         self,
@@ -392,6 +433,7 @@ class ReleaseService:
         *,
         allow_lossy: bool,
         target: ExportTarget | None = None,
+        recipe: RecipeSpec | None = None,
     ) -> ExportCompatibility:
         """The compatibility report, or refuse because the caller has not consented.
 
@@ -411,10 +453,20 @@ class ReleaseService:
         and a format declaring itself lossless still cannot silently drop a
         geometry it never claimed to write.
 
+        Consent comes first and the recipe is checked after it: a caller who
+        has not accepted the loss is answered about the loss, and only a
+        consented export goes on to ask whether its recipe can run.
+
         Raises:
             ReleaseNotFound: no such release in this workspace.
             LossyExportNotConsented: the format drops information and the caller
                 has not said that is acceptable.
+            AugmentationRequiresSplit: the recipe augments and the release was
+                published without a split recipe.
+            PreprocessingStepUnsupportedGeometry: a recipe step cannot
+                transform a geometry the export would carry.
+            ExportSourceUnreadable: a recipe step needs a source size the
+                manifest never recorded.
             WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
         """
         release = self.get(release_id)
@@ -426,6 +478,8 @@ class ReleaseService:
                 f"{release.tag!r} holds; re-run with allow_lossy to accept the loss",
                 compatibility=compatibility,
             )
+        if recipe is not None:
+            _transformed(release, manifest, target, recipe)
         return compatibility
 
     def export(
@@ -436,6 +490,9 @@ class ReleaseService:
         *,
         allow_lossy: bool = False,
         target: ExportTarget | None = None,
+        recipe: RecipeSpec | None = None,
+        recipe_name: str | None = None,
+        drivers: Mapping[str, PreprocessingDriver] | None = None,
     ) -> ExportResult:
         """Write this release into ``dest`` in the exporter's format.
 
@@ -444,6 +501,19 @@ class ReleaseService:
         the output holds exactly what the report says it holds: the port has no
         word for a target, and a drop the report promises must not depend on
         every plugin reading a declaration it cannot see.
+
+        ``recipe`` is the pre-processing to apply, snapshotted by value; the
+        stored recipe it came from, if any, is named by ``recipe_name`` for the
+        report alone. The narrowing above happens **first** and the recipe runs
+        over what is left, so a geometry the target drops can never make a
+        step refuse. Folds come from the release's own split recipe over the
+        frozen manifest — the same cut :meth:`assignment` answers — and
+        augmented variants are generated for the train fold only. The plugin
+        then sees one manifest asset per file to write: base images under
+        their source hash, variants under ``<hash>-aug<k>``, and ``content``
+        resolves either to the driver-transformed bytes. ``drivers`` are the
+        installed :class:`PreprocessingDriver` instances keyed by step kind,
+        composed by the caller because the kernel may not scan entry points.
 
         Takes an ``Exporter`` **instance**, never a format name, and that is the
         one place this service differs from every other read here. Plugins are
@@ -483,6 +553,14 @@ class ReleaseService:
             ReleaseNotFound: no such release in this workspace.
             LossyExportNotConsented: the format drops information and the caller
                 has not said that is acceptable.
+            AugmentationRequiresSplit: the recipe augments and the release was
+                published without a split recipe.
+            PreprocessingStepUnsupportedGeometry: a recipe step cannot
+                transform a geometry the export would carry.
+            PreprocessingDriverNotFound: no driver in ``drivers`` applies a
+                step the recipe holds.
+            ExportSourceUnreadable: a recipe step needs a source size the
+                manifest never recorded.
             WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
         """
         release = self.get(release_id)
@@ -490,13 +568,16 @@ class ReleaseService:
         compatibility = self.require_export_consent(
             release_id, exporter, allow_lossy=allow_lossy, target=target
         )
+        addressed = manifest if target is None else _addressed_to(manifest, target)
+        reader = _RecordingReader(manifest, self._workspace.blob_store)
+        if recipe is None:
+            handed, view = addressed, None
+        else:
+            view = _transformed(release, manifest, target, recipe)
+            handed = plugin_manifest(addressed, view)
+            reader.transform(recipe, drivers or {})
         dest.mkdir(parents=True, exist_ok=True)
-        exporter.export(
-            release,
-            manifest if target is None else _addressed_to(manifest, target),
-            dest,
-            content=_content_reader(manifest, self._workspace.blob_store),
-        )
+        exporter.export(release, handed, dest, content=reader.read)
         # The report is **excluded from the count**, on both sides: it is not
         # written until after the walk, and a report left by an earlier run into
         # the same directory is skipped. Both halves are needed for the same
@@ -508,7 +589,19 @@ class ReleaseService:
             for path in dest.rglob("*")
             if path.is_file() and path.name != EXPORT_REPORT_FILENAME
         ]
-        _write_report(dest, compatibility)
+        preprocessing = (
+            None
+            if recipe is None
+            else ExportPreprocessing(
+                recipe_name=recipe_name,
+                spec=recipe,
+                recipe_hash=recipe_hash(recipe),
+                pillow_version=PILLOW_VERSION,
+                mapping=reader.mapping(dest, written),
+            )
+        )
+        _write_report(dest, compatibility, preprocessing)
+        source_annotations, augmented_annotations = _annotation_counts(handed, view)
         return ExportResult(
             compatibility=compatibility,
             release_id=release.id,
@@ -517,6 +610,11 @@ class ReleaseService:
             directory=dest,
             file_count=len(written),
             total_bytes=sum(path.stat().st_size for path in written),
+            source_file_count=reader.read_count(variant=0),
+            augmented_file_count=reader.read_count(variant=None) - reader.read_count(variant=0),
+            source_annotation_count=source_annotations,
+            augmented_annotation_count=augmented_annotations,
+            preprocessing=preprocessing,
         )
 
     # --- the blob store side ----------------------------------------------
@@ -721,31 +819,185 @@ def _cache_mismatches(release: Release, manifest: Manifest) -> tuple[str, ...]:
     )
 
 
-def _content_reader(manifest: Manifest, blobs: BlobStore) -> ContentReader:
+def _transformed(
+    release: Release, manifest: Manifest, target: ExportTarget | None, recipe: RecipeSpec
+) -> TransformedView:
+    """What the recipe makes of the manifest an export would hand the plugin.
+
+    Narrowed to the target first, so a geometry the target drops never
+    reaches a step that cannot move it; folds from the release's own split
+    over the frozen manifest, the cut ``assignment`` answers.
+
+    Raises:
+        AugmentationRequiresSplit, PreprocessingStepUnsupportedGeometry,
+            ExportSourceUnreadable: from ``transform_manifest``.
+    """
+    addressed = manifest if target is None else _addressed_to(manifest, target)
+    folds = None if release.split is None else assign_split(release.split, manifest.assets)
+    return transform_manifest(addressed, recipe, folds)
+
+
+def transformed_bytes(
+    spec: RecipeSpec,
+    drivers: Mapping[str, PreprocessingDriver],
+    source: bytes,
+    *,
+    content_hash: str,
+    variant: int,
+) -> bytes:
+    """One image through the recipe's steps, for one variant.
+
+    The resize step runs for every variant; augmentation steps run for
+    variants ``1..n`` only, each seeded from the recipe, the source and the
+    variant index so the pixels land where ``transform_manifest`` put the
+    labels. Shared by the export seam and the preview, which is what makes a
+    preview show what an export will write.
+
+    Raises:
+        PreprocessingDriverNotFound: no driver in ``drivers`` applies a step.
+    """
+    seed = variant_seed(recipe_hash(spec), content_hash, variant)
+    image = source
+    for step in spec.steps:
+        if isinstance(step, ResizeStep) or (isinstance(step, AugmentStep) and variant > 0):
+            image = driver_for(drivers, step.kind).apply(step, image, seed=seed, variant=variant)
+    return image
+
+
+@dataclass(frozen=True)
+class _Produced:
+    """What one read through the content reader handed the plugin."""
+
+    source_content_hash: str
+    variant: int
+    exported_sha256: str | None
+
+
+class _RecordingReader:
     """The reader a plugin lays images out with, composed for exactly one export.
 
     Closed over the manifest so the refusal can name the *asset* rather than the
     hash a plugin happened to ask for — a caller who never saw a content hash
-    cannot act on one. Built here rather than handed the blob store directly
+    cannot act on one. Built here rather than handing the blob store over
     because a format plugin has no business writing into the content store; see
     :data:`~visionset.kernel.ports.ContentReader`.
 
-    The handle is **not** closed here, unlike ``_read_blob``'s: this one hands it
-    over, and a plugin streaming a large image into a file wants the stream, not
-    its contents in memory.
-    """
-    subjects = {asset.content_hash: _asset_subject(asset) for asset in manifest.assets}
+    Without a recipe the handle is the blob store's own and is **not** closed
+    here: a plugin streaming a large image into a file wants the stream. Under
+    a recipe every key resolves through :func:`transformed_bytes` — a base
+    image under its source hash, a variant under ``<hash>-aug<k>`` — and the
+    bytes are held in memory, because a driver returns bytes.
 
-    def read(content_hash: str) -> BinaryIO:
+    Every read is recorded, so the result can count the images the plugin took
+    and, under a recipe, trace each written file to its source.
+    """
+
+    def __init__(self, manifest: Manifest, blobs: BlobStore) -> None:
+        self._subjects = {asset.content_hash: _asset_subject(asset) for asset in manifest.assets}
+        self._blobs = blobs
+        self._spec: RecipeSpec | None = None
+        self._drivers: Mapping[str, PreprocessingDriver] = {}
+        self._produced: dict[str, _Produced] = {}
+
+    def transform(self, spec: RecipeSpec, drivers: Mapping[str, PreprocessingDriver]) -> None:
+        self._spec = spec
+        self._drivers = drivers
+
+    def read(self, key: str) -> BinaryIO:
+        source_hash, variant = source_of_content_hash(key)
+        if self._spec is None:
+            self._produced[key] = _Produced(source_hash, variant, None)
+            return self._open(source_hash)
+        with self._open(source_hash) as stream:
+            source = stream.read()
+        image = transformed_bytes(
+            self._spec, self._drivers, source, content_hash=source_hash, variant=variant
+        )
+        self._produced[key] = _Produced(source_hash, variant, sha256_hex(image))
+        return BytesIO(image)
+
+    def _open(self, content_hash: str) -> BinaryIO:
         try:
-            return blobs.get(content_hash)
+            return self._blobs.get(content_hash)
         except FileNotFoundError as exc:
-            named = subjects.get(content_hash, f"content {content_hash}")
+            named = self._subjects.get(content_hash, f"content {content_hash}")
             raise ExportSourceUnreadable(
                 f"{named} is not in the blob store; verify the release and restore it"
             ) from exc
 
-    return read
+    def read_count(self, *, variant: int | None) -> int:
+        """How many distinct keys were read: all of them, or one variant's."""
+        return sum(
+            1 for one in self._produced.values() if variant is None or one.variant == variant
+        )
+
+    def mapping(self, dest: Path, written: list[Path]) -> tuple[ExportFileMapping, ...]:
+        """Each read traced to the file it landed in, by name and then by digest.
+
+        Every built-in format names an image after the key it read it under,
+        so the stem is the first match; a plugin naming files its own way is
+        found by hashing what it wrote. A read no file matches — a plugin
+        that read and did not write — is left out rather than guessed.
+        """
+        rows: dict[str, ExportFileMapping] = {}
+        by_stem: dict[str, list[Path]] = {}
+        for path in written:
+            by_stem.setdefault(path.stem, []).append(path)
+        claimed: set[Path] = set()
+        unmatched: dict[str, _Produced] = {}
+        for key, produced in self._produced.items():
+            if produced.exported_sha256 is None:
+                continue
+            # A label file shares the image's stem, so the stem alone is
+            # ambiguous; the digest says which sibling holds the pixels.
+            match = next(
+                (
+                    candidate
+                    for candidate in by_stem.get(key, ())
+                    if sha256_hex(candidate.read_bytes()) == produced.exported_sha256
+                ),
+                None,
+            )
+            if match is not None:
+                rows[key] = _mapping_row(dest, match, produced)
+                claimed.add(match)
+            else:
+                unmatched[produced.exported_sha256] = produced
+        if unmatched:
+            for path in written:
+                if path in claimed:
+                    continue
+                digest = sha256_hex(path.read_bytes())
+                if digest in unmatched:
+                    produced = unmatched.pop(digest)
+                    rows[_key_of(produced)] = _mapping_row(dest, path, produced)
+        return tuple(rows[key] for key in sorted(rows))
+
+
+def _key_of(produced: _Produced) -> str:
+    return (
+        produced.source_content_hash
+        if produced.variant == 0
+        else f"{produced.source_content_hash}-aug{produced.variant}"
+    )
+
+
+def _mapping_row(dest: Path, path: Path, produced: _Produced) -> ExportFileMapping:
+    assert produced.exported_sha256 is not None
+    return ExportFileMapping(
+        file=path.relative_to(dest).as_posix(),
+        source_content_hash=produced.source_content_hash,
+        exported_sha256=produced.exported_sha256,
+        variant=produced.variant,
+    )
+
+
+def _annotation_counts(handed: Manifest, view: TransformedView | None) -> tuple[int, int]:
+    """Labels handed to the plugin, split into the release's own and the augmented."""
+    if view is None:
+        return handed.annotation_count, 0
+    source = sum(len(file.annotations) for file in view.files if file.variant == 0)
+    return source, sum(len(file.annotations) for file in view.files if file.variant > 0)
 
 
 def _read_blob(blobs: BlobStore, content_hash: str, subject: str) -> bytes:
@@ -799,7 +1051,9 @@ def _asset_subject(asset: ManifestAsset) -> str:
 EXPORT_REPORT_FILENAME: Final = "visionset-export-report.json"
 
 
-def _write_report(dest: Path, compatibility: ExportCompatibility) -> None:
+def _write_report(
+    dest: Path, compatibility: ExportCompatibility, preprocessing: ExportPreprocessing | None
+) -> None:
     """Put the report in the output, after the plugin has written its own files.
 
     After, and not before: a plugin that clears its own subdirectory would
@@ -810,14 +1064,23 @@ def _write_report(dest: Path, compatibility: ExportCompatibility) -> None:
     ``sort_keys`` for the reason ``canonical_bytes`` uses it: two exports of one
     release must produce identical bytes, and a dict's iteration order is not
     something to leave to chance in a file somebody will diff.
+
+    ``preprocessing`` is one more key beside the compatibility document —
+    ``null`` for an export that applied no recipe, so the key is always there
+    to read.
     """
     dest.joinpath(EXPORT_REPORT_FILENAME).write_text(
         json.dumps(
-            # ``by_alias`` is the whole point: this file has to be key-for-key the
-            # document ``wire.export_compatibility`` and ``ExportCompatibilityOut``
-            # publish. The report format is stable across all three surfaces, and
-            # the artifact is one of them.
-            compatibility.model_dump(mode="json", by_alias=True),
+            {
+                # ``by_alias`` is the whole point: this file has to be key-for-key
+                # the document ``wire.export_compatibility`` and
+                # ``ExportCompatibilityOut`` publish. The report format is stable
+                # across all three surfaces, and the artifact is one of them.
+                **compatibility.model_dump(mode="json", by_alias=True),
+                "preprocessing": None
+                if preprocessing is None
+                else preprocessing.model_dump(mode="json"),
+            },
             indent=2,
             sort_keys=True,
         )

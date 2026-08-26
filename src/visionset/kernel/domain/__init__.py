@@ -66,6 +66,11 @@ from visionset.kernel.domain.events import (
     IngestCompleted,
     ReleasePublished,
 )
+from visionset.kernel.domain.export_report import (
+    ExportFileMapping,
+    ExportPreprocessing,
+    ExportResult,
+)
 from visionset.kernel.domain.export_target import (
     TARGET_NAME_PATTERN,
     ExportTarget,
@@ -184,13 +189,19 @@ from visionset.kernel.domain.preprocessing import (
     variant_seed,
 )
 from visionset.kernel.domain.preprocessing_transform import (
+    VARIANT_ID_NAMESPACE,
     Fold,
     LetterboxFit,
+    PreprocessingPreview,
     TransformedAnnotation,
     TransformedFile,
     TransformedView,
+    fit_within,
     letterbox_fit,
+    plugin_manifest,
+    source_of_content_hash,
     transform_manifest,
+    variant_content_hash,
 )
 from visionset.kernel.domain.project import Project, ProjectPreview, ProjectStats
 from visionset.kernel.domain.release import (
@@ -198,7 +209,6 @@ from visionset.kernel.domain.release import (
     ClassCompatibility,
     ClassExportStatus,
     ExportCompatibility,
-    ExportResult,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
@@ -408,6 +418,8 @@ __all__ = [
     "ClassCompatibility",
     "ClassExportStatus",
     "ExportCompatibility",
+    "ExportFileMapping",
+    "ExportPreprocessing",
     "ExportResult",
     "ExportTarget",
     "PreprocessingHints",
@@ -419,16 +431,22 @@ __all__ = [
     "AugmentStep",
     "Fold",
     "LetterboxFit",
+    "PreprocessingPreview",
     "PreprocessingRecipe",
     "RecipeSpec",
     "ResizeStep",
     "Step",
     "TransformedAnnotation",
+    "VARIANT_ID_NAMESPACE",
     "TransformedFile",
     "TransformedView",
     "brightness_contrast_factors",
     "hflip_applied",
     "letterbox_fit",
+    "variant_content_hash",
+    "source_of_content_hash",
+    "plugin_manifest",
+    "fit_within",
     "recipe_hash",
     "rot90_quarter_turns",
     "transform_manifest",

@@ -62,6 +62,7 @@ from visionset.kernel.domain import (
     IngestState,
     ItemFailure,
     LabelClass,
+    PreprocessingRecipe,
     Project,
     Release,
     SchemaDraft,
@@ -525,6 +526,21 @@ def _release_to_row(entity: Release) -> t.Base:
     )
 
 
+def _recipe_to_row(entity: PreprocessingRecipe) -> t.Base:
+    return t.PreprocessingRecipeRow(
+        id=entity.id,
+        project_id=entity.project_id,
+        name=entity.name,
+        spec=entity.spec.model_dump(mode="json"),
+        created_at=entity.created_at.isoformat(),
+        updated_at=entity.updated_at.isoformat(),
+    )
+
+
+def _recipe_to_domain(_: Session, row: Any) -> PreprocessingRecipe:
+    return PreprocessingRecipe.model_validate(_columns(row))
+
+
 def _release_to_domain(_: Session, row: Any) -> Release:
     return Release(
         id=row.id,
@@ -732,6 +748,12 @@ TOKENS: EntityMapping[Token] = EntityMapping(
     parent_column="workspace_id",
     to_row=_token_to_row,
     to_domain=_token_to_domain,
+)
+PREPROCESSING_RECIPES: EntityMapping[PreprocessingRecipe] = EntityMapping(
+    row=t.PreprocessingRecipeRow,
+    parent_column="project_id",
+    to_row=_recipe_to_row,
+    to_domain=_recipe_to_domain,
 )
 RELEASES: EntityMapping[Release] = EntityMapping(
     row=t.ReleaseRow,

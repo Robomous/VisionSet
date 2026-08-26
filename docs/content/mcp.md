@@ -192,8 +192,10 @@ call until the end. #439 has since added a job gate, but it changes none of this
 | `verify_release` | Re-hash every blob a release names. |
 | `list_formats` | Installed exporters, which are lossy, what each can write, and the targets it writes for. |
 | `list_export_targets` | The models a release can be exported for, each with the format it resolves to and its hints. |
-| `check_export` | What a target or a format would drop from a release, before writing anything. Exactly one of `target` and `format`. |
-| `export_release` | Write a release to a local directory, for a target or in a format. `allow_lossy` where needed. |
+| `check_export` | What a target or a format would drop from a release, before writing anything. Exactly one of `target` and `format`; `recipe` also checks that the recipe can run. |
+| `export_release` | Write a release to a local directory, for a target or in a format. `allow_lossy` where needed; `recipe` applies a pre-processing recipe by name. |
+| `create_preprocessing_recipe` | Store a named [pre-processing recipe](preprocessing.md) on a project: a resize step, augmentation steps, and how many variants each train image gets. |
+| `list_preprocessing_recipes` | A project's recipes, each with its whole spec. `name` is what `export_release` takes as `recipe`. |
 
 ### Inference connections
 
@@ -224,6 +226,7 @@ ask and is refused with `INFERENCE_CONNECTION_NOT_TESTABLE`.
 | `delete_batch` | **Destructive.** Removes a batch, its task groups, its jobs and the per-asset progress on them. The **annotations survive** - labels hang off assets, not off batches - and so do the assets themselves. A `completed` batch is refused whatever `confirm` says. |
 | `delete_project` | **Destructive.** Removes the project, its dataset, its batches, its jobs and its annotations. Requires `confirm: true` as well - the parameter is unchanged; what changed is that the tool is not in the listing unless somebody started the server for it. |
 | `delete_inference_connection` | **Destructive.** Removes a model connection's configuration and nothing else: annotations keep their model provenance (identity is copied at write time), and cached weights stay on disk. Requires `confirm: true`. |
+| `delete_preprocessing_recipe` | **Destructive.** Removes a pre-processing recipe and nothing else: every export that used it kept its own copy of the spec. Requires `confirm: true`. |
 
 ## `get_asset_image`, and the coordinate frame
 
@@ -293,7 +296,7 @@ Never merged into one, because they guard different things:
 
 | | guards | on |
 | --- | --- | --- |
-| `confirm` | destroying data | `delete_project`, `delete_batch` |
+| `confirm` | destroying data | `delete_project`, `delete_batch`, `delete_inference_connection`, `delete_preprocessing_recipe` |
 | `allow_destructive` | narrowing a contract | `create_schema_version`, `publish_schema_draft` |
 | `allow_lossy` | emitting an incomplete copy of something that stays intact | `export_release` |
 

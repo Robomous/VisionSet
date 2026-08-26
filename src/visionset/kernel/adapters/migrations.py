@@ -387,6 +387,20 @@ def _reshape_source_origin_index(connection: Connection) -> None:
     connection.execute(CreateIndex(SOURCE_ORIGIN_UNIQUE, if_not_exists=True))
 
 
+def _add_preprocessing_recipes(connection: Connection) -> None:
+    """``preprocessing_recipes``: the named recipes a project's exports can apply.
+
+    Migration 4's kind — a table created whole, ``create_all`` restricted to it
+    for migration 6's reason — so the rule about a key column never arriving by
+    ``ALTER`` does not come up.
+
+    **Nothing to backfill.** Before this table no recipe existed anywhere, and
+    an export that applied none is exactly what every earlier export was, so an
+    existing workspace starts with an empty table and loses nothing.
+    """
+    Base.metadata.create_all(connection, tables=[Base.metadata.tables["preprocessing_recipes"]])
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -404,6 +418,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=14, name="project_created_at", upgrade=_add_project_created_at),
     Migration(version=15, name="connection_origin", upgrade=_add_connection_origin),
     Migration(version=16, name="source_clip_ranges", upgrade=_reshape_source_origin_index),
+    Migration(version=17, name="preprocessing_recipes", upgrade=_add_preprocessing_recipes),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

@@ -2172,6 +2172,113 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/preprocessing-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Preprocessing
+         * @description Render one asset through a spec, the way an export would write it.
+         *
+         *     The same kernel path as an export, over the one asset as if it were in the
+         *     train fold, so every variant the spec declares can be seen whether or not a
+         *     release exists. The image is capped to 512 pixels on its longer side, with
+         *     the annotations scaled to match, and comes back base64-encoded beside its
+         *     `media_type`. Never cached: the spec is the request's own.
+         *
+         *     An unknown project is 404 `PROJECT_NOT_FOUND` and an asset outside it 404
+         *     `ASSET_NOT_FOUND`. A step that cannot transform a geometry the asset carries
+         *     is 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`, and a step needing a source
+         *     size the asset never recorded, or an asset whose bytes are gone, is 409
+         *     `EXPORT_SOURCE_UNREADABLE`. A rendered image in an encoding this server
+         *     cannot name is 422 `UNSUPPORTED_MEDIA`, and a step kind no installed driver
+         *     applies is 500 `PREPROCESSING_DRIVER_NOT_FOUND`.
+         */
+        post: operations["preview_preprocessing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/preprocessing-recipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Preprocessing Recipes
+         * @description Every recipe of the project, oldest first. An unknown project is 404 `PROJECT_NOT_FOUND`.
+         */
+        get: operations["list_preprocessing_recipes"];
+        put?: never;
+        /**
+         * Create Preprocessing Recipe
+         * @description Store a new recipe under a name.
+         *
+         *     A recipe binds at export time, by name, and the export keeps the spec by
+         *     value. An unknown project is 404 `PROJECT_NOT_FOUND`; a name the project
+         *     already uses is 409 `PREPROCESSING_RECIPE_NAME_TAKEN`; a name that is not a
+         *     slug is 422 `INVALID_NAME`, and a spec that breaks the recipe grammar is a
+         *     422 `VALIDATION_ERROR` naming the rule.
+         */
+        post: operations["create_preprocessing_recipe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/preprocessing-recipes/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Preprocessing Recipe
+         * @description The recipe under that name.
+         *
+         *     An unknown project is 404 `PROJECT_NOT_FOUND` and an unknown name 404
+         *     `PREPROCESSING_RECIPE_NOT_FOUND`.
+         */
+        get: operations["get_preprocessing_recipe"];
+        /**
+         * Update Preprocessing Recipe
+         * @description Replace the recipe whole, and rename it when the body's `name` differs.
+         *
+         *     Whole-value: the spec is one value with cross-field rules, so there is no
+         *     field-at-a-time edit. Nothing downstream depends on the stored value — an
+         *     export keeps its own copy — so no revision is asked for. An unknown project
+         *     is 404 `PROJECT_NOT_FOUND`, an unknown name 404
+         *     `PREPROCESSING_RECIPE_NOT_FOUND`; a rename onto a name the project already
+         *     uses is 409 `PREPROCESSING_RECIPE_NAME_TAKEN`, and a new name that is not
+         *     a slug is 422 `INVALID_NAME`.
+         */
+        put: operations["update_preprocessing_recipe"];
+        post?: never;
+        /**
+         * Delete Preprocessing Recipe
+         * @description Remove the recipe.
+         *
+         *     No confirmation: every export that used it kept its own copy, so nothing
+         *     that exists is lost. An unknown project is 404 `PROJECT_NOT_FOUND` and an
+         *     unknown name 404 `PREPROCESSING_RECIPE_NOT_FOUND`.
+         */
+        delete: operations["delete_preprocessing_recipe"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/schema": {
         parameters: {
             query?: never;
@@ -2735,6 +2842,18 @@ export interface paths {
          *     declare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest blob
          *     is gone is 500 `WORKSPACE_CORRUPT`.
          *
+         *     **`recipe` applies a pre-processing recipe of the release's project**, by
+         *     name, and the job carries the recipe as it stood when this request was
+         *     made: editing or deleting the recipe afterwards changes nothing about the
+         *     export. Whether the recipe can run is answered now, like consent — 409
+         *     `AUGMENTATION_REQUIRES_SPLIT` for an augmenting recipe over a release
+         *     published without a split, 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`
+         *     for a step that cannot move a geometry the export would carry, 409
+         *     `EXPORT_SOURCE_UNREADABLE` for a step needing a source size the manifest
+         *     never recorded, and 404 `PREPROCESSING_RECIPE_NOT_FOUND` for a name the
+         *     project does not have. The report written into the output records the
+         *     recipe, its hash, and which written file came from which asset.
+         *
          *     A POST because it does work and writes files, though it changes nothing a
          *     later read can see: the release is immutable, and re-exporting overwrites the
          *     previous archive.
@@ -2758,9 +2877,19 @@ export interface paths {
          * @description Say what the named target or format would drop from this release, without writing anything.
          *
          *     The pre-flight for `POST /releases/{release_id}/export`: same release, same
-         *     address, same document the export refuses with and writes into its own
-         *     output. A client showing a consent dialog asks this first; one that would
-         *     rather find out by being refused does not have to.
+         *     address, same recipe, same document the export refuses with and writes into
+         *     its own output. A client showing a consent dialog asks this first; one that
+         *     would rather find out by being refused does not have to.
+         *
+         *     `recipe` names a pre-processing recipe of the release's project, and the
+         *     answer then includes whether that recipe can run over this release: a
+         *     recipe that augments against a release published without a split is 409
+         *     `AUGMENTATION_REQUIRES_SPLIT`, a step that cannot move a geometry the
+         *     export would carry is 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`, and a
+         *     step needing a source size the manifest never recorded is 409
+         *     `EXPORT_SOURCE_UNREADABLE`. An unknown recipe is 404
+         *     `PREPROCESSING_RECIPE_NOT_FOUND`. The report itself does not change: what
+         *     a format drops is decided before any transform.
          *
          *     Exactly one of `target` and `format`. A target narrows its format to the
          *     geometries its trainer has a task for, so a report for `target=yolov10`
@@ -3228,6 +3357,32 @@ export interface components {
              * @default false
              */
             required: boolean;
+        };
+        /**
+         * AugmentOp
+         * @description An augmentation a recipe can apply when generating variants.
+         * @enum {string}
+         */
+        AugmentOp: "hflip" | "brightness_contrast" | "rot90";
+        /**
+         * AugmentStepBody
+         * @description One augmentation applied when generating variants.
+         *
+         *     `amount` bounds the brightness and contrast factors, drawn uniformly from
+         *     `[1 - amount, 1 + amount]`, and means nothing to `hflip` or `rot90`.
+         */
+        AugmentStepBody: {
+            /**
+             * Amount
+             * @default 0.2
+             */
+            amount: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "augment";
+            op: components["schemas"]["AugmentOp"];
         };
         /**
          * BackgroundJobOut
@@ -4730,6 +4885,150 @@ export interface components {
             trainer_resizes: boolean;
         };
         /**
+         * PreprocessingPreviewBody
+         * @description One asset to render through a spec, and which variant of it.
+         *
+         *     `variant` 0 is the base image; `1` to `spec.variants_per_asset` are the
+         *     augmented outputs. A variant the spec does not make is refused.
+         */
+        PreprocessingPreviewBody: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            spec: components["schemas"]["RecipeSpecBody"];
+            /**
+             * Variant
+             * @default 0
+             */
+            variant: number;
+        };
+        /**
+         * PreprocessingPreviewOut
+         * @description One asset through a recipe, rendered for a screen.
+         *
+         *     `image_base64` is the transformed image, encoded as `media_type`, capped to
+         *     512 pixels on its longer side with `annotations` scaled to match. `width`
+         *     and `height` are the rendered size; they are null only when the asset never
+         *     recorded a size and no resize step decided one.
+         */
+        PreprocessingPreviewOut: {
+            /** Annotations */
+            annotations: components["schemas"]["PreviewAnnotationOut"][];
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /** Height */
+            height: number | null;
+            /** Image Base64 */
+            image_base64: string;
+            /** Media Type */
+            media_type: string;
+            /** Variant */
+            variant: number;
+            /** Width */
+            width: number | null;
+        };
+        /**
+         * PreprocessingRecipeCreate
+         * @description A new recipe: its name and what it does.
+         *
+         *     `name` is a slug — lowercase letters, digits, dots, hyphens and
+         *     underscores, starting with a letter or digit, at most 64 characters —
+         *     unique within the project.
+         */
+        PreprocessingRecipeCreate: {
+            /** Name */
+            name: string;
+            spec: components["schemas"]["RecipeSpecBody"];
+        };
+        /**
+         * PreprocessingRecipeOut
+         * @description A named pre-processing recipe of a project.
+         *
+         *     A recipe binds at export time — `POST /releases/{release_id}/export?recipe=`
+         *     takes `name` — and the export keeps the spec by value, so editing or
+         *     deleting a recipe never alters a past export. There is no state and no
+         *     `allowed_actions`: every operation is always offered.
+         */
+        PreprocessingRecipeOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            spec: components["schemas"]["RecipeSpecBody"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * PreprocessingRecipePage
+         * @description A page of pre-processing recipes.
+         */
+        PreprocessingRecipePage: {
+            /** Items */
+            items: components["schemas"]["PreprocessingRecipeOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * PreprocessingRecipeUpdate
+         * @description The whole recipe, replaced. `name` renames it when it differs from the path.
+         */
+        PreprocessingRecipeUpdate: {
+            /** Name */
+            name: string;
+            spec: components["schemas"]["RecipeSpecBody"];
+        };
+        /**
+         * PreviewAnnotationOut
+         * @description One label as the export would write it, placed on the transformed image.
+         *
+         *     `id` is the source annotation's id for the base image and `"{id}-aug{k}"`
+         *     for variant `k`, so a rendered label traces to the label it came from.
+         */
+        PreviewAnnotationOut: {
+            /** Attributes */
+            attributes: {
+                [key: string]: boolean | number | string;
+            };
+            /** Confidence */
+            confidence: number | null;
+            /** Geometry */
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["ClassificationBody"];
+            /** Id */
+            id: string;
+            /** Label Class */
+            label_class: string;
+            /** Model Ref */
+            model_ref: string | null;
+            /**
+             * Provenance
+             * @enum {string}
+             */
+            provenance: "human" | "model" | "import";
+            /** Schema Version */
+            schema_version: number;
+        };
+        /**
          * ProgressCounts
          * @description How many assets sit in each annotation state.
          */
@@ -4902,6 +5201,30 @@ export interface components {
             total: number;
         };
         /**
+         * RecipeSpecBody
+         * @description What a recipe does to every exported image, and how many variants it makes.
+         *
+         *     At most one `resize` step, and it comes first. `variants_per_asset` counts
+         *     augmented outputs — 0 to 8 — and requires at least one `augment` step,
+         *     which in turn requires at least one variant; each augmentation appears at
+         *     most once. `target` records which export target's hints the recipe was
+         *     written from and is informational: a recipe applies to any export.
+         */
+        RecipeSpecBody: {
+            /**
+             * Steps
+             * @default []
+             */
+            steps: (components["schemas"]["ResizeStepBody"] | components["schemas"]["AugmentStepBody"])[];
+            /** Target */
+            target?: string | null;
+            /**
+             * Variants Per Asset
+             * @default 0
+             */
+            variants_per_asset: number;
+        };
+        /**
          * ReleaseCreate
          * @description What publishing a release needs.
          */
@@ -4979,6 +5302,39 @@ export interface components {
              */
             release_id: string;
         };
+        /**
+         * ResizeStepBody
+         * @description Bring every exported image to one size, by one strategy.
+         *
+         *     `pad_value` is the grey a letterbox pads with and means nothing to
+         *     `stretch`. Sizes are 32 to 8192 pixels a side.
+         */
+        ResizeStepBody: {
+            /** Height */
+            height: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "resize";
+            /**
+             * Pad Value
+             * @default 114
+             */
+            pad_value: number;
+            strategy: components["schemas"]["ResizeStrategy"];
+            /** Width */
+            width: number;
+        };
+        /**
+         * ResizeStrategy
+         * @description How an image reaches a requested size.
+         *
+         *     ``stretch`` scales each axis independently onto the size; ``letterbox``
+         *     scales by the limiting axis and pads the rest, preserving aspect ratio.
+         * @enum {string}
+         */
+        ResizeStrategy: "stretch" | "letterbox";
         /**
          * ResumeKind
          * @description What an open batch is being offered for, and so what `next_asset_id` is.
@@ -10415,6 +10771,451 @@ export interface operations {
             };
         };
     };
+    preview_preprocessing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreprocessingPreviewBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreprocessingPreviewOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_preprocessing_recipes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreprocessingRecipePage"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_preprocessing_recipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreprocessingRecipeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreprocessingRecipeOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_preprocessing_recipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                /** @description The recipe's name, unique within the project. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreprocessingRecipeOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_preprocessing_recipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                /** @description The recipe's name, unique within the project. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreprocessingRecipeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreprocessingRecipeOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_preprocessing_recipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                /** @description The recipe's name, unique within the project. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_active_schema: {
         parameters: {
             query?: never;
@@ -11638,6 +12439,8 @@ export interface operations {
             query?: {
                 /** @description Required when the format cannot carry everything the release holds. */
                 allow_lossy?: boolean;
+                /** @description A pre-processing recipe of the release's project, by name. `GET /projects/{project_id}/preprocessing-recipes` lists them. Omit to apply no transform. */
+                recipe?: string | null;
                 /** @description An export target's name. `GET /export-targets` lists them. */
                 target?: string | null;
                 /** @description An installed format's name. `GET /formats` lists them. */
@@ -11719,6 +12522,8 @@ export interface operations {
     check_export: {
         parameters: {
             query?: {
+                /** @description A pre-processing recipe of the release's project, by name. `GET /projects/{project_id}/preprocessing-recipes` lists them. Omit to apply no transform. */
+                recipe?: string | null;
                 /** @description An export target's name. `GET /export-targets` lists them. */
                 target?: string | null;
                 /** @description An installed format's name. `GET /formats` lists them. */
@@ -11752,6 +12557,15 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

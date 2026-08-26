@@ -273,6 +273,33 @@ export const checkPreLabelExclusionOut: Check<Schemas["PreLabelExclusionOut"]> =
 export const checkPreLabelPlanOut: Check<Schemas["PreLabelPlanOut"]> =
   /*#__PURE__*/ object({ "asked_classes": [true, arrayOf(isString)], "excluded_classes": [true, arrayOf(checkPreLabelExclusionOut)], "produces": [true, arrayOf(checkGeometryType)], "schema_version": [true, isInteger] } as const);
 
+export const checkPreviewAnnotationOut: Check<Schemas["PreviewAnnotationOut"]> =
+  /*#__PURE__*/ object({ "attributes": [true, mapOf(either([isBoolean, isNumber, isString] as const))], "confidence": [true, either([isNumber, isNull] as const)], "geometry": [true, tagged("type", { "bbox": checkBboxBody, "classification_tag": checkClassificationBody, "polygon": checkPolygonBody, "polyline": checkPolylineBody })], "id": [true, isString], "label_class": [true, isString], "model_ref": [true, either([isString, isNull] as const)], "provenance": [true, oneOf(["human", "model", "import"] as const)], "schema_version": [true, isInteger] } as const);
+
+export const checkPreprocessingPreviewOut: Check<Schemas["PreprocessingPreviewOut"]> =
+  /*#__PURE__*/ object({ "annotations": [true, arrayOf(checkPreviewAnnotationOut)], "asset_id": [true, isString], "height": [true, either([isInteger, isNull] as const)], "image_base64": [true, isString], "media_type": [true, isString], "variant": [true, isInteger], "width": [true, either([isInteger, isNull] as const)] } as const);
+
+export const checkAugmentOp: Check<Schemas["AugmentOp"]> =
+  /*#__PURE__*/ oneOf(["hflip", "brightness_contrast", "rot90"] as const);
+
+export const checkAugmentStepBody: Check<Schemas["AugmentStepBody"]> =
+  /*#__PURE__*/ object({ "amount": [true, isNumber], "kind": [true, lit("augment")], "op": [true, checkAugmentOp] } as const);
+
+export const checkResizeStrategy: Check<Schemas["ResizeStrategy"]> =
+  /*#__PURE__*/ oneOf(["stretch", "letterbox"] as const);
+
+export const checkResizeStepBody: Check<Schemas["ResizeStepBody"]> =
+  /*#__PURE__*/ object({ "height": [true, isInteger], "kind": [true, lit("resize")], "pad_value": [true, isInteger], "strategy": [true, checkResizeStrategy], "width": [true, isInteger] } as const);
+
+export const checkRecipeSpecBody: Check<Schemas["RecipeSpecBody"]> =
+  /*#__PURE__*/ object({ "steps": [true, arrayOf(tagged("kind", { "augment": checkAugmentStepBody, "resize": checkResizeStepBody }))], "target": [false, either([isString, isNull] as const)], "variants_per_asset": [true, isInteger] } as const);
+
+export const checkPreprocessingRecipeOut: Check<Schemas["PreprocessingRecipeOut"]> =
+  /*#__PURE__*/ object({ "created_at": [true, isString], "id": [true, isString], "name": [true, isString], "project_id": [true, isString], "spec": [true, checkRecipeSpecBody], "updated_at": [true, isString] } as const);
+
+export const checkPreprocessingRecipePage: Check<Schemas["PreprocessingRecipePage"]> =
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkPreprocessingRecipeOut)], "total": [true, isInteger] } as const);
+
 export const checkProjectOut: Check<Schemas["ProjectOut"]> =
   /*#__PURE__*/ object({ "created_at": [true, either([isString, isNull] as const)], "description": [true, either([isString, isNull] as const)], "id": [true, isString], "name": [true, isString], "thumbnail_asset_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)] } as const);
 
@@ -400,12 +427,14 @@ export const checkCompleteJob = checkJobOut;
 export const checkCreateBatch = checkBatchOut;
 export const checkCreateCorrectionBatch = checkBatchOut;
 export const checkCreateInferenceConnection = checkConnectionOut;
+export const checkCreatePreprocessingRecipe = checkPreprocessingRecipeOut;
 export const checkCreateProject = checkProjectOut;
 export const checkCreateSchemaVersion = checkSchemaPublicationOut;
 export const checkDatasetStats = checkDatasetStatsOut;
 export const checkDeleteAnnotations = checkNoContent;
 export const checkDeleteBatch = checkNoContent;
 export const checkDeleteInferenceConnection = checkNoContent;
+export const checkDeletePreprocessingRecipe = checkNoContent;
 export const checkDeleteProject = checkNoContent;
 export const checkDiscardSchemaDraft = checkNoContent;
 export const checkDownloadConnectionWeights = checkBackgroundJobOut;
@@ -423,6 +452,7 @@ export const checkGetInferenceConnection = checkConnectionOut;
 export const checkGetIngestJob = checkIngestJobOut;
 export const checkGetJob = checkJobOut;
 export const checkGetJobProgress = checkProgressCounts;
+export const checkGetPreprocessingRecipe = checkPreprocessingRecipeOut;
 export const checkGetProject = checkProjectOut;
 export const checkGetProjectDataset = checkDatasetOut;
 export const checkGetProjectStats = checkProjectStatsOut;
@@ -449,6 +479,7 @@ export const checkListExportTargets = checkExportTargetPage;
 export const checkListFormats = checkFormatPage;
 export const checkListInferenceConnections = checkConnectionPage;
 export const checkListIngestJobs = checkIngestJobPage;
+export const checkListPreprocessingRecipes = checkPreprocessingRecipePage;
 export const checkListProjectAssets = checkAssetPage;
 export const checkListProjects = checkProjectPage;
 export const checkListProviders = checkProviderPage;
@@ -460,6 +491,7 @@ export const checkPreLabelBatch = checkPreLabelFanOutOut;
 export const checkPreLabelJob = checkBackgroundJobOut;
 export const checkPreLabelPlan = checkPreLabelPlanOut;
 export const checkPreLabelProjectBatches = checkPreLabelFanOutOut;
+export const checkPreviewPreprocessing = checkPreprocessingPreviewOut;
 export const checkPreviewSchemaChange = checkSchemaChangePreviewOut;
 export const checkPromoteBatch = checkAssetPage;
 export const checkPublishRelease = checkReleaseOut;
@@ -480,4 +512,5 @@ export const checkSuggestRegion = checkSuggestionOut;
 export const checkTestConnectionEndpoint = checkConnectionOut;
 export const checkUpdateAnnotations = checkAnnotationPage;
 export const checkUpdateInferenceConnection = checkConnectionOut;
+export const checkUpdatePreprocessingRecipe = checkPreprocessingRecipeOut;
 export const checkVerifyRelease = checkReleaseVerificationOut;

@@ -1,6 +1,8 @@
+from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
 
 from visionset.kernel.domain import Step
+from visionset.kernel.errors import PreprocessingDriverNotFound
 
 
 @runtime_checkable
@@ -26,3 +28,25 @@ class PreprocessingDriver(Protocol):
     step_kinds: frozenset[str]
 
     def apply(self, step: Step, image: bytes, *, seed: bytes, variant: int) -> bytes: ...
+
+
+def driver_for(installed: Mapping[str, PreprocessingDriver], step_kind: str) -> PreprocessingDriver:
+    """One driver out of a set already in hand, or say none applies that kind.
+
+    Beside the port for ``resolve_target``'s reason: the kernel may not scan
+    entry points, so whoever composed the call passes what is installed, keyed
+    by step kind, and the refusal has one wording wherever it is raised. A
+    caller must not index the mapping directly — a ``KeyError`` is outside the
+    ``VisionSetError`` tree.
+
+    Raises:
+        PreprocessingDriverNotFound: no installed driver applies ``step_kind``.
+    """
+    if step_kind not in installed:
+        known = tuple(sorted(installed))
+        raise PreprocessingDriverNotFound(
+            f"no pre-processing driver is installed for step kind {step_kind!r}; "
+            f"installed step kinds: {', '.join(known) or 'none'}",
+            installed=known,
+        )
+    return installed[step_kind]

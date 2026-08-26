@@ -628,4 +628,4 @@ def test_an_export_carries_the_report_it_was_consented_to(
     # …and the same document is on disk, which is what makes the answer readable
     # by whatever picks the directory up later.
     written = json.loads((dest / EXPORT_REPORT_FILENAME).read_text(encoding="utf-8"))
-    assert written == result["compatibility"]
+    assert written == {**result["compatibility"], "preprocessing": result["preprocessing"]}

@@ -622,6 +622,33 @@ class ReleaseRow(Base):
     visionset_version: Mapped[str] = mapped_column(String, nullable=False)
 
 
+class PreprocessingRecipeRow(Base):
+    """A named pre-processing recipe of one project: a ``RecipeSpec`` under a name.
+
+    The spec is one JSON value, the way a release keeps its split recipe: the
+    domain model validates it, every field of it is read together, and nothing
+    queries inside it. The unique constraint is the name rule — one name per
+    project — and it is what refuses the loser of a create race the service's
+    pre-check let through. ``ON DELETE CASCADE`` for ``AnnotationSchemaRow``'s
+    reason: a recipe is meaningless without the project it belongs to.
+    """
+
+    __tablename__ = "preprocessing_recipes"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_preprocessing_recipe_project_name"),
+    )
+
+    id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        SaUuid, ForeignKey("project.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    spec: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    #: ISO-8601 with offset, never SQLite ``DATETIME``. See the module docstring.
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
 class TokenRow(Base):
     """API credentials, hashed.
 

@@ -737,3 +737,84 @@ def test_ultralytics_drops_a_tag_beside_a_box_though_its_declaration_carries_tag
     assert tag.status is ClassExportStatus.SUPPORTED
     assert tag.annotations == 1
     assert _installed()["ultralytics"].lossy
+
+
+# --- a recipe at export ---------------------------------------------------------
+#
+# The accounting a recipe adds: every fold's images and labels on disk are the
+# fold's source files plus the augmented variants the recipe made for it, and
+# the report's mapping traces each one. Real pixels, through the installed
+# Pillow drivers, because the seam's own tests use a marking double.
+
+
+def _fold_files(root: Path, fold: str, suffix: str) -> list[Path]:
+    return (
+        sorted((root / "images" / fold).glob(f"*{suffix}"))
+        if suffix != ".txt"
+        else sorted((root / LABELS_DIRNAME / fold).glob("*.txt"))
+    )
+
+
+def test_written_files_are_source_plus_augmented_per_fold(
+    tmp_path: Path, labelled: Fixture
+) -> None:
+    from PIL import Image
+
+    from visionset.kernel.domain import (
+        AugmentOp,
+        AugmentStep,
+        RecipeSpec,
+        ResizeStep,
+        ResizeStrategy,
+        SplitRecipe,
+        source_of_content_hash,
+    )
+    from visionset.preprocessing.registry import drivers
+
+    release_id = labelled.publish(split=SplitRecipe(train=0.6, val=0.2, test=0.2, seed=3))
+    folds = labelled.releases.assignment(release_id)
+    recipe = RecipeSpec(
+        target="yolo11",
+        steps=(
+            ResizeStep(strategy=ResizeStrategy.LETTERBOX, width=64, height=64),
+            AugmentStep(op=AugmentOp.HFLIP),
+        ),
+        variants_per_asset=1,
+    )
+    dest = tmp_path / "out"
+
+    result = labelled.releases.export(
+        release_id,
+        _installed()["ultralytics"],
+        dest,
+        allow_lossy=True,
+        recipe=recipe,
+        recipe_name="flip",
+        drivers=drivers(),
+    )
+    labelled.close()
+
+    per_fold = {"train": len(folds.train), "val": len(folds.val), "test": len(folds.test)}
+    assert result.source_file_count == sum(per_fold.values()) == 3
+    assert result.augmented_file_count == per_fold["train"]
+    for fold, sources in per_fold.items():
+        augmented = sources if fold == "train" else 0
+        images = _fold_files(dest, fold, ".png")
+        labels = _fold_files(dest, fold, ".txt")
+        assert len(images) == sources + augmented, fold
+        assert len(labels) == sources + augmented, fold
+        variants = [path for path in images if source_of_content_hash(path.stem)[1] == 1]
+        assert len(variants) == augmented, fold
+        for path in images:
+            with Image.open(path) as image:
+                assert image.size == (64, 64)
+    assert any(path.stem.endswith("-aug1") for path in _fold_files(dest, "train", ".txt"))
+
+    report = json.loads((dest / "visionset-export-report.json").read_text(encoding="utf-8"))
+    assert report["preprocessing"]["recipe_name"] == "flip"
+    assert report["preprocessing"]["recipe_hash"] == result.preprocessing.recipe_hash
+    mapping = report["preprocessing"]["mapping"]
+    assert len(mapping) == result.source_file_count + result.augmented_file_count
+    assert {row["variant"] for row in mapping} == {0, 1}
+    for row in mapping:
+        assert (dest / row["file"]).is_file()
