@@ -53,7 +53,21 @@ export {
   CardHeader,
   CardTitle,
 } from "./primitives/card.js";
-export { FieldError, FieldHint, Input, Label, Textarea } from "./primitives/Input.js";
+export { Input } from "./primitives/input.js";
+export { Textarea } from "./primitives/textarea.js";
+export { Label } from "./primitives/label.js";
+export {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSeparator,
+  FieldSet,
+  FieldTitle,
+} from "./primitives/field.js";
 export { Combobox, type ComboboxFooter, type ComboboxProps } from "./primitives/Combobox.js";
 export { Badge, badgeVariants } from "./primitives/badge.js";
 export { Alert, AlertAction, AlertDescription, AlertTitle } from "./primitives/alert.js";

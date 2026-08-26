@@ -144,7 +144,9 @@ import type { BadgeTone } from "./batchState";
 import { Button } from "../primitives/button";
 import { Card, CardContent } from "../primitives/card";
 import { Progress } from "../primitives/Feedback";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import {
   Select,
   SelectContent,
@@ -622,7 +624,7 @@ export function IngestScreen({
                           ))}
                         </SelectContent>
                       </Select>
-                      <FieldHint>Only a draft batch can take new assets.</FieldHint>
+                      <FieldDescription>Only a draft batch can take new assets.</FieldDescription>
                     </div>
                     {batchChoice === NEW_BATCH && (
                       <div className="flex flex-col gap-1.5">
@@ -634,7 +636,7 @@ export function IngestScreen({
                           placeholder={source.name}
                           onChange={(event) => setBatchName(event.target.value)}
                         />
-                        <FieldHint>Defaults to the source name.</FieldHint>
+                        <FieldDescription>Defaults to the source name.</FieldDescription>
                       </div>
                     )}
                   </div>
@@ -910,10 +912,10 @@ function SelectionPanel({
               placeholder={suggestedName}
               onChange={(event) => onSourceName(event.target.value)}
             />
-            <FieldHint>
+            <FieldDescription>
               Names the source — and the new batch inherits it. Without one the server calls
               both by the upload&apos;s content digest.
-            </FieldHint>
+            </FieldDescription>
           </div>
         </div>
       )}
@@ -947,10 +949,10 @@ function SelectionPanel({
                       {selectionSummary(ranges, clip.durationSeconds)}
                     </dd>
                   </dl>
-                  <FieldHint>
+                  <FieldDescription>
                     Part of what the source <em>is</em> — the same clip registered at another
                     rate or other ranges becomes a second source.
-                  </FieldHint>
+                  </FieldDescription>
                 </div>
               }
             />
@@ -962,10 +964,10 @@ function SelectionPanel({
                 </p>
               )}
               <RateField fps={fps} onFps={onFps} />
-              <FieldHint>
+              <FieldDescription>
                 Part of what the source <em>is</em> — the same clip registered at another rate
                 or other ranges becomes a second source.
-              </FieldHint>
+              </FieldDescription>
             </div>
           )}
         </div>
@@ -1067,10 +1069,10 @@ function RunCard({
                   <RefreshCw aria-hidden="true" />
                   {resume.isPending ? "Resuming…" : "Resume"}
                 </Button>
-                <FieldHint>
+                <FieldDescription>
                   A resume is a redo, not a skip — nothing records which files already
                   succeeded, and content addressing makes re-reading them free.
-                </FieldHint>
+                </FieldDescription>
                 {/*
                   The refusal of the *resume*, which is a different fact from the
                   run's own error above it (audit F9). `resume.isError` was read

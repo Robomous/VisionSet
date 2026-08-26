@@ -62,7 +62,9 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import {
   classBlockers,
   describeClassCount,
@@ -800,7 +802,7 @@ function PublishDialog({
             />
             {/* The opposite of a project name, which is unique case-insensitively.
                 Two rules, each beside its own index. */}
-            <FieldHint>Unique per dataset, and case-sensitive.</FieldHint>
+            <FieldDescription>Unique per dataset, and case-sensitive.</FieldDescription>
           </div>
 
           <label className="flex items-center gap-2 text-sm">
@@ -1061,9 +1063,9 @@ function ExportDialog({
             {/* Declared by the format, never by the release: a bbox-only format
                 loses a polygon whether or not today's dataset holds one. */}
             {chosen?.lossy === true && (
-              <FieldHint data-testid="lossy-hint">
+              <FieldDescription data-testid="lossy-hint">
                 This format cannot express everything the schema allows.
-              </FieldHint>
+              </FieldDescription>
             )}
           </div>
 

@@ -102,7 +102,9 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import {
   Select,
   SelectContent,
@@ -494,11 +496,11 @@ export function PreLabelSettings({
           disabled={disabled}
           onChange={(event) => onConfidenceChange(event.target.value)}
         />
-        <FieldHint>
+        <FieldDescription>
           How well a region matches the words it was asked for — a different scale from a
           point-prompt model&rsquo;s mask confidence, which is why the number needs a name of
           its own rather than a bare percentage.
-        </FieldHint>
+        </FieldDescription>
       </div>
 
       {selected !== null && (
@@ -524,10 +526,10 @@ export function PreLabelSettings({
               Tick at least one shape — a run that writes no shape has nothing to do.
             </FieldError>
           ) : (
-            <FieldHint>
+            <FieldDescription>
               This model answers in every shape here, one region each, and writes every ticked
               one. Untick a shape to leave it out of the run.
-            </FieldHint>
+            </FieldDescription>
           )}
         </fieldset>
       )}
@@ -824,10 +826,10 @@ function PreLabelDialog({
                       {preLabeled === 1 ? "" : "s"}
                     </span>
                   </label>
-                  <FieldHint>
+                  <FieldDescription>
                     Frames anyone has edited, confirmed or skipped in this batch are never
                     touched. This cannot be undone.
-                  </FieldHint>
+                  </FieldDescription>
                 </div>
               )}
 
@@ -924,11 +926,11 @@ function PreLabelDialog({
                       >
                         Continue
                       </Button>
-                      <FieldHint data-testid="prelabel-continue-hint">
+                      <FieldDescription data-testid="prelabel-continue-hint">
                         {replacing
                           ? `Also rewrites the model labels on the ${preLabeled} pre-labeled frame${preLabeled === 1 ? "" : "s"}.`
                           : "Only untouched assets are eligible — this can’t create a duplicate label."}
-                      </FieldHint>
+                      </FieldDescription>
                     </div>
                     {blocked && preLabeled > 0 && (
                       <Button variant="default" data-testid="prelabel-edit" onClick={goToPreLabeled}>

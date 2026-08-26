@@ -89,7 +89,7 @@ import { geometryLabel } from "../data/geometryCategory";
 import { classColor } from "../palette";
 import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/button";
-import { Input } from "../primitives/Input";
+import { Input } from "../primitives/input";
 import {
   DropdownMenu,
   DropdownMenuTrigger,

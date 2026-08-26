@@ -51,7 +51,9 @@ import { useEffect, useState, type FormEvent, type JSX, type ReactNode } from "r
 import { createApiClient } from "../client";
 import { Button } from "../primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../primitives/card";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import { useApiSession } from "./ApiProvider";
 import { refusalProse } from "./refusals";
 import { asApiError, NETWORK_ERROR, unwrap } from "./errors";
@@ -146,10 +148,10 @@ export function TokenForm(): JSX.Element {
                 onChange={(event) => setValue(event.target.value)}
                 placeholder="paste the secret printed by visionset token create"
               />
-              <FieldHint>
+              <FieldDescription>
                 Mint one with <code className="font-mono">visionset token create --name ui</code>.
                 It is shown exactly once. Kept for this browser tab only.
-              </FieldHint>
+              </FieldDescription>
               {failure !== null && <FieldError data-testid="token-error">{failure}</FieldError>}
             </div>
             <Button

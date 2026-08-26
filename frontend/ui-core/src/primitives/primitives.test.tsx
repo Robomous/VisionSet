@@ -23,7 +23,9 @@ import { Button } from "./button";
 import { Card, CardTitle } from "./card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./Dialog";
 import { Progress } from "./Feedback";
-import { FieldError, Input, Label } from "./Input";
+import { FieldError } from "./field";
+import { Input } from "./input";
+import { Label } from "./label";
 import {
   DropdownMenu,
   DropdownMenuContent,

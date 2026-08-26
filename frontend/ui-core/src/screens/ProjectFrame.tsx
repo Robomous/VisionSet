@@ -33,7 +33,9 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
-import { FieldError, Input, Label } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldError } from "../primitives/field";
 import {
   useActiveSchema,
   useBatches,

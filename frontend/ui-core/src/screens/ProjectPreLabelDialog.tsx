@@ -29,7 +29,8 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
-import { FieldError, Label } from "../primitives/Input";
+import { Label } from "../primitives/label";
+import { FieldError } from "../primitives/field";
 import {
   DEFAULT_CONFIDENCE,
   NO_SHAPES,

@@ -44,7 +44,9 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import { useCreateCorrection, type Batch } from "./queries";
 
 /** What a correction covers. `all` sends nothing and lets the server default. */
@@ -235,10 +237,10 @@ function CorrectionDialog({
                 The {chosen.length} frame{chosen.length === 1 ? "" : "s"} selected
               </label>
             )}
-            <FieldHint>
+            <FieldDescription>
               The correction starts as a draft, so its frames can still change. Approving it pins
               the project’s current label schema — not the one {batch.name} was judged against.
-            </FieldHint>
+            </FieldDescription>
           </fieldset>
 
           {create.isError && (

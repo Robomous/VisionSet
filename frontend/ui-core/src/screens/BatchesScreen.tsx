@@ -39,7 +39,7 @@ import { refusalProse } from "../data/refusals";
 import { Badge } from "../primitives/badge";
 import { SectionHeader } from "../patterns/SectionHeader";
 import { Button } from "../primitives/button";
-import { FieldError } from "../primitives/Input";
+import { FieldError } from "../primitives/field";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
 import { BATCH_STATE_VARIANT, batchStateLabel } from "./batchState";

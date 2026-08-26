@@ -101,7 +101,8 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
-import { Input, Label } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
 import { formatGeometries } from "../data/geometryCategory";
 import { ClassFields } from "../patterns/ClassFields";
 import type {

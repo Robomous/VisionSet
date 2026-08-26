@@ -38,7 +38,10 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
-import { FieldError, FieldHint, Input, Label, Textarea } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { Textarea } from "../primitives/textarea";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { AssetThumbnail, ThumbnailPlaceholder } from "./AssetThumbnail";
 import { useCreateProject, useDeleteProject, useProjects, type Project } from "./queries";
@@ -295,7 +298,7 @@ export function CreateProjectDialog({
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />
-            <FieldHint>Optional.</FieldHint>
+            <FieldDescription>Optional.</FieldDescription>
           </div>
           {create.isError && (
             <FieldError data-testid="create-error">{refusal(create.error)}</FieldError>

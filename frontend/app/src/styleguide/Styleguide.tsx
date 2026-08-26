@@ -45,7 +45,7 @@ import {
   DropdownMenuTrigger,
   EmptyState,
   ErrorState,
-  FieldHint,
+  FieldDescription,
   Input,
   Label,
   LIGHT_THEME,
@@ -274,7 +274,7 @@ export function Styleguide(): JSX.Element {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sg-name">Project name</Label>
               <Input id="sg-name" defaultValue="highway-survey" />
-              <FieldHint>Unique per workspace, case-insensitively.</FieldHint>
+              <FieldDescription>Unique per workspace, case-insensitively.</FieldDescription>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sg-geometry">Geometry</Label>
@@ -288,7 +288,7 @@ export function Styleguide(): JSX.Element {
                   <SelectItem value="classification_tag">classification_tag</SelectItem>
                 </SelectContent>
               </Select>
-              <FieldHint>A hint, under a field that needs one.</FieldHint>
+              <FieldDescription>A hint, under a field that needs one.</FieldDescription>
             </div>
             {/*
               The two-line option. Here because it is a primitive variant
@@ -324,9 +324,9 @@ export function Styleguide(): JSX.Element {
                   </SelectItem>
                 </SelectContent>
               </Select>
-              <FieldHint>
+              <FieldDescription>
                 The id at the label role, what it costs beneath it. Nothing truncates.
-              </FieldHint>
+              </FieldDescription>
             </div>
             <div className="flex flex-col gap-1.5 md:col-span-2">
               <Label htmlFor="sg-notes">Description</Label>

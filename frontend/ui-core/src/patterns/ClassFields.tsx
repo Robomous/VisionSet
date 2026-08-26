@@ -25,7 +25,9 @@ import type { JSX } from "react";
 import { geometryLabel, groupGeometries } from "../data/geometryCategory";
 import { classColor, hexColor } from "../palette";
 import { Button } from "../primitives/button";
-import { FieldHint, Input, Label } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription } from "../primitives/field";
 import {
   Select,
   SelectContent,
@@ -184,9 +186,9 @@ export function ClassFields({
               </div>
             ))}
           </div>
-          <FieldHint>
+          <FieldDescription>
             {describeGeometries(declared.geometries)}
-          </FieldHint>
+          </FieldDescription>
         </fieldset>
       </div>
 

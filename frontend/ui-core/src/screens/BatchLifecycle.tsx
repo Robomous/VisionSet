@@ -35,7 +35,9 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import { Progress } from "../primitives/Feedback";
 import {
   Select,
@@ -245,10 +247,10 @@ export function ApproveDialog({
                 <SelectItem value="by_size">Jobs of N assets</SelectItem>
               </SelectContent>
             </Select>
-            <FieldHint>
+            <FieldDescription>
               The cut is exact — disjoint, and every asset in one job. An explicit list of
               segments is the SDK&rsquo;s and the API&rsquo;s, not a form&rsquo;s.
-            </FieldHint>
+            </FieldDescription>
           </div>
 
           {kind === "by_size" && (
@@ -262,9 +264,9 @@ export function ApproveDialog({
                 value={size}
                 onChange={(event) => setSize(event.target.value)}
               />
-              <FieldHint data-testid="partition-preview">
+              <FieldDescription data-testid="partition-preview">
                 {batch?.asset_count ?? 0} assets → {jobs} job{jobs === 1 ? "" : "s"}
-              </FieldHint>
+              </FieldDescription>
             </div>
           )}
 

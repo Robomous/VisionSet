@@ -186,7 +186,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../primitives/Menu";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import {
   Select,
   SelectContent,
@@ -669,7 +671,7 @@ export function ConnectionCard({
           </FieldError>
         )}
         {probe.isPending && (
-          <FieldHint data-testid="test-endpoint-pending">Asking the endpoint…</FieldHint>
+          <FieldDescription data-testid="test-endpoint-pending">Asking the endpoint…</FieldDescription>
         )}
         {probe.isError && (
           <FieldError data-testid="test-endpoint-error">{refusalProse(probe.error)}</FieldError>
@@ -917,10 +919,10 @@ function FixedModel({ connection }: { readonly connection: Connection }): JSX.El
       <p className="font-mono text-sm break-all" data-testid="connection-model-fixed">
         {connection.model_id} @ {connection.model_revision}
       </p>
-      <FieldHint>
+      <FieldDescription>
         Set up with these weights, so the model cannot change here. Add a new model to run a
         different one.
-      </FieldHint>
+      </FieldDescription>
     </div>
   );
 }
@@ -1256,7 +1258,7 @@ function ConnectionForm({
                 onChange={(event) => setName(event.target.value)}
                 autoFocus
               />
-              <FieldHint>Unique in this workspace, ignoring case.</FieldHint>
+              <FieldDescription>Unique in this workspace, ignoring case.</FieldDescription>
             </div>
             {/*
               The offered list is the *local* form's, and only its. An offer is
@@ -1290,7 +1292,7 @@ function ConnectionForm({
                         be announced twice.
                       */}
                       <LoadingState rows={1} label="" />
-                      <FieldHint>Reading which models this installation can run…</FieldHint>
+                      <FieldDescription>Reading which models this installation can run…</FieldDescription>
                     </div>
                   ) : catalog.isError ? (
                     <div data-testid="catalog-unavailable">
@@ -1302,11 +1304,11 @@ function ConnectionForm({
                       />
                     </div>
                   ) : groups.length === 0 ? (
-                    <FieldHint data-testid="catalog-empty">
+                    <FieldDescription data-testid="catalog-empty">
                       No installed driver offers a model by name. Install a provider
                       distribution to be offered one, or name a model below and pin its
                       revision yourself.
-                    </FieldHint>
+                    </FieldDescription>
                   ) : (
                     <>
                       <Select value={choice} onValueChange={pickModel}>
@@ -1345,11 +1347,11 @@ function ConnectionForm({
                           </SelectGroup>
                         </SelectContent>
                       </Select>
-                      <FieldHint>
+                      <FieldDescription>
                         {custom
                           ? "Any model this build has an adapter for. The list above is a starting point, not a limit."
                           : "Pinned to the revision the driver that offers it declares."}
-                      </FieldHint>
+                      </FieldDescription>
                     </>
                   )}
                   {/* What choosing this model commits to, read where the choice is made. */}
@@ -1400,7 +1402,7 @@ function ConnectionForm({
                         value={revision}
                         onChange={(event) => setRevision(event.target.value)}
                       />
-                      <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
+                      <FieldDescription>Pinned. A moving pointer is not a provenance.</FieldDescription>
                     </div>
                   </>
                 )}
@@ -1447,11 +1449,11 @@ function ConnectionForm({
                         ))}
                       </SelectContent>
                     </Select>
-                    <FieldHint data-testid="precision-hint">
+                    <FieldDescription data-testid="precision-hint">
                       {precisionsFor(device).length === 1
                         ? "Half precision applies on CUDA only — on a CPU it has no effect."
                         : "fp16 halves the memory and runs faster on CUDA."}
-                    </FieldHint>
+                    </FieldDescription>
                   </div>
               </>
             ) : (
@@ -1465,7 +1467,7 @@ function ConnectionForm({
                     value={revision}
                     onChange={(event) => setRevision(event.target.value)}
                   />
-                  <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
+                  <FieldDescription>Pinned. A moving pointer is not a provenance.</FieldDescription>
                 </div>
                 )}
                 <div className="flex flex-col gap-1.5">
@@ -1485,11 +1487,11 @@ function ConnectionForm({
                     value={credentialEnv}
                     onChange={(event) => setCredentialEnv(event.target.value)}
                   />
-                  <FieldHint>
+                  <FieldDescription>
                     The name of an environment variable, not the secret itself. VisionSet reads
                     it where the server runs, sends it as a bearer token, and never stores the
                     value. Leave empty if the endpoint wants none.
-                  </FieldHint>
+                  </FieldDescription>
                 </div>
               </>
             )}

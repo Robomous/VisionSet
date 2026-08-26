@@ -50,7 +50,8 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
-import { FieldError, Input } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { FieldError } from "../primitives/field";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { BackLink } from "../patterns/BackLink";
 import {

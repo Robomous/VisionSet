@@ -113,7 +113,8 @@ import {
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
-import { Input, Label } from "../primitives/Input";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
 import { ClassFields, swatchOf } from "../patterns/ClassFields";
 import { ClassListRow } from "../patterns/DataDisplay";
 import { formatCount, formatWhen } from "../lib/format";
