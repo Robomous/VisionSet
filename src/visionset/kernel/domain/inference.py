@@ -470,6 +470,9 @@ PRE_LABEL_JOB_TYPE: Final = "annotation.pre_label"
 BATCH_JOB_KEY: Final = "batch_id"
 """Which batch a background job is about, inside its payload."""
 
+ANNOTATION_JOB_KEY: Final = "annotation_job_id"
+"""Which annotation job a pre-labeling run is over, inside its payload."""
+
 PRE_LABEL_CONFIDENCE_KEY: Final = "minimum_confidence"
 """The floor a run applies to what the model returns, inside its payload."""
 
@@ -481,6 +484,7 @@ PRE_LABEL_GEOMETRIES_KEY: Final = "geometries"
 
 
 def pre_label_job_payload(
+    job_id: UUID,
     batch_id: UUID,
     connection_id: UUID,
     minimum_confidence: float,
@@ -489,19 +493,17 @@ def pre_label_job_payload(
 ) -> dict[str, JsonValue]:
     """The payload a pre-labeling job carries. Built here, read here.
 
-    Five facts and no more: which batch, which connection answers, the floor
-    the run applies, whether it may supersede its own earlier labels, and which
-    of the model's shapes it writes — a selection somebody made at launch, kept
-    so a queued run executes what was asked rather than whatever the model
-    declares by the time it is claimed. Everything else the handler needs — the
-    phrases, the asset set — is derived on the other side from the batch
-    itself, because a payload that carried them would be a copy of state that
-    can move underneath it.
+    Six facts and no more: which annotation job, which batch it is a segment
+    of, which connection answers, the floor the run applies, whether it may
+    supersede its own earlier labels, and which of the model's shapes it
+    writes. The batch is carried beside the job so a batch listing can find
+    its runs without a join; the job is the unit the run is over.
     """
     selected: JsonValue = (
         None if geometries is None else [shape.value for shape in sorted(geometries)]
     )
     return {
+        ANNOTATION_JOB_KEY: str(job_id),
         BATCH_JOB_KEY: str(batch_id),
         CONNECTION_JOB_KEY: str(connection_id),
         PRE_LABEL_CONFIDENCE_KEY: minimum_confidence,
@@ -692,16 +694,17 @@ class ConnectionJobs(BaseModel):
 
 
 class PreLabelRun(BaseModel):
-    """A batch's most recent pre-labeling run, read off its job row.
+    """A job's most recent pre-labeling run, read off its queue row.
 
-    ``ConnectionJob``'s model, applied to a batch instead of a connection: a run
-    outlives the request that launched it and the page that asked, so the only
-    way a screen can show one it did not itself launch — a reopened dialog, a
-    second tab, a run somebody started from the terminal — is for the batch it
-    lists to say so. Derived, never stored: persisting a copy would be a second
-    encoding of numbers the job row already holds. Not a subclass of
-    ``ConnectionJob``, because its identity is a batch rather than a connection —
-    the shape is shared by imitation, not by inheritance.
+    ``ConnectionJob``'s model, applied to an annotation job instead of a
+    connection: a run outlives the request that launched it and the page that
+    asked, so the only way a screen can show one it did not itself launch — a
+    reopened dialog, a second tab, a run somebody started from the terminal — is
+    for the job it lists to say so. Derived, never stored: persisting a copy
+    would be a second encoding of numbers the job row already holds. Not a
+    subclass of ``ConnectionJob``, because its identity is an annotation job
+    rather than a connection — the shape is shared by imitation, not by
+    inheritance.
 
     **Named for what its handler counts.** ``prelabel.py``'s unit is assets, so
     ``assets_processed``/``assets_total`` are named here rather than borrowing a
@@ -725,6 +728,7 @@ class PreLabelRun(BaseModel):
     JOB_TYPE: ClassVar[str] = PRE_LABEL_JOB_TYPE
 
     batch_id: UUID
+    annotation_job_id: UUID
     job_id: UUID
     state: BackgroundJobState
     #: Assets looked at so far, clamped to :attr:`assets_total` for
@@ -780,13 +784,16 @@ class PreLabelRun(BaseModel):
 
         Raises:
             ValueError: the job is not a pre-labeling run, or its payload names
-                no batch.
+                no batch or no annotation job.
         """
         if job.type != cls.JOB_TYPE:
             raise ValueError(f"job {job.id} is a {job.type!r}, not a {cls.JOB_TYPE!r}")
         named = job.payload.get(BATCH_JOB_KEY)
         if not isinstance(named, str):
             raise ValueError(f"job {job.id} names no batch")
+        named_job = job.payload.get(ANNOTATION_JOB_KEY)
+        if not isinstance(named_job, str):
+            raise ValueError(f"job {job.id} names no annotation job")
         result = job.result
         stopped_early = result.get("stopped_early")
         assets_labeled = result.get("assets_labeled")
@@ -795,6 +802,7 @@ class PreLabelRun(BaseModel):
         annotations_replaced = result.get("annotations_replaced")
         return cls(
             batch_id=UUID(named),
+            annotation_job_id=UUID(named_job),
             job_id=job.id,
             state=job.state,
             assets_processed=_at_most(job.processed, job.total),

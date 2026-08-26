@@ -15,6 +15,9 @@ from uuid import UUID, uuid4
 import pytest
 
 from visionset.kernel.domain import (
+    ANNOTATION_JOB_KEY,
+    BATCH_JOB_KEY,
+    CONNECTION_JOB_KEY,
     PRE_LABEL_JOB_TYPE,
     WEIGHT_DOWNLOAD_JOB_TYPE,
     BackgroundJob,
@@ -25,7 +28,7 @@ from visionset.kernel.domain import (
     connection_job_payload,
     pre_label_job_payload,
 )
-from visionset.kernel.services import BatchService, WorkspaceService
+from visionset.kernel.services import BatchService, JobService, WorkspaceService
 
 
 @pytest.fixture()
@@ -42,11 +45,13 @@ def batches(workspace: WorkspaceService) -> BatchService:
     return BatchService(workspace)
 
 
-def enqueue_run(workspace: WorkspaceService, batch_id: UUID) -> BackgroundJob:
+def enqueue_run(
+    workspace: WorkspaceService, batch_id: UUID, job_id: UUID | None = None
+) -> BackgroundJob:
     return workspace.job_queue.enqueue(
         BackgroundJobSpec(
             type=PRE_LABEL_JOB_TYPE,
-            payload=pre_label_job_payload(batch_id, uuid4(), 0.35),
+            payload=pre_label_job_payload(job_id or uuid4(), batch_id, uuid4(), 0.35),
             idempotent=True,
         )
     )
@@ -60,7 +65,7 @@ def test_a_job_row_reads_as_assets() -> None:
     batch_id = uuid4()
     job = BackgroundJob(
         type=PRE_LABEL_JOB_TYPE,
-        payload=pre_label_job_payload(batch_id, uuid4(), 0.35),
+        payload=pre_label_job_payload(uuid4(), batch_id, uuid4(), 0.35),
         state=BackgroundJobState.RUNNING,
         processed=12,
         total=48,
@@ -78,7 +83,7 @@ def test_progress_is_clamped_to_its_total() -> None:
     """The two counts can disagree by a cosmetic amount; a listing must not 500."""
     job = BackgroundJob(
         type=PRE_LABEL_JOB_TYPE,
-        payload=pre_label_job_payload(uuid4(), uuid4(), 0.35),
+        payload=pre_label_job_payload(uuid4(), uuid4(), uuid4(), 0.35),
         processed=50,
         total=48,
     )
@@ -90,6 +95,7 @@ def test_the_type_refuses_progress_above_its_total() -> None:
     with pytest.raises(ValueError, match="cannot have processed"):
         PreLabelRun(
             batch_id=uuid4(),
+            annotation_job_id=uuid4(),
             job_id=uuid4(),
             state=BackgroundJobState.RUNNING,
             assets_processed=50,
@@ -113,6 +119,38 @@ def test_a_job_naming_no_batch_is_refused() -> None:
         PreLabelRun.of(job)
 
 
+def test_a_run_names_the_annotation_job_it_is_over() -> None:
+    job_id, batch_id = uuid4(), uuid4()
+    payload = pre_label_job_payload(job_id, batch_id, uuid4(), 0.35)
+    assert payload[ANNOTATION_JOB_KEY] == str(job_id)
+    assert payload[BATCH_JOB_KEY] == str(batch_id)
+    row = BackgroundJob(
+        id=uuid4(), type=PRE_LABEL_JOB_TYPE, state=BackgroundJobState.QUEUED, payload=payload
+    )
+    assert PreLabelRun.of(row).annotation_job_id == job_id
+
+
+def test_a_row_naming_no_annotation_job_is_refused_and_skipped(
+    workspace: WorkspaceService, batches: BatchService
+) -> None:
+    """A row enqueued before the key existed is not a run this build can attribute."""
+    batch_id = uuid4()
+    legacy = workspace.job_queue.enqueue(
+        BackgroundJobSpec(
+            type=PRE_LABEL_JOB_TYPE,
+            payload={
+                BATCH_JOB_KEY: str(batch_id),
+                CONNECTION_JOB_KEY: str(uuid4()),
+                "minimum_confidence": 0.35,
+            },
+            idempotent=True,
+        )
+    )
+    with pytest.raises(ValueError, match="annotation job"):
+        PreLabelRun.of(legacy)
+    assert batches.pre_label_runs() == {}
+
+
 # --- the handler's own outcome ---------------------------------------------------
 
 
@@ -120,7 +158,7 @@ def test_the_outcome_is_null_before_the_job_settles() -> None:
     """A queued or running job has no result yet — nothing to read it out of."""
     job = BackgroundJob(
         type=PRE_LABEL_JOB_TYPE,
-        payload=pre_label_job_payload(uuid4(), uuid4(), 0.35),
+        payload=pre_label_job_payload(uuid4(), uuid4(), uuid4(), 0.35),
         state=BackgroundJobState.RUNNING,
         processed=3,
         total=8,
@@ -138,7 +176,7 @@ def test_the_outcome_is_null_before_the_job_settles() -> None:
 def test_a_succeeded_run_carries_the_handlers_outcome() -> None:
     job = BackgroundJob(
         type=PRE_LABEL_JOB_TYPE,
-        payload=pre_label_job_payload(uuid4(), uuid4(), 0.35),
+        payload=pre_label_job_payload(uuid4(), uuid4(), uuid4(), 0.35),
         state=BackgroundJobState.SUCCEEDED,
         processed=8,
         total=8,
@@ -167,7 +205,7 @@ def test_a_succeeded_run_carries_the_handlers_outcome() -> None:
 def test_a_pre_label_result_ignores_boolean_and_malformed_counts() -> None:
     job = BackgroundJob(
         type=PRE_LABEL_JOB_TYPE,
-        payload=pre_label_job_payload(uuid4(), uuid4(), 0.35),
+        payload=pre_label_job_payload(uuid4(), uuid4(), uuid4(), 0.35),
         state=BackgroundJobState.SUCCEEDED,
         result={
             "assets_labeled": True,
@@ -189,7 +227,7 @@ def test_a_failed_run_keeps_the_sentence_and_has_no_outcome() -> None:
     """A failure never reaches the point of building a result dict."""
     job = BackgroundJob(
         type=PRE_LABEL_JOB_TYPE,
-        payload=pre_label_job_payload(uuid4(), uuid4(), 0.35),
+        payload=pre_label_job_payload(uuid4(), uuid4(), uuid4(), 0.35),
         state=BackgroundJobState.FAILED,
         error="the model server is unreachable",
         processed=3,
@@ -207,7 +245,7 @@ def test_a_cancelled_run_still_carries_its_outcome() -> None:
     """Stopping partway is a coherent outcome, not the absence of one."""
     job = BackgroundJob(
         type=PRE_LABEL_JOB_TYPE,
-        payload=pre_label_job_payload(uuid4(), uuid4(), 0.35),
+        payload=pre_label_job_payload(uuid4(), uuid4(), uuid4(), 0.35),
         state=BackgroundJobState.CANCELLED,
         processed=12,
         total=48,
@@ -388,3 +426,39 @@ def test_other_job_types_are_not_read_as_pre_label_runs(
     )
 
     assert batches.pre_label_runs() == {}
+
+
+# --- what a job reports, through the service --------------------------------------
+
+
+def test_a_job_remembers_its_own_run_and_not_its_siblings(tmp_path: Path) -> None:
+    from tests.inference.test_prelabel import Fixture
+
+    fixture = Fixture(tmp_path)
+    try:
+        jobs = JobService(fixture.workspace)
+        sibling = uuid4()
+        mine = enqueue_run(fixture.workspace, fixture.batch.id, fixture.job_id)
+        enqueue_run(fixture.workspace, fixture.batch.id, sibling)
+
+        latest = jobs.latest_pre_label_run(fixture.job_id)
+        assert latest is not None
+        assert latest.job_id == mine.id
+        live = jobs.live_job(fixture.job_id, job_type=PRE_LABEL_JOB_TYPE)
+        assert live is not None
+        assert live.id == mine.id
+        assert set(jobs.pre_label_runs()) == {fixture.job_id, sibling}
+    finally:
+        fixture.close()
+
+
+def test_a_jobs_newest_run_is_the_one_reported(workspace: WorkspaceService) -> None:
+    """A job pre-labeled twice reports the second attempt, not the first."""
+    job_id = uuid4()
+    enqueue_run(workspace, uuid4(), job_id)
+    second = enqueue_run(workspace, uuid4(), job_id)
+
+    latest = JobService(workspace).latest_pre_label_run(job_id)
+
+    assert latest is not None
+    assert latest.job_id == second.id

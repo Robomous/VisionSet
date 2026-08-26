@@ -99,9 +99,10 @@ class BatchAction(OpenVocabulary):
 
 
 class JobAction(OpenVocabulary):
-    """What can be asked of an annotation job."""
+    """What can be asked of an annotation job. Declaration order is display order."""
 
     START = "start"
+    PRE_LABEL = "pre_label"
     COMPLETE = "complete"
 
 
@@ -237,7 +238,20 @@ JOB_MOVES: Final[Mapping[JobAction, Move[AnnotationJobState]]] = {
         AnnotationJobState.COMPLETED, frozenset({AnnotationJobState.IN_PROGRESS})
     ),
 }
-"""Both job actions are moves in ``JOB_TRANSITIONS``."""
+"""The two job actions that are moves in ``JOB_TRANSITIONS``."""
+
+
+JOB_GATES: Final[Mapping[JobAction, frozenset[AnnotationJobState]]] = {
+    JobAction.PRE_LABEL: OPEN_JOB_STATES,
+}
+"""The one job action that changes no job state, and so appears in no table row.
+
+``pre_label`` is declared from the job's own openness and the batch's, on
+``BatchAction.PRE_LABEL``'s precedent: whether the pinned schema declares an
+askable class, and whether this machine can run the model, are not facts about
+the job, and hiding the control on either ground would leave their refusals
+with nowhere to be shown.
+"""
 
 
 ASSET_MOVES: Final[Mapping[AssetAction, Move[AssetProgress]]] = {
@@ -465,10 +479,10 @@ def job_actions(
 ) -> list[JobAction]:
     """Everything this job can be asked to do, given its batch and its assets.
 
-    Both actions need the batch open — ``JobService`` runs ``require_open_batch``
-    before it consults ``JOB_TRANSITIONS``, so a job that is otherwise startable
-    inside an ``approved`` batch declares nothing, which is precisely the
-    dimension the browser's mirror dropped.
+    Both moves need the batch open, and so does the one gate — ``JobService``
+    runs ``require_open_batch`` before it consults ``JOB_TRANSITIONS``, so a job
+    that is otherwise startable inside an ``approved`` batch declares nothing,
+    which is precisely the dimension the browser's mirror dropped.
 
     ``complete`` is refined here rather than caveated, unlike a batch's: the
     kernel's extra condition is that every asset is in ``SETTLED_PROGRESS``, and
@@ -480,8 +494,14 @@ def job_actions(
     return [
         action
         for action in JobAction
-        if JOB_MOVES[action].offered_from(state, JOB_TRANSITIONS)
-        and (settled or action is not JobAction.COMPLETE)
+        if (
+            (
+                JOB_MOVES[action].offered_from(state, JOB_TRANSITIONS)
+                and (settled or action is not JobAction.COMPLETE)
+            )
+            if action in JOB_MOVES
+            else state in JOB_GATES[action]
+        )
     ]
 
 

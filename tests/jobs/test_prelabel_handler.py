@@ -19,9 +19,11 @@ from visionset.kernel.domain import (
     PRE_LABEL_JOB_TYPE,
     Asset,
     AssetPrediction,
+    AssetProgress,
     BackgroundJobSpec,
     BackgroundJobState,
     BboxGeometry,
+    BySize,
     ConnectionType,
     GeometryType,
     LabelClass,
@@ -47,16 +49,17 @@ def test_the_type_is_registered_and_idempotent() -> None:
 
 
 def test_the_payload_is_built_where_the_type_is_known() -> None:
-    batch_id, connection_id = uuid4(), uuid4()
+    job_id, batch_id, connection_id = uuid4(), uuid4(), uuid4()
 
-    payload = prelabel.payload_for(batch_id, connection_id, 0.35)
+    payload = prelabel.payload_for(job_id, batch_id, connection_id, 0.35)
 
+    assert payload["annotation_job_id"] == str(job_id)
     assert payload["batch_id"] == str(batch_id)
     assert payload["connection_id"] == str(connection_id)
     assert payload["minimum_confidence"] == 0.35
     assert payload["replace_model_labels"] is False
     assert (
-        prelabel.payload_for(batch_id, connection_id, 0.35, replace_model_labels=True)[
+        prelabel.payload_for(job_id, batch_id, connection_id, 0.35, replace_model_labels=True)[
             "replace_model_labels"
         ]
         is True
@@ -76,7 +79,8 @@ def test_a_cancelled_run_does_nothing_and_says_so(
         def report(self, **_: object) -> None:
             raise AssertionError("a cancelled run reports nothing")
 
-    assert prelabel.run(tmp_path, prelabel.payload_for(uuid4(), uuid4(), 0.35), Cancelled()) == {}
+    payload = prelabel.payload_for(uuid4(), uuid4(), uuid4(), 0.35)
+    assert prelabel.run(tmp_path, payload, Cancelled()) == {}
     assert calls == []
 
 
@@ -106,7 +110,7 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
     def fake_pre_label(
         workspace: object,
         *,
-        batch_id: UUID,
+        job_id: UUID,
         connection_id: UUID,
         minimum_confidence: float,
         replace_model_labels: bool,
@@ -114,7 +118,7 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
         on_progress: Any,
         should_stop: Any,
     ) -> PreLabelOutcome:
-        captured["batch_id"] = batch_id
+        captured["job_id"] = job_id
         captured["connection_id"] = connection_id
         captured["minimum_confidence"] = minimum_confidence
         captured["replace_model_labels"] = replace_model_labels
@@ -133,13 +137,16 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
     monkeypatch.setattr(prelabel, "pre_label", fake_pre_label)
     monkeypatch.setattr(prelabel, "workspace_for", lambda root: object())
     reporter = Reporter()
-    batch_id, connection_id = uuid4(), uuid4()
+    job_id, batch_id, connection_id = uuid4(), uuid4(), uuid4()
 
     result = prelabel.run(
-        Path("/does/not/matter"), prelabel.payload_for(batch_id, connection_id, 0.4), reporter
+        Path("/does/not/matter"),
+        prelabel.payload_for(job_id, batch_id, connection_id, 0.4),
+        reporter,
     )
 
     assert result == {
+        "annotation_job_id": str(job_id),
         "batch_id": str(batch_id),
         "assets_considered": 2,
         "assets_labeled": 2,
@@ -151,7 +158,7 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
         "regions_out_of_bounds": 0,
         "annotations_replaced": 1,
     }
-    assert captured["batch_id"] == batch_id
+    assert captured["job_id"] == job_id
     assert captured["connection_id"] == connection_id
     assert captured["minimum_confidence"] == 0.4
     assert captured["replace_model_labels"] is False
@@ -174,7 +181,7 @@ def test_a_payload_written_before_the_flag_existed_runs_unflagged(
 
     monkeypatch.setattr(prelabel, "pre_label", fake_pre_label)
     monkeypatch.setattr(prelabel, "workspace_for", lambda root: object())
-    payload = prelabel.payload_for(uuid4(), uuid4(), 0.4)
+    payload = prelabel.payload_for(uuid4(), uuid4(), uuid4(), 0.4)
     del payload["replace_model_labels"]
 
     prelabel.run(Path("/does/not/matter"), payload, Reporter())
@@ -183,10 +190,11 @@ def test_a_payload_written_before_the_flag_existed_runs_unflagged(
 
 
 def test_the_payload_carries_the_shape_selection_and_omits_it_by_default() -> None:
-    batch_id, connection_id = uuid4(), uuid4()
+    job_id, batch_id, connection_id = uuid4(), uuid4(), uuid4()
 
-    assert prelabel.payload_for(batch_id, connection_id, 0.35)["geometries"] is None
+    assert prelabel.payload_for(job_id, batch_id, connection_id, 0.35)["geometries"] is None
     assert prelabel.payload_for(
+        job_id,
         batch_id,
         connection_id,
         0.35,
@@ -207,7 +215,9 @@ def test_a_selected_payload_asks_for_exactly_those_shapes(monkeypatch: pytest.Mo
 
     prelabel.run(
         Path("/does/not/matter"),
-        prelabel.payload_for(uuid4(), uuid4(), 0.4, geometries=frozenset({GeometryType.BBOX})),
+        prelabel.payload_for(
+            uuid4(), uuid4(), uuid4(), 0.4, geometries=frozenset({GeometryType.BBOX})
+        ),
         Reporter(),
     )
 
@@ -225,7 +235,7 @@ def test_a_payload_written_before_the_selection_existed_writes_every_shape(
 
     monkeypatch.setattr(prelabel, "pre_label", fake_pre_label)
     monkeypatch.setattr(prelabel, "workspace_for", lambda root: object())
-    payload = prelabel.payload_for(uuid4(), uuid4(), 0.4)
+    payload = prelabel.payload_for(uuid4(), uuid4(), uuid4(), 0.4)
     del payload["geometries"]
 
     prelabel.run(Path("/does/not/matter"), payload, Reporter())
@@ -245,7 +255,7 @@ def test_a_flagged_payload_asks_for_a_replacing_run(monkeypatch: pytest.MonkeyPa
 
     prelabel.run(
         Path("/does/not/matter"),
-        prelabel.payload_for(uuid4(), uuid4(), 0.4, replace_model_labels=True),
+        prelabel.payload_for(uuid4(), uuid4(), uuid4(), 0.4, replace_model_labels=True),
         Reporter(),
     )
 
@@ -343,25 +353,25 @@ def queued_job(
         endpoint_url="https://example.invalid/predict",
     )
 
-    job = workspace.job_queue.enqueue(
+    background_job = workspace.job_queue.enqueue(
         BackgroundJobSpec(
             type=PRE_LABEL_JOB_TYPE,
-            payload=prelabel.payload_for(batch.id, connection.id, 0.35),
+            payload=prelabel.payload_for(job_id, batch.id, connection.id, 0.35),
             idempotent=True,
         )
     )
-    yield workspace, job.id
+    yield workspace, job_id, background_job.id
     workspace.close()
 
 
 def test_the_row_settles_succeeded_with_nobody_polling(
-    queued_job: tuple[WorkspaceService, UUID],
+    queued_job: tuple[WorkspaceService, UUID, UUID],
 ) -> None:
     """Nothing here reads the row in a loop: `drain()` is the dispatcher's own
     claim loop run to completion, and the line after it reads the settled row
     once — the property `weights.py` states and `test_dispatcher.py` holds for
     every handler through the same seam."""
-    workspace, job_id = queued_job
+    workspace, job_id, background_job_id = queued_job
     runner = JobRunner(
         workspace.job_queue,
         workspace.root,
@@ -373,10 +383,107 @@ def test_the_row_settles_succeeded_with_nobody_polling(
 
     assert runner.drain() == 1
 
-    stored = workspace.job_queue.get(job_id)
+    stored = workspace.job_queue.get(background_job_id)
     assert stored is not None
     assert stored.state is BackgroundJobState.SUCCEEDED
     assert stored.result is not None
+    assert stored.result["annotation_job_id"] == str(job_id)
     assert stored.result["assets_considered"] == 1
     assert stored.result["assets_labeled"] == 1
     assert stored.result["model_ref"] == "acme/detector@abc123"
+
+
+def test_a_row_enqueued_before_the_job_key_existed_fails_naming_the_situation(
+    queued_job: tuple[WorkspaceService, UUID, UUID],
+) -> None:
+    """A payload naming a batch and no job cannot be attributed to a job, and the
+    row says so instead of dying on a bare `KeyError`."""
+    workspace, job_id, _ = queued_job
+    legacy_payload = prelabel.payload_for(job_id, uuid4(), uuid4(), 0.35)
+    del legacy_payload["annotation_job_id"]
+    legacy = workspace.job_queue.enqueue(
+        BackgroundJobSpec(type=PRE_LABEL_JOB_TYPE, payload=legacy_payload, idempotent=True)
+    )
+    runner = JobRunner(
+        workspace.job_queue,
+        workspace.root,
+        event_bus=workspace.event_bus,
+        workers=1,
+        progress_min_interval_s=0,
+        executor_factory=lambda _: InlineExecutor(),
+    )
+
+    runner.drain()
+
+    stored = workspace.job_queue.get(legacy.id)
+    assert stored is not None
+    assert stored.state is BackgroundJobState.FAILED
+    assert "a row enqueued before the key existed" in (stored.error or "")
+
+
+def test_the_handler_pre_labels_only_the_named_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two jobs of one batch: enqueueing and draining the first job's run leaves
+    the second job's assets untouched, on the same terms as `pre_label` itself."""
+    monkeypatch.setattr(prelabel_engine, "resident", lambda: _FakePool())
+    workspace = WorkspaceService.init(tmp_path / "ws")
+    try:
+        project = ProjectService(workspace).create("prelabel-two-jobs")
+        SchemaService(workspace).create_version(
+            project.id, [LabelClass(name="post", geometries=(GeometryType.BBOX,))]
+        )
+        asset_ids = []
+        with workspace.unit_of_work() as uow:
+            for name in ("one", "two", "three"):
+                content_hash = workspace.blob_store.put(BytesIO(f"{name}-asset".encode()))
+                asset_ids.append(
+                    uow.assets.add(
+                        Asset(
+                            project_id=project.id,
+                            content_hash=content_hash,
+                            uri=f"/tmp/{name}.png",
+                        )
+                    ).id
+                )
+        batches = BatchService(workspace)
+        batch = batches.create(project.id, "two-jobs", asset_ids)
+        batches.approve(batch.id, BySize(size=2))
+        batches.start(batch.id)
+        first, second = batches.jobs(batch.id)
+        JobService(workspace).start(first.id)
+        connection = InferenceConnectionService(workspace).create(
+            "e2e-connection",
+            connection_type=ConnectionType.HTTP,
+            model_id="acme/detector",
+            model_revision="abc123",
+            endpoint_url="https://example.invalid/predict",
+        )
+        background_job = workspace.job_queue.enqueue(
+            BackgroundJobSpec(
+                type=PRE_LABEL_JOB_TYPE,
+                payload=prelabel.payload_for(first.id, batch.id, connection.id, 0.35),
+                idempotent=True,
+            )
+        )
+        runner = JobRunner(
+            workspace.job_queue,
+            workspace.root,
+            event_bus=workspace.event_bus,
+            workers=1,
+            progress_min_interval_s=0,
+            executor_factory=lambda _: InlineExecutor(),
+        )
+
+        assert runner.drain() == 1
+
+        stored = workspace.job_queue.get(background_job.id)
+        assert stored is not None
+        assert stored.state is BackgroundJobState.SUCCEEDED
+        assert stored.result is not None
+        assert stored.result["annotation_job_id"] == str(first.id)
+
+        untouched = JobService(workspace).get(second.id)
+        assert all(p is AssetProgress.UNANNOTATED for p in untouched.progress.values())
+    finally:
+        workspace.close()

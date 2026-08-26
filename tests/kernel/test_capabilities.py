@@ -60,6 +60,7 @@ from visionset.kernel.domain import (
     ENDPOINT_TYPES,
     EVERY_CONNECTION_TYPE,
     EVERY_SETUP_STATE,
+    JOB_GATES,
     JOB_MOVES,
     JOB_TRANSITIONS,
     OPEN_JOB_STATES,
@@ -306,7 +307,8 @@ def test_every_action_is_decided_by_exactly_one_source() -> None:
     """
     assert set(BATCH_MOVES) | set(BATCH_GATES) == set(BatchAction)
     assert not set(BATCH_MOVES) & set(BATCH_GATES)
-    assert set(JOB_MOVES) == set(JobAction)
+    assert set(JOB_MOVES) | set(JOB_GATES) == set(JobAction)
+    assert not set(JOB_MOVES) & set(JOB_GATES)
     assert set(ASSET_MOVES) | {AssetAction.ANNOTATE} == set(AssetAction)
     # A connection has no moves at all: nothing in this slice changes
     # `setup_state`, so every one of its actions is decided by a gate.
@@ -450,7 +452,7 @@ JOB_SCENARIOS: list[tuple[BatchState, AnnotationJobState, bool]] = [
 ]
 
 
-@pytest.mark.parametrize("action", list(JobAction), ids=lambda a: a.value)
+@pytest.mark.parametrize("action", list(JOB_MOVES), ids=lambda a: a.value)
 @pytest.mark.parametrize(
     "scenario",
     JOB_SCENARIOS,
@@ -491,6 +493,30 @@ def test_a_job_allows_exactly_what_it_declares(
 
 def _run_job(fixture: Fixture, job_id: UUID, action: JobAction) -> Any:
     return (fixture.jobs.start if action is JobAction.START else fixture.jobs.complete)(job_id)
+
+
+@pytest.mark.parametrize(
+    ("batch_state", "job_state", "declared"),
+    [
+        (BatchState.APPROVED, AnnotationJobState.PENDING, False),
+        (BatchState.IN_ANNOTATION, AnnotationJobState.PENDING, True),
+        (BatchState.IN_ANNOTATION, AnnotationJobState.IN_PROGRESS, True),
+        (BatchState.IN_ANNOTATION, AnnotationJobState.COMPLETED, False),
+        (BatchState.COMPLETED, AnnotationJobState.COMPLETED, False),
+    ],
+)
+def test_pre_label_is_declared_on_an_open_job_of_an_open_batch(
+    batch_state: BatchState, job_state: AnnotationJobState, declared: bool
+) -> None:
+    actions = job_actions(job_state, batch_state=batch_state, progress=[])
+    assert (JobAction.PRE_LABEL in actions) is declared
+
+
+def test_job_actions_are_declared_in_display_order() -> None:
+    actions = job_actions(
+        AnnotationJobState.PENDING, batch_state=BatchState.IN_ANNOTATION, progress=[]
+    )
+    assert actions == [JobAction.START, JobAction.PRE_LABEL]
 
 
 # --- enforcement: batch assets ------------------------------------------------

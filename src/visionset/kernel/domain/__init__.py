@@ -34,6 +34,7 @@ from visionset.kernel.domain.capabilities import (
     CONNECTION_GATES,
     CONNECTION_KINDS,
     ENDPOINT_TYPES,
+    JOB_GATES,
     JOB_MOVES,
     UNNAMED_EDGES,
     AssetAction,
@@ -74,6 +75,7 @@ from visionset.kernel.domain.geometry import (
     PolylineGeometry,
 )
 from visionset.kernel.domain.inference import (
+    ANNOTATION_JOB_KEY,
     BATCH_JOB_KEY,
     CHECKABLE_STATES,
     COMMIT_PATTERN,
@@ -270,6 +272,7 @@ __all__ = [
     "ConnectionAction",
     "UNNAMED_EDGES",
     "JOB_MOVES",
+    "JOB_GATES",
     "BATCH_MOVES",
     "BATCH_GATES",
     "CONNECTION_GATES",
@@ -283,6 +286,7 @@ __all__ = [
     "INTEGRITY_CHECK_JOB_TYPE",
     "PRE_LABEL_JOB_TYPE",
     "BATCH_JOB_KEY",
+    "ANNOTATION_JOB_KEY",
     "CONNECTION_JOB_KEY",
     "PRE_LABEL_CONFIDENCE_KEY",
     "PRE_LABEL_GEOMETRIES_KEY",

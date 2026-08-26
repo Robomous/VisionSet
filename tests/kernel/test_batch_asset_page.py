@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -13,10 +13,11 @@ from visionset.kernel.domain import (
     AssetProgress,
     AssetSort,
     BboxGeometry,
+    BySize,
     GeometryType,
     LabelClass,
 )
-from visionset.kernel.errors import BatchNotFound
+from visionset.kernel.errors import BatchNotFound, JobNotFound
 from visionset.kernel.services import (
     AnnotationService,
     BatchService,
@@ -169,7 +170,51 @@ def test_a_draft_has_no_placement_and_a_progress_filter_over_it_is_empty(fx: Fix
 
 
 def test_unknown_batch_is_refused(fx: Fixture) -> None:
-    from uuid import uuid4
-
     with pytest.raises(BatchNotFound):
         fx.batches.asset_page(uuid4())
+
+
+def test_a_job_filter_keeps_only_that_jobs_assets(fx: Fixture) -> None:
+    assets = fx.assets(4)
+    batch = fx.batches.create(fx.project, "b", assets)
+    fx.batches.approve(batch.id, BySize(size=2))
+    first, second = fx.batches.jobs(batch.id)
+
+    placed, total = fx.batches.asset_page(batch.id, job=first.id)
+
+    assert total == 2
+    assert [one.asset.id for one in placed] == assets[:2]
+    assert all(one.job_id == first.id for one in placed)
+
+
+def test_a_job_filter_composes_with_progress(fx: Fixture) -> None:
+    assets = fx.assets(4)
+    batch = fx.batches.create(fx.project, "b", assets)
+    fx.batches.approve(batch.id, BySize(size=2))
+    first, _ = fx.batches.jobs(batch.id)
+    fx.batches.start(batch.id)
+    fx.jobs.mark(first.id, assets[0], AssetProgress.SKIPPED)
+
+    placed, total = fx.batches.asset_page(
+        batch.id, job=first.id, progress=frozenset({AssetProgress.UNANNOTATED})
+    )
+
+    assert total == 1 and placed[0].asset.id == assets[1]
+
+
+def test_a_job_of_another_batch_is_refused(fx: Fixture) -> None:
+    assets = fx.assets(2)
+    batch = fx.batches.create(fx.project, "b", assets)
+    other = fx.batches.create(fx.project, "o", fx.assets(1))
+    fx.batches.approve(batch.id)
+    fx.batches.approve(other.id)
+    theirs = fx.batches.jobs(other.id)[0]
+
+    with pytest.raises(JobNotFound):
+        fx.batches.asset_page(batch.id, job=theirs.id)
+
+
+def test_a_draft_with_a_job_filter_is_empty(fx: Fixture) -> None:
+    batch = fx.batches.create(fx.project, "b", fx.assets(2))
+    placed, total = fx.batches.asset_page(batch.id, job=uuid4())
+    assert (placed, total) == ([], 0)

@@ -1,5 +1,5 @@
 # usage: from visionset.inference import pre_label
-"""Labeling a batch nobody has opened — the orchestration behind the background job.
+"""Labeling a job nobody has opened — the orchestration behind the background job.
 
 **Here rather than in a handler, because every surface would need the same
 thing.** A route, a command and a tool would each have to resolve a connection,
@@ -36,6 +36,7 @@ from uuid import UUID
 
 from visionset.inference.providers import ProviderPool, resident
 from visionset.kernel.domain import (
+    OPEN_JOB_STATES,
     PRE_LABELABLE_STATES,
     Annotation,
     AnnotationJob,
@@ -69,6 +70,7 @@ from visionset.kernel.services import (
     BatchService,
     InferenceConnectionService,
     IngestService,
+    JobService,
     ProjectService,
     SchemaService,
     WorkspaceService,
@@ -378,6 +380,16 @@ def select_pre_labelable(
     return selected
 
 
+def open_jobs_of(workspace: WorkspaceService, batch_id: UUID) -> list[AnnotationJob]:
+    """The batch's jobs a run may still be asked over, in segment order.
+
+    What every fan-out iterates: a batch launch is one launch per open job,
+    and a finished job is passed over rather than refused, because a batch
+    finished half in the annotator is the ordinary case.
+    """
+    return [job for job in BatchService(workspace).jobs(batch_id) if job.state in OPEN_JOB_STATES]
+
+
 def served_for(
     workspace: WorkspaceService, connection_id: UUID, *, pool: ProviderPool | None = None
 ) -> ServedFamily:
@@ -441,7 +453,7 @@ def planned(
 def pre_label(
     workspace: WorkspaceService,
     *,
-    batch_id: UUID,
+    job_id: UUID,
     connection_id: UUID,
     minimum_confidence: float = DEFAULT_MINIMUM_CONFIDENCE,
     replace_model_labels: bool = False,
@@ -451,13 +463,13 @@ def pre_label(
     should_stop: Callable[[], bool] | None = None,
     pool: ProviderPool | None = None,
 ) -> PreLabelOutcome:
-    """Ask a model about every untouched asset in a batch, and enter what it finds.
+    """Ask a model about every untouched asset in a job, and enter what it finds.
 
     The order of the lookups is the order of the refusals a caller most needs:
     the connection first, because "this build cannot run that kind" is an answer
-    about a setup somebody is part-way through, then the batch's own state,
-    then the schema, because a batch with nowhere to write what the model
-    produces is refused before a single image is read.
+    about a setup somebody is part-way through, then the job's own state and its
+    batch's, then the schema, because a batch with nowhere to write what the
+    model produces is refused before a single image is read.
 
     An asset untouched when the run started but worked by somebody before the
     run reaches it is passed over, not fatal — the batch is open for
@@ -502,9 +514,10 @@ def pre_label(
         UnsupportedPrompt: that connection's model answers places, not words.
         GeometryNotProduced: ``geometries`` names a shape the model does not
             produce, or no shape at all.
-        BatchNotFound: no such batch in this workspace.
-        BatchNotInAnnotation: the batch is not open for annotation, so a model
-            cannot pre-label it.
+        JobNotFound: no such job in this workspace.
+        BatchNotInAnnotation: the job's batch is not open for annotation, so a
+            model cannot pre-label it.
+        JobFinished: the job is completed.
         WorkspaceCorrupt: the batch is open but pinned no schema version — a
             broken invariant, since approval is what pins one.
         SchemaHasNoDetectableClass: the pinned schema holds no class a shape
@@ -521,8 +534,7 @@ def pre_label(
     declared = resolved.served(connection, workspace_root=workspace.root)
     produces = effective_produces(declared.produces, geometries)
 
-    batches = BatchService(workspace)
-    batch = batches.require_pre_labelable(batch_id)
+    job, batch = JobService(workspace).require_pre_labelable(job_id)
     schema = require_detectable_schema(workspace, batch, produces)
     # Announced from inside the run rather than derived by the caller, so the
     # plan a surface reports is the one this run is about to prompt with and the
@@ -537,15 +549,14 @@ def pre_label(
         for label_class in schema.classes
     }
 
-    jobs = batches.jobs(batch_id)
-    targets = _targets(workspace, jobs, replace_model_labels=replace_model_labels)
+    targets = _targets(workspace, job, replace_model_labels=replace_model_labels)
     total = len(targets)
     annotations_service = AnnotationService(workspace)
     ingest = IngestService(workspace)
 
     considered = labeled = written = skipped = discarded = out_of_bounds = replaced = 0
     model_ref: str | None = None
-    for job_id, asset_id, replacing in targets:
+    for asset_id, replacing in targets:
         # Between assets, which is the only place stopping is honest: the last
         # asset is committed and the next has not been touched.
         if should_stop is not None and should_stop():
@@ -600,7 +611,7 @@ def pre_label(
             superseded = (
                 sum(
                     1
-                    for annotation in annotations_service.for_asset(job_id, asset_id)
+                    for annotation in annotations_service.for_asset(job.id, asset_id)
                     if annotation.provenance == "model"
                 )
                 if replacing
@@ -608,7 +619,7 @@ def pre_label(
             )
             try:
                 annotations_service.enter_unreviewed(
-                    job_id, in_bounds, replacing={asset_id} if replacing else ()
+                    job.id, in_bounds, replacing={asset_id} if replacing else ()
                 )
             except AssetNotWritable:
                 # The batch is `in_annotation`, so somebody working in it
@@ -641,15 +652,15 @@ def pre_label(
 
 def _targets(
     workspace: WorkspaceService,
-    jobs: Sequence[AnnotationJob],
+    job: AnnotationJob,
     *,
     replace_model_labels: bool,
-) -> tuple[tuple[UUID, UUID, bool], ...]:
-    """Every ``(job, asset, replacing)`` this run will reach, in a stable order.
+) -> tuple[tuple[UUID, bool], ...]:
+    """Every ``(asset, replacing)`` this run will reach, in a stable order.
 
-    Read off the jobs rather than off the batch's membership, because the write
-    needs the job that carries the asset and a batch of any size is partitioned
-    into several.
+    Read off the job's own progress rather than off its batch's membership: a
+    batch of any size is partitioned into several jobs, and only the one asked
+    about is this run's to write into.
 
     Progress alone does not prove untouched: ``annotated -> skipped ->
     unannotated`` is legal and deletes no labels, so an asset can read
@@ -663,16 +674,15 @@ def _targets(
     only path that may remove what an earlier run wrote.
     """
     candidates = [
-        (job.id, asset_id, progress is AssetProgress.PRE_LABELED)
-        for job in jobs
+        (asset_id, progress is AssetProgress.PRE_LABELED)
         for asset_id, progress in job.progress.items()
         if progress is AssetProgress.UNANNOTATED
         or (replace_model_labels and progress is AssetProgress.PRE_LABELED)
     ]
     with workspace.unit_of_work() as uow:
         return tuple(
-            (job_id, asset_id, replacing)
-            for job_id, asset_id, replacing in candidates
+            (asset_id, replacing)
+            for asset_id, replacing in candidates
             if replacing or not uow.annotations.list(asset_id)
         )
 

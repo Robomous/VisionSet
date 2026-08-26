@@ -34,20 +34,28 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import UUID
 
 from visionset.kernel.domain import (
+    ANNOTATION_JOB_KEY,
     ASSET_PROGRESS_TRANSITIONS,
+    BATCH_JOB_KEY,
     JOB_TRANSITIONS,
+    LIVE_JOB_STATES,
     OPEN_JOB_STATES,
+    PRE_LABEL_JOB_TYPE,
+    PRE_LABELABLE_STATES,
     SETTLED_PROGRESS,
     AnnotationJob,
     AnnotationJobState,
     Asset,
     AssetProgress,
+    BackgroundJob,
     Batch,
     BatchState,
+    PreLabelRun,
     normalize_name,
     require_move,
 )
@@ -98,6 +106,60 @@ class JobService:
         """
         with self._workspace.unit_of_work() as uow:
             return self.batch_of(uow, self.require_job(uow, job_id))
+
+    def require_pre_labelable(self, job_id: UUID) -> tuple[AnnotationJob, Batch]:
+        """The job and its batch, if a model may pre-label the job right now.
+
+        ``BatchService.require_pre_labelable``'s construction, one level down:
+        the batch has to be open for annotation and the job must not be
+        finished. Everything else pre-labeling can be refused for is a fact
+        this service cannot see.
+
+        Raises:
+            JobNotFound: no such job in this workspace.
+            WorkspaceCorrupt: the job's task group is gone.
+            BatchNotInAnnotation: the batch is not ``in_annotation``.
+            JobFinished: the job is ``completed``.
+        """
+        with self._workspace.unit_of_work() as uow:
+            job = self.require_job(uow, job_id)
+            batch = self.batch_of(uow, job)
+        if batch.state not in PRE_LABELABLE_STATES:
+            raise BatchNotInAnnotation(
+                f"batch {batch.name!r} is {batch.state.value!r}, not "
+                f"{BatchState.IN_ANNOTATION.value!r}; a model cannot pre-label a job "
+                f"of a batch nobody opened"
+            )
+        self.require_open_job(job)
+        return job, batch
+
+    def live_job(self, job_id: UUID, *, job_type: str) -> BackgroundJob | None:
+        """That kind of work already under way against this job, if any."""
+        for row in self._workspace.job_queue.list(states=LIVE_JOB_STATES, types={job_type}):
+            if row.payload.get(ANNOTATION_JOB_KEY) == str(job_id):
+                return row
+        return None
+
+    def latest_pre_label_run(self, job_id: UUID) -> PreLabelRun | None:
+        """This job's most recent pre-labeling run, live or settled, if it has one."""
+        return self.pre_label_runs().get(job_id)
+
+    def pre_label_runs(self) -> Mapping[UUID, PreLabelRun]:
+        """Every job's most recent pre-labeling run, read from the queue at once.
+
+        ``BatchService.pre_label_runs`` keyed by the annotation job instead of
+        the batch; the same one read for a whole listing. The queue answers
+        newest-first, so the first row seen for a job is that job's latest.
+        """
+        latest: dict[UUID, PreLabelRun] = {}
+        for row in self._workspace.job_queue.list(types={PRE_LABEL_JOB_TYPE}):
+            named = row.payload.get(ANNOTATION_JOB_KEY)
+            if not isinstance(named, str) or not isinstance(row.payload.get(BATCH_JOB_KEY), str):
+                continue
+            job_id = UUID(named)
+            if job_id not in latest:
+                latest[job_id] = PreLabelRun.of(row)
+        return latest
 
     def next_pending(self, job_id: UUID, count: int) -> list[Asset]:
         """The next assets waiting to be annotated, in the batch's own order.

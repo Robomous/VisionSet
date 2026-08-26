@@ -40,12 +40,12 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from visionset.kernel.domain import (
+    ANNOTATION_JOB_KEY,
     BATCH_JOB_KEY,
     BATCH_TRANSITIONS,
     CORRECTABLE_STATES,
     DELETABLE_STATES,
     EDITABLE_STATES,
-    LIVE_JOB_STATES,
     PRE_LABEL_JOB_TYPE,
     PRE_LABELABLE_STATES,
     REPINNABLE_STATES,
@@ -56,7 +56,6 @@ from visionset.kernel.domain import (
     Asset,
     AssetProgress,
     AssetSort,
-    BackgroundJob,
     Batch,
     BatchApproved,
     BatchCompleted,
@@ -89,6 +88,7 @@ from visionset.kernel.errors import (
     ConfirmationRequired,
     DestructiveSchemaChange,
     EmptyBatch,
+    JobNotFound,
     ProjectNotFound,
     SchemaChangeWouldOrphan,
     WorkspaceCorrupt,
@@ -131,27 +131,12 @@ class BatchService:
         with self._workspace.unit_of_work() as uow:
             return jobs_of(uow, self.require_batch(uow, batch_id))
 
-    def live_job(self, batch_id: UUID, *, job_type: str) -> BackgroundJob | None:
-        """That kind of work already under way against this batch, if any.
-
-        ``InferenceConnectionService.live_job``'s counterpart, over
-        :data:`~visionset.kernel.domain.inference.BATCH_JOB_KEY` instead of a
-        connection's. What a route asks so that a second request joins the run
-        already in flight instead of paying for the same inference twice — see
-        that method for the coalescing it does and does not promise.
-        """
-        for job in self._workspace.job_queue.list(states=LIVE_JOB_STATES, types={job_type}):
-            if job.payload.get(BATCH_JOB_KEY) == str(batch_id):
-                return job
-        return None
-
     def latest_pre_label_job(self, batch_id: UUID) -> PreLabelRun | None:
         """That batch's most recent pre-labeling run, live or settled, if it has one.
 
-        ``live_job``'s sibling: the same question about the same job type, asked
-        over every state rather than only the live ones — a dialog reopened
-        after a cancelled run or a failure needs the *last* thing that happened
-        here, not only one still in flight. Delegates to :meth:`pre_label_runs`
+        Asked over every state rather than only the live ones — a dialog
+        reopened after a cancelled run or a failure needs the *last* thing that
+        happened here, not only one still in flight. Delegates to :meth:`pre_label_runs`
         rather than repeating its payload match: the queue read costs the same
         either way, so a second body here would only be a second place for that
         match to drift from the first.
@@ -171,14 +156,16 @@ class BatchService:
         running now* and *what happened last time*. The queue answers
         newest-first, so the first job seen for a batch is that batch's latest.
 
-        A job whose payload names no batch is skipped rather than raised over:
-        it cannot be a run this method is about, and a batch listing is the
-        wrong place to discover a malformed row.
+        A job whose payload names no batch or no annotation job is skipped
+        rather than raised over: it cannot be a run this method is about, and
+        a batch listing is the wrong place to discover a malformed row.
         """
         latest: dict[UUID, PreLabelRun] = {}
         for job in self._workspace.job_queue.list(types={PRE_LABEL_JOB_TYPE}):
             named = job.payload.get(BATCH_JOB_KEY)
-            if not isinstance(named, str):
+            if not isinstance(named, str) or not isinstance(
+                job.payload.get(ANNOTATION_JOB_KEY), str
+            ):
                 continue
             batch_id = UUID(named)
             if batch_id not in latest:
@@ -205,6 +192,7 @@ class BatchService:
         self,
         batch_id: UUID,
         *,
+        job: UUID | None = None,
         progress: frozenset[AssetProgress] | None = None,
         sort: AssetSort = AssetSort.MEMBERSHIP,
         limit: int | None = None,
@@ -215,24 +203,31 @@ class BatchService:
         Placement is read once off the jobs, the summary once off the store, and only
         the window's assets are hydrated — the listing used to read every asset of
         the batch for every page. ``confidence`` orders by the lowest model score,
-        unscored last, ties in membership order.
+        unscored last, ties in membership order. ``job`` keeps only the assets that
+        job carries; a job the batch does not have is refused, and a draft — which
+        has no jobs — matches nothing.
 
         Raises:
             BatchNotFound: no such batch in this workspace.
+            JobNotFound: ``job`` names a job that is not one of this batch's.
         """
         with self._workspace.unit_of_work() as uow:
             batch = self.require_batch(uow, batch_id)
+            jobs = jobs_of(uow, batch)
+            if job is not None and jobs and all(one.id != job for one in jobs):
+                raise JobNotFound(f"no job {job} in batch {batch.name!r}")
             placement = {
-                asset_id: (job.id, job.state, state)
-                for job in jobs_of(uow, batch)
-                for asset_id, state in job.progress.items()
+                asset_id: (job_.id, job_.state, state)
+                for job_ in jobs
+                for asset_id, state in job_.progress.items()
             }
             summary = uow.annotation_summary(batch.id)
             nothing = AnnotationSummary(count=0)
             ids = [
                 asset_id
                 for asset_id in batch.asset_ids
-                if progress is None or placement.get(asset_id, (None, None, None))[2] in progress
+                if (progress is None or placement.get(asset_id, (None, None, None))[2] in progress)
+                and (job is None or placement.get(asset_id, (None, None, None))[0] == job)
             ]
             if sort is AssetSort.CONFIDENCE:
                 position = {asset_id: at for at, asset_id in enumerate(batch.asset_ids)}
