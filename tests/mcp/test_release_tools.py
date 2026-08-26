@@ -268,8 +268,15 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "modalities": ["image"],
             },
             {
-                # Lossy because a VOC `<object>` has a fixed set of children
-                # its consumers index by tag name.
+                # Lossy because a label row is a class index and coordinates,
+                # so attributes, confidence and provenance never survive.
+                "name": "ultralytics",
+                "lossy": True,
+                "geometries": ["bbox", "classification_tag", "polygon"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+            },
+            {
                 "name": "voc",
                 "lossy": True,
                 "geometries": ["bbox"],
@@ -277,17 +284,15 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "modalities": ["image"],
             },
             {
-                # The first format in this repository that writes
-                # anything. Lossy because a label row is five numbers, so
-                # attributes, confidence and provenance never survive.
-                "name": "yolo",
+                # Detection only, so a polygon is reduced to its box.
+                "name": "yolov5-yaml",
                 "lossy": True,
                 "geometries": ["bbox"],
                 "degraded_geometries": ["polygon"],
                 "modalities": ["image"],
             },
         ],
-        "total": 10,
+        "total": 11,
     }
 
 

@@ -110,7 +110,7 @@ def run(
     # ``pick``, never ``exporters()[name]``: a ``KeyError`` is outside the
     # ``VisionSetError`` tree, and here it would fail a job with a traceback
     # instead of a sentence naming what is installed.
-    exporter = registry.pick(registry.exporters(), format_name)
+    exporter, _ = registry.pick(registry.exporters(), format_name)
 
     destination = workspace_root / EXPORTS_DIRNAME / str(release_id) / format_name
     # Cleared first, because the archive must describe *this* run.

@@ -118,7 +118,8 @@ visionset = "visionset.cli.main:app"
 # `visionset-format-x` package) register their plugins in this same group.
 [project.entry-points."visionset.formats"]
 dummy = "visionset.formats._dummy:DummyExporter"
-yolo = "visionset.formats.yolo:YoloDetectionExporter"
+ultralytics = "visionset.formats.ultralytics:UltralyticsExporter"
+yolov5-yaml = "visionset.formats.yolov5_yaml:Yolov5YamlExporter"
 coco = "visionset.formats.coco:CocoExporter"
 voc = "visionset.formats.voc:VocExporter"
 # The one format whose content is tags. One row per (image, tag), so a

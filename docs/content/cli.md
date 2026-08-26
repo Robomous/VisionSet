@@ -444,8 +444,8 @@ that declaration covers attributes, confidence and provenance - none of which is
 of which the per-class table can show. So:
 
 ```bash
-visionset export --check -p road-signs --release v1.0 -f yolo && \
-  visionset export -p road-signs --release v1.0 -f yolo --out ./out
+visionset export --check -p road-signs --release v1.0 -f ultralytics && \
+  visionset export -p road-signs --release v1.0 -f ultralytics --out ./out
 ```
 
 means what it looks like. The table is on **stdout** and the summary on stderr, so `| cut` gets

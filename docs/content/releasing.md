@@ -168,7 +168,7 @@ The acceptance criterion, and it is not satisfied by the upload succeeding:
 cd $(mktemp -d)
 uv venv && uv pip install --no-cache "visionset==0.0.1b2"
 visionset --version          # the version you tagged
-visionset format list        # nine rows: yolo, coco, voc, dummy and the five lane formats
+visionset format list        # eleven rows: ultralytics, yolov5-yaml, coco, voc, classification, dummy and the five lane formats
 ```
 
 `format list` is the useful one: it reads installed entry-point metadata, so a non-empty answer

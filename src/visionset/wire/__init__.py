@@ -697,7 +697,7 @@ def export_format(value: Exporter) -> dict[str, Any]:
         # one build have to agree, and a client diffing them should see nothing.
         "geometries": sorted(one.value for one in value.supported_geometries),
         # Beside them rather than merged in: a caller reading `geometries:
-        # ["bbox"]` off yolo would conclude a polygon is not written, and a
+        # ["bbox"]` off yolov5-yaml would conclude a polygon is not written, and a
         # polygon is written.
         "degraded_geometries": sorted(one.value for one in value.degraded_geometries),
         "modalities": sorted(value.supported_modalities),

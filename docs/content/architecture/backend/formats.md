@@ -25,13 +25,14 @@ typo answers a `VisionSetError` rather than a `KeyError` and a traceback.
 
 ## What ships
 
-Ten plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+Eleven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 `[project.entry-points."visionset.formats"]`:
 
 | Name | Module |
 | --- | --- |
 | `dummy` | [`_dummy.py`](../../../../src/visionset/formats/_dummy.py) - writes nothing; the registry's own test subject |
-| `yolo` | [`yolo/`](../../../../src/visionset/formats/yolo/) |
+| `ultralytics` | [`ultralytics/`](../../../../src/visionset/formats/ultralytics/) - `data.yaml` with `path` and `names` as a mapping; `yolo` is accepted as an alias for one release |
+| `yolov5-yaml` | [`yolov5_yaml/`](../../../../src/visionset/formats/yolov5_yaml/) - `data.yaml` with `nc` and `names` as a list; shares [`_yolo_writer.py`](../../../../src/visionset/formats/_yolo_writer.py) with `ultralytics` |
 | `coco` | [`coco/`](../../../../src/visionset/formats/coco/) |
 | `voc` | [`voc/`](../../../../src/visionset/formats/voc/) |
 | `classification` | [`classification/`](../../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |

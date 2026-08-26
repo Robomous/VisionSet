@@ -43,13 +43,17 @@ from visionset.kernel.domain import (
     BboxGeometry,
     ClassCount,
     ExportCompatibility,
+    ExportTarget,
     GeometryType,
     LabelClass,
     Manifest,
     ManifestAnnotation,
     PolygonGeometry,
+    PreprocessingHints,
     Release,
     SplitRecipe,
+    TargetFamily,
+    Task,
     canonical_bytes,
     sha256_hex,
 )
@@ -65,6 +69,7 @@ from visionset.kernel.services import (
     SchemaService,
     WorkspaceService,
 )
+from visionset.kernel.services.release_service import _compatibility
 
 SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 CAR = LabelClass(name="car", geometries=(GeometryType.BBOX,))
@@ -1310,4 +1315,98 @@ def test_checking_an_unknown_release_is_refused(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
     with pytest.raises(ReleaseNotFound):
         fixture.releases.check_export(uuid4(), _BoxesOnly())
+    fixture.close()
+
+
+# --- what a target takes away --------------------------------------------------
+
+
+def _mixed_manifest(fixture: Fixture) -> tuple[Release, Manifest]:
+    release = fixture.releases.publish(_mixed(fixture), "v1")
+    return release, fixture.releases.manifest(release.id)
+
+
+class _BoxesAndPolygons(_BoxesOnly):
+    format_name = "boxes-and-polygons"
+    supported_geometries = frozenset({GeometryType.BBOX, GeometryType.POLYGON})
+
+
+def _narrow_target(geometries: frozenset[GeometryType]) -> ExportTarget:
+    return ExportTarget(
+        name="narrow",
+        label="Narrow",
+        family=TargetFamily.ULTRALYTICS_YOLO,
+        tasks=frozenset({Task.DETECT}),
+        supported_geometries=geometries,
+        hints=PreprocessingHints(
+            recommended_size=None,
+            recommended_strategy=None,
+            trainer_resizes=True,
+            augmentation_common=False,
+        ),
+    )
+
+
+def test_without_a_target_the_format_alone_is_judged(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release, manifest = _mixed_manifest(fixture)
+
+    report = _compatibility(release, manifest, _BoxesAndPolygons())
+
+    assert report.compatible
+    assert report.excluded == ()
+    fixture.close()
+
+
+def test_a_target_not_carrying_a_geometry_the_format_writes_reports_it_dropped(
+    tmp_path: Path,
+) -> None:
+    """The format writes polygons; the target's trainer has no task for them."""
+    fixture = Fixture(tmp_path)
+    release, manifest = _mixed_manifest(fixture)
+
+    report = _compatibility(
+        release, manifest, _BoxesAndPolygons(), _narrow_target(frozenset({GeometryType.BBOX}))
+    )
+
+    assert not report.compatible
+    (lane,) = report.excluded
+    assert (lane.label_class, lane.annotations, lane.assets) == ("lane", 2, 2)
+    assert lane.reason == "Narrow does not accept a polygon, so the export drops it"
+    assert report.degraded == ()
+    fixture.close()
+
+
+def test_a_target_carrying_everything_the_format_writes_changes_nothing(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release, manifest = _mixed_manifest(fixture)
+    everything = _narrow_target(frozenset({GeometryType.BBOX, GeometryType.POLYGON}))
+
+    assert _compatibility(release, manifest, _BoxesAndPolygons(), everything) == _compatibility(
+        release, manifest, _BoxesAndPolygons()
+    )
+    fixture.close()
+
+
+def test_a_declared_geometry_no_annotation_can_carry_is_never_a_row(tmp_path: Path) -> None:
+    """A schema naming a roadmap geometry describes a trainer, not a loss."""
+    fixture = Fixture(tmp_path)
+    release, manifest = _mixed_manifest(fixture)
+    widened = manifest.model_copy(
+        update={
+            "classes": tuple(
+                one.model_copy(update={"geometries": (*one.geometries, GeometryType.KEYPOINTS)})
+                if one.name == "sign"
+                else one
+                for one in manifest.classes
+            )
+        }
+    )
+
+    report = _compatibility(release, widened, _BoxesAndPolygons())
+
+    assert {(one.label_class, one.geometry) for one in report.classes} == {
+        ("sign", GeometryType.BBOX),
+        ("lane", GeometryType.POLYGON),
+    }
     fixture.close()

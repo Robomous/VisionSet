@@ -120,8 +120,9 @@ def test_the_export_wrote_where_it_was_told(summary: Any) -> None:
         "dummy",
         "openlane-2d",
         "tusimple",
+        "ultralytics",
         "voc",
-        "yolo",
+        "yolov5-yaml",
     )
     assert Path(summary.export_directory).is_dir()
 
