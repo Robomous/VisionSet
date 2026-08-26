@@ -29,6 +29,7 @@ import { useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { refusalProse } from "../data/refusals";
+import { inlineLink } from "../lib/button";
 import { formatWhen } from "../lib/format";
 import { Button } from "../primitives/button";
 import {
@@ -167,6 +168,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
                   <TableCell>
                     <Button
                       variant="link"
+                      className={inlineLink}
                       data-testid={`open-${project.name}`}
                       onClick={() => onOpenProject(project.id)}
                     >

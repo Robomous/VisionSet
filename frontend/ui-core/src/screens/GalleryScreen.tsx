@@ -41,6 +41,8 @@ import { Check, Eraser, Eye, Play, SkipForward, Trash2, Undo2, X } from "lucide-
 import { Async } from "../data/Async";
 import { readStep, writePref } from "../data/prefs";
 import type { AssetProgress } from "../annotator/jobQueries";
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
 import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/button";
 import {
@@ -1661,7 +1663,7 @@ function BulkBar({
           {withheld !== null && onCorrect !== undefined && (
             <Button
               variant="link"
-              className="ml-1 text-xs"
+              className={cn(inlineLink, "ml-1 text-xs")}
               data-testid="bulk-create-correction"
               onClick={onCorrect}
             >

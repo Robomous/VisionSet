@@ -73,6 +73,8 @@ import { Async } from "../data/Async";
 import { useApiClient } from "../data/ApiProvider";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
 import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/button";
 import { formatCount, formatWhen } from "../lib/format";
@@ -847,7 +849,7 @@ function BlockingAssets({
                         <Button
                           key={batchId}
                           variant="link"
-                          className="text-xs"
+                          className={cn(inlineLink, "text-xs")}
                           data-testid="blocking-asset-batch"
                           onClick={() => onOpenBatch(batchId)}
                         >

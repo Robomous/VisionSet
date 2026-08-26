@@ -27,6 +27,7 @@ import { Play, SquareCheck } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
+import { inlineLink } from "../lib/button";
 import { progressAria } from "../lib/progress";
 import { Button } from "../primitives/button";
 import {
@@ -290,6 +291,7 @@ export function ApproveDialog({
                 {onOpenSchema !== undefined && (
                   <Button
                     variant="link"
+                    className={inlineLink}
                     data-testid="approve-go-schema"
                     onClick={() => {
                       onClose();

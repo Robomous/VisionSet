@@ -102,6 +102,8 @@ import { useId, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "
 import { formatGeometries } from "../data/geometryCategory";
 import { asApiError } from "../data/errors";
 import { classBlockers, describeClassCount, refusalProse } from "../data/refusals";
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
 import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
 import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/button";
@@ -824,7 +826,7 @@ export function SchemaEditor({
           <Button
             variant="link"
             size="sm"
-            className="align-baseline text-xs"
+            className={cn(inlineLink, "align-baseline text-xs")}
             data-testid="schema-reload"
             disabled={draftLocked}
             onClick={() => {
@@ -857,7 +859,7 @@ export function SchemaEditor({
           <Button
             variant="link"
             size="sm"
-            className="align-baseline text-xs"
+            className={cn(inlineLink, "align-baseline text-xs")}
             data-testid="schema-reload-draft"
             disabled={draftLocked}
             onClick={() => {

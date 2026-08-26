@@ -36,6 +36,8 @@ import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
 import { Button } from "../primitives/button";
 import {
   Dialog,
@@ -295,7 +297,7 @@ export function CorrectionOf({
       ) : (
         <Button
           variant="link"
-          className="text-xs"
+          className={cn(inlineLink, "text-xs")}
           data-testid="open-parent-batch"
           onClick={onOpenParent}
         >

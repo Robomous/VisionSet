@@ -36,6 +36,7 @@ import { useState, type JSX } from "react";
 import { Async } from "../data/Async";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
+import { inlineLink } from "../lib/button";
 import { Badge } from "../primitives/badge";
 import { SectionHeader } from "../patterns/SectionHeader";
 import { Button } from "../primitives/button";
@@ -138,6 +139,7 @@ export function BatchesScreen({
                     <div className="flex flex-col items-start">
                       <Button
                         variant="link"
+                        className={inlineLink}
                         data-testid={`open-batch-${batch.name}`}
                         onClick={() => onOpenBatch(batch.id)}
                       >

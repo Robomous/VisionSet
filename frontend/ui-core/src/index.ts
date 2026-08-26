@@ -40,6 +40,7 @@ export { cssVar, DARK_THEME, EXTENSIONS, LIGHT_THEME, THEME } from "./tokens.js"
 export { CLASS_FILL_OPACITY, classColor } from "./palette.js";
 export type { LabelClass } from "./palette.js";
 
+export { inlineLink } from "./lib/button.js";
 export { cn } from "./lib/cn.js";
 export { menuSurface } from "./lib/menu.js";
 export { twoLineTrigger } from "./lib/select.js";

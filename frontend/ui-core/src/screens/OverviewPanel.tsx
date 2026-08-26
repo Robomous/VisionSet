@@ -46,6 +46,8 @@ import type { JSX } from "react";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { classColor } from "../palette";
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { Button } from "../primitives/button";
@@ -408,7 +410,7 @@ function FirstRun({
                 <Button
                   variant="link"
                   size="sm"
-                  className="text-xs"
+                  className={cn(inlineLink, "text-xs")}
                   data-testid="first-run-alt"
                   onClick={onIngest}
                 >
@@ -548,7 +550,7 @@ function Samples({
       {onBrowseDataset !== undefined && (
         <Button
           variant="link"
-          className="self-start"
+          className={cn(inlineLink, "self-start")}
           data-testid="browse-dataset"
           onClick={onBrowseDataset}
         >

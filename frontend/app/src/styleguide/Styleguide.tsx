@@ -79,6 +79,7 @@ import {
   TooltipTrigger,
   classColor,
   formatGeometries,
+  inlineLink,
   menuSurface,
   toast,
   twoLineTrigger,
@@ -216,7 +217,9 @@ export function Styleguide(): JSX.Element {
               <Trash2 className="size-4" aria-hidden="true" />
               Delete
             </Button>
-            <Button variant="link">Learn more</Button>
+            <Button variant="link" className={inlineLink}>
+              Learn more
+            </Button>
             <Button disabled>Disabled</Button>
           </div>
           <div className="flex flex-wrap items-center gap-2">

@@ -155,6 +155,8 @@ import {
 import type { OpenMember } from "../generated/api.js";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
 import { menuSurface } from "../lib/menu";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/badge";
@@ -2514,7 +2516,7 @@ function Workspace({
             declares({ allowed_actions: batchActions }, BATCH_ACTION.createCorrection) && (
               <Button
                 variant="link"
-                className="h-auto p-0 text-xs"
+                className={cn(inlineLink, "text-xs")}
                 data-testid="banner-create-correction"
                 onClick={onOpenGallery}
               >

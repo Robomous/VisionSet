@@ -21,6 +21,8 @@
 
 import type { JSX } from "react";
 
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
 import { Alert, AlertDescription } from "../primitives/alert";
 import { Button } from "../primitives/button";
 import { useProjectReadiness } from "./queries";
@@ -42,7 +44,7 @@ export function SchemaForeshadow({
       {onOpenSchema !== undefined && (
         <Button
           variant="link"
-          className="ml-2"
+          className={cn(inlineLink, "ml-2")}
           data-testid="foreshadow-schema"
           onClick={onOpenSchema}
         >
