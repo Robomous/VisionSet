@@ -37,6 +37,7 @@ If you are new to VisionSet, start with [install.md](install.md), then continue 
 | [media.md](media.md) | Decoding raw media: the two processor ports, the accepted image formats, the orientation policy for stills and clips, pinned thumbnails and seek-free frame extraction, and what their determinism does and does not promise |
 | [datasets.md](datasets.md) | The curated trunk: promotion from a completed batch, what `skipped` keeps out, curation without a `confirm=`, and the append-only change log |
 | [releases.md](releases.md) | The immutable artifact: what a manifest is and is not, why two publishes agree byte for byte, hash verification, and the seeded split recipe |
+| [preprocessing.md](preprocessing.md) | The optional stage at export: resize and augmentation recipes, the grammar, what moves geometry and what moves pixels, determinism and its scope, the train-only rule, and the report |
 | [events.md](events.md) | Domain events: subscribing by type, why emission follows the commit, at-most-once delivery, and what an isolated subscriber failure does |
 | [persistence.md](persistence.md) | The metadata store: repositories, unit of work, table layout, migrations and `format_version` |
 | [examples.md](examples.md) | The six runnable examples: the whole cycle in one pass, ingest on its own, the same cycle driven three ways — over HTTP, from a shell, and over MCP stdio — and the thirty-minute flow that ends at a trainer loading the result, with what each is built to demonstrate |

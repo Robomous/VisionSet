@@ -81,6 +81,7 @@ export const sidebar = [
       { slug: "inference" },
       { slug: "datasets" },
       { slug: "releases" },
+      { slug: "preprocessing" },
       { slug: "events" },
       { slug: "background-jobs" },
       { slug: "persistence" },

@@ -308,6 +308,21 @@ the plugin runs (a plugin that clears its own subdirectory would otherwise take 
 when an earlier run left one behind. That is what keeps "an exporter that writes nothing reports
 zero" true, and keeps exporting twice into one directory agreeing with itself.
 
+### A recipe at export
+
+`ReleaseService.export(..., recipe=, recipe_name=, drivers=)` applies a [pre-processing
+recipe](preprocessing.md): every image is resized as the recipe says, and augmented variants of
+the train-fold images are written beside their sources as `<hash>-aug<k>`. The recipe is a
+value the export snapshots - the report carries the spec it ran with, its hash and the Pillow
+version - so editing or deleting the stored recipe afterwards changes nothing here. The narrowing
+above runs first and the recipe runs over what is left, so a geometry the target drops can never
+make a step refuse; consent is asked before any transform. `check_export(..., recipe=)` refuses
+now what the export would refuse: `AugmentationRequiresSplit` for an augmenting recipe over a
+release published without a split, and `PreprocessingStepUnsupportedGeometry` for a step that
+cannot move a geometry the export would carry. `ExportResult` separates `source_file_count` from
+`augmented_file_count`, and `preprocessing` on the report maps every written image to the asset
+it came from.
+
 ### Export targets
 
 The user-facing unit of export is a **target**: the model the release will train. A target
@@ -656,6 +671,7 @@ visionset release list --project road-signs
 visionset release verify v1.0 --project road-signs
 visionset export --project road-signs --release v1.0 --target yolo11 --out ./out
 visionset export --project road-signs --release v1.0 --format dummy --out ./out
+visionset export --project road-signs --release v1.0 --target yolo11 --recipe yolo-640 --out ./out
 visionset target list
 ```
 
@@ -739,8 +755,8 @@ GET  /releases/{id}                                   → 200 ReleaseOut
 GET  /releases/{id}/manifest                          → 200 application/json, raw
 GET  /releases/{id}/verify                            → 200 ReleaseVerificationOut
 GET  /releases/{id}/assignment                        → 200 SplitAssignmentOut
-GET  /releases/{id}/export-compatibility?target=|format=      → 200 ExportCompatibilityOut
-POST /releases/{id}/export?target=|format=&allow_lossy=       → 202 BackgroundJobOut
+GET  /releases/{id}/export-compatibility?target=|format=&recipe=   → 200 ExportCompatibilityOut
+POST /releases/{id}/export?target=|format=&allow_lossy=&recipe=    → 202 BackgroundJobOut
 GET  /formats                                                 → 200 FormatPage
 GET  /export-targets                                          → 200 ExportTargetPage
 ```
@@ -837,6 +853,10 @@ carries the identical body under `detail.compatibility`.
 | `ExportTargetConflict` | Two installed formats declare one target name. A defect of the installation rather than of the request - 500 over HTTP - and the remedy is removing one of the distributions, or exporting by format name. |
 | `InvalidExportTarget` | An installed format declares a target promising a geometry the format never writes. Refused at the registry scan, so a defective plugin fails every listing rather than one export. |
 | `LossyExportNotConsented` | The chosen format cannot carry everything the release holds, and the caller has not passed `allow_lossy`. Raised when the format declares itself lossy **or** when this release's own report is not clean, and it carries that report. Retryable with the flag, which is why a client must branch on the code and never on the 409. |
+| `PreprocessingRecipeNotFound` | The release's project has no recipe under the name the export was given. Resolved through the project the release's dataset hangs off. |
+| `AugmentationRequiresSplit` | The recipe asks for augmented variants and the release was published without a split recipe, so there is no train fold to augment. Raised at pre-flight and again at export. |
+| `PreprocessingStepUnsupportedGeometry` | A recipe step cannot transform a geometry the export would carry - `rot90` over a polyline. A refusal, never a consent: a label that cannot follow its image is not something to consent to. Carries the step, the geometry and the first asset. |
+| `PreprocessingDriverNotFound` | No installed driver applies a step kind the recipe holds. A fact about the installation rather than the request, 500 over HTTP; the message lists the kinds that are installed. |
 
 
 ## In the browser
