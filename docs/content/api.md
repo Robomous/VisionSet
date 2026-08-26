@@ -71,19 +71,20 @@ DELETE /batches/{batch_id}                                ?confirm=true
 POST   /batches/{batch_id}/approve                        with a partition spec
 POST   /batches/{batch_id}/start
 GET    /batches/{batch_id}/pre-label?connection_id=&geometries=   the classes a run would ask for, and the shapes it writes
-POST   /batches/{batch_id}/pre-label                      launch; replace_model_labels redoes an earlier pass, geometries narrows the shapes
-POST   /projects/{project_id}/batches/pre-label           launch over every open batch, or the named ones; one job per batch
+POST   /batches/{batch_id}/pre-label                      launch over every open job of the batch; one row per open job
+POST   /projects/{project_id}/batches/pre-label           launch over every open batch, or the named ones; one row per open job
 POST   /batches/{batch_id}/repin                          ?allow_destructive=
 POST   /batches/{batch_id}/complete
 POST   /batches/{batch_id}/corrections                    a new batch over a completed one
 GET    /batches/{batch_id}/jobs
-GET    /batches/{batch_id}/assets                         paged; ?progress=&sort=
+GET    /batches/{batch_id}/assets                         paged; ?progress=&sort=&job=
 POST   /batches/{batch_id}/assets                         draft only
 DELETE /batches/{batch_id}/assets?id=&id=                 draft only
 GET    /jobs/{job_id}
 GET    /jobs/{job_id}/progress
 POST   /jobs/{job_id}/start
 POST   /jobs/{job_id}/complete
+POST   /jobs/{job_id}/pre-label                           launch over one job; replace_model_labels redoes an earlier pass, geometries narrows the shapes
 GET    /jobs/{job_id}/next                                the next n waiting assets
 PUT    /jobs/{job_id}/assets/{asset_id}/progress
 GET    /jobs/{job_id}/assets/{asset_id}/annotations
@@ -147,6 +148,13 @@ property of the schema rather than a version number a client could guess.
 `GET /batches/{id}/assets` is one work unit's, in membership order;
 `GET /datasets/{id}/assets` is the curated trunk's. A project page reads the first, a gallery
 the second, a release the third.
+
+**One job's frames are the batch listing narrowed, not a listing of their own.** `?job=` keeps
+the assets that job carries, composing with `progress` and `sort`, and `total` is the size of
+what matched; a job the batch does not have is 404 `JOB_NOT_FOUND`, resolved after the batch
+itself, and a draft - which has no jobs - matches nothing rather than refusing. A
+`/jobs/{id}/assets` of its own would be a fourth window onto assets a batch already indexes by
+job, and two addresses for one page is two places paging, sorting and filtering can drift.
 
 The project listing is **ordered by arrival, newest first**, which `Asset.ingested_at` is what
 made possible: until that field existed nothing recorded when an asset arrived, and the listing

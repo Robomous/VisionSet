@@ -8,7 +8,7 @@
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
@@ -25,6 +25,7 @@ const OPEN = "22222222-2222-4222-8222-222222222222";
 const OPEN_EMPTY = "33333333-3333-4333-8333-333333333333";
 const DRAFT = "44444444-4444-4444-8444-444444444444";
 const JOB = "55555555-5555-4555-8555-555555555555";
+const JOB_2 = "66666666-6666-4666-8666-666666666666";
 
 type Answer = { status: number; body?: unknown };
 let handlers: ((request: Request) => Answer | undefined)[] = [];
@@ -166,6 +167,26 @@ function renderBatches(): void {
   render(mount(<BatchesScreen projectId={PROJECT} onOpenBatch={() => undefined} />));
 }
 
+/** A full `BackgroundJobOut`, the shape every `PreLabelFanOutItemOut.job` carries. */
+function jobOf(id: string) {
+  return {
+    id,
+    type: "annotation.pre_label",
+    state: "queued",
+    processed: 0,
+    total: 8,
+    failures: [],
+    error: null,
+    error_code: null,
+    result: {},
+    cancel_requested: false,
+    attempt: 0,
+    created_at: "2026-08-21T00:00:00Z",
+    started_at: null,
+    finished_at: null,
+  };
+}
+
 /** The text an element renders, for the assertions jest-dom would otherwise carry. */
 function textOf(element: HTMLElement): string {
   return element.textContent ?? "";
@@ -191,6 +212,7 @@ it("checks every open batch with untouched assets by default and posts exactly t
         {
           batch_id: OPEN,
           batch_name: "drive-01",
+          annotation_job_id: "77777777-7777-4777-8777-777777777777",
           joined: false,
           job: {
             id: JOB,
@@ -286,6 +308,7 @@ it("marks a batch whose remembered run is live", async () => {
       ...batch(OPEN, "drive-01", "in_annotation", 8),
       pre_label_run: {
         job_id: JOB,
+        annotation_job_id: "77777777-7777-4777-8777-777777777777",
         state: "running",
         assets_processed: 3,
         assets_total: 8,
@@ -431,5 +454,49 @@ it("will not start while a checked batch's plan is refused, and names it", async
   await userEvent.click(screen.getByTestId(`prelabel-pick-${OPEN}`));
   await userEvent.click(screen.getByTestId(`prelabel-pick-${OPEN_EMPTY}`));
   await waitFor(() => expect(start().disabled).toBe(false));
+});
+
+it("renders one row per job when a batch fans out to more than one, without a duplicate key", async () => {
+  stubBatches([batch(OPEN, "drive-01", "in_annotation", 8)]);
+  on("POST", new RegExp(`/projects/${PROJECT}/batches/pre-label$`), {
+    status: 202,
+    body: {
+      items: [
+        {
+          batch_id: OPEN,
+          batch_name: "drive-01",
+          annotation_job_id: "77777777-7777-4777-8777-777777777777",
+          joined: false,
+          job: jobOf(JOB),
+        },
+        {
+          batch_id: OPEN,
+          batch_name: "drive-01",
+          annotation_job_id: "88888888-8888-4888-8888-888888888888",
+          joined: true,
+          job: jobOf(JOB_2),
+        },
+      ],
+      total: 2,
+    },
+  });
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+  renderBatches();
+  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await screen.findByTestId("project-prelabel-dialog");
+  await userEvent.click(screen.getByTestId("project-prelabel-start"));
+
+  const result = await screen.findByTestId("project-prelabel-result");
+  const rows = within(result).getAllByRole("listitem");
+  expect(rows).toHaveLength(2);
+  expect(textOf(rows[0]!)).not.toBe(textOf(rows[1]!));
+  expect(
+    errorSpy.mock.calls.some((call) =>
+      String(call[0]).includes("Encountered two children with the same key"),
+    ),
+  ).toBe(false);
+
+  errorSpy.mockRestore();
 });
 

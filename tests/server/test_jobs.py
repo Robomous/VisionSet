@@ -280,8 +280,10 @@ def test_a_job_completes_once_every_asset_is_settled(
         "state": "completed",
         "assignee": None,
         "asset_count": 3,
-        # `JOB_TRANSITIONS[completed]` is empty, so a finished job declares nothing.
+        # `JOB_TRANSITIONS[completed]` is empty and `pre_label` is gated on the job
+        # being open, so a finished job declares nothing.
         "allowed_actions": [],
+        "pre_label_run": None,
     }
 
 

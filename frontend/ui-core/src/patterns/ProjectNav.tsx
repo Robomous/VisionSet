@@ -29,14 +29,15 @@
  * ## The one filled control
  *
  * Annotate is the project's forward action, and it opens the batch that is
- * currently `in_annotation`. With none open there is nowhere to send anybody,
- * so the button is absent rather than grey and **Ingest takes the slot** — the
- * honest next step. With two or more open it reads `Annotate ▾` and asks which,
- * because the batch you pick decides which schema version you annotate under
- * and a silent default would be a choice nobody made. A section whose own
- * content holds the page's filled control says so through
- * `contentOwnsTheAction`, and Ingest steps back to `secondary` for as long as
- * that holds, so the page never shows two.
+ * currently `in_annotation` — straight into its one job when it has exactly
+ * one, and onto the gallery to pick a job otherwise. With none open there is
+ * nowhere to send anybody, so the button is absent rather than grey and
+ * **Ingest takes the slot** — the honest next step. With two or more open it
+ * reads `Annotate ▾` and asks which, because the batch you pick decides which
+ * schema version you annotate under and a silent default would be a choice
+ * nobody made. A section whose own content holds the page's filled control
+ * says so through `contentOwnsTheAction`, and Ingest steps back to `secondary`
+ * for as long as that holds, so the page never shows two.
  *
  * ## The rail it is not
  *
@@ -113,6 +114,14 @@ export interface AnnotateTarget {
   readonly remaining: number;
   /** The schema version the batch is pinned to; null only for a row the wire left unpinned. */
   readonly schemaVersion: number | null;
+  /** The batch's job ids, or undefined while unknown — unknown lands on the gallery. */
+  readonly jobIds?: readonly string[] | undefined;
+}
+
+/** Exactly one job → straight into it; otherwise the gallery, where a job is chosen. */
+export function destinationOf(target: AnnotateTarget): { kind: "job"; id: string } | { kind: "batch"; id: string } {
+  const [only] = target.jobIds ?? [];
+  return target.jobIds?.length === 1 && only !== undefined ? { kind: "job", id: only } : { kind: "batch", id: target.id };
 }
 
 export interface ProjectNavProps {
@@ -128,6 +137,7 @@ export interface ProjectNavProps {
   readonly annotate?: {
     readonly targets: readonly AnnotateTarget[];
     readonly onOpen: (batchId: string) => void;
+    readonly onOpenJob?: (jobId: string) => void;
   };
   readonly onIngest?: () => void;
   /** The open section's content holds the page's filled control, so Ingest steps back. */
@@ -230,7 +240,14 @@ function Strip(props: ProjectNavProps): JSX.Element {
 function Cta({ annotate, onIngest, contentOwnsTheAction = false, layout }: ProjectNavProps): JSX.Element | null {
   const wide = layout === "column" ? "w-full" : undefined;
   if (annotate !== undefined && annotate.targets.length > 0) {
-    return <AnnotateAction targets={annotate.targets} onOpen={annotate.onOpen} className={wide} />;
+    return (
+      <AnnotateAction
+        targets={annotate.targets}
+        onOpen={annotate.onOpen}
+        {...(annotate.onOpenJob === undefined ? {} : { onOpenJob: annotate.onOpenJob })}
+        className={wide}
+      />
+    );
   }
   if (onIngest === undefined) return null;
   return (
@@ -256,16 +273,24 @@ function Cta({ annotate, onIngest, contentOwnsTheAction = false, layout }: Proje
 function AnnotateAction({
   targets,
   onOpen,
+  onOpenJob,
   className,
 }: {
   readonly targets: readonly AnnotateTarget[];
   readonly onOpen: (batchId: string) => void;
+  readonly onOpenJob?: (jobId: string) => void;
   readonly className?: string | undefined;
 }): JSX.Element {
+  function go(target: AnnotateTarget): void {
+    const to = destinationOf(target);
+    if (to.kind === "job" && onOpenJob !== undefined) onOpenJob(to.id);
+    else onOpen(target.id);
+  }
+
   const [only] = targets;
   if (targets.length === 1 && only !== undefined) {
     return (
-      <Button variant="primary" data-testid="go-annotate" className={className} onClick={() => onOpen(only.id)}>
+      <Button variant="primary" data-testid="go-annotate" className={className} onClick={() => go(only)}>
         <Pencil className="size-4" aria-hidden="true" />
         Annotate
       </Button>
@@ -287,7 +312,7 @@ function AnnotateAction({
           <DropdownMenuItem
             key={batch.id}
             data-testid={`annotate-batch-${batch.name}`}
-            onSelect={() => onOpen(batch.id)}
+            onSelect={() => go(batch)}
           >
             <div className="flex flex-col items-start">
               <span>{batch.name}</span>

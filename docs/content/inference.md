@@ -76,8 +76,8 @@ marks each card by it (see [The Models page](#the-models-page)).
 
 ## Running a model here needs the `local-inference` extra
 
-Both auto-labeling modes - suggesting a shape from a click, and pre-labeling a batch from its
-schema - are always present. What is optional is the runtime that executes a model
+Both auto-labeling modes - suggesting a shape from a click, and pre-labeling a job from its
+batch's pinned schema - are always present. What is optional is the runtime that executes a model
 *on this machine*:
 
 ```bash
@@ -415,7 +415,7 @@ pre-label plan reports, before any batch narrows it to what one schema can take.
 | Capability | Means | Consumed by |
 | --- | --- | --- |
 | `point_suggest` | Give me the thing under these points | [suggesting a shape from a click](#suggesting-a-shape-from-a-click), below |
-| `text_detect` | Find everything these words name | [pre-labeling a batch](batches.md#pre-labeling) |
+| `text_detect` | Find everything these words name | [pre-labeling a job](batches.md#pre-labeling) |
 
 **The vocabulary is closed and the set of models answering to it is not.** These two are the
 whole of what a connection can declare, and each exists because a surface renders it. Which

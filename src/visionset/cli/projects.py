@@ -38,6 +38,7 @@ from visionset.cli.inference import ConnectionArgument, _resolve
 from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
     effective_produces,
+    open_jobs_of,
     pre_label,
     select_pre_labelable,
     served_for,
@@ -143,32 +144,39 @@ def project_pre_label(
         outcomes = []
         for one in selected:
             note(f"Batch {one.name!r}:")
-            outcome = pre_label(
-                service,
-                batch_id=one.id,
-                connection_id=connection_id,
-                minimum_confidence=minimum_confidence,
-                geometries=geometries,
-                on_plan=announce_plan,
-                on_progress=_progress_note(one.name),
-            )
-            outcomes.append((one, outcome))
-    written = sum(outcome.annotations_written for _, outcome in outcomes)
+            progress = _progress_note(one.name)
+            for index, job in enumerate(open_jobs_of(service, one.id)):
+                outcome = pre_label(
+                    service,
+                    job_id=job.id,
+                    connection_id=connection_id,
+                    minimum_confidence=minimum_confidence,
+                    geometries=geometries,
+                    on_plan=announce_plan if index == 0 else None,
+                    on_progress=progress,
+                )
+                outcomes.append((one, job.id, outcome))
+    written = sum(outcome.annotations_written for _, _, outcome in outcomes)
     if json_out:
         document(
             {
                 "items": [
-                    {"batch_id": str(one.id), "batch_name": one.name, **asdict(outcome)}
-                    for one, outcome in outcomes
+                    {
+                        "batch_id": str(one.id),
+                        "batch_name": one.name,
+                        "job_id": str(job_id),
+                        **asdict(outcome),
+                    }
+                    for one, job_id, outcome in outcomes
                 ],
                 "annotations_written": written,
             }
         )
         return
-    for one, outcome in outcomes:
+    for one, job_id, outcome in outcomes:
         note(
-            f"Batch {one.name!r}: pre-labeled {outcome.assets_labeled} asset(s), "
+            f"Batch {one.name!r} job {job_id}: pre-labeled {outcome.assets_labeled} asset(s), "
             f"wrote {outcome.annotations_written} annotation(s)."
         )
-    note(f"Pre-labeled {len(outcomes)} batch(es), wrote {written} annotation(s).")
+    note(f"Pre-labeled {len(selected)} batch(es), wrote {written} annotation(s).")
     typer.echo(str(written))

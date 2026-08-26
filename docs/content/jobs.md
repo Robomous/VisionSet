@@ -176,11 +176,22 @@ the per-asset rows from the map it read.
 `JobOut` and `BatchAssetOut` carry `allowed_actions`, derived in
 `kernel/domain/capabilities.py` from the tables on this page.
 
-**Both job actions need the batch open.** `JobService` runs `require_open_batch` before it
+**Every job action needs the batch open.** `JobService` runs `require_open_batch` before it
 consults `JOB_TRANSITIONS`, so a `pending` job inside an `approved` batch declares *nothing* even
 though the table alone would call it startable. That dimension is exactly what a client
 re-deriving the rules from `JOB_TRANSITIONS` would drop. `complete` is refined by
 `SETTLED_PROGRESS` as well, which costs nothing: a job carries its own per-asset map.
+
+`start` and `complete` are the two that move the job. **`pre_label` is the third, and it moves no
+state at all**: a job that is `pending` or `in_progress`
+(`OPEN_JOB_STATES`) inside an `in_annotation` batch declares it, and a `completed` job declares
+nothing whatever its batch is. It is the declaration behind
+[pre-labeling](batches.md#pre-labeling) — a run is over one job's assets, so the job is what
+offers it — and it is declared from those two states alone, on `BatchAction.PRE_LABEL`'s
+precedent: whether
+the local runtime is installed and whether the pinned schema has a class a detection can land on
+are not facts about the job, and hiding the control on either ground would leave those refusals
+nowhere to be shown.
 
 **Per asset, inside an open job in an `in_annotation` batch:**
 
@@ -208,7 +219,7 @@ model's unattended write makes in the same transaction as its labels, `pre_label
 a person's edit taking the frame over, and `pre_labeled → unannotated` is that edit deleting the
 model's last label. Four of the five have no name at all, and nobody clicks them: they are the
 consequence of `annotate`, which is declared on both `unannotated` and `pre_labeled`, and the entry
-edge into `pre_labeled` is the consequence of a batch-level pre-label action rather than a
+edge into `pre_labeled` is the consequence of a job-level pre-label action rather than a
 per-asset one. `pre_labeled → annotated` is the fifth, and the one edge with two ways to ride it:
 an edit, which is derived like the other four, and `confirm`, which a person clicks to keep a
 model's labels as the frame's own without editing them - labels exist either way, the marker
@@ -292,15 +303,20 @@ visionset job start "$JOB"
 visionset job next "$JOB" -n 50
 visionset job mark "$JOB" "$ASSET" --progress annotated
 visionset job progress "$JOB"
+visionset job pre-label "$JOB" "$CONNECTION"
 visionset job complete "$JOB"
 ```
 
-Each is one `JobService` call. `next` and `mark` are what make the lifecycle drivable from a script
+Each is one `JobService` call, save `pre-label`, which calls shared inference inline because a
+terminal has no dispatcher to claim a queued run - `visionset batch pre-label`'s pattern, one
+level down, and the one command here that writes labels rather than recording that somebody
+else did. `next` and `mark` are what make the lifecycle drivable from a script
 at all - a batch cannot be completed until every asset has settled, and nothing else settles one.
 `JobService.mark`'s own docstring invites the second by name.
 
-**Say the wart out loud: `--progress annotated` records that somebody labeled an asset, and the CLI
-writes no labels.** Geometry comes from a canvas or a model, not from typing. A release published
+**Say the wart out loud: `--progress annotated` records that somebody labeled an asset, and no
+command here but `pre-label` writes a label.** Geometry comes from a canvas or a model, not from
+typing. A release published
 off a batch driven entirely this way carries `annotation_count: 0`, and its manifest honestly says
 so. These commands exist because the *lifecycle* must be reachable from a terminal, not because this
 is how labelling is meant to happen.
@@ -324,13 +340,28 @@ POST /jobs/{id}/start                             → 200 JobOut
 POST /jobs/{id}/complete                          → 200 JobOut
 GET  /jobs/{id}/next?n=                           → 200 AssetPage
 PUT  /jobs/{id}/assets/{asset_id}/progress        → 200 AssetProgressOut
+POST /jobs/{id}/pre-label                         → 202 BackgroundJobOut, Location: the row
 ```
+
+`POST /jobs/{id}/pre-label` is the launch [pre-labeling](batches.md#pre-labeling) describes,
+over this one job: 202 with the `annotation.pre_label` row to poll and a `Location` header naming
+it, or that row's id again where a run for this job is already queued or running. A `completed`
+job is refused with 409 `JOB_FINISHED` rather than passed over — naming one job is a decision to
+run it — and a job whose batch is not `in_annotation` is 409 `BATCH_NOT_IN_ANNOTATION`. The batch
+and project launches fan the same row out over open jobs; there is no `GET /jobs/{id}/pre-label`,
+because the plan is a property of the batch's pin and the model, and
+`GET /batches/{id}/pre-label` answers it for every job of the batch alike.
 
 `JobOut` carries **`batch_id`**, which an `AnnotationJob` does not: the model records only its
 task group, and a client holding a job id would otherwise have no route to the schema version
 its work is judged against. `JobService.batch` is the read behind it. `task_group_id` is
 deliberately absent - no route reaches a task group, so publishing the id would be contract
 surface that could never be removed.
+
+It also carries **`pre_label_run`**, this job's most recent pre-labeling run - live or settled,
+`null` where none ever ran - so a reload, a second tab or a run launched at a terminal is read
+off the job rather than off an id some component happened to keep. `PreLabelRunOut` names both
+ids: `annotation_job_id` is the job the run is over, `job_id` the queue row to poll.
 
 `ProgressCounts` is five named integers plus a total rather than an open map, so a generated
 client gets a real type instead of a `Record<string, number>`. Every state is a field, including

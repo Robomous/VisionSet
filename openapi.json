@@ -3259,9 +3259,10 @@
         "type": "object"
       },
       "JobAction": {
-        "description": "What can be asked of an annotation job.",
+        "description": "What can be asked of an annotation job. Declaration order is display order.",
         "enum": [
           "start",
+          "pre_label",
           "complete"
         ],
         "title": "JobAction",
@@ -3291,7 +3292,7 @@
         "type": "object"
       },
       "JobOut": {
-        "description": "One annotator's unit of work over a segment of a batch.",
+        "description": "One annotator's unit of work over a segment of a batch, and its most recent\npre-labeling run, `null` where none ever ran.",
         "properties": {
           "allowed_actions": {
             "items": {
@@ -3325,6 +3326,16 @@
             "title": "Id",
             "type": "string"
           },
+          "pre_label_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreLabelRunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "$ref": "#/components/schemas/AnnotationJobState"
           }
@@ -3335,7 +3346,8 @@
           "state",
           "assignee",
           "asset_count",
-          "allowed_actions"
+          "allowed_actions",
+          "pre_label_run"
         ],
         "title": "JobOut",
         "type": "object"
@@ -3596,6 +3608,63 @@
         "type": "string",
         "x-visionset-open": true
       },
+      "PreLabelFanOutItemOut": {
+        "description": "One job's row in a launch that fanned out over several.",
+        "properties": {
+          "annotation_job_id": {
+            "format": "uuid",
+            "title": "Annotation Job Id",
+            "type": "string"
+          },
+          "batch_id": {
+            "format": "uuid",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "batch_name": {
+            "title": "Batch Name",
+            "type": "string"
+          },
+          "job": {
+            "$ref": "#/components/schemas/BackgroundJobOut"
+          },
+          "joined": {
+            "title": "Joined",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "batch_id",
+          "batch_name",
+          "annotation_job_id",
+          "job",
+          "joined"
+        ],
+        "title": "PreLabelFanOutItemOut",
+        "type": "object"
+      },
+      "PreLabelFanOutOut": {
+        "description": "Every job the launch fanned out over, one row each, in batch then segment order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PreLabelFanOutItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "PreLabelFanOutOut",
+        "type": "object"
+      },
       "PreLabelPlanOut": {
         "description": "The words a run would ask a model for over this batch, and the shapes it would write.\n\nA run's prompt is the batch's pinned schema, narrowed to the classes the\nmodel's declared shapes can be written as. That narrowing is invisible in\nthe run's result \u2014 a schema whose `vehicle` class requires a `color`\nattribute yields no vehicles and no explanation \u2014 so it is published here,\nbefore a run starts, with the left-out classes named beside the asked-for\nones.\n\nEvery class the pinned schema declares appears in exactly one of the two\nlists, both in the schema's own declaration order. A batch whose schema has\nno askable class at all is refused rather than answered with an empty\n`asked_classes`: pre-labeling it is impossible, not merely unproductive.",
         "properties": {
@@ -3678,8 +3747,13 @@
         "type": "object"
       },
       "PreLabelRunOut": {
-        "description": "A batch's most recent pre-labeling run: which job, how far, and what it found.\n\nPresent whenever pre-labeling has ever been asked for on this batch, and\ndescribing the most recent run \u2014 including one this session did not launch.\nA dialog reopened after a reload, in a second tab, or after a run started\nfrom the terminal reads the same state from here rather than from a job id\na component happened to keep.\n\n**Assets, where a download counts bytes and a check counts files.** The\nhandler owns a loop over the batch's untouched assets and knows the whole\nset before the first forward pass, so both its progress and its total are\ncounted in the unit its own work is over.\n\n**The outcome, once the job has one.** `stopped_early`, `assets_labeled`,\n`regions_discarded`, `regions_out_of_bounds` and `annotations_replaced` are\nthe handler's own account of what a settled run did.\nThey are `null` while the job is still `queued` or `running`, and `null`\nwhere it ended `failed` before producing one \u2014 but a `cancelled` run still\ncarries them: stopping partway is a coherent outcome for a handler whose\ncontract is to write only where nothing has been written.",
+        "description": "The most recent pre-labeling run: which job, how far, and what it found.\n\n`annotation_job_id` is the job the run is over; `job_id` is the queue row to\npoll.\n\nPresent whenever pre-labeling has ever been asked for, and describing the\nmost recent run \u2014 including one this session did not launch. A dialog\nreopened after a reload, in a second tab, or after a run started from the\nterminal reads the same state from here rather than from a job id a\ncomponent happened to keep.\n\n**Assets, where a download counts bytes and a check counts files.** The\nhandler owns a loop over the job's untouched assets and knows the whole\nset before the first forward pass, so both its progress and its total are\ncounted in the unit its own work is over.\n\n**The outcome, once the job has one.** `stopped_early`, `assets_labeled`,\n`regions_discarded`, `regions_out_of_bounds` and `annotations_replaced` are\nthe handler's own account of what a settled run did.\nThey are `null` while the job is still `queued` or `running`, and `null`\nwhere it ended `failed` before producing one \u2014 but a `cancelled` run still\ncarries them: stopping partway is a coherent outcome for a handler whose\ncontract is to write only where nothing has been written.",
         "properties": {
+          "annotation_job_id": {
+            "format": "uuid",
+            "title": "Annotation Job Id",
+            "type": "string"
+          },
           "annotations_replaced": {
             "anyOf": [
               {
@@ -3782,6 +3856,7 @@
           }
         },
         "required": [
+          "annotation_job_id",
           "job_id",
           "state",
           "assets_processed",
@@ -3966,57 +4041,6 @@
           "total"
         ],
         "title": "ProjectPage",
-        "type": "object"
-      },
-      "ProjectPreLabelItemOut": {
-        "description": "One batch's row in a project-wide launch.",
-        "properties": {
-          "batch_id": {
-            "format": "uuid",
-            "title": "Batch Id",
-            "type": "string"
-          },
-          "batch_name": {
-            "title": "Batch Name",
-            "type": "string"
-          },
-          "job": {
-            "$ref": "#/components/schemas/BackgroundJobOut"
-          },
-          "joined": {
-            "title": "Joined",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "batch_id",
-          "batch_name",
-          "job",
-          "joined"
-        ],
-        "title": "ProjectPreLabelItemOut",
-        "type": "object"
-      },
-      "ProjectPreLabelOut": {
-        "description": "Every batch the launch fanned out over, one row each, in selection order.",
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ProjectPreLabelItemOut"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total"
-        ],
-        "title": "ProjectPreLabelOut",
         "type": "object"
       },
       "ProjectPreLabelRequest": {
@@ -6149,7 +6173,7 @@
         ]
       },
       "get": {
-        "description": "The batch's assets, with where each has got to and its labels in two numbers.\n\nMembership order by default, so reading twice gives the same sequence and an\ningest into an existing batch appends rather than reshuffles; `sort=confidence`\nputs the frame whose weakest model label scores lowest first, unscored frames\nlast, ties in membership order. `progress` narrows to the states named, and\n`total` is the size of what matched \u2014 the whole batch when nothing narrows it.\nAn offset past the end is an empty list and a 200, never a 404. The 404 belongs\nto the batch itself, which is resolved first: an unknown one is `BATCH_NOT_FOUND`.\n\n`job_id` and `progress` are null while the batch is a draft, because a draft\nhas no jobs \u2014 so a `progress` filter over a draft matches nothing. Bytes are\nnot here: an asset is named by its hashes, and\n`GET /projects/{project_id}/assets/{asset_id}/content` is what serves them.",
+        "description": "The batch's assets, with where each has got to and its labels in two numbers.\n\nMembership order by default, so reading twice gives the same sequence and an\ningest into an existing batch appends rather than reshuffles; `sort=confidence`\nputs the frame whose weakest model label scores lowest first, unscored frames\nlast, ties in membership order. `progress` narrows to the states named, and\n`total` is the size of what matched \u2014 the whole batch when nothing narrows it.\nAn offset past the end is an empty list and a 200, never a 404. The 404 belongs\nto the batch itself, which is resolved first: an unknown one is `BATCH_NOT_FOUND`.\n\n`job` narrows to the assets one job carries, composing with `progress`; a job\nthis batch does not have is 404 `JOB_NOT_FOUND`. `job_id` and `progress` on\neach item are null while the batch is a draft, which has no jobs \u2014 so there,\na `progress` filter or a `job` filter matches nothing rather than refusing.\nBytes are not here: an asset is named by its hashes, and\n`GET /projects/{project_id}/assets/{asset_id}/content` is what serves them.",
         "operationId": "list_batch_assets",
         "parameters": [
           {
@@ -6224,6 +6248,25 @@
               "$ref": "#/components/schemas/AssetSort",
               "default": "membership",
               "description": "`membership` is stored order; `confidence` is lowest model confidence first, unscored last, ties in membership order."
+            }
+          },
+          {
+            "description": "Keep only the assets this job carries. Omit for the whole batch.",
+            "in": "query",
+            "name": "job",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keep only the assets this job carries. Omit for the whole batch.",
+              "title": "Job"
             }
           }
         ],
@@ -6834,7 +6877,7 @@
         ]
       },
       "post": {
-        "description": "Ask a model to label every untouched asset in this batch, and answer at once.\n\nThe `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:\nnobody judged them, so they arrive editable and correctable rather than\nclaiming to be somebody's work \u2014 and, being unjudged, they never reach the\nDataset until a person has taken them over.\n\n**Only assets nothing has touched \u2014 which is stronger than reading\n`unannotated`.** An asset already `pre_labeled`, annotated, skipped,\nawaiting review or accepted is passed over, and so is an `unannotated` one\nthat still carries annotations from an earlier round that was skipped and\nthen restored: that sequence deletes no labels, so progress alone does not\nprove an asset untouched. A run never writes over what a person did in this\nbatch, and never writes twice over what a model did \u2014 a plain second run\nextends an earlier one onto whatever is still untouched.\n`replace_model_labels` widens it to every frame still `pre_labeled` and\nsupersedes those labels with this run's answer, one frame per transaction;\na frame anyone edited, confirmed or skipped in this batch is never touched,\nand a frame the model now finds nothing on returns to `unannotated`. A\nreplacing request arriving while a run is in flight joins that run,\nwhichever flag it carries.\n\n**The batch's pinned schema is the prompt, narrowed to what this run\nwrites.** The model is asked for each class the schema declares that admits\none of the shapes the run writes and demands no attribute a prediction\ncannot supply; an answer naming one of those classes, matched\ncase-insensitively, is written under the schema's own spelling, and an\nanswer naming none of them is discarded. A schema with no such class has\nnowhere for a prediction to land and is refused \u2014 so the same schema is\naskable of a model that answers polygons and refused for one that answers\nboxes. `GET` this path with the same `connection_id` (and the same\n`geometries`) to read the narrowing before launching.\n\n**What the run writes is every shape the model produces, unless\n`geometries` says which.** A model declaring both a box and a polygon\nwrites both for every region it answers with \u2014 the kernel writes one\nannotation per emitted region and pairs nothing \u2014 and `geometries` filters\nthat to the shapes named: a region in any other shape is discarded and\ncounted in `regions_discarded`. The selection is per run, not per class,\nand it is kept on the queued row, so a run claimed later executes what was\nasked.\n\n**202, not 200.** A batch is hundreds of forward passes, so this follows the\nlaunch-and-poll contract the export and weight-download routes use: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state` is\n`succeeded`, then re-read the batch's assets. Progress on the row is counted\nin assets.\n\n**Everything a caller can be told now is told now**, and no refusal creates a\njob \u2014 so a caller holding a job id holds one that will run. These refusals\nare about the request, and the caller can act on each. They are checked in\nthis order, and it is the order `pre_label` itself checks in, so a request\nwrong about the connection and the batch both always names the connection:\na connection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` \u2014 its\nweights not here, or its endpoint not yet asked what it answers; a\nconnection whose model answers places rather than words is 422\n`UNSUPPORTED_PROMPT`; a `geometries` naming a shape the model does not\nproduce is 422 `GEOMETRY_NOT_PRODUCED`; a batch that is not `in_annotation`\nis 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the\nselected shapes can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.\n\nTwo failures are about this installation rather than about the request, and\nanswer 500 carrying the message that says which: a machine without the\noptional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the\nexact command that installs it, and a workspace whose records no longer\nhold together \u2014 a batch pinned to a schema version that is not stored \u2014 is\n`WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no\nstate here a caller can change, so the remedy is the one the message names.\n\n**Asking twice joins the run already in flight rather than starting a second\none.** A request arriving while this batch has a pre-labeling run queued or\nrunning is answered with that run's id, so a double-click and a second tab\nwatch one run instead of paying for the same inference twice.",
+        "description": "Ask a model to label every untouched asset in this batch, and answer at once.\n\n**One row per open job, and the job is the unit.** This launch fans out over\nthe batch's jobs that are still open and queues for each the same\n`annotation.pre_label` row `POST /jobs/{job_id}/pre-label` queues, or joins\nthe one already queued or running for that job (`joined`). A finished job is\npassed over, so a batch whose every job is complete answers an empty page.\nEach row is polled, cancelled and remembered per job:\n`GET /background-jobs/{id}` for progress counted in that job's assets,\n`JobOut.pre_label_run` afterwards. Nothing here reports one total across\njobs, because nothing here is one run.\n\nThe `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:\nnobody judged them, so they arrive editable and correctable rather than\nclaiming to be somebody's work \u2014 and, being unjudged, they never reach the\nDataset until a person has taken them over.\n\n**Only assets nothing has touched \u2014 which is stronger than reading\n`unannotated`.** An asset already `pre_labeled`, annotated, skipped,\nawaiting review or accepted is passed over, and so is an `unannotated` one\nthat still carries annotations from an earlier round that was skipped and\nthen restored: that sequence deletes no labels, so progress alone does not\nprove an asset untouched. A run never writes over what a person did in this\njob, and never writes twice over what a model did \u2014 a plain second run\nextends an earlier one onto whatever is still untouched.\n`replace_model_labels` widens it to every frame still `pre_labeled` and\nsupersedes those labels with this run's answer, one frame per transaction;\na frame anyone edited, confirmed or skipped in this job is never touched,\nand a frame the model now finds nothing on returns to `unannotated`. A\nreplacing request arriving while a run is in flight joins that run,\nwhichever flag it carries.\n\n**The batch's pinned schema is the prompt, narrowed to what this run\nwrites.** The model is asked for each class the schema declares that admits\none of the shapes the run writes and demands no attribute a prediction\ncannot supply; an answer naming one of those classes, matched\ncase-insensitively, is written under the schema's own spelling, and an\nanswer naming none of them is discarded. A schema with no such class has\nnowhere for a prediction to land and is refused \u2014 so the same schema is\naskable of a model that answers polygons and refused for one that answers\nboxes. `GET` this path with the same `connection_id` (and the same\n`geometries`) to read the narrowing before launching.\n\n**What the run writes is every shape the model produces, unless\n`geometries` says which.** A model declaring both a box and a polygon\nwrites both for every region it answers with \u2014 the kernel writes one\nannotation per emitted region and pairs nothing \u2014 and `geometries` filters\nthat to the shapes named: a region in any other shape is discarded and\ncounted in `regions_discarded`. The selection is per run, not per class,\nand it is kept on the queued row, so a run claimed later executes what was\nasked.\n\n**202, not 200.** A job is hundreds of forward passes, so this follows the\nlaunch-and-poll contract the export and weight-download routes use: poll `GET\n/background-jobs/{id}` for each row until `state` is `succeeded`, then\nre-read the batch's assets. Progress on a row is counted in assets. There is\nno `Location` header, because there is no single row for it to name.\n\n**Everything a caller can be told now is told now**, and no refusal creates a\nrow \u2014 so a caller holding a row's id holds one that will run. These refusals\nare about the request, and the caller can act on each. They are checked in\nthis order, and it is the order `pre_label` itself checks in, so a request\nwrong about the connection and the batch both always names the connection:\na connection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` \u2014 its\nweights not here, or its endpoint not yet asked what it answers; a\nconnection whose model answers places rather than words is 422\n`UNSUPPORTED_PROMPT`; a `geometries` naming a shape the model does not\nproduce is 422 `GEOMETRY_NOT_PRODUCED`; a batch that is not `in_annotation`\nis 409 `BATCH_NOT_IN_ANNOTATION`; a pinned schema with no class the\nselected shapes can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.\n\nTwo failures are about this installation rather than about the request, and\nanswer 500 carrying the message that says which: a machine without the\noptional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the\nexact command that installs it, and a workspace whose records no longer\nhold together \u2014 a batch pinned to a schema version that is not stored \u2014 is\n`WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no\nstate here a caller can change, so the remedy is the one the message names.\n\n**Asking twice joins the runs already in flight rather than starting second\nones.** A request arriving while a job here has a pre-labeling run queued or\nrunning is answered with that run's row and `joined` true, so a double-click\nand a second tab watch one run per job instead of paying for the same\ninference twice.",
         "operationId": "pre_label_batch",
         "parameters": [
           {
@@ -6863,7 +6906,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BackgroundJobOut"
+                  "$ref": "#/components/schemas/PreLabelFanOutOut"
                 }
               }
             },
@@ -10330,6 +10373,115 @@
         ]
       }
     },
+    "/jobs/{job_id}/pre-label": {
+      "post": {
+        "description": "Ask a model to label every untouched asset in this job, and answer at once.\n\nThe `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:\nnobody judged them, so they arrive editable and correctable rather than\nclaiming to be somebody's work \u2014 and, being unjudged, they never reach the\nDataset until a person has taken them over.\n\n**Only assets nothing has touched \u2014 which is stronger than reading\n`unannotated`.** An asset already `pre_labeled`, annotated, skipped,\nawaiting review or accepted is passed over, and so is an `unannotated` one\nthat still carries annotations from an earlier round that was skipped and\nthen restored: that sequence deletes no labels, so progress alone does not\nprove an asset untouched. A run never writes over what a person did in this\njob, and never writes twice over what a model did \u2014 a plain second run\nextends an earlier one onto whatever is still untouched.\n`replace_model_labels` widens it to every frame still `pre_labeled` and\nsupersedes those labels with this run's answer, one frame per transaction;\na frame anyone edited, confirmed or skipped in this job is never touched,\nand a frame the model now finds nothing on returns to `unannotated`. A\nreplacing request arriving while a run is in flight joins that run,\nwhichever flag it carries.\n\n**The batch's pinned schema is the prompt, narrowed to what this run\nwrites.** The model is asked for each class the schema declares that admits\none of the shapes the run writes and demands no attribute a prediction\ncannot supply; an answer naming one of those classes, matched\ncase-insensitively, is written under the schema's own spelling, and an\nanswer naming none of them is discarded. A schema with no such class has\nnowhere for a prediction to land and is refused \u2014 so the same schema is\naskable of a model that answers polygons and refused for one that answers\nboxes. `GET /batches/{batch_id}/pre-label` with the same `connection_id`\n(and the same `geometries`) reads the narrowing before launching.\n\n**What the run writes is every shape the model produces, unless\n`geometries` says which.** A model declaring both a box and a polygon\nwrites both for every region it answers with \u2014 the kernel writes one\nannotation per emitted region and pairs nothing \u2014 and `geometries` filters\nthat to the shapes named: a region in any other shape is discarded and\ncounted in `regions_discarded`. The selection is per run, not per class,\nand it is kept on the queued row, so a run claimed later executes what was\nasked.\n\n**202, not 200.** A job is hundreds of forward passes, so this follows the\nlaunch-and-poll contract the export and weight-download routes use: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state` is\n`succeeded`, then re-read the job's assets. Progress on the row is counted\nin assets, and `JobOut.pre_label_run` remembers the same row afterwards.\n\n**Everything a caller can be told now is told now**, and no refusal creates a\njob \u2014 so a caller holding a job id holds one that will run. These refusals\nare about the request, and the caller can act on each. They are checked in\nthis order, and it is the order `pre_label` itself checks in, so a request\nwrong about the connection and the job both always names the connection:\nan unknown connection is 404 `INFERENCE_CONNECTION_NOT_FOUND`; a\nconnection not set up yet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` \u2014 its\nweights not here, or its endpoint not yet asked what it answers; a\nconnection whose model answers places rather than words is 422\n`UNSUPPORTED_PROMPT`; a `geometries` naming a shape the model does not\nproduce is 422 `GEOMETRY_NOT_PRODUCED`. An unknown job is 404\n`JOB_NOT_FOUND`; a job whose batch is not `in_annotation` is 409\n`BATCH_NOT_IN_ANNOTATION`; a job already `completed` is 409 `JOB_FINISHED`,\nand there is no remedy on this route \u2014 settled work is corrected through a\nnew batch rather than reopened. A pinned schema with no class the selected\nshapes can be written as is 409 `SCHEMA_HAS_NO_DETECTABLE_CLASS`.\n\nTwo failures are about this installation rather than about the request, and\nanswer 500 carrying the message that says which: a machine without the\noptional local runtime is `LOCAL_INFERENCE_UNAVAILABLE` and carries the\nexact command that installs it, and a workspace whose records no longer\nhold together \u2014 a batch pinned to a schema version that is not stored \u2014 is\n`WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no\nstate here a caller can change, so the remedy is the one the message names.\n\n**Asking twice joins the run already in flight rather than starting a second\none.** A request arriving while this job has a pre-labeling run queued or\nrunning is answered with that run's id, so a double-click and a second tab\nwatch one run instead of paying for the same inference twice \u2014 and so does\n`POST /batches/{batch_id}/pre-label`, whose fan-out reaches this same job.",
+        "operationId": "pre_label_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreLabelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pre Label Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/jobs/{job_id}/progress": {
       "get": {
         "description": "How many of this job's assets sit in each state.\n\nEvery state is a field, including the ones nobody is in, so a client charting\nprogress never has to guard a lookup.",
@@ -11675,7 +11827,7 @@
     },
     "/projects/{project_id}/batches/pre-label": {
       "post": {
-        "description": "Ask a model to label every untouched asset across this project's open batches.\n\n**One row per batch, and the batch stays the unit.** This launch fans out\nover the project's batches that are open for annotation \u2014 every one of\nthem, or exactly the `batch_ids` named \u2014 and for each one queues the same\n`annotation.pre_label` job `POST /batches/{batch_id}/pre-label` queues, or\njoins the one already queued or running for that batch (`joined`). Each\nrow is polled, cancelled and remembered per batch, exactly as a\nsingle-batch launch is: `GET /background-jobs/{id}` for progress counted\nin that batch's assets, `BatchOut.pre_label_run` afterwards. Nothing here\nreports one total across batches, because nothing here is one run.\n\n**Refused whole, up front, and no refusal creates a row.** The connection\nis checked first, as the single-batch launch checks it: an unknown\nconnection is 404 `INFERENCE_CONNECTION_NOT_FOUND`, one not set up yet is\n409 `INFERENCE_CONNECTION_NOT_SET_UP`, a model that answers places rather\nthan words is 422 `UNSUPPORTED_PROMPT`, and a `geometries` naming a shape\nthe model does not produce is 422 `GEOMETRY_NOT_PRODUCED`. Then the\nselection: an unknown project is 404 `PROJECT_NOT_FOUND`; a named batch\noutside this project is 404 `BATCH_NOT_FOUND`; a named batch not\n`in_annotation`, a project with no open batch at all, or an empty\n`batch_ids`, is 409 `BATCH_NOT_IN_ANNOTATION`; any selected batch whose\npinned schema has no class the selected shapes can be written as is 409\n`SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message names the batch so the\ncaller can leave it out by name and ask again. A partly launched project\nwould leave rows the caller was never told about, which is why the whole\nrequest is refused instead.\n\nWhat each run writes, passes over and counts is the single-batch launch's\ncontract, `geometries` included; read `POST /batches/{batch_id}/pre-label`.",
+        "description": "Ask a model to label every untouched asset across this project's open batches.\n\n**One row per open job of each selected batch, and the job is the unit.**\nThis launch fans out over the project's batches that are open for\nannotation \u2014 every one of them, or exactly the `batch_ids` named \u2014 and\nwithin each over the jobs still open, queueing for each the same\n`annotation.pre_label` row `POST /jobs/{job_id}/pre-label` queues, or\njoining the one already queued or running for that job (`joined`). A\nfinished job is passed over, so a selected batch whose every job is\ncomplete contributes no row. Each row is polled, cancelled and remembered\nper job, exactly as a single-job launch is: `GET /background-jobs/{id}`\nfor progress counted in that job's assets, `JobOut.pre_label_run`\nafterwards. Nothing here reports one total across jobs, because nothing\nhere is one run.\n\n**Refused whole, up front, and no refusal creates a row.** The connection\nis checked first, as the single-batch launch checks it: an unknown\nconnection is 404 `INFERENCE_CONNECTION_NOT_FOUND`, one not set up yet is\n409 `INFERENCE_CONNECTION_NOT_SET_UP`, a model that answers places rather\nthan words is 422 `UNSUPPORTED_PROMPT`, and a `geometries` naming a shape\nthe model does not produce is 422 `GEOMETRY_NOT_PRODUCED`. Then the\nselection: an unknown project is 404 `PROJECT_NOT_FOUND`; a named batch\noutside this project is 404 `BATCH_NOT_FOUND`; a named batch not\n`in_annotation`, a project with no open batch at all, or an empty\n`batch_ids`, is 409 `BATCH_NOT_IN_ANNOTATION`; any selected batch whose\npinned schema has no class the selected shapes can be written as is 409\n`SCHEMA_HAS_NO_DETECTABLE_CLASS`, and the message names the batch so the\ncaller can leave it out by name and ask again. A partly launched project\nwould leave rows the caller was never told about, which is why the whole\nrequest is refused instead.\n\nWhat each run writes, passes over and counts is the single-batch launch's\ncontract, `geometries` included; read `POST /batches/{batch_id}/pre-label`.",
         "operationId": "pre_label_project_batches",
         "parameters": [
           {
@@ -11704,7 +11856,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProjectPreLabelOut"
+                  "$ref": "#/components/schemas/PreLabelFanOutOut"
                 }
               }
             },

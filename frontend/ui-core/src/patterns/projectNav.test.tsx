@@ -25,7 +25,7 @@ function props(overrides: Partial<ProjectNavProps> = {}): ProjectNavProps {
     hrefFor: (section) => `/projects/p/${section}`,
     onNavigate: vi.fn(),
     annotate: {
-      targets: [{ id: "b1", name: "drive-01", remaining: 12, schemaVersion: 4 }],
+      targets: [{ id: "b1", name: "drive-01", remaining: 12, schemaVersion: 4, jobIds: ["j1"] }],
       onOpen: vi.fn(),
     },
     onIngest: vi.fn(),
@@ -131,6 +131,72 @@ describe("ProjectNav", () => {
     const trigger = screen.getByTestId("go-annotate");
     expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
     await userEvent.click(trigger);
+    await userEvent.click(await screen.findByTestId("annotate-batch-drive-01"));
+    expect(onOpen).toHaveBeenCalledWith("b1");
+  });
+
+  it("jumps into the annotator when the one open batch has one job", async () => {
+    const onOpen = vi.fn();
+    const onOpenJob = vi.fn();
+    render(
+      <ProjectNav
+        {...props({
+          annotate: {
+            targets: [{ id: "b1", name: "drive-01", remaining: 12, schemaVersion: 4, jobIds: ["j1"] }],
+            onOpen,
+            onOpenJob,
+          },
+        })}
+      />,
+    );
+    await userEvent.click(screen.getByTestId("go-annotate"));
+    expect(onOpenJob).toHaveBeenCalledWith("j1");
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("lands on the gallery to pick a job when the batch has several, or while they are unknown", async () => {
+    for (const jobIds of [["j1", "j2"], undefined]) {
+      const onOpen = vi.fn();
+      const onOpenJob = vi.fn();
+      const { unmount } = render(
+        <ProjectNav
+          {...props({
+            annotate: {
+              targets: [{ id: "b1", name: "drive-01", remaining: 12, schemaVersion: 4, jobIds }],
+              onOpen,
+              onOpenJob,
+            },
+          })}
+        />,
+      );
+      await userEvent.click(screen.getByTestId("go-annotate"));
+      expect(onOpen).toHaveBeenCalledWith("b1");
+      expect(onOpenJob).not.toHaveBeenCalled();
+      unmount();
+    }
+  });
+
+  it("applies the job rule to the batch picked from the dropdown", async () => {
+    const onOpen = vi.fn();
+    const onOpenJob = vi.fn();
+    render(
+      <ProjectNav
+        {...props({
+          annotate: {
+            targets: [
+              { id: "b2", name: "drive-02", remaining: 3, schemaVersion: 4, jobIds: ["j2"] },
+              { id: "b1", name: "drive-01", remaining: 12, schemaVersion: 3, jobIds: ["j1a", "j1b"] },
+            ],
+            onOpen,
+            onOpenJob,
+          },
+        })}
+      />,
+    );
+    await userEvent.click(screen.getByTestId("go-annotate"));
+    await userEvent.click(await screen.findByTestId("annotate-batch-drive-02"));
+    expect(onOpenJob).toHaveBeenCalledWith("j2");
+    await userEvent.click(screen.getByTestId("go-annotate"));
     await userEvent.click(await screen.findByTestId("annotate-batch-drive-01"));
     expect(onOpen).toHaveBeenCalledWith("b1");
   });

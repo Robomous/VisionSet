@@ -28,6 +28,7 @@ import { assetActions, batchActions, jobActions, type Wire } from "./_wire";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
 const JOB = "33333333-3333-4333-8333-333333333333";
+const JOB_B = "55555555-5555-4555-8555-555555555555";
 const SOURCE = "44444444-4444-4444-8444-444444444444";
 
 /** A 1x1 PNG, so a tile has real bytes rather than a broken-image box. */
@@ -84,7 +85,7 @@ const SETTLED_STATES: readonly Wire["AssetProgress"][] = [
 ];
 
 function assets(
-  jobId: string | null,
+  jobOf: (at: number) => string | null,
   settled = false,
   batchState: Wire["BatchState"] = "in_annotation",
   removed: ReadonlySet<string> = new Set(),
@@ -99,30 +100,33 @@ function assets(
     .filter(({ at }) => !removed.has(`asset-${at}`));
   return {
     total: kept.length,
-    items: kept.map(({ progress, at }) => ({
-      id: `asset-${at}`,
-      project_id: PROJECT,
-      modality: "image",
-      content_hash: `${at}`.padStart(8, "0") + "deadbeef",
-      width: 1280,
-      height: 720,
-      format: "png",
-      source_id: SOURCE,
-      frame_index: INDEXES[at],
-      frame_timestamp: at,
-      thumbnail_hash: "cafebabe",
-      ingested_at: "2026-08-01T09:00:00Z",
-      job_id: jobId,
-      progress: jobId === null ? null : progress,
-      // The server's own answer, and the dimension the client's old mirror
-      // dropped: `asset_actions` returns `[]` for every frame of a batch that is
-      // not `in_annotation`, whatever the frame's own progress is.
-      allowed_actions: assetActions(jobId === null ? null : progress, { batchState }),
-      // Three boxes on the one card a test names ("3 boxes"); every other state
-      // carries none, which is what an unannotated or merely-reviewed frame is.
-      annotation_count: progress === "annotated" ? 3 : 0,
-      min_confidence: null,
-    })),
+    items: kept.map(({ progress, at }) => {
+      const jobId = jobOf(at);
+      return {
+        id: `asset-${at}`,
+        project_id: PROJECT,
+        modality: "image",
+        content_hash: `${at}`.padStart(8, "0") + "deadbeef",
+        width: 1280,
+        height: 720,
+        format: "png",
+        source_id: SOURCE,
+        frame_index: INDEXES[at],
+        frame_timestamp: at,
+        thumbnail_hash: "cafebabe",
+        ingested_at: "2026-08-01T09:00:00Z",
+        job_id: jobId,
+        progress: jobId === null ? null : progress,
+        // The server's own answer, and the dimension the client's old mirror
+        // dropped: `asset_actions` returns `[]` for every frame of a batch that is
+        // not `in_annotation`, whatever the frame's own progress is.
+        allowed_actions: assetActions(jobId === null ? null : progress, { batchState }),
+        // Three boxes on the one card a test names ("3 boxes"); every other state
+        // carries none, which is what an unannotated or merely-reviewed frame is.
+        annotation_count: progress === "annotated" ? 3 : 0,
+        min_confidence: null,
+      };
+    }),
   };
 }
 
@@ -147,9 +151,45 @@ const SETTLED_COUNTS = {
   skipped: 45,
 } satisfies Wire["ProgressCounts"];
 
+/**
+ * The two jobs' counts when the fixture cuts two, each describing its own half.
+ *
+ * The accordion opens on the first job with `unannotated + pre_labeled` left, so
+ * the split is what decides which panel a two-job run starts on — here the first,
+ * with the second's frames all settled or in review.
+ */
+const SPLIT_COUNTS: Record<string, Wire["ProgressCounts"]> = {
+  [JOB]: {
+    total: 4,
+    unannotated: 2,
+    pre_labeled: 0,
+    annotated: 2,
+    review_pending: 0,
+    accepted: 0,
+    skipped: 0,
+  },
+  [JOB_B]: {
+    total: 4,
+    unannotated: 1,
+    pre_labeled: 0,
+    annotated: 0,
+    review_pending: 1,
+    accepted: 1,
+    skipped: 1,
+  },
+};
+
 interface Options {
   /** `draft` is the state with the approve CTA, and the state with no jobs. */
   readonly state?: Wire["BatchState"];
+  /**
+   * Cut the eight frames into two jobs, 0–3 and 4–7.
+   *
+   * Different frames on each side, which is what makes "only the open job's
+   * tiles" a claim with content: a page that dropped the `job` filter would show
+   * all eight and a stub that answered one fixed page could not tell.
+   */
+  readonly twoJobs?: boolean;
   /**
    * Every frame settled and nothing outstanding.
    *
@@ -165,7 +205,12 @@ interface Options {
 
 async function serveApi(page: Page, sent: Request[], options: Options = {}): Promise<void> {
   const state = options.state ?? "in_annotation";
-  const jobId = state === "draft" ? null : JOB;
+  const twoJobs = options.twoJobs === true;
+  const roster = twoJobs ? [JOB, JOB_B] : [JOB];
+  // A draft has no jobs at all; otherwise the second half of the fixture belongs
+  // to the second job whenever there is one.
+  const jobOf = (at: number): string | null =>
+    state === "draft" ? null : twoJobs && at >= 4 ? JOB_B : JOB;
   const counts = options.settled === true ? SETTLED_COUNTS : BATCH_COUNTS;
   const settledStates = options.settled === true;
   // The job moves as the requests land, for the same reason `current` does: a
@@ -210,18 +255,26 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
     if (path === `/batches/${BATCH}/jobs`) {
       return route.fulfill({
         json: {
-          items: [
-            {
-              id: JOB,
-              batch_id: BATCH,
-              state: job,
-              asset_count: 48,
-              allowed_actions: jobActions(job),
-              assignee: null,
-            },
-          ],
-          total: 1,
+          items: roster.map((id) => ({
+            id,
+            batch_id: BATCH,
+            state: job,
+            asset_count: twoJobs ? 4 : 48,
+            allowed_actions: jobActions(job),
+            assignee: null,
+            pre_label_run: null,
+          })),
+          total: roster.length,
         } satisfies Wire["JobPage"],
+      });
+    }
+    // The accordion reads every job's counts before it opens one, and the open
+    // panel's segment chips are that job's rather than the batch's — so this is
+    // per job, and with two jobs it is each one's own half.
+    if (request.method() === "GET" && /^\/jobs\/[^/]+\/progress$/.test(path)) {
+      const id = path.split("/")[2] as string;
+      return route.fulfill({
+        json: (twoJobs ? (SPLIT_COUNTS[id] ?? counts) : counts) satisfies Wire["ProgressCounts"],
       });
     }
     if (request.method() === "POST" && path === `/jobs/${JOB}/start`) {
@@ -234,6 +287,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           asset_count: 48,
           allowed_actions: jobActions(job),
           assignee: null,
+          pre_label_run: null,
         } satisfies Wire["JobOut"],
       });
     }
@@ -256,6 +310,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           asset_count: 48,
           allowed_actions: jobActions(job),
           assignee: null,
+          pre_label_run: null,
         } satisfies Wire["JobOut"],
       });
     }
@@ -362,12 +417,16 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
     if (path === `/batches/${BATCH}/assets`) {
       // `current`, not `state`: an approve during the test moves it, and the
       // frames' declarations move with the batch exactly as the server's would.
-      const page_ = assets(jobId, settledStates, current, removed);
+      const page_ = assets(jobOf, settledStates, current, removed);
       // The segment toolbar is server-side now: `progress` repeats per state and
-      // narrows the page, exactly as `BatchService.asset_page` does.
-      const wanted = new URL(request.url()).searchParams.getAll("progress");
-      const items =
-        wanted.length === 0 ? page_.items : page_.items.filter((one) => wanted.includes(one.progress ?? ""));
+      // narrows the page, exactly as `BatchService.asset_page` does — and so is
+      // the accordion's `job`, which keeps only the frames that job carries.
+      const params = new URL(request.url()).searchParams;
+      const wanted = params.getAll("progress");
+      const forJob = params.get("job");
+      const items = page_.items
+        .filter((one) => forJob === null || one.job_id === forJob)
+        .filter((one) => wanted.length === 0 || wanted.includes(one.progress ?? ""));
       return route.fulfill({ json: { total: items.length, items } satisfies Wire["BatchAssetPage"] });
     }
     if (path === `/sources/${SOURCE}`) {
@@ -424,6 +483,11 @@ async function openGallery(page: Page, sent: Request[], options: Options = {}): 
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
   await expect(page.getByTestId("gallery-grid")).toBeVisible();
+  // And it has frames in it. Inside a job panel the grid is two round trips
+  // ahead of its own rows — the jobs, then every job's counts, then the frames —
+  // so an empty grid is a normal intermediate state, and the tests that read the
+  // DOM in one `evaluate` with nothing to retry would sample it.
+  await expect(page.getByTestId("gallery-row-0")).toBeVisible();
 }
 
 // --- the layout change, which is why this file exists ------------------------
@@ -666,6 +730,32 @@ test("the chosen density survives a reload", async ({ page }) => {
   // is where the two would look the same if the preference had been put beside
   // the token.
   await expect(page.getByTestId("density")).toHaveValue("0");
+});
+
+// --- the accordion -----------------------------------------------------------
+
+test("a two-job batch shows only the open job's tiles, and opening the other header swaps them", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent, { twoJobs: true });
+
+  // Exactly one open. Two panels at once would be the batch-wide grid again, one
+  // indent further in — the screen with two truths for the same frames.
+  await expect(page.getByTestId(/^job-header-/)).toHaveCount(2);
+  await expect(page.locator('[data-testid^="job-header-"][aria-expanded="true"]')).toHaveCount(1);
+
+  // The first job is the one with work left, so it is the one that opens.
+  await expect(page.getByTestId(`job-header-${JOB}`)).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId(`job-panel-${JOB}`).getByTestId("tile-asset-0")).toBeVisible();
+  await expect(page.getByTestId("tile-asset-4")).toHaveCount(0);
+
+  await page.getByTestId(`job-header-${JOB_B}`).click();
+
+  await expect(page.getByTestId(`job-panel-${JOB_B}`).getByTestId("tile-asset-4")).toBeVisible();
+  await expect(page.getByTestId("tile-asset-0")).toHaveCount(0);
+  await expect(page.getByTestId(`job-panel-${JOB}`)).toHaveCount(0);
+  await expect(page.getByTestId(`job-header-${JOB}`)).toHaveAttribute("aria-expanded", "false");
 });
 
 // --- approval ----------------------------------------------------------------

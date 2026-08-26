@@ -18,6 +18,7 @@ from visionset.inference.prelabel import (
     detectable_classes,
     effective_produces,
     no_detectable_class_message,
+    open_jobs_of,
     planned,
     pre_label,
     prompt_plan,
@@ -28,6 +29,7 @@ from visionset.kernel import (
     BatchNotFound,
     BatchNotInAnnotation,
     GeometryNotProduced,
+    JobFinished,
     ProjectNotFound,
     SchemaHasNoDetectableClass,
     UnsupportedPrompt,
@@ -41,6 +43,7 @@ from visionset.kernel.domain import (
     AssetProgress,
     Attribute,
     BboxGeometry,
+    BySize,
     ConnectionType,
     GeometryType,
     InferenceConnection,
@@ -265,6 +268,10 @@ class Fixture:
                 )
             ).id
 
+    @property
+    def job_id(self) -> UUID:
+        return self._job_id
+
     def job(self) -> AnnotationJob:
         return self.jobs.get(self._job_id)
 
@@ -427,7 +434,7 @@ def test_every_untouched_asset_is_labeled_and_enters_pre_labeled(prelabel_fixtur
     queue: a model's guess never claims to be work a person has already judged."""
     outcome = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
@@ -445,7 +452,7 @@ def test_an_asset_somebody_worked_is_passed_over_silently(prelabel_fixture: Fixt
 
     outcome = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
@@ -467,7 +474,7 @@ def test_a_skipped_and_restored_asset_is_passed_over_silently(prelabel_fixture: 
 
     outcome = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
@@ -493,7 +500,7 @@ def test_an_asset_that_moves_mid_run_is_skipped_and_the_run_completes(
 
     outcome = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
@@ -511,14 +518,14 @@ def test_an_asset_that_moves_mid_run_is_skipped_and_the_run_completes(
 def test_a_second_run_picks_up_only_what_is_still_untouched(prelabel_fixture: Fixture) -> None:
     pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
 
     again = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
@@ -530,7 +537,7 @@ def test_a_second_run_picks_up_only_what_is_still_untouched(prelabel_fixture: Fi
 def test_every_written_label_carries_its_provenance(prelabel_fixture: Fixture) -> None:
     pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
@@ -547,7 +554,7 @@ def test_the_phrases_are_the_schema_s_askable_classes(prelabel_fixture: Fixture)
     """The schema is the prompt, so nothing comes back that cannot be written."""
     pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
@@ -561,7 +568,7 @@ def test_a_schema_with_no_producible_class_is_refused_before_anything_loads(
     with pytest.raises(SchemaHasNoDetectableClass):
         pre_label(
             polygon_only_fixture.workspace,
-            batch_id=polygon_only_fixture.batch.id,
+            job_id=polygon_only_fixture.job_id,
             connection_id=polygon_only_fixture.connection.id,
             pool=polygon_only_fixture.pool,
         )
@@ -651,7 +658,7 @@ def test_a_run_announces_the_plan_it_is_about_to_prompt_with(
 
     pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         on_plan=seen.append,
         pool=prelabel_fixture.pool,
@@ -674,7 +681,7 @@ def test_a_refused_run_announces_no_plan(polygon_only_fixture: Fixture) -> None:
     with pytest.raises(SchemaHasNoDetectableClass):
         pre_label(
             polygon_only_fixture.workspace,
-            batch_id=polygon_only_fixture.batch.id,
+            job_id=polygon_only_fixture.job_id,
             connection_id=polygon_only_fixture.connection.id,
             on_plan=seen.append,
             pool=polygon_only_fixture.pool,
@@ -694,7 +701,7 @@ def test_a_bbox_class_with_a_required_attribute_is_refused_before_anything_loads
     with pytest.raises(SchemaHasNoDetectableClass):
         pre_label(
             required_attribute_fixture.workspace,
-            batch_id=required_attribute_fixture.batch.id,
+            job_id=required_attribute_fixture.job_id,
             connection_id=required_attribute_fixture.connection.id,
             pool=required_attribute_fixture.pool,
         )
@@ -707,7 +714,7 @@ def test_a_point_prompt_connection_is_refused(segmenter_fixture: Fixture) -> Non
     with pytest.raises(UnsupportedPrompt):
         pre_label(
             segmenter_fixture.workspace,
-            batch_id=segmenter_fixture.batch.id,
+            job_id=segmenter_fixture.job_id,
             connection_id=segmenter_fixture.connection.id,
             pool=segmenter_fixture.pool,
         )
@@ -730,9 +737,12 @@ def test_a_batch_that_is_not_in_annotation_is_refused_before_anything_loads(
             asset_id = uow.assets.add(
                 Asset(project_id=project.id, content_hash=content_hash, uri="/draft.png")
             ).id
-        # A draft, never approved: `require_pre_labelable` refuses every state
-        # but `in_annotation`, and a draft is the one furthest from it.
+        # Approved but never started: approval is what partitions the batch into
+        # jobs, so this is the earliest state a job exists to ask about at all,
+        # and `require_pre_labelable` admits only `in_annotation`.
         batch = batches.create(project.id, "first", [asset_id])
+        batches.approve(batch.id)
+        job = batches.jobs(batch.id)[0]
         connection = connections.create(
             "draft-connection",
             connection_type=ConnectionType.HTTP,
@@ -743,11 +753,71 @@ def test_a_batch_that_is_not_in_annotation_is_refused_before_anything_loads(
         pool = FakeProviderPool()
 
         with pytest.raises(BatchNotInAnnotation):
-            pre_label(workspace, batch_id=batch.id, connection_id=connection.id, pool=pool)
+            pre_label(workspace, job_id=job.id, connection_id=connection.id, pool=pool)
 
         assert pool.calls == 0
     finally:
         workspace.close()
+
+
+def _two_job_batch(fixture: Fixture, name: str) -> tuple[UUID, AnnotationJob, AnnotationJob]:
+    """A batch of ``fixture``'s project cut into two jobs, open and the first started."""
+    assets = [fixture._asset(f"{name}-{index}") for index in range(3)]
+    batch = fixture.batches.create(fixture.project.id, name, assets)
+    fixture.batches.approve(batch.id, BySize(size=2))
+    fixture.batches.start(batch.id)
+    first, second = fixture.batches.jobs(batch.id)
+    fixture.jobs.start(first.id)
+    return batch.id, first, second
+
+
+def test_a_run_reaches_only_the_job_it_was_asked_about(prelabel_fixture: Fixture) -> None:
+    """Two jobs of one batch: the run over the first leaves the second untouched."""
+    _, first, second = _two_job_batch(prelabel_fixture, "two-jobs")
+
+    outcome = pre_label(
+        prelabel_fixture.workspace,
+        job_id=first.id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert outcome.assets_considered == 2
+    untouched = prelabel_fixture.jobs.get(second.id)
+    assert all(p is AssetProgress.UNANNOTATED for p in untouched.progress.values())
+    for asset_id in untouched.progress:
+        assert prelabel_fixture.annotations.for_asset(second.id, asset_id) == []
+
+
+def test_a_completed_job_is_refused_before_anything_loads(prelabel_fixture: Fixture) -> None:
+    for asset_id in prelabel_fixture.assets:
+        prelabel_fixture.mark(asset_id, AssetProgress.SKIPPED)
+    prelabel_fixture.jobs.complete(prelabel_fixture.job_id)
+
+    with pytest.raises(JobFinished):
+        pre_label(
+            prelabel_fixture.workspace,
+            job_id=prelabel_fixture.job_id,
+            connection_id=prelabel_fixture.connection.id,
+            pool=prelabel_fixture.pool,
+        )
+    assert prelabel_fixture.pool.calls == 0
+
+
+def test_open_jobs_of_lists_the_batchs_open_jobs_in_segment_order(
+    prelabel_fixture: Fixture,
+) -> None:
+    batch_id, first, second = _two_job_batch(prelabel_fixture, "two-jobs")
+
+    listed = open_jobs_of(prelabel_fixture.workspace, batch_id)
+    assert [job.id for job in listed] == [first.id, second.id]
+
+    for asset_id in first.progress:
+        prelabel_fixture.jobs.mark(first.id, asset_id, AssetProgress.SKIPPED)
+    prelabel_fixture.jobs.complete(first.id)
+
+    still_open = open_jobs_of(prelabel_fixture.workspace, batch_id)
+    assert [job.id for job in still_open] == [second.id]
 
 
 def test_an_asset_the_model_found_nothing_on_stays_untouched(
@@ -756,7 +826,7 @@ def test_an_asset_the_model_found_nothing_on_stays_untouched(
     """ "Found nothing" and "reviewed and found empty" are different facts."""
     outcome = pre_label(
         empty_answer_fixture.workspace,
-        batch_id=empty_answer_fixture.batch.id,
+        job_id=empty_answer_fixture.job_id,
         connection_id=empty_answer_fixture.connection.id,
         pool=empty_answer_fixture.pool,
     )
@@ -772,7 +842,7 @@ def test_stopping_leaves_what_was_entered_entered(prelabel_fixture: Fixture) -> 
 
     outcome = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         should_stop=lambda: next(seen),
         pool=prelabel_fixture.pool,
@@ -794,7 +864,7 @@ def test_progress_is_reported_in_assets(prelabel_fixture: Fixture) -> None:
 
     pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         on_progress=lambda done, total: reported.append((done, total)),
         pool=prelabel_fixture.pool,
@@ -812,7 +882,7 @@ def test_a_merged_span_is_discarded_and_the_run_completes(
     while the mappable region beside it is entered normally."""
     outcome = pre_label(
         merged_span_fixture.workspace,
-        batch_id=merged_span_fixture.batch.id,
+        job_id=merged_span_fixture.job_id,
         connection_id=merged_span_fixture.connection.id,
         pool=merged_span_fixture.pool,
     )
@@ -837,7 +907,7 @@ def test_a_capitalized_class_receives_the_casefolded_answer(
     spelling rather than the model's."""
     pre_label(
         capitalized_class_fixture.workspace,
-        batch_id=capitalized_class_fixture.batch.id,
+        job_id=capitalized_class_fixture.job_id,
         connection_id=capitalized_class_fixture.connection.id,
         pool=capitalized_class_fixture.pool,
     )
@@ -854,7 +924,7 @@ def test_an_asset_whose_only_regions_are_unmappable_stays_unannotated(
     is left untouched, not entered with zero annotations."""
     outcome = pre_label(
         only_unmappable_fixture.workspace,
-        batch_id=only_unmappable_fixture.batch.id,
+        job_id=only_unmappable_fixture.job_id,
         connection_id=only_unmappable_fixture.connection.id,
         pool=only_unmappable_fixture.pool,
     )
@@ -872,7 +942,7 @@ def test_a_region_wholly_outside_a_measured_asset_is_discarded(
 ) -> None:
     outcome = pre_label(
         partly_off_frame_fixture.workspace,
-        batch_id=partly_off_frame_fixture.batch.id,
+        job_id=partly_off_frame_fixture.job_id,
         connection_id=partly_off_frame_fixture.connection.id,
         pool=partly_off_frame_fixture.pool,
     )
@@ -893,7 +963,7 @@ def test_an_asset_whose_only_regions_are_off_frame_stays_unannotated(
 ) -> None:
     outcome = pre_label(
         only_off_frame_fixture.workspace,
-        batch_id=only_off_frame_fixture.batch.id,
+        job_id=only_off_frame_fixture.job_id,
         connection_id=only_off_frame_fixture.connection.id,
         pool=only_off_frame_fixture.pool,
     )
@@ -913,7 +983,7 @@ def test_stopping_after_an_off_frame_region_keeps_its_count(
 
     outcome = pre_label(
         early_stop_off_frame_fixture.workspace,
-        batch_id=early_stop_off_frame_fixture.batch.id,
+        job_id=early_stop_off_frame_fixture.job_id,
         connection_id=early_stop_off_frame_fixture.connection.id,
         should_stop=lambda: next(seen),
         pool=early_stop_off_frame_fixture.pool,
@@ -973,7 +1043,7 @@ def test_a_polygon_only_schema_runs_against_a_polygon_producing_model(tmp_path: 
     try:
         outcome = pre_label(
             fixture.workspace,
-            batch_id=fixture.batch.id,
+            job_id=fixture.job_id,
             connection_id=fixture.connection.id,
             pool=fixture.pool,
         )
@@ -1005,7 +1075,7 @@ def test_a_region_in_a_shape_its_class_does_not_admit_is_discarded(tmp_path: Pat
     try:
         outcome = pre_label(
             fixture.workspace,
-            batch_id=fixture.batch.id,
+            job_id=fixture.job_id,
             connection_id=fixture.connection.id,
             pool=fixture.pool,
         )
@@ -1037,7 +1107,7 @@ def test_a_region_in_a_shape_the_model_never_declared_is_discarded(tmp_path: Pat
     try:
         outcome = pre_label(
             fixture.workspace,
-            batch_id=fixture.batch.id,
+            job_id=fixture.job_id,
             connection_id=fixture.connection.id,
             pool=fixture.pool,
         )
@@ -1077,7 +1147,7 @@ def test_a_selection_narrows_what_a_two_shape_model_writes(tmp_path: Path) -> No
     try:
         outcome = pre_label(
             fixture.workspace,
-            batch_id=fixture.batch.id,
+            job_id=fixture.job_id,
             connection_id=fixture.connection.id,
             geometries=BOXES,
             pool=fixture.pool,
@@ -1099,7 +1169,7 @@ def test_no_selection_writes_every_shape_the_model_produces(tmp_path: Path) -> N
     try:
         outcome = pre_label(
             fixture.workspace,
-            batch_id=fixture.batch.id,
+            job_id=fixture.job_id,
             connection_id=fixture.connection.id,
             geometries=None,
             pool=fixture.pool,
@@ -1117,7 +1187,7 @@ def test_a_selection_outside_what_the_model_produces_is_refused_before_anything_
     with pytest.raises(GeometryNotProduced) as refused:
         pre_label(
             prelabel_fixture.workspace,
-            batch_id=prelabel_fixture.batch.id,
+            job_id=prelabel_fixture.job_id,
             connection_id=prelabel_fixture.connection.id,
             geometries=POLYGONS,
             pool=prelabel_fixture.pool,
@@ -1134,7 +1204,7 @@ def test_an_empty_selection_is_refused_rather_than_run_as_a_no_op(
     with pytest.raises(GeometryNotProduced):
         pre_label(
             prelabel_fixture.workspace,
-            batch_id=prelabel_fixture.batch.id,
+            job_id=prelabel_fixture.job_id,
             connection_id=prelabel_fixture.connection.id,
             geometries=frozenset(),
             pool=prelabel_fixture.pool,
@@ -1150,7 +1220,7 @@ def test_the_announced_plan_carries_the_effective_shapes(tmp_path: Path) -> None
     try:
         pre_label(
             fixture.workspace,
-            batch_id=fixture.batch.id,
+            job_id=fixture.job_id,
             connection_id=fixture.connection.id,
             geometries=POLYGONS,
             on_plan=seen.append,
@@ -1171,7 +1241,7 @@ def test_a_selection_that_leaves_the_schema_nothing_to_hold_is_refused(tmp_path:
         with pytest.raises(SchemaHasNoDetectableClass) as refused:
             pre_label(
                 fixture.workspace,
-                batch_id=fixture.batch.id,
+                job_id=fixture.job_id,
                 connection_id=fixture.connection.id,
                 geometries=BOXES,
                 pool=fixture.pool,
@@ -1388,7 +1458,7 @@ def test_a_replacing_run_rewrites_every_pre_labeled_frame_and_counts_what_it_rep
 ) -> None:
     first = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
@@ -1398,7 +1468,7 @@ def test_a_replacing_run_rewrites_every_pre_labeled_frame_and_counts_what_it_rep
 
     again = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         replace_model_labels=True,
         pool=prelabel_fixture.pool,
@@ -1419,7 +1489,7 @@ def test_a_replacing_run_leaves_a_persons_frame_alone(prelabel_fixture: Fixture)
     """Confirmed means judged: `pre_labeled -> annotated` by `mark`, labels untouched."""
     pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
@@ -1429,7 +1499,7 @@ def test_a_replacing_run_leaves_a_persons_frame_alone(prelabel_fixture: Fixture)
 
     again = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         replace_model_labels=True,
         pool=prelabel_fixture.pool,
@@ -1444,7 +1514,7 @@ def test_a_replacing_run_leaves_a_persons_frame_alone(prelabel_fixture: Fixture)
 def test_a_replacing_run_also_enters_frames_still_untouched(prelabel_fixture: Fixture) -> None:
     pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
@@ -1456,7 +1526,7 @@ def test_a_replacing_run_also_enters_frames_still_untouched(prelabel_fixture: Fi
 
     again = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         replace_model_labels=True,
         pool=prelabel_fixture.pool,
@@ -1473,7 +1543,7 @@ def test_a_replacing_run_that_finds_nothing_now_returns_the_frame_to_unannotated
 ) -> None:
     pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
@@ -1481,7 +1551,7 @@ def test_a_replacing_run_that_finds_nothing_now_returns_the_frame_to_unannotated
 
     again = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         replace_model_labels=True,
         pool=prelabel_fixture.pool,
@@ -1501,7 +1571,7 @@ def test_a_pre_labeled_frame_taken_over_mid_run_is_skipped_by_a_replacing_run(
 ) -> None:
     pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
@@ -1515,7 +1585,7 @@ def test_a_pre_labeled_frame_taken_over_mid_run_is_skipped_by_a_replacing_run(
 
     again = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         replace_model_labels=True,
         pool=prelabel_fixture.pool,
@@ -1531,13 +1601,13 @@ def test_an_unflagged_second_run_still_never_touches_a_pre_labeled_frame(
 ) -> None:
     pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )
     again = pre_label(
         prelabel_fixture.workspace,
-        batch_id=prelabel_fixture.batch.id,
+        job_id=prelabel_fixture.job_id,
         connection_id=prelabel_fixture.connection.id,
         pool=prelabel_fixture.pool,
     )

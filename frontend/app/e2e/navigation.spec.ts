@@ -110,6 +110,7 @@ async function serveApi(page: Page): Promise<void> {
           asset_count: 1,
           allowed_actions: jobActions("in_progress"),
           assignee: null,
+          pre_label_run: null,
         } satisfies Wire["JobOut"],
       });
     }

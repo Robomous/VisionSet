@@ -149,6 +149,7 @@ export interface ProjectScreenProps {
   /** Route changes, supplied by the app. See `ProjectsScreen`'s note. */
   readonly onIngest?: () => void;
   readonly onOpenBatch?: (batchId: string) => void;
+  readonly onOpenJob?: (jobId: string) => void;
   /**
    * Where to go once the project is gone. Absent means the overflow menu still
    * deletes, and the caller is left on a screen whose subject no longer exists —
@@ -170,6 +171,7 @@ export function ProjectScreen({
   projectId,
   onIngest,
   onOpenBatch,
+  onOpenJob,
   onDeleted,
   tab,
   onTabChange,
@@ -456,6 +458,7 @@ export function ProjectScreen({
       chain="frame"
       cta={{
         ...(onOpenBatch === undefined ? {} : { onOpenBatch }),
+        ...(onOpenJob === undefined ? {} : { onOpenJob }),
         ...(onIngest === undefined ? {} : { onIngest }),
         contentOwnsTheAction: overviewOwnsTheAction,
       }}

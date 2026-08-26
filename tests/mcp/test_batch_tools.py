@@ -562,29 +562,67 @@ MIXED_CLASSES: list[dict[str, Any]] = [
 def test_pre_labeling_blocks_and_returns_what_it_wrote(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
+    _, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=2)
     connection_id = _connection()
     _predicting(monkeypatch, label="sign")
 
     outcome = payload(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
 
-    assert outcome == {
-        "assets_considered": 2,
-        "assets_labeled": 2,
-        "annotations_written": 2,
-        "annotations_replaced": 0,
-        "model_ref": "acme/detector@abc123",
-        "assets_skipped": 0,
-        "regions_discarded": 0,
-        "regions_out_of_bounds": 0,
-        "plan": {
-            "schema_version": 1,
-            "asked_classes": ["sign"],
-            "produces": ["bbox"],
-            "excluded_classes": [],
-        },
-    }
+    assert outcome["annotations_written"] == 2
+    assert outcome["items"] == [
+        {
+            "job_id": job_id,
+            "assets_considered": 2,
+            "assets_labeled": 2,
+            "annotations_written": 2,
+            "annotations_replaced": 0,
+            "model_ref": "acme/detector@abc123",
+            "assets_skipped": 0,
+            "regions_discarded": 0,
+            "regions_out_of_bounds": 0,
+            "plan": {
+                "schema_version": 1,
+                "asked_classes": ["sign"],
+                "produces": ["bbox"],
+                "excluded_classes": [],
+            },
+        }
+    ]
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
+
+
+def test_pre_labeling_a_batch_runs_one_item_per_open_job(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id = ingested(monkeypatch, tmp_path, count=4)
+    approved = payload(call("approve_batch", batch_id=batch_id, jobs_of=2))
+    job_ids = [j["id"] for j in approved["jobs"]]
+    payload(call("start_batch", batch_id=batch_id))
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+
+    outcome = payload(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
+
+    assert len(job_ids) == 2
+    assert {item["job_id"] for item in outcome["items"]} == set(job_ids)
+    assert outcome["annotations_written"] == sum(
+        item["annotations_written"] for item in outcome["items"]
+    )
+    assert outcome["annotations_written"] == 4
+
+
+def test_pre_labeling_a_batch_with_no_open_job_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=1)
+    asset_id = payload(call("list_batch_assets", batch_id=batch_id))["items"][0]["id"]
+    payload(call("set_asset_progress", job_id=job_id, asset_id=asset_id, progress="skipped"))
+    payload(call("complete_job", job_id=job_id))
+    connection_id = _connection()
+
+    outcome = payload(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
+
+    assert outcome == {"items": [], "annotations_written": 0}
 
 
 def test_a_replacing_run_rewrites_the_frames_the_first_run_labeled(
@@ -604,9 +642,10 @@ def test_a_replacing_run_rewrites_the_frames_the_first_run_labeled(
         )
     )
 
-    assert again["assets_considered"] == 2
-    assert again["annotations_written"] == 2
-    assert again["annotations_replaced"] == 2
+    item = again["items"][0]
+    assert item["assets_considered"] == 2
+    assert item["annotations_written"] == 2
+    assert item["annotations_replaced"] == 2
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
 
 
@@ -625,10 +664,11 @@ def test_a_run_that_labeled_nothing_says_what_it_asked_about(
     _predicting(monkeypatch, label="centerline")
 
     outcome = payload(call("pre_label_batch", batch_id=batch_id, connection=connection_id))
+    item = outcome["items"][0]
 
-    assert outcome["assets_labeled"] == 0
-    assert outcome["plan"]["asked_classes"] == ["sign"]
-    assert outcome["plan"]["excluded_classes"] == [
+    assert item["assets_labeled"] == 0
+    assert item["plan"]["asked_classes"] == ["sign"]
+    assert item["plan"]["excluded_classes"] == [
         {"name": "centerline", "reasons": ["no_producible_geometry"]},
         {"name": "crossing", "reasons": ["no_producible_geometry", "required_attribute"]},
     ]
@@ -796,17 +836,19 @@ def test_a_selection_writes_only_those_shapes_and_the_run_reports_it(
     outcome = payload(
         call("pre_label_batch", batch_id=batch_id, connection=connection_id, geometries=["bbox"])
     )
+    item = outcome["items"][0]
 
     assert outcome["annotations_written"] == 2
-    assert outcome["regions_discarded"] == 2
-    assert outcome["plan"]["produces"] == ["bbox"]
-    assert outcome["plan"]["asked_classes"] == ["sign"]
+    assert item["regions_discarded"] == 2
+    assert item["plan"]["produces"] == ["bbox"]
+    assert item["plan"]["asked_classes"] == ["sign"]
 
     other = _another_open_batch(monkeypatch, tmp_path, project)
     unselected = payload(call("pre_label_batch", batch_id=other, connection=connection_id))
+    unselected_item = unselected["items"][0]
     assert unselected["annotations_written"] == 4
-    assert unselected["regions_discarded"] == 0
-    assert unselected["plan"]["produces"] == ["bbox", "polygon"]
+    assert unselected_item["regions_discarded"] == 0
+    assert unselected_item["plan"]["produces"] == ["bbox", "polygon"]
 
 
 def test_a_selection_outside_what_the_model_produces_is_refused_and_writes_nothing(
@@ -889,6 +931,20 @@ def test_an_empty_progress_list_means_no_filter(
     assert payload(call("list_batch_assets", batch_id=batch_id, progress=[]))["total"] == 2
 
 
+def test_a_job_filter_lists_only_that_jobs_assets(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id = ingested(monkeypatch, tmp_path, count=4)
+    approved = payload(call("approve_batch", batch_id=batch_id, jobs_of=2))
+    payload(call("start_batch", batch_id=batch_id))
+    first = approved["jobs"][0]["id"]
+
+    listed = payload(call("list_batch_assets", batch_id=batch_id, job_id=first))
+
+    assert listed["total"] == 2
+    assert {a["job_id"] for a in listed["items"]} == {first}
+
+
 # --- pre-labeling a project: the batch, fanned out ----------------------------
 
 
@@ -905,7 +961,7 @@ def _another_open_batch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, project
 def test_pre_labeling_a_project_runs_every_open_batch_and_reports_each(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    project, first, _job = open_batch(monkeypatch, tmp_path, count=2)
+    project, first, job_id = open_batch(monkeypatch, tmp_path, count=2)
     second = _another_open_batch(monkeypatch, tmp_path, project)
     connection_id = _connection()
     _predicting(monkeypatch, label="sign")
@@ -913,6 +969,7 @@ def test_pre_labeling_a_project_runs_every_open_batch_and_reports_each(
     outcome = payload(call("pre_label_project", project=project, connection=connection_id))
 
     assert [item["batch_id"] for item in outcome["items"]] == [first, second]
+    assert outcome["items"][0]["job_id"] == job_id
     assert all(item["annotations_written"] == 2 for item in outcome["items"])
     assert all(item["plan"]["asked_classes"] == ["sign"] for item in outcome["items"])
     assert outcome["annotations_written"] == 4
@@ -938,7 +995,7 @@ def test_pre_labeling_a_project_narrows_to_the_named_batches(
 def test_pre_labeling_a_project_carries_the_selection_to_every_batch(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    project, first, _job = open_batch(monkeypatch, tmp_path, count=2, classes=BOTH_SHAPES_CLASSES)
+    project, first, job_id = open_batch(monkeypatch, tmp_path, count=2, classes=BOTH_SHAPES_CLASSES)
     second = _another_open_batch(monkeypatch, tmp_path, project)
     connection_id = _connection()
     _predicting(monkeypatch, both_shapes=True)
@@ -948,6 +1005,7 @@ def test_pre_labeling_a_project_carries_the_selection_to_every_batch(
     )
 
     assert [item["batch_id"] for item in outcome["items"]] == [first, second]
+    assert outcome["items"][0]["job_id"] == job_id
     assert all(item["annotations_written"] == 2 for item in outcome["items"])
     assert all(item["regions_discarded"] == 2 for item in outcome["items"])
     assert all(item["plan"]["produces"] == ["bbox"] for item in outcome["items"])

@@ -204,6 +204,10 @@ ProgressQuery = Annotated[
     list[AssetProgress] | None,
     Query(description="Keep only assets in these states. Repeat the parameter per state."),
 ]
+JobQuery = Annotated[
+    UUID | None,
+    Query(description="Keep only the assets this job carries. Omit for the whole batch."),
+]
 GeometriesQuery = Annotated[
     list[GeometryType] | None,
     Query(
@@ -1030,16 +1034,19 @@ class ProgressCounts(BaseModel):
 
 
 class PreLabelRunOut(BaseModel):
-    """A batch's most recent pre-labeling run: which job, how far, and what it found.
+    """The most recent pre-labeling run: which job, how far, and what it found.
 
-    Present whenever pre-labeling has ever been asked for on this batch, and
-    describing the most recent run — including one this session did not launch.
-    A dialog reopened after a reload, in a second tab, or after a run started
-    from the terminal reads the same state from here rather than from a job id
-    a component happened to keep.
+    `annotation_job_id` is the job the run is over; `job_id` is the queue row to
+    poll.
+
+    Present whenever pre-labeling has ever been asked for, and describing the
+    most recent run — including one this session did not launch. A dialog
+    reopened after a reload, in a second tab, or after a run started from the
+    terminal reads the same state from here rather than from a job id a
+    component happened to keep.
 
     **Assets, where a download counts bytes and a check counts files.** The
-    handler owns a loop over the batch's untouched assets and knows the whole
+    handler owns a loop over the job's untouched assets and knows the whole
     set before the first forward pass, so both its progress and its total are
     counted in the unit its own work is over.
 
@@ -1052,6 +1059,7 @@ class PreLabelRunOut(BaseModel):
     contract is to write only where nothing has been written.
     """
 
+    annotation_job_id: UUID
     job_id: UUID
     state: BackgroundJobState
     #: Assets looked at so far.
@@ -1088,6 +1096,7 @@ class PreLabelRunOut(BaseModel):
     @classmethod
     def of(cls, run: PreLabelRun) -> Self:
         return cls(
+            annotation_job_id=run.annotation_job_id,
             job_id=run.job_id,
             state=run.state,
             assets_processed=run.assets_processed,
@@ -1428,21 +1437,23 @@ class ProjectPreLabelRequest(BaseModel):
     geometries: list[GeometryType] | None = Field(default=None, min_length=1)
 
 
-class ProjectPreLabelItemOut(BaseModel):
-    """One batch's row in a project-wide launch."""
+class PreLabelFanOutItemOut(BaseModel):
+    """One job's row in a launch that fanned out over several."""
 
     batch_id: UUID
     batch_name: str
+    #: The annotation job this row is over — the unit a run is over.
+    annotation_job_id: UUID
     #: The `annotation.pre_label` row to poll — `GET /background-jobs/{id}` —
-    #: the same row `BatchOut.pre_label_run` remembers.
+    #: the same row `JobOut.pre_label_run` remembers.
     job: BackgroundJobOut
     #: True when the row existed before this request: a run already queued or
-    #: running for that batch was joined rather than started again.
+    #: running for that job was joined rather than started again.
     joined: bool
 
 
-class ProjectPreLabelOut(Page[ProjectPreLabelItemOut]):
-    """Every batch the launch fanned out over, one row each, in selection order."""
+class PreLabelFanOutOut(Page[PreLabelFanOutItemOut]):
+    """Every job the launch fanned out over, one row each, in batch then segment order."""
 
 
 # --- jobs --------------------------------------------------------------------
@@ -1456,7 +1467,8 @@ class ProjectPreLabelOut(Page[ProjectPreLabelItemOut]):
 # too; a job of fifty thousand assets must not ship one on every read, and the
 # paged batch listing is where per-asset detail lives.
 class JobOut(BaseModel):
-    """One annotator's unit of work over a segment of a batch."""
+    """One annotator's unit of work over a segment of a batch, and its most recent
+    pre-labeling run, `null` where none ever ran."""
 
     id: UUID
     batch_id: UUID
@@ -1464,13 +1476,14 @@ class JobOut(BaseModel):
     assignee: str | None
     asset_count: int
     allowed_actions: list[JobAction]
+    pre_label_run: PreLabelRunOut | None
 
-    # ``batch`` whole rather than an id: both actions need the batch open, which
+    # ``batch`` whole rather than an id: every action needs the batch open, which
     # is the dimension a client re-deriving these rules dropped. The per-asset map
     # stays unpublished and is still read here, because ``complete`` is refined by
     # whether every asset has settled — a refinement that costs no extra read.
     @classmethod
-    def of(cls, job: AnnotationJob, *, batch: Batch) -> Self:
+    def of(cls, job: AnnotationJob, *, batch: Batch, pre_label_run: PreLabelRun | None) -> Self:
         return cls(
             id=job.id,
             batch_id=batch.id,
@@ -1480,6 +1493,7 @@ class JobOut(BaseModel):
             allowed_actions=job_actions(
                 job.state, batch_state=batch.state, progress=job.progress.values()
             ),
+            pre_label_run=None if pre_label_run is None else PreLabelRunOut.of(pre_label_run),
         )
 
 

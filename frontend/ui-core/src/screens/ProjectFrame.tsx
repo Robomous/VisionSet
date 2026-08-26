@@ -16,7 +16,7 @@
  * second filled control beside it would be two answers to "what now?".
  */
 
-import { useState, type JSX, type ReactNode } from "react";
+import { useMemo, useState, type JSX, type ReactNode } from "react";
 
 import { refusalProse } from "../data/refusals";
 import { asApiError } from "../data/errors";
@@ -38,10 +38,12 @@ import {
   useActiveSchema,
   useBatches,
   useDeleteProject,
+  useJobsOfBatches,
   useProject,
   useProjectStats,
   useRenameProject,
   type Batch,
+  type Job,
 } from "./queries";
 import type { FormEvent } from "react";
 
@@ -68,6 +70,7 @@ export interface ProjectFrameProps {
    */
   readonly cta?: {
     readonly onOpenBatch?: (batchId: string) => void;
+    readonly onOpenJob?: (jobId: string) => void;
     readonly onIngest?: () => void;
     readonly contentOwnsTheAction?: boolean;
   };
@@ -92,7 +95,10 @@ export interface ProjectFrameProps {
  * direction. The copy is not decoration — the array belongs to the query cache,
  * and `reverse` mutates in place.
  */
-export function openForAnnotation(batches: readonly Batch[] | undefined): readonly AnnotateTarget[] {
+export function openForAnnotation(
+  batches: readonly Batch[] | undefined,
+  jobs?: ReadonlyMap<string, readonly Job[]>,
+): readonly AnnotateTarget[] {
   return [...(batches ?? [])]
     .filter((batch) => batch.state === "in_annotation")
     .reverse()
@@ -101,6 +107,7 @@ export function openForAnnotation(batches: readonly Batch[] | undefined): readon
       name: batch.name,
       remaining: batch.progress.unannotated,
       schemaVersion: batch.schema_version ?? null,
+      jobIds: jobs?.get(batch.id)?.map((job) => job.id),
     }));
 }
 
@@ -121,14 +128,22 @@ export function ProjectFrame({
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const open = cta?.onOpenBatch === undefined ? [] : openForAnnotation(batches.data?.items);
+  // Hooks cannot be conditional, so this always runs — with an empty list, and
+  // therefore no request, whenever the host wired no `onOpenJob` to apply the
+  // job rule with.
+  const openIds = useMemo(
+    () => (batches.data?.items ?? []).filter((batch) => batch.state === "in_annotation").map((batch) => batch.id),
+    [batches.data],
+  );
+  const jobs = useJobsOfBatches(cta?.onOpenJob === undefined ? [] : openIds);
+  const open = cta?.onOpenBatch === undefined ? [] : openForAnnotation(batches.data?.items, jobs);
   const nav: ProjectNavData = {
     sections,
     active,
     onNavigate,
     ...(hrefFor === undefined ? {} : { hrefFor }),
     ...(open.length > 0 && cta?.onOpenBatch !== undefined
-      ? { annotate: { targets: open, onOpen: cta.onOpenBatch } }
+      ? { annotate: { targets: open, onOpen: cta.onOpenBatch, ...(cta.onOpenJob === undefined ? {} : { onOpenJob: cta.onOpenJob }) } }
       : {}),
     ...(cta?.onIngest === undefined ? {} : { onIngest: cta.onIngest }),
     contentOwnsTheAction: cta?.contentOwnsTheAction ?? false,

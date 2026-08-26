@@ -48,10 +48,12 @@
   "JOB_ACTIONS": {
     "completed": [],
     "in_progress": [
+      "pre_label",
       "complete"
     ],
     "pending": [
-      "start"
+      "start",
+      "pre_label"
     ]
   }
 }

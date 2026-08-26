@@ -113,6 +113,7 @@ function answer(path: string): unknown {
       asset_count: 1,
       allowed_actions: jobActions("in_progress", { settled: false }),
       assignee: null,
+      pre_label_run: null,
     };
   }
   if (path === `/batches/${BATCH}`) return batch();

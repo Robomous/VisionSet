@@ -40,7 +40,9 @@ from visionset.cli.inference import ConnectionArgument, _resolve
 from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
     PreLabelExclusionReason,
+    PreLabelOutcome,
     PreLabelPlan,
+    open_jobs_of,
     pre_label,
     shapes_prose,
 )
@@ -274,35 +276,52 @@ def batch_pre_label(
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
-    """Ask a model to label every untouched asset in an open batch.
+    """Ask a model to label every untouched asset in every open job of a batch.
 
     This blocks because a terminal has no dispatcher to claim an enqueued run.
     """
     with opened_workspace(workspace) as service:
-        connections = InferenceConnectionService(service)
-        outcome = pre_label(
-            service,
-            batch_id=batch,
-            connection_id=_resolve(connections, connection),
-            minimum_confidence=minimum_confidence,
-            replace_model_labels=replace_model_labels,
-            geometries=selected_geometries(geometry),
-            on_plan=announce_plan,
-            on_progress=lambda done, total: note(f"Pre-labeling {done}/{total} asset(s)."),
-        )
-    if json_out:
-        document(asdict(outcome))
+        connection_id = _resolve(InferenceConnectionService(service), connection)
+        BatchService(service).require_pre_labelable(batch)
+        geometries = selected_geometries(geometry)
+        items: list[tuple[UUID, PreLabelOutcome]] = []
+        for job in open_jobs_of(service, batch):
+            note(f"Job {job.id}:")
+            outcome = pre_label(
+                service,
+                job_id=job.id,
+                connection_id=connection_id,
+                minimum_confidence=minimum_confidence,
+                replace_model_labels=replace_model_labels,
+                geometries=geometries,
+                on_plan=announce_plan if not items else None,
+                on_progress=lambda done, total: note(f"Pre-labeling {done}/{total} asset(s)."),
+            )
+            items.append((job.id, outcome))
+    if not items:
+        note("No open job to pre-label.")
+        typer.echo("0")
         return
-    replaced = (
-        f", replaced {outcome.annotations_replaced} earlier model label(s)"
-        if outcome.annotations_replaced
-        else ""
-    )
-    note(
-        f"Pre-labeled {outcome.assets_labeled} asset(s), "
-        f"wrote {outcome.annotations_written} annotation(s){replaced}."
-    )
-    typer.echo(str(outcome.annotations_written))
+    written = sum(outcome.annotations_written for _, outcome in items)
+    if json_out:
+        document(
+            {
+                "items": [{"job_id": str(job_id), **asdict(outcome)} for job_id, outcome in items],
+                "annotations_written": written,
+            }
+        )
+        return
+    for _, outcome in items:
+        replaced = (
+            f", replaced {outcome.annotations_replaced} earlier model label(s)"
+            if outcome.annotations_replaced
+            else ""
+        )
+        note(
+            f"Pre-labeled {outcome.assets_labeled} asset(s), "
+            f"wrote {outcome.annotations_written} annotation(s){replaced}."
+        )
+    typer.echo(str(written))
 
 
 @batch_app.command("complete")

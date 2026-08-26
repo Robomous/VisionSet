@@ -130,6 +130,54 @@ function batch(overrides: Record<string, unknown> = {}): Record<string, unknown>
   };
 }
 
+/**
+ * The jobs a non-draft batch has, and each one's counts.
+ *
+ * Every fixture past `draft` needs both, because the gallery shows a batch's
+ * frames **inside a job**: with no roster and no per-job progress there is no
+ * open panel, and therefore no grid, no segments and no timeline to assert
+ * against. The counts are the *job's* — the segment chips read them, not the
+ * batch's.
+ */
+function oneJob(
+  options: {
+    state?: JobState;
+    batchState?: BatchState;
+    assetCount?: number;
+    assignee?: string | null;
+    counts?: Record<string, number>;
+  } = {},
+): void {
+  const {
+    state = "in_progress",
+    batchState = "in_annotation",
+    assetCount = 3,
+    assignee = null,
+    counts = {},
+  } = options;
+  on("GET", /\/jobs$/, {
+    status: 200,
+    body: {
+      items: [
+        {
+          id: JOB,
+          batch_id: BATCH,
+          state,
+          asset_count: assetCount,
+          assignee,
+          pre_label_run: null,
+          allowed_actions: jobActions(state, { batchState }),
+        },
+      ],
+      total: 1,
+    },
+  });
+  on("GET", /\/jobs\/[^/]+\/progress$/, {
+    status: 200,
+    body: { ...NO_PROGRESS, total: assetCount, unannotated: assetCount, ...counts },
+  });
+}
+
 describe("the batch table", () => {
   it("shows one action per state, and the last one is promote", async () => {
     on("GET", /\/batches$/, {
@@ -348,6 +396,7 @@ describe("the gallery", () => {
   }
 
   it("asks for the first window with the page size", async () => {
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, { status: 200, body: assets(100, 0, 250) });
 
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
@@ -432,6 +481,7 @@ describe("the gallery", () => {
     // Null means *unknown*, not "never" — an asset ingested before the column
     // existed is legitimately unstamped, and inventing a date would be worse than
     // the omission.
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, {
       status: 200,
       body: { total: 1, items: [asset(0, { ingested_at: null, source_id: null })] },
@@ -472,24 +522,24 @@ describe("the gallery", () => {
     expect(screen.queryByTestId("approve-batch")).toBeNull();
   });
 
-  it("counts the segments off the batch rather than off the loaded page", async () => {
+  it("counts the segments off the open job rather than off the loaded page", async () => {
     on("GET", /\/batches\/[^/]+$/, {
       status: 200,
-      body: batch({
-        state: "in_annotation",
-        asset_count: 48,
-        progress: {
-          total: 48,
-          unannotated: 30,
-          pre_labeled: 2,
-          annotated: 8,
-          review_pending: 5,
-          accepted: 1,
-          skipped: 4,
-        },
-      }),
+      body: batch({ state: "in_annotation", asset_count: 48 }),
     });
-    // Five loaded out of forty-eight: the counts must describe the batch, not the
+    oneJob({
+      assetCount: 48,
+      counts: {
+        total: 48,
+        unannotated: 30,
+        pre_labeled: 2,
+        annotated: 8,
+        review_pending: 5,
+        accepted: 1,
+        skipped: 4,
+      },
+    });
+    // Five loaded out of forty-eight: the counts must describe the job, not the
     // window. A filter whose numbers described the page would be a filter that
     // lies about the collection it is filtering.
     on("GET", /\/assets$/, { status: 200, body: mixed() });
@@ -514,6 +564,7 @@ describe("the gallery", () => {
       body: batch({ state: "in_annotation", schema_version: 1,
         progress: { ...NO_PROGRESS, total: 3, unannotated: 2, pre_labeled: 1 } }),
     });
+    oneJob({ counts: { total: 3, unannotated: 2, pre_labeled: 1 } });
     on("GET", /\/assets$/, { status: 200, body: assets(3) });
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
     await screen.findByTestId("segment-pre_labeled");
@@ -542,6 +593,7 @@ describe("the gallery", () => {
       body: batch({ state: "in_annotation", schema_version: 1,
         progress: { ...NO_PROGRESS, total: 2, pre_labeled: 2 } }),
     });
+    oneJob({ assetCount: 2, counts: { total: 2, pre_labeled: 2 } });
     on("GET", /\/assets$/, { status: 200, body: assets(2) });
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
     const order = (await screen.findByTestId("sort-order")) as HTMLSelectElement;
@@ -557,6 +609,7 @@ describe("the gallery", () => {
   });
 
   it("shows a draft no sort control, because a draft has no scores", async () => {
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, { status: 200, body: assets(2) });
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
     await screen.findByTestId("tile-asset-0");
@@ -569,6 +622,7 @@ describe("the gallery", () => {
       body: batch({ state: "in_annotation", schema_version: 1,
         progress: { ...NO_PROGRESS, total: 2, annotated: 1, pre_labeled: 1 } }),
     });
+    oneJob({ assetCount: 2, counts: { total: 2, annotated: 1, pre_labeled: 1 } });
     on("GET", /\/assets$/, {
       status: 200,
       body: {
@@ -594,6 +648,7 @@ describe("the gallery", () => {
       body: batch({ state: "in_annotation", schema_version: 1,
         progress: { ...NO_PROGRESS, total: 3, unannotated: 3 } }),
     });
+    oneJob({ counts: { total: 3, unannotated: 3 } });
     handlers.push((request) => {
       const url = new URL(request.url);
       if (request.method === "GET" && url.pathname.endsWith("/assets")) {
@@ -710,13 +765,14 @@ describe("the gallery", () => {
       status: 200,
       body: batch({ state: "approved", progress: { ...NO_PROGRESS, total: 5, unannotated: 5 } }),
     });
+    oneJob({ state: "pending", batchState: "approved", assetCount: 5, counts: { total: 5, unannotated: 5 } });
     on("GET", /\/assets$/, { status: 200, body: mixed() });
 
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
     await waitFor(() => expect(screen.queryByTestId("segments")).not.toBeNull());
 
     // The other half of the claim above: hidden *before* approval, not removed.
-    expect(screen.queryByTestId("timeline")).not.toBeNull();
+    expect(await screen.findByTestId("timeline")).not.toBeNull();
     expect(screen.queryByTestId("select-asset-0")).not.toBeNull();
     expect(screen.queryByTestId("state-asset-0")).not.toBeNull();
   });
@@ -729,6 +785,7 @@ describe("the gallery", () => {
       status: 200,
       body: batch({ state: "in_annotation", progress: { ...NO_PROGRESS, total: 5, annotated: 5 } }),
     });
+    oneJob({ assetCount: 5, counts: { total: 5, annotated: 5 } });
     on("GET", /\/assets$/, { status: 200, body: mixed() });
 
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
@@ -761,6 +818,7 @@ describe("the gallery", () => {
   });
 
   it("keeps the empty state for a batch with nothing in it", async () => {
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, { status: 200, body: assets(0, 0, 0) });
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
     await waitFor(() => expect(screen.queryByText("This batch is empty")).not.toBeNull());
@@ -854,6 +912,7 @@ describe("the gallery", () => {
     // render here for the intended layout.
     expect(globalThis.ResizeObserver).toBeUndefined();
 
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, { status: 200, body: assets(6, 0, 6) });
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
     const grid = await screen.findByTestId("gallery-grid");
@@ -861,6 +920,7 @@ describe("the gallery", () => {
   });
 
   it("has no scrollable box of its own any more", async () => {
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, { status: 200, body: assets(6, 0, 6) });
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
 
@@ -981,6 +1041,7 @@ describe("finishing a batch", () => {
       asset_count: 48,
       allowed_actions: jobActions(state as JobState),
       assignee: null,
+      pre_label_run: null,
     };
   }
 
@@ -1192,6 +1253,9 @@ describe("the bulk bar", () => {
         progress: { ...NO_PROGRESS, total: states.length, unannotated: states.length },
       }),
     });
+    // Unused by a draft, which has no jobs and keeps its flat grid — and the one
+    // thing without which every other state renders no grid at all.
+    oneJob({ batchState, assetCount: states.length, counts: { total: states.length, unannotated: states.length } });
     on("GET", /\/assets$/, {
       status: 200,
       body: { total: states.length, items: states.map((one, at) => tile(at, one, batchState)) },
@@ -1368,6 +1432,7 @@ describe("the bulk bar", () => {
         progress: { ...NO_PROGRESS, total: 2, pre_labeled: 2 },
       }),
     });
+    oneJob({ assetCount: 2, counts: { total: 2, pre_labeled: 2 } });
     let swept = false;
     handlers.push((request) => {
       const url = new URL(request.url);
@@ -1416,6 +1481,7 @@ describe("the bulk bar", () => {
         progress: { ...NO_PROGRESS, total: 2, pre_labeled: 2 },
       }),
     });
+    oneJob({ assetCount: 2, counts: { total: 2, pre_labeled: 2 } });
     let moved = false;
     handlers.push((request) => {
       const url = new URL(request.url);
@@ -1587,6 +1653,7 @@ describe("the bulk bar", () => {
         progress: { ...NO_PROGRESS, total: 2, review_pending: 1, annotated: 1 },
       }),
     });
+    oneJob({ assetCount: 2, counts: { total: 2, review_pending: 1, annotated: 1 } });
     handlers.push((request) => {
       const url = new URL(request.url);
       if (request.method === "GET" && url.pathname.endsWith("/assets")) {
@@ -1926,13 +1993,14 @@ describe("the bulk bar", () => {
 });
 
 /**
- * The way into the annotator, which must not close behind you.
+ * The way into the annotator, and it is a job's panel that holds it.
  *
- * Drawing `Start annotating` only while some frame is `unannotated` leaves a batch
- * whose work is finished with no action in its header at all — while the badge
- * beside the empty space goes on saying `in progress`.
+ * A batch's frames are partitioned into jobs, so "start annotating" is a question
+ * about one job: which frames, and taking them (`start`) before anyone else does.
+ * The header's single door could answer neither — it guessed a frame and sent no
+ * mutation at all — so the door moved into the panel that knows.
  */
-describe("the gallery header's way into the annotator", () => {
+describe("the job panel's way into the annotator", () => {
   function frames(batchState: BatchState, ...states: string[]): Record<string, unknown> {
     return {
       total: states.length,
@@ -1958,12 +2026,9 @@ describe("the gallery header's way into the annotator", () => {
     };
   }
 
-  async function open(...states: string[]): Promise<ReturnType<typeof vi.fn>> {
-    return openIn("in_annotation", ...states);
-  }
-
-  async function openIn(
+  async function openWith(
     batchState: BatchState,
+    jobState: JobState,
     ...states: string[]
   ): Promise<ReturnType<typeof vi.fn>> {
     on("GET", /\/batches\/[^/]+$/, {
@@ -1976,64 +2041,126 @@ describe("the gallery header's way into the annotator", () => {
     });
     on("GET", /\/assets$/, { status: 200, body: frames(batchState, ...states) });
     on("GET", /\/annotations$/, { status: 200, body: [] });
+    on("GET", /\/jobs$/, {
+      status: 200,
+      body: {
+        items: [
+          {
+            id: JOB,
+            batch_id: BATCH,
+            state: jobState,
+            asset_count: states.length,
+            assignee: null,
+            pre_label_run: null,
+            allowed_actions: jobActions(jobState, { batchState }),
+          },
+        ],
+        total: 1,
+      },
+    });
+    on("GET", /\/jobs\/[^/]+\/progress$/, {
+      status: 200,
+      body: { ...NO_PROGRESS, total: states.length, unannotated: states.length },
+    });
 
-    const opened = vi.fn();
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={opened} />));
+    const openedJob = vi.fn();
+    render(
+      mount(
+        <GalleryScreen
+          projectId={PROJECT}
+          batchId={BATCH}
+          onOpenAsset={vi.fn()}
+          onOpenJob={openedJob}
+        />,
+      ),
+    );
+    // The accordion first: the frames are *inside* a panel now, so there are no
+    // tiles at all until the job roster and its counts have both landed.
+    await screen.findByTestId("job-panels");
     await screen.findByTestId("tile-asset-0");
-    return opened;
+    return openedJob;
   }
 
-  it("still offers a way in when every frame is settled", async () => {
-    await open("annotated", "skipped", "skipped");
-    // The defect: this was absent, and nothing else in the header offered one.
-    expect(screen.getByTestId("start-annotating").textContent).toContain("Open annotator");
+  it("offers no door in the header once the batch is open", async () => {
+    await openWith("in_annotation", "pending", "unannotated");
+    expect(screen.queryByTestId("start-annotating")).toBeNull();
+    // Pre-label is a job's action now, so every trigger on the page is inside the
+    // accordion. Asserting a batch-keyed testid is absent would pass on a page
+    // that still had a header mount, because the testid is keyed by job.
+    const panels = screen.getByTestId("job-panels");
+    const triggers = [...document.querySelectorAll('[data-testid^="pre-label-"]')];
+    expect(triggers.length).toBeGreaterThan(0);
+    expect(triggers.every((node) => panels.contains(node))).toBe(true);
   });
 
-  it("opens a skipped frame, which the annotator can un-skip from", async () => {
-    const opened = await open("skipped", "skipped");
-    await userEvent.click(screen.getByTestId("start-annotating"));
-    // Not filtered out. The annotator lists a job's assets with no progress
-    // filter and carries `Un-skip` on its toolbar, so a skipped frame is a
-    // legitimate thing to open — and with everything skipped it is the only thing.
-    expect(opened).toHaveBeenCalledWith(expect.objectContaining({ id: "asset-0" }));
+  it("starts a pending job, then opens it", async () => {
+    on("POST", /\/jobs\/[^/]+\/start$/, {
+      status: 200,
+      body: {
+        id: JOB,
+        batch_id: BATCH,
+        state: "in_progress",
+        asset_count: 1,
+        assignee: null,
+        pre_label_run: null,
+        allowed_actions: jobActions("in_progress"),
+      },
+    });
+    const openedJob = await openWith("in_annotation", "pending", "unannotated");
+    const door = screen.getByTestId(`start-job-${JOB}`);
+    expect(door.textContent).toContain("Annotate");
+    expect(door.querySelector("svg")).not.toBeNull();
+    expect(door.dataset.variant).toBe("secondary");
+    await userEvent.click(door);
+    await waitFor(() => expect(openedJob).toHaveBeenCalledWith(JOB));
+    expect(sent.filter((r) => r.method === "POST").map((r) => new URL(r.url).pathname)).toEqual([
+      `/jobs/${JOB}/start`,
+    ]);
   });
 
-  it("still starts on the first waiting frame when there is one", async () => {
-    const opened = await open("annotated", "unannotated", "unannotated");
-    expect(screen.getByTestId("start-annotating").textContent).toContain("Start annotating");
-    await userEvent.click(screen.getByTestId("start-annotating"));
-    expect(opened).toHaveBeenCalledWith(expect.objectContaining({ id: "asset-1" }));
+  it("continues an in-progress job without starting it again", async () => {
+    const openedJob = await openWith("in_annotation", "in_progress", "unannotated");
+    const door = screen.getByTestId(`start-job-${JOB}`);
+    expect(door.textContent).toContain("Continue");
+    await userEvent.click(door);
+    expect(openedJob).toHaveBeenCalledWith(JOB);
+    expect(sent.some((r) => r.method === "POST")).toBe(false);
   });
 
-  /**
-   * The third question the label had to start asking (F2).
-   *
-   * "Whether there is a frame to open" and "whether any is still waiting" were
-   * the only two, so a completed batch read `Open annotator` and opened a fully
-   * live editor whose every save the kernel refuses. The door is the same; the
-   * word on it is now honest about what is behind it.
-   */
-  it("says View when the frames cannot be written to", async () => {
-    await openIn("completed", "annotated", "skipped");
-    expect(screen.getByTestId("start-annotating").textContent).toContain("View frames");
-    expect(screen.getByTestId("start-annotating").textContent).not.toContain("annotator");
+  it("says View on a pending job the batch has not started yet", async () => {
+    // An `approved` batch's jobs are `pending` and declare nothing, so there is
+    // no taking them from here — and "Continue" over a job nobody has opened is
+    // the label promising a state that does not exist.
+    const openedJob = await openWith("approved", "pending", "unannotated");
+    const door = screen.getByTestId(`start-job-${JOB}`);
+    expect(door.textContent).toContain("View");
+    await userEvent.click(door);
+    expect(openedJob).toHaveBeenCalledWith(JOB);
+    expect(sent.some((r) => r.method === "POST")).toBe(false);
   });
 
-  it("says View on the tiles too, since a tile is the other door", async () => {
-    await openIn("completed", "annotated", "skipped");
+  it("says View on a finished job and on a finished batch", async () => {
+    await openWith("completed", "completed", "annotated", "skipped");
+    expect(screen.getByTestId(`start-job-${JOB}`).textContent).toContain("View");
     expect(screen.getByTestId("open-asset-0").textContent).toBe("View");
-    expect(screen.getByTestId("open-asset-0").getAttribute("aria-label")).toMatch(/^View frame/);
   });
 
-  it("still opens, because looking at finished work is the point of the door", async () => {
-    const opened = await openIn("completed", "annotated", "skipped");
-    await userEvent.click(screen.getByTestId("start-annotating"));
-    expect(opened).toHaveBeenCalledWith(expect.objectContaining({ id: "asset-0" }));
+  it("shows the refusal when the start is refused, and does not navigate", async () => {
+    on("POST", /\/jobs\/[^/]+\/start$/, {
+      status: 409,
+      body: { code: "BATCH_NOT_IN_ANNOTATION", message: "batch 'drive-01' is 'completed'" },
+    });
+    const openedJob = await openWith("in_annotation", "pending", "unannotated");
+    await userEvent.click(screen.getByTestId(`start-job-${JOB}`));
+
+    const said = await screen.findByText("This batch is not open for annotation any more.");
+    expect(said.textContent).not.toContain("BATCH_NOT_IN_ANNOTATION");
+    expect(openedJob).not.toHaveBeenCalled();
   });
 
-  it("says Open on a batch that can be written to", async () => {
-    await open("annotated", "skipped");
-    expect(screen.getByTestId("open-asset-0").textContent).toBe("Open");
+  it("offers Pre-label in the job's panel, gated on the job's declaration", async () => {
+    await openWith("in_annotation", "pending", "unannotated");
+    expect(screen.getByTestId(`pre-label-${JOB}`)).toBeTruthy();
   });
 
   /**
@@ -2044,14 +2171,14 @@ describe("the gallery header's way into the annotator", () => {
    * link to the dataset either, which is where a promotion's evidence lives.
    */
   it("offers Promote once the batch is completed", async () => {
-    await openIn("completed", "annotated", "skipped");
+    await openWith("completed", "completed", "annotated", "skipped");
     expect(screen.queryByTestId("promote-drive-01")).not.toBeNull();
   });
 
   it("offers no Promote before the batch is completed", async () => {
     // Capability-gated, not state-guessed: `PROMOTABLE_STATES` is the kernel's
     // and the wire declares it.
-    await open("annotated", "unannotated");
+    await openWith("in_annotation", "in_progress", "annotated", "unannotated");
     expect(screen.queryByTestId("promote-drive-01")).toBeNull();
   });
 });
@@ -2103,6 +2230,7 @@ describe("the gallery header's own next step", () => {
     });
     on("GET", /\/assets$/, { status: 200, body: frames(batchState, ...states) });
     on("GET", /\/annotations$/, { status: 200, body: [] });
+    oneJob({ batchState, assetCount: states.length, counts: { total: states.length, unannotated: states.length } });
 
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={vi.fn()} />));
     await screen.findByTestId("tile-asset-0");
@@ -2111,21 +2239,26 @@ describe("the gallery header's own next step", () => {
   it("offers Start annotating on an approved batch, not View frames", async () => {
     await openIn("approved", "unannotated", "unannotated");
     expect(screen.getByTestId("start-batch").textContent).toContain("Start annotating");
-    // The per-frame door is not offered beside it — a batch that has not
-    // started has nothing settled yet for that door to show.
     expect(screen.queryByTestId("start-annotating")).toBeNull();
   });
 
-  it("offers no Start on a completed batch, only View frames", async () => {
-    await openIn("completed", "annotated", "skipped");
-    expect(screen.queryByTestId("start-batch")).toBeNull();
-    expect(screen.getByTestId("start-annotating").textContent).toContain("View frames");
+  it("draws no icon on the approved batch's Start annotating", async () => {
+    // The header is a row of word-only controls; a glyph on one of them reads as
+    // a different kind of control rather than as emphasis.
+    await openIn("approved", "unannotated", "unannotated");
+    expect(screen.getByTestId("start-batch").querySelector("svg")).toBeNull();
   });
 
-  it("offers no Start on an in_annotation batch, only the annotator entry", async () => {
+  it("offers no Start on a completed batch, and no header door either", async () => {
+    await openIn("completed", "annotated", "skipped");
+    expect(screen.queryByTestId("start-batch")).toBeNull();
+    expect(screen.queryByTestId("start-annotating")).toBeNull();
+  });
+
+  it("offers no Start on an in_annotation batch, whose door is in the job's panel", async () => {
     await openIn("in_annotation", "annotated", "unannotated", "unannotated");
     expect(screen.queryByTestId("start-batch")).toBeNull();
-    expect(screen.getByTestId("start-annotating")).toBeTruthy();
+    expect(screen.queryByTestId("start-annotating")).toBeNull();
   });
 
   it("performs the batch's own start rather than navigating into the annotator", async () => {
@@ -2218,7 +2351,7 @@ describe("the gallery header's own next step", () => {
   });
 });
 
-describe("the jobs strip", () => {
+describe("the jobs accordion", () => {
   const OTHER_JOB = "88888888-8888-4888-8888-888888888888";
 
   function jobRow(assignee: string | null, id: string = JOB) {
@@ -2229,16 +2362,32 @@ describe("the jobs strip", () => {
       asset_count: 3,
       allowed_actions: jobActions("in_progress"),
       assignee,
+      pre_label_run: null,
     };
   }
 
   function renderGallery(): void {
     on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch({ state: "in_annotation" }) });
     on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+    // Registered last, so a test that wants its own answer for a job's counts
+    // still wins: handlers are consulted in registration order.
+    on("GET", /\/jobs\/[^/]+\/progress$/, {
+      status: 200,
+      body: { ...NO_PROGRESS, total: 3, unannotated: 3 },
+    });
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
   }
 
-  it("shows each job's assignee, and an Assign control when there is none", async () => {
+  /**
+   * The assignee editor is in the **open panel**, not on every row: a collapsed
+   * header is an overview and names who has the job, and the control that changes
+   * that is one of the things opening a panel is for.
+   */
+  async function openPanel(): Promise<ReturnType<typeof within>> {
+    return within(await screen.findByTestId(`job-panel-${JOB}`));
+  }
+
+  it("names each job's assignee on its own header, open or not", async () => {
     handlers.push((request) => {
       const url = new URL(request.url);
       if (url.pathname === `/batches/${BATCH}/jobs`)
@@ -2252,9 +2401,16 @@ describe("the jobs strip", () => {
       return undefined;
     });
     renderGallery();
-    const strip = within(await screen.findByTestId("jobs-strip"));
-    expect(strip.getByText("Dana Reyes")).toBeTruthy();
-    expect(strip.getByRole("button", { name: "Assign" })).toBeTruthy();
+
+    // The overview half of the claim: who has a job is legible without opening
+    // it, and an unassigned one says so rather than saying nothing.
+    expect((await screen.findByTestId(`job-row-${JOB}`)).textContent).toContain("Dana Reyes");
+    expect(screen.getByTestId(`job-row-${OTHER_JOB}`).textContent).toContain("—");
+
+    // ...and the editor is in whichever panel is open, once.
+    const panel = await openPanel();
+    expect(panel.getByRole("button", { name: "Dana Reyes" })).toBeTruthy();
+    expect(screen.queryAllByLabelText(/Assignee for job/)).toHaveLength(0);
   });
 
   it("says a missing batch in words when the jobs cannot be read", async () => {
@@ -2290,10 +2446,10 @@ describe("the jobs strip", () => {
       return undefined;
     });
     renderGallery();
-    const strip = within(await screen.findByTestId("jobs-strip"));
-    await userEvent.click(strip.getByRole("button", { name: /assign/i }));
+    const panel = await openPanel();
+    await userEvent.click(panel.getByRole("button", { name: /assign/i }));
     await userEvent.keyboard("Dana Reyes{Enter}");
-    const said = await strip.findByRole("alert");
+    const said = await panel.findByRole("alert");
     expect(said.textContent).toContain("That job is no longer on record.");
     expect(said.textContent).not.toContain(JOB);
     expect(said.textContent).not.toContain("JOB_NOT_FOUND");
@@ -2315,13 +2471,13 @@ describe("the jobs strip", () => {
       return undefined;
     });
     renderGallery();
-    const strip = within(await screen.findByTestId("jobs-strip"));
-    await userEvent.click(strip.getByRole("button", { name: /assign/i }));
+    const panel = await openPanel();
+    await userEvent.click(panel.getByRole("button", { name: /assign/i }));
     await userEvent.keyboard("Dana Reyes{Enter}");
     const put = sent.find((request) => request.method === "PUT");
     expect(put).toBeTruthy();
     expect(JSON.parse(bodies.get(put!) ?? "")).toEqual({ assignee: "Dana Reyes" });
-    expect(await strip.findByText("Dana Reyes")).toBeTruthy();
+    expect(await panel.findByText("Dana Reyes")).toBeTruthy();
   });
 
   it("commits the typed name on blur, not only on Enter", async () => {
@@ -2334,9 +2490,9 @@ describe("the jobs strip", () => {
       return undefined;
     });
     renderGallery();
-    const strip = within(await screen.findByTestId("jobs-strip"));
-    await userEvent.click(strip.getByRole("button", { name: /assign/i }));
-    await userEvent.type(strip.getByLabelText(/Assignee for job/), "Dana Reyes");
+    const panel = await openPanel();
+    await userEvent.click(panel.getByRole("button", { name: /assign/i }));
+    await userEvent.type(panel.getByLabelText(/Assignee for job/), "Dana Reyes");
     await userEvent.tab();
     const put = sent.find((request) => request.method === "PUT");
     expect(put).toBeTruthy();
@@ -2351,11 +2507,11 @@ describe("the jobs strip", () => {
       return undefined;
     });
     renderGallery();
-    const strip = within(await screen.findByTestId("jobs-strip"));
-    await userEvent.click(strip.getByRole("button", { name: /assign/i }));
-    await userEvent.type(strip.getByLabelText(/Assignee for job/), "Dana Reyes");
+    const panel = await openPanel();
+    await userEvent.click(panel.getByRole("button", { name: /assign/i }));
+    await userEvent.type(panel.getByLabelText(/Assignee for job/), "Dana Reyes");
     await userEvent.keyboard("{Escape}");
-    expect(await strip.findByRole("button", { name: "Assign" })).toBeTruthy();
+    expect(await panel.findByRole("button", { name: "Assign" })).toBeTruthy();
     expect(sent.some((request) => request.method === "PUT")).toBe(false);
   });
 
@@ -2367,10 +2523,10 @@ describe("the jobs strip", () => {
       return undefined;
     });
     renderGallery();
-    const strip = within(await screen.findByTestId("jobs-strip"));
-    await userEvent.click(strip.getByRole("button", { name: /assign/i }));
+    const panel = await openPanel();
+    await userEvent.click(panel.getByRole("button", { name: /assign/i }));
     await userEvent.tab();
-    expect(await strip.findByRole("button", { name: "Assign" })).toBeTruthy();
+    expect(await panel.findByRole("button", { name: "Assign" })).toBeTruthy();
     expect(sent.some((request) => request.method === "PUT")).toBe(false);
   });
 
@@ -2383,6 +2539,6 @@ describe("the jobs strip", () => {
     });
     renderGallery();
     expect(await screen.findByText("jobs are unreachable")).toBeTruthy();
-    expect(screen.queryByTestId("jobs-strip")).toBeNull();
+    expect(screen.queryByTestId("job-panels")).toBeNull();
   });
 });

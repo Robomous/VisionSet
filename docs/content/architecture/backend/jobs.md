@@ -2,7 +2,7 @@
 
 [`src/visionset/jobs/`](../../../../src/visionset/jobs/) holds the handlers for work
 that outlives the request that asked for it: an ingest run, an export, a weights
-download, an integrity check, a batch pre-label run.
+download, an integrity check, a pre-label run over one annotation job.
 
 ## Launch and poll
 

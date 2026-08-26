@@ -58,8 +58,8 @@ const BATCH_ACTIONS: Record<Wire["BatchState"], readonly Wire["BatchAction"][]> 
 };
 
 const JOB_ACTIONS: Record<Wire["AnnotationJobState"], readonly Wire["JobAction"][]> = {
-  pending: ["start"],
-  in_progress: ["complete"],
+  pending: ["start", "pre_label"],
+  in_progress: ["pre_label", "complete"],
   completed: [],
 };
 

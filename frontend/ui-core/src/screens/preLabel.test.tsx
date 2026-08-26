@@ -1,12 +1,16 @@
 /**
- * The gallery's pre-labeling control: gated on the batch's own declaration,
+ * The pre-labeling control on a job: gated on the job's own declaration,
  * narrowed to connections that answer words, and honest about a refusal.
  *
  * Reuses the fetch-stub harness `gallery.test.tsx` established — `on`, `mount`,
  * a `handlers` array consulted in registration order — rather than inventing a
- * second shape for the same job. `batchActions` comes from the shared
- * `wire.fixtures.js` transcription so a `renderGallery` batch is one the server
+ * second shape for the same work. `batchActions` and `jobActions` come from the
+ * shared `wire.fixtures.js` transcription so the stubs here are ones the server
  * could really have sent.
+ *
+ * The button is mounted over a batch and a job both read off the wire, rather
+ * than through the gallery that hosts it: what this file is about is the dialog,
+ * and the job panel it hangs from is `gallery.test.tsx`'s subject.
  */
 
 import { QueryClient } from "@tanstack/react-query";
@@ -17,8 +21,10 @@ import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
-import { GalleryScreen } from "./GalleryScreen";
-import { batchActions } from "../testing/wire.fixtures.js";
+import { PreLabelButton } from "./PreLabelDialog";
+import { useBatch, useBatchJobs } from "./queries";
+import { batchActions, jobActions } from "../testing/wire.fixtures.js";
+import type { Segment } from "./batchState";
 import type { Connection } from "../data/inferenceQueries";
 import type { components } from "../generated/api";
 
@@ -27,6 +33,7 @@ type BatchState = components["schemas"]["BatchState"];
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
+const JOB = "77777777-7777-4777-8777-777777777777";
 
 type Answer = { status: number; body?: unknown };
 let handlers: ((request: Request) => Answer | undefined)[] = [];
@@ -104,6 +111,20 @@ function batch(overrides: Record<string, unknown> = {}): Record<string, unknown>
   };
 }
 
+/** A full `JobOut` — the resource the button is gated on and the dialog is about. */
+function job(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: JOB,
+    batch_id: BATCH,
+    state: "in_progress",
+    assignee: null,
+    asset_count: 48,
+    allowed_actions: jobActions("in_progress"),
+    pre_label_run: null,
+    ...overrides,
+  };
+}
+
 /** A full `ConnectionOut`, on `models.test.tsx`'s fixture — every field the check reads. */
 function connectionOf(overrides: Partial<Connection> = {}): Connection {
   return {
@@ -162,10 +183,11 @@ function backgroundJobOf(overrides: Record<string, unknown> = {}): Record<string
   };
 }
 
-/** A full `PreLabelRunOut` — every field `checkGetBatch` requires, `BatchOut.pre_label_run`. */
+/** A full `PreLabelRunOut` — every field `checkListBatchJobs` requires, `JobOut.pre_label_run`. */
 function preLabelRunOf(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     job_id: "88888888-8888-4888-8888-888888888888",
+    annotation_job_id: JOB,
     state: "cancelled",
     assets_processed: 12,
     assets_total: 48,
@@ -228,52 +250,88 @@ interface Extra {
   readonly plan?: Answer;
 }
 
-function renderGallery(batchOverrides: Record<string, unknown> = {}, extra: Extra = {}): void {
+/** What the gallery's job panel hands the button, read off the wire exactly as it is there. */
+function Host({
+  onSegment,
+}: {
+  readonly onSegment: (segment: Segment) => void;
+}): JSX.Element | null {
+  const host = useBatch(BATCH);
+  const jobs = useBatchJobs(BATCH);
+  const first = jobs.data?.items[0];
+  if (host.data === undefined || first === undefined) return null;
+  return <PreLabelButton batch={host.data} job={first} ordinal={1} onSegment={onSegment} />;
+}
+
+/** Answers with the spy the "Edit these frames" press reports its segment to. */
+function renderDialog(
+  jobOverrides: Record<string, unknown> = {},
+  extra: Extra = {},
+): (segment: Segment) => void {
   const counts = extra.counts;
-  on("GET", /\/batches\/[^/]+$/, {
+  on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
+  on("GET", /\/jobs$/, { status: 200, body: { items: [job(jobOverrides)], total: 1 } });
+  on("GET", /\/jobs\/[^/]+\/progress$/, {
     status: 200,
-    body: batch({
-      ...batchOverrides,
-      ...(counts === undefined
-        ? {}
+    body:
+      counts === undefined
+        ? { ...NO_PROGRESS, total: 48, unannotated: 48 }
         : {
-            progress: {
-              ...NO_PROGRESS,
-              total: counts.total,
-              unannotated: counts.unannotated,
-              pre_labeled: counts.pre_labeled ?? 0,
-            },
-          }),
-    }),
+            ...NO_PROGRESS,
+            total: counts.total,
+            unannotated: counts.unannotated,
+            pre_labeled: counts.pre_labeled ?? 0,
+          },
   });
-  on("GET", /\/assets$/, { status: 200, body: { total: 0, items: [] } });
   const connections = extra.connections ?? [DETECTOR];
   on("GET", /\/inference\/connections$/, {
     status: 200,
     body: { items: connections, total: connections.length },
   });
-  on("POST", /\/pre-label$/, extra.preLabel ?? { status: 202, body: backgroundJobOf() });
+  on(
+    "POST",
+    /\/jobs\/[^/]+\/pre-label$/,
+    extra.preLabel ?? { status: 202, body: backgroundJobOf() },
+  );
   // Every test that opens this dialog reads the plan, so it is stubbed here
   // rather than per test — and overridable, because the refusal is one of the
   // things the dialog has to render.
   on("GET", /\/pre-label$/, extra.plan ?? { status: 200, body: planOf() });
 
-  render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+  const onSegment = vi.fn();
+  render(mount(<Host onSegment={onSegment} />));
+  return onSegment;
 }
 
-it("offers pre-labeling only when the batch declares it", async () => {
-  renderGallery({ allowed_actions: ["pre_label", "complete"] });
-  expect(await screen.findByRole("button", { name: /pre-label/i })).not.toBeNull();
+/** The jobs read, which is what an assertion about an absence has to wait on. */
+async function jobsRead(): Promise<void> {
+  await waitFor(() =>
+    expect(sent.some((r) => new URL(r.url).pathname === `/batches/${BATCH}/jobs`)).toBe(true),
+  );
+}
+
+it("offers pre-labeling only when the job declares it", async () => {
+  renderDialog();
+  expect(await screen.findByTestId(`pre-label-${JOB}`)).not.toBeNull();
 });
 
-it("does not offer it when the batch does not declare it", async () => {
-  renderGallery({ allowed_actions: ["complete"] });
-  await screen.findByRole("heading", { level: 1 });
+it("does not offer it when the job does not declare it", async () => {
+  renderDialog({ allowed_actions: [] });
+  await jobsRead();
   expect(screen.queryByRole("button", { name: /pre-label/i })).toBeNull();
 });
 
+it("names the job the run is for, not the batch alone", async () => {
+  renderDialog();
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect((await screen.findByTestId("pre-label-dialog")).textContent).toContain(
+    "Pre-label drive-01 · job 1",
+  );
+});
+
 it("offers only connections that answer words", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR, SEGMENTER] });
+  renderDialog({}, { connections: [DETECTOR, SEGMENTER] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByLabelText(/model/i));
 
@@ -285,7 +343,7 @@ it("offers only connections that answer words", async () => {
 });
 
 it("names what the confidence number measures", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] });
+  renderDialog();
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   // Not `/prompt affinity/i` alone: the gallery's own sort control names the same
@@ -296,14 +354,26 @@ it("names what the confidence number measures", async () => {
 });
 
 it("says how many assets the run will touch", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { counts: { unannotated: 412, total: 500 } });
+  renderDialog({}, { counts: { unannotated: 412, total: 500 } });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   expect(await screen.findByText(/412 of 500/)).not.toBeNull();
 });
 
+it("says how many of the job's assets the run will touch, off the job's own counts", async () => {
+  // A run reaches this job's frames and no others, so the batch's 48 untouched
+  // would be an offer to label frames somebody else holds.
+  renderDialog({}, { counts: { unannotated: 3, total: 3 } });
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+
+  expect((await screen.findByTestId("prelabel-count")).textContent).toBe(
+    "Labels up to 3 of 3 untouched assets.",
+  );
+  expect(screen.queryByText(/48/)).toBeNull();
+});
+
 it("names the classes the run will ask for", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] });
+  renderDialog();
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   expect((await screen.findByTestId("prelabel-asked-classes")).textContent).toBe(
@@ -312,7 +382,7 @@ it("names the classes the run will ask for", async () => {
 });
 
 it("names every class it will not ask for, with the reason beside it", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] });
+  renderDialog();
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   // `crossing` carries both reasons: told only that no shape of it is producible,
@@ -328,8 +398,8 @@ it("still names a class whose reason this build has never compiled against", asy
   // The vocabulary is open, so a newer server may word a reason this build has
   // no prose for. Which class is missing from the prompt must survive that —
   // dropping the whole line would be the failure the plan exists to prevent.
-  renderGallery(
-    { allowed_actions: ["pre_label"] },
+  renderDialog(
+    {},
     {
       plan: {
         status: 200,
@@ -350,7 +420,7 @@ it("still names a class whose reason this build has never compiled against", asy
 });
 
 it("reads the plan for the chosen connection and says what the run writes", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR] });
+  renderDialog({}, { connections: [DETECTOR] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   expect((await screen.findByTestId("prelabel-produces")).textContent).toBe("Writes boxes.");
@@ -364,8 +434,8 @@ it("reads the plan for the chosen connection and says what the run writes", asyn
 });
 
 it("words a polygon-producing model's plan", async () => {
-  renderGallery(
-    { allowed_actions: ["pre_label"] },
+  renderDialog(
+    {},
     { connections: [DETECTOR], plan: { status: 200, body: planOf({ produces: ["bbox", "polygon"] }) } },
   );
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
@@ -376,8 +446,8 @@ it("words a polygon-producing model's plan", async () => {
 });
 
 it("says nothing about exclusions when the whole schema is askable", async () => {
-  renderGallery(
-    { allowed_actions: ["pre_label"] },
+  renderDialog(
+    {},
     { plan: { status: 200, body: planOf({ excluded_classes: [] }) } },
   );
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
@@ -402,7 +472,7 @@ it("names the classes again beside a finished run's result", async () => {
       },
     }),
   });
-  renderGallery({ allowed_actions: ["pre_label"] });
+  renderDialog();
 
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByRole("button", { name: /start/i }));
@@ -416,8 +486,8 @@ it("names the classes again beside a finished run's result", async () => {
 });
 
 it("shows the plan's own refusal and will not offer a run behind it", async () => {
-  renderGallery(
-    { allowed_actions: ["pre_label"] },
+  renderDialog(
+    {},
     { plan: refuses(409, "SCHEMA_HAS_NO_DETECTABLE_CLASS") },
   );
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
@@ -432,7 +502,7 @@ it("shows the plan's own refusal and will not offer a run behind it", async () =
 });
 
 it("shows the refusal rather than swallowing it", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { preLabel: refuses(409, "SCHEMA_HAS_NO_DETECTABLE_CLASS") });
+  renderDialog({}, { preLabel: refuses(409, "SCHEMA_HAS_NO_DETECTABLE_CLASS") });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByRole("button", { name: /start/i }));
 
@@ -440,7 +510,7 @@ it("shows the refusal rather than swallowing it", async () => {
 });
 
 it("shows the places-not-words refusal too, in the kernel's own sentence", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { preLabel: refuses(422, "UNSUPPORTED_PROMPT") });
+  renderDialog({}, { preLabel: refuses(422, "UNSUPPORTED_PROMPT") });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByRole("button", { name: /start/i }));
 
@@ -448,7 +518,7 @@ it("shows the places-not-words refusal too, in the kernel's own sentence", async
 });
 
 it("says nothing answers text prompts yet, when nothing does", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [] });
+  renderDialog({}, { connections: [] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   expect(await screen.findByTestId("prelabel-no-connections")).not.toBeNull();
@@ -458,7 +528,7 @@ it("says nothing answers text prompts yet, when nothing does", async () => {
 });
 
 it("disables the start press for a prompt affinity outside 0 to 1", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] });
+  renderDialog();
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   const confidence = await screen.findByTestId("prelabel-confidence");
@@ -474,7 +544,7 @@ it("disables the start press when the confidence field is cleared", async () => 
   // must be refused on its own rather than falling through as a valid `0` —
   // which would silently post a floor that writes every region the model
   // returns.
-  renderGallery({ allowed_actions: ["pre_label"] });
+  renderDialog();
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   const confidence = await screen.findByTestId("prelabel-confidence");
@@ -485,7 +555,7 @@ it("disables the start press when the confidence field is cleared", async () => 
 });
 
 it("sends the chosen model and the typed confidence, not a default nobody set", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] });
+  renderDialog();
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   const confidence = screen.getByTestId("prelabel-confidence");
@@ -507,15 +577,15 @@ it("sends the chosen model and the typed confidence, not a default nobody set", 
 });
 
 it("offers no replace control while nothing is pre-labeled", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] });
+  renderDialog();
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await screen.findByTestId("prelabel-submit");
   expect(screen.queryByTestId("prelabel-replace")).toBeNull();
 });
 
 it("offers replace, off by default, once frames are pre-labeled \u2014 and it unblocks Start", async () => {
-  renderGallery(
-    { allowed_actions: ["pre_label"] },
+  renderDialog(
+    {},
     { counts: { unannotated: 0, pre_labeled: 48, total: 48 } },
   );
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
@@ -536,8 +606,8 @@ it("offers replace, off by default, once frames are pre-labeled \u2014 and it un
 
 it("posts replace_model_labels only when ticked", async () => {
   on("POST", /\/pre-label$/, { status: 202, body: backgroundJobOf({ state: "queued" }) });
-  renderGallery(
-    { allowed_actions: ["pre_label"] },
+  renderDialog(
+    {},
     { counts: { unannotated: 10, pre_labeled: 38, total: 48 } },
   );
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
@@ -566,7 +636,7 @@ it("says how many earlier model labels a finished run replaced", async () => {
       },
     }),
   });
-  renderGallery({ allowed_actions: ["pre_label"] });
+  renderDialog();
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByRole("button", { name: /start/i }));
 
@@ -590,7 +660,7 @@ it("says how many earlier model labels a finished run replaced", async () => {
 it("invalidates the batch a second time only once the polled job settles, and only once", async () => {
   vi.useFakeTimers();
   try {
-    renderGallery({ allowed_actions: ["pre_label"] });
+    renderDialog();
 
     // Three different bodies for the same route, in call order — the shape
     // no existing fixture in this suite provides, and the one thing that
@@ -670,7 +740,7 @@ it("invalidates the batch a second time only once the polled job settles, and on
  */
 
 it("disables the start press when nothing untouched remains", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { counts: { unannotated: 0, total: 48 } });
+  renderDialog({}, { counts: { unannotated: 0, total: 48 } });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   const submit = (await screen.findByTestId("prelabel-submit")) as HTMLButtonElement;
@@ -678,7 +748,7 @@ it("disables the start press when nothing untouched remains", async () => {
 });
 
 it("says there is nothing left to run, rather than a count of zero", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { counts: { unannotated: 0, total: 48 } });
+  renderDialog({}, { counts: { unannotated: 0, total: 48 } });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   expect(await screen.findByText(/nothing left for a run to touch/i)).not.toBeNull();
@@ -701,7 +771,7 @@ it("offers Edit these frames once a run succeeds, and sets the segment filter", 
       },
     }),
   });
-  renderGallery({ allowed_actions: ["pre_label"] });
+  const onSegment = renderDialog();
 
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByRole("button", { name: /start/i }));
@@ -711,7 +781,7 @@ it("offers Edit these frames once a run succeeds, and sets the segment filter", 
   expect(screen.queryByRole("button", { name: /^start$/i })).toBeNull();
   await userEvent.click(edit);
 
-  expect(screen.getByTestId("segment-pre_labeled").getAttribute("aria-pressed")).toBe("true");
+  expect(onSegment).toHaveBeenCalledWith("pre_labeled");
 });
 
 it("separates unmappable and out-of-bounds model regions in a completed job", async () => {
@@ -729,7 +799,7 @@ it("separates unmappable and out-of-bounds model regions in a completed job", as
       },
     }),
   });
-  renderGallery({ allowed_actions: ["pre_label"] });
+  renderDialog();
 
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByRole("button", { name: /start/i }));
@@ -754,7 +824,7 @@ it("says nothing about discarded regions when a run discarded none", async () =>
       },
     }),
   });
-  renderGallery({ allowed_actions: ["pre_label"] });
+  renderDialog();
 
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByRole("button", { name: /start/i }));
@@ -774,9 +844,8 @@ it("says nothing about discarded regions when a run discarded none", async () =>
  */
 
 it("on reopen after a cancelled run, states the prior outcome and offers Continue", async () => {
-  renderGallery(
+  renderDialog(
     {
-      allowed_actions: ["pre_label"],
       pre_label_run: preLabelRunOf({
         state: "cancelled",
         assets_processed: 12,
@@ -802,9 +871,8 @@ it("on reopen after a cancelled run, states the prior outcome and offers Continu
 });
 
 it("on reopen after a failed run, shows the handler's error and offers Try again", async () => {
-  renderGallery(
+  renderDialog(
     {
-      allowed_actions: ["pre_label"],
       pre_label_run: preLabelRunOf({
         state: "failed",
         assets_processed: 5,
@@ -831,9 +899,8 @@ it("on reopen after a failed run, shows the handler's error and offers Try again
 });
 
 it("on reopen after a complete run, disables Start with its reason adjacent and offers Review", async () => {
-  renderGallery(
+  const onSegment = renderDialog(
     {
-      allowed_actions: ["pre_label"],
       pre_label_run: preLabelRunOf({
         state: "succeeded",
         assets_processed: 48,
@@ -863,13 +930,12 @@ it("on reopen after a complete run, disables Start with its reason adjacent and 
 
   const edit = await screen.findByRole("button", { name: /edit these frames/i });
   await userEvent.click(edit);
-  expect(screen.getByTestId("segment-pre_labeled").getAttribute("aria-pressed")).toBe("true");
+  expect(onSegment).toHaveBeenCalledWith("pre_labeled");
 });
 
 it("offers the replacing re-run when a completed run left nothing untouched", async () => {
-  renderGallery(
+  renderDialog(
     {
-      allowed_actions: ["pre_label"],
       pre_label_run: preLabelRunOf({
         state: "succeeded",
         assets_processed: 48,
@@ -896,9 +962,8 @@ it("offers the replacing re-run when a completed run left nothing untouched", as
 });
 
 it("forgets a ticked replace once the dialog closes", async () => {
-  renderGallery(
+  renderDialog(
     {
-      allowed_actions: ["pre_label"],
       pre_label_run: preLabelRunOf({
         state: "succeeded",
         assets_processed: 48,
@@ -917,7 +982,7 @@ it("forgets a ticked replace once the dialog closes", async () => {
   await waitFor(() => expect(again.disabled).toBe(false));
 
   // This dialog is never unmounted — `PreLabelButton` keeps it mounted and
-  // passes `batch={null}` instead — so nothing but `close()` clears the tick,
+  // passes `job={null}` instead — so nothing but `close()` clears the tick,
   // and a reopened dialog arriving pre-armed would replace on the next press.
   await userEvent.click(screen.getAllByRole("button", { name: /^close$/i })[0]);
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
@@ -928,9 +993,8 @@ it("forgets a ticked replace once the dialog closes", async () => {
 });
 
 it("will not let the tick change while a run is under way", async () => {
-  renderGallery(
+  renderDialog(
     {
-      allowed_actions: ["pre_label"],
       pre_label_run: preLabelRunOf({
         state: "running",
         assets_processed: 5,
@@ -951,9 +1015,8 @@ it("will not let the tick change while a run is under way", async () => {
 });
 
 it("stops promising Continue cannot duplicate a label once replace is ticked", async () => {
-  renderGallery(
+  renderDialog(
     {
-      allowed_actions: ["pre_label"],
       pre_label_run: preLabelRunOf({ state: "cancelled", assets_processed: 12, assets_total: 48 }),
     },
     { counts: { unannotated: 36, pre_labeled: 9, total: 48 } },
@@ -1010,7 +1073,7 @@ function planFollowsSelection(): void {
 }
 
 it("offers no shape control when the model writes one shape, and sends no selection", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [BOX_DETECTOR] });
+  renderDialog({}, { connections: [BOX_DETECTOR] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await screen.findByTestId("prelabel-asked-classes");
 
@@ -1030,7 +1093,7 @@ it("offers no shape control when the model writes one shape, and sends no select
 });
 
 it("offers one ticked checkbox per shape when the model writes several, and reads the plan for them", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR] });
+  renderDialog({}, { connections: [DETECTOR] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
 
   const boxes = (await screen.findByTestId("prelabel-shape-bbox")) as HTMLInputElement;
@@ -1046,7 +1109,7 @@ it("offers one ticked checkbox per shape when the model writes several, and read
 });
 
 it("re-reads the plan for the ticked shapes and the prose follows the selection", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR] });
+  renderDialog({}, { connections: [DETECTOR] });
   planFollowsSelection();
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   expect((await screen.findByTestId("prelabel-produces")).textContent).toBe(
@@ -1067,7 +1130,7 @@ it("re-reads the plan for the ticked shapes and the prose follows the selection"
 });
 
 it("blocks the launch with an explanation when no shape is ticked, and lifts it on a tick", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR] });
+  renderDialog({}, { connections: [DETECTOR] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   const start = (await screen.findByTestId("prelabel-submit")) as HTMLButtonElement;
   await waitFor(() => expect(start.disabled).toBe(false));
@@ -1086,7 +1149,7 @@ it("blocks the launch with an explanation when no shape is ticked, and lifts it 
 });
 
 it("posts exactly the ticked shapes", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR] });
+  renderDialog({}, { connections: [DETECTOR] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByTestId("prelabel-shape-bbox"));
   await userEvent.click(await screen.findByTestId("prelabel-submit"));
@@ -1098,7 +1161,7 @@ it("posts exactly the ticked shapes", async () => {
 });
 
 it("says in the selector what each connection writes, before one is chosen", async () => {
-  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR, BOX_DETECTOR] });
+  renderDialog({}, { connections: [DETECTOR, BOX_DETECTOR] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByLabelText(/model/i));
 
@@ -1117,7 +1180,7 @@ it("forgets an unticked shape when the model changes", async () => {
     name: "other-detector",
     produces: ["bbox", "polygon"],
   });
-  renderGallery({ allowed_actions: ["pre_label"] }, { connections: [DETECTOR, OTHER] });
+  renderDialog({}, { connections: [DETECTOR, OTHER] });
   await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
   await userEvent.click(await screen.findByTestId("prelabel-shape-polygon"));
   expect((screen.getByTestId("prelabel-shape-polygon") as HTMLInputElement).checked).toBe(false);

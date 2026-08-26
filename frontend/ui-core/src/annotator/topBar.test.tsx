@@ -120,6 +120,7 @@ function answer(path: string): unknown {
         settled: jobSettled,
       }),
       assignee: null,
+      pre_label_run: null,
     };
   }
   if (path === `/batches/${BATCH}`) {

@@ -473,6 +473,41 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("state-cycle-batch")).toHaveText("in progress");
   });
 
+  await test.step("the job panel is the way in: start the one job, and it opens", async () => {
+    // Only the panel's door is driven here: the cycle server has no `text_detect`
+    // model, so the pre-label half of the panel is exercised against the server suite.
+    await openProject(page, PROJECT, "batches");
+    await page.getByTestId("open-batch-cycle-batch").click();
+    await expect(page.getByTestId("gallery")).toBeVisible();
+    // The header offers no door of its own any more; the job panel does.
+    await expect(page.getByTestId("start-annotating")).toHaveCount(0);
+    const panels = page.getByTestId("job-panels");
+    await expect(panels).toBeVisible();
+    // One job, with every frame still to do, so the accordion opens on it — and
+    // the collapsed row is the overview even so.
+    const header = panels.getByTestId(/^job-header-/);
+    await expect(header).toHaveAttribute("aria-expanded", "true");
+    await expect(header).toContainText("Job 1");
+    await expect(header).toContainText("pending");
+    const door = panels.getByTestId(/^job-panel-/).getByTestId(/^start-job-/);
+    await expect(door).toHaveText("Annotate");
+    const jobId = (await door.getAttribute("data-testid"))!.replace("start-job-", "");
+    await door.click();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    // The door names no frame, so the job opens on its first — and the annotator
+    // then writes the frame it is showing into the address, as it does after any
+    // walk, which is why `?asset=` may already be there.
+    await expect(page.getByTestId("asset-position")).toContainText("1/3");
+    await expect(page).toHaveURL(new RegExp(`/jobs/${jobId}(\\?asset=[0-9a-f-]+)?$`));
+    await page.getByTestId("back").click();
+    await expect(page.getByTestId("gallery")).toBeVisible();
+    // Started: the header says so, and the door now continues rather than starts.
+    await expect(panels.getByTestId(/^job-header-/)).toContainText("in progress");
+    await expect(panels.getByTestId(/^job-panel-/).getByTestId(/^start-job-/)).toHaveText(
+      "Continue",
+    );
+  });
+
   await test.step("reach the annotator by clicking, on the asset that was clicked", async () => {
     // **The annotator is reached by clicking, and that is the reason this step
     // exists.** `page.goto('./jobs/' + id)` with the id read out of the API makes
@@ -491,7 +526,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // visible rather than hover-gated, which a touch device would never reach.
     // What matters is that the annotator is reachable **by clicking**, with no id
     // read out of the API and no URL typed.
-    const tiles = page.getByTestId(/^tile-/);
+    // Inside the open panel: the frames belong to a job now, and three is the
+    // whole batch only because this batch was cut into one.
+    const tiles = page.getByTestId(/^job-panel-/).getByTestId(/^tile-/);
     await expect(tiles).toHaveCount(3);
     const third = tiles.nth(2);
     await expect(third).not.toHaveAttribute("data-pending", "true");

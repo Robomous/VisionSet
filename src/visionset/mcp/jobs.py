@@ -17,6 +17,10 @@ a job for, and a second tool to fetch them is a round trip for a field.
 terminates. It returns only ``unannotated`` assets in stored order, so calling it
 after each write walks the job exactly once with no bookkeeping on the agent's
 side.
+
+``pre_label_job`` asks a model to do the first pass instead: ``pre_label_batch``
+narrowed to one job, for the caller that already holds a job id rather than a
+batch's whole list of them.
 """
 
 from __future__ import annotations
@@ -26,11 +30,13 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from visionset import wire
+from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, PreLabelPlan, pre_label
 from visionset.kernel.domain import AssetProgress
 from visionset.kernel.services import JobService
 from visionset.mcp._autostart import autostarted
-from visionset.mcp._resolve import identifier
+from visionset.mcp._resolve import ConnectionRef, identifier, resolve_connection
 from visionset.mcp._workspace import opened_workspace
+from visionset.mcp.batches import Geometries, _pre_label_outcome, _selection
 
 JobRef = Annotated[str, Field(description="The annotation job, by id.")]
 """The job a tool acts on. Module-level for the ``inspect.signature`` reason."""
@@ -47,7 +53,12 @@ def _job_payload(
     job = service.get(job_id)
     batch = service.batch(job.id)
     payload = {
-        **wire.job(job, batch_id=batch.id, batch_state=batch.state),
+        **wire.job(
+            job,
+            batch_id=batch.id,
+            batch_state=batch.state,
+            pre_labeled=service.latest_pre_label_run(job.id),
+        ),
         "batch_state": batch.state.value,
         "schema_version": batch.schema_version,
         "progress": wire.progress_counts(service.job_progress(job.id)),
@@ -65,6 +76,8 @@ def get_job(job_id: JobRef) -> dict[str, Any]:
 
     `progress.unannotated` is how much is left; the job can be completed once
     it, `progress.pre_labeled` and `progress.review_pending` are all zero.
+    `pre_label_run` is this job's own most recent `pre_label_job` run, or null
+    if nothing has pre-labeled it yet.
 
     `job_id` comes from `approve_batch`, `get_batch` or `list_batch_assets`. It
     is not the `ingest_job_id` an `ingest` run returns — that names the run that
@@ -72,6 +85,127 @@ def get_job(job_id: JobRef) -> dict[str, Any]:
     """
     with opened_workspace() as workspace:
         return _job_payload(JobService(workspace), identifier(job_id, what="job_id"))
+
+
+def pre_label_job(
+    job_id: JobRef,
+    connection: ConnectionRef,
+    minimum_confidence: Annotated[
+        float,
+        Field(
+            ge=0.0,
+            le=1.0,
+            description=(
+                "The floor a prediction must clear to be written, in [0, 1]. Tuned for a "
+                "text-prompt model's prompt-affinity score — a point-prompt model's mask "
+                "quality is a different scale and does not share a threshold with this."
+            ),
+        ),
+    ] = DEFAULT_MINIMUM_CONFIDENCE,
+    replace_model_labels: Annotated[
+        bool,
+        Field(
+            description=(
+                "Also rewrite the model labels on frames still `pre_labeled` — labels a "
+                "model wrote and nobody has edited, confirmed or skipped — superseding them "
+                "with this run's answer. Frames anyone touched in this job are never "
+                "affected. This cannot be undone; read `get_job`'s `progress.pre_labeled` "
+                "first."
+            )
+        ),
+    ] = False,
+    geometries: Geometries = None,
+) -> dict[str, Any]:
+    """Ask a model to label every untouched asset in one job. This blocks until it is done.
+
+    `pre_label_batch`'s run, narrowed to the one job you already hold: a
+    `batch_id` starts this from `open_jobs_of`'s whole list, this starts it
+    from one entry in that list. **The batch's pinned schema is still the
+    prompt** — the model is asked for each class the schema declares that the
+    shapes this run writes can be written as, exactly as a batch-wide run
+    would ask, because the schema is pinned to the batch, not chosen per job.
+    **A job already `completed` is refused, not passed over** — unlike
+    `pre_label_batch`, which skips a finished job on its way to the next one,
+    naming one job here is a decision to run that job, and a finished one has
+    nothing left to write.
+
+    This call runs one forward pass per untouched asset, so the wait is
+    roughly that many times one image's inference time.
+
+    **Interrupting is safe.** A plain run only ever writes to an asset nothing
+    has touched, and commits one asset's labels in the same transaction as its
+    move to `pre_labeled` — so a cut-off call has entered some prefix of the
+    assets it was reaching and touched nothing else, and calling this again
+    resumes with whatever is still untouched — plus, where
+    `replace_model_labels` is set, the frames still `pre_labeled` — rather than
+    starting over or double-writing what already landed.
+
+    **Only assets nothing has touched — not merely assets reading
+    `unannotated`.** An asset already `pre_labeled`, annotated, skipped,
+    awaiting review or accepted is passed over, and so is an `unannotated` one
+    that still carries annotations from a round that was skipped and later
+    restored, since that sequence deletes no labels. A frame this tool already
+    pre-labeled is therefore never re-asked about by a plain call, at any confidence.
+    **`replace_model_labels` is the deliberate exception**: it also reaches every
+    frame still `pre_labeled` and supersedes the model's labels there with this
+    call's answer, one frame per transaction — a frame the model now finds
+    nothing on returns to `unannotated`, and `annotations_replaced` in the
+    result says how many labels went. A frame anyone edited, confirmed or
+    skipped in this job is never touched either way. What is written lands at
+    `pre_labeled`, never at `annotated` — nobody judged it, so it stays
+    editable and out of the Dataset until somebody does. An asset somebody
+    starts working while this call is still running is passed over the same
+    way rather than failing the whole call; `assets_skipped` in the result
+    says how many.
+
+    **A region that could not be written as the class it named is discarded,
+    not fatal.** A label naming no phrase asked for, or a shape the class does
+    not admit or the model never declared, is passed over the same way. A
+    text-prompted detector answers with text decoded from spans over the
+    prompt, not a choice from the classes it was asked about, so a span
+    crossing the boundary between two phrases can answer with neither of
+    them; a model declaring two shapes may also answer in the one its class
+    does not take. `regions_discarded` in the result says how many.
+
+    **A mapped region with no overlap with a measured asset is discarded
+    separately.** `regions_out_of_bounds` in the result says how many; an
+    asset without dimensions remains eligible.
+
+    **What the run writes is every shape the model produces unless `geometries`
+    says which.** A model declaring both a box and a polygon writes both for
+    every region it answers with, unpaired; `geometries` filters that to the
+    shapes named, and a region in any other shape is counted in
+    `regions_discarded`. Naming a shape the model does not produce is refused
+    before anything runs.
+
+    `plan` in the result names both halves: `asked_classes` is what this run
+    actually asked about, and `excluded_classes` names every class of the pinned
+    schema it could not, each with every reason; `produces` says what shape the
+    run wrote. `schema_version` is the pin both were derived from. Read it
+    whenever `assets_labeled` is lower than expected — a run that asked about
+    two of a schema's five classes labels nothing under the other three, and
+    the counters alone cannot say so. `get_pre_label_plan` answers the same
+    thing without running anything.
+
+    Also refused before anything runs: a job that is `completed`, a batch that
+    is not `in_annotation`, a connection whose model answers places rather
+    than words, and a deployment without the local runtime — with the install
+    command in the message.
+    """
+    seen: list[PreLabelPlan] = []
+    with opened_workspace() as workspace:
+        resolved_connection = resolve_connection(workspace, connection)
+        resolved_job = identifier(job_id, what="job_id")
+        outcome = pre_label(
+            workspace,
+            job_id=resolved_job,
+            connection_id=resolved_connection.id,
+            minimum_confidence=minimum_confidence,
+            replace_model_labels=replace_model_labels,
+            geometries=_selection(geometries),
+            on_plan=seen.append,
+        )
+    return {"job_id": str(resolved_job), **_pre_label_outcome(outcome, seen[0])}
 
 
 def complete_job(job_id: JobRef) -> dict[str, Any]:

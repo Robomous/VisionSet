@@ -123,13 +123,15 @@ export function useJob(jobId: string): UseQueryResult<Job, Error> {
   });
 }
 
-export function useJobProgress(jobId: string): UseQueryResult<ProgressCounts, Error> {
+/** `null` is "no job to ask about yet" — a dialog that has not been opened. */
+export function useJobProgress(jobId: string | null): UseQueryResult<ProgressCounts, Error> {
   const client = useApiClient();
   return useQuery({
-    queryKey: jobKeys.progress(jobId),
+    queryKey: jobKeys.progress(jobId ?? "none"),
+    enabled: jobId !== null,
     queryFn: async () =>
       unwrap(
-        await client.GET("/jobs/{job_id}/progress", { params: { path: { job_id: jobId } } }),
+        await client.GET("/jobs/{job_id}/progress", { params: { path: { job_id: jobId ?? "" } } }),
         checkGetJobProgress,
       ),
   });

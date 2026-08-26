@@ -51,6 +51,7 @@ from visionset.inference import (
     PreLabelOutcome,
     PreLabelPlan,
     effective_produces,
+    open_jobs_of,
     planned,
     pre_label,
     select_pre_labelable,
@@ -95,8 +96,10 @@ def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any
     """The batch, its progress and its jobs — the shape most tools return."""
     batches = BatchService(workspace)
     batch = batches.get(batch_id)
-    counts = JobService(workspace).batch_progress(batch.id)
+    job_service = JobService(workspace)
+    counts = job_service.batch_progress(batch.id)
     jobs = batches.jobs(batch.id)
+    runs = job_service.pre_label_runs()
     return {
         **wire.batch(
             batch,
@@ -104,7 +107,10 @@ def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any
             promoted=_promoted(workspace, batch.project_id),
             pre_labeled=batches.latest_pre_label_job(batch.id),
         ),
-        "jobs": [wire.job(j, batch_id=batch.id, batch_state=batch.state) for j in jobs],
+        "jobs": [
+            wire.job(j, batch_id=batch.id, batch_state=batch.state, pre_labeled=runs.get(j.id))
+            for j in jobs
+        ],
     }
 
 
@@ -383,7 +389,14 @@ def pre_label_batch(
     ] = False,
     geometries: Geometries = None,
 ) -> dict[str, Any]:
-    """Ask a model to label every untouched asset in a batch. This blocks until it is done.
+    """Ask a model to label every untouched asset in a batch, one run per open job.
+
+    This blocks until every job is done. The job is the unit this runs over —
+    each open job of the batch gets its own run, reported as its own item in
+    `items`, and a job already `completed` is passed over rather than refused,
+    since a batch finished half in the annotator is the ordinary case.
+    `pre_label_job` is the same run for a single job, when that is the unit you
+    already hold.
 
     `download_connection_weights`'s pattern, not a shortcut: a stdio server has
     no background worker, so a tool that queued this work would answer with a
@@ -446,35 +459,41 @@ def pre_label_batch(
     `regions_discarded`. Naming a shape the model does not produce is refused
     before anything runs.
 
-    `plan` in the result names both halves: `asked_classes` is what this run
+    `items` holds one outcome per open job, in the same shape `pre_label_job`
+    returns, with its own `job_id` and `plan`; a finished job is passed over.
+    Each `plan` names both halves: `asked_classes` is what that job's run
     actually asked about, and `excluded_classes` names every class of the pinned
     schema it could not, each with every reason; `produces` says what shape the
-    run wrote. `schema_version` is the pin both were derived from. Read it
-    whenever `assets_labeled` is lower than expected — a run that asked about
-    two of a schema's five classes labels nothing under the other three, and
-    the counters alone cannot say so. `get_pre_label_plan` answers the same
-    thing without running anything.
+    run wrote. `schema_version` is the pin both were derived from — the same
+    pin for every job, since it is the batch's. Read a job's plan whenever its
+    `assets_labeled` is lower than expected — a run that asked about two of a
+    schema's five classes labels nothing under the other three, and the
+    counters alone cannot say so. `get_pre_label_plan` answers the same thing
+    without running anything. `annotations_written` at the top level is the
+    total across every item.
 
     Also refused before anything runs: a batch that is not `in_annotation`, a
     connection whose model answers places rather than words, and a deployment
     without the local runtime — with the install command in the message.
     """
-    # Captured from the run rather than derived beside it: a plan read from the
-    # schema separately could differ from the one the run prompted with, and
-    # that it is the same list is the whole reason for reporting it.
-    seen: list[PreLabelPlan] = []
     with opened_workspace() as workspace:
         resolved_connection = resolve_connection(workspace, connection)
-        outcome = pre_label(
-            workspace,
-            batch_id=identifier(batch_id, what="batch_id"),
-            connection_id=resolved_connection.id,
-            minimum_confidence=minimum_confidence,
-            replace_model_labels=replace_model_labels,
-            geometries=_selection(geometries),
-            on_plan=seen.append,
-        )
-    return _pre_label_outcome(outcome, seen[0])
+        batch_uuid = identifier(batch_id, what="batch_id")
+        BatchService(workspace).require_pre_labelable(batch_uuid)
+        items: list[dict[str, Any]] = []
+        for job in open_jobs_of(workspace, batch_uuid):
+            seen: list[PreLabelPlan] = []
+            outcome = pre_label(
+                workspace,
+                job_id=job.id,
+                connection_id=resolved_connection.id,
+                minimum_confidence=minimum_confidence,
+                replace_model_labels=replace_model_labels,
+                geometries=_selection(geometries),
+                on_plan=seen.append,
+            )
+            items.append({"job_id": str(job.id), **_pre_label_outcome(outcome, seen[0])})
+    return {"items": items, "annotations_written": sum(i["annotations_written"] for i in items)}
 
 
 def pre_label_project(
@@ -500,12 +519,11 @@ def pre_label_project(
 ) -> dict[str, Any]:
     """Ask a model to label untouched assets across a project's open batches. Blocks until done.
 
-    `pre_label_batch`, one batch after another: the batch stays the unit, each
-    run writes what that tool writes and reports what it reports — `geometries`
-    included, the same selection for every batch — and `items` holds one such
-    outcome per batch with its `plan`; `annotations_written` is the total.
-    Every batch of the project that is `in_annotation` is run, or exactly
-    `batch_ids`.
+    The job is still the unit — `pre_label_batch` fanned out over every open
+    batch of the project, or exactly `batch_ids`, each in turn: `geometries` is
+    the same selection for every one, and `items` holds one outcome per open
+    job across the whole selection, each with its `batch_id`, `job_id` and
+    `plan`; `annotations_written` is the total.
 
     The connection is checked first: an unknown connection, one not set up
     yet, one whose model answers places rather than words, or a `geometries`
@@ -538,22 +556,24 @@ def pre_label_project(
         )
         items: list[dict[str, Any]] = []
         for batch in selected:
-            seen: list[PreLabelPlan] = []
-            outcome = pre_label(
-                workspace,
-                batch_id=batch.id,
-                connection_id=resolved_connection.id,
-                minimum_confidence=minimum_confidence,
-                geometries=_selection(geometries),
-                on_plan=seen.append,
-            )
-            items.append(
-                {
-                    "batch_id": str(batch.id),
-                    "batch_name": batch.name,
-                    **_pre_label_outcome(outcome, seen[0]),
-                }
-            )
+            for job in open_jobs_of(workspace, batch.id):
+                seen: list[PreLabelPlan] = []
+                outcome = pre_label(
+                    workspace,
+                    job_id=job.id,
+                    connection_id=resolved_connection.id,
+                    minimum_confidence=minimum_confidence,
+                    geometries=_selection(geometries),
+                    on_plan=seen.append,
+                )
+                items.append(
+                    {
+                        "batch_id": str(batch.id),
+                        "batch_name": batch.name,
+                        "job_id": str(job.id),
+                        **_pre_label_outcome(outcome, seen[0]),
+                    }
+                )
     return {
         "items": items,
         "annotations_written": sum(item["annotations_written"] for item in items),
@@ -666,6 +686,9 @@ def list_batch_assets(
             )
         ),
     ] = AssetSort.MEMBERSHIP,
+    job_id: Annotated[
+        str | None, Field(description="Keep only the assets this job carries.")
+    ] = None,
 ) -> dict[str, Any]:
     """List a batch's assets, with the job, progress and label summary each carries.
 
@@ -675,9 +698,11 @@ def list_batch_assets(
     `annotation_count` is every label on the asset; `min_confidence` is the lowest
     score among the labels a model wrote, on that model's own scale, or null.
 
-    `job_id` and `progress` are both null exactly while the batch is a draft,
-    because a draft has no jobs, so a `progress` filter over a draft matches
-    nothing. Use `get_asset_image` on any `id` here to see the pixels.
+    `job_id` and `progress` on each item are both null exactly while the batch is
+    a draft. `job_id` narrows to that job's assets; a job this batch does not
+    have is refused, and over a draft — which has no jobs — it matches nothing,
+    same as a `progress` filter. Use `get_asset_image` on any `id` here to see
+    the pixels.
     """
     with opened_workspace() as workspace:
         resolved = identifier(batch_id, what="batch_id")
@@ -685,6 +710,7 @@ def list_batch_assets(
         batch = service.get(resolved)
         placed, total = service.asset_page(
             resolved,
+            job=None if job_id is None else identifier(job_id, what="job_id"),
             progress=frozenset(progress) if progress else None,
             sort=sort,
             limit=limit,

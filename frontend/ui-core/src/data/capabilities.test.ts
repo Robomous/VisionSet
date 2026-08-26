@@ -126,7 +126,7 @@ describe("the action names the client imports", () => {
         "start",
       ].sort(),
     );
-    expect(Object.values(JOB_ACTION).sort()).toEqual(["complete", "start"].sort());
+    expect(Object.values(JOB_ACTION).sort()).toEqual(["complete", "pre_label", "start"].sort());
     expect(Object.values(ASSET_ACTION).sort()).toEqual(
       [
         "accept",

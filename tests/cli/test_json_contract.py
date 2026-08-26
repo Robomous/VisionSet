@@ -244,6 +244,7 @@ def test_an_empty_listing_is_still_an_object() -> None:
 def test_a_settled_pre_label_run_has_wire_parity_when_nested_in_a_batch() -> None:
     run = PreLabelRun(
         batch_id=BATCH.id,
+        annotation_job_id=JOB.id,
         job_id=uuid4(),
         state=BackgroundJobState.SUCCEEDED,
         assets_processed=2,

@@ -1,5 +1,5 @@
 # usage: registered as job type "annotation.pre_label"
-"""The pre-labeling handler: ask a model about a batch, and enter what it finds.
+"""The pre-labeling handler: ask a model about a job, and enter what it finds.
 
 **A background job because of how long it is, not how complex.** A batch is
 hundreds of images and each is a forward pass; a request that waited for them
@@ -30,6 +30,7 @@ from visionset.inference import pre_label
 from visionset.jobs.context import workspace_for
 from visionset.jobs.registry import HandlerRef, register
 from visionset.kernel.domain import (
+    ANNOTATION_JOB_KEY,
     BATCH_JOB_KEY,
     CONNECTION_JOB_KEY,
     PRE_LABEL_CONFIDENCE_KEY,
@@ -53,6 +54,7 @@ HANDLER = register(HandlerRef(type=JOB_TYPE, func=f"{__name__}:run", idempotent=
 
 
 def payload_for(
+    job_id: UUID,
     batch_id: UUID,
     connection_id: UUID,
     minimum_confidence: float,
@@ -61,7 +63,7 @@ def payload_for(
 ) -> dict[str, JsonValue]:
     """The payload this handler expects, built where the type is known."""
     return pre_label_job_payload(
-        batch_id, connection_id, minimum_confidence, replace_model_labels, geometries
+        job_id, batch_id, connection_id, minimum_confidence, replace_model_labels, geometries
     )
 
 
@@ -70,13 +72,13 @@ def run(
     payload: dict[str, JsonValue],
     reporter: ProgressReporter,
 ) -> dict[str, JsonValue]:
-    """Pre-label the named batch's untouched assets and say what that came to.
+    """Pre-label the named job's untouched assets and say what that came to.
 
     ``is_cancelled`` is consulted **both up front and passed through as
     should_stop**, which is where this differs from the transfer handlers: what
     follows is a loop over assets rather than one library call, and every
     iteration boundary is a point at which the last asset is committed and the
-    next is untouched. Stopping there leaves a batch partly pre-labeled, which is
+    next is untouched. Stopping there leaves the job partly pre-labeled, which is
     a coherent state precisely because one frame is one transaction.
 
     **What it reports is assets.** A job row's ``processed`` and ``total`` are an
@@ -111,6 +113,13 @@ def run(
     """
     if reporter.is_cancelled():
         return {}
+    named_job = payload.get(ANNOTATION_JOB_KEY)
+    if named_job is None:
+        raise ValueError(
+            f"pre-label row carries no {ANNOTATION_JOB_KEY!r}; a row enqueued before the key "
+            "existed names a batch but no job, and a run is entered into one job's assets"
+        )
+    job_id = UUID(str(named_job))
     batch_id = UUID(str(payload[BATCH_JOB_KEY]))
     connection_id = UUID(str(payload[CONNECTION_JOB_KEY]))
     minimum_confidence = float(str(payload[PRE_LABEL_CONFIDENCE_KEY]))
@@ -126,7 +135,7 @@ def run(
     workspace = workspace_for(workspace_root)
     outcome = pre_label(
         workspace,
-        batch_id=batch_id,
+        job_id=job_id,
         connection_id=connection_id,
         minimum_confidence=minimum_confidence,
         replace_model_labels=replace_model_labels,
@@ -135,6 +144,7 @@ def run(
         should_stop=reporter.is_cancelled,
     )
     return {
+        "annotation_job_id": str(job_id),
         "batch_id": str(batch_id),
         "assets_considered": outcome.assets_considered,
         "assets_labeled": outcome.assets_labeled,

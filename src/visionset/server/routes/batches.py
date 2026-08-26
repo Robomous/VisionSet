@@ -32,38 +32,18 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Query, Response, status
+from fastapi import Query, status
 
 from visionset.inference import (
-    STUB_MODEL_ID,
-    capabilities_of,
-    effective_produces,
-    not_set_up_message,
-    produces_of,
+    open_jobs_of,
     prompt_plan,
     require_detectable_schema,
     select_pre_labelable,
-    unsupported_prompt_message,
-    with_families,
 )
-from visionset.inference import require as require_local_inference
-from visionset.jobs.prelabel import JOB_TYPE as pre_label_job_type
-from visionset.jobs.prelabel import payload_for as pre_label_payload_for
-from visionset.kernel.domain import (
-    AssetSort,
-    BackgroundJobSpec,
-    ConnectionSetupState,
-    ConnectionType,
-    GeometryType,
-    InferenceConnection,
-    MembershipChange,
-    ModelCapability,
-)
-from visionset.kernel.errors import InferenceConnectionNotSetUp, UnsupportedPrompt
+from visionset.kernel.domain import AssetSort, MembershipChange
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
-    InferenceConnectionService,
     JobService,
     ProjectService,
 )
@@ -86,16 +66,18 @@ from visionset.server.models import (
     GeometriesQuery,
     JobOut,
     JobPage,
+    JobQuery,
     LimitQuery,
     OffsetQuery,
+    PreLabelFanOutItemOut,
+    PreLabelFanOutOut,
     PreLabelPlanOut,
     PreLabelRequest,
     ProgressQuery,
-    ProjectPreLabelItemOut,
-    ProjectPreLabelOut,
     ProjectPreLabelRequest,
     SortQuery,
 )
+from visionset.server.routes._prelabel import launch, selected_produces, text_detect_connection
 
 project_router = protected_router(prefix="/projects/{project_id}/batches", tags=["batches"])
 router = protected_router(prefix="/batches", tags=["batches"])
@@ -114,68 +96,6 @@ def _promoted(workspace: WorkspaceDep, project_id: UUID) -> frozenset[UUID]:
     """
     dataset = ProjectService(workspace).get_dataset(project_id)
     return DatasetService(workspace).member_asset_ids(dataset.id)
-
-
-def _text_detect_connection(workspace: WorkspaceDep, connection_id: UUID) -> InferenceConnection:
-    """The connection, once it is known to be set up and to answer words.
-
-    The gate the plan and the launch share, so the two cannot refuse
-    differently. It runs before anything about the batch, matching
-    ``pre_label``'s own order: what a build can run is an answer about a setup
-    somebody is part-way through, independent of this batch's state, and a
-    caller most needs it first.
-
-    The runtime is demanded here rather than inside a worker, on the download
-    route's terms: a refusal a request can make is a refusal the request makes,
-    and discovering a missing install mid-run would put an install command on a
-    failed row somebody has to go and find. Not for the stub, which needs
-    neither the runtime nor the network, and not for an ``http`` connection
-    either — the gate is about a model that would load here, and an endpoint
-    loads nothing here.
-
-    ``setup_state`` is checked before the capability read: ``model_family`` is
-    written only by a completed weight download or a tested ``http`` endpoint,
-    so a connection that has finished neither reads no capabilities at all, and
-    ``UNSUPPORTED_PROMPT`` for that would claim the model answers places rather
-    than words when nothing has yet said what it answers. Capabilities are
-    derived from the family rather than stored on the row, the same way the
-    connection wire model asks for them.
-
-    Raises:
-        InferenceConnectionNotFound: no such connection.
-        InferenceConnectionNotSetUp: its weights are not here, or its endpoint
-            has not been asked what it answers.
-        UnsupportedPrompt: its model answers places rather than words.
-        LocalInferenceUnavailable: a local connection on a machine without the
-            optional runtime.
-    """
-    connection = InferenceConnectionService(workspace).get(connection_id)
-    (connection,) = with_families(workspace, [connection])
-    if connection.connection_type is ConnectionType.LOCAL and connection.model_id != STUB_MODEL_ID:
-        require_local_inference()
-    if connection.setup_state is not ConnectionSetupState.READY or not connection.model_family:
-        raise InferenceConnectionNotSetUp(not_set_up_message(connection))
-    if ModelCapability.TEXT_DETECT not in capabilities_of(connection.model_family):
-        raise UnsupportedPrompt(unsupported_prompt_message(connection.name))
-    return connection
-
-
-def _selected_produces(
-    connection: InferenceConnection, geometries: list[GeometryType] | None
-) -> frozenset[GeometryType]:
-    """The shapes a run writes — the model's, narrowed to a request's selection.
-
-    Checked right after the connection and before the batch, on every pre-label
-    surface, so the plan, the launch and the project launch refuse a bad
-    selection in one place in the order and with no row queued.
-
-    Raises:
-        GeometryNotProduced: the selection names a shape the model does not produce.
-    """
-    return effective_produces(
-        produces_of(connection.model_family),
-        None if geometries is None else frozenset(geometries),
-    )
 
 
 @project_router.post("", status_code=201, responses=documented(404))
@@ -415,8 +335,8 @@ def pre_label_plan(
     with the install command, and a batch open for annotation but pinning no
     schema version is a broken invariant and answers 500 `WORKSPACE_CORRUPT`.
     """
-    connection = _text_detect_connection(workspace, connection_id)
-    produces = _selected_produces(connection, geometries)
+    connection = text_detect_connection(workspace, connection_id)
+    produces = selected_produces(connection, geometries)
     batch = BatchService(workspace).require_pre_labelable(batch_id)
     schema = require_detectable_schema(workspace, batch, produces)
     return PreLabelPlanOut.of(prompt_plan(schema, produces))
@@ -430,11 +350,20 @@ def pre_label_plan(
 def pre_label_batch(
     workspace: WorkspaceDep,
     runner: RunnerDep,
-    response: Response,
     batch_id: UUID,
     body: PreLabelRequest,
-) -> BackgroundJobOut:
+) -> PreLabelFanOutOut:
     """Ask a model to label every untouched asset in this batch, and answer at once.
+
+    **One row per open job, and the job is the unit.** This launch fans out over
+    the batch's jobs that are still open and queues for each the same
+    `annotation.pre_label` row `POST /jobs/{job_id}/pre-label` queues, or joins
+    the one already queued or running for that job (`joined`). A finished job is
+    passed over, so a batch whose every job is complete answers an empty page.
+    Each row is polled, cancelled and remembered per job:
+    `GET /background-jobs/{id}` for progress counted in that job's assets,
+    `JobOut.pre_label_run` afterwards. Nothing here reports one total across
+    jobs, because nothing here is one run.
 
     The `pre_label` action. Labels land at `pre_labeled`, never at `annotated`:
     nobody judged them, so they arrive editable and correctable rather than
@@ -447,11 +376,11 @@ def pre_label_batch(
     that still carries annotations from an earlier round that was skipped and
     then restored: that sequence deletes no labels, so progress alone does not
     prove an asset untouched. A run never writes over what a person did in this
-    batch, and never writes twice over what a model did — a plain second run
+    job, and never writes twice over what a model did — a plain second run
     extends an earlier one onto whatever is still untouched.
     `replace_model_labels` widens it to every frame still `pre_labeled` and
     supersedes those labels with this run's answer, one frame per transaction;
-    a frame anyone edited, confirmed or skipped in this batch is never touched,
+    a frame anyone edited, confirmed or skipped in this job is never touched,
     and a frame the model now finds nothing on returns to `unannotated`. A
     replacing request arriving while a run is in flight joins that run,
     whichever flag it carries.
@@ -476,14 +405,14 @@ def pre_label_batch(
     and it is kept on the queued row, so a run claimed later executes what was
     asked.
 
-    **202, not 200.** A batch is hundreds of forward passes, so this follows the
+    **202, not 200.** A job is hundreds of forward passes, so this follows the
     launch-and-poll contract the export and weight-download routes use: poll `GET
-    /background-jobs/{id}` — the `Location` header names it — until `state` is
-    `succeeded`, then re-read the batch's assets. Progress on the row is counted
-    in assets.
+    /background-jobs/{id}` for each row until `state` is `succeeded`, then
+    re-read the batch's assets. Progress on a row is counted in assets. There is
+    no `Location` header, because there is no single row for it to name.
 
     **Everything a caller can be told now is told now**, and no refusal creates a
-    job — so a caller holding a job id holds one that will run. These refusals
+    row — so a caller holding a row's id holds one that will run. These refusals
     are about the request, and the caller can act on each. They are checked in
     this order, and it is the order `pre_label` itself checks in, so a request
     wrong about the connection and the batch both always names the connection:
@@ -503,36 +432,42 @@ def pre_label_batch(
     `WORKSPACE_CORRUPT`. Neither is worth resending unchanged: there is no
     state here a caller can change, so the remedy is the one the message names.
 
-    **Asking twice joins the run already in flight rather than starting a second
-    one.** A request arriving while this batch has a pre-labeling run queued or
-    running is answered with that run's id, so a double-click and a second tab
-    watch one run instead of paying for the same inference twice.
+    **Asking twice joins the runs already in flight rather than starting second
+    ones.** A request arriving while a job here has a pre-labeling run queued or
+    running is answered with that run's row and `joined` true, so a double-click
+    and a second tab watch one run per job instead of paying for the same
+    inference twice.
     """
-    service = BatchService(workspace)
-    connection = _text_detect_connection(workspace, body.connection_id)
-    produces = _selected_produces(connection, body.geometries)
-    batch = service.require_pre_labelable(batch_id)
+    connection = text_detect_connection(workspace, body.connection_id)
+    produces = selected_produces(connection, body.geometries)
+    batch = BatchService(workspace).require_pre_labelable(batch_id)
     require_detectable_schema(workspace, batch, produces)
 
-    running = service.live_job(batch_id, job_type=pre_label_job_type)
-    job = running or workspace.job_queue.enqueue(
-        BackgroundJobSpec(
-            type=pre_label_job_type,
-            payload=pre_label_payload_for(
-                batch_id,
-                body.connection_id,
-                body.minimum_confidence,
-                body.replace_model_labels,
-                None if body.geometries is None else frozenset(body.geometries),
-            ),
-            idempotent=True,
+    geometries = None if body.geometries is None else frozenset(body.geometries)
+    items: list[PreLabelFanOutItemOut] = []
+    for job in open_jobs_of(workspace, batch_id):
+        row, joined = launch(
+            workspace,
+            job,
+            batch,
+            connection_id=body.connection_id,
+            minimum_confidence=body.minimum_confidence,
+            replace_model_labels=body.replace_model_labels,
+            geometries=geometries,
         )
-    )
-    # Woken even when the answer is a run that already existed: what came back
-    # may be `queued`, and the dispatcher it waits for sleeps on its own interval.
+        items.append(
+            PreLabelFanOutItemOut(
+                batch_id=batch.id,
+                batch_name=batch.name,
+                annotation_job_id=job.id,
+                job=BackgroundJobOut.of(row),
+                joined=joined,
+            )
+        )
+    # Woken even where every row already existed: what came back may be `queued`,
+    # and the dispatcher it waits for sleeps on its own interval.
     runner.wake()
-    response.headers["Location"] = f"/background-jobs/{job.id}"
-    return BackgroundJobOut.of(job)
+    return PreLabelFanOutOut(items=items, total=len(items))
 
 
 @project_router.post(
@@ -545,18 +480,21 @@ def pre_label_project_batches(
     runner: RunnerDep,
     project_id: UUID,
     body: ProjectPreLabelRequest,
-) -> ProjectPreLabelOut:
+) -> PreLabelFanOutOut:
     """Ask a model to label every untouched asset across this project's open batches.
 
-    **One row per batch, and the batch stays the unit.** This launch fans out
-    over the project's batches that are open for annotation — every one of
-    them, or exactly the `batch_ids` named — and for each one queues the same
-    `annotation.pre_label` job `POST /batches/{batch_id}/pre-label` queues, or
-    joins the one already queued or running for that batch (`joined`). Each
-    row is polled, cancelled and remembered per batch, exactly as a
-    single-batch launch is: `GET /background-jobs/{id}` for progress counted
-    in that batch's assets, `BatchOut.pre_label_run` afterwards. Nothing here
-    reports one total across batches, because nothing here is one run.
+    **One row per open job of each selected batch, and the job is the unit.**
+    This launch fans out over the project's batches that are open for
+    annotation — every one of them, or exactly the `batch_ids` named — and
+    within each over the jobs still open, queueing for each the same
+    `annotation.pre_label` row `POST /jobs/{job_id}/pre-label` queues, or
+    joining the one already queued or running for that job (`joined`). A
+    finished job is passed over, so a selected batch whose every job is
+    complete contributes no row. Each row is polled, cancelled and remembered
+    per job, exactly as a single-job launch is: `GET /background-jobs/{id}`
+    for progress counted in that job's assets, `JobOut.pre_label_run`
+    afterwards. Nothing here reports one total across jobs, because nothing
+    here is one run.
 
     **Refused whole, up front, and no refusal creates a row.** The connection
     is checked first, as the single-batch launch checks it: an unknown
@@ -577,33 +515,33 @@ def pre_label_project_batches(
     What each run writes, passes over and counts is the single-batch launch's
     contract, `geometries` included; read `POST /batches/{batch_id}/pre-label`.
     """
-    connection = _text_detect_connection(workspace, body.connection_id)
-    produces = _selected_produces(connection, body.geometries)
+    connection = text_detect_connection(workspace, body.connection_id)
+    produces = selected_produces(connection, body.geometries)
     selected = select_pre_labelable(workspace, project_id, produces, body.batch_ids)
-    service = BatchService(workspace)
     geometries = None if body.geometries is None else frozenset(body.geometries)
-    items: list[ProjectPreLabelItemOut] = []
+    items: list[PreLabelFanOutItemOut] = []
     for batch in selected:
-        running = service.live_job(batch.id, job_type=pre_label_job_type)
-        job = running or workspace.job_queue.enqueue(
-            BackgroundJobSpec(
-                type=pre_label_job_type,
-                payload=pre_label_payload_for(
-                    batch.id, connection.id, body.minimum_confidence, geometries=geometries
-                ),
-                idempotent=True,
+        for job in open_jobs_of(workspace, batch.id):
+            row, joined = launch(
+                workspace,
+                job,
+                batch,
+                connection_id=connection.id,
+                minimum_confidence=body.minimum_confidence,
+                replace_model_labels=False,
+                geometries=geometries,
             )
-        )
-        items.append(
-            ProjectPreLabelItemOut(
-                batch_id=batch.id,
-                batch_name=batch.name,
-                job=BackgroundJobOut.of(job),
-                joined=running is not None,
+            items.append(
+                PreLabelFanOutItemOut(
+                    batch_id=batch.id,
+                    batch_name=batch.name,
+                    annotation_job_id=job.id,
+                    job=BackgroundJobOut.of(row),
+                    joined=joined,
+                )
             )
-        )
     runner.wake()
-    return ProjectPreLabelOut(items=items, total=len(items))
+    return PreLabelFanOutOut(items=items, total=len(items))
 
 
 @router.get("/{batch_id}/jobs", responses=documented(404))
@@ -614,11 +552,17 @@ def list_batch_jobs(workspace: WorkspaceDep, batch_id: UUID) -> JobPage:
     way.
     """
     batches = BatchService(workspace)
-    # The batch itself, not only the id its path already carries: both job actions
-    # need the batch open, so ``allowed_actions`` cannot be answered without it.
+    # The batch itself, not only the id its path already carries: every job action
+    # needs the batch open, so ``allowed_actions`` cannot be answered without it.
     batch = batches.get(batch_id)
     found = batches.jobs(batch_id)
-    return JobPage(items=[JobOut.of(job, batch=batch) for job in found], total=len(found))
+    # One queue read for the whole page, ``list_batches``'s cost model: without it
+    # a batch cut into twenty jobs would ask the queue once per row.
+    runs = JobService(workspace).pre_label_runs()
+    return JobPage(
+        items=[JobOut.of(job, batch=batch, pre_label_run=runs.get(job.id)) for job in found],
+        total=len(found),
+    )
 
 
 @router.get("/{batch_id}/assets", responses=documented(404))
@@ -629,6 +573,7 @@ def list_batch_assets(
     offset: OffsetQuery = 0,
     progress: ProgressQuery = None,
     sort: SortQuery = AssetSort.MEMBERSHIP,
+    job: JobQuery = None,
 ) -> BatchAssetPage:
     """The batch's assets, with where each has got to and its labels in two numbers.
 
@@ -640,15 +585,18 @@ def list_batch_assets(
     An offset past the end is an empty list and a 200, never a 404. The 404 belongs
     to the batch itself, which is resolved first: an unknown one is `BATCH_NOT_FOUND`.
 
-    `job_id` and `progress` are null while the batch is a draft, because a draft
-    has no jobs — so a `progress` filter over a draft matches nothing. Bytes are
-    not here: an asset is named by its hashes, and
+    `job` narrows to the assets one job carries, composing with `progress`; a job
+    this batch does not have is 404 `JOB_NOT_FOUND`. `job_id` and `progress` on
+    each item are null while the batch is a draft, which has no jobs — so there,
+    a `progress` filter or a `job` filter matches nothing rather than refusing.
+    Bytes are not here: an asset is named by its hashes, and
     `GET /projects/{project_id}/assets/{asset_id}/content` is what serves them.
     """
     batches = BatchService(workspace)
     batch = batches.get(batch_id)
     placed, total = batches.asset_page(
         batch_id,
+        job=job,
         progress=None if progress is None else frozenset(progress),
         sort=sort,
         limit=limit,

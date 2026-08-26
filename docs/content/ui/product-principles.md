@@ -225,7 +225,9 @@ batch open for annotation there is nowhere to send anybody, so the button is abs
 Ingest takes the dominant slot — principle 4, rather than a disabled control that never
 says what would enable it. While Annotate holds the slot, Ingest stays reachable as a
 `secondary` action on the sections ingest feeds (Overview, Batches); it is never in both
-places at once. With exactly one, it jumps straight there. With two or more it
+places at once. With exactly one, it jumps straight there — into that batch's one job where it
+has exactly one, and onto its gallery to pick a job otherwise, since a batch cut into several is
+a second choice nobody has made yet. With two or more it
 reads `Annotate ▾` and opens a menu of those batches, each row carrying the batch name, its
 remaining count, and the schema version it is pinned to. The chevron is not decoration: a
 button that opens a choice must not be shaped like one that jumps. The pinned version earns

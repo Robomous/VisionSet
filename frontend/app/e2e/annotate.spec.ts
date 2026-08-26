@@ -248,6 +248,7 @@ async function serveApi(
       settled: lifecycle.jobSettled ?? true,
     }),
     assignee: null,
+    pre_label_run: null,
   });
   await page.route("**/api/**", async (route) => {
     const request = route.request();

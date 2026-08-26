@@ -121,10 +121,10 @@ page groups them by what they are for.
 | `approve_batch` | Freeze it, pin the schema, cut it into jobs. |
 | `start_batch` | Open it for annotation. |
 | `get_pre_label_plan` | Which classes a run of a connection would ask about, which it would leave out, and what shapes it writes. |
-| `pre_label_batch` | Ask a model to label every untouched asset. Blocks until it is done. |
-| `pre_label_project` | The same, over every open batch of a project or the named ones; one outcome per batch. Blocks until done. |
+| `pre_label_batch` | Ask a model to label every untouched asset of a batch, one run per open job; one outcome per job. Blocks until it is done. |
+| `pre_label_project` | The same, over every open batch of a project or the named ones; one outcome per open job. Blocks until done. |
 | `repin_batch` | Move its schema pin onto the current active version. |
-| `list_batch_assets` | What is in it, paged, with each asset's job and progress. |
+| `list_batch_assets` | What is in it, paged, with each asset's job and progress. `job_id` narrows it to one job's frames. |
 | `complete_batch` | Close it, once every job is complete. |
 | `promote_batch` | Move the finished assets into the dataset. |
 | `create_correction_batch` | Start a draft that corrects a completed one. |
@@ -138,8 +138,9 @@ is already cut into jobs — see [batches.md](batches.md).
 
 | | |
 | --- | --- |
-| `get_job` | State, counts, and the batch and schema it answers to. |
+| `get_job` | State, counts, the batch and schema it answers to, and its own most recent pre-label run. |
 | `next_pending_assets` | The loop primitive: what is left to annotate. |
+| `pre_label_job` | Ask a model to label every untouched asset of the one job you hold. Blocks until it is done. |
 | `get_asset_image` | **Look at the pixels.** See below. |
 | `list_asset_annotations` | What is already on an asset, with ids for editing. |
 | `add_annotations` | Write labels. All or none. |
@@ -162,6 +163,11 @@ left alone here and then **refused by the write's own gate** - `JobFinished` (40
 refusal behind an `InvalidTransition` of its own. A job whose batch is not `in_annotation`
 refuses exactly as it always did: the batch gate is checked first, so a closed batch is not
 quietly marked as being worked on.
+
+**`pre_label_job` is the one write that starts nothing**, and the two fan-outs built on it do not
+either. Auto-start records that somebody is working the job, and a model's unattended pass is
+nobody working it: the labels land `pre_labeled` for a person to take over, so a job pre-labeled
+and not yet opened is still `pending`, and the first annotation write starts it as it always did.
 
 `complete_job` starts a job too, which is not redundant: a correction batch cut over
 already-labeled assets opens fully settled (see [batches.md](batches.md)), so its job can be
@@ -304,22 +310,28 @@ guard is that a batch which is no longer `in_annotation` refuses every write.
 **Ingest, export, weight downloads, integrity checks and pre-labeling are synchronous.** A
 stdio server has no background worker: something has to do the decode, and an agent driving a
 "resume" loop would block for exactly as long as doing the work in the first place. A long video
-makes `ingest` a long call, a large model makes `download_connection_weights` one, and a batch of
-untouched assets makes `pre_label_batch` one — minutes, with nothing to poll from here;
-`pre_label_project` runs the same over every open batch of a project, so the wait is that many
-batches' worth of minutes. A cut-off
+makes `ingest` a long call, a large model makes `download_connection_weights` one, and a job of
+untouched assets makes `pre_label_job` one — minutes, with nothing to poll from here.
+`pre_label_batch` runs that once per open job of a batch and `pre_label_project` once per open
+job of every batch it selects, so the wait is that many jobs' worth of minutes. A cut-off
 download changed nothing (the connection is only marked ready once every file is here) and the
 retry resumes the cache rather than starting over; a cut-off pre-labeling call has written only
 the assets it fully entered, one commit per asset, so calling it again resumes with whatever is
 still untouched - plus, where `replace_model_labels` is set, the frames still `pre_labeled`.
 
-`pre_label_batch` reports unmappable model labels as `regions_discarded`, mapped regions
+`pre_label_job` reports unmappable model labels as `regions_discarded`, mapped regions
 without overlap with a measured asset as `regions_out_of_bounds`, the model labels a replacing
 run superseded as `annotations_replaced`, and the prompt it ran under as `plan` —
 `asked_classes` beside `excluded_classes` and `produces`, so a run that labeled nothing says
 which classes it never asked about, and what shapes it was answering in, rather than leaving
-that to a second call. `get_pre_label_plan` takes the same connection and answers the same
-thing before the wait. All three tools take an optional `geometries`: omitted, a run writes
+that to a second call. **The job is the unit, so the fan-outs report per job**: `pre_label_batch`
+answers `items`, one entry in exactly that shape per open job with its own `job_id` and `plan`,
+and `pre_label_project` the same with `batch_id` and `batch_name` beside them; a finished job is
+passed over, and `annotations_written` at the top level is the total across the items. Naming one
+job with `pre_label_job` is instead a decision to run that job, so a `completed` one is refused
+rather than passed over. `get_pre_label_plan` takes the same connection and answers the same
+thing before the wait — it stays batch-scoped, since the prompt comes from the batch's pin and is
+the same for every job of it. All four tools take an optional `geometries`: omitted, a run writes
 every shape the model produces, which is what every call did before the parameter existed;
 named, it writes only those, a region in any other shape counts as discarded, and `produces` in
 the plan is the selection. A shape the model does not produce is refused before anything runs.
@@ -334,7 +346,7 @@ The API's upload staging exists because HTTP has bytes where the kernel has path
 beside the workspace and has the filesystem.
 
 **One workspace per server.** No tool takes a workspace parameter — threading one through
-fifty-two tools would put a path an agent has no way to know into every call. The workspace is
+fifty-six tools would put a path an agent has no way to know into every call. The workspace is
 opened and closed per tool call rather than held, so the file is never kept from `visionset server`
 or a second agent between calls.
 
@@ -346,14 +358,15 @@ out of the object to pick the variant, and omitting it fails. Always send
 ## What is not here, and why
 
 Fifty candidate tools were recorded across the four REST tasks; thirty of them shipped and
-twenty did not. Twenty have been added since, each because a surface grew a capability an
-agent had no way to reach: `check_export`, the plan-before-apply half of an export on the
-`preview_schema_change` precedent; the four batch-composition tools above; the seven
-inference-connection tools, closing the Models page's SDK-first parity; the four
-schema-draft tools above, because composing a schema across several calls needs somewhere to
-hold a class before it is finished; the three deletions, which are advertised only on
-request; and `pre_label_batch`, closing the last capability declared with no consumer. That
-is forty-nine offered by default and fifty-two in all. The parity rule means
+twenty did not. Twenty-six have been added since, every one of them because a surface grew a
+capability an agent had no way to reach. The larger groups say what that looks like: the four
+batch-composition tools above; the seven inference-connection tools, closing the Models page's
+SDK-first parity; the four schema-draft tools above, because composing a schema across several
+calls needs somewhere to hold a class before it is finished; the three deletions, which are
+advertised only on request; the pre-labeling trio, `pre_label_job` beside the two fan-outs,
+closing the last capability declared with no consumer; and `check_export`, the plan-before-apply
+half of an export on the `preview_schema_change` precedent. That is fifty-three offered by
+default and fifty-six in all. The parity rule means
 *evaluated*, not *implemented* — tool-selection accuracy degrades with count, so a tool ships
 only when an agent has a reason to reach for it that no neighbour covers.
 
