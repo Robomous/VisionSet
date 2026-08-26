@@ -3,9 +3,14 @@
  *
  * Not a snapshot of every class string — that would pin the design system to
  * whatever it happened to be on the day. What is asserted here is the handful of behaviours a screen
- * would silently lose: the merge that makes `className` a real override, the
- * button type that stops a "Cancel" submitting a form, the `asChild` that keeps a
- * link a link, and the role an error is announced with.
+ * would silently lose: the merge that makes `className` a real override — and the
+ * two geometry overrides that ride on it, `inlineLink` and `menuSurface`, whose
+ * whole job is to beat a canonical utility — the `asChild` that keeps a link a
+ * link, and the role an error is announced with.
+ *
+ * The button no longer defaults `type`, so nothing here stops a "Cancel"
+ * submitting a form; that is a call-site property now, and
+ * `tests/scripts/form_buttons.test.mjs` is what holds it.
  *
  * This file is also the reason the jsdom harness exists at all: standing the
  * environment up once here is cheaper than the first screen that needs it doing so
@@ -17,6 +22,7 @@ import userEvent from "@testing-library/user-event";
 import type { JSX } from "react";
 import { describe, expect, it } from "vitest";
 
+import { inlineLink } from "../lib/button";
 import { menuSurface } from "../lib/menu";
 import { progressAria } from "../lib/progress";
 import { twoLineTrigger } from "../lib/select";
@@ -77,7 +83,32 @@ describe("Button", () => {
 
   it("styles a link button as an underline-on-hover text link", () => {
     render(<Button variant="link">More</Button>);
-    expect(screen.getByRole("button").getAttribute("data-variant")).toBe("link");
+
+    const classes = screen.getByRole("button").className;
+    // The underline arrives on hover. A rule that underlined at rest would look
+    // like a link in a screenshot and read as one to `toContain("underline")`,
+    // which is why the resting state is asserted as an absence and the utility
+    // is matched whole — `hover:underline` and `underline-offset-4` both contain
+    // the substring.
+    expect(classes).toContain("hover:underline");
+    expect(classes).not.toMatch(/(^|\s)underline(\s|$)/);
+  });
+
+  it("hands back the height and padding a link button in prose cannot keep", () => {
+    render(
+      <Button variant="link" className={inlineLink}>
+        More
+      </Button>,
+    );
+
+    // `Button` merges `className` over `buttonVariants` with tailwind-merge, so
+    // this is the merge itself: canonical's `h-8 px-2.5` is gone from the
+    // rendered attribute rather than merely outranked by a later rule.
+    const classes = screen.getByRole("button").className.split(" ");
+    expect(classes).toContain("h-auto");
+    expect(classes).toContain("p-0");
+    expect(classes).not.toContain("h-8");
+    expect(classes).not.toContain("px-2.5");
   });
 });
 
