@@ -25,8 +25,8 @@ from collections.abc import Mapping
 from importlib.metadata import entry_points
 
 from visionset.kernel.domain import Step
-from visionset.kernel.errors import PreprocessingDriverNotFound
 from visionset.kernel.ports import PreprocessingDriver
+from visionset.kernel.ports import driver_for as kernel_driver_for
 
 GROUP = "visionset.preprocessing"
 
@@ -50,22 +50,14 @@ def drivers() -> dict[str, PreprocessingDriver]:
 def pick(installed: Mapping[str, PreprocessingDriver], step_kind: str) -> PreprocessingDriver:
     """One driver out of a set already in hand, or say none applies that kind.
 
-    Split from :func:`driver` so the refusal has one wording no matter who
-    scanned the entry points. A caller holding the mapping must not index it
-    directly: a ``KeyError`` is outside the ``VisionSetError`` tree and would
-    answer 500 with no message to a request the installation cannot serve.
+    The kernel's own :func:`~visionset.kernel.ports.driver_for`, under the
+    name the format registry uses for the same gesture, so the refusal has one
+    wording whether the export seam or a surface asked.
 
     Raises:
         PreprocessingDriverNotFound: no installed driver applies ``step_kind``.
     """
-    if step_kind not in installed:
-        known = tuple(sorted(installed))
-        raise PreprocessingDriverNotFound(
-            f"no pre-processing driver is installed for step kind {step_kind!r}; "
-            f"installed step kinds: {', '.join(known) or 'none'}",
-            installed=known,
-        )
-    return installed[step_kind]
+    return kernel_driver_for(installed, step_kind)
 
 
 def driver_for(installed: Mapping[str, PreprocessingDriver], step: Step) -> PreprocessingDriver:

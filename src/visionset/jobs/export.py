@@ -36,8 +36,10 @@ from pydantic import JsonValue
 from visionset.formats import registry
 from visionset.jobs.context import workspace_for
 from visionset.jobs.registry import HandlerRef, register
+from visionset.kernel.domain import RecipeSpec
 from visionset.kernel.ports import ProgressReporter, resolve_target
 from visionset.kernel.services import ReleaseService
+from visionset.preprocessing import registry as preprocessing_registry
 
 JOB_TYPE = "export.release"
 
@@ -51,22 +53,35 @@ EXPORTS_DIRNAME: Final = "exports"
 
 
 def payload_for(
-    release_id: UUID, format_name: str, *, target: str | None, allow_lossy: bool
+    release_id: UUID,
+    format_name: str,
+    *,
+    target: str | None,
+    allow_lossy: bool,
+    recipe: tuple[str | None, RecipeSpec] | None = None,
 ) -> dict[str, JsonValue]:
     """The payload this handler expects, built where the type is known.
 
-    One place names these four keys and the same place reads them — a route
+    One place names these five keys and the same place reads them — a route
     spelling them by hand would be free to spell them differently, and the
     mismatch would surface as a ``KeyError`` inside a worker. ``format`` is
     the resolved format's own name even when the caller addressed a target,
     so the worker resolves the same plugin the request was refused or
     accepted against.
+
+    ``recipe`` is carried as a **snapshot** — the stored recipe's name beside
+    the spec as it stood at the request — never as a name to look up again:
+    an edit or a delete between the request and the worker's run must not
+    change what the worker applies.
     """
     return {
         "release_id": str(release_id),
         "format": format_name,
         "target": target,
         "allow_lossy": allow_lossy,
+        "recipe": None
+        if recipe is None
+        else {"name": recipe[0], "spec": recipe[1].model_dump(mode="json")},
     }
 
 
@@ -107,6 +122,12 @@ def run(
     format_name = str(payload["format"])
     target_name = None if payload.get("target") is None else str(payload["target"])
     allow_lossy = bool(payload["allow_lossy"])
+    snapshot = payload.get("recipe")
+    recipe_name: str | None = None
+    spec: RecipeSpec | None = None
+    if isinstance(snapshot, dict):
+        recipe_name = None if snapshot.get("name") is None else str(snapshot["name"])
+        spec = RecipeSpec.model_validate(snapshot["spec"])
 
     workspace = workspace_for(workspace_root)
     # Through the *module*, never ``from ... import exporters``: a module global
@@ -125,7 +146,14 @@ def run(
     # Cleared first, because the archive must describe *this* run.
     shutil.rmtree(destination, ignore_errors=True)
     result = ReleaseService(workspace).export(
-        release_id, exporter, destination, allow_lossy=allow_lossy, target=target
+        release_id,
+        exporter,
+        destination,
+        allow_lossy=allow_lossy,
+        target=target,
+        recipe=spec,
+        recipe_name=recipe_name,
+        drivers=None if spec is None else preprocessing_registry.drivers(),
     )
 
     archive = archive_path(workspace_root, release_id, format_name)
@@ -140,4 +168,7 @@ def run(
         "archive": str(archive.relative_to(workspace_root)),
         "file_count": result.file_count,
         "total_bytes": result.total_bytes,
+        "source_file_count": result.source_file_count,
+        "augmented_file_count": result.augmented_file_count,
+        "recipe_hash": None if result.preprocessing is None else result.preprocessing.recipe_hash,
     }

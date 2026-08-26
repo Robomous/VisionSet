@@ -2735,6 +2735,18 @@ export interface paths {
          *     declare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest blob
          *     is gone is 500 `WORKSPACE_CORRUPT`.
          *
+         *     **`recipe` applies a pre-processing recipe of the release's project**, by
+         *     name, and the job carries the recipe as it stood when this request was
+         *     made: editing or deleting the recipe afterwards changes nothing about the
+         *     export. Whether the recipe can run is answered now, like consent — 409
+         *     `AUGMENTATION_REQUIRES_SPLIT` for an augmenting recipe over a release
+         *     published without a split, 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`
+         *     for a step that cannot move a geometry the export would carry, 409
+         *     `EXPORT_SOURCE_UNREADABLE` for a step needing a source size the manifest
+         *     never recorded, and 404 `PREPROCESSING_RECIPE_NOT_FOUND` for a name the
+         *     project does not have. The report written into the output records the
+         *     recipe, its hash, and which written file came from which asset.
+         *
          *     A POST because it does work and writes files, though it changes nothing a
          *     later read can see: the release is immutable, and re-exporting overwrites the
          *     previous archive.
@@ -2758,9 +2770,19 @@ export interface paths {
          * @description Say what the named target or format would drop from this release, without writing anything.
          *
          *     The pre-flight for `POST /releases/{release_id}/export`: same release, same
-         *     address, same document the export refuses with and writes into its own
-         *     output. A client showing a consent dialog asks this first; one that would
-         *     rather find out by being refused does not have to.
+         *     address, same recipe, same document the export refuses with and writes into
+         *     its own output. A client showing a consent dialog asks this first; one that
+         *     would rather find out by being refused does not have to.
+         *
+         *     `recipe` names a pre-processing recipe of the release's project, and the
+         *     answer then includes whether that recipe can run over this release: a
+         *     recipe that augments against a release published without a split is 409
+         *     `AUGMENTATION_REQUIRES_SPLIT`, a step that cannot move a geometry the
+         *     export would carry is 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`, and a
+         *     step needing a source size the manifest never recorded is 409
+         *     `EXPORT_SOURCE_UNREADABLE`. An unknown recipe is 404
+         *     `PREPROCESSING_RECIPE_NOT_FOUND`. The report itself does not change: what
+         *     a format drops is decided before any transform.
          *
          *     Exactly one of `target` and `format`. A target narrows its format to the
          *     geometries its trainer has a task for, so a report for `target=yolov10`
@@ -11638,6 +11660,8 @@ export interface operations {
             query?: {
                 /** @description Required when the format cannot carry everything the release holds. */
                 allow_lossy?: boolean;
+                /** @description A pre-processing recipe of the release's project, by name. `GET /projects/{project_id}/preprocessing-recipes` lists them. Omit to apply no transform. */
+                recipe?: string | null;
                 /** @description An export target's name. `GET /export-targets` lists them. */
                 target?: string | null;
                 /** @description An installed format's name. `GET /formats` lists them. */
@@ -11719,6 +11743,8 @@ export interface operations {
     check_export: {
         parameters: {
             query?: {
+                /** @description A pre-processing recipe of the release's project, by name. `GET /projects/{project_id}/preprocessing-recipes` lists them. Omit to apply no transform. */
+                recipe?: string | null;
                 /** @description An export target's name. `GET /export-targets` lists them. */
                 target?: string | null;
                 /** @description An installed format's name. `GET /formats` lists them. */
@@ -11752,6 +11778,15 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

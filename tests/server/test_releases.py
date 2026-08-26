@@ -715,3 +715,117 @@ def test_the_report_travels_inside_the_archive_as_well(client: TestClient, relea
     response = exported(client, release, format="polygons-only", allow_lossy="true")
 
     assert EXPORT_REPORT_FILENAME in _names_in(response.content)
+
+
+# --- a recipe on the request -----------------------------------------------------
+#
+# The recipe routes themselves are tested in `test_preprocessing_recipes.py`;
+# here a recipe is arranged through the kernel so the export routes can be held
+# to what they promise about one: resolved by name through the release's
+# project, refused now for what a worker would otherwise discover, and carried
+# to the job as a snapshot.
+
+
+def _recipe(tmp_path: Path, client: TestClient, release: str, name: str, spec: Any) -> None:
+    from visionset.kernel.domain import RecipeSpec
+    from visionset.kernel.services import PreprocessingRecipeService, WorkspaceService
+
+    project_id = _project_of(client, release)
+    workspace = WorkspaceService.open(tmp_path / "ws")
+    try:
+        PreprocessingRecipeService(workspace).create(
+            project_id, name, RecipeSpec.model_validate(spec)
+        )
+    finally:
+        workspace.close()
+
+
+def _project_of(client: TestClient, release: str) -> Any:
+    from uuid import UUID
+
+    dataset_id = client.get(f"/releases/{release}").json()["dataset_id"]
+    return UUID(client.get(f"/datasets/{dataset_id}").json()["project_id"])
+
+
+LETTERBOX = {
+    "target": "yolo11",
+    "steps": [{"kind": "resize", "strategy": "letterbox", "width": 64, "height": 64}],
+    "variants_per_asset": 0,
+}
+FLIPS = {"target": None, "steps": [{"kind": "augment", "op": "hflip"}], "variants_per_asset": 1}
+
+
+def test_an_unknown_recipe_is_404_on_both_routes_and_creates_no_job(
+    client: TestClient, release: str, runner: InlineDispatcher
+) -> None:
+    with_exporters(client.app, WritingExporter())
+    params = {"format": "writing", "recipe": "nope"}
+    before = client.get("/background-jobs").json()["total"]
+
+    checked = client.get(f"/releases/{release}/export-compatibility", params=params)
+    launched = client.post(f"/releases/{release}/export", params=params)
+
+    for response in (checked, launched):
+        assert response.status_code == 404, response.text
+        assert response.json()["code"] == "PREPROCESSING_RECIPE_NOT_FOUND"
+    assert client.get("/background-jobs").json()["total"] == before
+
+
+def test_an_augmenting_recipe_over_an_unsplit_release_is_refused_on_the_request(
+    tmp_path: Path, client: TestClient, release: str
+) -> None:
+    with_exporters(client.app, WritingExporter())
+    _recipe(tmp_path, client, release, "flips", FLIPS)
+    params = {"format": "writing", "recipe": "flips"}
+    before = client.get("/background-jobs").json()["total"]
+
+    checked = client.get(f"/releases/{release}/export-compatibility", params=params)
+    launched = client.post(f"/releases/{release}/export", params=params)
+
+    for response in (checked, launched):
+        assert response.status_code == 409, response.text
+        assert response.json()["code"] == "AUGMENTATION_REQUIRES_SPLIT"
+    assert client.get("/background-jobs").json()["total"] == before
+
+
+def test_a_recipe_is_carried_to_the_job_as_a_snapshot_and_recorded_in_the_report(
+    tmp_path: Path, client: TestClient, release: str
+) -> None:
+    with_exporters(client.app, WritingExporter())
+    _recipe(tmp_path, client, release, "lb", LETTERBOX)
+
+    launched = client.post(
+        f"/releases/{release}/export", params={"format": "writing", "recipe": "lb"}
+    )
+    assert launched.status_code == 202, launched.text
+    job = client.get(f"/background-jobs/{launched.json()['id']}").json()
+
+    assert job["state"] == "succeeded", job
+    assert job["result"]["recipe_hash"]
+    assert (job["result"]["source_file_count"], job["result"]["augmented_file_count"]) == (0, 0)
+    archive = client.get(f"/background-jobs/{job['id']}/artifact").content
+    with zipfile.ZipFile(io.BytesIO(archive)) as opened:
+        report = json.loads(opened.read(EXPORT_REPORT_FILENAME))
+    assert report["preprocessing"]["recipe_name"] == "lb"
+    assert report["preprocessing"]["recipe_hash"] == job["result"]["recipe_hash"]
+    from visionset.kernel.domain import RecipeSpec
+
+    assert RecipeSpec.model_validate(report["preprocessing"]["spec"]) == RecipeSpec.model_validate(
+        LETTERBOX
+    )
+    assert report["preprocessing"]["mapping"] == []
+
+
+def test_the_compatibility_report_is_unchanged_by_a_recipe(
+    tmp_path: Path, client: TestClient, release: str
+) -> None:
+    with_exporters(client.app, WritingExporter())
+    _recipe(tmp_path, client, release, "lb", LETTERBOX)
+
+    plain = client.get(f"/releases/{release}/export-compatibility", params={"format": "writing"})
+    with_recipe = client.get(
+        f"/releases/{release}/export-compatibility", params={"format": "writing", "recipe": "lb"}
+    )
+
+    assert with_recipe.status_code == 200, with_recipe.text
+    assert with_recipe.json() == plain.json()

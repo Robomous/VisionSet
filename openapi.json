@@ -13980,7 +13980,7 @@
     },
     "/releases/{release_id}/export": {
       "post": {
-        "description": "Queue the release for writing, and answer at once with the job to poll.\n\n**202, not 200, and this is a breaking change to this one endpoint.** It used\nto block until the exporter finished and answer with the archive. A real\nexporter walks every asset in a release and copies its bytes, which is\nminutes of work behind a request that has no way to report progress and every\nproxy's timeout in front of it. So this now follows the launch-and-poll\ncontract the ingest routes have always used: poll\n`GET /background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state`\nis `succeeded`, then `GET /background-jobs/{id}/artifact` for the archive.\n\n**Exactly one of `target` and `format`.** A target is the model the\nrelease will train \u2014 `GET /export-targets` lists them \u2014 and resolves to\nthe format that writes for it; a format addresses no trainer. Both or\nneither is a 422 `VALIDATION_ERROR`. An export addressed to a target\ncarries only the geometries its trainer has a task for, and the report it\nwrites names the target.\n\n**Everything a caller can be told now is still told now.** Which targets\nand formats exist is a property of this deployment, and an unknown name is\n404 `EXPORT_TARGET_NOT_FOUND` or 404 `EXPORT_FORMAT_NOT_FOUND` on this\nrequest. A format that cannot carry everything the release holds is 409\n`LOSSY_EXPORT_NOT_CONSENTED` on this request too, and retrying is the\nidentical call plus `allow_lossy=true`. An unknown release is 404\n`RELEASE_NOT_FOUND`. None of these creates a job, so a caller holding a\njob id holds one that will run. A target two installed formats both\ndeclare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest blob\nis gone is 500 `WORKSPACE_CORRUPT`.\n\nA POST because it does work and writes files, though it changes nothing a\nlater read can see: the release is immutable, and re-exporting overwrites the\nprevious archive.",
+        "description": "Queue the release for writing, and answer at once with the job to poll.\n\n**202, not 200, and this is a breaking change to this one endpoint.** It used\nto block until the exporter finished and answer with the archive. A real\nexporter walks every asset in a release and copies its bytes, which is\nminutes of work behind a request that has no way to report progress and every\nproxy's timeout in front of it. So this now follows the launch-and-poll\ncontract the ingest routes have always used: poll\n`GET /background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state`\nis `succeeded`, then `GET /background-jobs/{id}/artifact` for the archive.\n\n**Exactly one of `target` and `format`.** A target is the model the\nrelease will train \u2014 `GET /export-targets` lists them \u2014 and resolves to\nthe format that writes for it; a format addresses no trainer. Both or\nneither is a 422 `VALIDATION_ERROR`. An export addressed to a target\ncarries only the geometries its trainer has a task for, and the report it\nwrites names the target.\n\n**Everything a caller can be told now is still told now.** Which targets\nand formats exist is a property of this deployment, and an unknown name is\n404 `EXPORT_TARGET_NOT_FOUND` or 404 `EXPORT_FORMAT_NOT_FOUND` on this\nrequest. A format that cannot carry everything the release holds is 409\n`LOSSY_EXPORT_NOT_CONSENTED` on this request too, and retrying is the\nidentical call plus `allow_lossy=true`. An unknown release is 404\n`RELEASE_NOT_FOUND`. None of these creates a job, so a caller holding a\njob id holds one that will run. A target two installed formats both\ndeclare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest blob\nis gone is 500 `WORKSPACE_CORRUPT`.\n\n**`recipe` applies a pre-processing recipe of the release's project**, by\nname, and the job carries the recipe as it stood when this request was\nmade: editing or deleting the recipe afterwards changes nothing about the\nexport. Whether the recipe can run is answered now, like consent \u2014 409\n`AUGMENTATION_REQUIRES_SPLIT` for an augmenting recipe over a release\npublished without a split, 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`\nfor a step that cannot move a geometry the export would carry, 409\n`EXPORT_SOURCE_UNREADABLE` for a step needing a source size the manifest\nnever recorded, and 404 `PREPROCESSING_RECIPE_NOT_FOUND` for a name the\nproject does not have. The report written into the output records the\nrecipe, its hash, and which written file came from which asset.\n\nA POST because it does work and writes files, though it changes nothing a\nlater read can see: the release is immutable, and re-exporting overwrites the\nprevious archive.",
         "operationId": "export_release",
         "parameters": [
           {
@@ -14003,6 +14003,24 @@
               "description": "Required when the format cannot carry everything the release holds.",
               "title": "Allow Lossy",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "A pre-processing recipe of the release's project, by name. `GET /projects/{project_id}/preprocessing-recipes` lists them. Omit to apply no transform.",
+            "in": "query",
+            "name": "recipe",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A pre-processing recipe of the release's project, by name. `GET /projects/{project_id}/preprocessing-recipes` lists them. Omit to apply no transform.",
+              "title": "Recipe"
             }
           },
           {
@@ -14127,7 +14145,7 @@
     },
     "/releases/{release_id}/export-compatibility": {
       "get": {
-        "description": "Say what the named target or format would drop from this release, without writing anything.\n\nThe pre-flight for `POST /releases/{release_id}/export`: same release, same\naddress, same document the export refuses with and writes into its own\noutput. A client showing a consent dialog asks this first; one that would\nrather find out by being refused does not have to.\n\nExactly one of `target` and `format`. A target narrows its format to the\ngeometries its trainer has a task for, so a report for `target=yolov10`\ncan say `dropped` where one for `format=ultralytics` says `supported`;\n`target` on the report says which question it answers. An unknown target is\n404 `EXPORT_TARGET_NOT_FOUND`, an unknown format 404 `EXPORT_FORMAT_NOT_FOUND`,\nan unknown release 404 `RELEASE_NOT_FOUND`. A target two installed formats\nboth declare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest\nblob is gone is 500 `WORKSPACE_CORRUPT`; neither is something the request\ncan fix.\n\n`compatible` is the answer. It is not the same question as the format's\n`lossy` flag, which `GET /formats` publishes: that is the format's blanket\nstatement about everything a capability list cannot see, while this is about\nthe labels *this* release actually holds. Export asks for `allow_lossy=true`\nwhen either says so.\n\nA GET because it writes nothing and answers the same thing every time \u2014 a\nrelease is immutable, so this response is as stable as the release is.",
+        "description": "Say what the named target or format would drop from this release, without writing anything.\n\nThe pre-flight for `POST /releases/{release_id}/export`: same release, same\naddress, same recipe, same document the export refuses with and writes into\nits own output. A client showing a consent dialog asks this first; one that\nwould rather find out by being refused does not have to.\n\n`recipe` names a pre-processing recipe of the release's project, and the\nanswer then includes whether that recipe can run over this release: a\nrecipe that augments against a release published without a split is 409\n`AUGMENTATION_REQUIRES_SPLIT`, a step that cannot move a geometry the\nexport would carry is 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`, and a\nstep needing a source size the manifest never recorded is 409\n`EXPORT_SOURCE_UNREADABLE`. An unknown recipe is 404\n`PREPROCESSING_RECIPE_NOT_FOUND`. The report itself does not change: what\na format drops is decided before any transform.\n\nExactly one of `target` and `format`. A target narrows its format to the\ngeometries its trainer has a task for, so a report for `target=yolov10`\ncan say `dropped` where one for `format=ultralytics` says `supported`;\n`target` on the report says which question it answers. An unknown target is\n404 `EXPORT_TARGET_NOT_FOUND`, an unknown format 404 `EXPORT_FORMAT_NOT_FOUND`,\nan unknown release 404 `RELEASE_NOT_FOUND`. A target two installed formats\nboth declare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest\nblob is gone is 500 `WORKSPACE_CORRUPT`; neither is something the request\ncan fix.\n\n`compatible` is the answer. It is not the same question as the format's\n`lossy` flag, which `GET /formats` publishes: that is the format's blanket\nstatement about everything a capability list cannot see, while this is about\nthe labels *this* release actually holds. Export asks for `allow_lossy=true`\nwhen either says so.\n\nA GET because it writes nothing and answers the same thing every time \u2014 a\nrelease is immutable, so this response is as stable as the release is.",
         "operationId": "check_export",
         "parameters": [
           {
@@ -14138,6 +14156,24 @@
               "format": "uuid",
               "title": "Release Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "A pre-processing recipe of the release's project, by name. `GET /projects/{project_id}/preprocessing-recipes` lists them. Omit to apply no transform.",
+            "in": "query",
+            "name": "recipe",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A pre-processing recipe of the release's project, by name. `GET /projects/{project_id}/preprocessing-recipes` lists them. Omit to apply no transform.",
+              "title": "Recipe"
             }
           },
           {
@@ -14207,6 +14243,16 @@
               }
             },
             "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
           },
           "422": {
             "content": {

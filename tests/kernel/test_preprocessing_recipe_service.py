@@ -160,7 +160,9 @@ def test_a_recipe_is_resolved_for_a_release_through_its_project(tmp_path: Path) 
     fixture = Fixture(tmp_path)
     fixture.schemas.create_version(fixture.project.id, [SIGN])
     fixture.promote()
-    release = fixture.releases.publish(fixture.dataset_id, "v1", split=SplitRecipe(train=0.6, val=0.2, test=0.2, seed=1))
+    release = fixture.releases.publish(
+        fixture.dataset_id, "v1", split=SplitRecipe(train=0.6, val=0.2, test=0.2, seed=1)
+    )
     recipes = PreprocessingRecipeService(fixture.workspace)
     created = recipes.create(fixture.project.id, "r", LETTERBOX)
 

@@ -36,9 +36,9 @@ from fastapi.responses import StreamingResponse
 from visionset.formats.registry import pick
 from visionset.jobs.export import JOB_TYPE as export_job_type
 from visionset.jobs.export import payload_for as export_payload_for
-from visionset.kernel.domain import BackgroundJobSpec, ExportTarget
+from visionset.kernel.domain import BackgroundJobSpec, ExportTarget, RecipeSpec
 from visionset.kernel.ports import Exporter, resolve_target
-from visionset.kernel.services import ReleaseService
+from visionset.kernel.services import PreprocessingRecipeService, ReleaseService, WorkspaceService
 from visionset.server.dependencies import (
     ExportersDep,
     RunnerDep,
@@ -112,6 +112,17 @@ def _address(target: TargetQuery = None, format: FormatQuery = None) -> ExportAd
 
 
 AddressQuery = Annotated[ExportAddress, Depends(_address)]
+
+RecipeQuery = Annotated[
+    str | None,
+    Query(
+        description=(
+            "A pre-processing recipe of the release's project, by name. "
+            "`GET /projects/{project_id}/preprocessing-recipes` lists them. "
+            "Omit to apply no transform."
+        )
+    ),
+]
 
 #: A gate, so it is a query parameter and the route never pre-checks it — the
 #: flag goes to the service and the kernel's own refusal carries the code. A
@@ -257,19 +268,30 @@ def get_release_assignment(workspace: WorkspaceDep, release_id: UUID) -> SplitAs
     return SplitAssignmentOut.of(ReleaseService(workspace).assignment(release_id))
 
 
-@router.get("/{release_id}/export-compatibility", responses=documented(404))
+@router.get("/{release_id}/export-compatibility", responses=documented(404, 409))
 def check_export(
     workspace: WorkspaceDep,
     exporters: ExportersDep,
     release_id: UUID,
     address: AddressQuery,
+    recipe: RecipeQuery = None,
 ) -> ExportCompatibilityOut:
     """Say what the named target or format would drop from this release, without writing anything.
 
     The pre-flight for `POST /releases/{release_id}/export`: same release, same
-    address, same document the export refuses with and writes into its own
-    output. A client showing a consent dialog asks this first; one that would
-    rather find out by being refused does not have to.
+    address, same recipe, same document the export refuses with and writes into
+    its own output. A client showing a consent dialog asks this first; one that
+    would rather find out by being refused does not have to.
+
+    `recipe` names a pre-processing recipe of the release's project, and the
+    answer then includes whether that recipe can run over this release: a
+    recipe that augments against a release published without a split is 409
+    `AUGMENTATION_REQUIRES_SPLIT`, a step that cannot move a geometry the
+    export would carry is 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`, and a
+    step needing a source size the manifest never recorded is 409
+    `EXPORT_SOURCE_UNREADABLE`. An unknown recipe is 404
+    `PREPROCESSING_RECIPE_NOT_FOUND`. The report itself does not change: what
+    a format drops is decided before any transform.
 
     Exactly one of `target` and `format`. A target narrows its format to the
     geometries its trainer has a task for, so a report for `target=yolov10`
@@ -291,9 +313,25 @@ def check_export(
     release is immutable, so this response is as stable as the release is.
     """
     exporter, target = _addressed(exporters, address)
+    spec = _recipe_spec(workspace, release_id, recipe)
     return ExportCompatibilityOut.of(
-        ReleaseService(workspace).check_export(release_id, exporter, target=target)
+        ReleaseService(workspace).check_export(release_id, exporter, target=target, recipe=spec)
     )
+
+
+def _recipe_spec(
+    workspace: WorkspaceService, release_id: UUID, name: str | None
+) -> RecipeSpec | None:
+    """The stored recipe's spec, resolved through the release's own project.
+
+    Raises:
+        ReleaseNotFound: no such release in this workspace.
+        PreprocessingRecipeNotFound: the release's project has no recipe of
+            that name.
+    """
+    if name is None:
+        return None
+    return PreprocessingRecipeService(workspace).for_release(release_id, name).spec
 
 
 def _addressed(
@@ -329,6 +367,7 @@ def export_release(
     release_id: UUID,
     address: AddressQuery,
     allow_lossy: AllowLossyQuery = False,
+    recipe: RecipeQuery = None,
 ) -> BackgroundJobOut:
     """Queue the release for writing, and answer at once with the job to poll.
 
@@ -359,17 +398,30 @@ def export_release(
     declare is 500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest blob
     is gone is 500 `WORKSPACE_CORRUPT`.
 
+    **`recipe` applies a pre-processing recipe of the release's project**, by
+    name, and the job carries the recipe as it stood when this request was
+    made: editing or deleting the recipe afterwards changes nothing about the
+    export. Whether the recipe can run is answered now, like consent — 409
+    `AUGMENTATION_REQUIRES_SPLIT` for an augmenting recipe over a release
+    published without a split, 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`
+    for a step that cannot move a geometry the export would carry, 409
+    `EXPORT_SOURCE_UNREADABLE` for a step needing a source size the manifest
+    never recorded, and 404 `PREPROCESSING_RECIPE_NOT_FOUND` for a name the
+    project does not have. The report written into the output records the
+    recipe, its hash, and which written file came from which asset.
+
     A POST because it does work and writes files, though it changes nothing a
     later read can see: the release is immutable, and re-exporting overwrites the
     previous archive.
     """
     exporter, target = _addressed(exporters, address)
+    spec = _recipe_spec(workspace, release_id, recipe)
     # Synchronously, before the job exists: a refusal a request can make is a
     # refusal the request makes. Discovering the consent gate in a
     # worker would put a 409 on a row somebody has to go and read. The worker
     # checks again; that one is the guarantee, this one is the answer.
     ReleaseService(workspace).require_export_consent(
-        release_id, exporter, allow_lossy=allow_lossy, target=target
+        release_id, exporter, allow_lossy=allow_lossy, target=target, recipe=spec
     )
     job = workspace.job_queue.enqueue(
         BackgroundJobSpec(
@@ -379,6 +431,7 @@ def export_release(
                 exporter.format_name,
                 target=None if target is None else target.name,
                 allow_lossy=allow_lossy,
+                recipe=None if spec is None else (recipe, spec),
             ),
             idempotent=True,
         )

@@ -1245,10 +1245,11 @@ def test_the_report_is_written_into_the_export_directory(tmp_path: Path) -> None
     assert written["compatible"] is False
     assert written["excluded_annotations"] == 2
     # Key-for-key what `visionset.wire` hands the CLI and MCP, and what
-    # `ExportCompatibilityOut` puts on the API's refusal. One document, four
-    # places — the report format is stable across all three, and it
-    # is the reason `format_name` carries a serialization alias.
-    assert written == wire.export_compatibility(result.compatibility)
+    # `ExportCompatibilityOut` puts on the API's refusal, plus the one key the
+    # file carries on its own: which recipe ran, `null` when none did. One
+    # document, four places — the report format is stable across all three,
+    # and it is the reason `format_name` carries a serialization alias.
+    assert written == {**wire.export_compatibility(result.compatibility), "preprocessing": None}
     fixture.close()
 
 
@@ -1260,8 +1261,9 @@ def test_the_report_parses_back_into_the_model_that_wrote_it(tmp_path: Path) -> 
 
     result = fixture.releases.export(release.id, _BoxesOnly(), dest, allow_lossy=True)
 
-    written = (dest / EXPORT_REPORT_FILENAME).read_text(encoding="utf-8")
-    assert ExportCompatibility.model_validate_json(written) == result.compatibility
+    written = json.loads((dest / EXPORT_REPORT_FILENAME).read_text(encoding="utf-8"))
+    written.pop("preprocessing")
+    assert ExportCompatibility.model_validate(written) == result.compatibility
     fixture.close()
 
 

@@ -82,6 +82,8 @@ from visionset.kernel.domain import (
     DraftAttribute,
     DraftLabelClass,
     ExportCompatibility,
+    ExportFileMapping,
+    ExportPreprocessing,
     ExportResult,
     ExportTarget,
     Geometry,
@@ -96,8 +98,10 @@ from visionset.kernel.domain import (
     PreprocessingHints,
     Project,
     ProjectPreview,
+    RecipeSpec,
     Release,
     ReleaseVerification,
+    ResizeStep,
     SchemaChange,
     SchemaChangePreview,
     SchemaDiff,
@@ -105,6 +109,7 @@ from visionset.kernel.domain import (
     SchemaPublication,
     Source,
     SplitRecipe,
+    Step,
     ThumbnailBackfill,
     VideoProvenance,
     WeightDownload,
@@ -785,6 +790,49 @@ def export_compatibility(value: ExportCompatibility) -> dict[str, Any]:
     }
 
 
+def recipe_step(value: Step) -> dict[str, Any]:
+    """One step of a recipe, tagged by ``kind``. Also the *input* shape a recipe body reads."""
+    if isinstance(value, ResizeStep):
+        return {
+            "kind": "resize",
+            "strategy": value.strategy.value,
+            "width": value.width,
+            "height": value.height,
+            "pad_value": value.pad_value,
+        }
+    return {"kind": "augment", "op": value.op.value, "amount": value.amount}
+
+
+def recipe_spec(value: RecipeSpec) -> dict[str, Any]:
+    """What a recipe does to every exported image. Also the *input* shape a recipe body reads."""
+    return {
+        "target": value.target,
+        "steps": [recipe_step(step) for step in value.steps],
+        "variants_per_asset": value.variants_per_asset,
+    }
+
+
+def export_file_mapping(value: ExportFileMapping) -> dict[str, Any]:
+    """One written image traced to the manifest asset it came from."""
+    return {
+        "file": value.file,
+        "source_content_hash": value.source_content_hash,
+        "exported_sha256": value.exported_sha256,
+        "variant": value.variant,
+    }
+
+
+def export_preprocessing(value: ExportPreprocessing) -> dict[str, Any]:
+    """The recipe an export applied, by value, and what it produced."""
+    return {
+        "recipe_name": value.recipe_name,
+        "spec": recipe_spec(value.spec),
+        "recipe_hash": value.recipe_hash,
+        "pillow_version": value.pillow_version,
+        "mapping": [export_file_mapping(row) for row in value.mapping],
+    }
+
+
 def export_result(value: ExportResult) -> dict[str, Any]:
     """What an export left on disk. **Surface-defined**: the API returns the archive.
 
@@ -799,7 +847,14 @@ def export_result(value: ExportResult) -> dict[str, Any]:
         "directory": str(value.directory),
         "file_count": value.file_count,
         "total_bytes": value.total_bytes,
+        "source_file_count": value.source_file_count,
+        "augmented_file_count": value.augmented_file_count,
+        "source_annotation_count": value.source_annotation_count,
+        "augmented_annotation_count": value.augmented_annotation_count,
         "compatibility": export_compatibility(value.compatibility),
+        "preprocessing": None
+        if value.preprocessing is None
+        else export_preprocessing(value.preprocessing),
     }
 
 
