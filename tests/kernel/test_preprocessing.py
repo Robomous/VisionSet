@@ -9,8 +9,10 @@ import pytest
 from pydantic import ValidationError
 
 from visionset.kernel.domain import (
+    AUGMENT_GEOMETRIES,
     AugmentOp,
     AugmentStep,
+    GeometryType,
     PreprocessingRecipe,
     RecipeSpec,
     ResizeStep,
@@ -157,6 +159,20 @@ def test_the_hash_is_a_sha256_hex_digest_that_moves_with_the_content() -> None:
 
 
 # --- the draws --------------------------------------------------------------
+
+
+def test_every_step_declares_what_it_transforms_and_only_rot90_excludes_polylines() -> None:
+    assert RESIZE.supported_geometries == frozenset(GeometryType)
+    assert RESIZE.name == "resize"
+    for op in AugmentOp:
+        step = AugmentStep(op=op)
+        assert step.name == op.value
+        assert step.supported_geometries == AUGMENT_GEOMETRIES[op]
+    assert HFLIP.supported_geometries == frozenset(GeometryType)
+    assert AugmentStep(op=AugmentOp.BRIGHTNESS_CONTRAST).supported_geometries == frozenset(
+        GeometryType
+    )
+    assert ROT90.supported_geometries == frozenset(GeometryType) - {GeometryType.POLYLINE}
 
 
 def test_a_variant_seed_is_deterministic_and_distinct_per_variant_and_image() -> None:

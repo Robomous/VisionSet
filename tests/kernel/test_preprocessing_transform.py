@@ -12,11 +12,13 @@ from uuid import UUID, uuid4
 import pytest
 
 from visionset.kernel.domain import (
+    AUGMENT_GEOMETRIES,
     AugmentOp,
     AugmentStep,
     BboxGeometry,
     ClassificationGeometry,
     Geometry,
+    GeometryType,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
@@ -269,6 +271,53 @@ def test_rot90_refuses_a_polyline_and_names_the_step_geometry_and_asset() -> Non
     assert caught.value.step == "rot90"
     assert caught.value.geometry == "polyline"
     assert caught.value.asset_id == str(asset.asset_id)
+
+
+@pytest.mark.parametrize("op", list(AugmentOp))
+@pytest.mark.parametrize("geometry", EVERY_GEOMETRY, ids=lambda geometry: geometry.type.value)
+def test_a_step_transforms_exactly_the_geometries_it_declares(
+    op: AugmentOp, geometry: Geometry
+) -> None:
+    step = AugmentStep(op=op)
+    spec = _spec(step, variants=1)
+    asset = _asset(geometry)
+
+    if geometry.type in step.supported_geometries:
+        view = transform_manifest(_manifest(asset), spec, _train(asset))
+        (variant,) = [file for file in view.files if file.variant == 1]
+        assert variant.annotations[0].geometry.type is geometry.type
+        return
+    with pytest.raises(PreprocessingStepUnsupportedGeometry) as caught:
+        transform_manifest(_manifest(asset), spec, _train(asset))
+    assert (caught.value.step, caught.value.geometry) == (op.value, geometry.type.value)
+    assert caught.value.asset_id == str(asset.asset_id)
+
+
+def test_the_refusal_reads_the_declaration_not_the_arithmetic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Narrowing hflip's declared geometries makes it refuse a box it can mirror."""
+    narrowed = AUGMENT_GEOMETRIES[AugmentOp.HFLIP] - {GeometryType.BBOX}
+    monkeypatch.setitem(AUGMENT_GEOMETRIES, AugmentOp.HFLIP, narrowed)
+    spec = _spec(AugmentStep(op=AugmentOp.HFLIP), variants=1)
+    asset = _asset(BBOX)
+
+    with pytest.raises(PreprocessingStepUnsupportedGeometry) as caught:
+        transform_manifest(_manifest(asset), spec, _train(asset))
+    assert (caught.value.step, caught.value.geometry) == ("hflip", "bbox")
+
+
+def test_a_resize_consults_its_declaration_on_the_base_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ResizeStep, "supported_geometries", property(lambda step: frozenset({GeometryType.BBOX}))
+    )
+    step = ResizeStep(strategy=ResizeStrategy.STRETCH, width=64, height=64)
+
+    with pytest.raises(PreprocessingStepUnsupportedGeometry) as caught:
+        transform_manifest(_manifest(_asset(POLYGON)), _spec(step), None)
+    assert (caught.value.step, caught.value.geometry) == ("resize", "polygon")
 
 
 def test_rot90_leaves_a_polyline_outside_the_train_fold_alone() -> None:

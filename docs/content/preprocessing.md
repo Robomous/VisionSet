@@ -173,7 +173,7 @@ scaled to match, and the response is never cached: the spec is the request's own
 | `PreprocessingRecipeNameTaken` | Another recipe of the project carries that name, or a rename lands on one. Checked before writing and refused by a unique index, the `ReleaseTagTaken` shape. 409. |
 | `InvalidName` | The name is not a slug: lowercase letters, digits, dots, hyphens and underscores, starting with a letter or digit, at most 64 characters. 422. |
 | `AugmentationRequiresSplit` | The recipe augments and the release was published without a split recipe. Raised at pre-flight and at export. 409. |
-| `PreprocessingStepUnsupportedGeometry` | A step met a geometry it cannot transform - `rot90` over a polyline. Carries `step`, `geometry` and the first `asset_id`. 409. |
+| `PreprocessingStepUnsupportedGeometry` | A step met a geometry outside the set it declares it can transform - every step declares `supported_geometries` the way an exporter does, and today the one exclusion is `rot90` over a polyline. Carries `step`, `geometry` and the first `asset_id`. 409. |
 | `ExportSourceUnreadable` | A step needs the source's pixel size and the manifest never recorded one, or the asset's bytes are gone. 409. |
 | `PreprocessingDriverNotFound` | No installed driver applies a step kind the recipe holds. A fact about the installation, not the request. 500. |
 

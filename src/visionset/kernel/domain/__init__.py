@@ -176,6 +176,8 @@ from visionset.kernel.domain.prediction import (
     require_points_on_asset,
 )
 from visionset.kernel.domain.preprocessing import (
+    AUGMENT_GEOMETRIES,
+    EVERY_GEOMETRY,
     AugmentOp,
     AugmentStep,
     PreprocessingRecipe,
@@ -427,6 +429,8 @@ __all__ = [
     "TargetFamily",
     "Task",
     "TARGET_NAME_PATTERN",
+    "AUGMENT_GEOMETRIES",
+    "EVERY_GEOMETRY",
     "AugmentOp",
     "AugmentStep",
     "Fold",
