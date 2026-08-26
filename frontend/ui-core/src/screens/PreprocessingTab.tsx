@@ -8,7 +8,8 @@
  * unconditional, so this screen gates nothing. What it holds is a draft — the
  * stored recipe as typed fields — and `dirty` is the draft disagreeing with the
  * spec it opened from. Save is a create for a new draft and a whole-replace
- * `PUT` for an open one; Discard puts the stored spec back.
+ * `PUT` for an open one; Discard puts the stored spec back; Delete asks first,
+ * and closes the editor when the recipe it held is the one that went.
  *
  * ## The preview is the export's own path
  *
@@ -38,8 +39,17 @@ import { RecipeList } from "../patterns/RecipeList";
 import { StaticAnnotationOverlay } from "../patterns/StaticAnnotationOverlay";
 import { Button } from "../primitives/Button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "../primitives/Dialog";
+import { FieldError } from "../primitives/Input";
+import {
   useActiveSchema,
   useCreatePreprocessingRecipe,
+  useDeletePreprocessingRecipe,
   useExportTargets,
   usePreprocessingPreview,
   usePreprocessingRecipes,
@@ -83,6 +93,7 @@ export function PreprocessingTab({ projectId, datasetId }: PreprocessingTabProps
   const create = useCreatePreprocessingRecipe(projectId);
   const update = useUpdatePreprocessingRecipe(projectId);
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const items = recipes.data?.items ?? [];
   const catalog = targets.data?.items ?? [];
@@ -157,7 +168,21 @@ export function PreprocessingTab({ projectId, datasetId }: PreprocessingTabProps
           }
         }}
         onNew={startNew}
+        onDelete={setDeleting}
         labelFor={labelFor}
+      />
+      <DeleteRecipeDialog
+        name={deleting}
+        projectId={projectId}
+        onClose={() => setDeleting(null)}
+        onDeleted={(name) => {
+          // The list still holds the deleted row until its refetch lands, so
+          // the next recipe is chosen here rather than left to the effect,
+          // which would reopen the one that has just gone.
+          if (editing?.name !== name) return;
+          const next = items.find((one) => one.name !== name);
+          setEditing(next === undefined ? null : open(next));
+        }}
       />
       {editing !== null && (
         <Editor
@@ -212,6 +237,69 @@ export function PreprocessingTab({ projectId, datasetId }: PreprocessingTabProps
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The confirmation. What a delete reaches is small and fully known — the
+ * recipe alone. An export that already ran carries its snapshot, and a batch
+ * is never touched — so the sentence says that and nothing it cannot source.
+ */
+function DeleteRecipeDialog({
+  name,
+  projectId,
+  onClose,
+  onDeleted,
+}: {
+  readonly name: string | null;
+  readonly projectId: string;
+  readonly onClose: () => void;
+  readonly onDeleted: (name: string) => void;
+}): JSX.Element {
+  const remove = useDeletePreprocessingRecipe(projectId);
+
+  return (
+    <Dialog
+      open={name !== null}
+      onOpenChange={(next) => {
+        if (next) return;
+        remove.reset();
+        onClose();
+      }}
+    >
+      <DialogContent data-testid="delete-recipe-dialog">
+        <DialogTitle>Delete {name}?</DialogTitle>
+        <DialogDescription>
+          The recipe is removed from this project and can no longer be chosen at export. Releases
+          already exported through it keep their files: an export carries its own copy of the
+          recipe it ran.
+        </DialogDescription>
+        {remove.isError && (
+          <FieldError data-testid="delete-recipe-error">{refusalProse(remove.error)}</FieldError>
+        )}
+        <DialogFooter>
+          <Button variant="secondary" data-testid="delete-recipe-cancel" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            data-testid="delete-recipe-submit"
+            disabled={remove.isPending}
+            onClick={() =>
+              name !== null &&
+              remove.mutate(name, {
+                onSuccess: () => {
+                  onClose();
+                  onDeleted(name);
+                },
+              })
+            }
+          >
+            {remove.isPending ? "Deleting…" : "Delete recipe"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
