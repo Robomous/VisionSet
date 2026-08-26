@@ -49,6 +49,7 @@ import { ChevronDown, Database, Grid3x3, Layers, MoreHorizontal, Network, Pencil
 import { cva } from "class-variance-authority";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
+import { menuNoExit } from "../lib/motion";
 import { Button } from "../primitives/button";
 import {
   DropdownMenu,
@@ -282,7 +283,7 @@ function AnnotateAction({
           <ChevronDown className="size-4" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align="start" className={menuNoExit}>
         {targets.map((batch) => (
           <DropdownMenuItem
             key={batch.id}
@@ -311,7 +312,7 @@ function Overflow({ onRename, onDelete }: ProjectNavProps): JSX.Element | null {
           <MoreHorizontal className="size-4" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align="start" className={menuNoExit}>
         {onRename !== undefined && (
           <DropdownMenuItem data-testid="rename-project" onSelect={onRename}>
             <Pencil className="size-4" aria-hidden="true" />

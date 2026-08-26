@@ -51,6 +51,8 @@ import { Check } from "lucide-react";
 import type { JSX, KeyboardEvent } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
+import { cn } from "../lib/cn";
+import { menuNoExit } from "../lib/motion";
 import { classColor } from "../palette";
 import { DropdownMenuContent, DropdownMenuItem } from "../primitives/dropdown-menu";
 
@@ -119,7 +121,7 @@ export function ReassignMenu({
   }
 
   return (
-    <DropdownMenuContent align={align} className="max-w-64" onKeyDown={byHotkey}>
+    <DropdownMenuContent align={align} className={cn(menuNoExit, "max-w-64")} onKeyDown={byHotkey}>
       {schema.classes.map((declared) => {
         const ok = fits(declared);
         const current = declared.name === annotation.label_class;

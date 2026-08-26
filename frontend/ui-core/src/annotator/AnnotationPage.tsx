@@ -155,6 +155,7 @@ import {
 import type { OpenMember } from "../generated/api.js";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
+import { menuNoExit } from "../lib/motion";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/button";
@@ -2408,18 +2409,7 @@ function Workspace({
                 <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
-            {/*
-              Canonical `DropdownMenuContent` animates its exit; DESIGN.md's
-              *Motion* is why this one may not. While that animation plays, Radix
-              keeps the dismissable layer mounted, so a press on the trigger
-              straight after `Escape` is read as both an open and an
-              outside-dismiss and the menu never appears — `annotate.spec.ts`
-              holds the two presses that catch it coming back.
-              `animate-none!` beats the canonical `animate-out` regardless of
-              which rule Tailwind emits first, since `tailwind-merge` does not
-              know the two share a group and leaves both classes standing.
-            */}
-            <DropdownMenuContent align="end" className="data-closed:animate-none!">
+            <DropdownMenuContent align="end" className={menuNoExit}>
               {/* `Save and stay`, reabsorbed — `xl:hidden` is the exact inverse of
                   the button's `hidden xl:inline-flex`, so the control exists once
                   at every width. Gated on `frameVerbs` for the same reason the

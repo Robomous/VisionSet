@@ -78,6 +78,7 @@ import {
   TooltipTrigger,
   classColor,
   formatGeometries,
+  menuNoExit,
   toast,
 } from "@visionset/ui-core";
 import { MousePointer2, Plus, Square, Trash2 } from "lucide-react";
@@ -493,7 +494,7 @@ export function Styleguide(): JSX.Element {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">Actions</Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <DropdownMenuContent align="start" className={menuNoExit}>
                 <DropdownMenuItem>Rename</DropdownMenuItem>
                 <DropdownMenuItem>Duplicate schema</DropdownMenuItem>
                 <DropdownMenuSeparator />

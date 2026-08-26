@@ -160,6 +160,7 @@ import {
 } from "../data/inferenceQueries";
 import { jobFailureProse, refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
+import { menuNoExit } from "../lib/motion";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/button";
@@ -551,7 +552,7 @@ export function ConnectionCard({
                   <MoreHorizontal aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className={menuNoExit}>
                 {/*
                   Two checks over the same files, and each label says what its
                   own check *proves* rather than what it is called.
