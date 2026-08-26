@@ -22,7 +22,12 @@ spec = RecipeSpec(
 )
 recipe = PreprocessingRecipeService(workspace).create(project.id, "yolo-640", spec)
 ReleaseService(workspace).export(
-    release.id, exporter, dest, target=target, recipe=recipe.spec, recipe_name=recipe.name,
+    release.id,
+    exporter,
+    dest,
+    target=target,
+    recipe=recipe.spec,
+    recipe_name=recipe.name,
     drivers=drivers(),
 )
 ```
