@@ -77,6 +77,12 @@ import {
   checkListSchemaVersions,
   checkListSources,
   checkCreateCorrectionBatch,
+  checkCreatePreprocessingRecipe,
+  checkDeletePreprocessingRecipe,
+  checkGetReleaseAssignment,
+  checkListPreprocessingRecipes,
+  checkPreviewPreprocessing,
+  checkUpdatePreprocessingRecipe,
   checkPreLabelJob,
   checkPreLabelPlan,
   checkPreLabelProjectBatches,
@@ -2145,18 +2151,165 @@ export function useVerifyRelease(releaseId: string): UseQueryResult<ReleaseVerif
 export function useExportRelease(releaseId: string) {
   const client = useApiClient();
   return useMutation({
-    mutationFn: async (input: { target: string; allowLossy?: boolean }) =>
+    mutationFn: async (input: { target: string; recipe?: string; allowLossy?: boolean }) =>
       unwrap(
         await client.POST("/releases/{release_id}/export", {
           params: {
             path: { release_id: releaseId },
             query: {
               target: input.target,
+              ...(input.recipe === undefined ? {} : { recipe: input.recipe }),
               ...(input.allowLossy === true ? { allow_lossy: true } : {}),
             },
           },
         }),
         checkExportRelease,
+      ),
+  });
+}
+
+// --- pre-processing recipes ----------------------------------------------------
+
+export type PreprocessingRecipe = components["schemas"]["PreprocessingRecipeOut"];
+export type PreprocessingRecipePage = components["schemas"]["PreprocessingRecipePage"];
+export type PreprocessingPreview = components["schemas"]["PreprocessingPreviewOut"];
+export type PreviewAnnotation = components["schemas"]["PreviewAnnotationOut"];
+export type SplitAssignment = components["schemas"]["SplitAssignmentOut"];
+type RecipeSpecBody = components["schemas"]["RecipeSpecBody"];
+
+export const recipeKeys = {
+  recipes: (projectId: string) => ["projects", projectId, "preprocessing-recipes"] as const,
+  // The spec is part of the key: two specs are two renderings of the same
+  // asset, and sharing one key would make editing the draft a cache overwrite.
+  preview: (projectId: string, assetId: string, variant: number, spec: string) =>
+    ["projects", projectId, "preprocessing-preview", assetId, variant, spec] as const,
+  assignment: (releaseId: string) => ["releases", releaseId, "assignment"] as const,
+};
+
+/**
+ * A project's recipes. Named resources with no state and no `allowed_actions`:
+ * every operation is always offered, and nothing here gates one.
+ */
+export function usePreprocessingRecipes(
+  projectId: string,
+): UseQueryResult<PreprocessingRecipePage, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: recipeKeys.recipes(projectId),
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/projects/{project_id}/preprocessing-recipes", {
+          params: { path: { project_id: projectId } },
+        }),
+        checkListPreprocessingRecipes,
+      ),
+  });
+}
+
+export function useCreatePreprocessingRecipe(projectId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { name: string; spec: RecipeSpecBody }) =>
+      unwrap(
+        await client.POST("/projects/{project_id}/preprocessing-recipes", {
+          params: { path: { project_id: projectId } },
+          body: { name: input.name, spec: input.spec },
+        }),
+        checkCreatePreprocessingRecipe,
+      ),
+    onSuccess: () => queries.invalidateQueries({ queryKey: recipeKeys.recipes(projectId) }),
+  });
+}
+
+/** The whole recipe, replaced. `name` renames it when it differs from `current`. */
+export function useUpdatePreprocessingRecipe(projectId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { current: string; name: string; spec: RecipeSpecBody }) =>
+      unwrap(
+        await client.PUT("/projects/{project_id}/preprocessing-recipes/{name}", {
+          params: { path: { project_id: projectId, name: input.current } },
+          body: { name: input.name, spec: input.spec },
+        }),
+        checkUpdatePreprocessingRecipe,
+      ),
+    onSuccess: () => queries.invalidateQueries({ queryKey: recipeKeys.recipes(projectId) }),
+  });
+}
+
+export function useDeletePreprocessingRecipe(projectId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) =>
+      unwrap(
+        await client.DELETE("/projects/{project_id}/preprocessing-recipes/{name}", {
+          params: { path: { project_id: projectId, name } },
+        }),
+        checkDeletePreprocessingRecipe,
+      ),
+    onSuccess: () => queries.invalidateQueries({ queryKey: recipeKeys.recipes(projectId) }),
+  });
+}
+
+/**
+ * One asset through a spec, rendered for a screen — the export's own kernel
+ * path over a one-asset manifest, capped to 512 pixels on the longer side.
+ *
+ * A `POST` read as a query: the request creates nothing, and the response is
+ * a function of `(asset, variant, spec)`, which is what the key spells. The
+ * previous picture is kept while a new spec is rendering, so a keystroke in the
+ * width field changes the cell rather than blanking it. A spec that cannot be
+ * sent yet (`null`) leaves the query idle.
+ */
+export function usePreprocessingPreview(
+  projectId: string,
+  assetId: string | undefined,
+  variant: number,
+  spec: RecipeSpecBody | null,
+  specKey: string,
+): UseQueryResult<PreprocessingPreview, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: recipeKeys.preview(projectId, assetId ?? "none", variant, specKey),
+    enabled: assetId !== undefined && spec !== null,
+    placeholderData: keepPreviousData,
+    // The server says `no-store`, and a rendering of a spec that is still
+    // being edited is not worth refetching on focus either.
+    staleTime: 60_000,
+    queryFn: async () =>
+      unwrap(
+        await client.POST("/projects/{project_id}/preprocessing-preview", {
+          params: { path: { project_id: projectId } },
+          body: { asset_id: assetId ?? "", variant, spec: spec ?? { steps: [], variants_per_asset: 0 } },
+        }),
+        checkPreviewPreprocessing,
+      ),
+  });
+}
+
+/**
+ * The folds a release's split recipe cuts over its frozen asset set. Enabled
+ * only for a release that has a split: one without answers `NO_SPLIT_RECIPE`,
+ * which is an answer about the release and not a failure to render.
+ */
+export function useReleaseAssignment(
+  releaseId: string | undefined,
+): UseQueryResult<SplitAssignment, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: recipeKeys.assignment(releaseId ?? "none"),
+    enabled: releaseId !== undefined,
+    // A release is immutable, so its cut is too.
+    staleTime: Infinity,
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/releases/{release_id}/assignment", {
+          params: { path: { release_id: releaseId ?? "" } },
+        }),
+        checkGetReleaseAssignment,
       ),
   });
 }

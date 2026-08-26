@@ -63,7 +63,16 @@ without knowing the URL scheme.
   bottom. Every section's own header uses `secondary` actions — Ingest beside Annotate on
   Overview and Batches, Publish on Dataset, Save version on Schema. On a sub-view (the
   gallery, the ingest flow) the column draws no filled control at all: that page owns its
-  dominant action, and a second one beside it would be two answers to "what now?".
+  dominant action, and a second one beside it would be two answers to "what now?". A view
+  *inside* a section can own it too: while the Dataset's Pre-processing view is showing, its
+  editor's *Save recipe* — or, with no recipe yet, the invitation to write one — is the page's
+  one filled control, and the column's Annotate or Ingest steps back to `secondary` for as
+  long as that view is open, the way it does for the Overview's first-run invitation.
+- **The Dataset's views are component state.** Overview, Assets, Pre-processing and Releases
+  are four lenses on one section, chosen with the product's one tab row; none is a path
+  segment or a query parameter, on the rule below that not everything selectable is a place.
+  The open view is held by the project screen rather than by the section, because the
+  navigation column has to know when the Pre-processing editor holds the filled control.
 - **The project's identity is an eyebrow above the content, not part of the column.** One
   line above a section's `h1`, at every width: the project's name and the active-version
   chip, omitted when there is no schema (`patterns/ProjectEyebrow.tsx`). It is identity and

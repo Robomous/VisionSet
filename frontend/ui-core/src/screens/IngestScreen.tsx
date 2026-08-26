@@ -120,7 +120,7 @@
  * run still say which batch holds what it managed to read.
  */
 
-import { ArrowLeft, Check, Film, FolderOpen, Image, RefreshCw, RotateCw, TriangleAlert, Upload, X } from "lucide-react";
+import { ArrowLeft, Film, FolderOpen, Image, RefreshCw, RotateCw, TriangleAlert, Upload, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useEffect,
@@ -138,6 +138,7 @@ import { cn } from "../lib/cn";
 import { formatBytes, formatCount } from "../lib/format";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
+import { StepMarker } from "../patterns/StepMarker";
 import { Alert, Badge } from "../primitives/Badge";
 import type { BadgeTone } from "./batchState";
 import { Button } from "../primitives/Button";
@@ -740,22 +741,7 @@ function Step({
       data-state={state}
       aria-current={state === "active" ? "step" : undefined}
     >
-      <div className="flex flex-col items-center">
-        <span
-          className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-            checked
-              ? "border border-border bg-muted text-foreground"
-              : state === "active"
-                ? "bg-primary text-primary-foreground"
-                : "border border-border bg-card text-muted-foreground",
-          )}
-          aria-hidden="true"
-        >
-          {checked ? <Check className="size-3.5" /> : index}
-        </span>
-        {!last && <div className="mt-1 w-px flex-1 bg-border" aria-hidden="true" />}
-      </div>
+      <StepMarker index={index} state={checked ? "complete" : state} rail={!last} />
 
       <div className={cn("flex min-w-0 flex-1 flex-col gap-1", last ? "pb-0" : "pb-8")}>
         <div className="flex min-h-7 flex-wrap items-center gap-2">

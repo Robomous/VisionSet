@@ -81,7 +81,7 @@ import { DEFAULT_PROJECT_SECTION, PROJECT_SECTIONS, type ProjectSection } from "
 import { SectionHeader } from "../patterns/SectionHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { BatchesScreen } from "./BatchesScreen";
-import { DatasetScreen } from "./DatasetScreen";
+import { DatasetScreen, type DatasetTab } from "./DatasetScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
 import { openForAnnotation, ProjectFrame } from "./ProjectFrame";
@@ -441,6 +441,13 @@ export function ProjectScreen({
   const readiness = useProjectReadiness(projectId);
   const overviewOwnsTheAction =
     current === "overview" && readiness !== null && invitationOwnsTheAction(firstRunInvitation(readiness));
+  // The Dataset's view is held here rather than in `DatasetScreen`, because the
+  // Pre-processing view's editor carries the page's filled control — Save
+  // recipe, or the invitation to write one — and the navigation column that has
+  // to step back for it is drawn outside the section. Component state, like the
+  // section's other views: a view of the same resource, not a place.
+  const [datasetTab, setDatasetTab] = useState<DatasetTab>("overview");
+  const preprocessingOwnsTheAction = current === "dataset" && datasetTab === "preprocessing";
 
   const holdsAnnotate = openForAnnotation(batches.data?.items).length > 0 && onOpenBatch !== undefined;
   // Ingest is reachable from every section: in the navigation's slot while
@@ -460,7 +467,7 @@ export function ProjectScreen({
         ...(onOpenBatch === undefined ? {} : { onOpenBatch }),
         ...(onOpenJob === undefined ? {} : { onOpenJob }),
         ...(onIngest === undefined ? {} : { onIngest }),
-        contentOwnsTheAction: overviewOwnsTheAction,
+        contentOwnsTheAction: overviewOwnsTheAction || preprocessingOwnsTheAction,
       }}
       {...(onDeleted === undefined ? {} : { onDeleted })}
     >
@@ -474,6 +481,8 @@ export function ProjectScreen({
         go={go}
         onIngest={onIngest}
         onOpenBatch={onOpenBatch}
+        datasetTab={datasetTab}
+        onDatasetTabChange={setDatasetTab}
         schema={{
           draft: schemaDraft,
           onDraftChange: setSchemaDraft,
@@ -522,6 +531,8 @@ function Section({
   go,
   onIngest,
   onOpenBatch,
+  datasetTab,
+  onDatasetTabChange,
   schema,
 }: {
   readonly current: ProjectTab;
@@ -534,6 +545,8 @@ function Section({
   readonly go: (tab: ProjectTab) => void;
   readonly onIngest: (() => void) | undefined;
   readonly onOpenBatch: ((batchId: string) => void) | undefined;
+  readonly datasetTab: DatasetTab;
+  readonly onDatasetTabChange: (tab: DatasetTab) => void;
   readonly schema: {
     readonly draft: SchemaDraft | null;
     readonly onDraftChange: (draft: SchemaDraft | null) => void;
@@ -600,7 +613,7 @@ function Section({
         />
       );
     case "dataset":
-      return <DatasetScreen projectId={projectId} />;
+      return <DatasetScreen projectId={projectId} tab={datasetTab} onTabChange={onDatasetTabChange} />;
   }
 }
 
