@@ -358,14 +358,12 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     InferenceConnectionNotSetUp: ErrorRule(409, "INFERENCE_CONNECTION_NOT_SET_UP"),
     # An augmenting recipe against a release published without a split recipe.
     # Change-the-state-and-resubmit: publish a release with a split and the
-    # identical export succeeds. No route raises it yet — the recipe routes are
-    # not built — mapped for BATCH_IMMUTABLE's reason.
+    # identical export succeeds.
     AugmentationRequiresSplit: ErrorRule(409, "AUGMENTATION_REQUIRES_SPLIT"),
     # A recipe step meeting a geometry this release carries and the step cannot
     # move. LOSSY_EXPORT_NOT_CONSENTED's reading — a well-formed request refused
     # by the release's content — without the consent flag, because a label that
-    # cannot follow its image is never something to consent to. No route raises
-    # it yet; mapped for BATCH_IMMUTABLE's reason.
+    # cannot follow its image is never something to consent to.
     PreprocessingStepUnsupportedGeometry: ErrorRule(409, "PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY"),
     # --- 422: the payload itself is wrong ----------------------------------
     InvalidName: ErrorRule(422, "INVALID_NAME"),
