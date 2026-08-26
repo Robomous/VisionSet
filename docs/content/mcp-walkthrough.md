@@ -32,6 +32,7 @@ example proves the transport.
 | 5 | `next_pending_assets`, `get_asset_image`, `add_annotations`, `set_asset_progress` | the loop |
 | 6 | `complete_job`, `complete_batch`, `promote_batch`, `dataset_stats` | the finished work reaches the trunk |
 | 7 | `publish_release`, `verify_release`, `list_formats`, `export_release` | a frozen artifact, on disk |
+| 7b | `create_preprocessing_recipe`, `export_release` with `recipe` | the same release, resized and augmented for a model |
 | 8 | `publish_release` again | a refusal, on purpose |
 
 ## 1 - Find out where you are
@@ -205,6 +206,24 @@ bill nobody should pay.
 
 There is no `get_release_manifest`, for that last reason, and no `get_release_assignment` -
 `export_release` puts the folds on disk in the form anything downstream actually consumes.
+
+## 7b - And once more, for a model, through a recipe
+
+```
+create_preprocessing_recipe project=... name="yolo-640"
+    spec={"target":"yolo11","steps":[{"kind":"resize","strategy":"letterbox","width":640,"height":640},
+                                     {"kind":"augment","op":"hflip"}],"variants_per_asset":1}
+export_release project=... tag="v1.0" target="yolo11" recipe="yolo-640" allow_lossy=true dest="/abs/out/yolo11"
+    ->  {"augmented_file_count": 1, "preprocessing": {"recipe_name": "yolo-640", "recipe_hash": "...", "mapping": [...]}, ...}
+```
+
+A recipe is a project resource named on the export, and the export keeps the spec by value: the
+result's `preprocessing` carries the spec as it ran, its hash, and a mapping from every file
+written to the source it came from. Augmentation is written for the train fold only, which is what
+the split in step 7 is for - one of the two released assets lands there, so one
+`images/train/<hash>-aug1.png` is written beside its source with `labels/train/<hash>-aug1.txt`.
+`allow_lossy` because the format `yolo11` resolves to declares itself lossy; `check_export` with
+the same `recipe` answers the consent question without writing anything.
 
 ## 8 - And it ends on a refusal
 

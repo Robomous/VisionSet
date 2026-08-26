@@ -234,6 +234,7 @@ real dependency since #16, so a second hand-rolled PNG encoder beside it would b
 | Trunk | `complete` → `promote` → `GET /datasets/{d}/stats` |
 | Release | `POST /datasets/{d}/releases`, `GET …/manifest`, `GET …/verify` |
 | Export | `GET /formats` → `POST /releases/{r}/export?format=dummy` → a zip on disk |
+| Recipe | `POST /projects/{p}/preprocessing-recipes`, then `POST /releases/{r}/export?target=yolo11&recipe=yolo-640` - refused **409 `LOSSY_EXPORT_NOT_CONSENTED`** until `allow_lossy=true` - and the archive is opened for `preprocessing.recipe_hash` in `visionset-export-report.json` and a `labels/train/<hash>-aug1.txt` beside its image |
 | Pixels | `GET /projects/{p}/assets/{a}/content`, hashed against the asset's `content_hash` |
 | Refusal | the same request with no `Authorization` header → **401 `UNAUTHORIZED`** |
 
@@ -276,7 +277,9 @@ is that `visionset` is on `PATH`, which `uv run` arranges.
 `examples/cli_end_to_end.sh` is M3's exit criterion - *the full cycle without touching Python* -
 written as the thing that criterion describes. It runs `visionset init`, `project create`,
 `schema apply`, `ingest`, `batch approve/start/complete/promote`, a `job` loop, `release
-publish/verify`, `format list` and `export`, and then asserts.
+publish/verify`, `format list` and `export`, then `recipe create` and a second `export --target
+yolo11 --recipe yolo-640 --allow-lossy`, and then asserts - on the release's `--json`, and on the
+recipe export's report and its three `-aug1` train variants.
 
 ## Three things it is built to demonstrate
 
@@ -334,6 +337,7 @@ quietly leaving the impression that a terminal can label images.
 | Trunk | `complete_batch` → `promote_batch` → `dataset_stats` |
 | Release | `publish_release`, `list_releases`, `verify_release` |
 | Export | `list_formats` → `export_release(dest=…)` - a directory, not an archive |
+| Recipe | `create_preprocessing_recipe`, `list_preprocessing_recipes`, then `export_release(target="yolo11", recipe="yolo-640", allow_lossy=True, dest=…)` - the result's `preprocessing` names the recipe under its hash and maps the train fold's `-aug1` variant to its source, and both files are on disk |
 | Refusal | `publish_release` on the same tag → a **result** carrying an error envelope, `retry_with` null |
 
 ## Four things it is built to demonstrate

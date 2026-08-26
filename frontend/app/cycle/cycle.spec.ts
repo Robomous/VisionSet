@@ -33,6 +33,11 @@
  * third, so the walk meets the real lossy consent — the sentence naming the target
  * and the count — before the archive arrives, and then reads `data.yaml` out of
  * the download to see the class map the trainer would.
+ *
+ * **And once more through a pre-processing recipe.** Written on the Dataset's
+ * Pre-processing view, previewed by the real kernel, chosen in the export
+ * dialog; the second archive is opened for the report that names the recipe
+ * under its hash and for the train fold's augmented variant beside its source.
  */
 
 import { expect, test, type Download, type Page, type TestInfo } from "@playwright/test";
@@ -59,6 +64,9 @@ function images(): string[] {
 }
 
 const TAG = "v1";
+
+/** The recipe the walk writes, named on the second export and in its report. */
+const RECIPE = "yolo-640";
 
 /**
  * The reserved model id that resolves to this build's own no-op segmenter.
@@ -1302,6 +1310,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     await page.getByTestId("publish-release").click();
     await page.getByTestId("release-tag").fill(TAG);
+    // With folds, at the dialog's own fractions. Augmentation is written for
+    // the train fold only, so the recipe export further down needs a release
+    // that has one — and 0.7 of three assets puts two there.
+    await page.getByTestId("use-split").check();
+    await expect(page.getByTestId("split-hint")).toContainText("same seed gives the same folds");
     await page.getByTestId("publish-submit").click();
     // The new release lands on the Releases view; the dialog was opened from
     // the header, which every view shares.
@@ -1500,6 +1513,94 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expectArchive(download);
   });
 
+  await test.step("write a recipe on the Pre-processing view, previewed by the real kernel", async () => {
+    /*
+     * The stage between a release and the files a trainer reads, driven the
+     * way a person drives it: the view's invitation, the editor's four steps,
+     * *Save recipe*. Every hop is real — the target catalog the editor seeds
+     * its resize from, the preview route rendering this project's own frames
+     * through the same kernel path an export takes, and the `POST` that
+     * stores the recipe. The view's own tests stub all three, which is right
+     * for them and is why they cannot notice a preview that refuses a shape
+     * the release actually holds.
+     */
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("export-dialog")).toHaveCount(0);
+
+    await page.getByTestId("dataset-tab-preprocessing").click();
+    await expect(page.getByTestId("recipes-empty")).toBeVisible();
+    await page.getByTestId("recipe-new").click();
+    await expect(page.getByTestId("recipe-editor")).toBeVisible();
+    await page.getByTestId("recipe-name").fill(RECIPE);
+
+    // The target first, because choosing one applies its hints: YOLO11's say
+    // letterbox to 640, and the resize step arrives filled in rather than
+    // typed. Asserted rather than typed over, since the hints are the
+    // catalog's answer and a wrong one would be worth failing on.
+    await page.getByTestId("recipe-target").click();
+    await page.getByRole("option", { name: /YOLO11/ }).click();
+    await expect(page.getByTestId("recipe-step-target")).toHaveAttribute("data-state", "complete");
+    await expect(page.getByTestId("resize-letterbox")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("resize-width")).toHaveValue("640");
+    await expect(page.getByTestId("resize-height")).toHaveValue("640");
+    await expect(page.getByTestId("recipe-step-resize")).toHaveAttribute("data-state", "complete");
+
+    // One augmentation; ticking the first one makes one variant, which is the
+    // spec's own rule rather than a default.
+    await page.getByTestId("augment-hflip").check();
+    await expect(page.getByTestId("augment-variants")).toHaveValue("1");
+    await expect(page.getByTestId("recipe-step-augment")).toHaveAttribute("data-state", "complete");
+
+    // The preview: three cells of the first row, each one a real render of a
+    // frame this walk ingested — the original, the letterbox, and variant 1.
+    // Generous, because the preview debounces the draft and then goes through
+    // Pillow three times.
+    for (const cell of ["original", "resize", "augment"]) {
+      await expect(page.getByTestId(`preview-0-${cell}`)).toHaveAttribute("data-state", "rendered", {
+        timeout: 20_000,
+      });
+    }
+    await expect(page.getByTestId("recipe-step-preview")).toHaveAttribute("data-state", "complete");
+
+    await page.getByTestId("recipe-save").click();
+    await expect(page.getByTestId("recipe-footer-note")).toContainText("No unsaved changes");
+    await expect(page.getByTestId("recipe-save-error")).toHaveCount(0);
+    // Stored: the list names it, and the tab counts it.
+    await expect(page.getByTestId(`recipe-${RECIPE}`)).toBeVisible();
+    await expect(page.getByTestId("dataset-tab-preprocessing")).toContainText("1");
+  });
+
+  await test.step("export through the recipe, and find its variant in the archive", async () => {
+    /*
+     * The same dialog, one more control: the recipe picker, which offers
+     * `None` and the project's recipes by name. The consent question is asked
+     * again — a recipe changes nothing about what the target drops — and the
+     * archive that comes back is read for the two things a recipe promises:
+     * the report names the recipe under its hash, and the train fold carries
+     * a variant beside its source, label and all. This is the only place the
+     * whole chain runs for real: the queue, the worker, the resize and the
+     * augmentation drivers, and the format laying the variant out where a
+     * trainer will find it.
+     */
+    await page.getByTestId("dataset-tab-releases").click();
+    await page.getByTestId(`export-${TAG}`).click();
+    await page.getByTestId("export-target").click();
+    await page.getByRole("option", { name: /YOLO11/ }).click();
+    await page.getByTestId("export-recipe").click();
+    await page.getByRole("option", { name: RECIPE }).click();
+
+    await page.getByTestId("export-submit").click();
+    const consent = page.getByTestId("lossy-consent");
+    await expect(consent).toContainText("1 polyline would be dropped.");
+    await consent.getByTestId("lossy-checkbox").check();
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByTestId("export-submit").click(),
+    ]);
+    await expectRecipeArchive(download);
+  });
+
   await test.step("edit the connection, and watch the row answer for it", async () => {
     /*
      * A stub cannot referee this body, because it is written by whoever wrote
@@ -1631,11 +1732,13 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * wherever it is present. `curatedSizeRefused` carries what the form rendered,
      * so the expectation follows the installation instead of guessing at it.
      *
-     * The last entry is the export's own 409: the first launch is addressed to
-     * `yolo11` without `allow_lossy`, and the release holds a polyline that
-     * target drops, so the refusal is the consent question itself — the one
-     * refusal in the walk a person is meant to see. Exactly one, because the
-     * retry carries the flag.
+     * The last two entries are the export's own 409, once per export: each
+     * first launch is addressed to `yolo11` without `allow_lossy`, and the
+     * release holds a polyline that target drops, so the refusal is the
+     * consent question itself — the one refusal in the walk a person is meant
+     * to see. Exactly one per export, because the retry carries the flag; the
+     * second export names a recipe, which changes nothing about what the
+     * target drops and so asks the same question again.
      *
      * Anything else — a route that starts refusing, a 404 that becomes a 500, a
      * second refusal from a route allowed one — fails here with its method, its
@@ -1655,6 +1758,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       ...(curatedSizeRefused ? ["GET /inference/download-size 500"] : []),
       expect.stringMatching(annotationDraft),
       expect.stringMatching(annotationDraft),
+      expect.stringMatching(lossyLaunch),
       expect.stringMatching(lossyLaunch),
     ]);
     // And the icon is genuinely served under the mount, rather than absent and
@@ -1800,19 +1904,67 @@ async function expectArchive(download: Download): Promise<void> {
 }
 
 /**
- * One file out of a zip, by name — enough of the format to read a descriptor.
+ * The archive of the second export: the same target, through the recipe.
+ *
+ * Two things a recipe promises, both read out of the bytes the browser saved.
+ * The report at the archive's root carries `preprocessing` — the recipe by name,
+ * by value, and under the hash an export snapshots it as — and the train fold
+ * carries variant 1 of a source beside that source: `images/train/<hash>-aug1.png`
+ * with `labels/train/<hash>-aug1.txt`, the layout `ultralytics` reads labels
+ * from by substituting one path segment. The report's mapping traces the
+ * variant back to its source hash, which is what makes the file name checkable
+ * rather than merely present.
+ */
+async function expectRecipeArchive(download: Download): Promise<void> {
+  expect(download.suggestedFilename()).toBe(`${TAG}-yolo11.zip`);
+  const saved = await download.path();
+  expect(saved).not.toBeNull();
+  const archive = readFileSync(saved as string);
+  const entries = zipEntries(archive);
+
+  const report = JSON.parse(zipEntry(archive, "visionset-export-report.json").toString("utf8"));
+  expect(report.target).toBe("yolo11");
+  expect(report.preprocessing.recipe_name).toBe(RECIPE);
+  expect(report.preprocessing.recipe_hash).toMatch(/^[0-9a-f]{64}$/);
+  expect(report.preprocessing.spec.variants_per_asset).toBe(1);
+
+  const variants = report.preprocessing.mapping.filter(
+    (row: { variant: number }) => row.variant === 1,
+  );
+  // Two of three assets are in the train fold under the published split, and
+  // each of them gets exactly one variant.
+  expect(variants).toHaveLength(2);
+  for (const variant of variants) {
+    expect(variant.file).toBe(`images/train/${variant.source_content_hash}-aug1.png`);
+    expect(entries.has(variant.file)).toBe(true);
+    expect(entries.has(`labels/train/${variant.source_content_hash}-aug1.txt`)).toBe(true);
+  }
+  expect([...entries.keys()].filter((name) => /^labels\/train\/[0-9a-f]{64}-aug1\.txt$/.test(name)))
+    .toHaveLength(2);
+}
+
+/** Where an entry's bytes are in a zip, and how they were written. */
+interface ZipEntry {
+  readonly method: number;
+  readonly compressed: number;
+  readonly local: number;
+}
+
+/**
+ * What a zip holds, by name — enough of the format to read a descriptor.
  *
  * Walks the central directory from the end-of-central-directory record, which
- * is where a zip says what it holds, then inflates the entry from its local
- * header. Stored and deflated entries are the two `shutil.make_archive` writes.
+ * is where a zip says what it holds. Stored and deflated entries are the two
+ * `shutil.make_archive` writes; `zipEntry` inflates one from its local header.
  */
-function zipEntry(archive: Buffer, name: string): Buffer {
+function zipEntries(archive: Buffer): Map<string, ZipEntry> {
   let end = archive.length - 22;
   while (end >= 0 && archive.readUInt32LE(end) !== 0x06054b50) end -= 1;
   expect(end, "end-of-central-directory record").toBeGreaterThanOrEqual(0);
-  const entries = archive.readUInt16LE(end + 10);
+  const count = archive.readUInt16LE(end + 10);
   let offset = archive.readUInt32LE(end + 16);
-  for (let index = 0; index < entries; index += 1) {
+  const entries = new Map<string, ZipEntry>();
+  for (let index = 0; index < count; index += 1) {
     expect(archive.readUInt32LE(offset)).toBe(0x02014b50);
     const method = archive.readUInt16LE(offset + 10);
     const compressed = archive.readUInt32LE(offset + 20);
@@ -1820,15 +1972,19 @@ function zipEntry(archive: Buffer, name: string): Buffer {
     const extraLength = archive.readUInt16LE(offset + 30);
     const commentLength = archive.readUInt16LE(offset + 32);
     const local = archive.readUInt32LE(offset + 42);
-    const entryName = archive.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
-    if (entryName === name) {
-      expect(archive.readUInt32LE(local)).toBe(0x04034b50);
-      const start =
-        local + 30 + archive.readUInt16LE(local + 26) + archive.readUInt16LE(local + 28);
-      const bytes = archive.subarray(start, start + compressed);
-      return method === 8 ? inflateRawSync(bytes) : Buffer.from(bytes);
-    }
+    const name = archive.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
+    entries.set(name, { method, compressed, local });
     offset += 46 + nameLength + extraLength + commentLength;
   }
-  throw new Error(`${name} is not in the archive`);
+  return entries;
+}
+
+function zipEntry(archive: Buffer, name: string): Buffer {
+  const entry = zipEntries(archive).get(name);
+  if (entry === undefined) throw new Error(`${name} is not in the archive`);
+  const { method, compressed, local } = entry;
+  expect(archive.readUInt32LE(local)).toBe(0x04034b50);
+  const start = local + 30 + archive.readUInt16LE(local + 26) + archive.readUInt16LE(local + 28);
+  const bytes = archive.subarray(start, start + compressed);
+  return method === 8 ? inflateRawSync(bytes) : Buffer.from(bytes);
 }
