@@ -265,16 +265,25 @@ one guards emitting an **incomplete copy of something that stays intact**. The
 kernel never catches the three together and neither does the UI: three dialogs,
 three questions.
 
-There is no pre-export validation route, so consent here is attempt-shaped: attempt → read
-`LOSSY_EXPORT_NOT_CONSENTED` off the 409 → ask → retry with the flag. The schema editor does
-not have this shape - it previews first - and the difference is exactly the routed preview
-that export lacks. The 409 carries the compatibility report as `detail.compatibility`, and the
-consent banner lists from it the classes the format drops or degrades - each with its
-annotation and asset counts and the format's own reason - so the question names what is lost
-rather than only that something is.
-`FormatOut.lossy` makes the question predictable in advance, because lossiness is
-declared by the **format** - a bbox-only format loses a polygon whether or not
-today's dataset holds one.
+**An export is addressed to a target model, never to a format.** The dialog's one control
+is *Target model*: the catalog `GET /export-targets` answers, grouped under *Ultralytics
+YOLO*, *Community YOLO* and *Other formats*, each option carrying a second line with the
+tasks the model accepts — or, for a format with no task vocabulary, the geometries it
+carries. The choice is sent as `target=`; the format it resolves to is the server's to
+work out, and the retired `yolo` alias is never offered. A family the build has no heading
+for lands under *Other formats* rather than out of the list.
+
+`GET /releases/{id}/export-compatibility` would answer the lossy question before anything
+is attempted; the dialog does not call it. Consent here is attempt-shaped: attempt → read
+`LOSSY_EXPORT_NOT_CONSENTED` off the 409 → ask → retry with the flag. The 409 carries the
+compatibility report as `detail.compatibility`, judged for the chosen target, and the
+consent banner reads it twice over: one sentence naming the target, what it accepts and
+how much of this release it would drop or degrade — *YOLOv10 accepts boxes only — 1,204
+polygons would be dropped.* — and beneath it the classes lost, each with its annotation
+and asset counts and the exporter's own reason. So the question names what is lost rather
+than only that something is. `FormatOut.lossy`, read through the target's format, makes
+the question predictable in advance, because lossiness is declared by the **format** — a
+bbox-only format loses a polygon whether or not today's dataset holds one.
 
 ### Downloads, and the fourth instance of one finding
 
