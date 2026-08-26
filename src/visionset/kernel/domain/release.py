@@ -542,6 +542,11 @@ class ExportCompatibility(BaseModel):
         serialization_alias="format",
         validation_alias=AliasChoices("format", "format_name"),
     )
+    #: The target the release was judged for, or ``None`` when it was judged
+    #: against the format alone. A target can only take away, so a report
+    #: carrying one may say dropped where the format's own report says carried;
+    #: the name is what lets a reader of the file tell which question it answers.
+    target: str | None = None
     #: Nothing in this release would be dropped **or reduced** by this format's
     #: capabilities. Still one word for the whole verdict, and still the gate on
     #: consent: a degraded annotation loses information, so it asks.
@@ -617,6 +622,7 @@ class ExportResult(BaseModel):
 
     release_id: UUID
     format_name: str
+    target: str | None = None
     #: What the format would drop, worked out before anything was written.
     #:
     #: Carried on the result as well as written into ``directory`` because a

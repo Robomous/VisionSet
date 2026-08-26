@@ -1382,7 +1382,11 @@ def test_a_target_carrying_everything_the_format_writes_changes_nothing(tmp_path
     release, manifest = _mixed_manifest(fixture)
     everything = _narrow_target(frozenset({GeometryType.BBOX, GeometryType.POLYGON}))
 
-    assert _compatibility(release, manifest, _BoxesAndPolygons(), everything) == _compatibility(
+    narrowed = _compatibility(release, manifest, _BoxesAndPolygons(), everything)
+
+    # The verdict is the format's; only the name of the question changes.
+    assert narrowed.target == "narrow"
+    assert narrowed.model_copy(update={"target": None}) == _compatibility(
         release, manifest, _BoxesAndPolygons()
     )
     fixture.close()
@@ -1409,4 +1413,85 @@ def test_a_declared_geometry_no_annotation_can_carry_is_never_a_row(tmp_path: Pa
         ("sign", GeometryType.BBOX),
         ("lane", GeometryType.POLYGON),
     }
+    fixture.close()
+
+
+class _Narrowable(_BoxesAndPolygons):
+    """Keeps the manifest it was handed, so a test can read what the plugin saw."""
+
+    format_name = "narrowable"
+
+    def __init__(self) -> None:
+        self.seen: Manifest | None = None
+
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
+        self.seen = manifest
+
+
+def test_an_export_addressed_to_a_target_hands_the_plugin_only_what_it_carries(
+    tmp_path: Path,
+) -> None:
+    """The port has no word for a target, so the drop the report promises is made here."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(_mixed(fixture), "v1")
+    plugin = _Narrowable()
+
+    result = fixture.releases.export(
+        release.id,
+        plugin,
+        tmp_path / "out",
+        allow_lossy=True,
+        target=_narrow_target(frozenset({GeometryType.BBOX})),
+    )
+
+    assert plugin.seen is not None
+    assert all(
+        isinstance(one.geometry, BboxGeometry)
+        for asset in plugin.seen.assets
+        for one in asset.annotations
+    )
+    # The vocabulary is untouched: a class index is the frozen schema's.
+    assert [one.name for one in plugin.seen.classes] == ["sign", "lane"]
+    assert result.target == "narrow"
+    assert result.compatibility.target == "narrow"
+    (lane,) = result.compatibility.excluded
+    assert lane.label_class == "lane"
+    fixture.close()
+
+
+def test_an_export_by_format_alone_hands_the_plugin_the_whole_manifest(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(_mixed(fixture), "v1")
+    plugin = _Narrowable()
+
+    result = fixture.releases.export(release.id, plugin, tmp_path / "out")
+
+    assert plugin.seen == fixture.releases.manifest(release.id)
+    assert result.target is None
+    assert result.compatibility.target is None
+    fixture.close()
+
+
+def test_the_report_on_disk_names_the_target_it_answers_for(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(_mixed(fixture), "v1")
+    dest = tmp_path / "out"
+
+    fixture.releases.export(
+        release.id,
+        _BoxesAndPolygons(),
+        dest,
+        allow_lossy=True,
+        target=_narrow_target(frozenset({GeometryType.BBOX})),
+    )
+
+    written = json.loads((dest / EXPORT_REPORT_FILENAME).read_text(encoding="utf-8"))
+    assert (written["format"], written["target"]) == ("boxes-and-polygons", "narrow")
     fixture.close()

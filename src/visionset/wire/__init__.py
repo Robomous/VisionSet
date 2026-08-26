@@ -83,6 +83,7 @@ from visionset.kernel.domain import (
     DraftLabelClass,
     ExportCompatibility,
     ExportResult,
+    ExportTarget,
     Geometry,
     InferenceConnection,
     IngestFailure,
@@ -92,6 +93,7 @@ from visionset.kernel.domain import (
     PolygonGeometry,
     PolylineGeometry,
     PreLabelRun,
+    PreprocessingHints,
     Project,
     ProjectPreview,
     Release,
@@ -701,7 +703,52 @@ def export_format(value: Exporter) -> dict[str, Any]:
         # polygon is written.
         "degraded_geometries": sorted(one.value for one in value.degraded_geometries),
         "modalities": sorted(value.supported_modalities),
+        "targets": sorted(one.name for one in value.targets),
     }
+
+
+def preprocessing_hints(value: PreprocessingHints) -> dict[str, Any]:
+    """What a target's trainer expects of its images. Hints, never requirements."""
+    return {
+        "recommended_size": None
+        if value.recommended_size is None
+        else list(value.recommended_size),
+        "recommended_strategy": (
+            None if value.recommended_strategy is None else value.recommended_strategy.value
+        ),
+        "trainer_resizes": value.trainer_resizes,
+        "augmentation_common": value.augmentation_common,
+    }
+
+
+def export_target(value: ExportTarget, exporter: Exporter) -> dict[str, Any]:
+    """One model a person can train on, flattened with the format that writes for it.
+
+    ``format`` is the exporter's own name rather than a nested format row, so
+    the catalog answers "which format does this target resolve to" in one read
+    and a surface never has to join two listings.
+    """
+    return {
+        "name": value.name,
+        "label": value.label,
+        "family": value.family.value,
+        "format": exporter.format_name,
+        "tasks": sorted(one.value for one in value.tasks),
+        "geometries": sorted(one.value for one in value.supported_geometries),
+        "hints": preprocessing_hints(value.hints),
+    }
+
+
+def export_targets(installed: Mapping[str, Exporter]) -> list[dict[str, Any]]:
+    """The whole catalog, in name order, derived from what is installed."""
+    return sorted(
+        (
+            export_target(target, exporter)
+            for exporter in installed.values()
+            for target in exporter.targets
+        ),
+        key=lambda row: str(row["name"]),
+    )
 
 
 def class_compatibility(value: ClassCompatibility) -> dict[str, Any]:
@@ -727,6 +774,7 @@ def export_compatibility(value: ExportCompatibility) -> dict[str, Any]:
     return {
         "release_id": str(value.release_id),
         "format": value.format_name,
+        "target": value.target,
         "compatible": value.compatible,
         "format_is_lossy": value.format_is_lossy,
         "excluded_annotations": value.excluded_annotations,
@@ -747,6 +795,7 @@ def export_result(value: ExportResult) -> dict[str, Any]:
     return {
         "release_id": str(value.release_id),
         "format": value.format_name,
+        "target": value.target,
         "directory": str(value.directory),
         "file_count": value.file_count,
         "total_bytes": value.total_bytes,
