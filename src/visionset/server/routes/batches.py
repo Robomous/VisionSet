@@ -119,6 +119,7 @@ def create_batch(workspace: WorkspaceDep, project_id: UUID, body: BatchCreate) -
         created,
         JobService(workspace).batch_progress(created.id),
         promoted=_promoted(workspace, project_id),
+        pre_label_run=batches.latest_pre_label_job(created.id),
     )
 
 
@@ -188,22 +189,26 @@ def approve_batch(
     pin, and an unknown batch is 404 `BATCH_NOT_FOUND`.
     """
     partition = None if body is None else body.to_domain()
-    batch = BatchService(workspace).approve(batch_id, partition)
+    batches = BatchService(workspace)
+    batch = batches.approve(batch_id, partition)
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
         promoted=_promoted(workspace, batch.project_id),
+        pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
 
 @router.post("/{batch_id}/start", responses=documented(404, 409))
 def start_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     """Open the batch for annotation. Nothing may be written into it before this."""
-    batch = BatchService(workspace).start(batch_id)
+    batches = BatchService(workspace)
+    batch = batches.start(batch_id)
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
         promoted=_promoted(workspace, batch.project_id),
+        pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
 
@@ -289,11 +294,13 @@ def create_correction_batch(
     parent's pin. That is the point of correcting under a contract that has moved
     on, and it is the ordinary approval mechanism rather than anything new.
     """
-    created = BatchService(workspace).create_correction(batch_id, body.name, body.asset_ids)
+    batches = BatchService(workspace)
+    created = batches.create_correction(batch_id, body.name, body.asset_ids)
     return BatchOut.of(
         created,
         JobService(workspace).batch_progress(created.id),
         promoted=_promoted(workspace, created.project_id),
+        pre_label_run=batches.latest_pre_label_job(created.id),
     )
 
 
@@ -643,6 +650,7 @@ def _membership(workspace: WorkspaceDep, change: MembershipChange) -> BatchMembe
         change,
         JobService(workspace).batch_progress(change.batch.id),
         promoted=_promoted(workspace, change.batch.project_id),
+        pre_label_run=BatchService(workspace).latest_pre_label_job(change.batch.id),
     )
 
 

@@ -1227,7 +1227,7 @@ class BatchOut(BaseModel):
         counts: dict[AssetProgress, int],
         *,
         promoted: AbstractSet[UUID],
-        pre_label_run: PreLabelRun | None = None,
+        pre_label_run: PreLabelRun | None,
     ) -> Self:
         return cls(
             id=batch.id,
@@ -1343,9 +1343,10 @@ class BatchMembershipOut(BaseModel):
         counts: dict[AssetProgress, int],
         *,
         promoted: AbstractSet[UUID],
+        pre_label_run: PreLabelRun | None,
     ) -> Self:
         return cls(
-            batch=BatchOut.of(change.batch, counts, promoted=promoted),
+            batch=BatchOut.of(change.batch, counts, promoted=promoted, pre_label_run=pre_label_run),
             changed=list(change.changed),
         )
 

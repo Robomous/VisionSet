@@ -398,8 +398,16 @@ def test_a_batch_publishes_its_lineage() -> None:
     child = samples.BATCH.model_copy(update={"parent_batch_id": parent})
     orphan = samples.BATCH.model_copy(update={"parent_batch_id": None})
 
-    assert BatchOut.of(child, samples.COUNTS, promoted=frozenset()).parent_batch_id == parent
-    assert BatchOut.of(orphan, samples.COUNTS, promoted=frozenset()).parent_batch_id is None
+    assert (
+        BatchOut.of(child, samples.COUNTS, promoted=frozenset(), pre_label_run=None).parent_batch_id
+        == parent
+    )
+    assert (
+        BatchOut.of(
+            orphan, samples.COUNTS, promoted=frozenset(), pre_label_run=None
+        ).parent_batch_id
+        is None
+    )
 
 
 def test_an_annotation_publishes_the_round_that_produced_it() -> None:
