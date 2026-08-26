@@ -34,7 +34,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import type { AttributeBody, GeometryType, LabelClassBody } from "../screens/queries";
 
 /**

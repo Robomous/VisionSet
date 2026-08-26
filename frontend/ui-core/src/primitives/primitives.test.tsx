@@ -38,7 +38,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "./Select";
+} from "./select";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "./table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs";
 
@@ -116,24 +116,28 @@ describe("fields", () => {
 });
 
 /**
- * The two-line option — a primitive variant rather than one screen's styling,
- * which is why it is asserted here.
+ * The two-line option — composed at the call site rather than a primitive prop,
+ * which is why what is asserted here is the trigger's own behaviour and not a
+ * layout this file would otherwise have to keep in step with a call site.
  *
  * The claim worth a test is the one that is easy to lose: the trigger shows the
  * *same* two lines the list does, because Radix renders the selected item's own
- * `ItemText` into it. A second copy of the layout at the call site would look
+ * children into it. A second copy of the layout at the call site would look
  * identical the day it was written and drift the day either half moved.
  */
 describe("Select", () => {
   function pickOne(): JSX.Element {
     return (
       <Select defaultValue="a">
-        <SelectTrigger data-testid="model">
+        <SelectTrigger data-testid="model" className="h-auto min-h-8">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="a" meta="311.9 MB · tiny">
-            org/model-tiny
+          <SelectItem value="a">
+            <span className="flex flex-col items-start">
+              <span>org/model-tiny</span>
+              <span className="text-xs text-muted-foreground">311.9 MB · tiny</span>
+            </span>
           </SelectItem>
           <SelectItem value="b">org/model-large</SelectItem>
         </SelectContent>
@@ -164,21 +168,14 @@ describe("Select", () => {
     expect(trigger.className).not.toContain("truncate");
   });
 
-  it("leaves an option with no meta exactly as it was", async () => {
-    render(pickOne());
-    await userEvent.click(screen.getByTestId("model"));
-    const plain = screen.getByRole("option", { name: "org/model-large" });
-    expect(plain.querySelector(".text-muted-foreground")).toBeNull();
-  });
-
   it("floors the open list at the closed control's width", async () => {
     render(pickOne());
     await userEvent.click(screen.getByTestId("model"));
     const viewport = document.querySelector("[data-radix-select-viewport]");
     expect(viewport).not.toBeNull();
-    const classes = (viewport as HTMLElement).className.split(" ");
-    expect(classes).toContain("w-full");
-    expect(classes).toContain("min-w-(--radix-select-trigger-width)");
+    const className = (viewport as HTMLElement).className;
+    expect(className).toContain("w-full");
+    expect(className).toContain("min-w-(--radix-select-trigger-width)");
   });
 });
 

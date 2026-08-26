@@ -45,7 +45,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import { annotatedShare, outstandingWork } from "./batchState";
 import {
   useApproveBatch,

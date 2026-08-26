@@ -198,7 +198,7 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import {
   CUSTOM_MODEL,
   DEVICES,
@@ -1313,7 +1313,11 @@ function ConnectionForm({
                   ) : (
                     <>
                       <Select value={choice} onValueChange={pickModel}>
-                        <SelectTrigger id="connection-model" data-testid="connection-model">
+                        <SelectTrigger
+                          id="connection-model"
+                          data-testid="connection-model"
+                          className="h-auto min-h-8"
+                        >
                           <SelectValue placeholder="Choose a model" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1328,22 +1332,25 @@ function ConnectionForm({
                                 harder to read than a stacked one.
                               */}
                               {group.entries.map((entry) => (
-                                <SelectItem
-                                  key={entry.model_id}
-                                  value={entry.model_id}
-                                  meta={entry.hint}
-                                >
-                                  {entry.model_id}
+                                <SelectItem key={entry.model_id} value={entry.model_id}>
+                                  <span className="flex flex-col items-start">
+                                    <span>{entry.model_id}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {entry.hint}
+                                    </span>
+                                  </span>
                                 </SelectItem>
                               ))}
                             </SelectGroup>
                           ))}
                           <SelectGroup>
-                            <SelectItem
-                              value={CUSTOM_MODEL}
-                              meta="Any model id, at a revision you pin yourself"
-                            >
-                              Custom model…
+                            <SelectItem value={CUSTOM_MODEL}>
+                              <span className="flex flex-col items-start">
+                                <span>Custom model…</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Any model id, at a revision you pin yourself
+                                </span>
+                              </span>
                             </SelectItem>
                           </SelectGroup>
                         </SelectContent>

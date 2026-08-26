@@ -292,36 +292,41 @@ export function Styleguide(): JSX.Element {
               <FieldDescription>A hint, under a field that needs one.</FieldDescription>
             </div>
             {/*
-              The two-line option. Here because it is a primitive variant
-              rather than one screen's styling: an option that is an identifier
-              plus the facts about it stacks them, and the trigger shows the same
-              two lines the list does because Radix renders the selected item's
-              own text into it.
+              The two-line option, composed at the call site: an option that is
+              an identifier plus the facts about it stacks them, and the trigger
+              shows the same two lines the list does because Radix renders the
+              selected item's own children into it.
             */}
             <div className="flex flex-col gap-1.5 md:col-span-2">
               <Label htmlFor="sg-model">Model</Label>
               <Select defaultValue="facebook/sam2.1-hiera-base-plus">
-                <SelectTrigger id="sg-model">
+                <SelectTrigger id="sg-model" className="h-auto min-h-8">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem
-                    value="facebook/sam2.1-hiera-tiny"
-                    meta="311.9 MB · tiny — fastest, comfortable on a CPU"
-                  >
-                    facebook/sam2.1-hiera-tiny
+                  <SelectItem value="facebook/sam2.1-hiera-tiny">
+                    <span className="flex flex-col items-start">
+                      <span>facebook/sam2.1-hiera-tiny</span>
+                      <span className="text-xs text-muted-foreground">
+                        311.9 MB · tiny — fastest, comfortable on a CPU
+                      </span>
+                    </span>
                   </SelectItem>
-                  <SelectItem
-                    value="facebook/sam2.1-hiera-base-plus"
-                    meta="647.1 MB · base-plus — the balanced default"
-                  >
-                    facebook/sam2.1-hiera-base-plus
+                  <SelectItem value="facebook/sam2.1-hiera-base-plus">
+                    <span className="flex flex-col items-start">
+                      <span>facebook/sam2.1-hiera-base-plus</span>
+                      <span className="text-xs text-muted-foreground">
+                        647.1 MB · base-plus — the balanced default
+                      </span>
+                    </span>
                   </SelectItem>
-                  <SelectItem
-                    value="facebook/sam2.1-hiera-large"
-                    meta="1.8 GB · large — the most accurate, wants a GPU"
-                  >
-                    facebook/sam2.1-hiera-large
+                  <SelectItem value="facebook/sam2.1-hiera-large">
+                    <span className="flex flex-col items-start">
+                      <span>facebook/sam2.1-hiera-large</span>
+                      <span className="text-xs text-muted-foreground">
+                        1.8 GB · large — the most accurate, wants a GPU
+                      </span>
+                    </span>
                   </SelectItem>
                 </SelectContent>
               </Select>

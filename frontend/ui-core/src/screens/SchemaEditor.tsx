@@ -125,7 +125,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import type {
   ClassCount,
   DraftLabelClassBody,

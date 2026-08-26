@@ -74,7 +74,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import type { Connection, SuggestBlocker } from "../data/inferenceQueries";
 
 export interface SuggestPanelProps {
@@ -462,7 +462,11 @@ function Through({
   }
   return (
     <Select value={active.id} onValueChange={onChoose}>
-      <SelectTrigger className="mt-1" data-testid="suggest-connection-select" aria-label="Model">
+      <SelectTrigger
+        className="mt-1 h-auto min-h-8"
+        data-testid="suggest-connection-select"
+        aria-label="Model"
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -470,8 +474,11 @@ function Through({
           // The two-line option: the name people gave it, then the model it
           // actually names. Two connections onto the same weights at different
           // precisions are otherwise told apart by nothing on screen.
-          <SelectItem key={one.id} value={one.id} meta={one.model_id}>
-            {one.name}
+          <SelectItem key={one.id} value={one.id}>
+            <span className="flex flex-col items-start">
+              <span>{one.name}</span>
+              <span className="text-xs text-muted-foreground">{one.model_id}</span>
+            </span>
           </SelectItem>
         ))}
       </SelectContent>

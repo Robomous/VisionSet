@@ -78,7 +78,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { AssetThumbnail } from "./AssetThumbnail";

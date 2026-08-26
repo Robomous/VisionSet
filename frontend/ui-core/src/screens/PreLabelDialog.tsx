@@ -111,7 +111,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import type { BadgeTone, Segment } from "./batchState";
 import type { KnownMembers } from "../generated/api";
 import {
@@ -469,13 +469,20 @@ export function PreLabelSettings({
           </p>
         ) : (
           <Select value={activeId} onValueChange={onConnectionChange} disabled={disabled}>
-            <SelectTrigger id="prelabel-model" data-testid="prelabel-model">
+            <SelectTrigger
+              id="prelabel-model"
+              data-testid="prelabel-model"
+              className="h-auto min-h-8"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {candidates.map((one) => (
-                <SelectItem key={one.id} value={one.id} meta={connectionMeta(one)}>
-                  {one.name}
+                <SelectItem key={one.id} value={one.id}>
+                  <span className="flex flex-col items-start">
+                    <span>{one.name}</span>
+                    <span className="text-xs text-muted-foreground">{connectionMeta(one)}</span>
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
