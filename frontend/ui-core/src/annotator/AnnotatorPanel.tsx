@@ -89,14 +89,9 @@ import { geometryLabel } from "../data/geometryCategory";
 import { classColor } from "../palette";
 import { Badge } from "../primitives/badge";
 import { Button } from "../primitives/button";
+import { DropdownMenu, DropdownMenuTrigger } from "../primitives/dropdown-menu";
 import { Input } from "../primitives/input";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../primitives/Menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/tooltip";
 import { ClassRegion } from "./ClassRegion";
 import { ReassignMenu } from "./ReassignMenu";
 import { cn } from "../lib/cn";

@@ -47,7 +47,7 @@ import {
   DialogTitle,
 } from "../primitives/dialog";
 import { FieldError } from "../primitives/field";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../primitives/Menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../primitives/dropdown-menu";
 import { useDeleteBatch, type Batch } from "./queries";
 
 export interface BatchOverflowMenuProps {
@@ -102,7 +102,7 @@ export function BatchOverflowMenu({
             a menu item that cannot be hovered into is a reason nobody reads.
           */}
           <DropdownMenuItem
-            destructive={deletable}
+            variant={deletable ? "destructive" : "default"}
             disabled={!deletable}
             data-testid={`delete-batch-${batch.name}`}
             onSelect={() => setConfirming(true)}

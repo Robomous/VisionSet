@@ -497,7 +497,7 @@ export function Styleguide(): JSX.Element {
                 <DropdownMenuItem>Rename</DropdownMenuItem>
                 <DropdownMenuItem>Duplicate schema</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem destructive>Delete</DropdownMenuItem>
+                <DropdownMenuItem variant="destructive">Delete</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 

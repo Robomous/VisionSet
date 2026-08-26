@@ -29,7 +29,7 @@ import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
 import { Toaster } from "../primitives/Feedback";
-import { TooltipProvider } from "../primitives/Menu";
+import { TooltipProvider } from "../primitives/tooltip";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";

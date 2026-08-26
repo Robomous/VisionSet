@@ -164,10 +164,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../primitives/Menu";
+} from "../primitives/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/tooltip";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { CanvasReassign } from "./CanvasReassign";
 import { EditorNotice, EditorNotices } from "./EditorNotice";
@@ -2410,7 +2408,18 @@ function Workspace({
                 <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            {/*
+              Canonical `DropdownMenuContent` animates its exit; DESIGN.md's
+              *Motion* is why this one may not. While that animation plays, Radix
+              keeps the dismissable layer mounted, so a press on the trigger
+              straight after `Escape` is read as both an open and an
+              outside-dismiss and the menu never appears — `annotate.spec.ts`
+              holds the two presses that catch it coming back.
+              `animate-none!` beats the canonical `animate-out` regardless of
+              which rule Tailwind emits first, since `tailwind-merge` does not
+              know the two share a group and leaves both classes standing.
+            */}
+            <DropdownMenuContent align="end" className="data-closed:animate-none!">
               {/* `Save and stay`, reabsorbed — `xl:hidden` is the exact inverse of
                   the button's `hidden xl:inline-flex`, so the control exists once
                   at every width. Gated on `frameVerbs` for the same reason the

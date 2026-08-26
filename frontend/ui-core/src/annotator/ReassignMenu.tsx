@@ -52,7 +52,7 @@ import type { JSX, KeyboardEvent } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
 import { classColor } from "../palette";
-import { DropdownMenuContent, DropdownMenuItem } from "../primitives/Menu";
+import { DropdownMenuContent, DropdownMenuItem } from "../primitives/dropdown-menu";
 
 export interface ReassignMenuProps {
   /** The object whose class is being changed. Its geometry decides what fits. */

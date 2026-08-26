@@ -185,7 +185,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../primitives/Menu";
+} from "../primitives/dropdown-menu";
 import { Input } from "../primitives/input";
 import { Label } from "../primitives/label";
 import { FieldDescription, FieldError } from "../primitives/field";

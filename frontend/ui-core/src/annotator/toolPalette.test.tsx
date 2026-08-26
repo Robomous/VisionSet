@@ -9,11 +9,31 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { TooltipProvider } from "../primitives/Menu";
+import { TooltipProvider } from "../primitives/tooltip";
 import { ToolPalette, toolChoices } from "./ToolPalette";
+
+// Canonical `TooltipProvider` defaults `delayDuration` to 0, so every button
+// press below — each one is a Tooltip trigger — opens its tooltip on the same
+// hover `userEvent.click` produces. Nova's `TooltipContent` renders a Radix
+// `Arrow`, and the popper measures it through `@radix-ui/react-use-size`,
+// which reaches for `ResizeObserver` unconditionally on mount. jsdom has none.
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    },
+  );
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 /**
  * Four classes covering all four cases `drawableGeometry` distinguishes: two bbox

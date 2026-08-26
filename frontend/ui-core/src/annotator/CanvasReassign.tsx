@@ -58,7 +58,7 @@ import { Tag } from "lucide-react";
 import type { JSX } from "react";
 
 import { Button } from "../primitives/button";
-import { DropdownMenu, DropdownMenuTrigger } from "../primitives/Menu";
+import { DropdownMenu, DropdownMenuTrigger } from "../primitives/dropdown-menu";
 import { ReassignMenu } from "./ReassignMenu";
 
 /**

@@ -100,7 +100,7 @@ import { GeometryIcon } from "./GeometryIcon";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
 import { Button } from "../primitives/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/tooltip";
 
 /**
  * Why a declared geometry has no tool yet, keyed by the geometry.

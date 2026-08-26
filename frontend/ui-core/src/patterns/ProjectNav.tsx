@@ -56,7 +56,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "../primitives/Menu";
+} from "../primitives/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/tabs";
 
 /**
@@ -320,7 +320,7 @@ function Overflow({ onRename, onDelete }: ProjectNavProps): JSX.Element | null {
         )}
         {onRename !== undefined && onDelete !== undefined && <DropdownMenuSeparator />}
         {onDelete !== undefined && (
-          <DropdownMenuItem destructive data-testid="delete-project" onSelect={onDelete}>
+          <DropdownMenuItem variant="destructive" data-testid="delete-project" onSelect={onDelete}>
             <Trash2 className="size-4" aria-hidden="true" />
             Delete
           </DropdownMenuItem>

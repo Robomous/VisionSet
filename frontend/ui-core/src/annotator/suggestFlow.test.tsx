@@ -27,7 +27,7 @@ import { ApiProvider } from "../data/ApiProvider";
 import { clearPrefs, writePref } from "../data/prefs";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
-import { TooltipProvider } from "../primitives/Menu";
+import { TooltipProvider } from "../primitives/tooltip";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
 const API = "http://visionset.test";
@@ -244,6 +244,19 @@ beforeEach(() => {
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
+  // Canonical `TooltipProvider` defaults `delayDuration` to 0, so the tool
+  // palette's tooltips now open on the same hover `userEvent.click` produces —
+  // Nova's `TooltipContent` renders a Radix `Arrow`, and the popper measures it
+  // through `@radix-ui/react-use-size`, which reaches for `ResizeObserver`
+  // unconditionally on mount. jsdom has none.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    },
+  );
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
     if (request.method !== "GET") {

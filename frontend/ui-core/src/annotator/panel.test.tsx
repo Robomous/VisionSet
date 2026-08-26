@@ -18,7 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
 import { AnnotatorPanel } from "./AnnotatorPanel";
-import { TooltipProvider } from "../primitives/Menu";
+import { TooltipProvider } from "../primitives/tooltip";
 
 const SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",
