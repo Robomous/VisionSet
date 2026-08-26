@@ -34,7 +34,6 @@ from visionset.kernel.domain.preprocessing import (
     AugmentStep,
     RecipeSpec,
     ResizeStep,
-    hflip_applied,
     recipe_hash,
     rot90_quarter_turns,
     variant_seed,
@@ -199,9 +198,9 @@ def transform_manifest(
     Raises:
         AugmentationRequiresSplit: the spec asks for variants and ``folds`` is
             ``None`` — the release was published without a split recipe.
-        PreprocessingStepUnsupportedGeometry: a step met a geometry it cannot
-            transform; today that is ``rot90`` over a polyline, whose point
-            order carries meaning relative to the frame's axes.
+        PreprocessingStepUnsupportedGeometry: a step met a geometry outside
+            its ``supported_geometries`` — ``rot90`` over a polyline, whose
+            point order carries meaning relative to the frame's axes.
         ExportSourceUnreadable: a step needs the source image's dimensions and
             the manifest never recorded them.
     """
@@ -275,15 +274,15 @@ def _variant_file(
     if resize is not None:
         geometries, width, height = _resized(asset, resize, geometries)
     for step in augments:
+        _refuse_unsupported(asset, step, geometries)
         if step.op is AugmentOp.HFLIP:
-            if hflip_applied(seed) and _any_coordinates(geometries):
-                mirror_width = float(_known_width(width, asset, step.op.value))
+            if _any_coordinates(geometries):
+                mirror_width = float(_known_width(width, asset, step.name))
                 geometries = [_mirrored(geometry, mirror_width) for geometry in geometries]
         elif step.op is AugmentOp.ROT90:
-            _refuse_polylines(asset, geometries)
             for _ in range(rot90_quarter_turns(seed)):
                 if _any_coordinates(geometries):
-                    turn_width = float(_known_width(width, asset, step.op.value))
+                    turn_width = float(_known_width(width, asset, step.name))
                     geometries = [_rotated_once(geometry, turn_width) for geometry in geometries]
                 width, height = height, width
     return TransformedFile(
@@ -303,6 +302,7 @@ def _variant_file(
 def _resized(
     asset: ManifestAsset, step: ResizeStep, geometries: list[Geometry]
 ) -> tuple[list[Geometry], int, int]:
+    _refuse_unsupported(asset, step, geometries)
     if _any_coordinates(geometries):
         source_width, source_height = _dimensions(asset, step.kind)
         if step.strategy is ResizeStrategy.STRETCH:
@@ -339,17 +339,19 @@ def _copied(
     )
 
 
-def _refuse_polylines(asset: ManifestAsset, geometries: Sequence[Geometry]) -> None:
-    if any(isinstance(geometry, PolylineGeometry) for geometry in geometries):
-        raise PreprocessingStepUnsupportedGeometry(
-            f"the 'rot90' step cannot transform a polyline (asset {asset.asset_id} carries "
-            "one): the path's point order carries meaning relative to the frame's axes, and "
-            "a quarter turn re-axes the frame under it. Remove the step, or export a release "
-            "without polylines",
-            step=AugmentOp.ROT90.value,
-            geometry="polyline",
-            asset_id=str(asset.asset_id),
-        )
+def _refuse_unsupported(
+    asset: ManifestAsset, step: ResizeStep | AugmentStep, geometries: Sequence[Geometry]
+) -> None:
+    for geometry in geometries:
+        if geometry.type not in step.supported_geometries:
+            raise PreprocessingStepUnsupportedGeometry(
+                f"the {step.name!r} step cannot transform a {geometry.type.value} (asset "
+                f"{asset.asset_id} carries one). Remove the step, or export a release "
+                f"without {geometry.type.value} labels",
+                step=step.name,
+                geometry=geometry.type.value,
+                asset_id=str(asset.asset_id),
+            )
 
 
 def _dimensions(asset: ManifestAsset, step: str) -> tuple[int, int]:

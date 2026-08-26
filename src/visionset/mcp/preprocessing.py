@@ -1,17 +1,16 @@
 # usage: from visionset.mcp import preprocessing
-"""Pre-processing recipe tools: name what an export does to its images, and list it.
+"""Pre-processing recipe tools: create, list, read, update, delete.
 
 A recipe is a project resource an agent creates once and names on
 ``export_release`` and ``check_export``; the export keeps the spec by value, so
 nothing an agent does to a recipe afterwards changes an export that already ran.
-``delete_preprocessing_recipe`` is offered only under ``--allow-destructive``,
-with ``confirm``, on the terms every other delete follows — a recipe is small,
-but it is shared, named work.
-
-There is no ``get`` and no ``update``: a project holds a handful of recipes and
-the listing carries every field, and an agent that wants a different recipe
-creates it under a new name rather than editing one somebody else may be
-exporting with.
+That is what makes ``update_preprocessing_recipe`` safe to offer: replacing a
+spec, or renaming, touches the stored value and never a past export, and the
+five tools are the same five operations REST and the CLI offer, so an agent
+edits the recipe a person named rather than leaving a near-duplicate beside
+it. ``delete_preprocessing_recipe`` is offered only under
+``--allow-destructive``, with ``confirm``, on the terms every other delete
+follows — a recipe is small, but it is shared, named work.
 """
 
 from __future__ import annotations
@@ -76,6 +75,49 @@ def create_preprocessing_recipe(
         resolved = resolve_project(workspace, project)
         created = PreprocessingRecipeService(workspace).create(resolved.id, name, spec)
     return wire.preprocessing_recipe(created)
+
+
+def get_preprocessing_recipe(project: ProjectRef, name: NameRef) -> dict[str, Any]:
+    """Read one pre-processing recipe by name, with its whole spec.
+
+    The same row `list_preprocessing_recipes` shows, addressed by the name
+    `export_release` and `check_export` take as `recipe`. An unknown project or
+    recipe is reported as missing.
+    """
+    with opened_workspace() as workspace:
+        resolved = resolve_project(workspace, project)
+        found = PreprocessingRecipeService(workspace).get(resolved.id, name)
+    return wire.preprocessing_recipe(found)
+
+
+def update_preprocessing_recipe(
+    project: ProjectRef,
+    name: NameRef,
+    spec: Annotated[
+        RecipeSpec,
+        Field(description="The whole spec, replaced. Same shape as on create."),
+    ],
+    new_name: Annotated[
+        str | None,
+        Field(description="Rename the recipe. Omit to keep its name."),
+    ] = None,
+) -> dict[str, Any]:
+    """Replace a pre-processing recipe's spec whole, and rename it when `new_name` is given.
+
+    Whole-value: the spec is one value with cross-field rules, so there is no
+    field-at-a-time edit; send every step. Nothing downstream moves — an export
+    that already ran kept its own copy of the spec, so editing changes only
+    what the next export with this name applies. Refuses an unknown project or
+    recipe, a `new_name` another recipe of the project already uses, a
+    `new_name` that is not a slug, and a spec that breaks the grammar
+    `create_preprocessing_recipe` describes.
+    """
+    with opened_workspace() as workspace:
+        resolved = resolve_project(workspace, project)
+        updated = PreprocessingRecipeService(workspace).update(
+            resolved.id, name, spec=spec, new_name=new_name
+        )
+    return wire.preprocessing_recipe(updated)
 
 
 def list_preprocessing_recipes(project: ProjectRef) -> dict[str, Any]:

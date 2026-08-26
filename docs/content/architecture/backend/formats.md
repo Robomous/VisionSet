@@ -86,7 +86,9 @@ shape. The two built-in drivers, `pillow-resize` and `pillow-augment`, live in
 [`pillow/`](../../../../src/visionset/preprocessing/pillow/). The kernel takes driver
 instances through `ReleaseService.export(..., drivers=)` and never a name, and the
 purity contract forbids it importing this package for the reason it forbids
-`formats`. [`docs/content/preprocessing.md`](../../preprocessing.md) covers what a
+`formats`. [`preprocessing-drivers.md`](preprocessing-drivers.md) is the guide to
+writing one - the port, the entry-point group, the dependency rule and the admission
+tests - and [`docs/content/preprocessing.md`](../../preprocessing.md) covers what a
 recipe is and what the drivers promise.
 
 A plugin also gets a `ContentReader` and never a `BlobStore`: a reader can read

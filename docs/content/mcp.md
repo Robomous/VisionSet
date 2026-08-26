@@ -79,7 +79,7 @@ it, and what twelve real agent runs did with it - see
 
 ## The tools
 
-Fifty-six tools are offered by default, in the order an agent meets them, plus the four
+Fifty-eight tools are offered by default, in the order an agent meets them, plus the four
 below that are offered only on request — see
 [above](#destructive-tools-are-not-offered-unless-you-ask).
 [mcp-tools.md](mcp-tools.md) is the complete listing, generated from the server itself; this
@@ -209,6 +209,8 @@ call until the end. #439 has since added a job gate, but it changes none of this
 | `export_release` | Write a release to a local directory, for a target or in a format. `allow_lossy` where needed; `recipe` applies a pre-processing recipe by name. |
 | `create_preprocessing_recipe` | Store a named [pre-processing recipe](preprocessing.md) on a project: a resize step, augmentation steps, and how many variants each train image gets. |
 | `list_preprocessing_recipes` | A project's recipes, each with its whole spec. `name` is what `export_release` takes as `recipe`. |
+| `get_preprocessing_recipe` | One recipe by name, with its whole spec. |
+| `update_preprocessing_recipe` | Replace a recipe's spec whole, and rename it with `new_name`. An export that already ran kept its own copy of the spec, so only the next export with that name is affected. |
 
 ### Inference connections
 
@@ -363,7 +365,7 @@ The API's upload staging exists because HTTP has bytes where the kernel has path
 beside the workspace and has the filesystem.
 
 **One workspace per server.** No tool takes a workspace parameter — threading one through
-fifty-six tools would put a path an agent has no way to know into every call. The workspace is
+fifty-eight tools would put a path an agent has no way to know into every call. The workspace is
 opened and closed per tool call rather than held, so the file is never kept from `visionset server`
 or a second agent between calls.
 
@@ -384,9 +386,9 @@ advertised only on request; the pre-labeling trio, `pre_label_job` beside the tw
 closing the last capability declared with no consumer; `check_export`, the plan-before-apply
 half of an export on the `preview_schema_change` precedent; `list_export_targets`, because
 `export_release` takes a target name and an agent has to be able to read the catalog it comes
-from; and the three recipe tools, because `export_release` takes a recipe by name and an agent
-has to be able to write one and read the names back. That is fifty-six offered by default and
-sixty in all. The parity rule means
+from; and the five recipe tools, because `export_release` takes a recipe by name and an agent
+has to be able to write one, read it back and edit it on the same terms as REST and the CLI. That
+is fifty-eight offered by default and sixty-two in all. The parity rule means
 *evaluated*, not *implemented* — tool-selection accuracy degrades with count, so a tool ships
 only when an agent has a reason to reach for it that no neighbour covers.
 

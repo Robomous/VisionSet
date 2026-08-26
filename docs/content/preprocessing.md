@@ -98,8 +98,10 @@ other encoding a PNG. No metadata travels.
 ## Determinism, and its scope
 
 Variant `k` of an asset is seeded by `sha256(f"{recipe_hash}:{content_hash}:{k}")`, and every
-draw - whether `hflip` mirrors, the brightness and contrast factors, how many quarter turns
-`rot90` makes - reads a fixed position of that digest. The same recipe over the same bytes
+draw - the brightness and contrast factors, how many quarter turns `rot90` makes - reads a fixed
+position of that digest. `hflip` draws nothing and always mirrors, for the reason `rot90` never
+draws zero turns: a variant that came out identical to its source would be the base image under a
+variant's name. The same recipe over the same bytes
 therefore draws the same variant on any machine, and the geometry arithmetic is exact
 everywhere.
 
@@ -172,8 +174,9 @@ scaled to match, and the response is never cached: the spec is the request's own
 | `PreprocessingRecipeNotFound` | The project has no recipe under that name. 404. |
 | `PreprocessingRecipeNameTaken` | Another recipe of the project carries that name, or a rename lands on one. Checked before writing and refused by a unique index, the `ReleaseTagTaken` shape. 409. |
 | `InvalidName` | The name is not a slug: lowercase letters, digits, dots, hyphens and underscores, starting with a letter or digit, at most 64 characters. 422. |
+| `VALIDATION_ERROR` | The spec breaks the grammar: two resize steps, a resize after an augmentation, an augmentation repeated, augmentation steps with `variants_per_asset` 0, or variants with no augmentation step. The rule that was broken is the message, in the words above. Refused by the spec model itself, so every surface says the same thing. 422. |
 | `AugmentationRequiresSplit` | The recipe augments and the release was published without a split recipe. Raised at pre-flight and at export. 409. |
-| `PreprocessingStepUnsupportedGeometry` | A step met a geometry it cannot transform - `rot90` over a polyline. Carries `step`, `geometry` and the first `asset_id`. 409. |
+| `PreprocessingStepUnsupportedGeometry` | A step met a geometry outside the set it declares it can transform - every step declares `supported_geometries` the way an exporter does, and today the one exclusion is `rot90` over a polyline. Carries `step`, `geometry` and the first `asset_id`. 409. |
 | `ExportSourceUnreadable` | A step needs the source's pixel size and the manifest never recorded one, or the asset's bytes are gone. 409. |
 | `PreprocessingDriverNotFound` | No installed driver applies a step kind the recipe holds. A fact about the installation, not the request. 500. |
 
@@ -184,6 +187,6 @@ scaled to match, and the response is never cached: the spec is the request's own
 | UI | The Dataset section's **Pre-processing** view: the project's recipes as a list, an editor of four steps (target model, resize, augmentation, preview), *Save recipe*, and a delete control on each row that asks first; the Export dialog's **Pre-processing recipe** control chooses one by name, `None` by default. See [ui.md](ui.md#the-dataset-its-releases-and-getting-the-data-out). |
 | REST | `POST`/`GET /projects/{id}/preprocessing-recipes`, `GET`/`PUT`/`DELETE /projects/{id}/preprocessing-recipes/{name}`, `POST /projects/{id}/preprocessing-preview`; `recipe=` on `POST /releases/{id}/export` and `GET /releases/{id}/export-compatibility`. The job carries the recipe as a snapshot. |
 | CLI | `visionset recipe create NAME -p P --spec FILE` or `--resize letterbox:640x640 --augment hflip,brightness_contrast --variants 2 --target yolo11`; `recipe list`, `show`, `update`, `delete`; `export --recipe NAME`. See [cli.md](cli.md#visionset-release-and-visionset-export). |
-| MCP | `create_preprocessing_recipe`, `list_preprocessing_recipes`, `delete_preprocessing_recipe` (only with `--allow-destructive`); `recipe` on `export_release` and `check_export`. See [mcp.md](mcp.md#datasets-releases-and-export). |
+| MCP | `create_preprocessing_recipe`, `list_preprocessing_recipes`, `get_preprocessing_recipe`, `update_preprocessing_recipe`, `delete_preprocessing_recipe` (only with `--allow-destructive`); `recipe` on `export_release` and `check_export`. See [mcp.md](mcp.md#datasets-releases-and-export). |
 
 The export half is described with the rest of exporting in [releases.md](releases.md#exporting).

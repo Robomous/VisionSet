@@ -49,6 +49,64 @@ def test_a_taken_name_and_a_broken_spec_are_refused(named: str) -> None:
     assert broken.is_error
 
 
+def test_a_recipe_is_read_back_by_name_and_a_missing_one_is_refused(named: str) -> None:
+    created = payload(call("create_preprocessing_recipe", project=named, name="lb", spec=LETTERBOX))
+
+    assert payload(call("get_preprocessing_recipe", project=named, name="lb")) == created
+    missing = error(call("get_preprocessing_recipe", project=named, name="nope"))
+    assert "no pre-processing recipe named 'nope'" in missing["message"]
+
+
+def test_update_replaces_the_spec_whole_and_renames_on_request(named: str) -> None:
+    created = payload(call("create_preprocessing_recipe", project=named, name="lb", spec=LETTERBOX))
+
+    replaced = payload(call("update_preprocessing_recipe", project=named, name="lb", spec=FLIPS))
+    assert replaced["id"] == created["id"]
+    assert replaced["name"] == "lb"
+    assert replaced["spec"]["steps"] == [{"kind": "augment", "op": "hflip", "amount": 0.2}]
+    assert replaced["spec"]["variants_per_asset"] == 1
+
+    renamed = payload(
+        call("update_preprocessing_recipe", project=named, name="lb", spec=FLIPS, new_name="flips")
+    )
+    assert renamed["name"] == "flips"
+    assert [
+        one["name"] for one in payload(call("list_preprocessing_recipes", project=named))["items"]
+    ] == ["flips"]
+    assert payload(call("get_preprocessing_recipe", project=named, name="flips")) == renamed
+
+
+def test_update_refuses_a_missing_recipe_a_taken_name_and_a_broken_spec(named: str) -> None:
+    payload(call("create_preprocessing_recipe", project=named, name="lb", spec=LETTERBOX))
+    payload(call("create_preprocessing_recipe", project=named, name="flips", spec=FLIPS))
+
+    missing = error(call("update_preprocessing_recipe", project=named, name="nope", spec=FLIPS))
+    assert "no pre-processing recipe named 'nope'" in missing["message"]
+    taken = error(
+        call(
+            "update_preprocessing_recipe",
+            project=named,
+            name="lb",
+            spec=LETTERBOX,
+            new_name="flips",
+        )
+    )
+    assert "already has a pre-processing recipe named 'flips'" in taken["message"]
+    broken = call(
+        "update_preprocessing_recipe",
+        project=named,
+        name="lb",
+        spec={**LETTERBOX, "variants_per_asset": 2},
+    )
+    assert broken.is_error
+    unchanged = payload(call("get_preprocessing_recipe", project=named, name="lb"))
+    assert (
+        unchanged["spec"]
+        == payload(call("list_preprocessing_recipes", project=named))["items"][0]["spec"]
+    )
+    assert unchanged["spec"]["steps"][0]["kind"] == "resize"
+
+
 def test_delete_is_offered_only_on_request_and_takes_confirm(named: str) -> None:
     payload(call("create_preprocessing_recipe", project=named, name="lb", spec=LETTERBOX))
     assert "delete_preprocessing_recipe" not in tool_names()

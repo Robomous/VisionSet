@@ -58,7 +58,7 @@ upward, and the three surfaces do not point at each other.
 | [`cli`](../../../../src/visionset/cli/) | Typer. The whole cycle from a shell. | [cli.md](cli.md) |
 | [`mcp`](../../../../src/visionset/mcp/) | The MCP tool surface, for agents. | [mcp.md](mcp.md) |
 | [`formats`](../../../../src/visionset/formats/) | Exporter plugins, discovered by entry point. | [formats.md](formats.md) |
-| [`preprocessing`](../../../../src/visionset/preprocessing/) | Pre-processing drivers - the Pillow resize and augmentation engines behind the `PreprocessingDriver` port - discovered over the `visionset.preprocessing` entry-point group the way exporters are. | [formats.md](formats.md#the-sibling-group-preprocessing-drivers) |
+| [`preprocessing`](../../../../src/visionset/preprocessing/) | Pre-processing drivers - the Pillow resize and augmentation engines behind the `PreprocessingDriver` port - discovered over the `visionset.preprocessing` entry-point group the way exporters are. | [preprocessing-drivers.md](preprocessing-drivers.md) |
 | [`wire`](../../../../src/visionset/wire/) | The JSON shapes the CLI and MCP publish. | [wire.md](wire.md) |
 | [`jobs`](../../../../src/visionset/jobs/) | Handlers for work that outlives a request. | [jobs.md](jobs.md) |
 | [`inference`](../../../../src/visionset/inference/) | Where a model connection becomes a running model, and which model families could run next. | [inference.md](inference.md) |

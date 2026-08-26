@@ -132,7 +132,9 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (releases.check_export, READS),
     (releases.export_release, WRITES),
     (preprocessing.list_preprocessing_recipes, READS),
+    (preprocessing.get_preprocessing_recipe, READS),
     (preprocessing.create_preprocessing_recipe, WRITES),
+    (preprocessing.update_preprocessing_recipe, WRITES),
     # After the cycle, not in it: connections are workspace configuration —
     # every project shares them — so they read as the appendix rather than as a
     # rung. Within the group, the order is the setup journey: see what is

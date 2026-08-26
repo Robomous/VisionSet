@@ -7,25 +7,38 @@ does to every image, and :func:`recipe_hash` names that value the way
 carry the same hash whatever order the fields were written in.
 
 Everything random about a variant is derived, never drawn: :func:`variant_seed`
-turns ``(recipe, image, k)`` into a digest, and the three draw functions read
-fixed positions of that digest. The geometry transform and the pixel driver
-read the same positions, which is what keeps a variant's annotations on its
-pixels. Byte stability is promised within one environment only; the geometry
-arithmetic here is exact everywhere.
+turns ``(recipe, image, k)`` into a digest, and the two draw functions read
+fixed positions of that digest — ``hflip`` draws nothing, because a variant
+that drew no mirror would be the base image under a variant's name. The
+geometry transform and the pixel driver read the same positions, which is what
+keeps a variant's annotations on its pixels. Byte stability is promised within
+one environment only; the geometry arithmetic here is exact everywhere.
+
+Every step declares the geometries it can transform, the way an exporter
+declares ``supported_geometries``: :data:`AUGMENT_GEOMETRIES` is the table per
+augmentation, and each step reads it back as ``supported_geometries``. The
+geometry transform refuses a manifest geometry outside that set, so a step's
+reach is declared here once and never inferred from which branch of the
+arithmetic happens to handle it.
 """
 
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from visionset.kernel.domain.export_target import ResizeStrategy
 from visionset.kernel.domain.release import canonical_bytes, sha256_hex
+from visionset.kernel.domain.schema import GeometryType
+
+EVERY_GEOMETRY: Final[frozenset[GeometryType]] = frozenset(GeometryType)
+"""What a step that moves every coordinate the same way can transform."""
 
 
 class ResizeStep(BaseModel):
@@ -44,6 +57,16 @@ class ResizeStep(BaseModel):
     height: int = Field(ge=32, le=8192)
     pad_value: int = Field(default=114, ge=0, le=255)
 
+    @property
+    def name(self) -> str:
+        """What a refusal calls this step: its kind."""
+        return self.kind
+
+    @property
+    def supported_geometries(self) -> frozenset[GeometryType]:
+        """Every geometry: a resize scales and offsets each coordinate alike."""
+        return EVERY_GEOMETRY
+
 
 class AugmentOp(StrEnum):
     """An augmentation a recipe can apply when generating variants."""
@@ -53,12 +76,22 @@ class AugmentOp(StrEnum):
     ROT90 = "rot90"
 
 
+AUGMENT_GEOMETRIES: Final[Mapping[AugmentOp, frozenset[GeometryType]]] = {
+    AugmentOp.HFLIP: EVERY_GEOMETRY,
+    AugmentOp.BRIGHTNESS_CONTRAST: EVERY_GEOMETRY,
+    # A polyline's point order carries meaning relative to the frame's axes,
+    # and a quarter turn re-axes the frame under it.
+    AugmentOp.ROT90: EVERY_GEOMETRY - {GeometryType.POLYLINE},
+}
+"""Which geometries each augmentation can transform, per :class:`AugmentOp`."""
+
+
 class AugmentStep(BaseModel):
     """One augmentation in a recipe.
 
     ``amount`` bounds the brightness and contrast factors — each is drawn
     uniformly from ``[1 - amount, 1 + amount]`` — and means nothing to
-    ``hflip`` or ``rot90``, whose draws have no magnitude.
+    ``hflip``, which always mirrors, or ``rot90``, whose draw has no magnitude.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -66,6 +99,16 @@ class AugmentStep(BaseModel):
     kind: Literal["augment"] = "augment"
     op: AugmentOp
     amount: float = Field(default=0.2, gt=0, le=0.5)
+
+    @property
+    def name(self) -> str:
+        """What a refusal calls this step: its augmentation op."""
+        return self.op.value
+
+    @property
+    def supported_geometries(self) -> frozenset[GeometryType]:
+        """What this augmentation can transform, read from :data:`AUGMENT_GEOMETRIES`."""
+        return AUGMENT_GEOMETRIES[self.op]
 
 
 Step = Annotated[ResizeStep | AugmentStep, Field(discriminator="kind")]
@@ -151,17 +194,13 @@ def variant_seed(recipe_hash: str, content_hash: str, k: int) -> bytes:
     return hashlib.sha256(f"{recipe_hash}:{content_hash}:{k}".encode()).digest()
 
 
-def hflip_applied(seed: bytes) -> bool:
-    """Whether this variant mirrors, read off bit 0 of the seed."""
-    return bool(seed[0] & 1)
-
-
 def brightness_contrast_factors(seed: bytes, amount: float) -> tuple[float, float]:
     """This variant's brightness and contrast factors, in ``[1 - amount, 1 + amount]``.
 
     Brightness reads word 1 of the seed and contrast word 2 — fixed positions,
     whatever other steps the recipe holds, so adding a step never re-rolls the
-    others.
+    others. Word 0 is read by nothing; the positions here are load-bearing,
+    because moving one would re-roll every variant an export already wrote.
     """
     return (
         1.0 - amount + 2.0 * amount * _fraction(seed, 1),

@@ -176,6 +176,8 @@ from visionset.kernel.domain.prediction import (
     require_points_on_asset,
 )
 from visionset.kernel.domain.preprocessing import (
+    AUGMENT_GEOMETRIES,
+    EVERY_GEOMETRY,
     AugmentOp,
     AugmentStep,
     PreprocessingRecipe,
@@ -183,7 +185,6 @@ from visionset.kernel.domain.preprocessing import (
     ResizeStep,
     Step,
     brightness_contrast_factors,
-    hflip_applied,
     recipe_hash,
     rot90_quarter_turns,
     variant_seed,
@@ -427,6 +428,8 @@ __all__ = [
     "TargetFamily",
     "Task",
     "TARGET_NAME_PATTERN",
+    "AUGMENT_GEOMETRIES",
+    "EVERY_GEOMETRY",
     "AugmentOp",
     "AugmentStep",
     "Fold",
@@ -441,7 +444,6 @@ __all__ = [
     "TransformedFile",
     "TransformedView",
     "brightness_contrast_factors",
-    "hflip_applied",
     "letterbox_fit",
     "variant_content_hash",
     "source_of_content_hash",

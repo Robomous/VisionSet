@@ -19,8 +19,9 @@ nothing was being distributed. This is the first version that is.
   `rot90`) and a number of variants per train-fold image - served as
   `/projects/{id}/preprocessing-recipes` with a preview at
   `POST /projects/{id}/preprocessing-preview`, `visionset recipe`, and the
-  `create_preprocessing_recipe`, `list_preprocessing_recipes` and (behind `--allow-destructive`)
-  `delete_preprocessing_recipe` tools. An export names one beside its target - `recipe=` on the
+  `create_preprocessing_recipe`, `list_preprocessing_recipes`, `get_preprocessing_recipe`,
+  `update_preprocessing_recipe` and (behind `--allow-destructive`) `delete_preprocessing_recipe`
+  tools. An export names one beside its target - `recipe=` on the
   export and compatibility routes, `visionset export --recipe`, `recipe` on `export_release` and
   `check_export` - and keeps the spec by value: the job carries a snapshot, and the export report
   gains a `preprocessing` block with the spec, its hash, the Pillow version and a mapping from
