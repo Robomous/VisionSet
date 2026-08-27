@@ -197,8 +197,10 @@ function Column(props: ProjectNavProps): JSX.Element {
 /**
  * The strip: the filled control and the overflow on a row, the sections as a
  * full-width tab bar under it, the content in the panel beneath. A Radix `Tabs`
- * rather than a second list of links, so the panel is labelled by its tab and the
- * gaps between the three are the primitive's own.
+ * rather than a second list of links, so the panel is labelled by its tab; the
+ * row gaps are the primitive's own `gap-2`, except the last one, where this
+ * pattern (not `tabs.tsx`) adds a second `gap-2` so content under a `line` bar
+ * keeps the wider 16px rhythm navigation calls for.
  */
 function Strip(props: ProjectNavProps): JSX.Element {
   const { sections, active, onNavigate, children } = props;
@@ -232,7 +234,9 @@ function Strip(props: ProjectNavProps): JSX.Element {
           })}
         </TabsList>
       </div>
-      <TabsContent value={active ?? ""}>{children}</TabsContent>
+      <TabsContent value={active ?? ""} className="mt-2">
+        {children}
+      </TabsContent>
     </Tabs>
   );
 }
