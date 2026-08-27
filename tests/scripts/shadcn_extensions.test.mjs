@@ -138,6 +138,44 @@ const LEGACY_IMPORT = new RegExp(
 const NEXT_THEMES_IMPORT = new RegExp(String.raw`from\s+["']${NEXT_THEMES}["']`);
 const BARE_LEGACY_NAME = new RegExp(String.raw`\b(?:${FIELD_HINT}|${TABLE_EMPTY})\b`);
 
+/**
+ * The same retired names, written the way a test reads them back off the DOM
+ * rather than the way a component spells them. `TAG_ATTRIBUTE_RULES` walks JSX
+ * opening tags only, so a spec asserting v1's vocabulary sails straight past
+ * it — which is how `cycle.spec.ts` kept `"primary"` through the whole
+ * realignment, with CI the only thing that ever caught it.
+ *
+ * Listed here are the values **no** primitive carries any more, so naming one
+ * is wrong wherever it lands: `primary` belongs to no variant block at all,
+ * `Badge` dropped `neutral` and `accent`, and `Button`'s `md` is the official
+ * `default`. `secondary` and `success` are deliberately absent — both are
+ * still real variants, so an assertion naming one asks a question about its
+ * own call site that no vocabulary sweep can answer.
+ */
+const RETIRED_ATTRIBUTE_VALUES = { variant: ["primary", "neutral", "accent"], size: ["md"] };
+
+/**
+ * Three shapes per attribute, because a spec has three ways to say the one
+ * thing: `toHaveAttribute("data-variant", "primary")`, a
+ * `[data-variant="primary"]` selector, and `getAttribute("data-variant")` or
+ * `dataset.variant` compared with `toBe`/`toEqual`. The first crosses newlines
+ * on purpose — prettier puts the two arguments on their own lines once the
+ * call runs long, and that wrapped form is exactly the one that got through.
+ */
+const RETIRED_ATTRIBUTE_ASSERTIONS = Object.entries(RETIRED_ATTRIBUTE_VALUES).flatMap(
+  ([name, values]) => {
+    const value = `(?:${values.join("|")})`;
+    return [
+      new RegExp(String.raw`"data-${name}"\s*,\s*"${value}"`, "g"),
+      new RegExp(String.raw`\[data-${name}="${value}"\]`, "g"),
+      new RegExp(
+        String.raw`(?:getAttribute\("data-${name}"\)|dataset\.${name})[^\n]*?\.to(?:Be|Equal)\(\s*"${value}"`,
+        "g",
+      ),
+    ];
+  },
+);
+
 /** The 1-based line of `text` that character offset `index` falls on. */
 function lineAt(text, index) {
   return text.slice(0, index).split("\n").length;
@@ -192,6 +230,12 @@ export function legacyVocabularyIn(file, text) {
   for (const { tag, attribute } of TAG_ATTRIBUTE_RULES) {
     for (const { at, tag: tagText } of openTagsIn(scrubbed, tag)) {
       if (attribute.test(tagText)) hits.push({ at: lineAt(scrubbed, at), text: tagText.split("\n")[0].trim() });
+    }
+  }
+
+  for (const matcher of RETIRED_ATTRIBUTE_ASSERTIONS) {
+    for (const { 0: found, index } of scrubbed.matchAll(matcher)) {
+      hits.push({ at: lineAt(scrubbed, index), text: found.replace(/\s+/g, " ").trim() });
     }
   }
 
@@ -282,6 +326,29 @@ test("legacyVocabularyIn flags v1's shapes and stays silent on the shadcn contra
   // A comment recalling the retired shape states history, not a usage.
   assert.deepEqual(legacyVocabularyIn("p.tsx", `  // <Button variant="primary">Go</Button>`), []);
   assert.deepEqual(legacyVocabularyIn("q.tsx", `// reads next-themes for the mounted flag`), []);
+
+  // The same vocabulary as a test reads it back, the wrapped call included —
+  // the shape `TAG_ATTRIBUTE_RULES` cannot see.
+  assert.deepEqual(
+    legacyVocabularyIn("r.ts", `await expect(go).toHaveAttribute(\n  "data-variant",\n  "primary",\n);`),
+    [`r.ts:2: "data-variant", "primary"`],
+  );
+  assert.deepEqual(legacyVocabularyIn("r2.ts", `page.locator('[data-variant="primary"]')`), [
+    `r2.ts:1: [data-variant="primary"]`,
+  ]);
+  assert.deepEqual(
+    legacyVocabularyIn("r3.tsx", `expect(el.getAttribute("data-variant")).toBe("accent");`),
+    [`r3.tsx:1: getAttribute("data-variant")).toBe("accent"`],
+  );
+  assert.deepEqual(legacyVocabularyIn("r4.tsx", `expect(el.dataset.size).toBe("md");`), [
+    `r4.tsx:1: dataset.size).toBe("md"`,
+  ]);
+  // A variant that still exists is a question about the call site, not the vocabulary.
+  assert.deepEqual(legacyVocabularyIn("s.ts", `toHaveAttribute("data-variant", "outline")`), []);
+  assert.deepEqual(
+    legacyVocabularyIn("s2.tsx", `expect(b.getAttribute("data-variant")).toBe("success");`),
+    [],
+  );
 });
 
 test("no frontend consumer reaches for a name the extension contract retired", () => {
