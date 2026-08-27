@@ -388,7 +388,7 @@ async function channelsOf(page: Page, colour: string): Promise<readonly number[]
   }, colour);
 }
 
-test("a batch row's progress fills with the success colour on a bordered muted track", async ({
+test("a batch row's progress fills with the primary colour on a bordered muted track", async ({
   page,
 }) => {
   await openCold(page, `/projects/${PROJECT}/batches`);
@@ -399,7 +399,7 @@ test("a batch row's progress fills with the success colour on a bordered muted t
   const tokens = await page.evaluate(() => {
     const style = getComputedStyle(document.documentElement);
     return {
-      success: style.getPropertyValue("--success"),
+      primary: style.getPropertyValue("--primary"),
       muted: style.getPropertyValue("--muted"),
       border: style.getPropertyValue("--border"),
     };
@@ -407,8 +407,10 @@ test("a batch row's progress fills with the success colour on a bordered muted t
   const painted = async (locator: typeof bar, prop: string): Promise<readonly number[]> =>
     channelsOf(page, await locator.evaluate((node, p) => getComputedStyle(node).getPropertyValue(p), prop));
 
-  expect(await painted(bar.locator("> *").first(), "background-color")).toEqual(
-    await channelsOf(page, tokens.success),
+  const indicator = bar.locator('[data-slot="progress-indicator"]');
+  await expect(indicator).toHaveClass(/bg-primary/);
+  expect(await painted(indicator, "background-color")).toEqual(
+    await channelsOf(page, tokens.primary),
   );
   expect(await painted(bar, "background-color")).toEqual(await channelsOf(page, tokens.muted));
   expect(await painted(bar, "border-top-color")).toEqual(await channelsOf(page, tokens.border));
