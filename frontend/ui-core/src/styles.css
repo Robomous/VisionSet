@@ -6,8 +6,7 @@
  * heading face inheriting the body's, radius medium, menu inverted/subtle, and
  * the pointer cursor on pressable controls) — the CLI's exact generated output,
  * transcribed verbatim from a Docker scratch project built with `shadcn` 4.19.0. The preset is the source of truth for every
- * name below except nine: `stage`, `brand`, `success`/`success-foreground`,
- * `warning`/`warning-foreground` and the three `origin-*` marks are
+ * name below except five: `stage`, `brand` and the three `origin-*` marks are
  * VisionSet's own, each justified in
  * `DESIGN.md` and each following shadcn's own extension convention — a value
  * in `:root`, a dark counterpart in `.dark`, exposure through `@theme
@@ -85,15 +84,6 @@
    */
   --brand: oklch(0.653 0.178 32.3);
   /*
-   * The batch-state family's one filled control (the annotation editor's
-   * `Save and stay`), a green analogue of the preset's own destructive
-   * treatment.
-   */
-  --success: oklch(0.577 0.132 152);
-  --success-foreground: oklch(1 0 0);
-  --warning: oklch(0.646 0.13 80);
-  --warning-foreground: oklch(0.205 0 0);
-  /*
    * Where a model's weights come from, as a card's accent edge on the Models
    * page: the hub, the user's own, the Robomous registry. A mark, never a
    * surface or ink — a few pixels of colour on the plain card — and never
@@ -141,10 +131,6 @@
 
   --stage: oklch(0.24 0 0);
   --brand: oklch(0.653 0.178 32.3);
-  --success: oklch(0.696 0.17 152);
-  --success-foreground: oklch(0.205 0 0);
-  --warning: oklch(0.75 0.14 80);
-  --warning-foreground: oklch(0.205 0 0);
   --origin-hub: oklch(0.8 0.16 85);
   --origin-custom: oklch(0.65 0.15 250);
   --origin-robomous: oklch(0.68 0.17 35);
@@ -195,10 +181,6 @@
   /* VisionSet's extensions, exposed the same way as every preset colour. */
   --color-stage: var(--stage);
   --color-brand: var(--brand);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
   --color-origin-hub: var(--origin-hub);
   --color-origin-custom: var(--origin-custom);
   --color-origin-robomous: var(--origin-robomous);
@@ -215,7 +197,7 @@
   /* The hairline and the outline *colour* — the two things every element
      inherits. The focus treatment itself belongs to the primitives: each one
      carries Nova's own `ring-3` ring in `ring/50` (DESIGN.md, Borders and
-     Focus), so the base layer names the colour and stays out of the geometry.
+     focus), so the base layer names the colour and stays out of the geometry.
      Nothing here may declare focus geometry again: one blanket declaration in
      this layer is how thirteen components' rings got overridden at once. */
   * {

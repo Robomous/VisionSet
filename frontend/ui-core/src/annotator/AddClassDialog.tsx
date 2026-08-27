@@ -91,16 +91,18 @@ import { useEffect, useRef, useState, type JSX } from "react";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { classColor } from "../palette";
-import { Alert } from "../primitives/Badge";
-import { Button } from "../primitives/Button";
+import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
+import { Badge } from "../primitives/badge";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
-import { Input, Label } from "../primitives/Input";
+} from "../primitives/dialog";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
 import { formatGeometries } from "../data/geometryCategory";
 import { ClassFields } from "../patterns/ClassFields";
 import type {
@@ -552,14 +554,16 @@ export function AddClassDialog({
             without seeing this would publish classes they never typed.
           */}
           {resumedNames.length > 0 && (
-            <Alert title="Classes are already pending here" data-testid="resumed-draft">
+            <Alert data-testid="resumed-draft">
+              <AlertTitle>Classes are already pending here</AlertTitle>
+              <AlertDescription>
               {namesInProse(resumedNames)} {resumedNames.length === 1 ? "was" : "were"} banked in an
               earlier sitting and never published — this draft is shared, so that may not have been
               you. Keep working to fold {resumedNames.length === 1 ? "it" : "them"} into this
               version, or clear the slate.
               <div className="mt-2">
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   data-testid="discard-resumed"
                   disabled={pending}
                   onClick={() => {
@@ -592,6 +596,7 @@ export function AddClassDialog({
                   {pending ? "Discarding…" : `Discard the pending ${resumedNames.length === 1 ? "class" : "classes"}`}
                 </Button>
               </div>
+              </AlertDescription>
             </Alert>
           )}
 
@@ -603,40 +608,38 @@ export function AddClassDialog({
           {session.length > 0 && (
             <ul className="flex flex-wrap gap-1.5" data-testid="session-classes" aria-label="Classes to publish">
               {session.map((entry) => (
-                <li
-                  key={entry.name}
-                  data-testid={`session-class-${entry.name}`}
-                  className="flex items-center gap-1.5 rounded-full border border-border bg-muted py-0.5 pl-2 pr-1 text-xs"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="size-2 shrink-0 rounded-full"
-                    style={{
-                      background: classColor(
-                        { ...entry, color: entry.color ?? null, attributes: [] },
-                        entry.name,
-                      ),
-                    }}
-                  />
-                  {entry.name}
-                  <span className="text-muted-foreground">
-                    {formatGeometries(entry.geometries)}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${entry.name}`}
-                    data-testid={`session-remove-${entry.name}`}
-                    disabled={pending}
-                    className="rounded-full p-0.5 text-muted-foreground hover:bg-card hover:text-foreground disabled:cursor-not-allowed"
-                    onClick={() => {
-                      const banked = session.filter((held) => held.name !== entry.name);
-                      setSession(banked);
-                      onBank?.(banked);
-                    }}
-                  >
-                    <X className="size-3" aria-hidden="true" />
-                  </button>
-                </li>
+                <Badge asChild key={entry.name} variant="secondary" className="pr-1">
+                  <li data-testid={`session-class-${entry.name}`}>
+                    <span
+                      aria-hidden="true"
+                      className="size-2 shrink-0 rounded-full"
+                      style={{
+                        background: classColor(
+                          { ...entry, color: entry.color ?? null, attributes: [] },
+                          entry.name,
+                        ),
+                      }}
+                    />
+                    {entry.name}
+                    <span className="text-muted-foreground">
+                      {formatGeometries(entry.geometries)}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${entry.name}`}
+                      data-testid={`session-remove-${entry.name}`}
+                      disabled={pending}
+                      className="rounded-full p-0.5 text-muted-foreground hover:bg-card hover:text-foreground disabled:cursor-not-allowed"
+                      onClick={() => {
+                        const banked = session.filter((held) => held.name !== entry.name);
+                        setSession(banked);
+                        onBank?.(banked);
+                      }}
+                    >
+                      <X className="size-3" aria-hidden="true" />
+                    </button>
+                  </li>
+                </Badge>
               ))}
             </ul>
           )}
@@ -688,7 +691,9 @@ export function AddClassDialog({
             that before they act rather than from an error afterwards.
           */}
           {!canRepin && (
-            <Alert title="This batch will stay on its current version" data-testid="no-repin-notice">
+            <Alert data-testid="no-repin-notice">
+              <AlertTitle>This batch will stay on its current version</AlertTitle>
+              <AlertDescription>
               {/* The subject is the whole session, not the form field: by the time
                   somebody presses, the field is often empty and the classes are
                   banked — a notice saying “this class” would then name nothing at
@@ -697,6 +702,7 @@ export function AddClassDialog({
               {namesInProse(publishing.map((entry) => entry.name))} will not be available to
               draw with here. The version is still published to the project, and a correction
               batch approved from now on will pin to it.
+              </AlertDescription>
             </Alert>
           )}
 
@@ -710,27 +716,35 @@ export function AddClassDialog({
             twice in this one sitting, where there is nothing to offer.
           */}
           {existing !== undefined && widening.length > 0 && (
-            <Alert title={`“${existing.name}” already exists`} data-testid="widen-offer">
+            <Alert data-testid="widen-offer">
+              <AlertTitle>{`“${existing.name}” already exists`}</AlertTitle>
+              <AlertDescription>
               Version {active?.version} declares it as{" "}
               {formatGeometries(existing.geometries)}. Publishing adds{" "}
               {formatGeometries(widening)} to it, and leaves its colour and
               attributes alone.
+              </AlertDescription>
             </Alert>
           )}
 
           {taken && (
-            <Alert variant="destructive" title="That name is taken">
+            <Alert variant="destructive">
+              <AlertTitle>That name is taken</AlertTitle>
+              <AlertDescription>
               {/* Which of the two rules refused it, because the remedies differ —
                   and each names what would clear it, which is what lets the
                   primary below stay disabled without being a bare grey box. */}
               {inSession
                 ? `You have already added a class called “${name}” to this version. Rename one of them, or take the banked one back out.`
                 : `Version ${active?.version} already declares “${name}” as ${formatGeometries(existing?.geometries ?? [])}, and this form adds nothing to it. Tick a shape it does not have, or choose another name.`}
+              </AlertDescription>
             </Alert>
           )}
 
           {failure !== null && (
-            <Alert variant="destructive" title="Could not add this class" data-testid="add-class-error">
+            <Alert variant="destructive" data-testid="add-class-error">
+              <AlertTitle>Could not add this class</AlertTitle>
+              <AlertDescription>
               {refusalProse(error)}
               {/* The one refusal whose remedy is somewhere else. `repin` has no
                   flag for it on purpose: the pin did not move because somebody
@@ -743,6 +757,7 @@ export function AddClassDialog({
                   project’s Schema tab to see what changed.
                 </>
               )}
+              </AlertDescription>
             </Alert>
           )}
 
@@ -753,10 +768,13 @@ export function AddClassDialog({
             resort — the question is about *this* form, so it belongs in it.
           */}
           {discarding && (
-            <Alert variant="destructive" title="Discard the classes you added?" data-testid="discard-session">
+            <Alert variant="destructive" data-testid="discard-session">
+              <AlertTitle>Discard the classes you added?</AlertTitle>
+              <AlertDescription>
               {session.length} class{session.length === 1 ? "" : "es"} {session.length === 1 ? "is" : "are"}{" "}
               written and not published. Closing now discards {session.length === 1 ? "it" : "them"} from
               the shared draft — anyone else with this project open loses them too.
+              </AlertDescription>
             </Alert>
           )}
         </div>
@@ -772,7 +790,7 @@ export function AddClassDialog({
                 still waiting on the promise that closes it.
               */}
               <Button
-                variant="secondary"
+                variant="outline"
                 data-testid="keep-editing"
                 disabled={pending}
                 onClick={() => setDiscarding(false)}
@@ -814,7 +832,7 @@ export function AddClassDialog({
             </>
           ) : (
             <>
-              <Button variant="secondary" data-testid="add-class-cancel" onClick={requestClose} disabled={pending}>
+              <Button variant="outline" data-testid="add-class-cancel" onClick={requestClose} disabled={pending}>
                 Cancel
               </Button>
               {/*
@@ -825,7 +843,7 @@ export function AddClassDialog({
                 publish time.
               */}
               <Button
-                variant="secondary"
+                variant="outline"
                 data-testid="add-another"
                 disabled={pending || !readyForm}
                 onClick={addAnother}
@@ -837,7 +855,7 @@ export function AddClassDialog({
                 </kbd>
               </Button>
               <Button
-                variant="primary"
+                variant="default"
                 data-testid="add-class-submit"
                 // Disabled only for states a label cannot explain: nothing to
                 // publish, a duplicate in the form, a schema that has not loaded,

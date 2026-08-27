@@ -87,15 +87,11 @@ import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
 
 import { geometryLabel } from "../data/geometryCategory";
 import { classColor } from "../palette";
-import { Button } from "../primitives/Button";
-import { Input } from "../primitives/Input";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../primitives/Menu";
+import { Badge } from "../primitives/badge";
+import { Button } from "../primitives/button";
+import { DropdownMenu, DropdownMenuTrigger } from "../primitives/dropdown-menu";
+import { Input } from "../primitives/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/tooltip";
 import { ClassRegion } from "./ClassRegion";
 import { ReassignMenu } from "./ReassignMenu";
 import { cn } from "../lib/cn";
@@ -406,35 +402,39 @@ function TagRegion({
           {tagClasses.map((declared) => {
             const on = tagged.has(declared.name);
             return (
-              <button
+              <Badge
                 key={declared.name}
-                type="button"
-                data-testid={`tag-chip-${declared.name}`}
-                data-active={on ? "true" : "false"}
-                aria-pressed={on}
-                disabled={readOnly}
-                onClick={() => press(declared)}
+                asChild
+                variant="outline"
                 className={cn(
-                  "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs",
                   on
                     ? "border-primary bg-primary/10 text-foreground"
                     : "border-border bg-card text-muted-foreground",
                 )}
               >
-                <span
-                  aria-hidden="true"
-                  className="size-2 shrink-0 rounded-full"
-                  style={{ background: classColor(declared, declared.name) }}
-                />
-                <span className="truncate">{declared.name}</span>
-                {on ? (
-                  <Check className="size-3 text-primary" aria-hidden="true" />
-                ) : (
-                  <kbd className="rounded-sm border border-border px-1 font-mono text-xs">
-                    {hotkeyForClass(schema, declared.name) ?? "—"}
-                  </kbd>
-                )}
-              </button>
+                <button
+                  type="button"
+                  data-testid={`tag-chip-${declared.name}`}
+                  data-active={on ? "true" : "false"}
+                  aria-pressed={on}
+                  disabled={readOnly}
+                  onClick={() => press(declared)}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ background: classColor(declared, declared.name) }}
+                  />
+                  <span className="truncate">{declared.name}</span>
+                  {on ? (
+                    <Check className="size-3 text-primary" aria-hidden="true" />
+                  ) : (
+                    <kbd className="rounded-sm border border-border px-1 font-mono text-xs">
+                      {hotkeyForClass(schema, declared.name) ?? "—"}
+                    </kbd>
+                  )}
+                </button>
+              </Badge>
             );
           })}
         </div>

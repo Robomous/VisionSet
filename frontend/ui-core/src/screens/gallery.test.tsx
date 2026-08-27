@@ -37,6 +37,7 @@ import { AssetThumbnail } from "./AssetThumbnail";
 import { GalleryScreen, columnsFor } from "./GalleryScreen";
 import { assetActions, batchActions, jobActions, datasetOf } from "../testing/wire.fixtures.js";
 import type { components } from "../generated/api.js";
+import { TONE_BORDER, TONE_FILL } from "../patterns/statusTone.js";
 
 type BatchState = components["schemas"]["BatchState"];
 type JobState = components["schemas"]["AnnotationJobState"];
@@ -797,9 +798,27 @@ describe("the gallery", () => {
     // second, narrower string.
     const expected = [
       { id: "asset-0", tone: "neutral", word: "unannotated", dot: "bg-transparent", cell: "bg-muted" },
-      { id: "asset-1", tone: "success", word: "annotated", dot: "bg-success", cell: "bg-success" },
-      { id: "asset-2", tone: "warning", word: "in review", dot: "border-warning", cell: "bg-warning" },
-      { id: "asset-3", tone: "success", word: "accepted", dot: "bg-success", cell: "bg-success" },
+      {
+        id: "asset-1",
+        tone: "success",
+        word: "annotated",
+        dot: TONE_FILL.success,
+        cell: TONE_FILL.success,
+      },
+      {
+        id: "asset-2",
+        tone: "warning",
+        word: "in review",
+        dot: TONE_BORDER.warning,
+        cell: TONE_FILL.warning,
+      },
+      {
+        id: "asset-3",
+        tone: "success",
+        word: "accepted",
+        dot: TONE_FILL.success,
+        cell: TONE_FILL.success,
+      },
       { id: "asset-4", tone: "neutral", word: "skipped", dot: "bg-stage", cell: "bg-stage" },
     ];
 
@@ -2122,11 +2141,11 @@ describe("the job panel's way into the annotator", () => {
     // page whose step is the column's Annotate is correct. The job's door is
     // never the filled one — the batch's own step is, while it has one.
     const filled = (): Element[] => [
-      ...document.querySelectorAll('[data-testid="gallery"] [data-variant="primary"]'),
+      ...document.querySelectorAll('[data-testid="gallery"] [data-slot="button"][data-variant="default"]'),
     ];
     await openWith("in_annotation", "in_progress", "unannotated");
     expect(filled()).toHaveLength(0);
-    expect(screen.getByTestId(`start-job-${JOB}`).dataset.variant).toBe("secondary");
+    expect(screen.getByTestId(`start-job-${JOB}`).dataset.variant).toBe("outline");
   });
 
   it("starts a pending job, then opens it", async () => {
@@ -2146,7 +2165,7 @@ describe("the job panel's way into the annotator", () => {
     const door = screen.getByTestId(`start-job-${JOB}`);
     expect(door.textContent).toContain("Annotate");
     expect(door.querySelector("svg")).not.toBeNull();
-    expect(door.dataset.variant).toBe("secondary");
+    expect(door.dataset.variant).toBe("outline");
     await userEvent.click(door);
     await waitFor(() => expect(openedJob).toHaveBeenCalledWith(JOB));
     expect(sent.filter((r) => r.method === "POST").map((r) => new URL(r.url).pathname)).toEqual([
@@ -2299,7 +2318,7 @@ describe("the gallery header's own next step", () => {
 
   it("fills exactly one control while the batch has a step of its own", async () => {
     const filled = (): Element[] => [
-      ...document.querySelectorAll('[data-testid="gallery"] [data-variant="primary"]'),
+      ...document.querySelectorAll('[data-testid="gallery"] [data-slot="button"][data-variant="default"]'),
     ];
     await openIn("approved", "unannotated", "unannotated");
     expect(filled()).toHaveLength(1);

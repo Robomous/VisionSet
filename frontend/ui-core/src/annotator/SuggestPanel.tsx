@@ -67,14 +67,16 @@ import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 import { EditorNotice } from "./EditorNotice";
-import { Button } from "../primitives/Button";
+import { cn } from "../lib/cn";
+import { twoLineTrigger } from "../lib/select";
+import { Button } from "../primitives/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import type { Connection, SuggestBlocker } from "../data/inferenceQueries";
 
 export interface SuggestPanelProps {
@@ -273,7 +275,7 @@ export function SuggestPanel({
             control and leaves the explanation — never a dead button. */}
         {copy.action !== null && onConfigure !== undefined && (
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
             className="mt-1 self-start"
             data-testid="suggest-configure"
@@ -377,7 +379,7 @@ export function SuggestPanel({
           Click again to refine it — alt-click to take a part away.
         </p>
         <div className="mt-1 flex gap-2">
-          <Button variant="primary" size="sm" data-testid="suggest-accept" onClick={onAccept}>
+          <Button variant="default" size="sm" data-testid="suggest-accept" onClick={onAccept}>
             <Check className="size-4" aria-hidden="true" />
             Accept
             <Chip>↵</Chip>
@@ -462,7 +464,11 @@ function Through({
   }
   return (
     <Select value={active.id} onValueChange={onChoose}>
-      <SelectTrigger className="mt-1" data-testid="suggest-connection-select" aria-label="Model">
+      <SelectTrigger
+        className={cn(twoLineTrigger, "mt-1")}
+        data-testid="suggest-connection-select"
+        aria-label="Model"
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -470,8 +476,11 @@ function Through({
           // The two-line option: the name people gave it, then the model it
           // actually names. Two connections onto the same weights at different
           // precisions are otherwise told apart by nothing on screen.
-          <SelectItem key={one.id} value={one.id} meta={one.model_id}>
-            {one.name}
+          <SelectItem key={one.id} value={one.id}>
+            <span className="flex flex-col items-start">
+              <span>{one.name}</span>
+              <span className="text-xs text-muted-foreground">{one.model_id}</span>
+            </span>
           </SelectItem>
         ))}
       </SelectContent>

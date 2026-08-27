@@ -38,16 +38,18 @@ import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares, withheldBecause } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Button } from "../primitives/Button";
+import { cn } from "../lib/cn";
+import { menuSurface } from "../lib/menu";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
-import { FieldError } from "../primitives/Input";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../primitives/Menu";
+} from "../primitives/dialog";
+import { FieldError } from "../primitives/field";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../primitives/dropdown-menu";
 import { useDeleteBatch, type Batch } from "./queries";
 
 export interface BatchOverflowMenuProps {
@@ -92,7 +94,7 @@ export function BatchOverflowMenu({
             <MoreHorizontal aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align={align} className="w-64">
+        <DropdownMenuContent align={align} className={cn(menuSurface, "w-64")}>
           {/*
             Disabled-with-reason rather than hidden: there *is* an operation
             behind this and a state that would enable it, which is the whole
@@ -102,7 +104,7 @@ export function BatchOverflowMenu({
             a menu item that cannot be hovered into is a reason nobody reads.
           */}
           <DropdownMenuItem
-            destructive={deletable}
+            variant={deletable ? "destructive" : "default"}
             disabled={!deletable}
             data-testid={`delete-batch-${batch.name}`}
             onSelect={() => setConfirming(true)}
@@ -171,7 +173,7 @@ function DeleteBatchDialog({
           <FieldError data-testid="delete-batch-error">{refusalProse(remove.error)}</FieldError>
         )}
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button

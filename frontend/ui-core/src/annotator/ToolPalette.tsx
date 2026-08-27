@@ -99,8 +99,8 @@ import { CircleHelp, Hand, Plus, Redo2, Sparkles, Undo2 } from "lucide-react";
 import { GeometryIcon } from "./GeometryIcon";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
-import { Button } from "../primitives/Button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
+import { Button } from "../primitives/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/tooltip";
 
 /**
  * Why a declared geometry has no tool yet, keyed by the geometry.
@@ -538,7 +538,7 @@ function PaletteButton({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant={active ? "primary" : "ghost"}
+          variant={active ? "default" : "ghost"}
           size="icon"
           aria-label={label}
           aria-pressed={active}

@@ -136,23 +136,28 @@ import {
 import { refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
 import { formatBytes, formatCount } from "../lib/format";
+import { progressAria } from "../lib/progress";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
+import { STATUS_INK } from "../patterns/statusTone";
 import { StepMarker } from "../patterns/StepMarker";
-import { Alert, Badge } from "../primitives/Badge";
+import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
+import { Badge } from "../primitives/badge";
 import type { BadgeTone } from "./batchState";
-import { Button } from "../primitives/Button";
-import { Card, CardContent } from "../primitives/Card";
-import { Progress } from "../primitives/Feedback";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+import { Button } from "../primitives/button";
+import { Card, CardContent } from "../primitives/card";
+import { Progress } from "../primitives/progress";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+} from "../primitives/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { OutcomeNextStep } from "./ComposedTransitions";
 import { SchemaForeshadow } from "./SchemaForeshadow";
 import { ClipRangeTimeline } from "./ClipRangeTimeline";
@@ -212,14 +217,14 @@ function runStateLabel(state: string): string {
  * the *type*: a colour outside `BadgeTone` fails to compile.
  */
 const RUN_STATE_VARIANT: Record<string, BadgeTone> = {
-  pending: "accent",
-  running: "accent",
+  pending: "default",
+  running: "default",
   completed: "success",
   failed: "destructive",
 };
 
 function runStateVariant(state: string): BadgeTone {
-  return RUN_STATE_VARIANT[state] ?? "neutral";
+  return RUN_STATE_VARIANT[state] ?? "secondary";
 }
 
 /**
@@ -532,7 +537,7 @@ export function IngestScreen({
                 <div className="flex justify-end">
                   <Button
                     type="submit"
-                    variant="primary"
+                    variant="default"
                     data-testid="register-source"
                     // Explained by adjacency (`DESIGN.md` principle 9): with no
                     // files the dropzone above says what to do, and with a bad
@@ -570,7 +575,7 @@ export function IngestScreen({
                     <span className="text-sm font-medium" title={source.name}>
                       {sourceLabel(source.name)}
                     </span>
-                    <Badge>{source.kind}</Badge>
+                    <Badge variant="secondary">{source.kind}</Badge>
                   </div>
 
                   {source.video !== null && source.video !== undefined && (
@@ -623,7 +628,7 @@ export function IngestScreen({
                           ))}
                         </SelectContent>
                       </Select>
-                      <FieldHint>Only a draft batch can take new assets.</FieldHint>
+                      <FieldDescription>Only a draft batch can take new assets.</FieldDescription>
                     </div>
                     {batchChoice === NEW_BATCH && (
                       <div className="flex flex-col gap-1.5">
@@ -635,7 +640,7 @@ export function IngestScreen({
                           placeholder={source.name}
                           onChange={(event) => setBatchName(event.target.value)}
                         />
-                        <FieldHint>Defaults to the source name.</FieldHint>
+                        <FieldDescription>Defaults to the source name.</FieldDescription>
                       </div>
                     )}
                   </div>
@@ -651,13 +656,13 @@ export function IngestScreen({
                         restart — the registered source stays on the server
                         (registration is idempotent, nothing to undo), but every
                         setting on this screen resets with the files. */}
-                    <Button variant="ghost" data-testid="back-to-files" onClick={again}>
+                    <Button type="button" variant="ghost" data-testid="back-to-files" onClick={again}>
                       <ArrowLeft aria-hidden="true" />
                       Change files
                     </Button>
                     <Button
                       type="submit"
-                      variant="primary"
+                      variant="default"
                       data-testid="start-ingest"
                       disabled={start.isPending}
                     >
@@ -876,6 +881,7 @@ function SelectionPanel({
           )}
         </div>
         <Button
+          type="button"
           variant="ghost"
           size="icon"
           data-testid="clear-files"
@@ -897,10 +903,10 @@ function SelectionPanel({
               placeholder={suggestedName}
               onChange={(event) => onSourceName(event.target.value)}
             />
-            <FieldHint>
+            <FieldDescription>
               Names the source — and the new batch inherits it. Without one the server calls
               both by the upload&apos;s content digest.
-            </FieldHint>
+            </FieldDescription>
           </div>
         </div>
       )}
@@ -934,10 +940,10 @@ function SelectionPanel({
                       {selectionSummary(ranges, clip.durationSeconds)}
                     </dd>
                   </dl>
-                  <FieldHint>
+                  <FieldDescription>
                     Part of what the source <em>is</em> — the same clip registered at another
                     rate or other ranges becomes a second source.
-                  </FieldHint>
+                  </FieldDescription>
                 </div>
               }
             />
@@ -949,10 +955,10 @@ function SelectionPanel({
                 </p>
               )}
               <RateField fps={fps} onFps={onFps} />
-              <FieldHint>
+              <FieldDescription>
                 Part of what the source <em>is</em> — the same clip registered at another rate
                 or other ranges becomes a second source.
-              </FieldHint>
+              </FieldDescription>
             </div>
           )}
         </div>
@@ -990,6 +996,29 @@ function Fact({ label, value }: { readonly label: string; readonly value: string
   );
 }
 
+/** A clip has no denominator until it is over: `VideoMetadata` carries no frame count, by design. */
+function ingestPercent(job: IngestJob): number {
+  if (job.total === null || job.total === undefined) {
+    return job.state === "completed" ? 100 : 0;
+  }
+  return Math.round((job.processed / Math.max(job.total, 1)) * 100);
+}
+
+/** Bound once, so `value` and the `aria-valuenow` canonical `Progress` drops never disagree. */
+function IngestProgress({ job }: { readonly job: IngestJob }): JSX.Element {
+  const percent = ingestPercent(job);
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-xs text-muted-foreground" data-testid="run-progress">
+        {job.total === null || job.total === undefined
+          ? `${job.processed} extracted`
+          : `${job.processed} of ${job.total}`}
+      </p>
+      <Progress aria-label="Ingest progress" value={percent} {...progressAria(percent)} />
+    </div>
+  );
+}
+
 function RunCard({
   job,
   projectId,
@@ -1014,29 +1043,12 @@ function RunCard({
           <p className="text-sm text-muted-foreground">Starting…</p>
         ) : (
           <>
-            <div className="flex flex-col gap-1">
-              <p className="text-xs text-muted-foreground" data-testid="run-progress">
-                {job.total === null || job.total === undefined
-                  ? // A clip has no denominator until it is over: `VideoMetadata`
-                    // carries no frame count, by design.
-                    `${job.processed} extracted`
-                  : `${job.processed} of ${job.total}`}
-              </p>
-              <Progress
-                aria-label="Ingest progress"
-                value={
-                  job.total === null || job.total === undefined
-                    ? job.state === "completed"
-                      ? 100
-                      : 0
-                    : Math.round((job.processed / Math.max(job.total, 1)) * 100)
-                }
-              />
-            </div>
+            <IngestProgress job={job} />
 
             {job.error !== null && job.error !== undefined && (
-              <Alert variant="destructive" title="The run stopped" data-testid="run-error">
-                {job.error}
+              <Alert variant="destructive" data-testid="run-error">
+                <AlertTitle>The run stopped</AlertTitle>
+                <AlertDescription>{job.error}</AlertDescription>
               </Alert>
             )}
 
@@ -1049,7 +1061,7 @@ function RunCard({
             {job.state === "failed" && (
               <div>
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   data-testid="resume-ingest"
                   disabled={resume.isPending}
                   onClick={() => resume.mutate(job.id)}
@@ -1057,10 +1069,10 @@ function RunCard({
                   <RefreshCw aria-hidden="true" />
                   {resume.isPending ? "Resuming…" : "Resume"}
                 </Button>
-                <FieldHint>
+                <FieldDescription>
                   A resume is a redo, not a skip — nothing records which files already
                   succeeded, and content addressing makes re-reading them free.
-                </FieldHint>
+                </FieldDescription>
                 {/*
                   The refusal of the *resume*, which is a different fact from the
                   run's own error above it (audit F9). `resume.isError` was read
@@ -1071,12 +1083,9 @@ function RunCard({
                   reason: same screen, two different things that went wrong.
                 */}
                 {resume.isError && (
-                  <Alert
-                    variant="destructive"
-                    title="That resume was refused"
-                    data-testid="resume-error"
-                  >
-                    {refusalProse(resume.error)}
+                  <Alert variant="destructive" data-testid="resume-error">
+                    <AlertTitle>That resume was refused</AlertTitle>
+                    <AlertDescription>{refusalProse(resume.error)}</AlertDescription>
                   </Alert>
                 )}
               </div>
@@ -1173,11 +1182,11 @@ function Outcome({
         {/* Back to step 2, source kept: the same frames into a different batch
             is a real second run — registration is idempotent and content
             addressing makes re-reading free. */}
-        <Button variant="secondary" data-testid="rerun-source" onClick={onRerun}>
+        <Button variant="outline" data-testid="rerun-source" onClick={onRerun}>
           <RotateCw aria-hidden="true" />
           Ingest into another batch
         </Button>
-        <Button variant="secondary" data-testid="ingest-another" onClick={onAgain}>
+        <Button variant="outline" data-testid="ingest-another" onClick={onAgain}>
           <Upload aria-hidden="true" />
           Ingest another source
         </Button>
@@ -1221,15 +1230,14 @@ function Partials({
   if (partials.length === 0) return null;
 
   return (
-    <Alert
-      title={
+    <Alert data-testid="partials">
+      <AlertTitle>
         <span className="flex items-center gap-2">
-          <TriangleAlert className="size-4 text-warning" aria-hidden="true" />
+          <TriangleAlert className={cn("size-4", STATUS_INK.warning)} aria-hidden="true" />
           Some of what you ingested was damaged
         </span>
-      }
-      data-testid="partials"
-    >
+      </AlertTitle>
+      <AlertDescription>
       <ul className="flex flex-col gap-2">
         {partials.map((failure, index) => (
           <li key={`${failure.name}-${index}`} data-testid={`partial-${index}`}>
@@ -1245,6 +1253,7 @@ function Partials({
           </li>
         ))}
       </ul>
+      </AlertDescription>
     </Alert>
   );
 }
@@ -1286,7 +1295,7 @@ function Failures({
           </Badge>
         )}
         {unsupported.length > 0 && (
-          <Badge data-testid="unsupported-count">{unsupported.length} unsupported</Badge>
+          <Badge variant="secondary" data-testid="unsupported-count">{unsupported.length} unsupported</Badge>
         )}
       </p>
       <Table>
@@ -1304,7 +1313,7 @@ function Failures({
                 {basename(failure.name)}
               </TableCell>
               <TableCell>
-                <Badge variant={failure.kind === "corrupt" ? "destructive" : "neutral"}>
+                <Badge variant={failure.kind === "corrupt" ? "destructive" : "secondary"}>
                   {failureKindLabel(failure.kind)}
                 </Badge>
               </TableCell>

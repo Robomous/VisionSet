@@ -21,9 +21,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
-import { TooltipProvider } from "../primitives/Menu";
+import { TooltipProvider } from "../primitives/tooltip";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
 const API = "http://visionset.test";
@@ -129,6 +130,9 @@ beforeEach(() => {
   asked.length = 0;
   activeVersion = 3;
   writeToken("a-token");
+  // The badge this file opens sits in the top bar, among Tooltip triggers. See
+  // `testing/resizeObserver.ts`.
+  stubResizeObserver();
   // A viewport at least the annotator's floor, or no store and no top bar mount
   // at all — see `viewportFloor.test.tsx` for why that gate exists.
   vi.stubGlobal("matchMedia", (query: string) => ({

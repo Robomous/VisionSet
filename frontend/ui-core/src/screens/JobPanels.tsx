@@ -37,8 +37,9 @@
 import { useEffect, useState, type JSX, type KeyboardEvent } from "react";
 import { ChevronDown, ChevronRight, User } from "lucide-react";
 
-import { Progress } from "../primitives/Feedback";
-import { FieldError } from "../primitives/Input";
+import { progressAria } from "../lib/progress";
+import { Progress } from "../primitives/progress";
+import { FieldError } from "../primitives/field";
 import { refusalProse } from "../data/refusals";
 import { DEFAULT_JOB_VIEW, JobWorkspace, patchView, type JobView } from "./GalleryControls";
 import { annotatedShare } from "./batchState";
@@ -311,7 +312,7 @@ function JobHeader({
         <Progress
           aria-label="Annotation progress"
           value={share.percent}
-          variant="success"
+          {...progressAria(share.percent)}
           className="min-w-0 flex-1"
         />
       )}

@@ -28,8 +28,8 @@
 import { Maximize2, Minimize2, Minus, Plus, Scan } from "lucide-react";
 import { useEffect, useState, type JSX } from "react";
 
-import { Button } from "../primitives/Button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
+import { Button } from "../primitives/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/tooltip";
 
 export interface ZoomWidgetProps {
   /** The live scale, or `null` before the stage has measured itself. */

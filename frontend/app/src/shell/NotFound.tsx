@@ -22,7 +22,7 @@ export function NotFound(): JSX.Element {
       title="No such page"
       description={pathname}
       action={
-        <Button asChild variant="primary">
+        <Button asChild variant="default">
           <Link to="/">Back to Home</Link>
         </Button>
       }

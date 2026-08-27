@@ -259,7 +259,12 @@ describe("the token form", () => {
       </ApiProvider>,
     );
 
-    await userEvent.type(await screen.findByTestId("token-input"), "wrong");
+    await screen.findByTestId("token-input");
+    expect(
+      screen.getByRole("heading", { level: 2, name: /connect to a workspace/i }),
+    ).not.toBeNull();
+
+    await userEvent.type(screen.getByTestId("token-input"), "wrong");
     await userEvent.click(screen.getByTestId("token-submit"));
 
     await waitFor(() => expect(screen.queryByTestId("token-error")).not.toBeNull());

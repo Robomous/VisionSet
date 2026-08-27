@@ -29,8 +29,10 @@ import type { JSX, ReactNode } from "react";
 import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
-import { TooltipProvider } from "../primitives/Menu";
+import { TooltipProvider } from "../primitives/tooltip";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
+import { TONE_BORDER, TONE_FILL } from "../patterns/statusTone.js";
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -133,6 +135,9 @@ function answer(path: string): unknown {
 beforeEach(() => {
   sent.length = 0;
   writeToken("a-token");
+  // The top bar this file clicks through is a row of Tooltip triggers. See
+  // `testing/resizeObserver.ts`.
+  stubResizeObserver();
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
     matches: true,
@@ -240,8 +245,8 @@ describe("what the gallery shows", () => {
     }
     // The drawn class, not only the declared tone — an attribute agreeing with a
     // map the dot no longer reads is a test of the map alone.
-    expect(within(modal).getByTestId(`frame-${assetId(1)}`).innerHTML).toContain("bg-success");
-    expect(within(modal).getByTestId(`frame-${assetId(2)}`).innerHTML).toContain("border-warning");
+    expect(within(modal).getByTestId(`frame-${assetId(1)}`).innerHTML).toContain(TONE_FILL.success);
+    expect(within(modal).getByTestId(`frame-${assetId(2)}`).innerHTML).toContain(TONE_BORDER.warning);
   });
 
   it("marks the frame that is on screen", async () => {
@@ -290,7 +295,7 @@ describe("what the gallery shows", () => {
           ? "frame"
           : (button.getAttribute("data-testid")?.startsWith("frame-segment-") ?? false)
             ? "filter"
-            : (button.getAttribute("aria-label") ?? "other"),
+            : (button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "other"),
       );
     expect(new Set(kinds)).toEqual(new Set(["frame", "filter", "Close"]));
   });

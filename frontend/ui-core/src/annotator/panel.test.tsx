@@ -14,11 +14,12 @@
 import { AnnotatorStore, documentFromWire, selectOnly } from "@visionset/annotator";
 import { render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
 import { AnnotatorPanel } from "./AnnotatorPanel";
-import { TooltipProvider } from "../primitives/Menu";
+import { TooltipProvider } from "../primitives/tooltip";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 
 const SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",
@@ -89,6 +90,16 @@ function mount(
     </TooltipProvider>
   );
 }
+
+// The provenance badge on an accepted row is a Tooltip trigger. See
+// `testing/resizeObserver.ts`.
+beforeEach(() => {
+  stubResizeObserver();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("the three regions the panel is now", () => {
   it("stacks them without tabs, so all three subjects are on screen at once", () => {

@@ -17,8 +17,8 @@ import { Plus, Trash2 } from "lucide-react";
 import type { JSX } from "react";
 
 import { cn } from "../lib/cn";
-import { Badge } from "../primitives/Badge";
-import { Button } from "../primitives/Button";
+import { Badge } from "../primitives/badge";
+import { Button } from "../primitives/button";
 import { describeRecipeSpec, type RecipeSpec } from "../screens/recipeDraft";
 
 export interface RecipeListItem {
@@ -51,7 +51,7 @@ export function RecipeList({
     <section className={cn("flex flex-col gap-3", className)} data-testid="recipe-list">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Recipes</h2>
-        <Button variant="secondary" size="sm" data-testid="recipe-new" onClick={onNew}>
+        <Button variant="outline" size="sm" data-testid="recipe-new" onClick={onNew}>
           <Plus aria-hidden="true" />
           New
         </Button>

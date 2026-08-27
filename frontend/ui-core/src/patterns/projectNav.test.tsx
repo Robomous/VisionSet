@@ -35,9 +35,9 @@ function props(overrides: Partial<ProjectNavProps> = {}): ProjectNavProps {
   };
 }
 
-/** The filled controls on screen: Nova's default `Button` carries `data-variant="primary"`. */
+/** The filled controls on screen: Nova's default `Button` carries `data-variant="default"`. */
 function filled(): HTMLElement[] {
-  return Array.from(document.querySelectorAll<HTMLElement>('[data-slot="button"][data-variant="primary"]'));
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-slot="button"][data-variant="default"]'));
 }
 
 describe("ProjectNav", () => {
@@ -104,7 +104,7 @@ describe("ProjectNav", () => {
   it("steps Ingest back when the content owns the page's filled control", () => {
     render(<ProjectNav {...props({ annotate: undefined, contentOwnsTheAction: true })} />);
     expect(filled()).toHaveLength(0);
-    expect(screen.getByTestId("go-ingest").dataset.variant).toBe("secondary");
+    expect(screen.getByTestId("go-ingest").dataset.variant).toBe("outline");
   });
 
   it("renders no filled control at all when the host wired neither action", () => {

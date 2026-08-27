@@ -13,11 +13,12 @@
  * promoted-not-copied rule. The variant map moved here out of `BatchesScreen`
  * unchanged, so no shipped pixel moved with it.
  *
- * ## Green arrived, and it arrived the way the old note said it would have to
+ * ## Green arrived, and it lives in one file
  *
- * `tests/scripts/design_tokens.test.mjs` fails the build on a colour that is not a
- * token, so a status green has to be a published token before anything can use
- * one. `success` is that token, and `completed` takes it.
+ * `patterns/statusTone.ts` is the one home for the Tailwind family behind
+ * `success`, `warning` and the rest — this module and every screen that draws
+ * a status read their colour from there rather than naming a family at their
+ * own call site. `completed` takes `success`.
  *
  * ## The tone is a token, and the word is not optional
  *
@@ -53,6 +54,7 @@
  */
 
 import type { AssetProgress } from "../annotator/jobQueries.js";
+import { TONE_BORDER, TONE_FILL, type StatusTone } from "../patterns/statusTone.js";
 
 /**
  * The semantic tokens a status may wear, and the whole list of them.
@@ -63,16 +65,24 @@ import type { AssetProgress } from "../annotator/jobQueries.js";
  * than a diff nobody notices. `outline` is on `BadgeTone` alone: it is a chip
  * treatment (a `card` fill on a hairline) rather than a colour, so nothing can
  * paint a dot or a timeline cell with it.
+ *
+ * Defined in `patterns/statusTone.ts` now, and re-exported here so `PROGRESS_TONE`
+ * and the rest of this module's callers are unchanged.
  */
-export type StatusTone = "neutral" | "accent" | "success" | "warning" | "destructive";
+export type { StatusTone };
 
-export type BadgeTone = StatusTone | "outline";
+/**
+ * `StatusTone` translated into the shadcn `Badge` component's own variant
+ * vocabulary: `default` is the near-black `accent` reading and `secondary` is
+ * the inert `neutral` one, since neither of those words is a `Badge` variant.
+ */
+export type BadgeTone = "default" | "secondary" | "outline" | "success" | "warning" | "destructive";
 
 /** `BatchState`, and how each reads. The order is the machine's own. */
 export const BATCH_STATE_VARIANT: Record<string, BadgeTone> = {
-  draft: "neutral",
+  draft: "secondary",
   approved: "outline",
-  in_annotation: "accent",
+  in_annotation: "default",
   completed: "success",
 };
 
@@ -324,30 +334,6 @@ export function progressTone(progress: AssetProgress | null | undefined): Status
   if (progress === null || progress === undefined) return "neutral";
   return PROGRESS_TONE[progress] ?? "neutral";
 }
-
-/**
- * A tone's border and its fill, as whole utility names.
- *
- * Whole names rather than a `border-${tone}` template, because Tailwind scans
- * source *text*: a class assembled at runtime is a class the build never saw and
- * therefore a rule that is never emitted. The failure is silent and looks like a
- * styling mistake, which is why these are written out.
- */
-const TONE_BORDER: Record<StatusTone, string> = {
-  neutral: "border-border",
-  accent: "border-primary",
-  success: "border-success",
-  warning: "border-warning",
-  destructive: "border-destructive",
-};
-
-const TONE_FILL: Record<StatusTone, string> = {
-  neutral: "bg-muted-foreground",
-  accent: "bg-primary",
-  success: "bg-success",
-  warning: "bg-warning",
-  destructive: "bg-destructive",
-};
 
 /**
  * The dot, as the classes that draw it — border and fill, no geometry.

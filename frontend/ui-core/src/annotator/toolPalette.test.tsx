@@ -9,11 +9,22 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { TooltipProvider } from "../primitives/Menu";
+import { TooltipProvider } from "../primitives/tooltip";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { ToolPalette, toolChoices } from "./ToolPalette";
+
+// Every button below is a Tooltip trigger, and `userEvent.click` opens the
+// tooltip on its way to the press. See `testing/resizeObserver.ts`.
+beforeEach(() => {
+  stubResizeObserver();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 /**
  * Four classes covering all four cases `drawableGeometry` distinguishes: two bbox

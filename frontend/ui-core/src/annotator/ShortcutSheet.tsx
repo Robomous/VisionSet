@@ -67,7 +67,7 @@ import {
 } from "@visionset/annotator";
 import type { JSX } from "react";
 
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../primitives/Dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../primitives/dialog";
 
 /**
  * What each action kind means, in words.

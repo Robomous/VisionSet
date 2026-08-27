@@ -27,23 +27,27 @@ import { SquareCheck } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { Button } from "../primitives/Button";
+import { inlineLink } from "../lib/button";
+import { progressAria } from "../lib/progress";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
-import { Progress } from "../primitives/Feedback";
+} from "../primitives/dialog";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
+import { Progress } from "../primitives/progress";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import { annotatedShare, outstandingWork } from "./batchState";
 import {
   useApproveBatch,
@@ -82,7 +86,7 @@ export function BatchProgressBar({
       <Progress
         aria-label="Annotation progress"
         value={share.percent}
-        variant="success"
+        {...progressAria(share.percent)}
         className="h-2 border border-border"
       />
       {draft ? (
@@ -156,7 +160,7 @@ export function CompleteBatchButton({
   return (
     <div className={className ?? "flex flex-col items-end gap-1"}>
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid={`complete-${batch.name}`}
         disabled={outstanding > 0 || finish.isPending}
@@ -255,10 +259,10 @@ export function ApproveDialog({
                 <SelectItem value="by_size">Jobs of N assets</SelectItem>
               </SelectContent>
             </Select>
-            <FieldHint>
+            <FieldDescription>
               The cut is exact — disjoint, and every asset in one job. An explicit list of
               segments is the SDK&rsquo;s and the API&rsquo;s, not a form&rsquo;s.
-            </FieldHint>
+            </FieldDescription>
           </div>
 
           {kind === "by_size" && (
@@ -272,9 +276,9 @@ export function ApproveDialog({
                 value={size}
                 onChange={(event) => setSize(event.target.value)}
               />
-              <FieldHint data-testid="partition-preview">
+              <FieldDescription data-testid="partition-preview">
                 {batch?.asset_count ?? 0} assets → {jobs} job{jobs === 1 ? "" : "s"}
-              </FieldHint>
+              </FieldDescription>
             </div>
           )}
 
@@ -297,6 +301,7 @@ export function ApproveDialog({
                 {onOpenSchema !== undefined && (
                   <Button
                     variant="link"
+                    className={inlineLink}
                     data-testid="approve-go-schema"
                     onClick={() => {
                       onClose();
@@ -313,11 +318,11 @@ export function ApproveDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" data-testid="approve-cancel" onClick={onClose}>
+          <Button variant="outline" data-testid="approve-cancel" onClick={onClose}>
             Cancel
           </Button>
           <Button
-            variant="primary"
+            variant="default"
             data-testid="approve-submit"
             disabled={approve.isPending || (kind === "by_size" && !(count >= 1))}
             onClick={submit}
@@ -359,7 +364,7 @@ export function StartAnnotatingButton({
   return (
     <div className={className ?? "flex flex-col items-end gap-1"}>
       <Button
-        variant="primary"
+        variant="default"
         size="sm"
         data-testid="start-batch"
         disabled={start.isPending}

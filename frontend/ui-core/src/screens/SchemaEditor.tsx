@@ -97,33 +97,37 @@
  */
 
 import { Plus, Trash2 } from "lucide-react";
-import { useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
+import { useId, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
 import { asApiError } from "../data/errors";
 import { classBlockers, describeClassCount, refusalProse } from "../data/refusals";
-import { Alert, Badge } from "../primitives/Badge";
-import { Button } from "../primitives/Button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/Card";
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
+import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
+import { Badge } from "../primitives/badge";
+import { Button } from "../primitives/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/card";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
-import { Input, Label } from "../primitives/Input";
+} from "../primitives/dialog";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
 import { ClassFields, swatchOf } from "../patterns/ClassFields";
 import { ClassListRow } from "../patterns/DataDisplay";
 import { formatCount, formatWhen } from "../lib/format";
-import { toast } from "../primitives/Feedback";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import type {
   ClassCount,
   DraftLabelClassBody,
@@ -750,7 +754,7 @@ export function SchemaEditor({
             }}
           />
           <Button
-            variant="secondary"
+            variant="outline"
             data-testid="add-class"
             disabled={draftLocked}
             onClick={addClass}
@@ -762,7 +766,7 @@ export function SchemaEditor({
             // `secondary`: the project's navigation holds the one filled
             // control of the project shell, and a section's own actions sit
             // a weight below it. Still never disabled for "nothing to save".
-            variant="secondary"
+            variant="outline"
             data-testid="save-schema"
             // Never disabled for "nothing to save" — `save` answers that with a
             // toast. It is also disabled while a removal preview, flush, or
@@ -777,12 +781,9 @@ export function SchemaEditor({
       </div>
 
       {flow.kind === "preview-error" && (
-        <Alert
-          variant="destructive"
-          title="Could not preview this change"
-          data-testid="schema-preview-error"
-        >
-          {refusalProse(flow.error)}
+        <Alert variant="destructive" data-testid="schema-preview-error">
+          <AlertTitle>Could not preview this change</AlertTitle>
+          <AlertDescription>{refusalProse(flow.error)}</AlertDescription>
         </Alert>
       )}
 
@@ -825,7 +826,7 @@ export function SchemaEditor({
           <Button
             variant="link"
             size="sm"
-            className="align-baseline text-xs"
+            className={cn(inlineLink, "align-baseline text-xs")}
             data-testid="schema-reload"
             disabled={draftLocked}
             onClick={() => {
@@ -858,7 +859,7 @@ export function SchemaEditor({
           <Button
             variant="link"
             size="sm"
-            className="align-baseline text-xs"
+            className={cn(inlineLink, "align-baseline text-xs")}
             data-testid="schema-reload-draft"
             disabled={draftLocked}
             onClick={() => {
@@ -877,8 +878,9 @@ export function SchemaEditor({
           is, and typing is unaffected either way. Still rendered rather than
           swallowed, in the same register as a publish failure below. */}
       {draftFailure !== null && !staleDraft && (
-        <Alert variant="destructive" title="Could not save this change" data-testid="schema-draft-error">
-          {refusalProse(draftSaveError)}
+        <Alert variant="destructive" data-testid="schema-draft-error">
+          <AlertTitle>Could not save this change</AlertTitle>
+          <AlertDescription>{refusalProse(draftSaveError)}</AlertDescription>
         </Alert>
       )}
 
@@ -893,16 +895,20 @@ export function SchemaEditor({
       {failure !== null &&
         failure.code !== STALE_DRAFT &&
         (failure.code !== WOULD_ORPHAN || shownBlockers === null) && (
-          <Alert variant="destructive" title="Could not save this version" data-testid="schema-error">
-            {refusalProse(publish.error)}
+          <Alert variant="destructive" data-testid="schema-error">
+            <AlertTitle>Could not save this version</AlertTitle>
+            <AlertDescription>{refusalProse(publish.error)}</AlertDescription>
           </Alert>
         )}
 
       {past !== undefined ? (
         <PastVersion declared={past} />
       ) : classes.length === 0 ? (
-        <Alert title="No classes yet">
+        <Alert>
+          <AlertTitle>No classes yet</AlertTitle>
+          <AlertDescription>
           A class is a label plus the one geometry it carries — picking a class picks a tool.
+          </AlertDescription>
         </Alert>
       ) : (
         // 240px and then everything else. `minmax(0, 1fr)` rather than `1fr`, so a
@@ -913,10 +919,10 @@ export function SchemaEditor({
               already stacks two-column detail views at that breakpoint, and
               inventing a fifth breakpoint for one panel is the kind of one-off the
               token discipline exists to stop. */}
-          <div className="lg:hidden">
+          <div className="min-w-0 lg:hidden">
             <Label htmlFor="class-picker">Class</Label>
             <Select value={String(selected)} onValueChange={(value) => setSelected(Number(value))}>
-              <SelectTrigger id="class-picker" data-testid="class-picker">
+              <SelectTrigger id="class-picker" data-testid="class-picker" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1153,7 +1159,7 @@ function VersionDiff({
         <li key={index} className="flex items-start gap-2 text-xs">
           {/* The kernel's own words — they are accurate — sentence-cased for a
               badge. `detail` below stays verbatim; see the docstring. */}
-          <Badge variant={change.kind === "destructive" ? "destructive" : "neutral"}>
+          <Badge variant={change.kind === "destructive" ? "destructive" : "secondary"}>
             {change.kind === "destructive" ? "Destructive" : change.kind === "additive" ? "Additive" : change.kind}
           </Badge>
           <span className="text-muted-foreground">{change.detail}</span>
@@ -1173,8 +1179,11 @@ function VersionDiff({
 function PastVersion({ declared }: { readonly declared: SchemaVersion }): JSX.Element {
   if (declared.classes.length === 0) {
     return (
-      <Alert title="No classes">
+      <Alert>
+        <AlertTitle>No classes</AlertTitle>
+        <AlertDescription>
         Version {declared.version} declares nothing. A project can publish an empty contract.
+        </AlertDescription>
       </Alert>
     );
   }
@@ -1328,20 +1337,29 @@ function OrphanBlockersDialog({
   readonly framesListed: boolean;
   readonly onClose: () => void;
 }): JSX.Element {
+  // Radix mints one description id per dialog root, so a dialog with several
+  // `DialogDescription`s needs each one named here — `label_class` can hold a
+  // space, which a `space`-joined `aria-describedby` cannot, so `uid` prefixes
+  // an index rather than the class name itself.
+  const uid = useId();
+  const blockerIds = blockers?.map((_blocker, index) => `${uid}-blocker-${index}`) ?? [];
+  const noteId = `${uid}-note`;
   return (
     <Dialog open={blockers !== null} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="orphan-dialog">
+      <DialogContent data-testid="orphan-dialog" aria-describedby={[...blockerIds, noteId].join(" ")}>
         <DialogTitle>Annotations already use these classes</DialogTitle>
         <NarrowingChanges diff={diff} />
-        {blockers?.map((blocker) => (
-          <DialogDescription key={blocker.label_class}>{describeClassCount(blocker)}</DialogDescription>
+        {blockers?.map((blocker, index) => (
+          <DialogDescription key={blocker.label_class} id={blockerIds[index]}>
+            {describeClassCount(blocker)}
+          </DialogDescription>
         ))}
-        <DialogDescription>
+        <DialogDescription id={noteId}>
           There is no override for this one. Keep the class, or clear those labels first
           {framesListed ? " — the frames carrying them are under “Frames in the way”, below the editor" : ""}.
         </DialogDescription>
         <DialogFooter>
-          <Button variant="secondary" data-testid="orphan-close" onClick={onClose}>
+          <Button variant="outline" data-testid="orphan-close" onClick={onClose}>
             Close
           </Button>
         </DialogFooter>
@@ -1385,27 +1403,34 @@ function DestructiveDialog({
   readonly onConfirm: () => void;
 }): JSX.Element {
   const destructiveClasses = preview?.diff.destructive_classes ?? [];
+  const uid = useId();
+  const summaryId = `${uid}-summary`;
+  const noRegressionId = `${uid}-no-regression`;
+  const openBatchId = `${uid}-open-batch`;
   return (
     <Dialog open={preview !== null} onOpenChange={(next) => !next && onCancel()}>
-      <DialogContent data-testid="destructive-dialog">
+      <DialogContent
+        data-testid="destructive-dialog"
+        aria-describedby={[summaryId, noRegressionId, openBatchId].join(" ")}
+      >
         <DialogTitle>This narrows the schema</DialogTitle>
-        <DialogDescription>
+        <DialogDescription id={summaryId}>
           <span className="tabular-nums">{formatCount(destructiveClasses.length)}</span>{" "}
           {destructiveClasses.length === 1 ? "class narrows" : "classes narrow"}:{" "}
           {describeDestructiveClasses(destructiveClasses)}.
         </DialogDescription>
         <NarrowingChanges diff={preview?.diff ?? null} />
-        <DialogDescription>
+        <DialogDescription id={noRegressionId}>
           No existing annotation becomes invalid — that is why this can be published at all.
           Publishing adds a new version; earlier versions keep what they declared.
         </DialogDescription>
-        <DialogDescription>
+        <DialogDescription id={openBatchId}>
           A batch still open on the current version keeps writing what that version declares,
           including what this one drops. Those labels are kept — but a release cannot be published
           while they are in it.
         </DialogDescription>
         <DialogFooter>
-          <Button variant="secondary" onClick={onCancel}>
+          <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
           <Button

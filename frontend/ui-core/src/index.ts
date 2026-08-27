@@ -40,10 +40,14 @@ export { cssVar, DARK_THEME, EXTENSIONS, LIGHT_THEME, THEME } from "./tokens.js"
 export { CLASS_FILL_OPACITY, classColor } from "./palette.js";
 export type { LabelClass } from "./palette.js";
 
+export { inlineLink } from "./lib/button.js";
 export { cn } from "./lib/cn.js";
+export { menuSurface } from "./lib/menu.js";
+export { twoLineTrigger } from "./lib/select.js";
+export { progressAria } from "./lib/progress.js";
 
-// Primitives — Radix behaviour under shadcn Nova styling, iconed with Tabler.
-export { Button, buttonVariants, type ButtonProps } from "./primitives/Button.js";
+// Primitives — Radix behaviour under shadcn Nova styling, iconed with lucide.
+export { Button, buttonVariants } from "./primitives/button.js";
 export {
   Card,
   CardAction,
@@ -52,67 +56,86 @@ export {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "./primitives/Card.js";
-export { FieldError, FieldHint, Input, Label, Textarea } from "./primitives/Input.js";
-export { Combobox, type ComboboxFooter, type ComboboxProps } from "./primitives/Combobox.js";
+} from "./primitives/card.js";
+export { Input } from "./primitives/input.js";
+export { Textarea } from "./primitives/textarea.js";
+export { Label } from "./primitives/label.js";
 export {
-  Alert,
-  Badge,
-  badgeVariants,
-  type AlertProps,
-  type BadgeProps,
-} from "./primitives/Badge.js";
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSeparator,
+  FieldSet,
+  FieldTitle,
+} from "./primitives/field.js";
 export {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogOverlay,
-  DialogPortal,
-  DialogTitle,
-  DialogTrigger,
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-  SheetTrigger,
-  type SheetContentProps,
-} from "./primitives/Dialog.js";
-// `tabsListVariants` stays unexported: `TabsList`'s own `variant` prop is the
-// public surface, and the `cva` behind it is `Tabs.tsx`'s implementation detail.
-export { Tabs, TabsContent, TabsList, TabsTrigger } from "./primitives/Tabs.js";
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+  InputGroupText,
+  InputGroupTextarea,
+} from "./primitives/input-group.js";
 export {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "./primitives/Select.js";
+  Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
+  ComboboxCollection,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxLabel,
+  ComboboxList,
+  ComboboxSeparator,
+  ComboboxTrigger,
+  ComboboxValue,
+  useComboboxAnchor,
+} from "./primitives/combobox.js";
+export { Badge, badgeVariants } from "./primitives/badge.js";
+export { Alert, AlertAction, AlertDescription, AlertTitle } from "./primitives/alert.js";
+export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "./primitives/dialog.js";
+export { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "./primitives/sheet.js";
+export { Tabs, TabsContent, TabsList, tabsListVariants, TabsTrigger } from "./primitives/tabs.js";
+export { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectScrollDownButton, SelectScrollUpButton, SelectSeparator, SelectTrigger, SelectValue } from "./primitives/select.js";
 export {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "./primitives/Menu.js";
-export { Progress, Skeleton, Toaster, toast } from "./primitives/Feedback.js";
+} from "./primitives/dropdown-menu.js";
+export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./primitives/tooltip.js";
+export { Progress } from "./primitives/progress.js";
+export { Skeleton } from "./primitives/skeleton.js";
+export { Toaster } from "./primitives/sonner.js";
+export { toast } from "sonner";
 export {
   Table,
   TableBody,
+  TableCaption,
   TableCell,
-  TableEmpty,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
-} from "./primitives/Table.js";
+} from "./primitives/table.js";
 
 // The three states every async surface owes.
 export {

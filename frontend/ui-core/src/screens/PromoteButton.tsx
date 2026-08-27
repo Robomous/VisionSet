@@ -48,8 +48,9 @@ import type { JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Button } from "../primitives/Button";
-import { FieldError } from "../primitives/Input";
+import { inlineLink } from "../lib/button";
+import { Button } from "../primitives/button";
+import { FieldError } from "../primitives/field";
 import { usePromoteBatch, type Batch } from "./queries";
 
 export interface PromoteButtonProps {
@@ -110,7 +111,7 @@ export function PromoteButton({
   return (
     <div className={className ?? "flex flex-col items-end gap-1"}>
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid={`promote-${batch.name}`}
         disabled={promote.isPending}
@@ -154,6 +155,7 @@ export function PromoteButton({
       {promote.isSuccess && onOpenDataset !== undefined && (
         <Button
           variant="link"
+          className={inlineLink}
           data-testid={`promoted-open-dataset-${batch.name}`}
           onClick={onOpenDataset}
         >

@@ -49,9 +49,11 @@ import { Key } from "lucide-react";
 import { useEffect, useState, type FormEvent, type JSX, type ReactNode } from "react";
 
 import { createApiClient } from "../client";
-import { Button } from "../primitives/Button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../primitives/Card";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+import { Button } from "../primitives/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../primitives/card";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import { useApiSession } from "./ApiProvider";
 import { refusalProse } from "./refusals";
 import { asApiError, NETWORK_ERROR, unwrap } from "./errors";
@@ -122,7 +124,7 @@ export function TokenForm(): JSX.Element {
     <div className="flex min-h-screen items-center justify-center p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle role="heading" aria-level={2} className="flex items-center gap-2">
             <Key className="size-4 text-primary" aria-hidden="true" />
             Connect to a workspace
           </CardTitle>
@@ -146,15 +148,15 @@ export function TokenForm(): JSX.Element {
                 onChange={(event) => setValue(event.target.value)}
                 placeholder="paste the secret printed by visionset token create"
               />
-              <FieldHint>
+              <FieldDescription>
                 Mint one with <code className="font-mono">visionset token create --name ui</code>.
                 It is shown exactly once. Kept for this browser tab only.
-              </FieldHint>
+              </FieldDescription>
               {failure !== null && <FieldError data-testid="token-error">{failure}</FieldError>}
             </div>
             <Button
               type="submit"
-              variant="primary"
+              variant="default"
               data-testid="token-submit"
               disabled={checking || value.trim() === ""}
             >

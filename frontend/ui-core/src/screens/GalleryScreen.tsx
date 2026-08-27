@@ -12,9 +12,9 @@
 import { useState, type JSX, type ReactNode } from "react";
 
 import { readStep, writePref } from "../data/prefs";
-import { Badge } from "../primitives/Badge";
-import { Button } from "../primitives/Button";
-import { FieldError } from "../primitives/Input";
+import { Badge } from "../primitives/badge";
+import { Button } from "../primitives/button";
+import { FieldError } from "../primitives/field";
 import { BackLink } from "../patterns/BackLink";
 import {
   DEFAULT_DENSITY,
@@ -356,7 +356,7 @@ function BatchHeader({
             </h1>
             {batch !== undefined && (
               <Badge
-                variant={BATCH_STATE_VARIANT[batch.state] ?? "neutral"}
+                variant={BATCH_STATE_VARIANT[batch.state] ?? "secondary"}
                 data-testid="batch-state"
               >
                 {batchStateLabel(batch.state)}
@@ -389,7 +389,7 @@ function BatchHeader({
             has no route back. See `BatchLifecycle`.
           */}
           {declares(batch, BATCH_ACTION.approve) && (
-            <Button variant="primary" size="sm" data-testid="approve-batch" onClick={onApprove}>
+            <Button size="sm" data-testid="approve-batch" onClick={onApprove}>
               Approve batch
             </Button>
           )}

@@ -19,6 +19,10 @@
  */
 
 import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
   Badge,
   Button,
   Card,
@@ -27,6 +31,12 @@ import {
   CardHeader,
   CardTitle,
   ClassListRow,
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
   DistributionBar,
   formatCount,
   formatPercent,
@@ -45,12 +55,18 @@ import {
   DropdownMenuTrigger,
   EmptyState,
   ErrorState,
-  FieldHint,
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
   Input,
-  Label,
   LIGHT_THEME,
   LoadingState,
   Progress,
+  progressAria,
   PROJECT_SECTIONS,
   ProjectEyebrow,
   ProjectNav,
@@ -60,6 +76,13 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
   Table,
   TableBody,
   TableCell,
@@ -78,9 +101,12 @@ import {
   TooltipTrigger,
   classColor,
   formatGeometries,
+  inlineLink,
+  menuSurface,
   toast,
+  twoLineTrigger,
 } from "@visionset/ui-core";
-import { MousePointer2, Plus, Square, Trash2 } from "lucide-react";
+import { Info, MousePointer2, Plus, Square, Trash2 } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 /** The demo schema, borrowed so the swatches show the real palette rule. */
@@ -111,6 +137,13 @@ const DISTRIBUTION = [
 // Forty of them, which is an ordinary Physical AI ontology and the size the
 // old stacked-card schema editor became unusable at.
 const ONTOLOGY = Array.from({ length: 40 }, (_, index) => `class-${String(index + 1).padStart(2, "0")}`);
+
+/** The Combobox demo's items — one of them ("lane") is the sole `an` match. */
+const DEMO_CLASSES = ["barrier", "bicycle", "cyclist", "lane", "sign", "truck", "vehicle"];
+
+/** `Badge`'s shadcn variants, then VisionSet's four status extensions. */
+const BADGE_OFFICIAL = ["default", "secondary", "outline", "destructive", "ghost", "link"] as const;
+const BADGE_STATUS = ["success", "warning", "info", "quiet"] as const;
 
 export function Styleguide(): JSX.Element {
   return (
@@ -184,8 +217,6 @@ export function Styleguide(): JSX.Element {
                     inspected rather than used. Its two product sites are the rail's
                     wordmark and the progress fill. */}
                 <Swatch name="brand" className="bg-brand" />
-                <Swatch name="success" className="bg-success" />
-                <Swatch name="warning" className="bg-warning" />
                 <Swatch name="origin-hub" className="bg-origin-hub" />
                 <Swatch name="origin-custom" className="bg-origin-custom" />
                 <Swatch name="origin-robomous" className="bg-origin-robomous" />
@@ -201,25 +232,32 @@ export function Styleguide(): JSX.Element {
           <p className="text-xs text-muted-foreground">Meta — 0.75rem, muted</p>
         </Section>
 
-        <Section title="Buttons" description="Five variants, four sizes.">
+        <Section title="Buttons" description="Six variants, eight sizes.">
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" data-testid="button-primary">
+            <Button variant="default" data-testid="button-primary">
               <Plus className="size-4" aria-hidden="true" />
               New project
             </Button>
-            <Button variant="secondary">Cancel</Button>
+            <Button variant="outline">Outline</Button>
+            <Button variant="secondary">Secondary</Button>
             <Button variant="ghost">Ghost</Button>
             <Button variant="destructive">
               <Trash2 className="size-4" aria-hidden="true" />
               Delete
             </Button>
-            <Button variant="link">Learn more</Button>
+            <Button variant="link" className={inlineLink}>
+              Learn more
+            </Button>
             <Button disabled>Disabled</Button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button size="xs">Extra small</Button>
+            <Button size="sm">Small</Button>
+            <Button size="default">Default</Button>
+            <Button size="lg">Large</Button>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="primary" size="icon" aria-label="Select (V)">
+                <Button variant="default" size="icon" aria-label="Select (V)">
                   <MousePointer2 className="size-4" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
@@ -227,14 +265,28 @@ export function Styleguide(): JSX.Element {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Box (B)">
+                <Button variant="ghost" size="icon-xs" aria-label="Zoom out">
+                  <Square className="size-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Zoom out</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="Box (B)">
                   <Square className="size-4" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right">Box (B)</TooltipContent>
             </Tooltip>
-            <Button size="sm">Small</Button>
-            <Button size="lg">Large</Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon-lg" aria-label="Zoom in">
+                  <Square className="size-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Zoom in</TooltipContent>
+            </Tooltip>
           </div>
         </Section>
 
@@ -270,95 +322,102 @@ export function Styleguide(): JSX.Element {
           title="Fields"
           description="Radix labels; every control carries Nova's own focus ring."
         >
-          <div className="grid max-w-3xl gap-4 md:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="sg-name">Project name</Label>
-              <Input id="sg-name" defaultValue="highway-survey" />
-              <FieldHint>Unique per workspace, case-insensitively.</FieldHint>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="sg-geometry">Geometry</Label>
-              <Select defaultValue="bbox">
-                <SelectTrigger id="sg-geometry">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="bbox">bbox</SelectItem>
-                  <SelectItem value="polygon">polygon</SelectItem>
-                  <SelectItem value="classification_tag">classification_tag</SelectItem>
-                </SelectContent>
-              </Select>
-              <FieldHint>A hint, under a field that needs one.</FieldHint>
-            </div>
-            {/*
-              The two-line option. Here because it is a primitive variant
-              rather than one screen's styling: an option that is an identifier
-              plus the facts about it stacks them, and the trigger shows the same
-              two lines the list does because Radix renders the selected item's
-              own text into it.
-            */}
-            <div className="flex flex-col gap-1.5 md:col-span-2">
-              <Label htmlFor="sg-model">Model</Label>
-              <Select defaultValue="facebook/sam2.1-hiera-base-plus">
-                <SelectTrigger id="sg-model">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem
-                    value="facebook/sam2.1-hiera-tiny"
-                    meta="311.9 MB · tiny — fastest, comfortable on a CPU"
-                  >
-                    facebook/sam2.1-hiera-tiny
-                  </SelectItem>
-                  <SelectItem
-                    value="facebook/sam2.1-hiera-base-plus"
-                    meta="647.1 MB · base-plus — the balanced default"
-                  >
-                    facebook/sam2.1-hiera-base-plus
-                  </SelectItem>
-                  <SelectItem
-                    value="facebook/sam2.1-hiera-large"
-                    meta="1.8 GB · large — the most accurate, wants a GPU"
-                  >
-                    facebook/sam2.1-hiera-large
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <FieldHint>
-                The id at the label role, what it costs beneath it. Nothing truncates.
-              </FieldHint>
-            </div>
-            <div className="flex flex-col gap-1.5 md:col-span-2">
-              <Label htmlFor="sg-notes">Description</Label>
-              <Textarea id="sg-notes" placeholder="What this dataset is for" />
-            </div>
-          </div>
+          <FieldSet className="max-w-3xl">
+            <FieldLegend>Dataset</FieldLegend>
+            <FieldGroup className="grid gap-4 md:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="sg-name">Project name</FieldLabel>
+                <Input id="sg-name" defaultValue="highway-survey" />
+                <FieldDescription>Unique per workspace, case-insensitively.</FieldDescription>
+                <FieldError>Already taken — try “highway-survey-2”.</FieldError>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="sg-geometry">Geometry</FieldLabel>
+                <Select defaultValue="bbox">
+                  <SelectTrigger id="sg-geometry">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bbox">bbox</SelectItem>
+                    <SelectItem value="polygon">polygon</SelectItem>
+                    <SelectItem value="classification_tag">classification_tag</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>A hint, under a field that needs one.</FieldDescription>
+              </Field>
+              {/*
+                The two-line option, composed at the call site: an option that is
+                an identifier plus the facts about it stacks them, and the trigger
+                shows the same two lines the list does because Radix renders the
+                selected item's own children into it.
+              */}
+              <Field className="md:col-span-2">
+                <FieldLabel htmlFor="sg-model">Model</FieldLabel>
+                <Select defaultValue="facebook/sam2.1-hiera-base-plus">
+                  <SelectTrigger id="sg-model" className={twoLineTrigger}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="facebook/sam2.1-hiera-tiny">
+                      <span className="flex flex-col items-start">
+                        <span>facebook/sam2.1-hiera-tiny</span>
+                        <span className="text-xs text-muted-foreground">
+                          311.9 MB · tiny — fastest, comfortable on a CPU
+                        </span>
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="facebook/sam2.1-hiera-base-plus">
+                      <span className="flex flex-col items-start">
+                        <span>facebook/sam2.1-hiera-base-plus</span>
+                        <span className="text-xs text-muted-foreground">
+                          647.1 MB · base-plus — the balanced default
+                        </span>
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="facebook/sam2.1-hiera-large">
+                      <span className="flex flex-col items-start">
+                        <span>facebook/sam2.1-hiera-large</span>
+                        <span className="text-xs text-muted-foreground">
+                          1.8 GB · large — the most accurate, wants a GPU
+                        </span>
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>
+                  The id at the label role, what it costs beneath it. Nothing truncates.
+                </FieldDescription>
+              </Field>
+              <Field className="md:col-span-2">
+                <FieldLabel htmlFor="sg-notes">Description</FieldLabel>
+                <Textarea id="sg-notes" placeholder="What this dataset is for" />
+              </Field>
+            </FieldGroup>
+          </FieldSet>
         </Section>
 
-        <Section title="Badges and status" description="The domain's states, as intents.">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge>draft</Badge>
-            <Badge variant="accent">in_annotation</Badge>
-            <Badge variant="success">completed</Badge>
-            <Badge variant="warning">stale</Badge>
-            <Badge variant="outline">outline</Badge>
-            <Badge variant="destructive">failed</Badge>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="quiet">quiet — a fact, not a state</Badge>
-          </div>
-          <div className="max-w-md">
-            <p className="mb-1 text-xs text-muted-foreground">Ingest — 240 of 412</p>
-            <Progress value={58} aria-label="Ingest progress" />
+        <Section
+          title="Badges and status"
+          description="Status is a soft surface and readable ink on shadcn's geometry — no coloured stroke. Outline is the only visible border."
+        >
+          <BadgeRow theme="light" />
+          <div className="dark bg-background text-foreground rounded-lg p-3">
+            <BadgeRow theme="dark" />
           </div>
           <div className="max-w-md">
             <p className="mb-1 text-xs text-muted-foreground">
-              Annotation — 7 of 11 annotated (64%); the batch surfaces' variant
+              Ingest — 240 of 412. An amount completed, never a polarity.
+            </p>
+            <Progress value={58} {...progressAria(58)} aria-label="Ingest progress" />
+          </div>
+          <div className="max-w-md">
+            <p className="mb-1 text-xs text-muted-foreground">
+              Annotation — 7 of 11 annotated (64%)
             </p>
             <Progress
               value={64}
               aria-label="Annotation progress"
-              variant="success"
+              {...progressAria(64)}
               className="h-2 border border-border"
             />
           </div>
@@ -388,7 +447,7 @@ export function Styleguide(): JSX.Element {
                     <TableRow key={batch.name}>
                       <TableCell className="font-medium">{batch.name}</TableCell>
                       <TableCell>
-                        <Badge variant={batch.state === "in_annotation" ? "accent" : "neutral"}>
+                        <Badge variant={batch.state === "in_annotation" ? "default" : "secondary"}>
                           {batch.state}
                         </Badge>
                       </TableCell>
@@ -468,7 +527,7 @@ export function Styleguide(): JSX.Element {
             title="Overview"
             meta="11 images · ingested Aug 7, 2026"
             actions={
-              <Button variant="secondary">
+              <Button variant="outline">
                 <Plus className="size-4" aria-hidden="true" />
                 Ingest
               </Button>
@@ -480,7 +539,28 @@ export function Styleguide(): JSX.Element {
           title="Overlays"
           description="Radix owns the focus trap, the Escape key and the scroll lock."
         >
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-3">
+            <Alert className="max-w-md">
+              <AlertTitle>Ingest queued</AlertTitle>
+              <AlertDescription>
+                412 assets are being processed. This can take a few minutes.
+              </AlertDescription>
+            </Alert>
+            <Alert variant="destructive" className="max-w-md">
+              <AlertTitle>Export failed</AlertTitle>
+              <AlertDescription>
+                The release manifest could not be written. Retry, or contact support if it keeps
+                happening.
+              </AlertDescription>
+              <AlertAction>
+                <Button variant="outline" size="sm">
+                  Retry
+                </Button>
+              </AlertAction>
+            </Alert>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <Dialog>
               <DialogTrigger asChild>
                 <Button variant="destructive" data-testid="open-dialog">
@@ -494,31 +574,49 @@ export function Styleguide(): JSX.Element {
                   releases. Blobs are never deleted.
                 </DialogDescription>
                 <DialogFooter>
-                  <Button variant="secondary">Cancel</Button>
+                  <Button variant="outline">Cancel</Button>
                   <Button variant="destructive">Delete</Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
 
+            <SheetDemo />
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="secondary">Actions</Button>
+                <Button variant="outline">Actions</Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <DropdownMenuContent align="start" className={menuSurface}>
                 <DropdownMenuItem>Rename</DropdownMenuItem>
                 <DropdownMenuItem>Duplicate schema</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem destructive>Delete</DropdownMenuItem>
+                <DropdownMenuItem variant="destructive">Delete</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="What is a release?">
+                  <Info className="size-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>A frozen, exportable snapshot of one schema version.</TooltipContent>
+            </Tooltip>
+
             <Button
-              variant="secondary"
+              variant="outline"
               data-testid="open-toast"
               onClick={() => toast("Release v0.3 published")}
             >
               Toast
             </Button>
+          </div>
+
+          <div className="max-w-sm">
+            <p className="mb-1 text-xs text-muted-foreground">
+              Combobox — Base UI, filtered as you type.
+            </p>
+            <ComboboxDemo />
           </div>
         </Section>
 
@@ -531,7 +629,7 @@ export function Styleguide(): JSX.Element {
             <EmptyState
               title="No batches yet"
               description="Ingest images or a video to create the first one."
-              action={<Button variant="primary">Ingest</Button>}
+              action={<Button variant="default">Ingest</Button>}
             />
             <ErrorState
               code="SCHEMA_CHANGE_WOULD_ORPHAN"
@@ -613,7 +711,7 @@ export function Styleguide(): JSX.Element {
           </div>
         </Section>
       </div>
-      <Toaster />
+      <Toaster position="bottom-right" />
     </TooltipProvider>
   );
 }
@@ -635,6 +733,63 @@ function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+/** `Badge`'s ten variants, each labelled with its own name — see `BADGE_OFFICIAL`/`BADGE_STATUS`. */
+function BadgeRow({ theme }: { readonly theme: "light" | "dark" }): JSX.Element {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {BADGE_OFFICIAL.map((variant) => (
+        <Badge key={variant} variant={variant}>
+          {variant}
+        </Badge>
+      ))}
+      {BADGE_STATUS.map((variant) => (
+        <Badge key={variant} variant={variant} data-testid={`badge-${variant}-${theme}`}>
+          {variant}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+/** A right-hand sheet, opened from an outline trigger — the panel `Dialog` never is. */
+function SheetDemo(): JSX.Element {
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button variant="outline">Open sheet</Button>
+      </SheetTrigger>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>drive-02</SheetTitle>
+          <SheetDescription>96 assets, none annotated yet.</SheetDescription>
+        </SheetHeader>
+        <SheetFooter>
+          <Button variant="outline">Close</Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/** Base UI's Combobox, filtered against `DEMO_CLASSES` — see its own docstring. */
+function ComboboxDemo(): JSX.Element {
+  return (
+    <Combobox items={DEMO_CLASSES}>
+      <ComboboxInput aria-label="Class" placeholder="Search classes" />
+      <ComboboxContent>
+        <ComboboxEmpty>No matches</ComboboxEmpty>
+        <ComboboxList>
+          {(item: string) => (
+            <ComboboxItem key={item} value={item}>
+              {item}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   );
 }
 

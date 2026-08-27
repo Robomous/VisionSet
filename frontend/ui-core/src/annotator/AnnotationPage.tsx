@@ -155,19 +155,20 @@ import {
 import type { OpenMember } from "../generated/api.js";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
+import { menuSurface } from "../lib/menu";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
-import { Badge } from "../primitives/Badge";
-import { Button } from "../primitives/Button";
+import { Badge } from "../primitives/badge";
+import { Button } from "../primitives/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../primitives/Menu";
+} from "../primitives/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/tooltip";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { CanvasReassign } from "./CanvasReassign";
 import { EditorNotice, EditorNotices } from "./EditorNotice";
@@ -234,7 +235,7 @@ import {
   useSchemaComparison,
   useSchemaDraft,
 } from "../screens/queries";
-import { toast } from "../primitives/Feedback";
+import { toast } from "sonner";
 
 /**
  * The frame-level *review* actions, in the order they take their slot.
@@ -484,7 +485,7 @@ function TooNarrow({
           : {
               action: (
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   data-testid="too-narrow-gallery"
                   onClick={() => onOpenGallery(destination.project_id, destination.id)}
                 >
@@ -2090,7 +2091,7 @@ function Workspace({
             */}
             {!frameVerbs ? null : skipped ? (
               <Button
-                variant="secondary"
+                variant="outline"
                 size="sm"
                 className="min-w-27"
                 data-testid="unskip"
@@ -2102,7 +2103,7 @@ function Workspace({
               </Button>
             ) : (
               <Button
-                variant="secondary"
+                variant="outline"
                 size="sm"
                 className="min-w-27"
                 data-testid="skip"
@@ -2174,7 +2175,7 @@ function Workspace({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    variant="primary"
+                    variant="default"
                     size="sm"
                     className={
                       finishWithheld === null ? "min-w-36" : "min-w-36 cursor-not-allowed opacity-40"
@@ -2262,7 +2263,7 @@ function Workspace({
                 in the one place that cannot go stale.
               */
               <Button
-                variant="primary"
+                variant="default"
                 size="sm"
                 className="min-w-36"
                 data-testid="save-and-next"
@@ -2285,12 +2286,6 @@ function Workspace({
               Adjacency is what says they are alternatives; a ghost at the far end
               said the quieter thing, that saving without moving is a convenience.
 
-              **Filled `success`, which is the recorded exception to one filled
-              button per view** (`DESIGN.md`). Two filled controls compete when
-              they are two answers to *what do I do next*; these are two halves of
-              one answer, and colour is what separates their intent where a second
-              near-black would simply contend with the primary.
-
               **No hotkey chip.** `Chip` is a muted box on a bordered ground,
               which inverts into a smudge inside a filled control — the same
               finding that keeps one off the flow verb. The chord is unchanged and
@@ -2310,7 +2305,7 @@ function Workspace({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    variant="success"
+                    variant="outline"
                     size="sm"
                     className="hidden xl:inline-flex"
                     data-testid="save-and-stay"
@@ -2367,7 +2362,7 @@ function Workspace({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   size="sm"
                   className="hidden lg:inline-flex"
                   data-testid={reviewAction.testId}
@@ -2410,7 +2405,7 @@ function Workspace({
                 <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className={menuSurface}>
               {/* `Save and stay`, reabsorbed — `xl:hidden` is the exact inverse of
                   the button's `hidden xl:inline-flex`, so the control exists once
                   at every width. Gated on `frameVerbs` for the same reason the
@@ -2515,7 +2510,7 @@ function Workspace({
             declares({ allowed_actions: batchActions }, BATCH_ACTION.createCorrection) && (
               <Button
                 variant="link"
-                className="h-auto p-0 text-xs"
+                className={cn(inlineLink, "text-xs")}
                 data-testid="banner-create-correction"
                 onClick={onOpenGallery}
               >
@@ -2935,11 +2930,11 @@ function Workspace({
  *
  * ## A disclosure, not a Popover
  *
- * `Combobox` declined Radix's Popover for a reason that applies here verbatim: it
- * owns focus on open and restores it on close, and the annotator reads the
- * keyboard off its own root — so a press that landed anywhere but back on the
- * canvas would leave every chord dead until the user clicked twice. What this
- * needs is a button, a panel, an outside press and Escape.
+ * Radix's Popover owns focus on open and restores it on close, and the
+ * annotator reads the keyboard off its own root — so a press that landed
+ * anywhere but back on the canvas would leave every chord dead until the user
+ * clicked twice. What this needs is a button, a panel, an outside press and
+ * Escape.
  */
 function PinBadge({
   projectId,
@@ -2986,21 +2981,23 @@ function PinBadge({
 
   return (
     <div ref={root} className="relative">
-      <button
-        type="button"
-        data-testid="pinned-schema"
-        aria-expanded={open}
-        aria-label={`Schema v${pinned}, pinned by this batch`}
-        className="rounded-full border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-        onClick={() => onOpenChange(!open)}
-      >
-        v{pinned}
-        {/* The dot is a *tell*, not the answer — it appears only once the panel
-            has been opened and learned there is a gap, because a badge that
-            fetched on arrival to decide whether to show a dot would be the very
-            request this whole surface is arranged not to make. */}
-        {behind && <span className="ml-1 inline-block size-1.5 rounded-full bg-primary align-middle" aria-hidden="true" />}
-      </button>
+      <Badge asChild variant="outline" className="font-mono">
+        <button
+          type="button"
+          data-testid="pinned-schema"
+          aria-expanded={open}
+          aria-label={`Schema v${pinned}, pinned by this batch`}
+          className="hover:bg-muted hover:text-foreground"
+          onClick={() => onOpenChange(!open)}
+        >
+          v{pinned}
+          {/* The dot is a *tell*, not the answer — it appears only once the panel
+              has been opened and learned there is a gap, because a badge that
+              fetched on arrival to decide whether to show a dot would be the very
+              request this whole surface is arranged not to make. */}
+          {behind && <span className="ml-1 inline-block size-1.5 rounded-full bg-primary align-middle" aria-hidden="true" />}
+        </button>
+      </Badge>
 
       {open && (
         <div
@@ -3170,19 +3167,15 @@ function SaveState({
   }
   if (dirty) {
     return (
-      <Badge variant="accent" data-testid="save-state">
+      <Badge variant="default" data-testid="save-state">
         unsaved
       </Badge>
     );
   }
   return (
-    // `success`, which is the indicator v1 wanted a hardcoded `text-green-600` for
-    // and `DESIGN.md` carried as its one sanctioned exception. The token exists,
-    // so the exception is retired rather than inherited. The tick still
-    // carries the meaning on its own — state is never colour alone.
-    <span className="flex items-center gap-1 text-xs text-success" data-testid="save-state">
-      <Check className="size-3.5" aria-hidden="true" />
+    <Badge variant="success" data-testid="save-state">
+      <Check aria-hidden="true" />
       Saved
-    </span>
+    </Badge>
   );
 }

@@ -39,15 +39,15 @@ import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { RecipeEditor } from "../patterns/RecipeEditor";
 import { RecipeList } from "../patterns/RecipeList";
 import { StaticAnnotationOverlay } from "../patterns/StaticAnnotationOverlay";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
-import { FieldError } from "../primitives/Input";
+} from "../primitives/dialog";
+import { FieldError } from "../primitives/field";
 import {
   useActiveSchema,
   useCreatePreprocessingRecipe,
@@ -148,7 +148,7 @@ export function PreprocessingTab({ projectId, datasetId }: PreprocessingTabProps
           title="No recipes yet"
           description="A recipe resizes every exported image to one size and writes augmented variants of the training images. It is applied at export, by name, beside the target model."
           action={
-            <Button variant="primary" data-testid="recipe-new" onClick={startNew}>
+            <Button data-testid="recipe-new" onClick={startNew}>
               <Plus aria-hidden="true" />
               Write a recipe
             </Button>
@@ -282,7 +282,7 @@ function DeleteRecipeDialog({
           <FieldError data-testid="delete-recipe-error">{refusalProse(remove.error)}</FieldError>
         )}
         <DialogFooter>
-          <Button variant="secondary" data-testid="delete-recipe-cancel" onClick={onClose}>
+          <Button variant="outline" data-testid="delete-recipe-cancel" onClick={onClose}>
             Cancel
           </Button>
           <Button

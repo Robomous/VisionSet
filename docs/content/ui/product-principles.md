@@ -131,7 +131,7 @@ emptied-result rule.
 
 ## Tabs
 
-One tab shape, product-wide (`frontend/ui-core/src/primitives/Tabs.tsx`): a row on a
+One tab shape, product-wide (`frontend/ui-core/src/primitives/tabs.tsx`): a row on a
 full-width hairline; the active tab carries a 2px accent rule sitting on that hairline plus
 foreground text; an inactive tab carries no border, no fill and no shadow, and gets a
 subtle fill on hover or focus. The inactive tab keeps the same 2px border at `transparent`,
@@ -263,7 +263,7 @@ Presentational contracts, all in `ui-core`, all data-only — no fetching, no ro
 | `ClassListRow` | Swatch + name + a `geometry · count` secondary line. Selected = tinted background + 2px left accent rule covering the row's full height. The whole row is the click target and a real `<button>` — except when it carries shape chips, which are press targets and cannot nest inside a button: that row is a `role="group"` with an inner name button, addressed by the same `-name` handle in both markups. A row carrying a refusal never takes the group form, because only the button can be disabled. |
 | `EmptyState` | Icon + a headline naming the space + one line of body + a verb-first CTA. Never a bare "No items". |
 | `ThumbnailGrid` | Square tiles, 6px gap, small radius. The last tile becomes a `+N` overflow linking onward. Missing thumbnails show a photo icon on a subtle fill — never a broken-image glyph. |
-| Chip | `primitives/Badge.tsx`, which already is one. It gains variants; it is not reimplemented. |
+| Chip | `primitives/badge.tsx`, which already is one. It gains variants; it is not reimplemented. |
 
 **Class colour is data, not chrome.** It appears as a small swatch or a thin bar and never
 floods a card or a row — the content-over-chrome rule applied to a colour the *kernel*

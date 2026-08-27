@@ -23,8 +23,10 @@ import type { JSX, ReactNode } from "react";
 import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
 import { AnnotationPage, REVIEW_ACTIONS } from "./AnnotationPage";
-import { TooltipProvider } from "../primitives/Menu";
+import { TooltipProvider } from "../primitives/tooltip";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
+import { TONE_BORDER, TONE_FILL } from "../patterns/statusTone.js";
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -208,21 +210,9 @@ beforeEach(() => {
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
-  // Nova's `TooltipContent` renders a Radix `Arrow`, and the popper measures
-  // it through `@radix-ui/react-use-size`, which reaches for `ResizeObserver`
-  // unconditionally on mount. jsdom has none, and this file is the one that
-  // actually hovers a trigger long enough for the tooltip to open — every
-  // other suite renders a `Tooltip` closed. Scoped to this file rather than
-  // the shared setup: `gallery.test.tsx` asserts jsdom's real absence of
-  // `ResizeObserver` on purpose, and a global stub would falsify that.
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe(): void {}
-      unobserve(): void {}
-      disconnect(): void {}
-    },
-  );
+  // This file hovers a trigger long enough for the tooltip to open. See
+  // `testing/resizeObserver.ts`, which carries the reason it is scoped.
+  stubResizeObserver();
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
     if (request.method !== "GET") {
@@ -453,7 +443,7 @@ describe("the single review action", () => {
 /**
  * The filled slot: exactly one weight on the bar.
  *
- * `variant="primary"` is the one weight on the bar, so "exactly one filled
+ * `variant="default"` is the one weight on the bar, so "exactly one filled
  * control" is a claim about `bg-primary` rather than about a `data-` attribute
  * nobody styles from — asserting a marker the design does not read would pass
  * over a bar with two coral buttons on it.
@@ -745,21 +735,19 @@ describe("the flow verb", () => {
 });
 
 /**
- * The forward pair: two filled controls, and the exception that lets them be two.
+ * The forward pair: one filled control and an outline second half beside it.
  *
- * `DESIGN.md`'s *one filled button per view* is a count and is tested as one, so
- * the recorded exception has to be a count too — otherwise "two fills are allowed
- * here" degrades into "any number of fills are allowed here", which is the rule
- * with nothing left of it. The sweep below is `filled()`'s twin over `bg-success`,
- * and both are asserted as whole sets rather than as memberships.
+ * `DESIGN.md`'s *one filled button per view* is a count and is tested as one,
+ * and the outline half is why it stays a count of one — the pair is two
+ * answers to *what do I do next* only in the filled sense; colour never had
+ * to separate them. The sweep below is `filled()`'s twin over `data-variant`,
+ * asserted as a whole set rather than as a membership.
  */
 describe("the forward-action pair", () => {
-  /** Every `success`-filled control on the bar. `filled()`'s counterpart. */
-  function successFilled(): HTMLElement[] {
-    // `classList.contains`, for `filled()`'s reason: the substring form also
-    // matches `hover:bg-success/90`.
-    return [...document.querySelectorAll<HTMLElement>("header button")].filter((button) =>
-      button.classList.contains("bg-success"),
+  /** Any bar control still carrying the retired `success` variant. */
+  function successVariantButtons(): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>("header button")].filter(
+      (button) => button.getAttribute("data-variant") === "success",
     );
   }
 
@@ -777,19 +765,18 @@ describe("the forward-action pair", () => {
     expect(order).toEqual(["skip", "save-and-next", "save-and-stay"]);
   });
 
-  it("leaves exactly one primary fill and exactly one success fill", async () => {
+  it("leaves exactly one primary fill, with Save and stay outlined beside it", async () => {
     assetCount = 2;
     await open();
 
     expect(filled().map((button) => button.getAttribute("data-testid"))).toEqual(["save-and-next"]);
-    expect(successFilled().map((button) => button.getAttribute("data-testid"))).toEqual([
-      "save-and-stay",
-    ]);
+    expect(screen.getByTestId("save-and-stay").getAttribute("data-variant")).toBe("outline");
+    expect(successVariantButtons()).toEqual([]);
   });
 
   it("keeps the pair a pair on the last frame, where Finish job holds the primary", async () => {
     // The filled slot is contended by arithmetic rather than by a declaration,
-    // and the success half is not part of that contention: you can still save
+    // and the outline half is not part of that contention: you can still save
     // without leaving the frame you are finishing on.
     assetCount = 1;
     jobSettled = true;
@@ -797,9 +784,7 @@ describe("the forward-action pair", () => {
     await open();
 
     expect(filled().map((button) => button.getAttribute("data-testid"))).toEqual(["finish-job"]);
-    expect(successFilled().map((button) => button.getAttribute("data-testid"))).toEqual([
-      "save-and-stay",
-    ]);
+    expect(screen.getByTestId("save-and-stay").getAttribute("data-variant")).toBe("outline");
   });
 
   it("leaves with the frame verbs once the job is closed, in both its places", async () => {
@@ -814,7 +799,7 @@ describe("the forward-action pair", () => {
 
     expect(screen.queryByTestId("save-and-stay")).toBeNull();
     expect(screen.queryByTestId("menu-save")).toBeNull();
-    expect(successFilled()).toEqual([]);
+    expect(successVariantButtons()).toEqual([]);
   });
 });
 
@@ -850,7 +835,7 @@ describe("the frame's state, in prose", () => {
     const state = screen.getByTestId("asset-progress");
     expect(state.textContent).toContain("accepted");
     expect(state.getAttribute("data-tone")).toBe("success");
-    expect(state.innerHTML).toContain("bg-success");
+    expect(state.innerHTML).toContain(TONE_FILL.success);
   });
 
   it("draws a frame awaiting review with the warning token (#391)", async () => {
@@ -861,7 +846,7 @@ describe("the frame's state, in prose", () => {
     // `PROGRESS_LABEL`'s wording, not the wire's `review_pending`.
     expect(state.textContent).toContain("in review");
     expect(state.getAttribute("data-tone")).toBe("warning");
-    expect(state.innerHTML).toContain("border-warning");
+    expect(state.innerHTML).toContain(TONE_BORDER.warning);
   });
 
   it("sits beside the save state, so the two read as one sentence", async () => {

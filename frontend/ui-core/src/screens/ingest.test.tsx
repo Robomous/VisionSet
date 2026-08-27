@@ -830,7 +830,7 @@ describe("watching a run", () => {
 
     const badge = await screen.findByTestId("run-state");
     await waitFor(() => expect(badge.textContent).toBe("Done"));
-    expect(badge.className).toContain("text-success");
+    expect(badge.getAttribute("data-variant")).toBe("success");
   });
 
   it("keeps a failed run in the error colour, and the word with it (#391)", async () => {

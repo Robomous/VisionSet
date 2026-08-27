@@ -36,15 +36,19 @@ import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Button } from "../primitives/Button";
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+} from "../primitives/dialog";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import { useCreateCorrection, type Batch } from "./queries";
 
 /** What a correction covers. `all` sends nothing and lets the server default. */
@@ -113,7 +117,7 @@ export function CorrectionButton({
   return (
     <>
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         className={className}
         data-testid={`correct-${batch.name}`}
@@ -235,10 +239,10 @@ function CorrectionDialog({
                 The {chosen.length} frame{chosen.length === 1 ? "" : "s"} selected
               </label>
             )}
-            <FieldHint>
+            <FieldDescription>
               The correction starts as a draft, so its frames can still change. Approving it pins
               the project’s current label schema — not the one {batch.name} was judged against.
-            </FieldHint>
+            </FieldDescription>
           </fieldset>
 
           {create.isError && (
@@ -247,11 +251,11 @@ function CorrectionDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose} disabled={create.isPending}>
+          <Button variant="outline" onClick={onClose} disabled={create.isPending}>
             Cancel
           </Button>
           <Button
-            variant="primary"
+            variant="default"
             data-testid="correction-submit"
             disabled={create.isPending || value.trim() === ""}
             onClick={submit}
@@ -293,7 +297,7 @@ export function CorrectionOf({
       ) : (
         <Button
           variant="link"
-          className="text-xs"
+          className={cn(inlineLink, "text-xs")}
           data-testid="open-parent-batch"
           onClick={onOpenParent}
         >

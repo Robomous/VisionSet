@@ -50,7 +50,7 @@ import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react
 
 
 import { AssetThumbnail } from "../screens/AssetThumbnail";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../primitives/Dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../primitives/dialog";
 import { ThumbnailGrid } from "../patterns/DataDisplay";
 import {
   inSegment,

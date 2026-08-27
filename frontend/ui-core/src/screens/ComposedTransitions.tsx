@@ -26,8 +26,8 @@ import { useState, type JSX } from "react";
 import { asApiError } from "../data/errors";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Button } from "../primitives/Button";
-import { FieldError } from "../primitives/Input";
+import { Button } from "../primitives/button";
+import { FieldError } from "../primitives/field";
 import { outstandingWork } from "./batchState";
 import { promotionSummary } from "./PromoteButton";
 import {
@@ -49,9 +49,9 @@ const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
 export interface ApproveAndStartButtonProps {
   readonly batch: Batch;
   readonly projectId: string;
-  /** The ingest outcome card's own filled control; a table row's is secondary. */
-  readonly variant?: "primary" | "secondary";
-  readonly size?: "sm" | "md";
+  /** The ingest outcome card's own filled control; a table row's is outline. */
+  readonly variant?: "default" | "outline";
+  readonly size?: "sm" | "default";
   readonly className?: string;
 }
 
@@ -66,7 +66,7 @@ export interface ApproveAndStartButtonProps {
 export function ApproveAndStartButton({
   batch,
   projectId,
-  variant = "secondary",
+  variant = "outline",
   size = "sm",
   className,
 }: ApproveAndStartButtonProps): JSX.Element | null {
@@ -172,7 +172,7 @@ export function CompleteAndPromoteButton({
     <div className={className ?? "flex flex-col items-end gap-1"}>
       {offered && (
         <Button
-          variant="secondary"
+          variant="outline"
           size="sm"
           data-testid={`complete-promote-${batch.name}`}
           disabled={outstanding > 0 || pending}
@@ -285,15 +285,15 @@ export function OutcomeNextStep({
           <ApproveAndStartButton
             batch={batch.data}
             projectId={projectId}
-            variant="primary"
-            size="md"
+            variant="default"
+            size="default"
             className="flex flex-col items-start gap-1"
           />
         </div>
       )}
       {onOpenBatch !== undefined && (
         <Button
-          variant={composed ? "secondary" : "primary"}
+          variant={composed ? "outline" : "default"}
           data-testid="open-batch"
           onClick={() => onOpenBatch(batchId)}
         >

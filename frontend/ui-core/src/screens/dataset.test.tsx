@@ -283,6 +283,20 @@ describe("the dataset view", () => {
     // the same total and a very different dataset.
     expect(row.textContent).toContain("31");
     expect(row.textContent).toContain("8");
+
+    // The three tab-count chips are all "secondary" badges — an inert count,
+    // never the filled/primary reading canonical's bare default would give one
+    // tab for no reason its neighbours do not share.
+    const badgeIn = (testId: string): Element | null =>
+      screen.getByTestId(testId).querySelector('[data-slot="badge"]');
+    await waitFor(() => {
+      expect(badgeIn("dataset-tab-assets")).not.toBeNull();
+      expect(badgeIn("dataset-tab-preprocessing")).not.toBeNull();
+      expect(badgeIn("dataset-tab-releases")).not.toBeNull();
+    });
+    expect(badgeIn("dataset-tab-assets")?.getAttribute("data-variant")).toBe("secondary");
+    expect(badgeIn("dataset-tab-preprocessing")?.getAttribute("data-variant")).toBe("secondary");
+    expect(badgeIn("dataset-tab-releases")?.getAttribute("data-variant")).toBe("secondary");
   });
 });
 
@@ -387,7 +401,8 @@ describe("verification", () => {
     });
 
     render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
-    await screen.findByTestId("release-v1");
+    const releaseCard = await screen.findByTestId("release-v1");
+    expect(within(releaseCard).getByRole("heading", { level: 3, name: /v1/i })).not.toBeNull();
     expect(sent.some((r) => r.url.endsWith("/verify"))).toBe(false);
 
     await userEvent.click(screen.getByTestId("verify-v1"));
@@ -728,7 +743,7 @@ describe("export, and the third gate word", () => {
   it("says a finished export is done, in the success token (#391)", async () => {
     const badge = await exportWith("succeeded");
     expect(badge.textContent).toContain("Done");
-    expect(badge.className).toContain("text-success");
+    expect(badge.getAttribute("data-variant")).toBe("success");
   });
 
   it("says a failed export failed, and the prose stays beside it (#391)", async () => {

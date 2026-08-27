@@ -28,10 +28,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
-import { Toaster } from "../primitives/Feedback";
-import { TooltipProvider } from "../primitives/Menu";
+import { Toaster } from "../primitives/sonner";
+import { TooltipProvider } from "../primitives/tooltip";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
 const API = "http://visionset.test";
@@ -164,6 +165,9 @@ beforeEach(() => {
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
+  // The tool strip this test opens mounts its tooltips immediately. See
+  // `testing/resizeObserver.ts`.
+  stubResizeObserver();
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
 

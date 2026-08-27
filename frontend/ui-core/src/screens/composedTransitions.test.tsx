@@ -315,8 +315,8 @@ describe("the ingest outcome's next step", () => {
       ),
     );
     const composed = await screen.findByTestId("approve-start-drive-01");
-    expect(composed.dataset.variant).toBe("primary");
-    expect(screen.getByTestId("open-batch").dataset.variant).toBe("secondary");
+    expect(composed.dataset.variant).toBe("default");
+    expect(screen.getByTestId("open-batch").dataset.variant).toBe("outline");
     expect(screen.queryByTestId("approve-needs-schema")).toBeNull();
   });
 
@@ -339,7 +339,7 @@ describe("the ingest outcome's next step", () => {
     await userEvent.click(screen.getByTestId("approve-needs-schema-go"));
     expect(openSchema).toHaveBeenCalledOnce();
     expect(screen.queryByTestId("approve-start-drive-01")).toBeNull();
-    expect(screen.getByTestId("open-batch").dataset.variant).toBe("primary");
+    expect(screen.getByTestId("open-batch").dataset.variant).toBe("default");
   });
 
   it("offers what it always did when the schema read fails for another reason", async () => {
@@ -356,7 +356,7 @@ describe("the ingest outcome's next step", () => {
     await waitFor(() => expect(sent.some((r) => r.url.endsWith("/schema"))).toBe(true));
     expect(screen.queryByTestId("approve-needs-schema")).toBeNull();
     expect(screen.queryByTestId("approve-start-drive-01")).toBeNull();
-    expect(screen.getByTestId("open-batch").dataset.variant).toBe("primary");
+    expect(screen.getByTestId("open-batch").dataset.variant).toBe("default");
   });
 
   it("keeps the approval line when the batch moves on under it", async () => {

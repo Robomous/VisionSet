@@ -21,9 +21,9 @@ import { Inbox, TriangleAlert } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 import { cn } from "../lib/cn";
-import { Alert } from "../primitives/Badge";
-import { Button } from "../primitives/Button";
-import { Skeleton } from "../primitives/Feedback";
+import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
+import { Button } from "../primitives/button";
+import { Skeleton } from "../primitives/skeleton";
 
 export interface LoadingStateProps {
   /** How many placeholder rows. Match the shape being waited for. */
@@ -122,26 +122,25 @@ export function ErrorState({
   ];
 
   return (
-    <Alert
-      variant="destructive"
-      title={
+    <Alert variant="destructive" className={className}>
+      <AlertTitle>
         <span className="flex items-center gap-2">
           <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
           {message}
         </span>
-      }
-      className={className}
-    >
+      </AlertTitle>
+      <AlertDescription>
       {meta.length > 0 && (
         <p className="font-mono text-xs" data-testid="error-code">
           {meta.join(" · ")}
         </p>
       )}
       {onRetry !== undefined && (
-        <Button variant="secondary" size="sm" className="mt-3" onClick={onRetry}>
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onRetry}>
           {retryLabel}
         </Button>
       )}
+      </AlertDescription>
     </Alert>
   );
 }
