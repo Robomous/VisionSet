@@ -1,467 +1,427 @@
 # VisionSet design foundations
 
-## Purpose
+## Purpose and Ownership
 
-This document is the visual and interaction contract for every VisionSet interface: the
-M5 app (`@visionset/app` + `@visionset/ui-core`), the annotator demo, and any surface
-built after them. It answers one question — **how should a VisionSet interface look,
-feel, and behave visually?** — and deliberately answers nothing else.
-
-What this document does **not** own: product behaviour
+This document governs how VisionSet interfaces look and behave. It is not a component
+catalogue: the components are shadcn's, and their classes, anatomy and states are read from
+the files the CLI wrote rather than transcribed here. What it owns is the *governance* — which
+layer decides what, what VisionSet may add, what it may not change, and which gate holds each
+rule. Where a rule is machine-checked the gate is named, because a rule nothing checks is a
+preference. It does not own product behaviour
 ([`docs/content/ui/product-principles.md`](docs/content/ui/product-principles.md)), navigation
 ([`docs/content/ui/navigation.md`](docs/content/ui/navigation.md)), the annotation workspace
 ([`docs/content/ui/annotator.md`](docs/content/ui/annotator.md)), the data shell
-([`docs/content/ui.md`](docs/content/ui.md)), frontend architecture and library choices
-([`docs/content/architecture/frontend/`](docs/content/architecture/frontend/README.md)), or test
-mechanics. Rules here are stated as the present contract; enforcement details live with
-the tests and contributor docs.
+([`docs/content/ui.md`](docs/content/ui.md)), or frontend architecture
+([`docs/content/architecture/frontend/`](docs/content/architecture/frontend/README.md)).
 
 ## Source of Truth
 
-VisionSet's visual language is a **shadcn preset**, not a hand-authored system: preset
-code `b2iH`, decoded as `style: nova` (on the Radix base — `radix-nova` in
-`components.json`), `baseColor: neutral`, `chart: neutral`, `icons: lucide`,
-`font: geist`, `heading: inherit`, `radius: medium`, `menu: inverted/subtle`, with the
-CLI's `--pointer` option on. The preset was generated with shadcn CLI **4.19.0** and
-transcribed verbatim into this repository; that CLI version is the reference for every
-value in this document. Nothing here is invented — every token, every derived radius,
-every chart colour traces back to the CLI's own output.
+Six layers decide the visual result. **When two disagree, the earlier one wins.**
 
-`heading: inherit` is the one decoded value with no token of its own: it means the
-heading face *is* the body face, which the stylesheet spells as
-`--font-heading: var(--font-sans)` rather than as a second family.
+| # | Layer | Where it lives | Decides |
+| --- | --- | --- | --- |
+| 1 | CLI configuration | [`frontend/ui-core/components.json`](frontend/ui-core/components.json) | The fields shadcn's own tools read — style, base colour, icon library, menu treatment, aliases |
+| 2 | Decoded preset intent | preset code `b2iH`, shadcn CLI **4.19.0** | Every value the config schema has no field for — radius, fonts, chart palette, both themes |
+| 3 | Official registry output | [`frontend/ui-core/shadcn/`](frontend/ui-core/shadcn) snapshots, realised in [`frontend/ui-core/src/primitives/`](frontend/ui-core/src/primitives) | A primitive's API, anatomy, variants, sizes, states and styling |
+| 4 | VisionSet additive extensions | `primitives/badge.tsx`, `src/tokens.ts`, `src/styles.css` | Semantic variants and tokens the foundation has no name for |
+| 5 | Patterns | [`frontend/ui-core/src/patterns/`](frontend/ui-core/src/patterns) | Composition of primitives into VisionSet shapes, and layout rhythm |
+| 6 | Screens and the annotator | `src/screens/`, `src/annotator/` | Which shape a page uses, and when |
 
-`@visionset/ui-core` owns the implementation, in exactly three files:
+A screen may not reach past layer 5 to restyle a primitive, and a primitive may not encode a
+screen's decision. A value missing from `components.json` is not drift: the config schema is
+**strict** and rejects a property it has no field for, so the preset's radius, fonts and chart
+palette live in `styles.css` as runtime values instead. The stylesheet is the one that runs;
+[`frontend/ui-core/src/tokens.ts`](frontend/ui-core/src/tokens.ts) mirrors it for callers that
+cannot read CSS (a `<canvas>`, a test), and `tokens.test.ts` asserts the two agree declaration
+for declaration.
 
-| File | Role |
-| --- | --- |
-| [`frontend/ui-core/components.json`](frontend/ui-core/components.json) | The preset properties shadcn's own tools read — the fields its config schema defines, and no others |
-| [`frontend/ui-core/src/styles.css`](frontend/ui-core/src/styles.css) | The tokens that run — `:root`, `.dark`, `@theme inline`, the base layer |
-| [`frontend/ui-core/src/tokens.ts`](frontend/ui-core/src/tokens.ts) | The TypeScript mirror, for a caller that cannot read CSS |
+## shadcn Foundation
 
-**One intent, three layers — and they do not hold the same fields.** `components.json`
-carries only what shadcn's config schema defines (`style`, `tailwind.baseColor`,
-`iconLibrary`, `menuColor`, `menuAccent`, `rsc`/`tsx`/`rtl`, the aliases, the registries).
-That schema is **strict**: a decoded property it has no field for is *rejected*, not
-ignored, so the file cannot be made to restate the whole preset even as documentation.
-Everything else the preset decides — the radius, both fonts, the chart palette, every
-colour — is a *value*, and values live in `styles.css`. A decoded property missing from
-`components.json` is therefore the design working as intended, never drift:
+Preset `b2iH`, generated with shadcn CLI **4.19.0**, decodes to:
 
-| Layer | Owns | Radius, as the worked example |
+| Property | Value | Where it lands |
 | --- | --- | --- |
-| Preset intent | What the code decodes to (`shadcn preset decode b2iH`) | `radius: medium` |
-| Runtime | The value that actually paints, in `styles.css` | `--radius: 0.625rem` |
-| CLI configuration | The schema-supported fields, in `components.json` | no `radius` field — the schema defines none |
+| `style` | `nova` on the Radix base | `components.json` → `"style": "radix-nova"` |
+| `baseColor` | `neutral` | `components.json` → `tailwind.baseColor` |
+| `chart` | `neutral` | `styles.css` → `--chart-1` … `--chart-5` |
+| `icons` | `lucide` | `components.json` → `iconLibrary` |
+| `font` | `geist` | `styles.css` → `--font-sans: 'Geist Variable', sans-serif` |
+| `heading` | `inherit` | `styles.css` → `--font-heading: var(--font-sans)` |
+| `radius` | `medium` | `styles.css` → `--radius: 0.625rem` |
+| `menu` | `inverted` / `subtle` | `components.json` → `menuColor`, `menuAccent` |
+| `pointer` | on | `styles.css` base layer → `cursor: pointer` on pressable controls |
 
-Three machine gates hold this contract, each in one line: `tokens.test.ts` asserts
-`styles.css` and `tokens.ts` agree, declaration for declaration, and that no retired
-token has crept back in; `tests/scripts/design_tokens.test.mjs` bans a raw colour in any
-class string, bans a second `tailwind.config.js`, confines `brand` to its two identity
-sites, holds `components.json` to the schema-supported field set, and re-checks the
-retired vocabulary by an independent method; `tests/scripts/docs_links.test.mjs` keeps
-every link and heading anchor in this document itself honest.
+**What `components.json` can hold** is its whole current content: `style`, `rsc` (`false`),
+`tsx` (`true`), `tailwind` (`config` empty, `css` `src/styles.css`, `baseColor` `neutral`,
+`cssVariables` `true`, `prefix` empty), `iconLibrary`, `rtl` (`false`), the five `aliases`
+(`@/components`, `@/lib/cn`, `@/primitives`, `@/lib`, `@/hooks`), `menuColor`, `menuAccent`,
+`registries` (empty). **What it cannot hold:** the radius, either font, the chart palette, any
+colour — `design_tokens.test.mjs` holds the file to that set, so nobody adds a documentary
+field the CLI then rejects. Radix supplies behaviour under every primitive and Nova is the
+styling on top; Base UI is an accepted official dependency for the same reason — shadcn's own
+Combobox is Base UI-backed, and nothing else here uses it.
 
-Radix stays the behaviour layer under every primitive — this is a visual foundation
-rewrite, not a component replacement.
+## Primitive Governance
 
-## Design Character
+> Components in the primitive layer preserve the API, anatomy, official variants, default
+> variants, sizes, states, data attributes, accessibility behavior, and Nova styling generated
+> by the configured shadcn foundation. VisionSet may add semantic variants only when they are
+> additive and do not reinterpret an upstream variant. Product-specific compositions belong
+> above primitives. A behavioral deviation from upstream requires a reproduced defect, a
+> regression test, and an explicit SHADCN DEVIATION comment.
 
-Each principle is a decision rule, not a slogan. When two of them conflict on a concrete
-screen, the earlier one wins.
+The primitive layer is exactly these twenty-one files: `alert`, `badge`, `button`, `card`,
+`combobox`, `dialog`, `dropdown-menu`, `field`, `input`, `input-group`, `label`, `progress`,
+`select`, `separator`, `sheet`, `skeleton`, `sonner`, `table`, `tabs`, `textarea`, `tooltip`.
 
-1. **Content first.** The interface recedes; the user's data — images, annotations,
-   counts — is the loudest thing on screen. Chrome earns its pixels: hairlines, a
-   resting shadow, no gradients, no decoration.
-2. **One action colour.** `primary` is the one high-emphasis colour, product-wide: the
-   dominant action, the active tool, the selected surface. Colour elsewhere is either a
-   hover/focus surface (`accent`) or a status hue — never a second reading of emphasis.
-3. **Precise.** Alignment, spacing, and geometry sit on the scales below — never
-   eyeballed. Two screens built by two people are indistinguishable in styling.
-4. **Hierarchy through structure, not volume.** Typography, spacing, hairlines, and
-   surfaces carry hierarchy. Reaching for a louder colour or a heavier shadow to make
-   something "stand out" is a hierarchy failure upstream.
-5. **Dense where the content is plural.** VisionSet's users are ML engineers and
-   professional annotators; on data surfaces, showing more of the thing the user came
-   for beats whitespace. Generosity belongs to forms and prose, read one thing at a
-   time.
-6. **Fast and quiet.** Interfaces respond on the frame the user acts; motion orients or
-   confirms and never makes anyone wait.
-7. **Accessible by default.** Semantic HTML, keyboard operability, visible focus, and
-   redundant (never colour-only) signals are part of the definition of done.
-8. **Consistent over novel.** Reuse the token, the role, the primitive. A new visual
-   treatment is a decision made in this document, not in a component diff.
-9. **Roles, not polarity.** Every rule below is written against a semantic role, not a
-   fixed light-mode value — "the page" resolves per theme; it is never asserted to be
-   white, and the sidebar is never asserted to be dark. Light and dark are both defined
-   from the preset, in full, from the start.
+**The snapshot gate.** `frontend/ui-core/shadcn/<name>.tsx` is the CLI's pristine output, and
+`tests/scripts/shadcn_canonical.test.mjs` refuses any primitive that is not its snapshot **plus
+added lines** — a removed line, a reworded class, a renamed prop all fail. Import paths are
+relativised (`@/lib/cn` → `../lib/cn`, `@/primitives/x` → `./x`) because ui-core is compiled by
+`tsc` rather than bundled with a path alias; the gate accounts for that rewrite and nothing
+else.
 
-## Theme Token Model
+**Allowed:** an added `cva` variant line whose meaning the foundation has no name for (today,
+four on the Badge), and a framework adapter under *Allowed shadcn Deviations*. **Forbidden:**
+changing an official variant's classes; renaming or dropping a subcomponent; adding a prop;
+changing a default variant or size; touching focus, keyboard or `aria` behaviour; adjusting
+geometry. Each of those belongs above the primitive — at a call site, or in a pattern.
 
-shadcn's semantic names are the only vocabulary components speak. There is no second
-naming layer (`surface`, `error`, `foreground-secondary`) and no alias that renames what
-a token already means.
+## Composition Layers
 
-| Token(s) | Meaning |
+- **Primitives** (`src/primitives/`) are shadcn's, governed above. They know nothing about
+  datasets, frames or models.
+- **Patterns** (`src/patterns/`) compose primitives into VisionSet shapes, and are where layout
+  rhythm and product vocabulary meet.
+- **Screens and the annotator** (`src/screens/`, `src/annotator/`) decide which pattern a page
+  uses and what it says.
+
+**No wrapper that merely renames.** A component whose whole body forwards props to one
+primitive is a second name for the same thing, and the second name is what drifts: compose at
+the call site, or add the pattern that earns its name by holding a decision. The rhythm that
+follows — content under a `line` `TabsList` takes 16px — is applied in
+`patterns/ProjectNav.tsx` (`mt-2` on its `TabsContent`), never in `tabs.tsx`.
+
+## Color and Theme
+
+shadcn's semantic names are the only vocabulary. There is no second layer (`surface`, `error`,
+`foreground-secondary`) and no alias renaming what a token already means — `destructive` stays
+`destructive`. Two roles are worth restating because they are the two that get confused:
+`primary` is the one high-emphasis colour, and `accent` is the interactive hover/focus surface,
+the token a row or a menu item lights up with and never what a button fills with.
+`chart-1`…`chart-5` identify a series, never a status.
+
+Both themes are declared in full, so switching theme is a variable swap. Every rule here is
+written against a role rather than a light-mode value: "the page" resolves per theme and is
+never asserted to be white.
+
+**Retained VisionSet extensions**, each for a role the foundation has no name for: `stage` (the
+neutral surround a photograph is judged against — distinguishable from both `background` and
+`muted`, so a white asset edge still shows where it ends), `brand` (Robomous coral, identity
+only), and `origin-hub` / `origin-custom` / `origin-robomous` (a model's provenance as a card's
+accent edge — a mark, never a surface, ink or status; theme-stable like the chart palette).
+
+The former `success` and `warning` tokens are **retired**, with their `-foreground` companions:
+status colour is a Badge variant or `patterns/statusTone.ts`, so a status hue is spelled in one
+place instead of two. `tests/scripts/design_tokens.test.mjs` re-checks the retired vocabulary
+by an independent method from `tokens.test.ts`. **There is no `info` token** — the Badge has an
+`info` variant and `statusTone.ts` an `info` ink, neither of which implies one; adding one is a
+product decision to make here first.
+
+### Where the brand is
+
+Robomous coral is identity: the `AppShell` wordmark and its styleguide swatch. Two sites,
+enumerated in `tests/scripts/design_tokens.test.mjs`. A functional control reaching for `brand`
+is a semantic-colour violation however many other sites already use it correctly, and the gate
+and this section move together or not at all.
+
+### Menus and the inverted subtree
+
+`menuColor: inverted` means every menu, select and combobox surface carries the literal `dark`
+class, so a floating surface is the dark theme's `popover` whatever the page is doing. That is
+contrast on purpose. The tooltip reaches the same intent without a subtree — Nova gives it
+`bg-foreground text-background`, which flips by construction, because one line of text has no
+palette of its own to keep in step. `menuAccent: subtle` means items highlight with `accent`,
+the token every other hover state uses.
+
+## Action Hierarchy
+
+Six official Button variants, one intent each:
+
+| Variant | Intent |
 | --- | --- |
-| `background` / `foreground` | The page, and the ink that sits directly on it |
-| `card` / `card-foreground` | A raised surface — panels, cards |
-| `popover` / `popover-foreground` | A floating surface — menus, popovers, tooltips, dialogs |
-| `primary` / `primary-foreground` | **High-emphasis actions and selected surfaces.** The one dominant-action colour |
-| `secondary` / `secondary-foreground` | Lower-emphasis filled actions — a second filled weight, not a second accent |
-| `muted` / `muted-foreground` | Subtle fills and lower-emphasis (secondary, meta) content |
-| `accent` / `accent-foreground` | **Interactive hover/focus/active surfaces.** Not the action colour — this is the token a row highlights or a menu item lights up with, never what a button fills with |
-| `destructive` | Destructive actions and their state. Stays `destructive` — never renamed `error` |
-| `border` / `input` / `ring` | Hairlines and dividers; field borders; the focus ring's colour |
-| `chart-1` … `chart-5` | Series colours in a chart. Identify a series, never a status |
-| `sidebar` / `sidebar-foreground` / `sidebar-primary(-foreground)` / `sidebar-accent(-foreground)` / `sidebar-border` / `sidebar-ring` | The navigation rail's own surface, ink, active-item fill, and hairline — a parallel set so the rail can differ from `card` without inventing a name |
-| `radius` | The one geometry constant every radius step derives from |
+| `default` | The one dominant action in the view |
+| `outline` | A supporting action that still reads as a control |
+| `secondary` | A filled second weight, quieter than `default` |
+| `ghost` | An action inside dense chrome — toolbars, rows, icon-only controls |
+| `destructive` | The action that ends something |
+| `link` | Navigation wearing a control's affordance |
 
-Both themes are declared **in full** from the preset — `:root` and `.dark` each name
-every token above, so switching theme is a variable swap, never a redesign. A rule that
-only makes sense in one theme ("the page is near-white") is written as its role instead.
+Sizes are `default`, `xs`, `sm`, `lg`, `icon`, `icon-xs`, `icon-sm`, `icon-lg`. **One dominant
+action per view**; which action that is on which screen is product behaviour
+([`docs/content/ui/product-principles.md`](docs/content/ui/product-principles.md)).
 
-## Surfaces
+**A status is not a step in the action hierarchy.** `success` describes an outcome, never a
+control's emphasis, and there is no variant for it — a saved form reports itself with a toast or
+a Badge while its button stays `default`. Three names a v1 call site may still reach for —
+`primary`, `success`, `md` — **do not exist** here, and
+`tests/scripts/shadcn_extensions.test.mjs` pins the variant and size lists exactly.
 
-`background` is the page. `card` and `popover` are the two raised materials — `card` for
-content that sits in place, `popover` for anything that floats and closes (see *Sidebar
-/ Menu* for the one deliberate exception to popover's own colour). `muted` is a recessed
-or subtle fill — a footer strip, a quiet chip, secondary content's backdrop. A component
-picks one of these three; it does not compose a fill from scratch.
+Every `<Button>` inside a `<form>` states its `type`: the canonical primitive adds no default
+and HTML's is *submit*, so a Cancel with no `type` submits. `form_buttons.test.mjs` is the gate.
 
-## Actions and Interactive States
+## Status and Feedback
 
-- **One dominant action per view**, in `primary`; supporting actions take `secondary` or
-  a quieter (ghost/link) treatment. Which action is dominant on which screen, and how it
-  tracks state, is product behaviour — [`docs/content/ui/product-principles.md`](docs/content/ui/product-principles.md).
-- **Hover** on a filled control is the same fill at reduced opacity (`hover:bg-primary/80`),
-  not a colour change of meaning; a menu or list item highlights with `accent` instead.
-- **Press** reads as the control moving, not recolouring.
-- **The cursor turns to a hand over anything pressable**, which is the preset's
-  `--pointer` option: `button` and `[role="button"]`, in the base layer. It stops at
-  `:not(:disabled)` on purpose — a hand over a control that will not respond is the
-  cursor making a promise the control does not keep, and the disabled rule below is what
-  the reader should be getting instead.
-- **Disabled** is uniform reduced opacity plus `pointer-events-none` — the control dims
-  as itself rather than swapping to a separate greyed-out skin. A disabled control still
-  explains itself; see the product principles' never-disable-without-explanation rule.
-- **Destructive** actions use a soft treatment — tinted background and ink, not a solid
-  fill — so the one action that can end something does not read louder than `primary`.
-- **Focus** is always visible (see *Borders and Focus*).
+- **Badge** — a state belonging to a row, a card or a heading, that stays on screen.
+- **Alert** — a condition about the surface the reader is looking at, in place.
+- **Sonner** (`Toaster`, mounted `position="bottom-right"`) — the outcome of something the
+  reader just did, which does not need to persist.
+- **Progress** — how much of a known quantity is done. It carries **no polarity**: there is no
+  variant, and a failing job is not a red bar. The words beside it say what happened.
+
+**Colour is never the only signal.** Every status carries a redundant channel — a word, an icon,
+a shape. The product's status vocabulary and its mapping to product states is
+[`docs/content/ui/product-principles.md`](docs/content/ui/product-principles.md#status-semantics).
+
+## Badge Variants
+
+Official: `default`, `secondary`, `destructive`, `outline`, `ghost`, `link`. VisionSet adds
+exactly four, as four added lines, verbatim:
+
+| Variant | Classes |
+| --- | --- |
+| `success` | `bg-emerald-500/10 text-emerald-700 focus-visible:ring-emerald-500/20 dark:bg-emerald-400/10 dark:text-emerald-400 dark:focus-visible:ring-emerald-400/40 [a]:hover:bg-emerald-500/20 dark:[a]:hover:bg-emerald-400/20` |
+| `warning` | `bg-amber-500/10 text-amber-700 focus-visible:ring-amber-500/20 dark:bg-amber-400/10 dark:text-amber-400 dark:focus-visible:ring-amber-400/40 [a]:hover:bg-amber-500/20 dark:[a]:hover:bg-amber-400/20` |
+| `info` | `bg-sky-500/10 text-sky-700 focus-visible:ring-sky-500/20 dark:bg-sky-400/10 dark:text-sky-400 dark:focus-visible:ring-sky-400/40 [a]:hover:bg-sky-500/20 dark:[a]:hover:bg-sky-400/20` |
+| `quiet` | `bg-muted text-muted-foreground [a]:hover:bg-muted/80` |
+
+Each is Nova's own `destructive` recipe on another hue: a `/10` surface, ink at `700` (`400` in
+dark), a focus ring at matching opacity, a hover step for the anchor case. `quiet` is the one
+that is not a hue — the absence of one, for a state that exists without asking for attention.
+
+**Geometry is untouched.** The base string still carries `h-5`, `px-2`, `text-xs`,
+`rounded-4xl` and `border border-transparent`, and no added variant names a size, a radius or a
+border colour.
+
+## Status Palette
+
+One family, five roles: **emerald** settled, **amber** waiting on a person, **sky**
+informational, **muted** no signal, **destructive** failed. Those three hues are the only ones
+outside the semantic tokens, and the treatment is always **soft surface plus moderate ink** — a
+`/10` fill with `700`/`400` text — so a chip carries a hue without competing with `primary`.
+
+The `emerald`, `amber` and `sky` utilities are permitted in exactly three files:
+`primitives/badge.tsx`,
+[`patterns/statusTone.ts`](frontend/ui-core/src/patterns/statusTone.ts) and its test. A fourth
+place naming the family is a fork of the palette, not a use of it. **No competing family** —
+`green`, `lime`, `teal`, `yellow`, `orange`, `blue`, `cyan`, `red` — appears anywhere in
+`frontend`. `tests/scripts/shadcn_extensions.test.mjs` holds both halves.
+
+**Screen authors never pick a shade.** A status takes a Badge variant, or reads its colour from
+`statusTone.ts`, whose utilities are written out whole rather than assembled — Tailwind scans
+source text, so a class built at runtime is a rule the build never emitted:
+
+| Export | Values | Use |
+| --- | --- | --- |
+| `StatusTone` | `neutral · accent · success · warning · destructive` | The type every tone-taking prop speaks |
+| `TONE_BORDER` | `border-emerald-500 dark:border-emerald-400`, `border-amber-500 dark:border-amber-400`, `border-border`, `border-primary`, `border-destructive` | A tone's stroke, where the stroke is the mark |
+| `TONE_FILL` | `bg-emerald-500 dark:bg-emerald-400`, `bg-amber-500 dark:bg-amber-400`, `bg-muted-foreground`, `bg-primary`, `bg-destructive` | A solid mark — a dot, a timeline cell — where the Badge's `/10` surface would vanish at 4px |
+| `STATUS_INK` | `text-emerald-700 dark:text-emerald-400`, `text-amber-700 dark:text-amber-400`, `text-sky-700 dark:text-sky-400` | An icon or a run of inline text carrying a status |
+
+## Alerts
+
+The official anatomy, and only it: `Alert`, `AlertTitle`, `AlertDescription`, `AlertAction` — a
+title is a child, never a prop. Variants are `default` and `destructive`; there is no
+informational or settled Alert, because a condition worth interrupting the page for is either
+neutral or bad.
+
+An Alert's border is **structural**: `default` is `bg-card text-card-foreground` and
+`destructive` keeps the same surface, recolouring only the ink. No saturated surface, no
+coloured stroke. An Alert that needs to shout is a copy problem.
+
+## Surfaces, Borders, and Elevation
+
+`background` is the page; `card` holds content that sits in place; `popover` holds anything that
+floats and closes; `muted` recesses. A component picks one — it does not compose a fill.
+Elevation is a ring plus a resting shadow, never a coloured border and never a gradient.
+
+**Borders are structural**: a hairline separates or contains. **Status is not a stroke** — no
+status is communicated by recolouring a border, which is why every added Badge variant keeps
+`border-transparent`, and why `TONE_BORDER` exists only for marks whose whole body *is* the
+stroke. `outline` on its own, Badge or Button, takes `border-border`, because `outline` means
+"bounded", not "notable".
+
+### Borders and focus
+
+The base layer applies `border-border` and `outline-ring/50` to every element, naming the
+outline's **colour only**. Focus *geometry* belongs to the component: one blanket
+`:focus-visible` declaration in the stylesheet overrides every primitive's ring at once and wins
+on layer order, so each focusable primitive carries Nova's own treatment instead. Focus is never
+removed and never colour-only. `frontend/app/e2e/styleguide.spec.ts` measures the ring in a real
+browser, because Tailwind renders it as a `box-shadow` layer.
 
 ## Typography
 
-- **One family: Geist**, via `--font-sans` (`'Geist Variable', sans-serif`). The preset
-  sets `--font-heading` to `var(--font-sans)`, so a heading is the same face as body
-  copy at a different size and weight rather than a second typeface.
-- **`font-heading` survives as a hook, not as a difference.** `h1`–`h4` still carry it
-  in the base layer, so no screen writes it by hand and a later preset that splits the
-  two families again lands in one declaration rather than at every heading.
-- Bundled offline through `@fontsource-variable/geist` — no runtime fetch to a font
-  host, ever.
-- **One justified technical role: `font-mono`.** Tailwind's default monospace stack (no
-  Geist Mono package is bundled) marks *machine-shaped* content — identifiers, hashes,
-  model references, measurements. It is never decoration, and prose never wears it; this
-  rule is unchanged from the previous contract.
+- **One family: Geist**, through `--font-sans`, bundled offline through
+  `@fontsource-variable/geist`. No runtime fetch to a font host, ever.
+- **`font-heading` survives as a hook, not a difference.** It resolves to `--font-sans`, so a
+  heading is the same face at another size and weight; `h1`–`h4` carry it in the base layer, so
+  a later preset that splits the families again lands in one declaration.
+- **One justified technical role: `font-mono`**, on Tailwind's default stack. It marks
+  machine-shaped content — identifiers, hashes, model references, measurements. Prose never
+  wears it.
+- Size and weight come from the primitive, or from Tailwind's ordinary scale. There is no
+  VisionSet type-scale token: `--text-page`, `--text-section`, `--text-body` and `--text-meta`
+  are retired, and `design_tokens.test.mjs` keeps them retired.
 
-## Density and Spacing
+## Density, Spacing, and Radius
 
-Two different scales answer two different questions, and conflating them is the
-anti-pattern this section exists to prevent:
+Two scales answer two questions, and conflating them is the anti-pattern this section exists to
+prevent. **Component geometry is Nova's**, fixed per control by the foundation: a control's
+height, padding and internal gaps are not a per-screen choice, and this document does not
+restate them — `src/primitives/` carries them and the snapshot gate holds them. **Page and
+layout rhythm is VisionSet's own composition**, on Tailwind's ordinary spacing scale: `p-6`,
+`gap-4`, `space-y-8`, and the pattern layer's `mt-2` under a `line` tab bar. Dense where the
+content is plural — data surfaces show more of the thing the reader came for; generous where
+prose and forms are read one thing at a time.
 
-- **Component geometry is Nova's**, fixed per control by the preset — not a per-screen
-  choice, not eyeballed.
-- **Page and layout rhythm is VisionSet's own composition**, on Tailwind's ordinary
-  spacing scale — gaps between sections, page padding, list rhythm. A screen reaches for
-  `p-6`, `gap-4`, `space-y-8`; it does not invent a control's internal geometry.
+**Radius is a runtime value, not a config field.** The preset's `radius: medium` materialises as
+`--radius: 0.625rem` (10px) in `styles.css`, mirrored by `tokens.ts` and pinned by
+`tokens.test.ts`; `components.json` holds no radius field because the schema defines none. Every
+other step derives from `--radius` in `@theme inline` (`radius-sm` at `× 0.6` through
+`radius-4xl` at `× 2.6`), and no arbitrary radius appears outside that scale.
 
-Nova's component geometry, as the canonical files carry it (the concrete defaults every
-primitive targets):
+## Icons
 
-| Control | Geometry |
-| --- | --- |
-| Button — default | `h-8 px-2.5 gap-1.5 text-sm font-medium rounded-lg` |
-| Button — variants | shadcn's `default outline secondary ghost destructive link` plus VisionSet's `success`. VisionSet's former `secondary` (border + background) is byte-identical to shadcn's `outline`; canonical `secondary` (a filled muted weight) is a new option nobody uses yet. `link` is underline-on-hover only — a call site wanting a resting underline adds `className="underline"` |
-| Button — sizes | `sm` → `h-7`; `xs` → `h-6`; `lg` → `h-9`; `icon` → `size-8` |
-| Button — press / focus / disabled | press `active:translate-y-px`; focus `focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50`; disabled `opacity-50` |
-| Button — icon | `svg size-4` (`size-3.5`/`size-3` at `sm`/`xs`) |
-| Button — hover | default `hover:bg-primary/80`; secondary `color-mix(in oklch, var(--secondary), var(--foreground) 5%)`; destructive soft |
-| Input | `h-8 rounded-lg border-input px-2.5 text-base md:text-sm`; dark theme `bg-input/30` |
-| Badge | `h-5 px-2 text-xs rounded-4xl`; icons `size-3`; variants are shadcn's (`default secondary destructive outline ghost link`) plus `success` and `warning` in the destructive recipe. A square label is `variant="outline" className="rounded-md"` at the call site |
-| Menu — surface | `dark` subtree + `bg-popover p-1 rounded-lg ring-1 ring-foreground/10 shadow-md`, `min-w-32` as a floor with the width **sized to the items** (not to the trigger), `duration-100` enter and **no exit** — both overrides are `menuSurface`, applied at the call site, not the canonical file; see *Motion* |
-| Menu — item | `px-1.5 py-1 text-sm rounded-md focus:bg-accent focus:text-accent-foreground`; destructive item soft |
-| Card | `rounded-xl ring-1 ring-foreground/10 text-sm`; `--card-spacing` = `--spacing(4)` (16px; 12px at the `sm` size); footer `bg-muted/50` |
-| Dialog — overlay | `bg-black/10 supports-backdrop-filter:backdrop-blur-xs duration-100` |
-| Dialog — content | `rounded-xl bg-popover p-4 text-sm ring-1 ring-foreground/10 sm:max-w-sm` |
-| Sidebar (shadcn's own component; VisionSet's rail is a custom composition — see *Sidebar / Menu*) | `16rem` / `18rem` mobile / `3rem` icon |
-| Elevation | `ring-1 ring-foreground/10` + a resting shadow — never a coloured border |
-
-`frontend/ui-core/src/primitives/` carries the table itself, not a family resemblance to
-it: the heights, the `ring-3` focus treatment, the `duration-100` enter, the
-`--card-spacing` variable and Nova's interaction idioms (uniform disabled opacity, soft
-destructive, `/80`-opacity hover, the inverted menu subtree) are the primitives' own
-declarations. The table is the contract and the primitives are where it is spelled, so a
-control reaching past it is now a diff against this document rather than a gap in a
-migration.
-
-Since the canonical reinstall, the primitives are not *transcribed from* the preset — they
-are the files the shadcn CLI writes for it. `frontend/ui-core/shadcn/` holds each file as
-the CLI wrote it, and `tests/scripts/shadcn_canonical.test.mjs` refuses any primitive that
-is not its snapshot plus added lines. VisionSet adds exactly three variants that way (Badge
-`success`/`warning`, Button `success`); every other domain need is met at the call site.
-
-Two measurements are deliberately *not* the table's, and both are argued at the
-component: `Textarea` is `min-h-16` rather than a fixed height, because the content's own
-height is the point. `SelectTrigger` used to earn the same exception directly; the
-canonical trigger is `h-8` like any other control, and a two-line option instead composes
-`twoLineTrigger` (`frontend/ui-core/src/lib/select.ts`, exported) onto the trigger at the
-call site — `data-[size=default]:h-auto min-h-8`, plus dropping the value's line clamp —
-so the growth is a call-site constant, not a canonical declaration. A minimum where the
-table says a fixed height is the one substitution this document sanctions, and only where
-the content's own height is the point.
-
-## Radius
-
-The preset's `radius: medium` materialises here and nowhere else: `--radius: 0.625rem`
-(10px) in `styles.css` is the authoritative runtime value, mirrored by `tokens.ts` and
-pinned by `tokens.test.ts`. `components.json` holds no radius field — shadcn's config
-schema defines none, and being strict it rejects one. This stylesheet is the single place
-the medium step is spelled.
-
-`--radius` is the one constant; every other radius step is derived from it in
-`@theme inline`, verbatim:
-
-| Step | Formula | Result |
-| --- | --- | --- |
-| `radius-sm` | `var(--radius) * 0.6` | 6px |
-| `radius-md` | `var(--radius) * 0.8` | 8px |
-| `radius-lg` | `var(--radius)` | 10px |
-| `radius-xl` | `var(--radius) * 1.4` | 14px |
-| `radius-2xl` | `var(--radius) * 1.8` | 18px |
-| `radius-3xl` | `var(--radius) * 2.2` | 22px |
-| `radius-4xl` | `var(--radius) * 2.6` | 26px |
-
-No arbitrary radius appears outside this scale.
-
-## Borders and Focus
-
-The base layer applies `border-border` and `outline-ring/50` to every element and
-`bg-background text-foreground` to `body` — a hairline and the outline's colour are the
-default state of anything on the page, not something each component re-declares.
-Nova's component-level focus treatment is stronger and more specific:
-`focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50` — a 3px ring
-in the `ring` token's colour, painted outside the control so it survives any fill. Focus
-is never colour-only and never removed; an element that can be focused shows it.
-
-Focus *geometry* is never declared in the base layer. The `*` rule names the outline
-colour and stops there; the ring itself belongs to the component, because a single
-stylesheet-wide `:focus-visible` declaration overrides every primitive's ring at once and
-wins on layer order no matter how specific the component's own selector is. So each
-focusable primitive carries the treatment: `Button`, `Badge`, `Input`, `Textarea` and
-`SelectTrigger` the `ring-3` ring above, `TabsTrigger` the same ring plus a 1px
-`outline-ring` hairline, and menu and select items `focus:bg-accent
-focus:text-accent-foreground` (the combobox paints the same fill on its active option,
-which it tracks itself because the list keeps DOM focus on the input). An item inside a
-floating surface reads focus as the fill it would take on hover, not as a ring inside a
-list.
-
-`frontend/app/e2e/styleguide.spec.ts` measures the tab bar's ring in a real browser,
-which is the only place the composition can be checked: Tailwind renders `ring-3` as a
-`box-shadow` layer, so "the ring is there" is a question about a computed shadow list
-rather than about a class string.
+`lucide-react` is the set, and the only one. No package declares a second icon library, and
+`tests/scripts/design_tokens.test.mjs` refuses one that reappears in a manifest or an import.
+The rule is *one* set rather than one particular set — what costs a reader is two of them on a
+screen, where the same idea arrives at two weights and two grids. Changing which one is a
+decision to make here, not a dependency to add. Icon size comes from the primitive that contains
+the icon; a call site does not resize an icon to fit a control it did not measure.
 
 ## Motion
 
-Motion orients or confirms, and never stands between somebody and their next action —
-*Fast and quiet*, applied. An **enter** animation is free to play: nothing is waiting on
-it, because the surface it introduces did not exist a frame ago. An **exit** animation is
-not, and the difference is not a matter of taste.
+Motion orients or confirms, and never stands between somebody and their next action. An
+**enter** animation is free to play: the surface it introduces did not exist a frame ago, so
+nothing is waiting on it. An **exit** animation is not, and the difference is not taste.
 
-**A floating surface leaves on the frame it is dismissed.** While an exit animation runs,
-Radix keeps the content mounted, and the dismissable layer stays mounted with it. A press
-on the trigger inside that window is read twice — the trigger toggles the surface open,
-and the layer still listening reads the same pointer-down as an interaction outside itself
-and dismisses — so the two cancel and the surface never appears. At `duration-100` that
-window covers the gap between an `Escape` and the click after it, which makes it a defect
-a fast hand meets routinely rather than an edge case. The annotation workspace is where
-that tempo is normal, and it is where the behaviour was measured.
+**A menu leaves on the frame it is dismissed.** While Radix runs an exit animation the content
+stays mounted and the dismissable layer with it, so a press meant to open the next menu is read
+twice — as the open, and as an interaction outside the closing surface — and the two cancel. At a
+100ms exit that window covers the gap between an `Escape` and the click after it, which a fast
+hand meets routinely. Canonical `dropdown-menu.tsx` animates out like any other floating
+surface and the snapshot gate holds it there, so the rule is a **call-site constant**, not a
+primitive edit: every
+`DropdownMenuContent` applies `menuSurface`
+([`frontend/ui-core/src/lib/menu.ts`](frontend/ui-core/src/lib/menu.ts),
+`data-closed:animate-none! w-auto`). Both halves are one rule — a menu that behaves like a menu —
+and travel together, `w-auto` freeing the surface from canonical's trigger-width pin, which
+behind an icon-sized button leaves a 128px floor every longer item wraps against. A surface whose
+trigger cannot be pressed again straight away — a dialog's, a tooltip's — keeps its exit animation
+and never takes the constant. `TooltipProvider` defaults `delayDuration` to `0`; a screen wanting
+Radix's debounce sets it on the provider.
 
-The canonical `dropdown-menu.tsx` animates out like any other floating surface, and the
-snapshot gate holds it there — so the fix cannot live in the primitive, and lives in one
-constant instead. Every `DropdownMenuContent` call site applies `menuSurface`
-(`frontend/ui-core/src/lib/menu.ts`, `data-closed:animate-none! w-auto`, exported from
-`@visionset/ui-core`) to cancel the exit, and `frontend/app/e2e/annotate.spec.ts` holds
-the two presses that would catch a call site that dropped it. The same constant carries
-the width override, because canonical also pins the surface to
-`w-(--radix-dropdown-menu-trigger-width)` — behind an icon-sized trigger that is the
-128px floor, and every item longer than it wraps. Both facts are one rule (a menu that
-behaves like a menu) and travel together, so a call site cannot take the motion half and
-forget the geometry. `SelectContent` and
-`TooltipContent` keep animating out, unchanged: a surface that genuinely needs an exit —
-one whose trigger cannot be pressed again straight away, as a modal's cannot, or the
-tooltip's, which a hover has no toggle to swallow — never takes the constant.
-
-`TooltipProvider`'s own `delayDuration` is `0` — Radix's 700ms default, a debounce against
-an accidental hover, is not applied. A screen that wants one sets it once on the provider,
-in `frontend/app/src/main.tsx`.
-
-`prefers-reduced-motion` sits above all of this: the base layer in `styles.css` collapses
-every animation and transition to a single frame under that query, so none of the above is
-something a component opts into.
-
-## Sidebar / Menu
-
-- **`menuColor: inverted`.** Every menu and popover subtree — dropdown content, select
-  and combobox popovers — carries the literal `dark` class, so a menu is always the dark
-  theme's `popover`/`popover-foreground` regardless of the page's own theme. This is
-  deliberate contrast, not a bug: a floating surface reads as "above" the page partly by
-  not matching it.
-- **The tooltip inverts itself instead.** `TooltipContent` is Nova's own recipe:
-  `bg-foreground text-background` with a matching `Arrow` and `sideOffset` 0, so it flips
-  with the theme by construction rather than by being handed the `dark` class. Same
-  intent as the bullet above, reached without a subtree — a tooltip holds one line of
-  text and no tokens of its own to keep in step, so the token pair *is* the inversion.
-  Menus, selects and the combobox keep the `dark` mechanism, because a surface with its
-  own borders, hover fills and destructive items needs a whole palette flipped, not two
-  colours swapped.
-- **`menuAccent: subtle`.** Items highlight on hover/focus with `bg-accent
-  text-accent-foreground` — the same interactive-surface token every other hover state
-  uses, not a saturated selection colour.
-- **The rail follows the theme.** VisionSet's navigation rail (`AppShell`) is a custom
-  composition on the 8 `sidebar-*` tokens above — light in the light theme, dark in the
-  dark theme — never a hardcoded dark surface independent of the theme switch. Its
-  widths are a VisionSet layout extension in `@theme inline` (`--spacing-sidebar: 240px`,
-  `--spacing-sidebar-collapsed: 48px`), consumed by `AppShell`, its collapse toggle, and
-  the content offset, which must agree or the layout jumps on collapse. The collapsed
-  width is the preset's own icon-sidebar width (`3rem`): with the rail's `p-2` it holds
-  exactly one `size-8` control per row, so every icon is centred by construction. The
-  expanded width is not the preset's (unused) Sidebar component's — VisionSet does not
-  consume that component.
-
-## Charts
-
-The preset's chart palette — five neutral steps from light to dark, **identical in both
-themes** (a chart does not restyle when the page switches theme):
-
-| Token | Value |
-| --- | --- |
-| `chart-1` | `oklch(0.87 0 0)` |
-| `chart-2` | `oklch(0.556 0 0)` |
-| `chart-3` | `oklch(0.439 0 0)` |
-| `chart-4` | `oklch(0.371 0 0)` |
-| `chart-5` | `oklch(0.269 0 0)` |
-
-They separate by **lightness rather than by hue**, which is the trade this preset makes:
-a series stays legible to a reader who cannot separate two hues, and it survives being
-printed or screenshotted in greyscale — at the cost of holding fewer series apart before
-the steps run together. A chart needing more than five wants a second channel, a shape
-or a label, not a sixth colour invented here.
-
-These are **series colours, never status.** A chart never leans on `chart-2` to mean
-"warning" — status uses the status tokens below, a chart uses these to tell one series
-from another.
-
-## VisionSet Extensions
-
-Five roles the preset has no token for, each following shadcn's own extension
-convention exactly — a value in `:root`, a dark counterpart in `.dark`, exposure through
-`@theme inline` (`--color-<name>: var(--<name>)`), and coverage in both `tokens.test.ts`
-and `tests/scripts/design_tokens.test.mjs`:
-
-| Token | Purpose | Light | Dark |
-| --- | --- | --- | --- |
-| `stage` | The neutral surround an image is judged against in the annotation workspace — not `background`, not `muted`; distinguishable from both so a white-bordered asset still shows where it ends. Usage rules: [`docs/content/ui/annotator.md`](docs/content/ui/annotator.md#the-stage) | `oklch(0.94 0 0)` | `oklch(0.24 0 0)` |
-| `brand` | Robomous coral. Identity only — the wordmark, and its styleguide swatch. Never a functional-UI colour; there is no counted quota, and introducing it into a control is a semantic-colour violation whatever the count | `oklch(0.653 0.178 32.3)` | `oklch(0.653 0.178 32.3)` |
-| `success` / `success-foreground` | The batch-state family's settled/succeeded state and its one filled control — a green analogue of the preset's own destructive treatment | `oklch(0.577 0.132 152)` / `oklch(1 0 0)` | `oklch(0.696 0.17 152)` / `oklch(0.205 0 0)` |
-| `warning` / `warning-foreground` | Something is waiting on a person | `oklch(0.646 0.13 80)` / `oklch(0.205 0 0)` | `oklch(0.75 0.14 80)` / `oklch(0.205 0 0)` |
-| `origin-hub` / `origin-custom` / `origin-robomous` | Where a model's weights come from, as a **mark** — the accent edge of a card on the Models page, a few pixels wide on the plain `card` — amber for the hub, blue for the user's own, orange on the brand's hue for the Robomous registry. A mark only: never a surface, never ink, and an origin is a kind, never a state, so these never stand in for a status. Identical in both themes, like the chart palette, because a mark this small must read the same wherever the card is. `origin-robomous` is its own token; `brand` stays identity-only | `oklch(0.8 0.16 85)` / `oklch(0.65 0.15 250)` / `oklch(0.68 0.17 35)` | same |
-
-No sixth extension exists. An `info` family was considered and rejected for now:
-in-flight product states keep the current `primary`-tinted treatment; a dedicated `info`
-token is a later product decision, not a gap in this rewrite.
-
-## Components
-
-shadcn's model is **open code**: a primitive is source VisionSet owns and edits in
-`frontend/ui-core/src/primitives/`, not a package dependency upgraded blindly. Radix
-supplies the behaviour (focus management, `aria-*` wiring, keyboard patterns); the style
-on top of it is `radix-nova`, recorded as `components.json`'s `style` field. Every file
-there is installed by `shadcn@4.19.0 add` (`pnpm --filter @visionset/ui-core shadcn:add
-<name>`), not hand-authored; `frontend/ui-core/shadcn/` holds each one exactly as the CLI
-wrote it, and a primitive is edited only by adding lines to that file —
-`tests/scripts/shadcn_canonical.test.mjs` is the gate.
-
-Rendered to look at: `pnpm --filter @visionset/app dev`, then the `/styleguide` route
-(`frontend/app/src/styleguide/Styleguide.tsx`).
+`prefers-reduced-motion` sits above all of this: the base layer collapses every animation and
+transition to a single frame under that query, so no component opts in.
 
 ## Accessibility
 
-First-class, and part of every rule above rather than a section to satisfy afterwards:
+- **Semantic HTML.** Real `<button>`/`<a>`, native controls, lists as lists, one `<h1>` and a
+  meaningful hierarchy under it.
+- **Keyboard parity.** Everything a pointer can do, the keyboard can do — logical tab order,
+  arrow-key movement inside composite widgets.
+- **Focus is always visible**, per *Borders and focus*: never removed, never colour-only.
+- **No colour-only communication.** Status, selection, validity and provenance each carry a
+  redundant channel.
+- **Field anatomy carries the wiring.** `Field`, `FieldLabel`, `FieldDescription`, `FieldError`,
+  `FieldGroup`, `FieldSet`, `FieldLegend`, `FieldContent`, `FieldTitle`, `FieldSeparator`: a
+  description and an error are subcomponents, so `aria-describedby` and `aria-invalid` come from
+  the primitive rather than from a screen remembering.
+- **Dialog and Sheet keep their official anatomy** — trigger, overlay, content, header, title,
+  description, footer, close. Focus trap and return, `Escape`, and the labelled-by relationships
+  are Radix's guarantees, which is why no primitive here is hand-rolled from a `<div>`.
+- **Never disable without explanation** stays as the product principles state it
+  ([`docs/content/ui/product-principles.md`](docs/content/ui/product-principles.md#principles));
+  this document fixes only disabled's look.
 
-- **Semantic HTML.** Real `<button>`/`<a>`, native form controls, lists as lists, one
-  `<h1>` and a meaningful heading hierarchy below it.
-- **Keyboard parity.** Everything a pointer can do, the keyboard can do: real
-  interactive elements, logical tab order, arrow-key movement inside composite widgets.
-- **Focus is always visible** — the component `ring-3 ring-ring/50` treatment where a
-  primitive defines one, the base layer's `outline-ring/50` everywhere else; never
-  removed, never colour-only.
-- **No colour-only communication.** Status, selection, validity, and provenance all
-  carry a redundant channel (a word, an icon, a shape). The product status vocabulary
-  itself — the five semantic families and their mapping to product states — is defined
-  in [`docs/content/ui/product-principles.md`](docs/content/ui/product-principles.md#status-semantics).
-- **`destructive` stays semantically destructive** — the one token that is its own
-  status, never repurposed for emphasis and never renamed.
-- **`prefers-reduced-motion`** is a standing rule: motion collapses to opacity changes or
-  nothing, with no loss of information. The base layer in `styles.css` enforces it: under
-  the media query, every animation and transition duration collapses to a single frame,
-  so no component needs to opt in individually.
-- **Never disable without explanation** stays exactly as the product principles state it
-  — [`docs/content/ui/product-principles.md`](docs/content/ui/product-principles.md#principles) — this
-  document only fixes disabled's *look* (`opacity-50`), not when a control may be one.
-- Dialogs, menus, and tooltips follow their ARIA patterns: roles, labelled-by
-  relationships, focus trap and return, `Escape` behaviour — Radix's own guarantees,
-  which is why no primitive here is hand-rolled from a `<div>`.
+## Product-Specific Extensions
 
-## Responsive / Product Composition
+Everything VisionSet owns above the foundation, in one list:
 
-- Designed for mobile, laptop, desktop, and wide displays; standard breakpoints
-  640 / 768 / 1024 / 1280.
-- **Adaptation reflows; it does not amputate.** Content and controls remain reachable
-  and legible at every supported size — nothing simply disappears; see
-  [`docs/content/ui/navigation.md`](docs/content/ui/navigation.md) for the rail's own collapse behaviour.
-- **Content growth is supported, not fought.** Text wraps rather than truncates unless
-  the value is re-readable elsewhere; identifiers wrap rather than truncate mid-token;
-  controls are never clipped — a readout yields before a button does.
-- Hit targets stay comfortable on touch (44px-order), whatever the pointer.
-- Page, section, and list rhythm is Tailwind's ordinary spacing scale (see *Density and
-  Spacing*) — exact page and dialog dimensions are screen-level decisions living with
-  [`docs/content/ui/product-principles.md`](docs/content/ui/product-principles.md) and
-  [`docs/content/ui/navigation.md`](docs/content/ui/navigation.md), not this document.
+| Extension | Where | Rule |
+| --- | --- | --- |
+| `stage` | `styles.css`, `tokens.ts` | The annotator's surround. Usage: [`docs/content/ui/annotator.md`](docs/content/ui/annotator.md#the-stage) |
+| `brand` | `styles.css`, `tokens.ts` | Identity only — see *Where the brand is* |
+| `origin-hub` / `origin-custom` / `origin-robomous` | `styles.css`, `tokens.ts` | A model's provenance, as a card's accent edge. A mark: never a surface, never ink, and an origin is a kind rather than a state, so these never stand in for a status |
+| Badge `success` / `warning` / `info` / `quiet` | `primitives/badge.tsx` | Four added lines — see *Badge Variants* |
+| `statusTone.ts` | `patterns/` | The one home for status colour outside the Badge |
+| `menuSurface` | `lib/menu.ts` | The call-site menu constant — see *Motion* |
+| `--spacing-sidebar` / `--spacing-sidebar-collapsed` | `styles.css` `@theme inline` | 240px and 48px, consumed by `AppShell`, its collapse toggle and the content offset, which must agree or the layout jumps on collapse. The collapsed width is the preset's own icon-sidebar width, so with the rail's `p-2` it holds exactly one `size-8` control per row |
+| Patterns | `patterns/` | `AsyncStates`, `BackLink`, `ClassFields`, `DataDisplay`, `ErrorBoundary`, `ExportTargetSelect`, `PaddedContent`, `ProjectEyebrow`, `ProjectNav`, `ProjectShell`, `RecipeEditor`, `RecipeList`, `SectionHeader`, `StaticAnnotationOverlay`, `StepMarker` |
 
-## Anti-Patterns
+The navigation rail follows the theme on the eight `sidebar-*` tokens — light in the light theme,
+dark in the dark one, never a hardcoded dark surface independent of the switch. Layout adapts by
+reflowing, not by amputating: standard breakpoints 640 / 768 / 1024 / 1280, content and controls
+reachable at every supported size, text wrapping rather than truncating unless the value is
+re-readable elsewhere, touch targets comfortable (44px-order) whatever the pointer. The rail's
+own collapse behaviour is [`docs/content/ui/navigation.md`](docs/content/ui/navigation.md).
 
-- **A raw colour outside the foundation.** Every hex, `rgb()`, `hsl()`, `oklch()`, or
-  `var()` inside a Tailwind class string is machine-refused
-  (`tests/scripts/design_tokens.test.mjs`); the one sanctioned exception is an inline
-  style carrying a schema-supplied class colour, which is user data no token could name.
-  A bracketed `color-mix()` is judged by its arguments: mixing tokens only — the preset's
-  own Button secondary hover, `color-mix(in oklch, var(--secondary), var(--foreground) 5%)`
-  — names no colour of its own and is allowed; a `color-mix()` naming a literal or a named
-  colour anywhere inside it is still a colour smuggled into a class, and is refused like
-  any other.
-- **A second token vocabulary.** No `surface`, `error`, `foreground-secondary`, or
-  "accent as the action colour" alias — shadcn's names are the only spelling of intent,
-  and a parallel naming layer is exactly the drift this rewrite removed.
-- **Ad-hoc geometry that fights Nova.** A control's height, padding, or radius is not a
-  per-screen decision; reaching past the geometry table above for a bespoke size is a
-  design decision to make in this document, not in a component diff.
-- **Mixing icon sets in new code.** `lucide-react` is the set, and the only one: every
-  icon the primitives, the screens and the annotation workspace draw comes from it, no
-  package declares a second icon library, and `tests/scripts/design_tokens.test.mjs`
-  refuses one that reappears in a manifest or an import. The rule is *one* set rather
-  than one particular set — what costs a reader is two of them on a screen, where the
-  same idea arrives at two weights and two grids. Changing which one is a decision to
-  make in this document, not a dependency to add.
-- **Brand in a functional control.** Robomous coral is identity — the wordmark and its
-  styleguide swatch, nothing else. A functional control reaching for `brand` is a
-  semantic-colour violation regardless of how many other sites already use it correctly.
+Anything outside this list is not an extension; it is a diff against this document.
+
+## Allowed shadcn Deviations
+
+**Policy.** A behavioural change to a primitive requires all three of: a **reproduced defect**
+(not a preference, not a hypothetical), a **regression test** that fails on the canonical file
+and passes on the changed one, and an explicit `SHADCN DEVIATION` comment naming the defect.
+Absent any one of them, the change belongs at a call site.
+
+**Current list: none.** No primitive carries a `SHADCN DEVIATION` marker. The historic
+DropdownMenu rapid-reopen patch was retired — its rule lives in `menuSurface` at the call site,
+and `frontend/app/e2e/annotate.spec.ts`'s "the overflow reopens on a press straight after
+Escape" passes on the canonical file.
+
+**Framework adapters are a separate, narrower category.** A primitive may replace an upstream
+integration that assumes a framework VisionSet does not run, and nothing else. There is exactly
+one: `primitives/sonner.tsx` replaces shadcn's `next-themes` `useTheme` — a Next.js integration
+— with a hook reading `.dark` on `<html>`, VisionSet's one theme source under Vite. It carries a
+`SHADCN FRAMEWORK ADAPTER` comment, it is the only entry in `FRAMEWORK_ADAPTERS` in
+`tests/scripts/shadcn_canonical.test.mjs`, and the gate names the exact snapshot lines it may
+remove. An adapter is not a licence for divergence in general, and the marker on an unlisted
+file fails the gate.
+
+## Updating shadcn Components
+
+Install or refresh from inside Docker:
+
+```
+pnpm --filter @visionset/ui-core shadcn:add <name>
+```
+
+That writes the CLI's pristine output to `frontend/ui-core/shadcn/<name>.tsx`, then relativises
+the import paths in `src/primitives/<name>.tsx`. The CLI version is pinned at **4.19.0** in the
+installer, matching the `shadcn` devDependency, so a refresh cannot quietly move the foundation.
+`shadcn add <name> --diff` reports what upstream changed; it is inspection only.
+
+**Accept upstream by default.** A refresh that changes a class, a size or an anatomy is the
+foundation moving, and VisionSet follows it — keeping the primitives canonical is what makes that
+a routine update rather than a merge. Then reapply the additive lines this document names (today,
+only the Badge's four), re-run the gates below, and check the visual baselines. Never
+`--overwrite` blind: an overwrite that drops those four lines, or the sonner adapter, type-checks
+and fails the gate, and the diff is easier to read before the fact than after.
+
+Rendered to look at: `pnpm --filter @visionset/app dev`, then the `/styleguide` route.
+
+## Verification
+
+| Gate | Holds |
+| --- | --- |
+| `tests/scripts/shadcn_canonical.test.mjs` | Every primitive is its snapshot plus added lines; the framework-adapter allow-list |
+| `tests/scripts/shadcn_extensions.test.mjs` | Button's variants and sizes exactly; the Badge's four additions and their classes; the status palette's three files; no competing colour family; no retired v1 vocabulary |
+| `tests/scripts/design_tokens.test.mjs` | No colour in a class string; `components.json` within the schema-supported set; `brand` confined to its two identity sites; the retired token vocabulary; one icon library |
+| `frontend/ui-core/src/tokens.test.ts` | `styles.css` and `tokens.ts` agree declaration for declaration, and no retired token has returned |
+| `tests/scripts/docs_links.test.mjs` | Every link and `#anchor` in every tracked Markdown file resolves — this document included |
+| `tests/scripts/form_buttons.test.mjs` | Every `<Button>` inside a `<form>` states its `type` |
+| `frontend/app/e2e/visual.spec.ts` | The rendered result, against Linux baselines — see [`docs/content/architecture/frontend/visual-baselines.md`](docs/content/architecture/frontend/visual-baselines.md) |
+
+A rule in this document that no gate holds is a rule under review, not an exemption.
