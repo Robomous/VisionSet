@@ -493,3 +493,52 @@ test("index.ts exports every canonical primitive, drops the retired pattern Comb
     `${INDEX_PATH} exports a *Variants beyond shadcn's own three:\n${variantsExports.join(", ")}`,
   );
 });
+
+/**
+ * Every `DropdownMenuContent` call site owns `lib/menu.ts`'s `menuSurface` —
+ * the constant that carries the canonical surface classes plus the exit-
+ * animation and sizing fixes documented there. A call site that drops it
+ * silently reverts to the bare Radix surface.
+ */
+
+/** Every `file:line` in `text` opening a `DropdownMenuContent` without `menuSurface` on it. */
+export function menuSurfaceGapsIn(file, text) {
+  return openTagsIn(text, "DropdownMenuContent")
+    .filter(({ tag }) => !tag.includes("menuSurface"))
+    .map(({ at, tag }) => `${file}:${lineAt(text, at)}: ${tag.split("\n")[0].trim()}`);
+}
+
+test("menuSurfaceGapsIn flags a DropdownMenuContent missing menuSurface, and stays silent when it carries it", () => {
+  assert.deepEqual(
+    menuSurfaceGapsIn("a.tsx", `<DropdownMenuContent align="end">x</DropdownMenuContent>`),
+    [`a.tsx:1: <DropdownMenuContent align="end">`],
+  );
+  assert.deepEqual(
+    menuSurfaceGapsIn(
+      "b.tsx",
+      `<DropdownMenuContent align="end" className={menuSurface}>x</DropdownMenuContent>`,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    menuSurfaceGapsIn(
+      "c.tsx",
+      `<DropdownMenuContent className={cn(menuSurface, "w-64")}>x</DropdownMenuContent>`,
+    ),
+    [],
+  );
+});
+
+test("every DropdownMenuContent call site outside the shadcn snapshot carries menuSurface", () => {
+  const tracked = frontendSources();
+  assert.ok(tracked.length > 0, "the scan found no frontend sources, so it proves nothing");
+
+  const offenders = tracked.flatMap((file) =>
+    menuSurfaceGapsIn(file, readFileSync(path.join(REPO, file), "utf8")),
+  );
+  assert.deepEqual(
+    offenders,
+    [],
+    `a DropdownMenuContent call site is missing lib/menu.ts's menuSurface:\n${offenders.join("\n")}`,
+  );
+});
