@@ -774,7 +774,7 @@ test("Complete and promote finishes the job, closes the batch, promotes, and say
   await openGallery(page, sent, { settled: true });
 
   const composed = page.getByTestId("complete-promote-drive-01");
-  await expect(composed).toHaveAttribute("data-variant", "secondary");
+  await expect(composed).toHaveAttribute("data-variant", "outline");
   await composed.click();
 
   // In order, and the job first: the batch refuses while its job is open.
@@ -815,9 +815,17 @@ test("a one-job batch draws its job flat: no accordion, one bar, the job's contr
   await expect(workspace.getByTestId("timeline")).toBeVisible();
   // The door, Pre-label's slot and the assignee line are the job's, under the
   // header — and none of them is the page's filled control.
-  await expect(workspace.getByTestId(`start-job-${JOB}`)).toHaveAttribute("data-variant", "secondary");
+  await expect(workspace.getByTestId(`start-job-${JOB}`)).toHaveAttribute("data-variant", "outline");
   await expect(workspace.getByTestId(`assignee-${JOB}`)).toContainText("Unassigned");
-  await expect(page.getByTestId("gallery").locator('[data-variant="primary"]')).toHaveCount(0);
+  // Scoped to `Button`, not `[data-variant]` alone: the batch-state `Badge`
+  // legitimately carries `data-variant="default"` too (`in_annotation` reads
+  // as the near-black `default` tone, per `batchState.ts`), and a bare
+  // attribute selector would catch that badge instead of asking the question
+  // this line means to ask — whether the job's door duplicates the page's one
+  // filled button.
+  await expect(
+    page.getByTestId("gallery").locator('[data-slot="button"][data-variant="default"]'),
+  ).toHaveCount(0);
   await expect(workspace.getByTestId("segments")).toBeVisible();
   await expect(workspace.getByTestId("tile-asset-0")).toBeVisible();
 });
