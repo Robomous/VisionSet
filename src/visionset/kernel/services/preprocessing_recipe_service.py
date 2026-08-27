@@ -202,6 +202,7 @@ class PreprocessingRecipeService:
         variant: int,
         drivers: Mapping[str, PreprocessingDriver],
         max_edge: int = PREVIEW_MAX_EDGE,
+        showcase: bool = False,
     ) -> PreprocessingPreview:
         """One asset through ``spec``, as the export would write it, sized for a screen.
 
@@ -215,6 +216,10 @@ class PreprocessingRecipeService:
         ``variant`` 0 is the base image; ``1..variants_per_asset`` are the
         augmented outputs. Asking for a variant the spec does not make is a
         caller's error and is refused by the surface before it reaches here.
+        ``showcase`` fixes the variant's draws at each step's declared strength
+        — hflip mirrors, rot90 makes one quarter turn, brightness and contrast
+        use the full ``amount`` — so the picture shows what a step does rather
+        than one seeded draw of it; an export never uses it.
 
         Raises:
             ProjectNotFound: no such project in this workspace.
@@ -242,7 +247,9 @@ class PreprocessingRecipeService:
                 ),
             )
         manifest = Manifest(schema_version=1, assets=(manifest_asset,))
-        view = transform_manifest(manifest, spec, SplitAssignment(train=(asset.id,)))
+        view = transform_manifest(
+            manifest, spec, SplitAssignment(train=(asset.id,)), showcase=showcase
+        )
         file = next(one for one in view.files if one.variant == variant)
         try:
             with self._workspace.blob_store.get(asset.content_hash) as stream:
@@ -252,7 +259,12 @@ class PreprocessingRecipeService:
                 f"asset {asset.id} ({asset.content_hash}) is not in the blob store"
             ) from exc
         image = transformed_bytes(
-            spec, drivers, source, content_hash=asset.content_hash, variant=variant
+            spec,
+            drivers,
+            source,
+            content_hash=asset.content_hash,
+            variant=variant,
+            showcase=showcase,
         )
         fitted = fit_within(file, max_edge)
         if (fitted.width, fitted.height) != (file.width, file.height):

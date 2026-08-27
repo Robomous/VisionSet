@@ -324,7 +324,7 @@ export function RecipeEditor({
           testId="recipe-step-preview"
           aside={
             <span className="text-xs text-muted-foreground" data-testid="preview-aside">
-              3 sample assets · seeded
+              1 sample asset
             </span>
           }
           last

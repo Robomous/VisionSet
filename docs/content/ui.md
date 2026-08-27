@@ -267,12 +267,15 @@ it and the footer carries the first one beside a shut *Save recipe*. Those are t
 shape, not a kernel rule the client is mirroring: the server still answers 422 to a body the
 form did not build.
 
-*Preview* renders three sample assets through `POST /projects/{id}/preprocessing-preview`,
-the export's own kernel path over a one-asset manifest: the first three train-fold members
-of the newest release with a split — variants are the train fold's — or the project's first
-three assets when no release has one. Three columns: the asset as it is, after the resize
-step alone, and the first augmented variant; a stage the recipe does not have says so
-(*No resize step*) rather than repeating the original. Each cell is one request keyed on
+*Preview* renders one sample asset through `POST /projects/{id}/preprocessing-preview`,
+the export's own kernel path over a one-asset manifest: the first train-fold member of the
+newest release with a split — variants are the train fold's — or the project's first asset
+when no release has one. Three columns: the asset as it is, after the resize step alone, and
+the last augmentation step ticked, headed by its name (*After horizontal flip*) and asked for
+in `showcase` mode — the draws fixed at the step's declared strength, so the cell shows what
+the step does rather than one seeded draw of it; an export still takes the seeded path. A
+stage the recipe does not have says so (*No resize step*) rather than repeating the
+original. Each cell is one request keyed on
 the spec it renders, and the spec settles for 400 ms before a cell asks, so typing `640`
 does not pay for `6` and `64`. The cell is the member dialog's own picture-with-labels
 mechanism (`patterns/StaticAnnotationOverlay.tsx`): the rendered image, and the response's

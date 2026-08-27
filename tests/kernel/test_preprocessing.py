@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from visionset.kernel.domain import (
     AUGMENT_GEOMETRIES,
+    SHOWCASE_SEED,
     AugmentOp,
     AugmentStep,
     GeometryType,
@@ -204,3 +205,9 @@ def test_rot90_reads_word_three_and_never_draws_zero_turns() -> None:
         seed = bytes(12) + remainder.to_bytes(4, "big") + bytes(16)
         assert rot90_quarter_turns(seed) == 1 + remainder
     assert {rot90_quarter_turns(variant_seed("r", "c", k)) for k in range(1, 60)} <= {1, 2, 3}
+
+
+def test_the_showcase_seed_answers_the_declared_strength_and_no_export_can_draw_it() -> None:
+    assert brightness_contrast_factors(SHOWCASE_SEED, 0.3) == pytest.approx((1.3, 1.3))
+    assert rot90_quarter_turns(SHOWCASE_SEED) == 1
+    assert len(SHOWCASE_SEED) != len(variant_seed("r", "c", 1))

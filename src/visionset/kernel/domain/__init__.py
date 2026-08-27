@@ -178,6 +178,7 @@ from visionset.kernel.domain.prediction import (
 from visionset.kernel.domain.preprocessing import (
     AUGMENT_GEOMETRIES,
     EVERY_GEOMETRY,
+    SHOWCASE_SEED,
     AugmentOp,
     AugmentStep,
     PreprocessingRecipe,
@@ -443,6 +444,7 @@ __all__ = [
     "VARIANT_ID_NAMESPACE",
     "TransformedFile",
     "TransformedView",
+    "SHOWCASE_SEED",
     "brightness_contrast_factors",
     "letterbox_fit",
     "variant_content_hash",

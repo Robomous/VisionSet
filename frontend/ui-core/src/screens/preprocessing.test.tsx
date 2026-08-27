@@ -614,32 +614,44 @@ describe("deleting a recipe", () => {
 });
 
 describe("the preview", () => {
-  it("samples the project's first three assets when no release has a split, and renders each stage", async () => {
+  it("samples the project's first asset when no release has a split, and renders each stage", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
     render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
 
     const grid = await screen.findByTestId("preview-grid");
     const rows = within(grid).getAllByTestId(/^preview-row-/);
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(1);
     // Three cells and nothing else: the row spends its width on the images.
-    for (const row of rows) expect(row.children).toHaveLength(3);
-    expect(screen.getByTestId("preview-aside").textContent).toBe("3 sample assets · seeded");
+    expect(rows[0]?.children).toHaveLength(3);
+    expect(screen.getByTestId("preview-aside").textContent).toBe("1 sample asset");
+    // The third column names the last augmentation the draft holds.
+    expect(screen.getByTestId("preview-augment-heading").textContent).toBe("After brightness and contrast");
 
     await waitFor(() =>
       expect(screen.getByTestId("preview-0-augment").getAttribute("data-state")).toBe("rendered"),
     );
     // The original is the asset through no transform; the resize column the
-    // resize step alone; the augmentation column variant 1 of the whole spec.
+    // resize step alone; the augmentation column the resize and the last
+    // augmentation step only, one variant, shown at its declared strength.
     const previews = sent.filter((r) => r.method === "POST" && pathOf(r).endsWith("/preprocessing-preview"));
-    const forFirst = previews.filter((r) => bodyOf(r)["asset_id"] === ASSET_A).map(bodyOf);
-    const specs = forFirst.map((body) => ({
+    const requests = previews.map(bodyOf).map((body) => ({
       variant: body["variant"],
-      steps: (body["spec"] as RecipeSpec).steps.map((step) => step.kind),
+      showcase: body["showcase"],
+      variants: (body["spec"] as RecipeSpec).variants_per_asset,
+      steps: (body["spec"] as RecipeSpec).steps.map((step) =>
+        step.kind === "augment" ? `augment:${step.op}` : step.kind,
+      ),
     }));
-    expect(specs).toContainEqual({ variant: 0, steps: [] });
-    expect(specs).toContainEqual({ variant: 0, steps: ["resize"] });
-    expect(specs).toContainEqual({ variant: 1, steps: ["resize", "augment", "augment"] });
-    expect(previews.some((r) => bodyOf(r)["asset_id"] === ASSET_D)).toBe(false);
+    expect(requests).toContainEqual({ variant: 0, showcase: false, variants: 0, steps: [] });
+    expect(requests).toContainEqual({ variant: 0, showcase: false, variants: 0, steps: ["resize"] });
+    expect(requests).toContainEqual({
+      variant: 1,
+      showcase: true,
+      variants: 1,
+      steps: ["resize", "augment:brightness_contrast"],
+    });
+    expect(requests).toHaveLength(3);
+    expect(new Set(previews.map((r) => bodyOf(r)["asset_id"]))).toEqual(new Set([ASSET_A]));
     const original = screen.getByTestId("preview-0-original");
     const image = original.querySelector("img");
     expect(image?.getAttribute("src")).toBe("data:image/png;base64,aGVsbG8=");
@@ -648,6 +660,37 @@ describe("the preview", () => {
     expect(within(original).getByTestId("preview-shape-box-1")).not.toBeNull();
     expect(within(screen.getByTestId("preview-0-augment")).getByTestId("preview-shape-box-1-aug1")).not.toBeNull();
     expect(screen.getByTestId("recipe-step-preview").getAttribute("data-state")).toBe("complete");
+  });
+
+  it("names the step the third column shows, and follows the draft's last augmentation", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX)]);
+    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    await screen.findByTestId("preview-grid");
+
+    await userEvent.click(screen.getByTestId("augment-brightness_contrast"));
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-augment-heading").textContent).toBe("After horizontal flip"),
+    );
+    await waitFor(() =>
+      expect(
+        sent
+          .filter((r) => r.method === "POST" && pathOf(r).endsWith("/preprocessing-preview"))
+          .map(bodyOf)
+          .some(
+            (body) =>
+              body["showcase"] === true &&
+              (body["spec"] as RecipeSpec).steps.map((step) => (step.kind === "augment" ? step.op : step.kind)).join(",") ===
+                "resize,hflip",
+          ),
+      ).toBe(true),
+    );
+
+    // The last augmentation unticked: no variant to show, and the column says so.
+    await userEvent.click(screen.getByTestId("augment-hflip"));
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-0-augment").textContent).toContain("No augmentation"),
+    );
+    expect(screen.getByTestId("preview-augment-heading").textContent).toBe("After augmentation");
   });
 
   it("samples the newest release's train fold when it has a split", async () => {
@@ -680,18 +723,19 @@ describe("the preview", () => {
 
     await screen.findByTestId("preview-grid");
     await waitFor(() =>
-      expect(screen.getByTestId("preview-1-original").getAttribute("data-state")).toBe("rendered"),
+      expect(screen.getByTestId("preview-0-original").getAttribute("data-state")).toBe("rendered"),
     );
     const sampled = new Set(
       sent
         .filter((r) => r.method === "POST" && pathOf(r).endsWith("/preprocessing-preview"))
         .map((r) => bodyOf(r)["asset_id"]),
     );
-    expect(sampled).toEqual(new Set([ASSET_C, ASSET_D]));
+    expect(sampled).toEqual(new Set([ASSET_C]));
     // No resize step and no augmentation: the two stages say so rather than
     // repeating the original.
     expect(screen.getByTestId("preview-0-resize").textContent).toContain("No resize step");
     expect(screen.getByTestId("preview-0-augment").textContent).toContain("No augmentation");
+    expect(screen.getByTestId("preview-augment-heading").textContent).toBe("After augmentation");
   });
 
   it("shows a refused rendering as prose in the cell", async () => {

@@ -49,7 +49,10 @@ re-encoding, and a resize reads neither argument because it is deterministic.
 `visionset.kernel.domain`; `hflip` draws nothing and always mirrors. A driver that read the seed
 any other way, or drew from anywhere else, would put its pixels where the geometry transform did
 not put the labels. The built-in `rot90` turns counter-clockwise because the kernel's
-`_rotated_once` does, and a driver applying that op must turn the same way.
+`_rotated_once` does, and a driver applying that op must turn the same way. A preview in
+`showcase` mode passes `SHOWCASE_SEED` where a variant seed goes, and the two helpers answer it
+with the step at its declared strength - which is why a driver reads them rather than the seed's
+bytes, and why the port needs no second argument for it.
 
 The step grammar is closed. Which kinds exist, and which augmentation ops, is decided by the
 kernel's `Step` union, so a driver applies one of the kinds the kernel already names and cannot

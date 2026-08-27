@@ -2189,7 +2189,9 @@ export interface paths {
          *     train fold, so every variant the spec declares can be seen whether or not a
          *     release exists. The image is capped to 512 pixels on its longer side, with
          *     the annotations scaled to match, and comes back base64-encoded beside its
-         *     `media_type`. Never cached: the spec is the request's own.
+         *     `media_type`. Never cached: the spec is the request's own. With `showcase`
+         *     true the variant's draws are fixed at each step's declared strength, so
+         *     the picture shows what a step does rather than one seeded draw of it.
          *
          *     An unknown project is 404 `PROJECT_NOT_FOUND` and an asset outside it 404
          *     `ASSET_NOT_FOUND`. A step that cannot transform a geometry the asset carries
@@ -4890,6 +4892,11 @@ export interface components {
          *
          *     `variant` 0 is the base image; `1` to `spec.variants_per_asset` are the
          *     augmented outputs. A variant the spec does not make is refused.
+         *
+         *     When `showcase` is true the variant's draws are fixed — hflip mirrors,
+         *     rot90 makes one quarter turn, brightness and contrast use the full
+         *     `amount` — so the image shows the step at its declared strength rather
+         *     than one seeded draw; exports never use it.
          */
         PreprocessingPreviewBody: {
             /**
@@ -4897,6 +4904,11 @@ export interface components {
              * Format: uuid
              */
             asset_id: string;
+            /**
+             * Showcase
+             * @default false
+             */
+            showcase: boolean;
             spec: components["schemas"]["RecipeSpecBody"];
             /**
              * Variant

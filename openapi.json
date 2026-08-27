@@ -4059,12 +4059,17 @@
       },
       "PreprocessingPreviewBody": {
         "additionalProperties": false,
-        "description": "One asset to render through a spec, and which variant of it.\n\n`variant` 0 is the base image; `1` to `spec.variants_per_asset` are the\naugmented outputs. A variant the spec does not make is refused.",
+        "description": "One asset to render through a spec, and which variant of it.\n\n`variant` 0 is the base image; `1` to `spec.variants_per_asset` are the\naugmented outputs. A variant the spec does not make is refused.\n\nWhen `showcase` is true the variant's draws are fixed \u2014 hflip mirrors,\nrot90 makes one quarter turn, brightness and contrast use the full\n`amount` \u2014 so the image shows the step at its declared strength rather\nthan one seeded draw; exports never use it.",
         "properties": {
           "asset_id": {
             "format": "uuid",
             "title": "Asset Id",
             "type": "string"
+          },
+          "showcase": {
+            "default": false,
+            "title": "Showcase",
+            "type": "boolean"
           },
           "spec": {
             "$ref": "#/components/schemas/RecipeSpecBody"
@@ -12665,7 +12670,7 @@
     },
     "/projects/{project_id}/preprocessing-preview": {
       "post": {
-        "description": "Render one asset through a spec, the way an export would write it.\n\nThe same kernel path as an export, over the one asset as if it were in the\ntrain fold, so every variant the spec declares can be seen whether or not a\nrelease exists. The image is capped to 512 pixels on its longer side, with\nthe annotations scaled to match, and comes back base64-encoded beside its\n`media_type`. Never cached: the spec is the request's own.\n\nAn unknown project is 404 `PROJECT_NOT_FOUND` and an asset outside it 404\n`ASSET_NOT_FOUND`. A step that cannot transform a geometry the asset carries\nis 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`, and a step needing a source\nsize the asset never recorded, or an asset whose bytes are gone, is 409\n`EXPORT_SOURCE_UNREADABLE`. A rendered image in an encoding this server\ncannot name is 422 `UNSUPPORTED_MEDIA`, and a step kind no installed driver\napplies is 500 `PREPROCESSING_DRIVER_NOT_FOUND`.",
+        "description": "Render one asset through a spec, the way an export would write it.\n\nThe same kernel path as an export, over the one asset as if it were in the\ntrain fold, so every variant the spec declares can be seen whether or not a\nrelease exists. The image is capped to 512 pixels on its longer side, with\nthe annotations scaled to match, and comes back base64-encoded beside its\n`media_type`. Never cached: the spec is the request's own. With `showcase`\ntrue the variant's draws are fixed at each step's declared strength, so\nthe picture shows what a step does rather than one seeded draw of it.\n\nAn unknown project is 404 `PROJECT_NOT_FOUND` and an asset outside it 404\n`ASSET_NOT_FOUND`. A step that cannot transform a geometry the asset carries\nis 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`, and a step needing a source\nsize the asset never recorded, or an asset whose bytes are gone, is 409\n`EXPORT_SOURCE_UNREADABLE`. A rendered image in an encoding this server\ncannot name is 422 `UNSUPPORTED_MEDIA`, and a step kind no installed driver\napplies is 500 `PREPROCESSING_DRIVER_NOT_FOUND`.",
         "operationId": "preview_preprocessing",
         "parameters": [
           {

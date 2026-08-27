@@ -416,6 +416,24 @@ def test_a_variant_annotation_is_the_source_annotation_with_a_suffixed_id() -> N
     assert base.content_hash == first.content_hash == second.content_hash == "cc"
 
 
+def test_a_showcase_rotates_exactly_once_and_leaves_the_seeded_view_alone() -> None:
+    spec = _spec(AugmentStep(op=AugmentOp.ROT90), variants=1)
+    asset = _asset(BBOX, POLYGON, TAG, content_hash="rot")
+    seeded = transform_manifest(_manifest(asset), spec, _train(asset))
+    shown = transform_manifest(_manifest(asset), spec, _train(asset), showcase=True)
+
+    (variant,) = [file for file in shown.files if file.variant == 1]
+    assert (variant.width, variant.height) == (200, 100)
+    assert _geometry_of(variant, BboxGeometry) == BboxGeometry(
+        x=20.0, y=60.0, width=40.0, height=30.0
+    )
+    assert _geometry_of(variant, PolygonGeometry) == PolygonGeometry(
+        points=[(0.0, 100.0), (0.0, 50.0), (100.0, 50.0)]
+    )
+    assert seeded == transform_manifest(_manifest(asset), spec, _train(asset))
+    assert shown.files[0] == seeded.files[0]
+
+
 def test_the_view_is_deterministic_for_one_spec_and_one_manifest() -> None:
     asset = _asset(BBOX, POLYGON)
     spec = _spec(
