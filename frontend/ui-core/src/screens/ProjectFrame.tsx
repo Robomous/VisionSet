@@ -25,15 +25,17 @@ import { ErrorState } from "../patterns/AsyncStates";
 import { ProjectEyebrow } from "../patterns/ProjectEyebrow";
 import type { AnnotateTarget, ProjectSection } from "../patterns/ProjectNav";
 import { ProjectShell, type ProjectNavData } from "../patterns/ProjectShell";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
-import { FieldError, Input, Label } from "../primitives/Input";
+} from "../primitives/dialog";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldError } from "../primitives/field";
 import {
   useActiveSchema,
   useBatches,
@@ -255,7 +257,7 @@ function DeleteDialog({
           </FieldError>
         )}
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button
@@ -329,12 +331,12 @@ function RenameDialog({
             </FieldError>
           )}
           <DialogFooter>
-            <Button variant="secondary" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
             <Button
               type="submit"
-              variant="primary"
+              variant="default"
               data-testid="rename-submit"
               disabled={name.trim() === "" || rename.isPending}
             >

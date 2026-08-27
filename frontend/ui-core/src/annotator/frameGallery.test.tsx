@@ -29,7 +29,8 @@ import type { JSX, ReactNode } from "react";
 import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
-import { TooltipProvider } from "../primitives/Menu";
+import { TooltipProvider } from "../primitives/tooltip";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
 const API = "http://visionset.test";
@@ -133,6 +134,9 @@ function answer(path: string): unknown {
 beforeEach(() => {
   sent.length = 0;
   writeToken("a-token");
+  // The top bar this file clicks through is a row of Tooltip triggers. See
+  // `testing/resizeObserver.ts`.
+  stubResizeObserver();
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
     matches: true,
@@ -290,7 +294,7 @@ describe("what the gallery shows", () => {
           ? "frame"
           : (button.getAttribute("data-testid")?.startsWith("frame-segment-") ?? false)
             ? "filter"
-            : (button.getAttribute("aria-label") ?? "other"),
+            : (button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "other"),
       );
     expect(new Set(kinds)).toEqual(new Set(["frame", "filter", "Close"]));
   });

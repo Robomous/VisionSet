@@ -200,7 +200,9 @@ describe("BatchProgressBar", () => {
     expect(bar.getAttribute("aria-valuenow")).toBe("64");
     expect(bar.className).toContain("h-2");
     expect(bar.className).toContain("border");
-    expect((bar.firstElementChild as Element).className).toContain("bg-success");
+    // Canonical `Progress` has no `variant` prop; the success colour reaches
+    // its indicator through the `data-slot` selector in this className.
+    expect(bar.className).toContain("bg-success");
     expect(screen.getByText(/7 annotated · 0 skipped · 0 accepted · 4 to do/)).toBeTruthy();
   });
 

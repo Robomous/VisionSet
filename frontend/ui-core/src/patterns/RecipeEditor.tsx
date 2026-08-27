@@ -22,8 +22,10 @@ import { GEOMETRY_LABELS, GEOMETRY_PLURALS } from "../data/geometryCategory";
 import { refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
 import { formatCount } from "../lib/format";
-import { Button } from "../primitives/Button";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+import { Button } from "../primitives/button";
+import { FieldError, FieldDescription } from "../primitives/field";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
 import type { ExportTarget } from "../screens/queries";
 import {
   AMOUNT_MAX,
@@ -126,10 +128,10 @@ export function RecipeEditor({
           placeholder="yolo-640"
           className="max-w-xs"
         />
-        <FieldHint>
+        <FieldDescription>
           Lowercase letters, digits, dots, hyphens and underscores; unique in this project. This is
           what an export names.
-        </FieldHint>
+        </FieldDescription>
       </div>
 
       <ol className="flex flex-col">
@@ -151,17 +153,17 @@ export function RecipeEditor({
               />
               {target !== undefined && (
                 <>
-                  <FieldHint data-testid="recipe-target-meta">{targetSubtitle(target)}</FieldHint>
-                  <FieldHint data-testid="recipe-target-carries">
+                  <FieldDescription data-testid="recipe-target-meta">{targetSubtitle(target)}</FieldDescription>
+                  <FieldDescription data-testid="recipe-target-carries">
                     {targetCarries(target, classCount)}
-                  </FieldHint>
+                  </FieldDescription>
                 </>
               )}
               {target === undefined && (
-                <FieldHint>
+                <FieldDescription>
                   Optional: a recipe applies to any export. Choosing a model preselects its
                   recommended size and strategy.
-                </FieldHint>
+                </FieldDescription>
               )}
             </div>
           )}
@@ -341,10 +343,10 @@ export function RecipeEditor({
         <span className="mr-auto text-xs text-muted-foreground" data-testid="recipe-footer-note">
           {footerNote}
         </span>
-        <Button variant="secondary" data-testid="recipe-discard" disabled={!dirty || saving} onClick={onDiscard}>
+        <Button variant="outline" data-testid="recipe-discard" disabled={!dirty || saving} onClick={onDiscard}>
           Discard
         </Button>
-        <Button variant="primary" data-testid="recipe-save" disabled={!canSave} onClick={onSave}>
+        <Button data-testid="recipe-save" disabled={!canSave} onClick={onSave}>
           {saving ? "Saving…" : "Save recipe"}
         </Button>
       </div>

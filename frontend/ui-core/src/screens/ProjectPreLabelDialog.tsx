@@ -20,16 +20,18 @@ import { useMemo, useState, type JSX } from "react";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
-import { Alert } from "../primitives/Badge";
-import { Button } from "../primitives/Button";
+import { inlineLink } from "../lib/button";
+import { Alert, AlertDescription } from "../primitives/alert";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
-import { FieldError, Label } from "../primitives/Input";
+} from "../primitives/dialog";
+import { Label } from "../primitives/label";
+import { FieldError } from "../primitives/field";
 import {
   DEFAULT_CONFIDENCE,
   NO_SHAPES,
@@ -87,7 +89,7 @@ export function ProjectPreLabelButton({
   return (
     <>
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="project-prelabel"
         onClick={() => setOpen(true)}
@@ -255,15 +257,17 @@ function ProjectPreLabelDialog({
 
             {refused.length > 0 && (
               <Alert data-testid="project-prelabel-blocked">
+                <AlertDescription>
                 {refused.length === 1
                   ? `${refused[0]!.name} cannot be pre-labeled as planned — uncheck it, or change the model or the shapes, to start.`
                   : `${refused.map((one) => one.name).join(", ")} cannot be pre-labeled as planned — uncheck them, or change the model or the shapes, to start.`}
+                </AlertDescription>
               </Alert>
             )}
 
             {launch.isError && (
               <Alert variant="destructive" data-testid="project-prelabel-error">
-                {refusalProse(launch.error)}
+                <AlertDescription>{refusalProse(launch.error)}</AlertDescription>
               </Alert>
             )}
           </div>
@@ -273,6 +277,7 @@ function ProjectPreLabelDialog({
               <li key={item.annotation_job_id} className="flex items-center justify-between gap-2">
                 <Button
                   variant="link"
+                  className={inlineLink}
                   onClick={() => onOpenBatch(item.batch_id)}
                 >
                   {label}
@@ -288,11 +293,11 @@ function ProjectPreLabelDialog({
         <DialogFooter>
           {result === null ? (
             <>
-              <Button variant="secondary" onClick={onClose}>
+              <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
               <Button
-                variant="primary"
+                variant="default"
                 data-testid="project-prelabel-start"
                 disabled={!canStart}
                 onClick={start}
@@ -301,7 +306,7 @@ function ProjectPreLabelDialog({
               </Button>
             </>
           ) : (
-            <Button variant="primary" onClick={onClose}>
+            <Button variant="default" onClick={onClose}>
               Close
             </Button>
           )}

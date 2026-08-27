@@ -10,12 +10,14 @@
  *
  * Each option's second line is what the target takes: the tasks it accepts for a
  * model, and, for a self-named format with no task vocabulary, the geometries it
- * carries. `SelectItem`'s `meta` puts the same two lines on the closed control.
+ * carries. Composed straight into `SelectItem`'s children — `twoLineTrigger`
+ * is what keeps the same two lines readable on the closed control.
  */
 
 import type { JSX } from "react";
 
 import { GEOMETRY_LABELS } from "../data/geometryCategory";
+import { twoLineTrigger } from "../lib/select";
 import {
   Select,
   SelectContent,
@@ -24,7 +26,7 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import type { ExportTarget } from "../screens/queries";
 
 export interface ExportTargetFamily {
@@ -96,18 +98,28 @@ export function ExportTargetSelect({
 }: ExportTargetSelectProps): JSX.Element {
   return (
     <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger id={id} data-testid={testId}>
+      <SelectTrigger id={id} data-testid={testId} className={twoLineTrigger}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         {groupExportTargets(targets).map((group) => (
           <SelectGroup key={group.heading}>
             <SelectLabel>{group.heading}</SelectLabel>
-            {group.targets.map((one) => (
-              <SelectItem key={one.name} value={one.name} meta={exportTargetMeta(one)}>
-                {one.label}
-              </SelectItem>
-            ))}
+            {group.targets.map((one) => {
+              const meta = exportTargetMeta(one);
+              return (
+                <SelectItem key={one.name} value={one.name}>
+                  {meta === undefined ? (
+                    one.label
+                  ) : (
+                    <span className="flex flex-col items-start">
+                      <span>{one.label}</span>
+                      <span className="text-xs text-muted-foreground">{meta}</span>
+                    </span>
+                  )}
+                </SelectItem>
+              );
+            })}
           </SelectGroup>
         ))}
       </SelectContent>

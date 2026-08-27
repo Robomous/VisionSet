@@ -46,10 +46,12 @@ import type { JSX } from "react";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { classColor } from "../palette";
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
-import { Button } from "../primitives/Button";
-import { Skeleton } from "../primitives/Feedback";
+import { Button } from "../primitives/button";
+import { Skeleton } from "../primitives/skeleton";
 import { DistributionBar, StatCard, ThumbnailGrid } from "../patterns/DataDisplay";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { imbalanceNote } from "./imbalance";
@@ -365,7 +367,7 @@ function FirstRun({
               // `secondary`: the project header's "Ingest" is on screen right
               // above this one, same label and same handler, so a filled button
               // here would render the identical action twice.
-              <Button variant="secondary" data-testid="overview-ingest" onClick={onIngest}>
+              <Button variant="outline" data-testid="overview-ingest" onClick={onIngest}>
                 <Upload aria-hidden="true" />
                 Ingest
               </Button>
@@ -393,7 +395,7 @@ function FirstRun({
         action={
           <div className="flex flex-col items-center gap-2">
             {onOpenSchema !== undefined && (
-              <Button variant="primary" data-testid="first-run-cta" onClick={onOpenSchema}>
+              <Button variant="default" data-testid="first-run-cta" onClick={onOpenSchema}>
                 <Tags aria-hidden="true" />
                 Define classes
               </Button>
@@ -408,7 +410,7 @@ function FirstRun({
                 <Button
                   variant="link"
                   size="sm"
-                  className="text-xs"
+                  className={cn(inlineLink, "text-xs")}
                   data-testid="first-run-alt"
                   onClick={onIngest}
                 >
@@ -548,7 +550,7 @@ function Samples({
       {onBrowseDataset !== undefined && (
         <Button
           variant="link"
-          className="self-start"
+          className={cn(inlineLink, "self-start")}
           data-testid="browse-dataset"
           onClick={onBrowseDataset}
         >

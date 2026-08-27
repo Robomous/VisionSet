@@ -51,8 +51,10 @@ import { Check } from "lucide-react";
 import type { JSX, KeyboardEvent } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
+import { cn } from "../lib/cn";
+import { menuSurface } from "../lib/menu";
 import { classColor } from "../palette";
-import { DropdownMenuContent, DropdownMenuItem } from "../primitives/Menu";
+import { DropdownMenuContent, DropdownMenuItem } from "../primitives/dropdown-menu";
 
 export interface ReassignMenuProps {
   /** The object whose class is being changed. Its geometry decides what fits. */
@@ -119,7 +121,7 @@ export function ReassignMenu({
   }
 
   return (
-    <DropdownMenuContent align={align} className="max-w-64" onKeyDown={byHotkey}>
+    <DropdownMenuContent align={align} className={cn(menuSurface, "max-w-64")} onKeyDown={byHotkey}>
       {schema.classes.map((declared) => {
         const ok = fits(declared);
         const current = declared.name === annotation.label_class;

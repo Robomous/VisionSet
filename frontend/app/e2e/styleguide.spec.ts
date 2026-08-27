@@ -142,7 +142,7 @@ test("the token utilities reach the browser as the contract's values", async ({ 
  * nowhere near the primary button" — the palette's whole point was that a
  * functional fill was never the identity colour. Task 5 of the shadcn preset
  * rewrite changed the *premise*, not just the value: the progress indicator is
- * now `bg-primary` (`ui-core/src/primitives/Feedback.tsx`), the same functional
+ * now `bg-primary` (`ui-core/src/primitives/progress.tsx`), the same functional
  * colour as the primary button, and `brand` dropped to exactly two call sites —
  * the wordmark and its styleguide swatch — neither of which is this page's
  * progress bar. So the claim this test can still make, and the one worth

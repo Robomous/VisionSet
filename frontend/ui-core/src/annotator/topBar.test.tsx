@@ -23,7 +23,8 @@ import type { JSX, ReactNode } from "react";
 import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
 import { AnnotationPage, REVIEW_ACTIONS } from "./AnnotationPage";
-import { TooltipProvider } from "../primitives/Menu";
+import { TooltipProvider } from "../primitives/tooltip";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
 const API = "http://visionset.test";
@@ -208,21 +209,9 @@ beforeEach(() => {
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
-  // Nova's `TooltipContent` renders a Radix `Arrow`, and the popper measures
-  // it through `@radix-ui/react-use-size`, which reaches for `ResizeObserver`
-  // unconditionally on mount. jsdom has none, and this file is the one that
-  // actually hovers a trigger long enough for the tooltip to open — every
-  // other suite renders a `Tooltip` closed. Scoped to this file rather than
-  // the shared setup: `gallery.test.tsx` asserts jsdom's real absence of
-  // `ResizeObserver` on purpose, and a global stub would falsify that.
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe(): void {}
-      unobserve(): void {}
-      disconnect(): void {}
-    },
-  );
+  // This file hovers a trigger long enough for the tooltip to open. See
+  // `testing/resizeObserver.ts`, which carries the reason it is scoped.
+  stubResizeObserver();
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
     if (request.method !== "GET") {
@@ -453,7 +442,7 @@ describe("the single review action", () => {
 /**
  * The filled slot: exactly one weight on the bar.
  *
- * `variant="primary"` is the one weight on the bar, so "exactly one filled
+ * `variant="default"` is the one weight on the bar, so "exactly one filled
  * control" is a claim about `bg-primary` rather than about a `data-` attribute
  * nobody styles from — asserting a marker the design does not read would pass
  * over a bar with two coral buttons on it.

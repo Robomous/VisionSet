@@ -406,7 +406,7 @@ it("renders every field a full connection carries, top to bottom", async () => {
     card(<ConnectionCard connection={full()} onEdit={() => undefined} onDelete={() => undefined} />),
   );
   const shown = await screen.findByTestId("connection-sam2-full");
-  expect(within(shown).getByRole("heading", { level: 3 }).textContent).toBe("sam2-full");
+  expect(within(shown).getByText("sam2-full").getAttribute("data-slot")).toBe("card-title");
   expect(within(shown).getByTestId("model-reference").textContent).toBe(
     `${SAM_BASE_PLUS} @ ${SAM_BASE_PLUS_COMMIT}`,
   );

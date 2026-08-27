@@ -50,20 +50,24 @@ import { useEffect, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
-import { Alert, Badge } from "../primitives/Badge";
+import { twoLineTrigger } from "../lib/select";
+import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
+import { Badge } from "../primitives/badge";
 import type { BadgeTone } from "./batchState";
 import { SectionHeader } from "../patterns/SectionHeader";
-import { Button } from "../primitives/Button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/Card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
+import { Button } from "../primitives/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/tabs";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+} from "../primitives/dialog";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import {
   classBlockers,
   describeClassCount,
@@ -72,10 +76,16 @@ import {
   lostClasses,
   refusalProse,
 } from "../data/refusals";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../primitives/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { ExportTargetSelect } from "../patterns/ExportTargetSelect";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../primitives/Select";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { DatasetAssetDialog, trunkAssetLabel } from "./DatasetAssetDialog";
 import { saveBlob } from "./download";
@@ -160,7 +170,7 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
           // `secondary`: the project's navigation holds the page's filled
           // action. One filled action per view.
           <Button
-            variant="secondary"
+            variant="outline"
             data-testid="publish-release"
             disabled={dataset.data === undefined}
             onClick={() => setPublishing(true)}
@@ -194,13 +204,13 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
             more than a scroll does. The padding pair keeps the focus ring off
             the scroller's clip. */}
         <div className="min-w-0 overflow-x-auto pb-1.5 -mb-1.5">
-        <TabsList variant="line">
+        <TabsList variant="line" className="w-full justify-start border-b">
           <TabsTrigger value="overview" data-testid="dataset-tab-overview">
             Overview
           </TabsTrigger>
           <TabsTrigger value="assets" data-testid="dataset-tab-assets">
             Assets
-            {stats.data !== undefined && <Badge>{stats.data.asset_count}</Badge>}
+            {stats.data !== undefined && <Badge variant="secondary">{stats.data.asset_count}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="preprocessing" data-testid="dataset-tab-preprocessing">
             Pre-processing
@@ -208,7 +218,7 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
           </TabsTrigger>
           <TabsTrigger value="releases" data-testid="dataset-tab-releases">
             Releases
-            {releases.data !== undefined && <Badge>{releases.data.total}</Badge>}
+            {releases.data !== undefined && <Badge variant="secondary">{releases.data.total}</Badge>}
           </TabsTrigger>
         </TabsList>
         </div>
@@ -359,7 +369,7 @@ function TrunkAssets({
               {offset + 1}&ndash;{Math.min(offset + TRUNK_PAGE_SIZE, total)} of {total}
             </span>
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               data-testid="trunk-previous"
               disabled={offset === 0}
@@ -368,7 +378,7 @@ function TrunkAssets({
               Previous
             </Button>
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               data-testid="trunk-next"
               disabled={offset + TRUNK_PAGE_SIZE >= total}
@@ -560,7 +570,7 @@ function RemoveAssetDialog({
           <FieldError data-testid="remove-asset-error">{refusalProse(remove.error)}</FieldError>
         )}
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button
@@ -609,12 +619,12 @@ function ReleaseCard({
   return (
     <Card data-testid={`release-${release.tag}`}>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle role="heading" aria-level={3} className="flex items-center gap-2">
           <Tag className="size-4 text-muted-foreground" aria-hidden="true" />
           {release.tag}
-          <Badge>v{release.schema_version}</Badge>
+          <Badge variant="secondary">v{release.schema_version}</Badge>
           {release.split !== null && release.split !== undefined && (
-            <Badge variant="accent" data-testid={`split-${release.tag}`}>
+            <Badge variant="default" data-testid={`split-${release.tag}`}>
               split
             </Badge>
           )}
@@ -632,12 +642,12 @@ function ReleaseCard({
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" data-testid={`export-${release.tag}`} onClick={() => setExporting(true)}>
+          <Button variant="outline" size="sm" data-testid={`export-${release.tag}`} onClick={() => setExporting(true)}>
             <Download className="size-4" aria-hidden="true" />
             Export
           </Button>
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
             data-testid={`manifest-${release.tag}`}
             disabled={manifest.isPending}
@@ -729,9 +739,12 @@ function Verification({
 }): JSX.Element {
   if (!report.manifest_intact) {
     return (
-      <Alert variant="destructive" title="The manifest itself does not match its hash" data-testid={`verified-${tag}`}>
+      <Alert variant="destructive" data-testid={`verified-${tag}`}>
+        <AlertTitle>The manifest itself does not match its hash</AlertTitle>
+        <AlertDescription>
         Nothing else could be checked — every count in this release is derived from a
         document that is not the one its hash names.
+        </AlertDescription>
       </Alert>
     );
   }
@@ -744,10 +757,13 @@ function Verification({
     );
   }
   return (
-    <Alert variant="destructive" title="This release cannot be reproduced" data-testid={`verified-${tag}`}>
+    <Alert variant="destructive" data-testid={`verified-${tag}`}>
+      <AlertTitle>This release cannot be reproduced</AlertTitle>
+      <AlertDescription>
       {report.missing.length} missing · {report.corrupt.length} corrupt ·{" "}
       {report.cache_mismatches.length} cache mismatch
       {report.cache_mismatches.length === 1 ? "" : "es"} of {report.checked} checked.
+      </AlertDescription>
     </Alert>
   );
 }
@@ -822,7 +838,7 @@ function PublishDialog({
             />
             {/* The opposite of a project name, which is unique case-insensitively.
                 Two rules, each beside its own index. */}
-            <FieldHint>Unique per dataset, and case-sensitive.</FieldHint>
+            <FieldDescription>Unique per dataset, and case-sensitive.</FieldDescription>
           </div>
 
           <label className="flex items-center gap-2 text-sm">
@@ -897,12 +913,12 @@ function PublishDialog({
           )}
 
           <DialogFooter>
-            <Button variant="secondary" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
             <Button
               type="submit"
-              variant="primary"
+              variant="default"
               data-testid="publish-submit"
               disabled={tag.trim() === "" || publish.isPending || (split && !balanced)}
             >
@@ -941,11 +957,11 @@ const JOB_STATE_LABEL: Record<string, string> = {
 };
 
 const JOB_STATE_VARIANT: Record<string, BadgeTone> = {
-  queued: "neutral",
-  running: "accent",
+  queued: "secondary",
+  running: "default",
   succeeded: "success",
   failed: "destructive",
-  cancelled: "neutral",
+  cancelled: "secondary",
 };
 
 
@@ -1097,17 +1113,17 @@ function ExportDialog({
             {/* Declared by the format, never by the release: a bbox-only format
                 loses a polygon whether or not today's dataset holds one. */}
             {lossy && (
-              <FieldHint data-testid="lossy-hint">
+              <FieldDescription data-testid="lossy-hint">
                 {chosen?.label} cannot take everything the schema allows.
-              </FieldHint>
+              </FieldDescription>
             )}
             {/* A formats read that failed is said, not swallowed: the hint is
                 absent for a reason, and the launch still asks before dropping. */}
             {chosen !== undefined && formats.isError && (
-              <FieldHint data-testid="lossy-unknown">
+              <FieldDescription data-testid="lossy-unknown">
                 Whether {chosen.label} loses anything could not be read — the export asks before
                 dropping a shape.
-              </FieldHint>
+              </FieldDescription>
             )}
           </div>
 
@@ -1118,26 +1134,36 @@ function ExportDialog({
                 for when there is something to choose. `None` is always an
                 option, because an export without a recipe applies no transform. */}
             {recipes.isError ? (
-              <FieldHint data-testid="export-recipes-error">
+              <FieldDescription data-testid="export-recipes-error">
                 {refusalProse(recipes.error)} The export runs without a recipe.
-              </FieldHint>
+              </FieldDescription>
             ) : recipes.data !== undefined && recipes.data.items.length === 0 ? (
-              <FieldHint data-testid="export-recipes-empty">
+              <FieldDescription data-testid="export-recipes-empty">
                 None yet — a recipe is written on the Pre-processing view. This export applies no
                 transform.
-              </FieldHint>
+              </FieldDescription>
             ) : (
               <Select value={recipe} onValueChange={setRecipe}>
-                <SelectTrigger id="export-recipe" data-testid="export-recipe">
+                <SelectTrigger id="export-recipe" data-testid="export-recipe" className={twoLineTrigger}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NO_RECIPE} meta="Images and labels as the release holds them">
-                    None
+                  <SelectItem value={NO_RECIPE}>
+                    <span className="flex flex-col items-start">
+                      <span>None</span>
+                      <span className="text-xs text-muted-foreground">
+                        Images and labels as the release holds them
+                      </span>
+                    </span>
                   </SelectItem>
                   {(recipes.data?.items ?? []).map((one) => (
-                    <SelectItem key={one.name} value={one.name} meta={describeRecipeSpec(one.spec)}>
-                      {one.name}
+                    <SelectItem key={one.name} value={one.name}>
+                      <span className="flex flex-col items-start">
+                        <span>{one.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {describeRecipeSpec(one.spec)}
+                        </span>
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1150,7 +1176,7 @@ function ExportDialog({
               below stay: a badge is the glance, prose is the answer. */}
           {shownState !== null && (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant={JOB_STATE_VARIANT[shownState] ?? "neutral"} data-testid="export-job-state">
+              <Badge variant={JOB_STATE_VARIANT[shownState] ?? "secondary"} data-testid="export-job-state">
                 {JOB_STATE_LABEL[shownState] ?? shownState}
               </Badge>
               {job.data?.total !== null && job.data?.total !== undefined && (
@@ -1162,11 +1188,9 @@ function ExportDialog({
           )}
 
           {needsConsent && (
-            <Alert
-              variant="destructive"
-              title="Some shapes cannot be exported"
-              data-testid="lossy-consent"
-            >
+            <Alert variant="destructive" data-testid="lossy-consent">
+              <AlertTitle>Some shapes cannot be exported</AlertTitle>
+              <AlertDescription>
               {/* The sentence names the target and the counts when the 409
                   carried its report; without one, the vocabulary's own line. */}
               <p>
@@ -1196,6 +1220,7 @@ function ExportDialog({
                 />
                 Export anyway, accepting that the copy is incomplete.
               </label>
+              </AlertDescription>
             </Alert>
           )}
 
@@ -1223,11 +1248,11 @@ function ExportDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button
-            variant="primary"
+            variant="default"
             data-testid="export-submit"
             // The consent gate: while the API is asking, the button stays shut until
             // the box is ticked. It is `allow_lossy` and never `confirm`.

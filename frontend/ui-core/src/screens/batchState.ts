@@ -66,13 +66,18 @@ import type { AssetProgress } from "../annotator/jobQueries.js";
  */
 export type StatusTone = "neutral" | "accent" | "success" | "warning" | "destructive";
 
-export type BadgeTone = StatusTone | "outline";
+/**
+ * `StatusTone` translated into the shadcn `Badge` component's own variant
+ * vocabulary: `default` is the near-black `accent` reading and `secondary` is
+ * the inert `neutral` one, since neither of those words is a `Badge` variant.
+ */
+export type BadgeTone = "default" | "secondary" | "outline" | "success" | "warning" | "destructive";
 
 /** `BatchState`, and how each reads. The order is the machine's own. */
 export const BATCH_STATE_VARIANT: Record<string, BadgeTone> = {
-  draft: "neutral",
+  draft: "secondary",
   approved: "outline",
-  in_annotation: "accent",
+  in_annotation: "default",
   completed: "success",
 };
 

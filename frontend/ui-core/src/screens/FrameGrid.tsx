@@ -47,14 +47,14 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { Check, Eraser, SkipForward, Trash2, Undo2, X } from "lucide-react";
 
 import { Async } from "../data/Async";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
+} from "../primitives/dialog";
 import { AssetThumbnail } from "./AssetThumbnail";
 import {
   ASSET_ACTION,
@@ -772,7 +772,7 @@ function BulkBar({
       </span>
 
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="bulk-skip"
         disabled={skippable.length === 0 || bulk.isPending}
@@ -784,7 +784,7 @@ function BulkBar({
       </Button>
 
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="bulk-restore"
         disabled={restorable.length === 0 || bulk.isPending}
@@ -802,7 +802,7 @@ function BulkBar({
         `return_to_annotator` pressed one frame at a time in the annotator.
       */}
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="bulk-return"
         disabled={returnable.length === 0 || bulk.isPending}
@@ -814,7 +814,7 @@ function BulkBar({
       </Button>
 
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="bulk-confirm"
         disabled={confirmable.length === 0 || bulk.isPending}
@@ -826,7 +826,7 @@ function BulkBar({
       </Button>
 
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="bulk-discard"
         disabled={discardable.length === 0 || discard.isPending}
@@ -845,7 +845,7 @@ function BulkBar({
         thing a person cannot see from the tiles.
       */}
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid="bulk-remove"
         disabled={!removable || removalIds.length === 0 || remove.isPending}
@@ -1044,7 +1044,7 @@ function RemoveFromBatchDialog({
             holds them. Only this batch stops listing them.
           </DialogDescription>
         <DialogFooter>
-          <Button variant="secondary" onClick={onCancel} data-testid="remove-cancel">
+          <Button variant="outline" onClick={onCancel} data-testid="remove-cancel">
             Cancel
           </Button>
           <Button variant="destructive" onClick={onConfirm} disabled={pending} data-testid="remove-confirm">
@@ -1080,7 +1080,7 @@ function DiscardModelLabelsDialog({
           back to unannotated, where a new pre-labeling run reaches them again.
         </DialogDescription>
         <DialogFooter>
-          <Button variant="secondary" onClick={onCancel} data-testid="discard-cancel">
+          <Button variant="outline" onClick={onCancel} data-testid="discard-cancel">
             Cancel
           </Button>
           <Button variant="destructive" onClick={onConfirm} disabled={pending} data-testid="discard-confirm">

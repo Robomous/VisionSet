@@ -47,9 +47,15 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
  * rather than an array index or a TypeScript tuple type.
  */
 const HEX = ["#", "[0-9a-fA-F]{3,8}"].join("");
-const ARBITRARY_COLOUR = new RegExp(
-  String.raw`-\[\s*(?:${HEX}|var\(\s*--|rgba?\(|hsla?\(|oklch\(|color-mix\()`,
-);
+const LITERAL = String.raw`(?:${HEX}|rgba?\(|hsla?\(|oklch\()`;
+// A raw colour right inside the bracket…
+const ARBITRARY_COLOUR = new RegExp(String.raw`-\[\s*(?:${LITERAL}|var\(\s*--)`);
+// The one colour-mix the preset writes mixes tokens only:
+// `color-mix(in_oklch,var(--secondary),var(--foreground)_5%)`. Any other
+// argument shape — a literal, a named colour, a bare number — is a colour.
+const TOKEN_MIX = String.raw`color-mix\(in_[a-z0-9-]+(?:,var\(--[a-z0-9-]+\)(?:_\d+(?:\.\d+)?%)?)+\)`;
+const BRACKET_MIX = new RegExp(String.raw`-\[\s*color-mix\([^\]]*\]`);
+const ALLOWED_MIX = new RegExp(String.raw`-\[\s*${TOKEN_MIX}\]`);
 const COMMENT = /^\s*(?:\/\/|\/\*|\*|#)/;
 const SOURCE = /\.(?:ts|tsx|css)$/;
 // The generated client is 6,000 machine-written lines and contains no class name.
@@ -60,7 +66,11 @@ export function colouredClassesIn(file, text) {
   return text
     .split("\n")
     .map((line, index) => ({ line, at: index + 1 }))
-    .filter(({ line }) => !COMMENT.test(line) && ARBITRARY_COLOUR.test(line))
+    .filter(
+      ({ line }) =>
+        !COMMENT.test(line) &&
+        (ARBITRARY_COLOUR.test(line) || (BRACKET_MIX.test(line) && !ALLOWED_MIX.test(line))),
+    )
     .map(({ line, at }) => `${file}:${at}: ${line.trim()}`);
 }
 
@@ -94,6 +104,16 @@ test("the scan finds a colour smuggled into a class, and nothing that merely loo
   assert.deepEqual(colouredClassesIn("h.tsx", `   * Never write \`bg-[${"#"}eb5a47]\`.`), []);
   // And a CSS custom property *declaration* is where colours are supposed to live.
   assert.deepEqual(colouredClassesIn("i.css", `  --color-primary: #eb5a47;`), []);
+  // A colour-mix of two tokens names no colour of its own — the preset's own
+  // Button hover step.
+  assert.deepEqual(colouredClassesIn("x.tsx", 'className="hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)]"'), []);
+  // A colour-mix that mixes in a literal is still a colour smuggled into a class.
+  assert.equal(colouredClassesIn("x.tsx", 'className="bg-[color-mix(in_srgb,#fff,var(--x))]"').length, 1);
+  // A named CSS colour inside color-mix is still a colour.
+  assert.equal(colouredClassesIn("x.tsx", 'className="bg-[color-mix(in_oklch,red,var(--x))]"').length, 1);
+  // Whatever order the tokens come in, and whichever colour space, two tokens
+  // stay two tokens.
+  assert.equal(colouredClassesIn("x.tsx", 'className="bg-[color-mix(in_srgb,var(--a)_40%,var(--b))]"').length, 0);
 });
 
 /**

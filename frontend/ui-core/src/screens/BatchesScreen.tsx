@@ -36,11 +36,12 @@ import { useState, type JSX } from "react";
 import { Async } from "../data/Async";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Badge } from "../primitives/Badge";
+import { inlineLink } from "../lib/button";
+import { Badge } from "../primitives/badge";
 import { SectionHeader } from "../patterns/SectionHeader";
-import { Button } from "../primitives/Button";
-import { FieldError } from "../primitives/Input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import { Button } from "../primitives/button";
+import { FieldError } from "../primitives/field";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
 import { ApproveAndStartButton } from "./ComposedTransitions";
 import { BATCH_STATE_VARIANT, batchStateLabel } from "./batchState";
@@ -89,7 +90,7 @@ export function BatchesScreen({
         actions={
           <>
             {onIngest !== undefined && (
-              <Button variant="secondary" data-testid="go-ingest" onClick={onIngest}>
+              <Button variant="outline" data-testid="go-ingest" onClick={onIngest}>
                 <Upload className="size-4" aria-hidden="true" />
                 Ingest
               </Button>
@@ -139,6 +140,7 @@ export function BatchesScreen({
                     <div className="flex flex-col items-start">
                       <Button
                         variant="link"
+                        className={inlineLink}
                         data-testid={`open-batch-${batch.name}`}
                         onClick={() => onOpenBatch(batch.id)}
                       >
@@ -161,11 +163,11 @@ export function BatchesScreen({
                     <div className="flex flex-col items-start gap-1">
                       {/* The label the gallery header already uses, rather than the
                           raw kernel identifier. */}
-                      <Badge variant={BATCH_STATE_VARIANT[batch.state] ?? "neutral"} data-testid={`state-${batch.name}`}>
+                      <Badge variant={BATCH_STATE_VARIANT[batch.state] ?? "secondary"} data-testid={`state-${batch.name}`}>
                         {batchStateLabel(batch.state)}
                       </Badge>
                       {batch.pre_label_run !== null && isLiveJobState(batch.pre_label_run.state) && (
-                        <Badge variant="accent" data-testid={`prelabel-live-${batch.id}`}>
+                        <Badge variant="default" data-testid={`prelabel-live-${batch.id}`}>
                           pre-labeling…
                         </Badge>
                       )}
@@ -289,7 +291,7 @@ function Lifecycle({
       // view — and a table holding a draft beside a queued batch used to render
       // several filled buttons down the same column, under a page header whose
       // "Annotate" is the actual forward action.
-      <Button variant="secondary" size="sm" data-testid={`approve-${batch.name}`} onClick={onApprove}>
+      <Button variant="outline" size="sm" data-testid={`approve-${batch.name}`} onClick={onApprove}>
         <Layers className="size-4" aria-hidden="true" />
         Approve
       </Button>
@@ -299,7 +301,7 @@ function Lifecycle({
     return (
       <div className="flex flex-col items-end gap-1">
         <Button
-          variant="secondary"
+          variant="outline"
           size="sm"
           data-testid={`start-${batch.name}`}
           disabled={start.isPending}

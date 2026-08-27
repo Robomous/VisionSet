@@ -50,7 +50,7 @@ colour — is a *value*, and values live in `styles.css`. A decoded property mis
 
 | Layer | Owns | Radius, as the worked example |
 | --- | --- | --- |
-| Preset intent | What the code decodes to (`shadcn preset decode b3bXyyPdWj`) | `radius: medium` |
+| Preset intent | What the code decodes to (`shadcn preset decode b2iH`) | `radius: medium` |
 | Runtime | The value that actually paints, in `styles.css` | `--radius: 0.625rem` |
 | CLI configuration | The schema-supported fields, in `components.json` | no `radius` field — the schema defines none |
 
@@ -175,19 +175,20 @@ anti-pattern this section exists to prevent:
   spacing scale — gaps between sections, page padding, list rhythm. A screen reaches for
   `p-6`, `gap-4`, `space-y-8`; it does not invent a control's internal geometry.
 
-Nova's component geometry, transcribed from the preset (the concrete defaults every
+Nova's component geometry, as the canonical files carry it (the concrete defaults every
 primitive targets):
 
 | Control | Geometry |
 | --- | --- |
 | Button — default | `h-8 px-2.5 gap-1.5 text-sm font-medium rounded-lg` |
+| Button — variants | shadcn's `default outline secondary ghost destructive link` plus VisionSet's `success`. VisionSet's former `secondary` (border + background) is byte-identical to shadcn's `outline`; canonical `secondary` (a filled muted weight) is a new option nobody uses yet. `link` is underline-on-hover only — a call site wanting a resting underline adds `className="underline"` |
 | Button — sizes | `sm` → `h-7`; `xs` → `h-6`; `lg` → `h-9`; `icon` → `size-8` |
 | Button — press / focus / disabled | press `active:translate-y-px`; focus `focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50`; disabled `opacity-50` |
 | Button — icon | `svg size-4` (`size-3.5`/`size-3` at `sm`/`xs`) |
 | Button — hover | default `hover:bg-primary/80`; secondary `color-mix(in oklch, var(--secondary), var(--foreground) 5%)`; destructive soft |
 | Input | `h-8 rounded-lg border-input px-2.5 text-base md:text-sm`; dark theme `bg-input/30` |
-| Badge | `h-5 px-2 text-xs rounded-4xl`; icons `size-3`. The `quiet` variant alone is `rounded-md` — a square, colourless label for a fact read beside other facts, never a state |
-| Menu — surface | `dark` subtree + `bg-popover p-1 rounded-lg ring-1 ring-foreground/10 shadow-md`, `min-w-32`, `duration-100` enter and **no exit** — see *Motion* |
+| Badge | `h-5 px-2 text-xs rounded-4xl`; icons `size-3`; variants are shadcn's (`default secondary destructive outline ghost link`) plus `success` and `warning` in the destructive recipe. A square label is `variant="outline" className="rounded-md"` at the call site |
+| Menu — surface | `dark` subtree + `bg-popover p-1 rounded-lg ring-1 ring-foreground/10 shadow-md`, `min-w-32` as a floor with the width **sized to the items** (not to the trigger), `duration-100` enter and **no exit** — both overrides are `menuSurface`, applied at the call site, not the canonical file; see *Motion* |
 | Menu — item | `px-1.5 py-1 text-sm rounded-md focus:bg-accent focus:text-accent-foreground`; destructive item soft |
 | Card | `rounded-xl ring-1 ring-foreground/10 text-sm`; `--card-spacing` = `--spacing(4)` (16px; 12px at the `sm` size); footer `bg-muted/50` |
 | Dialog — overlay | `bg-black/10 supports-backdrop-filter:backdrop-blur-xs duration-100` |
@@ -203,11 +204,21 @@ declarations. The table is the contract and the primitives are where it is spell
 control reaching past it is now a diff against this document rather than a gap in a
 migration.
 
+Since the canonical reinstall, the primitives are not *transcribed from* the preset — they
+are the files the shadcn CLI writes for it. `frontend/ui-core/shadcn/` holds each file as
+the CLI wrote it, and `tests/scripts/shadcn_canonical.test.mjs` refuses any primitive that
+is not its snapshot plus added lines. VisionSet adds exactly three variants that way (Badge
+`success`/`warning`, Button `success`); every other domain need is met at the call site.
+
 Two measurements are deliberately *not* the table's, and both are argued at the
-component: `SelectTrigger` is `min-h-8` rather than `h-8`, because a two-line option has
-to grow the control instead of being squashed inside it, and `Textarea` is `min-h-16` for
-the same reason. A minimum where the table says a fixed height is the one substitution
-this document sanctions, and only where the content's own height is the point.
+component: `Textarea` is `min-h-16` rather than a fixed height, because the content's own
+height is the point. `SelectTrigger` used to earn the same exception directly; the
+canonical trigger is `h-8` like any other control, and a two-line option instead composes
+`twoLineTrigger` (`frontend/ui-core/src/lib/select.ts`, exported) onto the trigger at the
+call site — `data-[size=default]:h-auto min-h-8`, plus dropping the value's line clamp —
+so the growth is a call-site constant, not a canonical declaration. A minimum where the
+table says a fixed height is the one substitution this document sanctions, and only where
+the content's own height is the point.
 
 ## Radius
 
@@ -273,14 +284,26 @@ and the layer still listening reads the same pointer-down as an interaction outs
 and dismisses — so the two cancel and the surface never appears. At `duration-100` that
 window covers the gap between an `Escape` and the click after it, which makes it a defect
 a fast hand meets routinely rather than an edge case. The annotation workspace is where
-that tempo is normal, and it is where the behaviour was measured; the fix belongs to the
-primitive because every menu in the product shared the flaw.
+that tempo is normal, and it is where the behaviour was measured.
 
-So `DropdownMenuContent` animates in and not out, and
-`frontend/app/e2e/annotate.spec.ts` holds the two presses that would catch a fade being
-restored. A surface that genuinely needs an exit — one whose trigger cannot be pressed
-again straight away, as a modal's cannot — may keep one; the tooltip keeps its own,
-because a hover has no toggle to swallow.
+The canonical `dropdown-menu.tsx` animates out like any other floating surface, and the
+snapshot gate holds it there — so the fix cannot live in the primitive, and lives in one
+constant instead. Every `DropdownMenuContent` call site applies `menuSurface`
+(`frontend/ui-core/src/lib/menu.ts`, `data-closed:animate-none! w-auto`, exported from
+`@visionset/ui-core`) to cancel the exit, and `frontend/app/e2e/annotate.spec.ts` holds
+the two presses that would catch a call site that dropped it. The same constant carries
+the width override, because canonical also pins the surface to
+`w-(--radix-dropdown-menu-trigger-width)` — behind an icon-sized trigger that is the
+128px floor, and every item longer than it wraps. Both facts are one rule (a menu that
+behaves like a menu) and travel together, so a call site cannot take the motion half and
+forget the geometry. `SelectContent` and
+`TooltipContent` keep animating out, unchanged: a surface that genuinely needs an exit —
+one whose trigger cannot be pressed again straight away, as a modal's cannot, or the
+tooltip's, which a hover has no toggle to swallow — never takes the constant.
+
+`TooltipProvider`'s own `delayDuration` is `0` — Radix's 700ms default, a debounce against
+an accidental hover, is not applied. A screen that wants one sets it once on the provider,
+in `frontend/app/src/main.tsx`.
 
 `prefers-reduced-motion` sits above all of this: the base layer in `styles.css` collapses
 every animation and transition to a single frame under that query, so none of the above is
@@ -362,10 +385,11 @@ token is a later product decision, not a gap in this rewrite.
 shadcn's model is **open code**: a primitive is source VisionSet owns and edits in
 `frontend/ui-core/src/primitives/`, not a package dependency upgraded blindly. Radix
 supplies the behaviour (focus management, `aria-*` wiring, keyboard patterns); the style
-on top of it is `radix-nova`, recorded as `components.json`'s `style` field. There is no
-`shadcn add` run against this package after the initial generation, and no component
-replacement — the same primitives from before this rewrite still exist, now speaking the
-preset's vocabulary.
+on top of it is `radix-nova`, recorded as `components.json`'s `style` field. Every file
+there is installed by `shadcn@4.19.0 add` (`pnpm --filter @visionset/ui-core shadcn:add
+<name>`), not hand-authored; `frontend/ui-core/shadcn/` holds each one exactly as the CLI
+wrote it, and a primitive is edited only by adding lines to that file —
+`tests/scripts/shadcn_canonical.test.mjs` is the gate.
 
 Rendered to look at: `pnpm --filter @visionset/app dev`, then the `/styleguide` route
 (`frontend/app/src/styleguide/Styleguide.tsx`).
@@ -420,6 +444,11 @@ First-class, and part of every rule above rather than a section to satisfy after
   `var()` inside a Tailwind class string is machine-refused
   (`tests/scripts/design_tokens.test.mjs`); the one sanctioned exception is an inline
   style carrying a schema-supplied class colour, which is user data no token could name.
+  A bracketed `color-mix()` is judged by its arguments: mixing tokens only — the preset's
+  own Button secondary hover, `color-mix(in oklch, var(--secondary), var(--foreground) 5%)`
+  — names no colour of its own and is allowed; a `color-mix()` naming a literal or a named
+  colour anywhere inside it is still a colour smuggled into a class, and is refused like
+  any other.
 - **A second token vocabulary.** No `surface`, `error`, `foreground-secondary`, or
   "accent as the action colour" alias — shadcn's names are the only spelling of intent,
   and a parallel naming layer is exactly the drift this rewrite removed.

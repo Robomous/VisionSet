@@ -273,7 +273,7 @@ function RailLink({
       // one — so the geometry comes from `buttonVariants` directly.
       className={({ isActive }) =>
         cn(
-          buttonVariants({ variant: "ghost", size: "md" }),
+          buttonVariants({ variant: "ghost", size: "default" }),
           "w-full justify-start gap-2 px-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:hover:bg-sidebar-accent",
           collapsed && "justify-center",
           isActive &&
@@ -303,7 +303,7 @@ function RailButton({
   return (
     <Button
       variant="ghost"
-      size={wide === true ? "md" : "icon"}
+      size={wide === true ? "default" : "icon"}
       data-testid={testId}
       aria-label={label}
       title={label}

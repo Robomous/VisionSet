@@ -50,15 +50,16 @@ import { ChevronDown, Database, Grid3x3, Layers, MoreHorizontal, Network, Pencil
 import { cva } from "class-variance-authority";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
-import { Button } from "../primitives/Button";
+import { menuSurface } from "../lib/menu";
+import { Button } from "../primitives/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "../primitives/Menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
+} from "../primitives/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/tabs";
 
 /**
  * The four sections of a project, in the order work happens in: what a project
@@ -219,7 +220,7 @@ function Strip(props: ProjectNavProps): JSX.Element {
         <Overflow {...props} />
       </div>
       <div className="min-w-0 overflow-x-auto pb-1.5 -mb-1.5">
-        <TabsList variant="line">
+        <TabsList variant="line" className="w-full justify-start border-b">
           {sections.map((section) => {
             const { label, icon: Icon } = SECTION_LABELS[section];
             return (
@@ -252,7 +253,7 @@ function Cta({ annotate, onIngest, contentOwnsTheAction = false, layout }: Proje
   if (onIngest === undefined) return null;
   return (
     <Button
-      variant={contentOwnsTheAction ? "secondary" : "primary"}
+      variant={contentOwnsTheAction ? "outline" : "default"}
       data-testid="go-ingest"
       className={wide}
       onClick={onIngest}
@@ -290,7 +291,7 @@ function AnnotateAction({
   const [only] = targets;
   if (targets.length === 1 && only !== undefined) {
     return (
-      <Button variant="primary" data-testid="go-annotate" className={className} onClick={() => go(only)}>
+      <Button variant="default" data-testid="go-annotate" className={className} onClick={() => go(only)}>
         <Pencil className="size-4" aria-hidden="true" />
         Annotate
       </Button>
@@ -301,13 +302,13 @@ function AnnotateAction({
       <DropdownMenuTrigger asChild>
         {/* Same testid and variant as the jumping form: one control with two
             shapes, and the chevron is what tells them apart. */}
-        <Button variant="primary" data-testid="go-annotate" className={className}>
+        <Button variant="default" data-testid="go-annotate" className={className}>
           <Pencil className="size-4" aria-hidden="true" />
           Annotate
           <ChevronDown className="size-4" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align="start" className={menuSurface}>
         {targets.map((batch) => (
           <DropdownMenuItem
             key={batch.id}
@@ -336,7 +337,7 @@ function Overflow({ onRename, onDelete }: ProjectNavProps): JSX.Element | null {
           <MoreHorizontal className="size-4" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align="start" className={menuSurface}>
         {onRename !== undefined && (
           <DropdownMenuItem data-testid="rename-project" onSelect={onRename}>
             <Pencil className="size-4" aria-hidden="true" />
@@ -345,7 +346,7 @@ function Overflow({ onRename, onDelete }: ProjectNavProps): JSX.Element | null {
         )}
         {onRename !== undefined && onDelete !== undefined && <DropdownMenuSeparator />}
         {onDelete !== undefined && (
-          <DropdownMenuItem destructive data-testid="delete-project" onSelect={onDelete}>
+          <DropdownMenuItem variant="destructive" data-testid="delete-project" onSelect={onDelete}>
             <Trash2 className="size-4" aria-hidden="true" />
             Delete
           </DropdownMenuItem>

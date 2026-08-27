@@ -73,13 +73,15 @@ import { Async } from "../data/Async";
 import { useApiClient } from "../data/ApiProvider";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { Badge } from "../primitives/Badge";
-import { Button } from "../primitives/Button";
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
+import { Badge } from "../primitives/badge";
+import { Button } from "../primitives/button";
 import { formatCount, formatWhen } from "../lib/format";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { DEFAULT_PROJECT_SECTION, PROJECT_SECTIONS, type ProjectSection } from "../patterns/ProjectNav";
 import { SectionHeader } from "../patterns/SectionHeader";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { BatchesScreen } from "./BatchesScreen";
 import { DatasetScreen, type DatasetTab } from "./DatasetScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
@@ -556,7 +558,7 @@ function Section({
 }): JSX.Element | null {
   const headerIngest: ReactNode =
     ingestInHeader === undefined ? undefined : (
-      <Button variant="secondary" data-testid="go-ingest" onClick={ingestInHeader}>
+      <Button variant="outline" data-testid="go-ingest" onClick={ingestInHeader}>
         <Upload className="size-4" aria-hidden="true" />
         Ingest
       </Button>
@@ -863,7 +865,7 @@ function BlockingAssets({
                         <Button
                           key={batchId}
                           variant="link"
-                          className="text-xs"
+                          className={cn(inlineLink, "text-xs")}
                           data-testid="blocking-asset-batch"
                           onClick={() => onOpenBatch(batchId)}
                         >
@@ -967,7 +969,7 @@ function VersionRow({
     <TableRow data-testid={`version-${entry.version}`} {...(nested ? { "data-nested": "true" } : {})}>
       <TableCell className={`flex items-center gap-2${nested ? " pl-8" : ""}`}>
         v{entry.version}
-        {entry.version === active && <Badge variant="accent">active</Badge>}
+        {entry.version === active && <Badge variant="default">active</Badge>}
       </TableCell>
       {/* Both are null for a version published before the fields existed, and nothing backfills
           either — an em dash is the honest rendering of a moment nobody recorded. */}
@@ -1040,7 +1042,7 @@ function AnnotationRun({
               <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
             )}
             v{oldest.version}–v{newest.version}
-            {newest.version === active && <Badge variant="accent">active</Badge>}
+            {newest.version === active && <Badge variant="default">active</Badge>}
           </button>
         </TableCell>
         <TableCell className="text-muted-foreground">

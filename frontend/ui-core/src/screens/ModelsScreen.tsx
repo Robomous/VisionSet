@@ -160,9 +160,12 @@ import {
 } from "../data/inferenceQueries";
 import { jobFailureProse, refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
+import { menuSurface } from "../lib/menu";
+import { progressAria } from "../lib/progress";
+import { twoLineTrigger } from "../lib/select";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
-import { Badge } from "../primitives/Badge";
-import { Button } from "../primitives/Button";
+import { Badge } from "../primitives/badge";
+import { Button } from "../primitives/button";
 import {
   Card,
   CardAction,
@@ -171,22 +174,24 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "../primitives/Card";
-import { Progress } from "../primitives/Feedback";
+} from "../primitives/card";
+import { Progress } from "../primitives/progress";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
+} from "../primitives/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../primitives/Menu";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+} from "../primitives/dropdown-menu";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
 import {
   Select,
   SelectContent,
@@ -195,7 +200,7 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import {
   CUSTOM_MODEL,
   DEVICES,
@@ -246,7 +251,7 @@ export function ModelsScreen(): JSX.Element {
             by every project in this workspace.
           </p>
         </div>
-        <Button variant="primary" data-testid="new-connection" onClick={() => setCreating(true)}>
+        <Button variant="default" data-testid="new-connection" onClick={() => setCreating(true)}>
           <Plug aria-hidden="true" />
           Add model
         </Button>
@@ -262,7 +267,7 @@ export function ModelsScreen(): JSX.Element {
           // `secondary`, not `primary`: the header's "Add model" is on screen
           // and opens the same dialog. One filled action per view.
           action: (
-            <Button variant="secondary" onClick={() => setCreating(true)}>
+            <Button variant="outline" onClick={() => setCreating(true)}>
               Add model
             </Button>
           ),
@@ -549,7 +554,7 @@ export function ConnectionCard({
                   <MoreHorizontal aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className={menuSurface}>
                 {/*
                   Two checks over the same files, and each label says what its
                   own check *proves* rather than what it is called.
@@ -614,7 +619,7 @@ export function ConnectionCard({
           <ul className="flex flex-wrap gap-1.5" aria-label="What it does" data-testid="connection-abilities">
             {abilities.map((label) => (
               <li key={label}>
-                <Badge variant="quiet" data-testid="ability-label">
+                <Badge variant="outline" className="rounded-md" data-testid="ability-label">
                   {label}
                 </Badge>
               </li>
@@ -669,7 +674,7 @@ export function ConnectionCard({
           </FieldError>
         )}
         {probe.isPending && (
-          <FieldHint data-testid="test-endpoint-pending">Asking the endpoint…</FieldHint>
+          <FieldDescription data-testid="test-endpoint-pending">Asking the endpoint…</FieldDescription>
         )}
         {probe.isError && (
           <FieldError data-testid="test-endpoint-error">{refusalProse(probe.error)}</FieldError>
@@ -697,7 +702,7 @@ export function ConnectionCard({
             control may exist is still `allowed_actions` and nothing else.
           */}
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
             data-testid="download-weights"
             disabled={busy}
@@ -819,7 +824,12 @@ function RunProgress({
   return (
     <div className="flex w-56 flex-col gap-1" data-testid={testId}>
       {percent !== null && (
-        <Progress value={percent} data-testid={`${testId}-bar`} data-phase={phase} />
+        <Progress
+          value={percent}
+          {...progressAria(percent)}
+          data-testid={`${testId}-bar`}
+          data-phase={phase}
+        />
       )}
       {/*
         Tabular figures, `DESIGN.md`'s Numbers rule: the number changes every two
@@ -917,10 +927,10 @@ function FixedModel({ connection }: { readonly connection: Connection }): JSX.El
       <p className="font-mono text-sm break-all" data-testid="connection-model-fixed">
         {connection.model_id} @ {connection.model_revision}
       </p>
-      <FieldHint>
+      <FieldDescription>
         Set up with these weights, so the model cannot change here. Add a new model to run a
         different one.
-      </FieldHint>
+      </FieldDescription>
     </div>
   );
 }
@@ -1256,7 +1266,7 @@ function ConnectionForm({
                 onChange={(event) => setName(event.target.value)}
                 autoFocus
               />
-              <FieldHint>Unique in this workspace, ignoring case.</FieldHint>
+              <FieldDescription>Unique in this workspace, ignoring case.</FieldDescription>
             </div>
             {/*
               The offered list is the *local* form's, and only its. An offer is
@@ -1290,7 +1300,7 @@ function ConnectionForm({
                         be announced twice.
                       */}
                       <LoadingState rows={1} label="" />
-                      <FieldHint>Reading which models this installation can run…</FieldHint>
+                      <FieldDescription>Reading which models this installation can run…</FieldDescription>
                     </div>
                   ) : catalog.isError ? (
                     <div data-testid="catalog-unavailable">
@@ -1302,15 +1312,19 @@ function ConnectionForm({
                       />
                     </div>
                   ) : groups.length === 0 ? (
-                    <FieldHint data-testid="catalog-empty">
+                    <FieldDescription data-testid="catalog-empty">
                       No installed driver offers a model by name. Install a provider
                       distribution to be offered one, or name a model below and pin its
                       revision yourself.
-                    </FieldHint>
+                    </FieldDescription>
                   ) : (
                     <>
                       <Select value={choice} onValueChange={pickModel}>
-                        <SelectTrigger id="connection-model" data-testid="connection-model">
+                        <SelectTrigger
+                          id="connection-model"
+                          data-testid="connection-model"
+                          className={twoLineTrigger}
+                        >
                           <SelectValue placeholder="Choose a model" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1325,31 +1339,34 @@ function ConnectionForm({
                                 harder to read than a stacked one.
                               */}
                               {group.entries.map((entry) => (
-                                <SelectItem
-                                  key={entry.model_id}
-                                  value={entry.model_id}
-                                  meta={entry.hint}
-                                >
-                                  {entry.model_id}
+                                <SelectItem key={entry.model_id} value={entry.model_id}>
+                                  <span className="flex flex-col items-start">
+                                    <span>{entry.model_id}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {entry.hint}
+                                    </span>
+                                  </span>
                                 </SelectItem>
                               ))}
                             </SelectGroup>
                           ))}
                           <SelectGroup>
-                            <SelectItem
-                              value={CUSTOM_MODEL}
-                              meta="Any model id, at a revision you pin yourself"
-                            >
-                              Custom model…
+                            <SelectItem value={CUSTOM_MODEL}>
+                              <span className="flex flex-col items-start">
+                                <span>Custom model…</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Any model id, at a revision you pin yourself
+                                </span>
+                              </span>
                             </SelectItem>
                           </SelectGroup>
                         </SelectContent>
                       </Select>
-                      <FieldHint>
+                      <FieldDescription>
                         {custom
                           ? "Any model this build has an adapter for. The list above is a starting point, not a limit."
                           : "Pinned to the revision the driver that offers it declares."}
-                      </FieldHint>
+                      </FieldDescription>
                     </>
                   )}
                   {/* What choosing this model commits to, read where the choice is made. */}
@@ -1400,7 +1417,7 @@ function ConnectionForm({
                         value={revision}
                         onChange={(event) => setRevision(event.target.value)}
                       />
-                      <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
+                      <FieldDescription>Pinned. A moving pointer is not a provenance.</FieldDescription>
                     </div>
                   </>
                 )}
@@ -1447,11 +1464,11 @@ function ConnectionForm({
                         ))}
                       </SelectContent>
                     </Select>
-                    <FieldHint data-testid="precision-hint">
+                    <FieldDescription data-testid="precision-hint">
                       {precisionsFor(device).length === 1
                         ? "Half precision applies on CUDA only — on a CPU it has no effect."
                         : "fp16 halves the memory and runs faster on CUDA."}
-                    </FieldHint>
+                    </FieldDescription>
                   </div>
               </>
             ) : (
@@ -1465,7 +1482,7 @@ function ConnectionForm({
                     value={revision}
                     onChange={(event) => setRevision(event.target.value)}
                   />
-                  <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
+                  <FieldDescription>Pinned. A moving pointer is not a provenance.</FieldDescription>
                 </div>
                 )}
                 <div className="flex flex-col gap-1.5">
@@ -1485,11 +1502,11 @@ function ConnectionForm({
                     value={credentialEnv}
                     onChange={(event) => setCredentialEnv(event.target.value)}
                   />
-                  <FieldHint>
+                  <FieldDescription>
                     The name of an environment variable, not the secret itself. VisionSet reads
                     it where the server runs, sends it as a bearer token, and never stores the
                     value. Leave empty if the endpoint wants none.
-                  </FieldHint>
+                  </FieldDescription>
                 </div>
               </>
             )}
@@ -1498,12 +1515,12 @@ function ConnectionForm({
               <FieldError data-testid="connection-error">{refusalProse(failure)}</FieldError>
             )}
             <DialogFooter>
-              <Button variant="secondary" onClick={onClose}>
+              <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
               <Button
                 type="submit"
-                variant="primary"
+                variant="default"
                 data-testid="connection-submit"
                 disabled={!complete || pending}
               >
@@ -1671,7 +1688,7 @@ function DeleteConnectionDialog({
           </FieldError>
         )}
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button

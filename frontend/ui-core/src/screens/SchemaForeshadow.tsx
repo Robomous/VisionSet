@@ -21,8 +21,10 @@
 
 import type { JSX } from "react";
 
-import { Alert } from "../primitives/Badge";
-import { Button } from "../primitives/Button";
+import { inlineLink } from "../lib/button";
+import { cn } from "../lib/cn";
+import { Alert, AlertDescription } from "../primitives/alert";
+import { Button } from "../primitives/button";
 import { useProjectReadiness } from "./queries";
 
 export function SchemaForeshadow({
@@ -37,17 +39,19 @@ export function SchemaForeshadow({
   if (readiness === null || readiness.hasSchema) return null;
   return (
     <Alert data-testid="schema-foreshadow">
+      <AlertDescription>
       <span>You can ingest now — you&rsquo;ll need labels before annotating.</span>
       {onOpenSchema !== undefined && (
         <Button
           variant="link"
-          className="ml-2"
+          className={cn(inlineLink, "ml-2")}
           data-testid="foreshadow-schema"
           onClick={onOpenSchema}
         >
           Define your labels
         </Button>
       )}
+      </AlertDescription>
     </Alert>
   );
 }

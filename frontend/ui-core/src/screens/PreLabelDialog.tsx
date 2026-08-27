@@ -93,23 +93,27 @@ import { JOB_ACTION, declares } from "../data/capabilities";
 import { producesProse } from "../data/geometryCategory";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
-import { Alert, Badge } from "../primitives/Badge";
-import { Button } from "../primitives/Button";
+import { Alert, AlertDescription } from "../primitives/alert";
+import { Badge } from "../primitives/badge";
+import { Button } from "../primitives/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+} from "../primitives/dialog";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription, FieldError } from "../primitives/field";
+import { twoLineTrigger } from "../lib/select";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import type { BadgeTone, Segment } from "./batchState";
 import type { KnownMembers } from "../generated/api";
 import { jobKeys, useJobProgress } from "../annotator/jobQueries";
@@ -149,11 +153,11 @@ const JOB_STATE_LABEL: Record<string, string> = {
 };
 
 const JOB_STATE_VARIANT: Record<string, BadgeTone> = {
-  queued: "neutral",
-  running: "accent",
+  queued: "secondary",
+  running: "default",
   succeeded: "success",
   failed: "destructive",
-  cancelled: "neutral",
+  cancelled: "secondary",
 };
 
 /** The five faces of this dialog, over the watched run and nothing else. */
@@ -399,7 +403,7 @@ export function PromptClasses({ plan }: { readonly plan: PreLabelPlan | null }):
  */
 function DeadStart(): JSX.Element {
   return (
-    <Button variant="secondary" data-testid="prelabel-submit" disabled>
+    <Button variant="outline" data-testid="prelabel-submit" disabled>
       Start
     </Button>
   );
@@ -469,13 +473,20 @@ export function PreLabelSettings({
           </p>
         ) : (
           <Select value={activeId} onValueChange={onConnectionChange} disabled={disabled}>
-            <SelectTrigger id="prelabel-model" data-testid="prelabel-model">
+            <SelectTrigger
+              id="prelabel-model"
+              data-testid="prelabel-model"
+              className={twoLineTrigger}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {candidates.map((one) => (
-                <SelectItem key={one.id} value={one.id} meta={connectionMeta(one)}>
-                  {one.name}
+                <SelectItem key={one.id} value={one.id}>
+                  <span className="flex flex-col items-start">
+                    <span>{one.name}</span>
+                    <span className="text-xs text-muted-foreground">{connectionMeta(one)}</span>
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -496,11 +507,11 @@ export function PreLabelSettings({
           disabled={disabled}
           onChange={(event) => onConfidenceChange(event.target.value)}
         />
-        <FieldHint>
+        <FieldDescription>
           How well a region matches the words it was asked for — a different scale from a
           point-prompt model&rsquo;s mask confidence, which is why the number needs a name of
           its own rather than a bare percentage.
-        </FieldHint>
+        </FieldDescription>
       </div>
 
       {selected !== null && (
@@ -526,10 +537,10 @@ export function PreLabelSettings({
               Tick at least one shape — a run that writes no shape has nothing to do.
             </FieldError>
           ) : (
-            <FieldHint>
+            <FieldDescription>
               This model answers in every shape here, one region each, and writes every ticked
               one. Untick a shape to leave it out of the run.
-            </FieldHint>
+            </FieldDescription>
           )}
         </fieldset>
       )}
@@ -561,7 +572,7 @@ export function PreLabelButton({
   return (
     <>
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         className={className}
         data-testid={`pre-label-${job.id}`}
@@ -769,7 +780,7 @@ function PreLabelDialog({
           {view !== null && (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <Badge
-                variant={JOB_STATE_VARIANT[view.state] ?? "neutral"}
+                variant={JOB_STATE_VARIANT[view.state] ?? "secondary"}
                 data-testid="prelabel-job-state"
               >
                 {JOB_STATE_LABEL[view.state] ?? view.state}
@@ -851,10 +862,10 @@ function PreLabelDialog({
                       {preLabeled === 1 ? "" : "s"}
                     </span>
                   </label>
-                  <FieldHint>
+                  <FieldDescription>
                     Frames anyone has edited, confirmed or skipped in this job are never
                     touched. This cannot be undone.
-                  </FieldHint>
+                  </FieldDescription>
                 </div>
               )}
 
@@ -868,7 +879,7 @@ function PreLabelDialog({
 
           {blocked && mode !== "running" && (
             <Alert data-testid="prelabel-blocked-reason">
-              {blockedReason(view, preLabeled)}
+              <AlertDescription>{blockedReason(view, preLabeled)}</AlertDescription>
             </Alert>
           )}
 
@@ -885,14 +896,14 @@ function PreLabelDialog({
           {mode === "running" && (
             // The run keeps going in the background — closing only stops
             // watching it, so this is the one button and it is the primary one.
-            <Button variant="primary" onClick={close}>
+            <Button variant="default" onClick={close}>
               Close
             </Button>
           )}
 
           {mode !== "running" && (
             <>
-              <Button variant="secondary" onClick={close}>
+              <Button variant="outline" onClick={close}>
                 Close
               </Button>
 
@@ -902,7 +913,7 @@ function PreLabelDialog({
                 // button already on screen rather than replace it with another.
                 <>
                   <Button
-                    variant={blocked ? "secondary" : "primary"}
+                    variant={blocked ? "outline" : "default"}
                     data-testid="prelabel-submit"
                     disabled={launchDisabled}
                     onClick={submit}
@@ -910,7 +921,7 @@ function PreLabelDialog({
                     {running ? "Labeling…" : "Start"}
                   </Button>
                   {blocked && preLabeled > 0 && (
-                    <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
+                    <Button variant="default" data-testid="prelabel-edit" onClick={goToPreLabeled}>
                       Edit these frames
                     </Button>
                   )}
@@ -923,7 +934,7 @@ function PreLabelDialog({
                     // Quiet, deliberately: the next real step is correcting what
                     // this run already produced, not launching another one over it.
                     <Button
-                      variant="secondary"
+                      variant="outline"
                       data-testid="prelabel-run-again"
                       disabled={launchDisabled}
                       onClick={submit}
@@ -933,7 +944,7 @@ function PreLabelDialog({
                   ) : (
                     <DeadStart />
                   )}
-                  <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
+                  <Button variant="default" data-testid="prelabel-edit" onClick={goToPreLabeled}>
                     Edit these frames
                   </Button>
                 </>
@@ -944,21 +955,21 @@ function PreLabelDialog({
                   <>
                     <div className="flex flex-col items-end gap-1">
                       <Button
-                        variant="primary"
+                        variant="default"
                         data-testid="prelabel-continue"
                         disabled={launchDisabled}
                         onClick={submit}
                       >
                         Continue
                       </Button>
-                      <FieldHint data-testid="prelabel-continue-hint">
+                      <FieldDescription data-testid="prelabel-continue-hint">
                         {replacing
                           ? `Also rewrites the model labels on the ${preLabeled} pre-labeled frame${preLabeled === 1 ? "" : "s"}.`
                           : "Only untouched assets are eligible — this can’t create a duplicate label."}
-                      </FieldHint>
+                      </FieldDescription>
                     </div>
                     {blocked && preLabeled > 0 && (
-                      <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
+                      <Button variant="default" data-testid="prelabel-edit" onClick={goToPreLabeled}>
                         Edit these frames
                       </Button>
                     )}
@@ -971,7 +982,7 @@ function PreLabelDialog({
                 (offering ? (
                   <>
                     <Button
-                      variant="primary"
+                      variant="default"
                       data-testid="prelabel-retry"
                       disabled={launchDisabled}
                       onClick={submit}
@@ -979,7 +990,7 @@ function PreLabelDialog({
                       Try again
                     </Button>
                     {blocked && preLabeled > 0 && (
-                      <Button variant="primary" data-testid="prelabel-edit" onClick={goToPreLabeled}>
+                      <Button variant="default" data-testid="prelabel-edit" onClick={goToPreLabeled}>
                         Edit these frames
                       </Button>
                     )}

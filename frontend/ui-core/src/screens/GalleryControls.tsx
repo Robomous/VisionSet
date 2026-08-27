@@ -13,8 +13,9 @@ import { useCallback, useRef, useState, type JSX } from "react";
 import { Play, User, X } from "lucide-react";
 
 import type { AssetProgress } from "../annotator/jobQueries";
-import { Button } from "../primitives/Button";
-import { FieldError, Input } from "../primitives/Input";
+import { Button } from "../primitives/button";
+import { FieldError } from "../primitives/field";
+import { Input } from "../primitives/input";
 import { JOB_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import { DEFAULT_DENSITY, DENSITY_STEPS, FrameGrid } from "./FrameGrid";
@@ -225,7 +226,7 @@ export function StartJobButton({
   return (
     <div className="flex flex-col gap-1">
       <Button
-        variant="secondary"
+        variant="outline"
         size="sm"
         data-testid={`start-job-${job.id}`}
         disabled={start.isPending}

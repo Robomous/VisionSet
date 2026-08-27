@@ -24,15 +24,17 @@ import type { JSX } from "react";
 
 import { geometryLabel, groupGeometries } from "../data/geometryCategory";
 import { classColor, hexColor } from "../palette";
-import { Button } from "../primitives/Button";
-import { FieldHint, Input, Label } from "../primitives/Input";
+import { Button } from "../primitives/button";
+import { Input } from "../primitives/input";
+import { Label } from "../primitives/label";
+import { FieldDescription } from "../primitives/field";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/select";
 import type { AttributeBody, GeometryType, LabelClassBody } from "../screens/queries";
 
 /**
@@ -184,9 +186,9 @@ export function ClassFields({
               </div>
             ))}
           </div>
-          <FieldHint>
+          <FieldDescription>
             {describeGeometries(declared.geometries)}
-          </FieldHint>
+          </FieldDescription>
         </fieldset>
       </div>
 

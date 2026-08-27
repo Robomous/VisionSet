@@ -387,7 +387,8 @@ describe("verification", () => {
     });
 
     render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
-    await screen.findByTestId("release-v1");
+    const releaseCard = await screen.findByTestId("release-v1");
+    expect(within(releaseCard).getByRole("heading", { level: 3, name: /v1/i })).not.toBeNull();
     expect(sent.some((r) => r.url.endsWith("/verify"))).toBe(false);
 
     await userEvent.click(screen.getByTestId("verify-v1"));

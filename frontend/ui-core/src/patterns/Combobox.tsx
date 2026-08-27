@@ -43,7 +43,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 
 import { cn } from "../lib/cn";
-import { Input } from "./Input";
+import { Input } from "../primitives/input";
 
 /** An extra row after the items, or `null` for none in this state. */
 export interface ComboboxFooter {

@@ -27,7 +27,8 @@ import { ApiProvider } from "../data/ApiProvider";
 import { clearPrefs, writePref } from "../data/prefs";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
-import { TooltipProvider } from "../primitives/Menu";
+import { TooltipProvider } from "../primitives/tooltip";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
 const API = "http://visionset.test";
@@ -245,6 +246,9 @@ beforeEach(() => {
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
+  // The tool palette's tooltips open on the same hover `userEvent.click`
+  // produces. See `testing/resizeObserver.ts`.
+  stubResizeObserver();
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
     if (request.method !== "GET") {

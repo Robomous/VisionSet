@@ -28,8 +28,8 @@ import type { WireAnnotation } from "../annotator/jobQueries";
 import { refusalProse } from "../data/refusals";
 import { formatWhen } from "../lib/format";
 import { classColor } from "../palette";
-import { Badge } from "../primitives/Badge";
-import { Button } from "../primitives/Button";
+import { Badge } from "../primitives/badge";
+import { Button } from "../primitives/button";
 import { DescriptionList, DescriptionRow } from "../patterns/DataDisplay";
 import { StaticAnnotationOverlay } from "../patterns/StaticAnnotationOverlay";
 import {
@@ -38,7 +38,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
-} from "../primitives/Dialog";
+} from "../primitives/dialog";
 import { useActiveSchema, useDatasetAssetAnnotations, type DatasetAsset } from "./queries";
 
 export interface DatasetAssetDialogProps {
@@ -140,7 +140,7 @@ export function DatasetAssetDialog({
         <DialogFooter className="mx-0 mb-0 flex-row flex-wrap items-center justify-between">
           <div className="flex items-center gap-1">
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               data-testid="preview-previous"
               aria-label="Previous image"
@@ -150,7 +150,7 @@ export function DatasetAssetDialog({
               <ChevronLeft aria-hidden="true" />
             </Button>
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               data-testid="preview-next"
               aria-label="Next image"
@@ -172,7 +172,7 @@ export function DatasetAssetDialog({
           </div>
           <div className="flex items-center gap-2">
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               data-testid="preview-remove"
               onClick={() => onRemove(asset)}
@@ -180,7 +180,7 @@ export function DatasetAssetDialog({
               <Trash2 aria-hidden="true" />
               Remove from dataset
             </Button>
-            <Button variant="secondary" size="sm" onClick={onClose}>
+            <Button variant="outline" size="sm" onClick={onClose}>
               Close
             </Button>
           </div>
