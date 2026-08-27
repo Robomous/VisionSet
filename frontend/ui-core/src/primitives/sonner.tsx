@@ -1,8 +1,24 @@
 "use client"
 
-import { useTheme } from "next-themes"
+import * as React from "react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+
+// SHADCN FRAMEWORK ADAPTER: shadcn's sonner reads next-themes (a Next.js
+// integration). VisionSet is Vite with one theme source, `.dark` on <html>
+// (styles.css `@custom-variant dark`). This hook is the only difference from
+// frontend/ui-core/shadcn/sonner.tsx; drop it if the app ever adopts a
+// provider that shadcn's file can read.
+function useTheme(): { theme: "light" | "dark" } {
+  const read = () => (typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light")
+  const [theme, setTheme] = React.useState<"light" | "dark">(read)
+  React.useEffect(() => {
+    const observer = new MutationObserver(() => setTheme(read()))
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] })
+    return () => observer.disconnect()
+  }, [])
+  return { theme }
+}
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
