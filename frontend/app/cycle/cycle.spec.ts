@@ -410,9 +410,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // road below, which is the one that exercises the partition dialog.
     await expect(page.getByTestId("approve-start-cycle-batch")).toHaveAttribute(
       "data-variant",
-      "primary",
+      "default",
     );
-    await expect(page.getByTestId("open-batch")).toHaveAttribute("data-variant", "secondary");
+    await expect(page.getByTestId("open-batch")).toHaveAttribute("data-variant", "outline");
     await expect(page.getByTestId("approve-needs-schema")).toHaveCount(0);
     await page.getByTestId("open-batch").click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/batches\/[0-9a-f-]+$/);
@@ -481,10 +481,10 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await openProject(page, PROJECT, "batches");
     await expect(page.getByTestId("batches-table")).toBeVisible();
     await expect(page.getByTestId("batch-cycle-batch")).toContainText("pending approval");
-    // A draft row offers the composed step too, secondary like every row action.
+    // A draft row offers the composed step too, outline like every row action.
     await expect(page.getByTestId("approve-start-cycle-batch")).toHaveAttribute(
       "data-variant",
-      "secondary",
+      "outline",
     );
 
     await page.getByTestId("approve-cycle-batch").click();

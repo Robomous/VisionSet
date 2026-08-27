@@ -49,7 +49,7 @@ const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
 export interface ApproveAndStartButtonProps {
   readonly batch: Batch;
   readonly projectId: string;
-  /** The ingest outcome card's own filled control; a table row's is secondary. */
+  /** The ingest outcome card's own filled control; a table row's is outline. */
   readonly variant?: "default" | "outline";
   readonly size?: "sm" | "default";
   readonly className?: string;
