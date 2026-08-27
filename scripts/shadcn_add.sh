@@ -9,5 +9,5 @@ pnpm dlx shadcn@4.19.0 add "$@" --overwrite --yes
 mkdir -p shadcn
 for name in "$@"; do
   cp "src/primitives/$name.tsx" "shadcn/$name.tsx"
-  node ../../scripts/shadcn_relativize.mjs "src/primitives/$name.tsx"
 done
+node ../../scripts/shadcn_relativize.mjs src/primitives/*.tsx
