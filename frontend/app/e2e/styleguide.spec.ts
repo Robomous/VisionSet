@@ -445,3 +445,67 @@ test("a two-line option grows its trigger, and a one-line one is Nova's 32px", a
   const id = page.getByLabel("Model").locator("span", { hasText: "facebook/sam2.1-hiera-base-plus" }).first();
   await expect(id).toHaveCSS("text-overflow", "clip");
 });
+
+/**
+ * Base UI's Combobox, read back from a real browser rather than jsdom.
+ *
+ * `combobox.test.tsx` proves the same shape — filter-as-you-type, Escape closes
+ * — against the fruit demo; this is the styleguide's own seven class names,
+ * and it adds the one thing jsdom cannot: keyboard selection actually closing
+ * the popup and committing a value, not just removing the highlighted option
+ * from the tree.
+ */
+test("the Combobox filters as you type, ArrowDown+Enter selects and closes, and Escape backs out", async ({
+  page,
+}) => {
+  const input = page.getByLabel("Class");
+  await input.click();
+  await input.fill("an");
+
+  // Of the seven demo classes, "lane" is the only one containing "an".
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await expect(page.getByRole("option", { name: "lane" })).toBeVisible();
+
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("option")).toHaveCount(0);
+  await expect(input).toHaveValue("lane");
+
+  await input.click();
+  await input.fill("an");
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("option")).toHaveCount(0);
+});
+
+/**
+ * `Sheet` shares Radix's `Dialog` primitive under the hood (`shadcn/sheet.tsx`),
+ * so this is the same claim as the dialog test above, made about the other
+ * shape: it opens as `role="dialog"`, Escape closes it, and focus comes back
+ * to the outline trigger that opened it.
+ */
+test("a sheet opens as a dialog, closes on Escape and returns focus to its trigger", async ({ page }) => {
+  const trigger = page.getByRole("button", { name: "Open sheet" });
+  await trigger.click();
+
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
+/**
+ * The extension contract's own claim (`shadcn_extensions.test.mjs`, "a status
+ * Badge paints a soft surface and readable ink, never a coloured stroke"),
+ * read back as a computed style rather than a class string — and in both
+ * themes, since `border-transparent` is a base class every variant inherits
+ * rather than something `dark:` has to repeat.
+ */
+test("a status Badge is a soft fill with no visible border, in both themes", async ({ page }) => {
+  for (const variant of ["success", "warning", "info", "quiet"]) {
+    await expect(page.getByTestId(`badge-${variant}-light`)).toHaveCSS("border-color", "rgba(0, 0, 0, 0)");
+    await expect(page.getByTestId(`badge-${variant}-dark`)).toHaveCSS("border-color", "rgba(0, 0, 0, 0)");
+  }
+});
