@@ -87,7 +87,7 @@ export function RecipeList({
                   </span>
                 </span>
                 {recipe.spec.target != null && (
-                  <Badge variant="outline" className="rounded-md">{labelFor(recipe.spec.target)}</Badge>
+                  <Badge variant="quiet">{labelFor(recipe.spec.target)}</Badge>
                 )}
               </button>
               <Button

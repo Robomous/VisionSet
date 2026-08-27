@@ -116,9 +116,18 @@ const LEGACY_PRIMITIVES = [
   "Tabs",
 ];
 
+/**
+ * `Badge`'s `quiet` variant is the shape for a soft, borderless status chip —
+ * an `outline` Badge hand-rounded with a `rounded-*` utility on `className`
+ * is that same shape built by hand, so it is forbidden wherever both
+ * attributes land on the one tag (in either order).
+ */
+const BADGE_OUTLINE_ROUNDED = /(?=[\s\S]*\bvariant="outline")(?=[\s\S]*\bclassName="[^"]*\brounded-)/;
+
 const TAG_ATTRIBUTE_RULES = [
   { tag: "Button", attribute: /variant="(?:primary|success)"|size="(?:md)"/ },
   { tag: "Badge", attribute: /variant="(?:neutral|accent)"/ },
+  { tag: "Badge", attribute: BADGE_OUTLINE_ROUNDED },
   { tag: "Progress", attribute: /\bvariant=/ },
   { tag: "SelectItem", attribute: /\bmeta=/ },
   { tag: "Alert", attribute: /\btitle=/ },
@@ -214,6 +223,16 @@ test("legacyVocabularyIn flags v1's shapes and stays silent on the shadcn contra
   assert.deepEqual(legacyVocabularyIn("f.tsx", `<Alert title="Heads up">…</Alert>`), [
     `f.tsx:1: <Alert title="Heads up">`,
   ]);
+  // An outline Badge hand-rounded with a className utility is the `quiet`
+  // shape built by hand — forbidden regardless of attribute order.
+  assert.deepEqual(
+    legacyVocabularyIn("f2.tsx", `<Badge variant="outline" className="rounded-md">Chip</Badge>`),
+    [`f2.tsx:1: <Badge variant="outline" className="rounded-md">`],
+  );
+  assert.deepEqual(
+    legacyVocabularyIn("f3.tsx", `<Badge className="rounded-full" variant="outline">Chip</Badge>`),
+    [`f3.tsx:1: <Badge className="rounded-full" variant="outline">`],
+  );
   // A multi-line tag is still one tag.
   assert.deepEqual(
     legacyVocabularyIn("g.tsx", `<Button\n  variant="primary"\n  onClick={go}\n>\n  Go\n</Button>`),
@@ -254,6 +273,11 @@ test("legacyVocabularyIn flags v1's shapes and stays silent on the shadcn contra
   assert.deepEqual(legacyVocabularyIn("l.tsx", `<Button variant="outline" size="sm">Go</Button>`), []);
   assert.deepEqual(legacyVocabularyIn("m.tsx", `<AlertTitle title="not this one">x</AlertTitle>`), []);
   assert.deepEqual(legacyVocabularyIn("n.tsx", `<Badge variant="secondary">Draft</Badge>`), []);
+  // The `quiet` variant is the shape itself, not the hand-rolled shape.
+  assert.deepEqual(legacyVocabularyIn("n2.tsx", `<Badge variant="quiet">Chip</Badge>`), []);
+  // Only one of the two attributes is not yet the forbidden shape.
+  assert.deepEqual(legacyVocabularyIn("n3.tsx", `<Badge variant="outline">Chip</Badge>`), []);
+  assert.deepEqual(legacyVocabularyIn("n4.tsx", `<Badge className="rounded-md">Chip</Badge>`), []);
   assert.deepEqual(legacyVocabularyIn("o.ts", `import { Badge } from "../primitives/badge.js";`), []);
   // A comment recalling the retired shape states history, not a usage.
   assert.deepEqual(legacyVocabularyIn("p.tsx", `  // <Button variant="primary">Go</Button>`), []);
