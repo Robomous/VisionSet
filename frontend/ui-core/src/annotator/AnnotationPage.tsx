@@ -2311,7 +2311,7 @@ function Workspace({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    variant="success"
+                    variant="outline"
                     size="sm"
                     className="hidden xl:inline-flex"
                     data-testid="save-and-stay"
@@ -3179,13 +3179,9 @@ function SaveState({
     );
   }
   return (
-    // `success`, which is the indicator v1 wanted a hardcoded `text-green-600` for
-    // and `DESIGN.md` carried as its one sanctioned exception. The token exists,
-    // so the exception is retired rather than inherited. The tick still
-    // carries the meaning on its own — state is never colour alone.
-    <span className="flex items-center gap-1 text-xs text-success" data-testid="save-state">
-      <Check className="size-3.5" aria-hidden="true" />
+    <Badge variant="success" data-testid="save-state">
+      <Check aria-hidden="true" />
       Saved
-    </span>
+    </Badge>
   );
 }
