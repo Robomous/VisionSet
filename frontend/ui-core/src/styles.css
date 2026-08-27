@@ -197,7 +197,7 @@
   /* The hairline and the outline *colour* — the two things every element
      inherits. The focus treatment itself belongs to the primitives: each one
      carries Nova's own `ring-3` ring in `ring/50` (DESIGN.md, Borders and
-     Focus), so the base layer names the colour and stays out of the geometry.
+     focus), so the base layer names the colour and stays out of the geometry.
      Nothing here may declare focus geometry again: one blanket declaration in
      this layer is how thirteen components' rings got overridden at once. */
   * {

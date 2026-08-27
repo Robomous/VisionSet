@@ -1,6 +1,6 @@
 // What every `DropdownMenuContent` call site adds to the canonical surface, in
 // one constant because both halves are the same rule — a menu that behaves like
-// a menu (DESIGN.md, Menu row and Motion).
+// a menu (DESIGN.md, Motion).
 //
 // `data-closed:animate-none!`: a menu surface leaves on the frame it is
 // dismissed. While Radix runs an exit animation the dismissable layer stays
