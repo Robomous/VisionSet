@@ -37,6 +37,7 @@ import { AssetThumbnail } from "./AssetThumbnail";
 import { GalleryScreen, columnsFor } from "./GalleryScreen";
 import { assetActions, batchActions, jobActions, datasetOf } from "../testing/wire.fixtures.js";
 import type { components } from "../generated/api.js";
+import { TONE_BORDER, TONE_FILL } from "../patterns/statusTone.js";
 
 type BatchState = components["schemas"]["BatchState"];
 type JobState = components["schemas"]["AnnotationJobState"];
@@ -797,9 +798,27 @@ describe("the gallery", () => {
     // second, narrower string.
     const expected = [
       { id: "asset-0", tone: "neutral", word: "unannotated", dot: "bg-transparent", cell: "bg-muted" },
-      { id: "asset-1", tone: "success", word: "annotated", dot: "bg-success", cell: "bg-success" },
-      { id: "asset-2", tone: "warning", word: "in review", dot: "border-warning", cell: "bg-warning" },
-      { id: "asset-3", tone: "success", word: "accepted", dot: "bg-success", cell: "bg-success" },
+      {
+        id: "asset-1",
+        tone: "success",
+        word: "annotated",
+        dot: TONE_FILL.success,
+        cell: TONE_FILL.success,
+      },
+      {
+        id: "asset-2",
+        tone: "warning",
+        word: "in review",
+        dot: TONE_BORDER.warning,
+        cell: TONE_FILL.warning,
+      },
+      {
+        id: "asset-3",
+        tone: "success",
+        word: "accepted",
+        dot: TONE_FILL.success,
+        cell: TONE_FILL.success,
+      },
       { id: "asset-4", tone: "neutral", word: "skipped", dot: "bg-stage", cell: "bg-stage" },
     ];
 

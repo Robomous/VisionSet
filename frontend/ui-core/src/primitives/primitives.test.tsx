@@ -332,23 +332,15 @@ describe("Progress", () => {
     );
   });
 
-  it("fills with the functional colour by default, and a caller can recolour it for success", () => {
-    // Canonical `Progress` has no `variant` prop — the indicator's colour is
-    // fixed inside `progress.tsx`, so a caller reaches it through the
-    // `data-slot` it renders with, from its own `className` on `Root`. Every
-    // "success" progress bar in the product (`BatchProgressBar`, job rows,
-    // the styleguide) uses exactly this className.
-    const { rerender } = render(<Progress value={42} aria-label="Ingest" />);
-    const fill = (): Element => screen.getByRole("progressbar").firstElementChild as Element;
-    expect(fill().className).toContain("bg-primary");
-    rerender(
-      <Progress
-        value={42}
-        aria-label="Ingest"
-        className="[&>[data-slot=progress-indicator]]:bg-success"
-      />,
-    );
-    expect(screen.getByRole("progressbar").className).toContain("bg-success");
+  it("fills with the functional colour, and carries the data-slot a caller can restyle from", () => {
+    // Canonical `Progress` has no `variant` prop and no notion of status — a
+    // batch's completion is an amount, not a polarity, so the indicator is
+    // always `bg-primary`. A caller who needs to reach it targets the
+    // `data-slot` it renders with, from its own `className` on `Root`.
+    render(<Progress value={42} aria-label="Ingest" />);
+    const fill = screen.getByRole("progressbar").firstElementChild as Element;
+    expect(fill.getAttribute("data-slot")).toBe("progress-indicator");
+    expect(fill.className).toBe("size-full flex-1 bg-primary transition-all");
   });
 
   it("hands its ref to the track element", () => {

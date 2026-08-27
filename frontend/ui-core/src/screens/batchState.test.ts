@@ -33,6 +33,7 @@ import {
   type Segment,
 } from "./batchState";
 import type { AssetProgress } from "../annotator/jobQueries";
+import { TONE_BORDER, TONE_FILL } from "../patterns/statusTone";
 
 /** The domain's six, written out so a seventh fails here first. */
 const STATES: readonly AssetProgress[] = [
@@ -224,9 +225,9 @@ describe("the status colour vocabulary (#391)", () => {
     // survives a monochrome screen.
     expect(progressDotClass("unannotated")).toBe("border-border bg-transparent");
     expect(progressDotClass("pre_labeled")).toBe("border-primary bg-transparent");
-    expect(progressDotClass("annotated")).toBe("border-success bg-success");
-    expect(progressDotClass("review_pending")).toBe("border-warning bg-transparent");
-    expect(progressDotClass("accepted")).toBe("border-success bg-success");
+    expect(progressDotClass("annotated")).toBe(`${TONE_BORDER.success} ${TONE_FILL.success}`);
+    expect(progressDotClass("review_pending")).toBe(`${TONE_BORDER.warning} bg-transparent`);
+    expect(progressDotClass("accepted")).toBe(`${TONE_BORDER.success} ${TONE_FILL.success}`);
     expect(progressDotClass("skipped")).toBe("border-border bg-stage");
   });
 
@@ -236,9 +237,9 @@ describe("the status colour vocabulary (#391)", () => {
     // unavailable.
     expect(progressCellClass("unannotated")).toBe("bg-muted");
     expect(progressCellClass("pre_labeled")).toBe("bg-primary");
-    expect(progressCellClass("annotated")).toBe("bg-success");
-    expect(progressCellClass("review_pending")).toBe("bg-warning");
-    expect(progressCellClass("accepted")).toBe("bg-success");
+    expect(progressCellClass("annotated")).toBe(TONE_FILL.success);
+    expect(progressCellClass("review_pending")).toBe(TONE_FILL.warning);
+    expect(progressCellClass("accepted")).toBe(TONE_FILL.success);
     expect(progressCellClass("skipped")).toBe("bg-stage");
   });
 

@@ -194,15 +194,15 @@ describe("BatchProgressBar", () => {
     accepted: 0,
   };
 
-  it("draws annotation as a success fill on a bordered track, above the counts", () => {
+  it("draws annotation as a fill on a bordered track, above the counts", () => {
     render(<BatchProgressBar counts={COUNTS} />);
     const bar = screen.getByRole("progressbar", { name: "Annotation progress" });
     expect(bar.getAttribute("aria-valuenow")).toBe("64");
     expect(bar.className).toContain("h-2");
     expect(bar.className).toContain("border");
-    // Canonical `Progress` has no `variant` prop; the success colour reaches
-    // its indicator through the `data-slot` selector in this className.
-    expect(bar.className).toContain("bg-success");
+    // The bar shows an amount, not a polarity, so it stays the primitive's
+    // plain indicator, untouched by any call-site override.
+    expect(bar.firstElementChild?.className).toBe("size-full flex-1 bg-primary transition-all");
     expect(screen.getByText(/7 annotated · 0 skipped · 0 accepted · 4 to do/)).toBeTruthy();
   });
 

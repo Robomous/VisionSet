@@ -87,7 +87,7 @@ export function BatchProgressBar({
         aria-label="Annotation progress"
         value={share.percent}
         {...progressAria(share.percent)}
-        className="h-2 border border-border [&>[data-slot=progress-indicator]]:bg-success"
+        className="h-2 border border-border"
       />
       {draft ? (
         <span className="text-xs text-muted-foreground">Not approved yet</span>

@@ -139,6 +139,7 @@ import { formatBytes, formatCount } from "../lib/format";
 import { progressAria } from "../lib/progress";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
+import { STATUS_INK } from "../patterns/statusTone";
 import { StepMarker } from "../patterns/StepMarker";
 import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
 import { Badge } from "../primitives/badge";
@@ -1232,7 +1233,7 @@ function Partials({
     <Alert data-testid="partials">
       <AlertTitle>
         <span className="flex items-center gap-2">
-          <TriangleAlert className="size-4 text-warning" aria-hidden="true" />
+          <TriangleAlert className={cn("size-4", STATUS_INK.warning)} aria-hidden="true" />
           Some of what you ingested was damaged
         </span>
       </AlertTitle>

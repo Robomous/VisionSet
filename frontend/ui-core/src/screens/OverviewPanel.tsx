@@ -50,6 +50,7 @@ import { inlineLink } from "../lib/button";
 import { cn } from "../lib/cn";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
+import { STATUS_INK } from "../patterns/statusTone";
 import { Button } from "../primitives/button";
 import { Skeleton } from "../primitives/skeleton";
 import { DistributionBar, StatCard, ThumbnailGrid } from "../patterns/DataDisplay";
@@ -491,7 +492,7 @@ function Distribution({
           </div>
           {note !== null && (
             <p
-              className="flex items-center gap-1.5 text-xs text-warning"
+              className={cn("flex items-center gap-1.5 text-xs", STATUS_INK.warning)}
               data-testid="imbalance-note"
             >
               <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />

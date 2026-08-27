@@ -32,6 +32,7 @@ import { AnnotationPage } from "./AnnotationPage";
 import { TooltipProvider } from "../primitives/tooltip";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
+import { TONE_BORDER, TONE_FILL } from "../patterns/statusTone.js";
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -244,8 +245,8 @@ describe("what the gallery shows", () => {
     }
     // The drawn class, not only the declared tone — an attribute agreeing with a
     // map the dot no longer reads is a test of the map alone.
-    expect(within(modal).getByTestId(`frame-${assetId(1)}`).innerHTML).toContain("bg-success");
-    expect(within(modal).getByTestId(`frame-${assetId(2)}`).innerHTML).toContain("border-warning");
+    expect(within(modal).getByTestId(`frame-${assetId(1)}`).innerHTML).toContain(TONE_FILL.success);
+    expect(within(modal).getByTestId(`frame-${assetId(2)}`).innerHTML).toContain(TONE_BORDER.warning);
   });
 
   it("marks the frame that is on screen", async () => {

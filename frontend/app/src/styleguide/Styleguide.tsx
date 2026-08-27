@@ -364,13 +364,13 @@ export function Styleguide(): JSX.Element {
           </div>
           <div className="max-w-md">
             <p className="mb-1 text-xs text-muted-foreground">
-              Annotation — 7 of 11 annotated (64%); the batch surfaces' colouring
+              Annotation — 7 of 11 annotated (64%)
             </p>
             <Progress
               value={64}
               aria-label="Annotation progress"
               {...progressAria(64)}
-              className="h-2 border border-border [&>[data-slot=progress-indicator]]:bg-success"
+              className="h-2 border border-border"
             />
           </div>
         </Section>

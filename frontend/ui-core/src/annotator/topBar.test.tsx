@@ -26,6 +26,7 @@ import { AnnotationPage, REVIEW_ACTIONS } from "./AnnotationPage";
 import { TooltipProvider } from "../primitives/tooltip";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
+import { TONE_BORDER, TONE_FILL } from "../patterns/statusTone.js";
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -834,7 +835,7 @@ describe("the frame's state, in prose", () => {
     const state = screen.getByTestId("asset-progress");
     expect(state.textContent).toContain("accepted");
     expect(state.getAttribute("data-tone")).toBe("success");
-    expect(state.innerHTML).toContain("bg-success");
+    expect(state.innerHTML).toContain(TONE_FILL.success);
   });
 
   it("draws a frame awaiting review with the warning token (#391)", async () => {
@@ -845,7 +846,7 @@ describe("the frame's state, in prose", () => {
     // `PROGRESS_LABEL`'s wording, not the wire's `review_pending`.
     expect(state.textContent).toContain("in review");
     expect(state.getAttribute("data-tone")).toBe("warning");
-    expect(state.innerHTML).toContain("border-warning");
+    expect(state.innerHTML).toContain(TONE_BORDER.warning);
   });
 
   it("sits beside the save state, so the two read as one sentence", async () => {

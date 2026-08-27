@@ -313,7 +313,7 @@ function JobHeader({
           aria-label="Annotation progress"
           value={share.percent}
           {...progressAria(share.percent)}
-          className="min-w-0 flex-1 [&>[data-slot=progress-indicator]]:bg-success"
+          className="min-w-0 flex-1"
         />
       )}
       <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
