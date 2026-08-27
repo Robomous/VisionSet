@@ -283,6 +283,20 @@ describe("the dataset view", () => {
     // the same total and a very different dataset.
     expect(row.textContent).toContain("31");
     expect(row.textContent).toContain("8");
+
+    // The three tab-count chips are all "secondary" badges — an inert count,
+    // never the filled/primary reading canonical's bare default would give one
+    // tab for no reason its neighbours do not share.
+    const badgeIn = (testId: string): Element | null =>
+      screen.getByTestId(testId).querySelector('[data-slot="badge"]');
+    await waitFor(() => {
+      expect(badgeIn("dataset-tab-assets")).not.toBeNull();
+      expect(badgeIn("dataset-tab-preprocessing")).not.toBeNull();
+      expect(badgeIn("dataset-tab-releases")).not.toBeNull();
+    });
+    expect(badgeIn("dataset-tab-assets")?.getAttribute("data-variant")).toBe("secondary");
+    expect(badgeIn("dataset-tab-preprocessing")?.getAttribute("data-variant")).toBe("secondary");
+    expect(badgeIn("dataset-tab-releases")?.getAttribute("data-variant")).toBe("secondary");
   });
 });
 

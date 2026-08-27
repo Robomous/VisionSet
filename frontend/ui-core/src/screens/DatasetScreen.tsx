@@ -214,7 +214,7 @@ export function DatasetScreen({ projectId, tab, onTabChange }: DatasetScreenProp
           </TabsTrigger>
           <TabsTrigger value="preprocessing" data-testid="dataset-tab-preprocessing">
             Pre-processing
-            {recipes.data !== undefined && <Badge>{recipes.data.total}</Badge>}
+            {recipes.data !== undefined && <Badge variant="secondary">{recipes.data.total}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="releases" data-testid="dataset-tab-releases">
             Releases
