@@ -66,9 +66,9 @@ advancing — and neither ever collapses into the overflow.
   first** as the third member of the resolve group — `Skip · [flow verb] · Save and stay`.
   *Advance* and *persist in place* are one decision read two ways, so they are adjacent
   rather than a bar apart. In the current implementation the flow verb is filled in
-  `primary` and Save and stay is filled in `success`; colour is what separates their
-  intent, since a second `primary` beside the first would read as a bar that could not
-  decide. It keeps the frame verbs' lifetime rather than the mode's: a closed batch or a
+  `primary` and Save and stay is an outline control beside it; adjacency is what says
+  they are alternatives, since a second filled `primary` beside the first would read as
+  a bar that could not decide. It keeps the frame verbs' lifetime rather than the mode's: a closed batch or a
   finished job has nothing to save on any frame, so it leaves with Skip and the flow verb;
   inside a working job it holds its slot, disabled, so the cluster does not change width as
   somebody walks a mixed job.

@@ -77,8 +77,8 @@ whenever its asserted type is and `tsc` cannot see the mismatch.
 colour `neutral`, chart palette `neutral`, icons `lucide`, Geist throughout with
 the heading face inheriting the body's, radius `medium`, menu
 `inverted`/`subtle`, pointer cursor on pressable controls) - the CLI's own
-generated output, transcribed verbatim, plus five VisionSet extension roles
-(`stage`, `brand`, `success`, `warning`, `origin-*`) added through shadcn's own
+generated output, transcribed verbatim, plus three VisionSet extension roles
+(`stage`, `brand`, `origin-*`) added through shadcn's own
 extension convention. `components.json` (`style: "radix-nova"`,
 `iconLibrary: "lucide"`, `menuColor: "inverted"`, `menuAccent: "subtle"`) holds
 the preset properties shadcn's own tools read - the fields its config schema

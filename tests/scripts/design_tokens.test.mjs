@@ -242,6 +242,14 @@ const RETIRED_DECLARATIONS = [
   dash("--text", "section"),
   dash("--text", "page"),
   dash("--spacing", "sidebar", "mobile"),
+  dash("--success"),
+  dash("--success", "foreground"),
+  dash("--warning"),
+  dash("--warning", "foreground"),
+  dash("--color", "success"),
+  dash("--color", "success", "foreground"),
+  dash("--color", "warning"),
+  dash("--color", "warning", "foreground"),
 ];
 
 /** Every retired name in `text` declared as a custom property, not merely mentioned. */
@@ -274,7 +282,12 @@ test("the scan finds a retired declaration, and not a comment or a longer name t
     `1: ${dash("--color", "disabled", "foreground")}`,
   ]);
   // A current, kept extension is not a retired one.
-  assert.deepEqual(retiredDeclarationsIn(`  --success-foreground: white;`), []);
+  assert.deepEqual(retiredDeclarationsIn(`  --stage: white;`), []);
+  // success/warning retired alongside the forked primitives that needed them —
+  // no longer a kept extension, so this now reports a hit.
+  assert.deepEqual(retiredDeclarationsIn(`  --success-foreground: white;`), [
+    `1: ${dash("--success", "foreground")}`,
+  ]);
 });
 
 test("the retired foundation vocabulary is absent from the stylesheet", () => {

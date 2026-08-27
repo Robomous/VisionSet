@@ -12,8 +12,7 @@
  * `nova`, base colour `neutral`, chart palette `neutral`) exactly as the CLI
  * 4.19.0 scratch generated it, plus VisionSet's justified extensions:
  * `stage` (the annotator's surround), `brand` (Robomous coral — identity
- * only), the `success`/`warning` status pair, each with its own
- * `-foreground`, and the three `origin-*` marks a Models card's accent edge
+ * only), and the three `origin-*` marks a Models card's accent edge
  * takes. Everything else is shadcn's own vocabulary.
  */
 
@@ -57,12 +56,6 @@ export const LIGHT_THEME: Readonly<Record<string, string>> = Object.freeze({
   // Robomous coral. Identity only — the wordmark and its styleguide swatch
   // — never a functional-UI colour.
   brand: "oklch(0.653 0.178 32.3)",
-  // The batch-state family's filled control, a green analogue of the
-  // preset's own destructive treatment.
-  success: "oklch(0.577 0.132 152)",
-  "success-foreground": "oklch(1 0 0)",
-  warning: "oklch(0.646 0.13 80)",
-  "warning-foreground": "oklch(0.205 0 0)",
   // Where a model's weights come from, as a card's accent edge: a mark,
   // never a surface, ink or status. Theme-stable, like the chart palette.
   "origin-hub": "oklch(0.8 0.16 85)",
@@ -105,10 +98,6 @@ export const DARK_THEME: Readonly<Record<string, string>> = Object.freeze({
 
   stage: "oklch(0.24 0 0)",
   brand: "oklch(0.653 0.178 32.3)",
-  success: "oklch(0.696 0.17 152)",
-  "success-foreground": "oklch(0.205 0 0)",
-  warning: "oklch(0.75 0.14 80)",
-  "warning-foreground": "oklch(0.205 0 0)",
   "origin-hub": "oklch(0.8 0.16 85)",
   "origin-custom": "oklch(0.65 0.15 250)",
   "origin-robomous": "oklch(0.68 0.17 35)",
@@ -121,14 +110,10 @@ export const THEME = {
   fontHeading: "var(--font-sans)",
 } as const;
 
-/** The nine variable names VisionSet keeps beyond shadcn's own vocabulary. */
+/** The five variable names VisionSet keeps beyond shadcn's own vocabulary. */
 export const EXTENSIONS = [
   "stage",
   "brand",
-  "success",
-  "success-foreground",
-  "warning",
-  "warning-foreground",
   "origin-hub",
   "origin-custom",
   "origin-robomous",

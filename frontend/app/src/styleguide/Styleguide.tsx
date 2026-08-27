@@ -188,8 +188,6 @@ export function Styleguide(): JSX.Element {
                     inspected rather than used. Its two product sites are the rail's
                     wordmark and the progress fill. */}
                 <Swatch name="brand" className="bg-brand" />
-                <Swatch name="success" className="bg-success" />
-                <Swatch name="warning" className="bg-warning" />
                 <Swatch name="origin-hub" className="bg-origin-hub" />
                 <Swatch name="origin-custom" className="bg-origin-custom" />
                 <Swatch name="origin-robomous" className="bg-origin-robomous" />
