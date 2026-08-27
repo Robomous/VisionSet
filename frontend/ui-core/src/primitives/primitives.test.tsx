@@ -48,6 +48,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./select";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./sheet";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "./table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs";
 
@@ -396,6 +397,16 @@ describe("Dialog", () => {
     const describedById = dialog.getAttribute("aria-describedby");
     expect(describedById).toBeTruthy();
     expect(document.getElementById(describedById ?? "")?.textContent).toBe("one class narrows");
+  });
+});
+
+describe("sheet", () => {
+  it("renders a dialog with its title and description wired by Radix", async () => {
+    render(<Sheet open><SheetContent><SheetHeader><SheetTitle>Filters</SheetTitle><SheetDescription>Narrow the list</SheetDescription></SheetHeader></SheetContent></Sheet>);
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.getAttribute("data-slot")).toBe("sheet-content");
+    expect(dialog.getAttribute("data-side")).toBe("right");
+    expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
   });
 });
 
