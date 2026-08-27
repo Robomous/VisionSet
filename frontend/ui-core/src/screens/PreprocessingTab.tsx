@@ -15,12 +15,14 @@
  *
  * `POST /projects/{id}/preprocessing-preview` renders one asset through a spec
  * on the same kernel path an export takes, so what the cells show is what the
- * archive would hold. Three sample assets, and the choice is the release's: the
- * first three train-fold members of the newest release with a split, because
- * variants are written for the train fold only; without one, the first three
- * assets of the project. The columns are the stages — the asset as it is, after
- * the resize step alone, and the first augmented variant — each a request
- * keyed on the spec it renders, so a keystroke re-renders only what it changed.
+ * archive would hold. One sample asset, and the choice is the release's: the
+ * first train-fold member of the newest release with a split, because variants
+ * are written for the train fold only; without one, the project's first asset.
+ * The columns are the stages — the asset as it is, after the resize step alone,
+ * and the last augmentation step chosen, in `showcase` mode: the draws fixed at
+ * the step's declared strength, so the cell shows what the step does rather
+ * than one seeded draw of it. Each cell is a request keyed on the spec it
+ * renders, so a keystroke re-renders only what it changed.
  *
  * `PreviewCell` hands the rendered image and its placed annotations to the
  * static overlay pattern, so a label is drawn where the export would write it.
@@ -62,11 +64,13 @@ import {
   type Release,
 } from "./queries";
 import {
+  AUGMENT_OPS,
   canonicalSpec,
   draftFromSpec,
   draftToSpec,
   EMPTY_DRAFT,
   sameSpec,
+  type AugmentStepSpec,
   type RecipeDraft,
   type RecipeSpec,
 } from "./recipeDraft";
@@ -366,21 +370,25 @@ function Editor({
   );
 }
 
-/** The asset ids the preview renders: the train fold's first three, or the project's. */
-function useSampleAssets(projectId: string, datasetId: string | undefined): readonly string[] | undefined {
+/**
+ * The asset the preview renders: the train fold's first member, or the
+ * project's first asset; `null` when the project has none, `undefined` while
+ * the choice is still being read.
+ */
+function useSampleAsset(projectId: string, datasetId: string | undefined): string | null | undefined {
   const releases = useReleases(datasetId);
   const newest = newestRelease(releases.data?.items);
   const withSplit = newest !== undefined && newest.split !== null && newest.split !== undefined;
   const assignment = useReleaseAssignment(withSplit ? newest.id : undefined);
-  const project = useProjectAssets(projectId, 3);
+  const project = useProjectAssets(projectId, 1);
   if (datasetId !== undefined && releases.data === undefined && !releases.isError) return undefined;
   if (withSplit) {
     if (assignment.data === undefined && !assignment.isError) return undefined;
-    const train = assignment.data?.train.slice(0, 3) ?? [];
-    if (train.length > 0) return train;
+    const train = assignment.data?.train[0];
+    if (train !== undefined) return train;
   }
   if (project.data === undefined) return undefined;
-  return project.data.items.slice(0, 3).map((asset) => asset.id);
+  return project.data.items[0]?.id ?? null;
 }
 
 function newestRelease(items: readonly Release[] | undefined): Release | undefined {
@@ -416,17 +424,20 @@ function PreviewGrid({
   readonly classes: readonly LabelClass[] | undefined;
   readonly onReady: (ready: boolean) => void;
 }): JSX.Element {
-  const samples = useSampleAssets(projectId, datasetId);
+  const sample = useSampleAsset(projectId, datasetId);
   const settled = useSettledSpec(spec);
+  const resizeSteps = settled === null ? [] : settled.steps.filter((step) => step.kind === "resize");
   const resizeOnly: RecipeSpec | null =
-    settled === null
+    settled === null ? null : { target: settled.target ?? null, steps: resizeSteps, variants_per_asset: 0 };
+  const hasResize = resizeSteps.length > 0;
+  const lastAugment = settled === null ? undefined : lastAugmentStep(settled);
+  const showcase: RecipeSpec | null =
+    settled === null || lastAugment === undefined
       ? null
-      : { target: settled.target ?? null, steps: settled.steps.filter((step) => step.kind === "resize"), variants_per_asset: 0 };
-  const hasResize = resizeOnly !== null && resizeOnly.steps.length > 0;
-  const hasAugment = settled !== null && settled.variants_per_asset > 0;
+      : { target: settled.target ?? null, steps: [...resizeSteps, lastAugment], variants_per_asset: 1 };
 
-  if (samples === undefined) return <LoadingState rows={1} />;
-  if (samples.length === 0) {
+  if (sample === undefined) return <LoadingState rows={1} />;
+  if (sample === null) {
     return (
       <p className="text-sm text-muted-foreground" data-testid="preview-empty">
         Nothing to preview yet — the project has no images. The recipe can still be saved.
@@ -439,52 +450,62 @@ function PreviewGrid({
       <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
         <span>Original</span>
         <span>After resize</span>
-        <span>After augmentation</span>
+        <span data-testid="preview-augment-heading">
+          {lastAugment === undefined ? "After augmentation" : `After ${opLabel(lastAugment.op)}`}
+        </span>
       </div>
-      {samples.map((assetId, index) => (
-        <div
-          key={assetId}
-          className="grid grid-cols-3 items-center gap-2"
-          data-testid={`preview-row-${index}`}
-          title={`Sample ${assetId.slice(0, 8)}`}
-        >
+      <div
+        className="grid grid-cols-3 items-center gap-2"
+        data-testid="preview-row-0"
+        title={`Sample ${sample.slice(0, 8)}`}
+      >
+        <PreviewCell
+          projectId={projectId}
+          assetId={sample}
+          variant={0}
+          spec={NO_TRANSFORM}
+          classes={classes}
+          testId="preview-0-original"
+          onReady={onReady}
+        />
+        {hasResize ? (
           <PreviewCell
             projectId={projectId}
-            assetId={assetId}
+            assetId={sample}
             variant={0}
-            spec={NO_TRANSFORM}
+            spec={resizeOnly}
             classes={classes}
-            testId={`preview-${index}-original`}
-            {...(index === 0 ? { onReady } : {})}
+            testId="preview-0-resize"
           />
-          {hasResize ? (
-            <PreviewCell
-              projectId={projectId}
-              assetId={assetId}
-              variant={0}
-              spec={resizeOnly}
-              classes={classes}
-              testId={`preview-${index}-resize`}
-            />
-          ) : (
-            <Placeholder text="No resize step" testId={`preview-${index}-resize`} />
-          )}
-          {hasAugment ? (
-            <PreviewCell
-              projectId={projectId}
-              assetId={assetId}
-              variant={1}
-              spec={settled}
-              classes={classes}
-              testId={`preview-${index}-augment`}
-            />
-          ) : (
-            <Placeholder text="No augmentation" testId={`preview-${index}-augment`} />
-          )}
-        </div>
-      ))}
+        ) : (
+          <Placeholder text="No resize step" testId="preview-0-resize" />
+        )}
+        {showcase !== null ? (
+          <PreviewCell
+            projectId={projectId}
+            assetId={sample}
+            variant={1}
+            spec={showcase}
+            classes={classes}
+            testId="preview-0-augment"
+            showcase
+          />
+        ) : (
+          <Placeholder text="No augmentation" testId="preview-0-augment" />
+        )}
+      </div>
     </div>
   );
+}
+
+/** The augmentation the preview shows: the last one the draft holds, in the editor's own order. */
+function lastAugmentStep(spec: RecipeSpec): AugmentStepSpec | undefined {
+  const augments = spec.steps.filter((step): step is AugmentStepSpec => step.kind === "augment");
+  return augments[augments.length - 1];
+}
+
+function opLabel(op: AugmentStepSpec["op"]): string {
+  return (AUGMENT_OPS.find((one) => one.op === op)?.label ?? op).toLowerCase();
 }
 
 /**
@@ -507,6 +528,7 @@ function PreviewCell({
   classes,
   testId,
   onReady,
+  showcase = false,
 }: {
   readonly projectId: string;
   readonly assetId: string;
@@ -515,6 +537,7 @@ function PreviewCell({
   readonly classes: readonly LabelClass[] | undefined;
   readonly testId: string;
   readonly onReady?: (ready: boolean) => void;
+  readonly showcase?: boolean;
 }): JSX.Element {
   const preview = usePreprocessingPreview(
     projectId,
@@ -522,6 +545,7 @@ function PreviewCell({
     variant,
     spec,
     spec === null ? "" : canonicalSpec(spec),
+    showcase,
   );
   const ready = preview.data !== undefined;
   useEffect(() => {

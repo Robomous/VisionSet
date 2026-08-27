@@ -198,6 +198,35 @@ def test_the_preview_renders_the_asset_through_the_spec(
     assert body["annotations"] == []
 
 
+def test_a_showcase_preview_renders_and_the_default_is_the_seeded_draw(
+    client: TestClient, asset: tuple[str, str]
+) -> None:
+    project_id, asset_id = asset
+    spec = {
+        "target": None,
+        "steps": [{"kind": "augment", "op": "rot90"}],
+        "variants_per_asset": 1,
+    }
+
+    shown = _preview(
+        client, project_id, {"spec": spec, "asset_id": asset_id, "variant": 1, "showcase": True}
+    )
+    seeded = _preview(client, project_id, {"spec": spec, "asset_id": asset_id, "variant": 1})
+
+    assert shown.status_code == 200, shown.text
+    assert seeded.status_code == 200, seeded.text
+    with Image.open(io.BytesIO(base64.b64decode(shown.json()["image_base64"]))) as image:
+        assert image.size == (shown.json()["width"], shown.json()["height"])
+    assert (
+        seeded.json()
+        == _preview(
+            client,
+            project_id,
+            {"spec": spec, "asset_id": asset_id, "variant": 1, "showcase": False},
+        ).json()
+    )
+
+
 def test_the_preview_is_capped_to_512_on_its_longer_side(
     client: TestClient, asset: tuple[str, str]
 ) -> None:

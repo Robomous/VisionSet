@@ -12,6 +12,7 @@ import pytest
 from PIL import Image
 
 from visionset.kernel.domain import (
+    SHOWCASE_SEED,
     AugmentOp,
     AugmentStep,
     ResizeStep,
@@ -310,3 +311,42 @@ def test_different_seeds_draw_different_brightness() -> None:
     }
 
     assert len(outputs) > 1
+
+
+@pytest.mark.parametrize("op", list(AugmentOp))
+def test_the_showcase_seed_changes_the_source_and_is_deterministic(op: AugmentOp) -> None:
+    step = AugmentStep(op=op, amount=0.3)
+    source = (
+        _marked((40, 30), (3, 7))
+        if op is not AugmentOp.BRIGHTNESS_CONTRAST
+        else _png((16, 16), 100, "L")
+    )
+
+    first = AUGMENT.apply(step, source, seed=SHOWCASE_SEED, variant=1)
+    second = AUGMENT.apply(step, source, seed=SHOWCASE_SEED, variant=1)
+
+    assert first != source
+    assert first == second
+
+
+def test_a_showcase_rot90_turns_once_and_brightness_uses_the_full_amount() -> None:
+    turned = _open(
+        AUGMENT.apply(
+            AugmentStep(op=AugmentOp.ROT90),
+            _marked((40, 30), (3, 7)),
+            seed=SHOWCASE_SEED,
+            variant=1,
+        )
+    )
+    assert turned.size == (30, 40)
+    assert _white_pixels(turned) == {(7, 40 - 1 - 3)}
+
+    bright = _open(
+        AUGMENT.apply(
+            AugmentStep(op=AugmentOp.BRIGHTNESS_CONTRAST, amount=0.3),
+            _png((16, 16), 100, "L"),
+            seed=SHOWCASE_SEED,
+            variant=1,
+        )
+    )
+    assert bright.getpixel((8, 8)) == pytest.approx(130, abs=1)

@@ -2181,8 +2181,8 @@ export const recipeKeys = {
   recipes: (projectId: string) => ["projects", projectId, "preprocessing-recipes"] as const,
   // The spec is part of the key: two specs are two renderings of the same
   // asset, and sharing one key would make editing the draft a cache overwrite.
-  preview: (projectId: string, assetId: string, variant: number, spec: string) =>
-    ["projects", projectId, "preprocessing-preview", assetId, variant, spec] as const,
+  preview: (projectId: string, assetId: string, variant: number, spec: string, showcase: boolean) =>
+    ["projects", projectId, "preprocessing-preview", assetId, variant, spec, showcase] as const,
   assignment: (releaseId: string) => ["releases", releaseId, "assignment"] as const,
 };
 
@@ -2259,7 +2259,9 @@ export function useDeletePreprocessingRecipe(projectId: string) {
  * path over a one-asset manifest, capped to 512 pixels on the longer side.
  *
  * A `POST` read as a query: the request creates nothing, and the response is
- * a function of `(asset, variant, spec)`, which is what the key spells. The
+ * a function of `(asset, variant, spec, showcase)`, which is what the key
+ * spells; `showcase` asks for the step at its declared strength rather than
+ * one seeded draw. The
  * previous picture is kept while a new spec is rendering, so a keystroke in the
  * width field changes the cell rather than blanking it. A spec that cannot be
  * sent yet (`null`) leaves the query idle.
@@ -2270,10 +2272,11 @@ export function usePreprocessingPreview(
   variant: number,
   spec: RecipeSpecBody | null,
   specKey: string,
+  showcase = false,
 ): UseQueryResult<PreprocessingPreview, Error> {
   const client = useApiClient();
   return useQuery({
-    queryKey: recipeKeys.preview(projectId, assetId ?? "none", variant, specKey),
+    queryKey: recipeKeys.preview(projectId, assetId ?? "none", variant, specKey, showcase),
     enabled: assetId !== undefined && spec !== null,
     placeholderData: keepPreviousData,
     // The server says `no-store`, and a rendering of a spec that is still
@@ -2283,7 +2286,12 @@ export function usePreprocessingPreview(
       unwrap(
         await client.POST("/projects/{project_id}/preprocessing-preview", {
           params: { path: { project_id: projectId } },
-          body: { asset_id: assetId ?? "", variant, spec: spec ?? { steps: [], variants_per_asset: 0 } },
+          body: {
+            asset_id: assetId ?? "",
+            variant,
+            spec: spec ?? { steps: [], variants_per_asset: 0 },
+            showcase,
+          },
         }),
         checkPreviewPreprocessing,
       ),

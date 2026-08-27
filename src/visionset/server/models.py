@@ -2444,6 +2444,11 @@ class PreprocessingPreviewBody(BaseModel):
 
     `variant` 0 is the base image; `1` to `spec.variants_per_asset` are the
     augmented outputs. A variant the spec does not make is refused.
+
+    When `showcase` is true the variant's draws are fixed — hflip mirrors,
+    rot90 makes one quarter turn, brightness and contrast use the full
+    `amount` — so the image shows the step at its declared strength rather
+    than one seeded draw; exports never use it.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -2451,6 +2456,7 @@ class PreprocessingPreviewBody(BaseModel):
     spec: RecipeSpecBody
     asset_id: UUID
     variant: int = 0
+    showcase: bool = False
 
     @model_validator(mode="after")
     def _the_variant_exists(self) -> Self:

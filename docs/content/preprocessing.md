@@ -103,7 +103,8 @@ position of that digest. `hflip` draws nothing and always mirrors, for the reaso
 draws zero turns: a variant that came out identical to its source would be the base image under a
 variant's name. The same recipe over the same bytes
 therefore draws the same variant on any machine, and the geometry arithmetic is exact
-everywhere.
+everywhere. This is the export's path; the preview's `showcase` mode, described below, is the
+one place a draw is fixed rather than seeded.
 
 **Byte stability is promised within one environment only.** The pixels a resize or an
 enhancement produces depend on the codec and resampling code that produced them, so two
@@ -166,6 +167,13 @@ the image and its placed annotations, rendered on the export's own kernel path o
 manifest with the asset in the train fold - so every variant a spec declares can be looked at
 whether or not a release exists. The image is capped to 512 pixels on its longer side, labels
 scaled to match, and the response is never cached: the spec is the request's own.
+
+The body also takes `showcase`, false by default. With it true the variant's draws are fixed at
+each step's declared strength - `hflip` mirrors, `rot90` makes one quarter turn, brightness and
+contrast use the full `amount` - so the picture shows what a step *does* rather than one seeded
+draw of it. That is a preview's concern only: an export always takes the seeded path above, and
+the kernel spells the fixed draws as one sentinel seed (`SHOWCASE_SEED`) that both draw functions
+recognise, so the pixel driver and the geometry transform still agree through the same code.
 
 ## Refusals
 

@@ -114,7 +114,7 @@ POST   /projects/{project_id}/preprocessing-recipes
 GET    /projects/{project_id}/preprocessing-recipes/{name}
 PUT    /projects/{project_id}/preprocessing-recipes/{name}   whole-value; a rename is `name` in the body
 DELETE /projects/{project_id}/preprocessing-recipes/{name}   no confirmation gate
-POST   /projects/{project_id}/preprocessing-preview       one asset through a spec; never cached
+POST   /projects/{project_id}/preprocessing-preview       one asset through a spec, seeded or `showcase`; never cached
 
 GET    /inference/connections
 POST   /inference/connections
