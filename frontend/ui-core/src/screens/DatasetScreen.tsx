@@ -964,7 +964,6 @@ const JOB_STATE_VARIANT: Record<string, BadgeTone> = {
   cancelled: "secondary",
 };
 
-
 /**
  * A recipe name is a slug, so a tilde can never be one — which is what makes it
  * safe as the "no recipe" option's value. `Select` refuses an empty string.

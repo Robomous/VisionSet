@@ -227,6 +227,9 @@ source text, so a class built at runtime is a rule the build never emitted:
 | `TONE_FILL` | `bg-emerald-500 dark:bg-emerald-400`, `bg-amber-500 dark:bg-amber-400`, `bg-muted-foreground`, `bg-primary`, `bg-destructive` | A solid mark — a dot, a timeline cell — where the Badge's `/10` surface would vanish at 4px |
 | `STATUS_INK` | `text-emerald-700 dark:text-emerald-400`, `text-amber-700 dark:text-amber-400`, `text-sky-700 dark:text-sky-400` | An icon or a run of inline text carrying a status |
 
+Status Badge contrast is measured against page/card surfaces; on a full `bg-muted` panel the
+warning ink measures ~4.3:1, so a status Badge is not placed on a muted panel without a re-check.
+
 ## Alerts
 
 The official anatomy, and only it: `Alert`, `AlertTitle`, `AlertDescription`, `AlertAction` — a
