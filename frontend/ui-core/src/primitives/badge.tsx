@@ -15,9 +15,13 @@ const badgeVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
         success:
-          "bg-success/10 text-success focus-visible:ring-success/20 dark:bg-success/20 dark:focus-visible:ring-success/40 [a]:hover:bg-success/20",
+          "bg-emerald-500/10 text-emerald-700 focus-visible:ring-emerald-500/20 dark:bg-emerald-400/10 dark:text-emerald-400 dark:focus-visible:ring-emerald-400/40 [a]:hover:bg-emerald-500/20 dark:[a]:hover:bg-emerald-400/20",
         warning:
-          "bg-warning/10 text-warning focus-visible:ring-warning/20 dark:bg-warning/20 dark:focus-visible:ring-warning/40 [a]:hover:bg-warning/20",
+          "bg-amber-500/10 text-amber-700 focus-visible:ring-amber-500/20 dark:bg-amber-400/10 dark:text-amber-400 dark:focus-visible:ring-amber-400/40 [a]:hover:bg-amber-500/20 dark:[a]:hover:bg-amber-400/20",
+        info:
+          "bg-sky-500/10 text-sky-700 focus-visible:ring-sky-500/20 dark:bg-sky-400/10 dark:text-sky-400 dark:focus-visible:ring-sky-400/40 [a]:hover:bg-sky-500/20 dark:[a]:hover:bg-sky-400/20",
+        quiet:
+          "bg-muted text-muted-foreground [a]:hover:bg-muted/80",
         outline:
           "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         ghost:

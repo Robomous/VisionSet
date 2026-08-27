@@ -619,7 +619,7 @@ export function ConnectionCard({
           <ul className="flex flex-wrap gap-1.5" aria-label="What it does" data-testid="connection-abilities">
             {abilities.map((label) => (
               <li key={label}>
-                <Badge variant="outline" className="rounded-md" data-testid="ability-label">
+                <Badge variant="quiet" data-testid="ability-label">
                   {label}
                 </Badge>
               </li>

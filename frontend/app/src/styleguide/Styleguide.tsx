@@ -356,7 +356,7 @@ export function Styleguide(): JSX.Element {
             <Badge variant="destructive">failed</Badge>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="rounded-md">quiet — a fact, not a state</Badge>
+            <Badge variant="quiet">quiet — a fact, not a state</Badge>
           </div>
           <div className="max-w-md">
             <p className="mb-1 text-xs text-muted-foreground">Ingest — 240 of 412</p>

@@ -35,3 +35,39 @@ test("Button carries shadcn's variants and sizes, and nothing else", () => {
   assert.deepEqual(variantKeys(src, "variant"), ["default", "outline", "secondary", "ghost", "destructive", "link"]);
   assert.deepEqual(variantKeys(src, "size"), ["default", "xs", "sm", "lg", "icon", "icon-xs", "icon-sm", "icon-lg"]);
 });
+
+const BADGE = "frontend/ui-core/src/primitives/badge.tsx";
+const OFFICIAL_BADGE = ["default", "secondary", "destructive", "outline", "ghost", "link"];
+const VISIONSET_BADGE = ["success", "warning", "info", "quiet"];
+
+test("Badge keeps shadcn's variants and adds exactly the four VisionSet status variants", () => {
+  const keys = variantKeys(read(BADGE), "variant");
+  for (const k of OFFICIAL_BADGE) assert.ok(keys.includes(k), `official Badge variant ${k} missing`);
+  assert.deepEqual(keys.filter((k) => !OFFICIAL_BADGE.includes(k)).sort(), [...VISIONSET_BADGE].sort());
+});
+
+/** The class string of one variant line in a cva source. */
+export function variantClasses(source, key) {
+  const m = source.match(new RegExp(String.raw`^\s*"?${key}"?:\s*\n?\s*"([^"]*)"`, "m"));
+  assert.ok(m, `no variant ${key}`);
+  return m[1];
+}
+
+test("a status Badge paints a soft surface and readable ink, never a coloured stroke", () => {
+  const src = read(BADGE);
+  const stroke = /\bborder-(?:emerald|amber|sky|success|warning|destructive|primary)\b/;
+  for (const k of [...VISIONSET_BADGE, "destructive"]) {
+    assert.doesNotMatch(variantClasses(src, k), stroke, `${k} adds a coloured border`);
+  }
+  assert.match(variantClasses(src, "success"), /\bbg-emerald-500\/10\b/);
+  assert.match(variantClasses(src, "success"), /\btext-emerald-700\b/);
+  assert.match(variantClasses(src, "warning"), /\bbg-amber-500\/10\b/);
+  assert.match(variantClasses(src, "warning"), /\btext-amber-700\b/);
+  assert.match(variantClasses(src, "info"), /\bbg-sky-500\/10\b/);
+  assert.match(variantClasses(src, "info"), /\btext-sky-700\b/);
+  assert.match(variantClasses(src, "quiet"), /\bbg-muted\b/);
+  assert.match(variantClasses(src, "quiet"), /\btext-muted-foreground\b/);
+  // Official destructive stays on the semantic token, never red-*.
+  assert.match(variantClasses(src, "destructive"), /\bbg-destructive\/10\b/);
+  assert.doesNotMatch(src, /\b(?:bg|text)-red-\d/);
+});

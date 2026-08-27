@@ -130,6 +130,14 @@ describe("Alert and Badge", () => {
     expect(screen.getByText("done").getAttribute("data-variant")).toBe("success");
     expect(screen.getByText("done").getAttribute("data-slot")).toBe("badge");
   });
+
+  it.each(["success", "warning", "info", "quiet"] as const)("%s is a Badge variant keyed on data", (variant) => {
+    render(<Badge variant={variant}>x</Badge>);
+    const el = screen.getByText("x");
+    expect(el.getAttribute("data-variant")).toBe(variant);
+    expect(el.className).toContain("border-transparent");
+    expect(el.className).not.toMatch(/border-(emerald|amber|sky)/);
+  });
 });
 
 describe("fields", () => {

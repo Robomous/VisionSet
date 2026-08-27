@@ -743,7 +743,7 @@ describe("export, and the third gate word", () => {
   it("says a finished export is done, in the success token (#391)", async () => {
     const badge = await exportWith("succeeded");
     expect(badge.textContent).toContain("Done");
-    expect(badge.className).toContain("text-success");
+    expect(badge.getAttribute("data-variant")).toBe("success");
   });
 
   it("says a failed export failed, and the prose stays beside it (#391)", async () => {
