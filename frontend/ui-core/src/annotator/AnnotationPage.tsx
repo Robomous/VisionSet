@@ -2286,12 +2286,6 @@ function Workspace({
               Adjacency is what says they are alternatives; a ghost at the far end
               said the quieter thing, that saving without moving is a convenience.
 
-              **Filled `success`, which is the recorded exception to one filled
-              button per view** (`DESIGN.md`). Two filled controls compete when
-              they are two answers to *what do I do next*; these are two halves of
-              one answer, and colour is what separates their intent where a second
-              near-black would simply contend with the primary.
-
               **No hotkey chip.** `Chip` is a muted box on a bordered ground,
               which inverts into a smudge inside a filled control — the same
               finding that keeps one off the flow verb. The chord is unchanged and
