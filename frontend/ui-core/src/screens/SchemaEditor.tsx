@@ -919,10 +919,10 @@ export function SchemaEditor({
               already stacks two-column detail views at that breakpoint, and
               inventing a fifth breakpoint for one panel is the kind of one-off the
               token discipline exists to stop. */}
-          <div className="lg:hidden">
+          <div className="min-w-0 lg:hidden">
             <Label htmlFor="class-picker">Class</Label>
             <Select value={String(selected)} onValueChange={(value) => setSelected(Number(value))}>
-              <SelectTrigger id="class-picker" data-testid="class-picker">
+              <SelectTrigger id="class-picker" data-testid="class-picker" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
