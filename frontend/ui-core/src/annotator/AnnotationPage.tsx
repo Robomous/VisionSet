@@ -2930,11 +2930,11 @@ function Workspace({
  *
  * ## A disclosure, not a Popover
  *
- * `Combobox` declined Radix's Popover for a reason that applies here verbatim: it
- * owns focus on open and restores it on close, and the annotator reads the
- * keyboard off its own root — so a press that landed anywhere but back on the
- * canvas would leave every chord dead until the user clicked twice. What this
- * needs is a button, a panel, an outside press and Escape.
+ * Radix's Popover owns focus on open and restores it on close, and the
+ * annotator reads the keyboard off its own root — so a press that landed
+ * anywhere but back on the canvas would leave every chord dead until the user
+ * clicked twice. What this needs is a button, a panel, an outside press and
+ * Escape.
  */
 function PinBadge({
   projectId,

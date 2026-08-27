@@ -72,7 +72,32 @@ export {
   FieldSet,
   FieldTitle,
 } from "./primitives/field.js";
-export { Combobox, type ComboboxFooter, type ComboboxProps } from "./patterns/Combobox.js";
+export {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+  InputGroupText,
+  InputGroupTextarea,
+} from "./primitives/input-group.js";
+export {
+  Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
+  ComboboxCollection,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxLabel,
+  ComboboxList,
+  ComboboxSeparator,
+  ComboboxTrigger,
+  ComboboxValue,
+  useComboboxAnchor,
+} from "./primitives/combobox.js";
 export { Badge, badgeVariants } from "./primitives/badge.js";
 export { Alert, AlertAction, AlertDescription, AlertTitle } from "./primitives/alert.js";
 export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "./primitives/dialog.js";
