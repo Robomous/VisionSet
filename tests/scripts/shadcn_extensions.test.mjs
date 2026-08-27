@@ -134,6 +134,44 @@ function lineAt(text, index) {
   return text.slice(0, index).split("\n").length;
 }
 
+/**
+ * The index just past a JSX opening tag's real closing `>`, starting the scan
+ * at `start` (the tag's own `<`). A `[^>]*?` regex is fooled by any literal
+ * `>` — an arrow function, a `count > 0` comparison, a `>` inside a quoted
+ * string — so this instead walks the text tracking `{}` depth (a `>` only
+ * ends the tag at depth zero) and skips over `"…"`/`'…'`/`` `…` `` bodies
+ * wholesale, wherever they appear, so a `>` quoted inside one is never read
+ * as the tag's own.
+ */
+function openTagEnd(text, start) {
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"' || ch === "'" || ch === "`") {
+      const quote = ch;
+      i++;
+      while (i < text.length && text[i] !== quote) {
+        if (text[i] === "\\") i++;
+        i++;
+      }
+      continue;
+    }
+    if (ch === "{") depth++;
+    else if (ch === "}") depth--;
+    else if (ch === ">" && depth === 0) return i + 1;
+  }
+  return text.length;
+}
+
+/** Every `<Tag …>` opening tag in `text`, as `{ at, tag }` in source order. */
+function openTagsIn(text, tagName) {
+  const starts = new RegExp(String.raw`<${tagName}\b`, "g");
+  return [...text.matchAll(starts)].map((m) => ({
+    at: m.index,
+    tag: text.slice(m.index, openTagEnd(text, m.index)),
+  }));
+}
+
 /** Every `file:line` in `text` reaching for a name the extension contract retired. */
 export function legacyVocabularyIn(file, text) {
   const scrubbed = text
@@ -143,9 +181,8 @@ export function legacyVocabularyIn(file, text) {
   const hits = [];
 
   for (const { tag, attribute } of TAG_ATTRIBUTE_RULES) {
-    const openTag = new RegExp(String.raw`<${tag}\b[^>]*?>`, "gs");
-    for (const m of scrubbed.matchAll(openTag)) {
-      if (attribute.test(m[0])) hits.push({ at: lineAt(scrubbed, m.index), text: m[0].split("\n")[0].trim() });
+    for (const { at, tag: tagText } of openTagsIn(scrubbed, tag)) {
+      if (attribute.test(tagText)) hits.push({ at: lineAt(scrubbed, at), text: tagText.split("\n")[0].trim() });
     }
   }
 
@@ -181,6 +218,24 @@ test("legacyVocabularyIn flags v1's shapes and stays silent on the shadcn contra
   assert.deepEqual(
     legacyVocabularyIn("g.tsx", `<Button\n  variant="primary"\n  onClick={go}\n>\n  Go\n</Button>`),
     [`g.tsx:1: <Button`],
+  );
+  // An arrow function's own `>` does not end the tag before the real attribute.
+  assert.deepEqual(
+    legacyVocabularyIn("g2.tsx", `<Button onClick={() => setOpen(true)} variant="primary">Go</Button>`),
+    [`g2.tsx:1: <Button onClick={() => setOpen(true)} variant="primary">`],
+  );
+  // Nor does a `>` comparison inside the expression.
+  assert.deepEqual(
+    legacyVocabularyIn("g3.tsx", `<Progress value={count > 0 ? count : 0} variant="thin" />`),
+    [`g3.tsx:1: <Progress value={count > 0 ? count : 0} variant="thin" />`],
+  );
+  // The same tricky arrow function with no forbidden attribute stays silent.
+  assert.deepEqual(legacyVocabularyIn("g4.tsx", `<Button onClick={() => go()}>ok</Button>`), []);
+  // Nor does a `>` quoted inside a string inside braces — the tag still
+  // extends to its real close, past the attribute that follows the string.
+  assert.deepEqual(
+    legacyVocabularyIn("g5.tsx", `<Alert data-note={"a > b"} title="Heads up">Body</Alert>`),
+    [`g5.tsx:1: <Alert data-note={"a > b"} title="Heads up">`],
   );
   assert.deepEqual(legacyVocabularyIn("h.tsx", `<FieldHint>Optional</FieldHint>`), [
     `h.tsx:1: <FieldHint>Optional</FieldHint>`,
