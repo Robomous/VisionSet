@@ -186,7 +186,7 @@ a shape. The product's status vocabulary and its mapping to product states is
 ## Badge Variants
 
 Official: `default`, `secondary`, `destructive`, `outline`, `ghost`, `link`. VisionSet adds
-exactly four, as four added lines, verbatim:
+exactly four, as four added `cva` entries, verbatim:
 
 | Variant | Classes |
 | --- | --- |
@@ -199,9 +199,8 @@ Each is Nova's own `destructive` recipe on another hue: a `/10` surface, ink at 
 dark), a focus ring at matching opacity, a hover step for the anchor case. `quiet` is the one
 that is not a hue — the absence of one, for a state that exists without asking for attention.
 
-**Geometry is untouched.** The base string still carries `h-5`, `px-2`, `text-xs`,
-`rounded-4xl` and `border border-transparent`, and no added variant names a size, a radius or a
-border colour.
+**Geometry is untouched.** The base string keeps its height, padding, type size, radius and
+transparent hairline, and no added variant names a size, a radius or a border colour.
 
 ## Status Palette
 
@@ -235,9 +234,9 @@ title is a child, never a prop. Variants are `default` and `destructive`; there 
 informational or settled Alert, because a condition worth interrupting the page for is either
 neutral or bad.
 
-An Alert's border is **structural**: `default` is `bg-card text-card-foreground` and
-`destructive` keeps the same surface, recolouring only the ink. No saturated surface, no
-coloured stroke. An Alert that needs to shout is a copy problem.
+An Alert's border is **structural**: `default` takes the card surface, and `destructive` keeps
+that same surface, recolouring only the ink. No saturated surface, no coloured stroke. An Alert
+that needs to shout is a copy problem.
 
 ## Surfaces, Borders, and Elevation
 
@@ -400,15 +399,18 @@ pnpm --filter @visionset/ui-core shadcn:add <name>
 
 That writes the CLI's pristine output to `frontend/ui-core/shadcn/<name>.tsx`, then relativises
 the import paths in `src/primitives/<name>.tsx`. The CLI version is pinned at **4.19.0** in the
-installer, matching the `shadcn` devDependency, so a refresh cannot quietly move the foundation.
-`shadcn add <name> --diff` reports what upstream changed; it is inspection only.
+installer, matching the `shadcn` dependency in `frontend/ui-core/package.json`, so a refresh
+cannot quietly move the foundation. `shadcn add <name> --diff` reports what upstream changed; it
+is inspection only.
 
 **Accept upstream by default.** A refresh that changes a class, a size or an anatomy is the
 foundation moving, and VisionSet follows it — keeping the primitives canonical is what makes that
-a routine update rather than a merge. Then reapply the additive lines this document names (today,
-only the Badge's four), re-run the gates below, and check the visual baselines. Never
-`--overwrite` blind: an overwrite that drops those four lines, or the sonner adapter, type-checks
-and fails the gate, and the diff is easier to read before the fact than after.
+a routine update rather than a merge. `shadcn:add` itself runs `--overwrite --yes`, so the
+discipline is not to withhold the flag but to know what it will replace: **`add --diff` first,
+then reapply** the additive lines this document names (today, only the Badge's four), re-run the
+gates below, and check the visual baselines. An overwrite that drops those four lines, or the
+sonner adapter, type-checks and fails the gate — the gate doing its job, but the diff is easier to
+read before the fact than after.
 
 Rendered to look at: `pnpm --filter @visionset/app dev`, then the `/styleguide` route.
 
