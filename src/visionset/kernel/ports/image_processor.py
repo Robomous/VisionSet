@@ -71,7 +71,10 @@ class ImageProcessor(Protocol):
     image yields transcoded items — one ``CONVERTED_STILL_FORMAT`` still for a
     single frame, one ``DECOMPOSED_FRAME_FORMAT`` still per frame of an
     animation. The decode is complete before the first item is yielded, so a
-    damaged file raises before a caller has stored anything.
+    damaged file raises before a caller has stored anything. A
+    ``scale_percent`` below 100 resizes every emitted still and forces the
+    re-encode even for a dataset-ready native — the original bytes are no
+    longer the asset.
 
     Raises:
         UnsupportedMedia: the bytes are not an image the decoder reads (for
@@ -90,4 +93,6 @@ class ImageProcessor(Protocol):
         name: str | None = None,
     ) -> bytes: ...
 
-    def stills(self, content: BinaryIO, *, name: str | None = None) -> Iterator[DecodedStill]: ...
+    def stills(
+        self, content: BinaryIO, *, name: str | None = None, scale_percent: int = 100
+    ) -> Iterator[DecodedStill]: ...

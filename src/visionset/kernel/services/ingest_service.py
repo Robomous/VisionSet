@@ -620,7 +620,11 @@ class IngestService:
                     # frame of an animation included — before it yields its
                     # first item, so a refusal arrives before anything below
                     # stores a byte.
-                    for still in self._workspace.image_processor.stills(handle, name=str(path)):
+                    for still in self._workspace.image_processor.stills(
+                        handle,
+                        name=str(path),
+                        scale_percent=source.image_scales.get(path.name, 100),
+                    ):
                         uri = (
                             str(path)
                             if still.frame_index is None
