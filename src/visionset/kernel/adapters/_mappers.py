@@ -73,6 +73,7 @@ from visionset.kernel.domain import (
     Token,
     VideoProvenance,
     Workspace,
+    canonical_image_scales,
 )
 
 _geometry_adapter: TypeAdapter[Geometry] = TypeAdapter(Geometry)
@@ -346,18 +347,20 @@ def _change_to_domain(_: Session, row: Any) -> DatasetChange:
 
 
 def _video_to_json(video: VideoProvenance | None) -> dict[str, Any] | None:
-    """``VideoProvenance`` as stored, with an empty ``ranges`` key omitted.
+    """``VideoProvenance`` as stored, with the default cut keys omitted.
 
-    Omitted, not stored as ``[]``: the source-origin index compares
-    ``json_extract(video, '$.ranges')``, and rows written before ranges existed
-    have no key — a whole-clip selection must serialize the same way, or the
-    index would hold two spellings of one origin.
+    Omitted, not stored as ``[]`` or ``100``: the source-origin index compares
+    ``json_extract`` of these keys, and rows written before each feature
+    existed have no key — a whole-clip, unscaled selection must serialize the
+    same way, or the index would hold two spellings of one origin.
     """
     if video is None:
         return None
     dump = video.model_dump(mode="json")
     if not dump["ranges"]:
         del dump["ranges"]
+    if dump["scale_percent"] == 100:
+        del dump["scale_percent"]
     return dump
 
 
@@ -375,6 +378,7 @@ def _source_to_row(entity: Source) -> t.Base:
         registered_at=entity.registered_at.isoformat(),
         capture_params=dict(entity.capture_params),
         video=_video_to_json(entity.video),
+        image_scales=canonical_image_scales(entity.image_scales) or None,
     )
 
 
@@ -388,6 +392,7 @@ def _source_to_domain(_: Session, row: Any) -> Source:
         registered_at=datetime.fromisoformat(row.registered_at),
         capture_params=row.capture_params,
         video=None if row.video is None else VideoProvenance.model_validate(row.video),
+        image_scales=row.image_scales or {},
     )
 
 

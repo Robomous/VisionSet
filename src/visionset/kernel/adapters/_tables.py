@@ -187,8 +187,12 @@ class SourceRow(Base):
     #: A ``VideoProvenance``, or NULL for anything that is not a clip.
     video: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     #: What a caller asked this source to be called; NULL means nobody said.
-    #: The newest column here, so it is declared last — see the class docstring.
     display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Per-file downscale for an image directory: filename -> percent, always
+    #: canonical (no 100s, sorted keys) so the origin index compares one
+    #: spelling, or NULL when every file stores at its decoded size. The
+    #: newest column here, so it is declared last — see the class docstring.
+    image_scales: Mapped[dict[str, int] | None] = mapped_column(JSON, nullable=True)
 
 
 #: One origin is one source: the backstop under ``SourceService``'s idempotency
@@ -206,17 +210,24 @@ class SourceRow(Base):
 #: written before ranges existed or after — always lands on ``''``, and a row
 #: that names ranges lands on its one canonical JSON spelling.
 #:
+#: The sixth and seventh terms follow the same two precedents: a clip stored
+#: unscaled omits ``$.scale_percent`` (0 cannot be a real percent — the domain
+#: floor is 1), and an image directory whose files all store native has a NULL
+#: ``image_scales``, coalesced to ``''`` exactly as a missing ``$.ranges`` is.
+#:
 #: This is SQL reading a JSON column, which the module docstring above reserves
 #: for values "nothing ever queries". An index is not a query: no service gains
 #: a JSON path, ``_source_to_domain`` still rehydrates ``VideoProvenance`` whole,
 #: and the doctrine's purpose — no service building SQL over JSON — is intact.
 SOURCE_ORIGIN_UNIQUE = Index(
-    "uq_source_project_kind_path_fps_ranges",
+    "uq_source_project_kind_path_fps_ranges_scale",
     SourceRow.project_id,
     SourceRow.kind,
     SourceRow.path,
     text("coalesce(json_extract(video, '$.extraction_fps'), 0)"),
     text("coalesce(json_extract(video, '$.ranges'), '')"),
+    text("coalesce(json_extract(video, '$.scale_percent'), 0)"),
+    text("coalesce(image_scales, '')"),
     unique=True,
 )
 
