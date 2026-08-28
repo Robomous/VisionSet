@@ -327,6 +327,7 @@ def video_provenance(value: VideoProvenance) -> dict[str, Any]:
         "duration_seconds": value.metadata.duration_seconds,
         "codec": value.metadata.codec,
         "extraction_fps": value.extraction_fps,
+        "scale_percent": value.scale_percent,
         "ranges": [
             {"start_seconds": r.start_seconds, "end_seconds": r.end_seconds} for r in value.ranges
         ],
@@ -346,6 +347,7 @@ def source(value: Source) -> dict[str, Any]:
         "name": value.name,
         "registered_at": _moment(value.registered_at),
         "video": None if value.video is None else video_provenance(value.video),
+        "image_scales": dict(value.image_scales),
     }
 
 

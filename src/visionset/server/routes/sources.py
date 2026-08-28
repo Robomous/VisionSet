@@ -27,7 +27,7 @@ from uuid import UUID
 
 from fastapi import File, Form, Response, UploadFile, status
 from fastapi.exceptions import RequestValidationError
-from pydantic import TypeAdapter, ValidationError
+from pydantic import Field, TypeAdapter, ValidationError
 
 from visionset.jobs.ingest import JOB_TYPE as ingest_job_type
 from visionset.jobs.ingest import payload_for as ingest_payload_for
@@ -43,7 +43,7 @@ from visionset.server.models import (
     SourceOut,
     SourcePage,
 )
-from visionset.server.uploads import stage
+from visionset.server.uploads import safe_name, stage
 
 project_router = protected_router(prefix="/projects/{project_id}/sources", tags=["sources"])
 router = protected_router(prefix="/sources", tags=["sources"])
@@ -71,6 +71,78 @@ RangesForm = Annotated[
 ]
 
 _RANGES_ADAPTER: Final = TypeAdapter(tuple[TimeRange, ...])
+
+#: A clip's storage scale, as a multipart field. The bounds mirror
+#: ``VideoProvenance.scale_percent``'s own, for ``ExtractionFpsForm``'s reason.
+ScalePercentForm = Annotated[
+    int,
+    Form(
+        ge=1,
+        le=100,
+        description=(
+            "Percent of the native size to store extracted frames at; 100 — the "
+            "default — stores them unscaled. Part of the source's identity, like "
+            "extraction_fps: the same clip at another scale is a second source."
+        ),
+    ),
+]
+
+#: The per-file downscale map, as a multipart field. Multipart carries strings,
+#: so the JSON object rides in one, exactly as ``ranges`` does.
+ScalesForm = Annotated[
+    str | None,
+    Form(
+        description=(
+            'Per-file downscale, as a JSON object of {"filename": percent} with '
+            "integer percents in [1, 100]. Every filename must match an uploaded "
+            "part; a file not named — and any entry of 100 — is stored at its "
+            "decoded size. Part of the source's identity: the same files at "
+            "other scales are a second source."
+        ),
+    ),
+]
+
+_SCALES_ADAPTER: Final = TypeAdapter(dict[str, Annotated[int, Field(ge=1, le=100)]])
+
+
+def _parse_scales(scales: str | None) -> dict[str, int]:
+    """The `scales` field as a plain map, or the 422 a malformed one earns."""
+    if scales is None:
+        return {}
+    try:
+        return dict(_SCALES_ADAPTER.validate_json(scales))
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+
+
+def _staged_scales(
+    files: list[UploadFile], staged_names: tuple[str, ...], scales: dict[str, int]
+) -> dict[str, int]:
+    """Client filenames re-keyed to staged names, in upload order.
+
+    Staging can rename a colliding duplicate, and the zip below is the only
+    mapping between what the client called a part and what landed on disk. A
+    scale naming no uploaded file is refused loudly — silently storing that
+    file at native size is how a typo becomes a 4K asset nobody wanted.
+    """
+    matched: set[str] = set()
+    by_staged_name: dict[str, int] = {}
+    for upload, staged_name in zip(files, staged_names, strict=True):
+        percent = scales.get(safe_name(upload.filename))
+        if percent is not None:
+            matched.add(safe_name(upload.filename))
+            by_staged_name[staged_name] = percent
+    if unmatched := set(scales) - matched:
+        raise RequestValidationError(
+            [
+                {
+                    "loc": ("body", "scales"),
+                    "msg": f"no uploaded file is named {sorted(unmatched)}",
+                    "type": "value_error",
+                }
+            ]
+        )
+    return by_staged_name
 
 
 def _parse_ranges(ranges: str | None) -> tuple[TimeRange, ...]:
@@ -104,8 +176,9 @@ def register_image_source(
             ),
         ),
     ] = None,
+    scales: ScalesForm = None,
 ) -> SourceOut:
-    """Offer a project a folder of stills.
+    """Offer a project a folder of stills, each stored at its own scale.
 
     The parts are staged as one directory and that directory becomes the source.
     Uploading the same files again returns the **same** source rather than a
@@ -118,13 +191,22 @@ def register_image_source(
     `name` exists because the staged path's basename is a digest; a blank one is
     422 `INVALID_NAME`, refused by the kernel's own `InvalidName` — the domain
     already refuses with a mapped error, so no wire validator restates it.
+
+    `scales` names files to store below native size, and is part of the
+    source's identity: the same files at other scales are a second source.
     """
     # ``capture_params`` is not on the wire. It is an opaque operator-supplied
     # mapping, and threading a JSON object through a multipart form is a
     # contract decision with no caller asking for it yet.
+    by_client_name = _parse_scales(scales)
     staged = stage(workspace.root, files)
     return SourceOut.of(
-        SourceService(workspace).register_images(project_id, staged.directory, display_name=name)
+        SourceService(workspace).register_images(
+            project_id,
+            staged.directory,
+            display_name=name,
+            image_scales=_staged_scales(files, staged.names, by_client_name),
+        )
     )
 
 
@@ -135,6 +217,7 @@ def register_video_source(
     file: Annotated[UploadFile, File(description="The clip.")],
     extraction_fps: ExtractionFpsForm = DEFAULT_EXTRACTION_FPS,
     ranges: RangesForm = None,
+    scale_percent: ScalePercentForm = 100,
 ) -> SourceOut:
     """Offer a project a clip, to be cut at `extraction_fps` inside `ranges`.
 
@@ -145,15 +228,20 @@ def register_video_source(
     message says what was wrong with the file and never where it was put.
 
     The cut is part of what the source *is*: the same clip registered at 1 fps
-    and again at 5 fps — or over different ranges — is two sources over one
-    file, which is what makes "the same source yields the same assets" mean
-    anything. Ranges are stored canonically (clamped, sorted, merged), and the
-    response carries that canonical form.
+    and again at 5 fps — or over different ranges, or at another scale — is two
+    sources over one file, which is what makes "the same source yields the same
+    assets" mean anything. Ranges are stored canonically (clamped, sorted,
+    merged), and the response carries that canonical form. `scale_percent`
+    below 100 stores every extracted frame at that percent of the clip's size.
     """
     selection = _parse_ranges(ranges)
     staged = stage(workspace.root, [file])
     source = SourceService(workspace).register_video(
-        project_id, staged.only, extraction_fps=extraction_fps, ranges=selection
+        project_id,
+        staged.only,
+        extraction_fps=extraction_fps,
+        ranges=selection,
+        scale_percent=scale_percent,
     )
     return SourceOut.of(source)
 

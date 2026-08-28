@@ -2661,7 +2661,7 @@ export interface paths {
         put?: never;
         /**
          * Register Image Source
-         * @description Offer a project a folder of stills.
+         * @description Offer a project a folder of stills, each stored at its own scale.
          *
          *     The parts are staged as one directory and that directory becomes the source.
          *     Uploading the same files again returns the **same** source rather than a
@@ -2674,6 +2674,9 @@ export interface paths {
          *     `name` exists because the staged path's basename is a digest; a blank one is
          *     422 `INVALID_NAME`, refused by the kernel's own `InvalidName` — the domain
          *     already refuses with a mapped error, so no wire validator restates it.
+         *
+         *     `scales` names files to store below native size, and is part of the
+         *     source's identity: the same files at other scales are a second source.
          */
         post: operations["register_image_source"];
         delete?: never;
@@ -2702,10 +2705,11 @@ export interface paths {
          *     message says what was wrong with the file and never where it was put.
          *
          *     The cut is part of what the source *is*: the same clip registered at 1 fps
-         *     and again at 5 fps — or over different ranges — is two sources over one
-         *     file, which is what makes "the same source yields the same assets" mean
-         *     anything. Ranges are stored canonically (clamped, sorted, merged), and the
-         *     response carries that canonical form.
+         *     and again at 5 fps — or over different ranges, or at another scale — is two
+         *     sources over one file, which is what makes "the same source yields the same
+         *     assets" mean anything. Ranges are stored canonically (clamped, sorted,
+         *     merged), and the response carries that canonical form. `scale_percent`
+         *     below 100 stores every extracted frame at that percent of the clip's size.
          */
         post: operations["register_video_source"];
         delete?: never;
@@ -3690,6 +3694,11 @@ export interface components {
              * @description What to call the source. Without one it is named by its staged directory, whose basename is a content digest — 64 hex characters nobody can read. Registering the same files again with a new name renames the existing source rather than creating a second one.
              */
             name?: string | null;
+            /**
+             * Scales
+             * @description Per-file downscale, as a JSON object of {"filename": percent} with integer percents in [1, 100]. Every filename must match an uploaded part; a file not named — and any entry of 100 — is stored at its decoded size. Part of the source's identity: the same files at other scales are a second source.
+             */
+            scales?: string | null;
         };
         /** Body_register_video_source */
         Body_register_video_source: {
@@ -3709,6 +3718,12 @@ export interface components {
              * @description Which stretches of the clip to extract, as a JSON array of {"start_seconds": s, "end_seconds": e} objects, each half-open [start, end). Omitted means the whole clip.
              */
             ranges?: string | null;
+            /**
+             * Scale Percent
+             * @description Percent of the native size to store extracted frames at; 100 — the default — stores them unscaled. Part of the source's identity, like extraction_fps: the same clip at another scale is a second source.
+             * @default 100
+             */
+            scale_percent: number;
         };
         /**
          * BySegmentsBody
@@ -5611,6 +5626,11 @@ export interface components {
         /**
          * SourceOut
          * @description A registered origin: a folder of stills, or a clip.
+         *
+         *     `image_scales` is an image directory's per-file downscale, filename to
+         *     percent. Only files stored below native size appear; an empty object means
+         *     every file stores at its decoded size. Always empty for a video source,
+         *     whose single `scale_percent` lives on `video`.
          */
         SourceOut: {
             /**
@@ -5618,6 +5638,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Image Scales */
+            image_scales: {
+                [key: string]: number;
+            };
             kind: components["schemas"]["SourceKind"];
             /** Name */
             name: string;
@@ -5801,6 +5825,11 @@ export interface components {
          *     `ranges` is the canonical form of the selection the source was registered
          *     with — clamped to the clip, sorted, overlaps merged — and empty means the
          *     whole clip. Like `extraction_fps`, it is part of the source's identity.
+         *
+         *     `scale_percent` is the percent of the native size extracted frames are
+         *     stored at; 100 means unscaled. `width` and `height` stay the clip's own —
+         *     what is stored is each dimension scaled by this percent. Also part of the
+         *     source's identity.
          */
         VideoProvenanceOut: {
             /** Codec */
@@ -5815,6 +5844,8 @@ export interface components {
             height: number;
             /** Ranges */
             ranges: components["schemas"]["ClipRange"][];
+            /** Scale Percent */
+            scale_percent: number;
             /** Width */
             width: number;
         };

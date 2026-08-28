@@ -1636,6 +1636,18 @@
             ],
             "description": "What to call the source. Without one it is named by its staged directory, whose basename is a content digest \u2014 64 hex characters nobody can read. Registering the same files again with a new name renames the existing source rather than creating a second one.",
             "title": "Name"
+          },
+          "scales": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-file downscale, as a JSON object of {\"filename\": percent} with integer percents in [1, 100]. Every filename must match an uploaded part; a file not named \u2014 and any entry of 100 \u2014 is stored at its decoded size. Part of the source's identity: the same files at other scales are a second source.",
+            "title": "Scales"
           }
         },
         "required": [
@@ -1670,6 +1682,14 @@
             ],
             "description": "Which stretches of the clip to extract, as a JSON array of {\"start_seconds\": s, \"end_seconds\": e} objects, each half-open [start, end). Omitted means the whole clip.",
             "title": "Ranges"
+          },
+          "scale_percent": {
+            "default": 100,
+            "description": "Percent of the native size to store extracted frames at; 100 \u2014 the default \u2014 stores them unscaled. Part of the source's identity, like extraction_fps: the same clip at another scale is a second source.",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Scale Percent",
+            "type": "integer"
           }
         },
         "required": [
@@ -5476,12 +5496,19 @@
         "type": "string"
       },
       "SourceOut": {
-        "description": "A registered origin: a folder of stills, or a clip.",
+        "description": "A registered origin: a folder of stills, or a clip.\n\n`image_scales` is an image directory's per-file downscale, filename to\npercent. Only files stored below native size appear; an empty object means\nevery file stores at its decoded size. Always empty for a video source,\nwhose single `scale_percent` lives on `video`.",
         "properties": {
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "image_scales": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Image Scales",
+            "type": "object"
           },
           "kind": {
             "$ref": "#/components/schemas/SourceKind"
@@ -5517,7 +5544,8 @@
           "kind",
           "name",
           "registered_at",
-          "video"
+          "video",
+          "image_scales"
         ],
         "title": "SourceOut",
         "type": "object"
@@ -5810,7 +5838,7 @@
         "x-visionset-open": true
       },
       "VideoProvenanceOut": {
-        "description": "What a clip turned out to be, and the cut it is decomposed by.\n\n`ranges` is the canonical form of the selection the source was registered\nwith \u2014 clamped to the clip, sorted, overlaps merged \u2014 and empty means the\nwhole clip. Like `extraction_fps`, it is part of the source's identity.",
+        "description": "What a clip turned out to be, and the cut it is decomposed by.\n\n`ranges` is the canonical form of the selection the source was registered\nwith \u2014 clamped to the clip, sorted, overlaps merged \u2014 and empty means the\nwhole clip. Like `extraction_fps`, it is part of the source's identity.\n\n`scale_percent` is the percent of the native size extracted frames are\nstored at; 100 means unscaled. `width` and `height` stay the clip's own \u2014\nwhat is stored is each dimension scaled by this percent. Also part of the\nsource's identity.",
         "properties": {
           "codec": {
             "title": "Codec",
@@ -5839,6 +5867,10 @@
             "title": "Ranges",
             "type": "array"
           },
+          "scale_percent": {
+            "title": "Scale Percent",
+            "type": "integer"
+          },
           "width": {
             "title": "Width",
             "type": "integer"
@@ -5851,7 +5883,8 @@
           "duration_seconds",
           "codec",
           "extraction_fps",
-          "ranges"
+          "ranges",
+          "scale_percent"
         ],
         "title": "VideoProvenanceOut",
         "type": "object"
@@ -14551,7 +14584,7 @@
     },
     "/projects/{project_id}/sources/images": {
       "post": {
-        "description": "Offer a project a folder of stills.\n\nThe parts are staged as one directory and that directory becomes the source.\nUploading the same files again returns the **same** source rather than a\nsecond one: staging is content-addressed, so identical bytes under identical\nfilenames land on the same path, and registration is idempotent on that path.\n\nNothing is decoded here \u2014 what the files turn out to be is read at ingest,\nand a file that is not an image is reported there rather than refused now.\n\n`name` exists because the staged path's basename is a digest; a blank one is\n422 `INVALID_NAME`, refused by the kernel's own `InvalidName` \u2014 the domain\nalready refuses with a mapped error, so no wire validator restates it.",
+        "description": "Offer a project a folder of stills, each stored at its own scale.\n\nThe parts are staged as one directory and that directory becomes the source.\nUploading the same files again returns the **same** source rather than a\nsecond one: staging is content-addressed, so identical bytes under identical\nfilenames land on the same path, and registration is idempotent on that path.\n\nNothing is decoded here \u2014 what the files turn out to be is read at ingest,\nand a file that is not an image is reported there rather than refused now.\n\n`name` exists because the staged path's basename is a digest; a blank one is\n422 `INVALID_NAME`, refused by the kernel's own `InvalidName` \u2014 the domain\nalready refuses with a mapped error, so no wire validator restates it.\n\n`scales` names files to store below native size, and is part of the\nsource's identity: the same files at other scales are a second source.",
         "operationId": "register_image_source",
         "parameters": [
           {
@@ -14650,7 +14683,7 @@
     },
     "/projects/{project_id}/sources/video": {
       "post": {
-        "description": "Offer a project a clip, to be cut at `extraction_fps` inside `ranges`.\n\nThe clip is probed on the way in, so a file that is not a video, or one\nwhose bytes will not decode, is 422 here rather than a run that fails later:\n422 `UNSUPPORTED_MEDIA` for a kind of file this cannot cut, and 422\n`CORRUPT_MEDIA` for one that is the right kind and will not decode. The\nmessage says what was wrong with the file and never where it was put.\n\nThe cut is part of what the source *is*: the same clip registered at 1 fps\nand again at 5 fps \u2014 or over different ranges \u2014 is two sources over one\nfile, which is what makes \"the same source yields the same assets\" mean\nanything. Ranges are stored canonically (clamped, sorted, merged), and the\nresponse carries that canonical form.",
+        "description": "Offer a project a clip, to be cut at `extraction_fps` inside `ranges`.\n\nThe clip is probed on the way in, so a file that is not a video, or one\nwhose bytes will not decode, is 422 here rather than a run that fails later:\n422 `UNSUPPORTED_MEDIA` for a kind of file this cannot cut, and 422\n`CORRUPT_MEDIA` for one that is the right kind and will not decode. The\nmessage says what was wrong with the file and never where it was put.\n\nThe cut is part of what the source *is*: the same clip registered at 1 fps\nand again at 5 fps \u2014 or over different ranges, or at another scale \u2014 is two\nsources over one file, which is what makes \"the same source yields the same\nassets\" mean anything. Ranges are stored canonically (clamped, sorted,\nmerged), and the response carries that canonical form. `scale_percent`\nbelow 100 stores every extracted frame at that percent of the clip's size.",
         "operationId": "register_video_source",
         "parameters": [
           {
