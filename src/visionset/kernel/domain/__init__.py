@@ -257,6 +257,7 @@ from visionset.kernel.domain.source import (
     canonical_ranges,
     expected_frames,
     grid_bounds,
+    scaled_dimension,
 )
 from visionset.kernel.domain.suggestion import (
     DEFAULT_TOLERANCE,
@@ -551,5 +552,6 @@ __all__ = [
     "require_move",
     "require_points_on_asset",
     "require_state",
+    "scaled_dimension",
     "sha256_hex",
 ]

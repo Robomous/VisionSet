@@ -13,8 +13,8 @@ assets. That promise only means something if the parameters are part of what
 "the same source" *is* — put them on the job and two runs of one source could
 legitimately disagree, leaving idempotency with nothing to be measured against.
 The consequence is deliberate: one clip registered at 1 fps and again at 5 fps —
-or over different clip ranges — is two sources over one file, not one source
-with a history.
+or over different clip ranges, or at another scale — is two sources over one
+file, not one source with a history.
 
 **Paths are canonicalized once**, by :func:`canonical_path`, so ``./data`` and
 ``/abs/data`` are one source rather than two. See that function for what
@@ -157,6 +157,16 @@ def expected_frames(ranges: Iterable[TimeRange], *, duration_seconds: float, fps
     return sum(b - a for a, b in bounds)
 
 
+def scaled_dimension(native: int, percent: int) -> int:
+    """One axis after a percent downscale — integer half-up, floored at one.
+
+    Integer arithmetic on purpose: Python ``round`` is half-even and JS
+    ``Math.round`` is half-up, and the ingest screen mirrors this formula, so
+    the one spelling both sides can share is ``(native * percent + 50) // 100``.
+    """
+    return max(1, (native * percent + 50) // 100)
+
+
 class VideoProvenance(BaseModel):
     """What a clip was, and how we chose to cut it.
 
@@ -173,6 +183,11 @@ class VideoProvenance(BaseModel):
     Always stored canonical — see :func:`canonical_ranges` — and the validator
     refuses anything else rather than quietly rewriting a frozen value.
 
+    :attr:`scale_percent` is the third cut parameter: the percent of the native
+    size frames are stored at, 100 meaning unscaled. Extraction emits every
+    frame at :attr:`stored_width` × :attr:`stored_height`; :attr:`metadata`
+    keeps the probe's native numbers, because what the clip *was* is provenance.
+
     Frozen, like every other value in the domain that is a pure function of some
     bytes and a choice.
     """
@@ -182,6 +197,15 @@ class VideoProvenance(BaseModel):
     metadata: VideoMetadata
     extraction_fps: float = Field(gt=0)
     ranges: tuple[TimeRange, ...] = ()
+    scale_percent: int = Field(default=100, ge=1, le=100)
+
+    @property
+    def stored_width(self) -> int:
+        return scaled_dimension(self.metadata.width, self.scale_percent)
+
+    @property
+    def stored_height(self) -> int:
+        return scaled_dimension(self.metadata.height, self.scale_percent)
 
     @model_validator(mode="after")
     def _ranges_are_canonical(self) -> VideoProvenance:
@@ -221,6 +245,7 @@ class Source(BaseModel):
     must not fork one origin into two — and unlike ``registered_at`` a provided
     value *does* refresh the stored one, because a label is curation, not
     provenance.
+
     """
 
     model_config = ConfigDict(validate_assignment=True)

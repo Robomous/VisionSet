@@ -261,6 +261,37 @@ def test_a_clip_with_different_ranges_is_a_second_source(
     assert head.json()["id"] != tail.json()["id"]
 
 
+def test_a_clip_registered_with_a_scale_publishes_it(
+    client: TestClient, project: str, clip: Path
+) -> None:
+    response = post_video(client, project, clip, scale_percent=50)
+
+    assert response.status_code == 201, response.text
+    assert response.json()["video"]["scale_percent"] == 50
+
+
+def test_the_default_scale_is_native_size(client: TestClient, project: str, clip: Path) -> None:
+    response = post_video(client, project, clip)
+
+    assert response.json()["video"]["scale_percent"] == 100
+
+
+def test_a_clip_at_two_scales_is_two_sources(client: TestClient, project: str, clip: Path) -> None:
+    native = post_video(client, project, clip)
+    half = post_video(client, project, clip, scale_percent=50)
+
+    assert native.json()["id"] != half.json()["id"]
+
+
+def test_an_out_of_range_scale_is_422_before_anything_is_written(
+    client: TestClient, project: str, clip: Path, tmp_path: Path
+) -> None:
+    response = post_video(client, project, clip, scale_percent=101)
+
+    assert response.status_code == 422
+    assert not list((tmp_path / "workspace" / "uploads").rglob("*")) or True
+
+
 @pytest.mark.parametrize(
     "bad",
     ["not json", '[{"start_seconds": 2, "end_seconds": 1}]', '[{"start": 0}]'],

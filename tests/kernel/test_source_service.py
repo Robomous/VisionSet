@@ -248,6 +248,28 @@ def test_the_same_clip_with_different_ranges_is_a_second_source(tmp_path: Path) 
     fx.close()
 
 
+def test_the_same_clip_at_a_different_scale_is_a_second_source(tmp_path: Path) -> None:
+    """The scale is the third cut parameter, so it forks identity as the rate does."""
+    fx = Fixture(tmp_path)
+    clip = fx.clip()
+    native = fx.sources.register_video(fx.project.id, clip.path, scale_percent=100)
+    half = fx.sources.register_video(fx.project.id, clip.path, scale_percent=50)
+    assert half.id != native.id
+    assert half.require_video().scale_percent == 50
+    assert {s.id for s in fx.sources.list(fx.project.id)} == {native.id, half.id}
+    fx.close()
+
+
+def test_a_scale_of_one_hundred_is_the_plain_source(tmp_path: Path) -> None:
+    fx = Fixture(tmp_path)
+    clip = fx.clip()
+    plain = fx.sources.register_video(fx.project.id, clip.path)
+    explicit = fx.sources.register_video(fx.project.id, clip.path, scale_percent=100)
+    assert explicit == plain
+    assert len(fx.sources.list(fx.project.id)) == 1
+    fx.close()
+
+
 def test_range_spelling_variants_collapse_to_one_source(tmp_path: Path) -> None:
     """Identity compares the canonical form, never what a caller happened to type."""
     fx = Fixture(tmp_path)

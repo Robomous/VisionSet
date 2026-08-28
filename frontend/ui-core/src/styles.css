@@ -235,3 +235,12 @@
     @apply font-heading;
   }
 }
+
+/* The ingest preview player is always muted — a vision dataset has no use for
+   the audio track — so the volume controls are dead weight. Only the WebKit
+   engines expose the pseudo-elements; elsewhere the player is merely muted. */
+.vs-muted-player::-webkit-media-controls-mute-button,
+.vs-muted-player::-webkit-media-controls-volume-slider,
+.vs-muted-player::-webkit-media-controls-volume-control-container {
+  display: none !important;
+}

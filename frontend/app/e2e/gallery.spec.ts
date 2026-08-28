@@ -478,6 +478,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
             width: 1280,
             height: 720,
             ranges: [],
+            scale_percent: 100,
           },
         } satisfies Wire["SourceOut"],
       });

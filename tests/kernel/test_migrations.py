@@ -45,7 +45,12 @@ _UNIQUENESS_INDEXES = {
     # silently: a three-column index would refuse a clip's second extraction
     # rate, and a nullable fourth column would collide with nothing at all,
     # because SQLite treats NULLs in a unique index as distinct.
-    "uq_source_project_kind_path_fps_ranges": ("json_extract", "coalesce", "$.ranges"),
+    "uq_source_project_kind_path_fps_ranges_scale": (
+        "json_extract",
+        "coalesce",
+        "$.ranges",
+        "$.scale_percent",
+    ),
     # Partial, so it constrains classification tags and nothing else: two boxes
     # under one class are two facts, two tags of one class are one statement
     # made twice.
@@ -188,7 +193,7 @@ def _at_generation_one(path: Path) -> None:
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN credential_env"))
         connection.execute(text("ALTER TABLE project DROP COLUMN created_at"))
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN origin"))
-        connection.execute(text("DROP INDEX uq_source_project_kind_path_fps_ranges"))
+        connection.execute(text("DROP INDEX uq_source_project_kind_path_fps_ranges_scale"))
         connection.execute(
             text(
                 "CREATE UNIQUE INDEX uq_source_project_kind_path_fps ON source"
@@ -312,6 +317,53 @@ def test_the_reshaped_source_index_still_refuses_a_duplicate_origin(tmp_path: Pa
                 "insert into source (id, project_id, kind, path, registered_at,"
                 " capture_params, video) values ('s2', 'p', 'video', '/clips/a.mp4',"
                 f" '2026-01-02T00:00:00+00:00', '{{}}', '{provenance}')"
+            )
+        )
+    migrated.close()
+
+
+def test_the_scale_term_forks_the_migrated_index(tmp_path: Path) -> None:
+    """Migration 18 exercised for real: scale forks identity, its absence collides.
+
+    The pair differs only in ``$.scale_percent`` and must land; a row repeating
+    an existing spelling exactly must still be refused.
+    """
+    whole = (
+        '{"metadata": {"width": 64, "height": 48, "fps": 10.0,'
+        ' "duration_seconds": 2.0, "codec": "h264"}, "extraction_fps": 1.0}'
+    )
+    scaled = whole[:-1] + ', "scale_percent": 50}'
+    old = tmp_path / "old.db"
+    _at_generation_one(old)
+    with SqliteMetadataStore(old).engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'clips')")
+        )
+        connection.execute(
+            text(
+                "insert into source (id, project_id, kind, path, registered_at,"
+                " capture_params, video) values ('s1', 'p', 'video', '/clips/a.mp4',"
+                f" '2026-01-01T00:00:00+00:00', '{{}}', '{whole}')"
+            )
+        )
+
+    migrated = SqliteMetadataStore(old)
+    migrated.initialize()
+    with migrated.engine.begin() as connection:
+        connection.execute(
+            text(
+                "insert into source (id, project_id, kind, path, registered_at,"
+                " capture_params, video) values ('s2', 'p', 'video', '/clips/a.mp4',"
+                f" '2026-01-02T00:00:00+00:00', '{{}}', '{scaled}')"
+            )
+        )
+    with pytest.raises(IntegrityError), migrated.engine.begin() as connection:
+        connection.execute(
+            text(
+                "insert into source (id, project_id, kind, path, registered_at,"
+                " capture_params, video) values ('s3', 'p', 'video', '/clips/a.mp4',"
+                f" '2026-01-03T00:00:00+00:00', '{{}}', '{scaled}')"
             )
         )
     migrated.close()

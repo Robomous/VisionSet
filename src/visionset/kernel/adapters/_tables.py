@@ -206,17 +206,21 @@ class SourceRow(Base):
 #: written before ranges existed or after — always lands on ``''``, and a row
 #: that names ranges lands on its one canonical JSON spelling.
 #:
+#: The sixth term follows the same precedent: a clip stored unscaled omits
+#: ``$.scale_percent``, and 0 cannot be a real percent — the domain floor is 1.
+#:
 #: This is SQL reading a JSON column, which the module docstring above reserves
 #: for values "nothing ever queries". An index is not a query: no service gains
 #: a JSON path, ``_source_to_domain`` still rehydrates ``VideoProvenance`` whole,
 #: and the doctrine's purpose — no service building SQL over JSON — is intact.
 SOURCE_ORIGIN_UNIQUE = Index(
-    "uq_source_project_kind_path_fps_ranges",
+    "uq_source_project_kind_path_fps_ranges_scale",
     SourceRow.project_id,
     SourceRow.kind,
     SourceRow.path,
     text("coalesce(json_extract(video, '$.extraction_fps'), 0)"),
     text("coalesce(json_extract(video, '$.ranges'), '')"),
+    text("coalesce(json_extract(video, '$.scale_percent'), 0)"),
     unique=True,
 )
 

@@ -346,18 +346,20 @@ def _change_to_domain(_: Session, row: Any) -> DatasetChange:
 
 
 def _video_to_json(video: VideoProvenance | None) -> dict[str, Any] | None:
-    """``VideoProvenance`` as stored, with an empty ``ranges`` key omitted.
+    """``VideoProvenance`` as stored, with the default cut keys omitted.
 
-    Omitted, not stored as ``[]``: the source-origin index compares
-    ``json_extract(video, '$.ranges')``, and rows written before ranges existed
-    have no key — a whole-clip selection must serialize the same way, or the
-    index would hold two spellings of one origin.
+    Omitted, not stored as ``[]`` or ``100``: the source-origin index compares
+    ``json_extract`` of these keys, and rows written before each feature
+    existed have no key — a whole-clip, unscaled selection must serialize the
+    same way, or the index would hold two spellings of one origin.
     """
     if video is None:
         return None
     dump = video.model_dump(mode="json")
     if not dump["ranges"]:
         del dump["ranges"]
+    if dump["scale_percent"] == 100:
+        del dump["scale_percent"]
     return dump
 
 

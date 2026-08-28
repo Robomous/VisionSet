@@ -109,6 +109,8 @@ describe("ClipRangeTimeline", () => {
 
     // 50px of 200 over 2 s is 0.5 s — inside the range, so the click plays.
     const video = screen.getByTestId("clip-player") as HTMLVideoElement;
+    // Always muted: a vision dataset has no use for the audio track.
+    expect(video.muted).toBe(true);
     expect(video.currentTime).toBe(0.5);
     expect(play).toHaveBeenCalled();
     // The browser answers play() with the play event; the boundary arms there.

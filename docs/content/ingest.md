@@ -65,8 +65,8 @@ reported as unsupported rather than skipped, because guessing which files an ope
 offer is a policy the kernel would be inventing.
 
 **Frames are not re-probed.** `VideoProcessor` guarantees every frame is a complete image in
-`FRAME_FORMAT` at the dimensions `probe` reported, and that promise is asserted in the port's own
-tests. Decoding each one again to re-confirm it would also route our own encoder's output into an
+`FRAME_FORMAT` at the source's stored size — the probe's dimensions scaled by its
+`scale_percent` — and that promise is asserted in the port's own tests. Decoding each one again to re-confirm it would also route our own encoder's output into an
 operator's per-file report - a failure nobody could act on.
 
 ## Asking for a run and doing it are two calls

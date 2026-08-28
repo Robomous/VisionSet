@@ -798,6 +798,7 @@ export function useRegisterSource(projectId: string) {
       extractionFps?: number;
       ranges?: readonly { start_seconds: number; end_seconds: number }[];
       name?: string;
+      scalePercent?: number;
     }) => {
       const extractionFps = input.extractionFps;
       const source =
@@ -813,6 +814,7 @@ export function useRegisterSource(projectId: string) {
                 ...(input.ranges !== undefined && input.ranges.length > 0
                   ? { ranges: JSON.stringify(input.ranges) }
                   : {}),
+                scale_percent: input.scalePercent ?? 100,
               },
               bodySerializer: formData,
             }),

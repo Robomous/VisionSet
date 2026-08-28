@@ -76,6 +76,28 @@ def test_a_clip_ingested_with_ranges_extracts_only_inside_them(
     assert result["source"]["video"]["ranges"] == [{"start_seconds": 0.5, "end_seconds": 1.5}]
 
 
+def test_a_clip_ingested_with_a_scale_echoes_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = schema(monkeypatch, tmp_path)
+    write_video(tmp_path / "clip.mp4", size=(160, 120))
+    result = payload(call("ingest", project=named, path=str(tmp_path / "clip.mp4"), scale=50))
+
+    assert result["source"]["video"]["scale_percent"] == 50
+
+
+def test_scale_for_a_directory_of_stills_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = schema(monkeypatch, tmp_path)
+    write_images(tmp_path / "incoming", count=1)
+    message = error(call("ingest", project=named, path=str(tmp_path / "incoming"), scale=50))[
+        "message"
+    ]
+
+    assert "video source" in message
+
+
 def test_ranges_for_a_directory_of_stills_are_refused(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

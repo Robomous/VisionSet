@@ -39,6 +39,7 @@ from itertools import islice
 from pathlib import Path
 
 import pytest
+from PIL import Image as PILImage
 from tests.fixtures.media import (
     DEFAULT_VIDEO_SIZE,
     GeneratedVideo,
@@ -585,15 +586,32 @@ def test_the_extraction_arguments_are_pinned() -> None:
 
 def test_the_whole_clip_command_is_unchanged_by_the_ranges_feature() -> None:
     """No selection, no new arguments: every frame hash ever stored stays put."""
-    assert _filtergraph(5, ()) == "fps=fps=5:round=up"
+    assert _filtergraph(5, (), None) == "fps=fps=5:round=up"
 
 
 def test_the_selection_filter_compares_integer_frame_numbers() -> None:
     """Bounds are precomputed in Python; ffmpeg never compares a float timestamp."""
     assert (
-        _filtergraph(1, ((2, 5), (9, 12)))
+        _filtergraph(1, ((2, 5), (9, 12)), None)
         == "fps=fps=1:round=up,select='gte(n,2)*lt(n,5)+gte(n,9)*lt(n,12)'"
     )
+
+
+def test_the_scale_stage_lands_after_the_selection() -> None:
+    """Dimensions come precomputed from the probe, never as ffmpeg-side arithmetic."""
+    assert _filtergraph(2, (), (960, 540)) == "fps=fps=2:round=up,scale=960:540"
+    assert (
+        _filtergraph(1, ((2, 5),), (960, 540))
+        == "fps=fps=1:round=up,select='gte(n,2)*lt(n,5)',scale=960:540"
+    )
+
+
+def test_scaled_extraction_emits_frames_at_the_stored_size(clip: GeneratedVideo) -> None:
+    frames = list(FfmpegVideoProcessor().frames(clip.path, fps=1, scale=(32, 24)))
+    assert frames
+    for frame in frames:
+        with PILImage.open(io.BytesIO(frame.content)) as picture:
+            assert picture.size == (32, 24)
 
 
 @pytest.mark.parametrize(
@@ -622,6 +640,7 @@ class _NullVideoProcessor:
         fps: float = DEFAULT_EXTRACTION_FPS,
         ranges: tuple[TimeRange, ...] = (),
         name: str | None = None,
+        scale: tuple[int, int] | None = None,
     ) -> Iterator[VideoFrame]:
         return iter(())
 

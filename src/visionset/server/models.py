@@ -738,6 +738,11 @@ class VideoProvenanceOut(BaseModel):
     `ranges` is the canonical form of the selection the source was registered
     with — clamped to the clip, sorted, overlaps merged — and empty means the
     whole clip. Like `extraction_fps`, it is part of the source's identity.
+
+    `scale_percent` is the percent of the native size extracted frames are
+    stored at; 100 means unscaled. `width` and `height` stay the clip's own —
+    what is stored is each dimension scaled by this percent. Also part of the
+    source's identity.
     """
 
     width: int
@@ -747,6 +752,7 @@ class VideoProvenanceOut(BaseModel):
     codec: str
     extraction_fps: float
     ranges: tuple[ClipRange, ...]
+    scale_percent: int
 
     @classmethod
     def of(cls, provenance: VideoProvenance) -> Self:
@@ -761,6 +767,7 @@ class VideoProvenanceOut(BaseModel):
                 ClipRange(start_seconds=r.start_seconds, end_seconds=r.end_seconds)
                 for r in provenance.ranges
             ),
+            scale_percent=provenance.scale_percent,
         )
 
 

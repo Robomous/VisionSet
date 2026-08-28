@@ -81,6 +81,18 @@ def ingest(
             )
         ),
     ] = None,
+    scale: Annotated[
+        int | None,
+        Field(
+            ge=1,
+            le=100,
+            description=(
+                "Store extracted frames at this percent of the clip's native size. "
+                "Video sources only. Part of the source's identity, like fps: "
+                "another scale is a second source. Omitted means 100 (unscaled)."
+            ),
+        ),
+    ] = None,
     batch_name: Annotated[
         str | None,
         Field(description="Name the batch this run fills. Defaults to the source's own name."),
@@ -133,6 +145,8 @@ def ingest(
         return refused(f"fps applies to a video source, and {path} is a directory of stills")
     if ranges and source_path.is_dir():
         return refused(f"ranges applies to a video source, and {path} is a directory of stills")
+    if scale is not None and source_path.is_dir():
+        return refused(f"scale applies to a video source, and {path} is a directory of stills")
     try:
         selection = [
             TimeRange(start_seconds=r.start_seconds, end_seconds=r.end_seconds)
@@ -154,6 +168,7 @@ def ingest(
                 source_path,
                 extraction_fps=DEFAULT_EXTRACTION_FPS if fps is None else fps,
                 ranges=selection,
+                scale_percent=100 if scale is None else scale,
             )
         result = IngestService(workspace).ingest(registered.id, batch_name=batch_name)
     return {

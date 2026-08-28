@@ -253,6 +253,24 @@ def test_a_video_registers_the_ranges_it_was_given(root: Path, tmp_path: Path) -
     assert document["created"] == 5
 
 
+def test_a_video_registers_the_scale_it_was_given(root: Path, tmp_path: Path) -> None:
+    require_ffmpeg()
+    clip = write_video(tmp_path / "clip.mp4", size=(96, 72), fps=10, duration_seconds=2.0)
+    document = payload(root, "ingest", str(clip.path), "-p", "road-signs", "--scale", "50")
+    assert document["source"]["video"]["scale_percent"] == 50
+
+
+def test_scale_on_a_directory_exits_two(root: Path, tmp_path: Path) -> None:
+    result = run(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--scale", "50")
+    assert result.exit_code == 2, result.output
+    assert "directory of stills" in usage_error(result)
+
+
+def test_an_out_of_range_scale_exits_two(root: Path, tmp_path: Path) -> None:
+    result = run(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--scale", "0")
+    assert result.exit_code == 2, result.output
+
+
 def test_a_damaged_clip_says_how_much_of_it_arrived(root: Path, tmp_path: Path) -> None:
     """The partial report on stderr, where the person who typed the command is
     looking.

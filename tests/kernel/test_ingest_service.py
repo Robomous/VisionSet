@@ -68,6 +68,7 @@ from visionset.kernel.domain import (
     VideoFrame,
     VideoMetadata,
     VideoProvenance,
+    scaled_dimension,
 )
 from visionset.kernel.ports import (
     DEFAULT_THUMBNAIL_MAX_EDGE,
@@ -106,6 +107,7 @@ class _NoFfmpeg:
         fps: float = 1.0,
         ranges: tuple[TimeRange, ...] = (),
         name: str | None = None,
+        scale: tuple[int, int] | None = None,
     ) -> "list[VideoFrame]":
         raise MediaToolUnavailable("ffmpeg is not installed; install it and try again")
 
@@ -490,6 +492,28 @@ def test_a_frame_takes_its_size_from_the_probe_and_its_format_from_the_port(
 
     assert (asset.width, asset.height) == (clip.width, clip.height)
     assert asset.format is FRAME_FORMAT
+    fixture.close()
+
+
+def test_a_scaled_clip_ingests_frames_at_the_stored_size(tmp_path: Path) -> None:
+    """The asset records the scaled dimensions, and the pixels agree with them."""
+    fixture = Fixture(tmp_path)
+    clip = fixture.clip()
+    source = fixture.sources.register_video(
+        fixture.project.id, clip.path, extraction_fps=1.0, scale_percent=50
+    )
+
+    result = fixture.ingest.ingest(source.id)
+
+    expected = (scaled_dimension(clip.width, 50), scaled_dimension(clip.height, 50))
+    assert result.assets
+    for asset in result.assets:
+        assert (asset.width, asset.height) == expected
+    with (
+        fixture.workspace.blob_store.get(result.assets[0].content_hash) as blob,
+        Image.open(blob) as picture,
+    ):
+        assert picture.size == expected
     fixture.close()
 
 

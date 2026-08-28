@@ -18,6 +18,9 @@
 
 export interface ClipProbe {
   readonly durationSeconds: number;
+  /** Display dimensions, or null when the browser reports none (audio-only, some codecs). */
+  readonly width: number | null;
+  readonly height: number | null;
 }
 
 export function probeClip(file: File): Promise<ClipProbe | null> {
@@ -37,7 +40,11 @@ export function probeClip(file: File): Promise<ClipProbe | null> {
       // neither is a duration an estimate should be built on.
       done(
         Number.isFinite(video.duration) && video.duration > 0
-          ? { durationSeconds: video.duration }
+          ? {
+              durationSeconds: video.duration,
+              width: video.videoWidth > 0 ? video.videoWidth : null,
+              height: video.videoHeight > 0 ? video.videoHeight : null,
+            }
           : null,
       );
     });

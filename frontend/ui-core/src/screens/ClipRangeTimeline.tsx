@@ -352,8 +352,12 @@ export function ClipRangeTimeline({
               ref={videoRef}
               src={src}
               controls
+              // Always mute: a vision dataset never needs the audio track, and
+              // the volume control it would earn is noise. The matching CSS in
+              // styles.css hides the control itself where the engine allows.
+              muted
               preload="metadata"
-              className="max-h-84 w-full max-w-2xl shrink-0 rounded-lg bg-muted"
+              className="vs-muted-player max-h-84 w-full max-w-2xl shrink-0 rounded-lg bg-muted"
               data-testid="clip-player"
               onTimeUpdate={timeUpdated}
               onPlay={playStarted}

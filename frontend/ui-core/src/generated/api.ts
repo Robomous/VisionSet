@@ -2702,10 +2702,11 @@ export interface paths {
          *     message says what was wrong with the file and never where it was put.
          *
          *     The cut is part of what the source *is*: the same clip registered at 1 fps
-         *     and again at 5 fps — or over different ranges — is two sources over one
-         *     file, which is what makes "the same source yields the same assets" mean
-         *     anything. Ranges are stored canonically (clamped, sorted, merged), and the
-         *     response carries that canonical form.
+         *     and again at 5 fps — or over different ranges, or at another scale — is two
+         *     sources over one file, which is what makes "the same source yields the same
+         *     assets" mean anything. Ranges are stored canonically (clamped, sorted,
+         *     merged), and the response carries that canonical form. `scale_percent`
+         *     below 100 stores every extracted frame at that percent of the clip's size.
          */
         post: operations["register_video_source"];
         delete?: never;
@@ -3709,6 +3710,12 @@ export interface components {
              * @description Which stretches of the clip to extract, as a JSON array of {"start_seconds": s, "end_seconds": e} objects, each half-open [start, end). Omitted means the whole clip.
              */
             ranges?: string | null;
+            /**
+             * Scale Percent
+             * @description Percent of the native size to store extracted frames at; 100 — the default — stores them unscaled. Part of the source's identity, like extraction_fps: the same clip at another scale is a second source.
+             * @default 100
+             */
+            scale_percent: number;
         };
         /**
          * BySegmentsBody
@@ -5801,6 +5808,11 @@ export interface components {
          *     `ranges` is the canonical form of the selection the source was registered
          *     with — clamped to the clip, sorted, overlaps merged — and empty means the
          *     whole clip. Like `extraction_fps`, it is part of the source's identity.
+         *
+         *     `scale_percent` is the percent of the native size extracted frames are
+         *     stored at; 100 means unscaled. `width` and `height` stay the clip's own —
+         *     what is stored is each dimension scaled by this percent. Also part of the
+         *     source's identity.
          */
         VideoProvenanceOut: {
             /** Codec */
@@ -5815,6 +5827,8 @@ export interface components {
             height: number;
             /** Ranges */
             ranges: components["schemas"]["ClipRange"][];
+            /** Scale Percent */
+            scale_percent: number;
             /** Width */
             width: number;
         };

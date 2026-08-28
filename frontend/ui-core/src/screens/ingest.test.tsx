@@ -150,6 +150,7 @@ const VIDEO_SOURCE = {
     codec: "h264",
     extraction_fps: 2,
     ranges: [],
+    scale_percent: 100,
   },
 };
 
@@ -244,8 +245,51 @@ describe("registering a source", () => {
     expect(form.has("file")).toBe(true);
   });
 
+  it("sends the chosen scale and previews the stored size", async () => {
+    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 10, width: 1920, height: 1080 });
+    on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
+
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("drive.mp4", "video/mp4")]);
+
+    // Untouched, the readout still states what exists — the fact was missing
+    // from the first design and is the reason the block leads with it.
+    expect((await screen.findByTestId("stored-size-native")).textContent).toContain("1920×1080");
+    fireEvent.change(screen.getByTestId("scale-percent"), { target: { value: "50" } });
+    expect(screen.getByTestId("stored-size").textContent).toContain("960×540");
+
+    await userEvent.click(screen.getByTestId("register-source"));
+    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
+    const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
+    expect(form.get("scale_percent")).toBe("50");
+  });
+
+  it("sends the default scale untouched, as one hundred", async () => {
+    on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
+
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("drive.mp4", "video/mp4")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+
+    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
+    const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
+    expect(form.get("scale_percent")).toBe("100");
+  });
+
+  it("offers the slider without a size preview when the clip is unreadable", async () => {
+    vi.mocked(probeClip).mockResolvedValueOnce(null);
+
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("weird.mkv", "video/x-matroska")]);
+    await screen.findByTestId("clip-undecodable");
+
+    fireEvent.change(screen.getByTestId("scale-percent"), { target: { value: "50" } });
+    expect(screen.queryByTestId("stored-size")).toBeNull();
+    expect(screen.getByTestId("stored-size-blind").textContent).toContain("50%");
+  });
+
   it("threads the timeline selection into the multipart body, raw", async () => {
-    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 10 });
+    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 10, width: 1920, height: 1080 });
     on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
 
     render(mount(<IngestScreen projectId={PROJECT} />));
@@ -431,7 +475,7 @@ describe("the selection panel", () => {
   });
 
   it("estimates the frames from the browser's own read of the clip", async () => {
-    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 47.7 });
+    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 47.7, width: 1920, height: 1080 });
 
     render(mount(<IngestScreen projectId={PROJECT} />));
     await choose([pick("drive.mp4", "video/mp4")]);

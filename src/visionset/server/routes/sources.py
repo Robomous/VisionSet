@@ -88,6 +88,22 @@ def _parse_ranges(ranges: str | None) -> tuple[TimeRange, ...]:
         raise RequestValidationError(exc.errors()) from exc
 
 
+#: A clip's storage scale, as a multipart field. The bounds mirror
+#: ``VideoProvenance.scale_percent``'s own, for ``ExtractionFpsForm``'s reason.
+ScalePercentForm = Annotated[
+    int,
+    Form(
+        ge=1,
+        le=100,
+        description=(
+            "Percent of the native size to store extracted frames at; 100 — the "
+            "default — stores them unscaled. Part of the source's identity, like "
+            "extraction_fps: the same clip at another scale is a second source."
+        ),
+    ),
+]
+
+
 @project_router.post("/images", status_code=status.HTTP_201_CREATED, responses=documented(404))
 def register_image_source(
     workspace: WorkspaceDep,
@@ -135,6 +151,7 @@ def register_video_source(
     file: Annotated[UploadFile, File(description="The clip.")],
     extraction_fps: ExtractionFpsForm = DEFAULT_EXTRACTION_FPS,
     ranges: RangesForm = None,
+    scale_percent: ScalePercentForm = 100,
 ) -> SourceOut:
     """Offer a project a clip, to be cut at `extraction_fps` inside `ranges`.
 
@@ -145,15 +162,20 @@ def register_video_source(
     message says what was wrong with the file and never where it was put.
 
     The cut is part of what the source *is*: the same clip registered at 1 fps
-    and again at 5 fps — or over different ranges — is two sources over one
-    file, which is what makes "the same source yields the same assets" mean
-    anything. Ranges are stored canonically (clamped, sorted, merged), and the
-    response carries that canonical form.
+    and again at 5 fps — or over different ranges, or at another scale — is two
+    sources over one file, which is what makes "the same source yields the same
+    assets" mean anything. Ranges are stored canonically (clamped, sorted,
+    merged), and the response carries that canonical form. `scale_percent`
+    below 100 stores every extracted frame at that percent of the clip's size.
     """
     selection = _parse_ranges(ranges)
     staged = stage(workspace.root, [file])
     source = SourceService(workspace).register_video(
-        project_id, staged.only, extraction_fps=extraction_fps, ranges=selection
+        project_id,
+        staged.only,
+        extraction_fps=extraction_fps,
+        ranges=selection,
+        scale_percent=scale_percent,
     )
     return SourceOut.of(source)
 
