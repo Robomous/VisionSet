@@ -45,19 +45,32 @@ disk, and a blob in the default blob store is a path too.
 | Produces | `thumbnail` → JPEG bytes | `frames` → an iterator of `VideoFrame` |
 | Needs | Pillow, a dependency | ffmpeg, a binary on `PATH` |
 
-## The accepted list is two formats, and widening it is a decision
+## The dataset holds two formats; ingest reads far more
 
-`ImageFormat` names everything VisionSet decodes: **JPEG and PNG**. Extending it is exactly two
-edits - a member on the enum, and the decoder's own spelling of it in the adapter's
-`_FORMAT_BY_PILLOW_NAME` - and a test asserts the two cover the same set, so a half-done
-extension fails on the first run rather than at the first file.
+`ImageFormat` names everything a dataset may contain: **JPEG and PNG**, frozen. Acceptance is
+deliberately wider. `ImageProcessor.stills` reads anything Pillow decodes - WebP, HEIC and HEIF
+(what an iPhone writes), BMP, TIFF, GIF and the rest - and normalizes everything outside the two
+into them at ingest, so a dataset consumer never needs a third decoder.
 
-That cost is the point. Accepting a format is a promise that VisionSet will decode it, hash it,
-thumbnail it and export it for as long as the workspaces written today are readable. A
-`try: decode` that admitted whatever the installed Pillow happened to support would make that
-promise depend on a wheel, and it would quietly let in the long tail where image-decoder CVEs
-live. WEBP is the obvious next member; it is not here yet because a format with no generated
-fixture is a format nobody is testing.
+| You give VisionSet | The dataset holds |
+| --- | --- |
+| JPG / JPEG, PNG | your exact bytes, untouched |
+| WebP, HEIC / HEIF, BMP, TIFF, anything else Pillow decodes | a JPEG, re-encoded at ingest |
+| animated GIF, animated WebP | one PNG per frame, `anim.gif#frame=3` |
+| MP4, MOV, AVI, WebM, MKV - anything ffmpeg reads | one PNG per extracted frame |
+
+A converted or decomposed asset keeps the original path in its `uri`, so provenance stays
+legible: an asset at `photo.heic` whose `format` reads `jpeg` was transcoded on the way in, and
+the original file on disk is untouched. Transcoding is repeatable within one Pillow build, not
+across builds - the same caveat extracted video frames carry.
+
+Out of scope for this distribution: RAW camera formats (CR2, NEF, DNG), AVIF, and JPEG XL. A
+Live Photo is two files; the photo ingests as a still, and its clip may be registered as an
+ordinary video source.
+
+The frozen enum is the promise that matters: VisionSet will decode, hash, thumbnail and export
+JPEG and PNG for as long as the workspaces written today are readable. What can be *read* may
+drift with the installed Pillow; what a dataset *holds* may not.
 
 `MPO` is a special case worth knowing about and is **not** a third format. It is a
 multi-picture JPEG container - what phones write in portrait and burst modes - so it is an
