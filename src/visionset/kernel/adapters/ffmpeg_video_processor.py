@@ -419,6 +419,7 @@ class FfmpegVideoProcessor:
         fps: float = DEFAULT_EXTRACTION_FPS,
         ranges: tuple[TimeRange, ...] = (),
         name: str | None = None,
+        scale: tuple[int, int] | None = None,
     ) -> Iterator[VideoFrame]:
         """Frames taken off ``source`` at ``fps``, one at a time, in grid order.
 
@@ -426,6 +427,12 @@ class FfmpegVideoProcessor:
         still read from the start — selection is a filter, never a seek — and
         each kept frame carries its grid index, byte-identical to the frame a
         whole-clip run yields at that index.
+
+        ``scale`` is the exact ``(width, height)`` every emitted frame is
+        resized to, computed by the caller from the probe — never ffmpeg-side
+        arithmetic, so the command stays deterministic and the probe's
+        display-oriented dimensions stay authoritative. ``None`` emits frames
+        at the decoded size.
 
         Not a generator itself, on purpose. A generator's body does not run until
         something asks it for a value, so writing it that way would report a
@@ -451,7 +458,7 @@ class FfmpegVideoProcessor:
         ffmpeg = _require_tool(_FFMPEG)
         _require_file(source)
         bounds = grid_bounds(ranges, fps=fps)
-        return _extract(ffmpeg, source, fps, bounds, _clip_name(source, name))
+        return _extract(ffmpeg, source, fps, bounds, scale, _clip_name(source, name))
 
 
 def _run_ffprobe(ffprobe: str, source: Path, clip: str) -> Mapping[str, object]:
@@ -488,7 +495,9 @@ def _video_stream(document: Mapping[str, object], clip: str) -> Mapping[str, obj
     raise UnsupportedMedia("the file holds no video stream", name=clip)
 
 
-def _filtergraph(fps: float, bounds: tuple[tuple[int, int], ...]) -> str:
+def _filtergraph(
+    fps: float, bounds: tuple[tuple[int, int], ...], scale: tuple[int, int] | None
+) -> str:
     """The resampling grid, plus — under a selection — the frames kept off it.
 
     ``select`` runs *after* ``fps`` and compares the integer output frame number
@@ -496,17 +505,26 @@ def _filtergraph(fps: float, bounds: tuple[tuple[int, int], ...]) -> str:
     ffmpeg: the arithmetic naming the kept frames is the same ``grid_bounds``
     the expected count uses, so the two cannot disagree. The quotes around the
     expression are filtergraph quoting — they keep its commas from splitting
-    the graph.
+    the graph. ``scale`` runs last, so a selection drops frames before any of
+    them are resized.
     """
     grid = f"fps=fps={fps}:round=up"
-    if not bounds:
-        return grid
-    kept = "+".join(f"gte(n,{a})*lt(n,{b})" for a, b in bounds)
-    return f"{grid},select='{kept}'"
+    if bounds:
+        kept = "+".join(f"gte(n,{a})*lt(n,{b})" for a, b in bounds)
+        grid = f"{grid},select='{kept}'"
+    if scale is not None:
+        width, height = scale
+        grid = f"{grid},scale={width}:{height}"
+    return grid
 
 
 def _extract(
-    ffmpeg: str, source: Path, fps: float, bounds: tuple[tuple[int, int], ...], clip: str
+    ffmpeg: str,
+    source: Path,
+    fps: float,
+    bounds: tuple[tuple[int, int], ...],
+    scale: tuple[int, int] | None,
+    clip: str,
 ) -> Iterator[VideoFrame]:
     """Stream frames off one ffmpeg process, and account for how it ended.
 
@@ -530,7 +548,7 @@ def _extract(
         "-nostdin",
         "-loglevel", "error",
         "-i", str(source),
-        "-vf", _filtergraph(fps, bounds),
+        "-vf", _filtergraph(fps, bounds, scale),
         *_EXTRACTION_ARGS,
         *(_RANGE_ARGS if bounds else ()),
         "-",

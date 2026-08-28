@@ -715,7 +715,15 @@ class IngestService:
         failures: list[IngestFailure] = []
         clip = Path(source.path)
         frames = self._workspace.video_processor.frames(
-            clip, fps=provenance.extraction_fps, ranges=provenance.ranges, name=clip.name
+            clip,
+            fps=provenance.extraction_fps,
+            ranges=provenance.ranges,
+            name=clip.name,
+            scale=(
+                None
+                if provenance.scale_percent == 100
+                else (provenance.stored_width, provenance.stored_height)
+            ),
         )
         self._record_progress(job_id, processed=0, total=None, failures=failures)
         try:
@@ -731,8 +739,8 @@ class IngestService:
                         project_id=source.project_id,
                         content_hash=content_hash,
                         uri=uri,
-                        width=provenance.metadata.width,
-                        height=provenance.metadata.height,
+                        width=provenance.stored_width,
+                        height=provenance.stored_height,
                         format=FRAME_FORMAT,
                         source_id=source.id,
                         frame_index=frame.index,

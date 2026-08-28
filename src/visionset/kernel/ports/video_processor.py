@@ -112,4 +112,5 @@ class VideoProcessor(Protocol):
         fps: float = DEFAULT_EXTRACTION_FPS,
         ranges: tuple[TimeRange, ...] = (),
         name: str | None = None,
+        scale: tuple[int, int] | None = None,
     ) -> Iterator[VideoFrame]: ...
