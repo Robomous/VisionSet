@@ -253,10 +253,12 @@ from visionset.kernel.domain.source import (
     SourceKind,
     TimeRange,
     VideoProvenance,
+    canonical_image_scales,
     canonical_path,
     canonical_ranges,
     expected_frames,
     grid_bounds,
+    scaled_dimension,
 )
 from visionset.kernel.domain.suggestion import (
     DEFAULT_TOLERANCE,
@@ -535,6 +537,7 @@ __all__ = [
     "Workspace",
     "assign_split",
     "canonical_bytes",
+    "canonical_image_scales",
     "canonical_path",
     "canonical_ranges",
     "expected_frames",
@@ -551,5 +554,6 @@ __all__ = [
     "require_move",
     "require_points_on_asset",
     "require_state",
+    "scaled_dimension",
     "sha256_hex",
 ]

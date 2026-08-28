@@ -13,8 +13,8 @@ assets. That promise only means something if the parameters are part of what
 "the same source" *is* — put them on the job and two runs of one source could
 legitimately disagree, leaving idempotency with nothing to be measured against.
 The consequence is deliberate: one clip registered at 1 fps and again at 5 fps —
-or over different clip ranges — is two sources over one file, not one source
-with a history.
+or over different clip ranges, or at another scale — is two sources over one
+file, not one source with a history.
 
 **Paths are canonicalized once**, by :func:`canonical_path`, so ``./data`` and
 ``/abs/data`` are one source rather than two. See that function for what
@@ -24,7 +24,7 @@ canonicalization does and does not promise.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path, PurePath
@@ -157,6 +157,26 @@ def expected_frames(ranges: Iterable[TimeRange], *, duration_seconds: float, fps
     return sum(b - a for a, b in bounds)
 
 
+def scaled_dimension(native: int, percent: int) -> int:
+    """One axis after a percent downscale — integer half-up, floored at one.
+
+    Integer arithmetic on purpose: Python ``round`` is half-even and JS
+    ``Math.round`` is half-up, and the ingest screen mirrors this formula, so
+    the one spelling both sides can share is ``(native * percent + 50) // 100``.
+    """
+    return max(1, (native * percent + 50) // 100)
+
+
+def canonical_image_scales(scales: Mapping[str, int]) -> dict[str, int]:
+    """The one spelling of a per-file scale selection, so identity can compare it.
+
+    Entries at 100 are dropped — storing at native size is what a file not
+    named already gets — and keys are sorted so the persisted JSON text is
+    deterministic for the origin index to compare.
+    """
+    return {name: percent for name, percent in sorted(scales.items()) if percent != 100}
+
+
 class VideoProvenance(BaseModel):
     """What a clip was, and how we chose to cut it.
 
@@ -173,6 +193,11 @@ class VideoProvenance(BaseModel):
     Always stored canonical — see :func:`canonical_ranges` — and the validator
     refuses anything else rather than quietly rewriting a frozen value.
 
+    :attr:`scale_percent` is the third cut parameter: the percent of the native
+    size frames are stored at, 100 meaning unscaled. Extraction emits every
+    frame at :attr:`stored_width` × :attr:`stored_height`; :attr:`metadata`
+    keeps the probe's native numbers, because what the clip *was* is provenance.
+
     Frozen, like every other value in the domain that is a pure function of some
     bytes and a choice.
     """
@@ -182,6 +207,15 @@ class VideoProvenance(BaseModel):
     metadata: VideoMetadata
     extraction_fps: float = Field(gt=0)
     ranges: tuple[TimeRange, ...] = ()
+    scale_percent: int = Field(default=100, ge=1, le=100)
+
+    @property
+    def stored_width(self) -> int:
+        return scaled_dimension(self.metadata.width, self.scale_percent)
+
+    @property
+    def stored_height(self) -> int:
+        return scaled_dimension(self.metadata.height, self.scale_percent)
 
     @model_validator(mode="after")
     def _ranges_are_canonical(self) -> VideoProvenance:
@@ -221,6 +255,11 @@ class Source(BaseModel):
     must not fork one origin into two — and unlike ``registered_at`` a provided
     value *does* refresh the stored one, because a label is curation, not
     provenance.
+
+    :attr:`image_scales` is an image directory's per-file downscale — filename
+    to percent, always canonical (see :func:`canonical_image_scales`), empty
+    meaning every file stores at its decoded size. Unlike the two fields above
+    it **is** part of the source's identity, exactly as a clip's cut is.
     """
 
     model_config = ConfigDict(validate_assignment=True)
@@ -233,6 +272,7 @@ class Source(BaseModel):
     registered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     capture_params: dict[str, str] = Field(default_factory=dict)
     video: VideoProvenance | None = None
+    image_scales: dict[str, int] = Field(default_factory=dict)
 
     @property
     def name(self) -> str:
@@ -257,6 +297,19 @@ class Source(BaseModel):
         if (self.video is not None) != (self.kind is SourceKind.VIDEO):
             carry = "carry" if self.kind is SourceKind.VIDEO else "not carry"
             raise ValueError(f"a {self.kind.value} source must {carry} video provenance")
+        return self
+
+    @model_validator(mode="after")
+    def _image_scales_are_canonical_and_match_the_kind(self) -> Source:
+        if self.image_scales and self.kind is not SourceKind.IMAGE_DIRECTORY:
+            raise ValueError(f"a {self.kind.value} source must not carry image scales")
+        for name, percent in self.image_scales.items():
+            if not 1 <= percent <= 99:
+                raise ValueError(f"scale for {name!r} must be in [1, 99], got {percent}")
+        if self.image_scales != canonical_image_scales(self.image_scales):
+            raise ValueError(
+                "image_scales must be canonical; pass them through canonical_image_scales"
+            )
         return self
 
     def require_video(self) -> VideoProvenance:
