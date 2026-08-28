@@ -167,7 +167,7 @@ def _opaque_rgb(image: Image.Image) -> Image.Image:
 
 
 class PillowImageProcessor:
-    """Decodes JPEG and PNG, reports oriented dimensions, encodes fixed thumbnails.
+    """Decodes what Pillow reads, passes JPEG and PNG through, transcodes the rest.
 
     Holds no state at all — no cache, no handle, no configuration — which is why
     ``WorkspaceService`` builds one per workspace from a zero-argument factory and

@@ -14,6 +14,7 @@ sequence.
 
 from __future__ import annotations
 
+import io
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -22,6 +23,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from tests.fixtures.media import write_corrupt_video, write_image, write_video
 from tests.server._api import api_client
 from tests.server._jobs import JOIN_TIMEOUT, InlineDispatcher, ManualDispatcher
@@ -113,6 +115,48 @@ def registered_images(client: TestClient, project: str, *parts: Any) -> str:
 
 def launch(client: TestClient, source: str, **body: Any) -> Any:
     return client.post(f"/sources/{source}/ingest-jobs", json=body or None)
+
+
+def _part(name: str, payload: bytes, media_type: str) -> tuple[str, tuple[str, bytes, str]]:
+    return ("files", (name, payload, media_type))
+
+
+def test_uploaded_wide_formats_ingest_through_the_same_door(
+    client: TestClient, project: str, runner: InlineDispatcher
+) -> None:
+    """An upload is staged to disk and read by the ordinary ingest, so an HEIC
+    arrives as a JPEG asset and an animated GIF as PNG frames without any route
+    or client knowing a format was involved."""
+    heic = io.BytesIO()
+    Image.new("RGB", (32, 24), (120, 60, 30)).save(heic, format="HEIF")
+    shades = [Image.new("L", (16, 12), 30 + i * 40) for i in range(3)]
+    gif = io.BytesIO()
+    shades[0].save(gif, format="GIF", save_all=True, append_images=shades[1:], duration=100)
+
+    source = registered_images(
+        client,
+        project,
+        _part("photo.heic", heic.getvalue(), "image/heic"),
+        _part("anim.gif", gif.getvalue(), "image/gif"),
+    )
+    started = launch(client, source)
+    assert started.status_code == 202, started.text
+    runner.wait()
+
+    polled = client.get(f"/ingest-jobs/{started.json()['id']}").json()
+    assert polled["state"] == "completed"
+    assert polled["failures"] == []
+    assert (polled["processed"], polled["total"]) == (2, 2)
+
+    # The wire deliberately publishes no path, so the claim is read off what it
+    # does publish: the decomposed frames in order as PNG, the converted still
+    # beside them as JPEG.
+    body = client.get(f"/batches/{polled['batch_id']}/assets").json()
+    seen = sorted(
+        ((asset["format"], asset["frame_index"]) for asset in body["items"]),
+        key=lambda pair: (pair[0], -1 if pair[1] is None else pair[1]),
+    )
+    assert seen == [("jpeg", None), ("png", 0), ("png", 1), ("png", 2)]
 
 
 # --- the acceptance walk -----------------------------------------------------
