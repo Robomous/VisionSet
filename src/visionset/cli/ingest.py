@@ -9,8 +9,8 @@ path does not want to say which of the two it is, and does not have to — the
 dispatch is ``path.is_dir()``.
 
 Registering twice is free: registration is idempotent on
-``(kind, path, extraction_fps)``, so running this again on the same folder finds
-the same source. Ingesting again is nearly free too — content addressing means a
+``(kind, path, extraction_fps, ranges, scale)``, so running this again on the
+same folder finds the same source. Ingesting again is nearly free too — content addressing means a
 re-run creates no assets it created before — which is also the remedy for the one
 gap this command has: interrupting it leaves the job row at ``running``, and
 there is no ``--resume``, because re-running does the right thing and needs no
@@ -156,6 +156,19 @@ def ingest(
             ),
         ),
     ] = None,
+    scale: Annotated[
+        int | None,
+        typer.Option(
+            "--scale",
+            min=1,
+            max=100,
+            help=(
+                "Store at this percent of native size — every frame of a video, or "
+                "every file the directory holds now. Part of the source's identity, "
+                "like --fps: another scale is a second source. Defaults to 100."
+            ),
+        ),
+    ] = None,
     batch_name: Annotated[
         str | None,
         typer.Option(
@@ -208,13 +221,22 @@ def ingest(
         resolved = resolve_project(service, project)
         sources = SourceService(service)
         if source.is_dir():
-            registered = sources.register_images(resolved.id, source)
+            registered = sources.register_images(
+                resolved.id,
+                source,
+                image_scales=(
+                    {}
+                    if scale is None
+                    else {item.name: scale for item in source.iterdir() if item.is_file()}
+                ),
+            )
         else:
             registered = sources.register_video(
                 resolved.id,
                 source,
                 extraction_fps=DEFAULT_EXTRACTION_FPS if fps is None else fps,
                 ranges=ranges,
+                scale_percent=100 if scale is None else scale,
             )
         note(f"Reading {registered.kind.value.replace('_', ' ')} {source}…")
         result = IngestService(service).ingest(registered.id, batch_name=batch_name)

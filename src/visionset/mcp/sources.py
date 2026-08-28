@@ -81,6 +81,18 @@ def ingest(
             )
         ),
     ] = None,
+    scale: Annotated[
+        int | None,
+        Field(
+            ge=1,
+            le=100,
+            description=(
+                "Store at this percent of native size — every frame of a video, or "
+                "every file the directory holds now. Part of the source's identity, "
+                "like fps: another scale is a second source. Omitted means 100."
+            ),
+        ),
+    ] = None,
     batch_name: Annotated[
         str | None,
         Field(description="Name the batch this run fills. Defaults to the source's own name."),
@@ -147,13 +159,22 @@ def ingest(
         resolved = resolve_project(workspace, project)
         service = SourceService(workspace)
         if source_path.is_dir():
-            registered = service.register_images(resolved.id, source_path)
+            registered = service.register_images(
+                resolved.id,
+                source_path,
+                image_scales=(
+                    {}
+                    if scale is None
+                    else {item.name: scale for item in source_path.iterdir() if item.is_file()}
+                ),
+            )
         else:
             registered = service.register_video(
                 resolved.id,
                 source_path,
                 extraction_fps=DEFAULT_EXTRACTION_FPS if fps is None else fps,
                 ranges=selection,
+                scale_percent=100 if scale is None else scale,
             )
         result = IngestService(workspace).ingest(registered.id, batch_name=batch_name)
     return {

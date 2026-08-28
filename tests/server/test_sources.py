@@ -277,9 +277,7 @@ def test_the_default_scale_is_native_size(client: TestClient, project: str, clip
     assert response.json()["image_scales"] == {}
 
 
-def test_a_clip_at_two_scales_is_two_sources(
-    client: TestClient, project: str, clip: Path
-) -> None:
+def test_a_clip_at_two_scales_is_two_sources(client: TestClient, project: str, clip: Path) -> None:
     native = post_video(client, project, clip)
     half = post_video(client, project, clip, scale_percent=50)
 

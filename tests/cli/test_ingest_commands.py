@@ -253,6 +253,33 @@ def test_a_video_registers_the_ranges_it_was_given(root: Path, tmp_path: Path) -
     assert document["created"] == 5
 
 
+def test_a_video_registers_the_scale_it_was_given(root: Path, tmp_path: Path) -> None:
+    require_ffmpeg()
+    clip = write_video(tmp_path / "clip.mp4", size=(96, 72), fps=10, duration_seconds=2.0)
+    document = payload(root, "ingest", str(clip.path), "-p", "road-signs", "--scale", "50")
+    assert document["source"]["video"]["scale_percent"] == 50
+
+
+def test_scale_on_a_directory_applies_to_every_file_present(root: Path, tmp_path: Path) -> None:
+    directory = stills(tmp_path)
+    document = payload(root, "ingest", str(directory), "-p", "road-signs", "--scale", "50")
+    names = {path.name for path in directory.iterdir() if path.is_file()}
+    assert document["source"]["image_scales"] == {name: 50 for name in names}
+
+
+def test_a_scale_of_one_hundred_is_the_plain_registration(root: Path, tmp_path: Path) -> None:
+    directory = stills(tmp_path)
+    first = payload(root, "ingest", str(directory), "-p", "road-signs")
+    second = payload(root, "ingest", str(directory), "-p", "road-signs", "--scale", "100")
+    assert second["source"]["id"] == first["source"]["id"]
+    assert second["source"]["image_scales"] == {}
+
+
+def test_an_out_of_range_scale_exits_two(root: Path, tmp_path: Path) -> None:
+    result = run(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--scale", "0")
+    assert result.exit_code == 2, result.output
+
+
 def test_a_damaged_clip_says_how_much_of_it_arrived(root: Path, tmp_path: Path) -> None:
     """The partial report on stderr, where the person who typed the command is
     looking.
