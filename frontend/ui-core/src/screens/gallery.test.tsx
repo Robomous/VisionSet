@@ -459,7 +459,9 @@ describe("the gallery", () => {
           width: 1280,
           height: 720,
           ranges: [],
+          scale_percent: 100,
         },
+        image_scales: {},
       },
     });
 

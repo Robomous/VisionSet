@@ -150,7 +150,9 @@ const VIDEO_SOURCE = {
     codec: "h264",
     extraction_fps: 2,
     ranges: [],
+    scale_percent: 100,
   },
+  image_scales: {},
 };
 
 const IMAGE_SOURCE = {
@@ -160,6 +162,7 @@ const IMAGE_SOURCE = {
   name: "photos",
   registered_at: "2026-07-31T00:00:00.000000Z",
   video: null,
+  image_scales: {},
 };
 
 function job(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -245,7 +248,7 @@ describe("registering a source", () => {
   });
 
   it("threads the timeline selection into the multipart body, raw", async () => {
-    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 10 });
+    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 10, width: 1920, height: 1080 });
     on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
 
     render(mount(<IngestScreen projectId={PROJECT} />));
@@ -431,7 +434,7 @@ describe("the selection panel", () => {
   });
 
   it("estimates the frames from the browser's own read of the clip", async () => {
-    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 47.7 });
+    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 47.7, width: 1920, height: 1080 });
 
     render(mount(<IngestScreen projectId={PROJECT} />));
     await choose([pick("drive.mp4", "video/mp4")]);
