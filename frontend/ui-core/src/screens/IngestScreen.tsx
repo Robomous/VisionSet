@@ -149,7 +149,7 @@ import { Card, CardContent } from "../primitives/card";
 import { Progress } from "../primitives/progress";
 import { Input } from "../primitives/input";
 import { Label } from "../primitives/label";
-import { ScaleField, scaledDimension } from "./ingestScale";
+import { ScaleField, ScaleMosaic, scaledDimension } from "./ingestScale";
 import { FieldDescription, FieldError } from "../primitives/field";
 import {
   Select,
@@ -290,6 +290,9 @@ export function IngestScreen({
   // A clip's storage scale, decided in step 1 like the rate: percent of the
   // native size frames are stored at, part of the source's identity.
   const [scalePercent, setScalePercent] = useState(100);
+  // An image batch's per-file storage scales, keyed by filename; entries exist
+  // only below 100. Sent as one JSON multipart field, like ranges.
+  const [imageScales, setImageScales] = useState<Readonly<Record<string, number>>>({});
   // The chosen clip as an object URL for the preview player. Null where the
   // platform has no object URLs (jsdom), so the timeline renders no player.
   const [clipUrl, setClipUrl] = useState<string | null>(null);
@@ -336,6 +339,7 @@ export function IngestScreen({
     setClip(null);
     setRanges([]);
     setScalePercent(100);
+    setImageScales({});
     setUnreadable(false);
     if (!(files.length === 1 && files[0].type.startsWith("video/"))) return;
     const url = typeof URL.createObjectURL === "function" ? URL.createObjectURL(files[0]) : null;
@@ -385,6 +389,7 @@ export function IngestScreen({
       {
         files,
         ...(isVideo ? { extractionFps: rate, ranges, scalePercent } : {}),
+        ...(!isVideo && Object.keys(imageScales).length > 0 ? { scales: imageScales } : {}),
         ...(isVideo || stated === "" ? {} : { name: stated }),
       },
       { onSuccess: (registered) => setSource(registered) },
@@ -403,6 +408,7 @@ export function IngestScreen({
     setFiles([]);
     setFps(String(DEFAULT_EXTRACTION_FPS));
     setScalePercent(100);
+    setImageScales({});
     setSourceName("");
     setAttempt((previous) => previous + 1);
     register.reset();
@@ -421,6 +427,7 @@ export function IngestScreen({
     setFiles([]);
     setFps(String(DEFAULT_EXTRACTION_FPS));
     setScalePercent(100);
+    setImageScales({});
     setSourceName("");
     setBatchChoice(NEW_BATCH);
     setBatchName("");
@@ -520,6 +527,8 @@ export function IngestScreen({
                     onRanges={setRanges}
                     scalePercent={scalePercent}
                     onScalePercent={setScalePercent}
+                    imageScales={imageScales}
+                    onImageScales={setImageScales}
                     clipUrl={clipUrl}
                     unreadable={unreadable}
                     estimate={
@@ -846,6 +855,8 @@ function SelectionPanel({
   onRanges,
   scalePercent,
   onScalePercent,
+  imageScales,
+  onImageScales,
   clipUrl,
   unreadable,
   estimate,
@@ -863,6 +874,8 @@ function SelectionPanel({
   readonly onRanges: (ranges: readonly ClipRange[]) => void;
   readonly scalePercent: number;
   readonly onScalePercent: (value: number) => void;
+  readonly imageScales: Readonly<Record<string, number>>;
+  readonly onImageScales: (scales: Readonly<Record<string, number>>) => void;
   readonly clipUrl: string | null;
   readonly unreadable: boolean;
   readonly estimate: number | null;
@@ -931,6 +944,7 @@ function SelectionPanel({
               both by the upload&apos;s content digest.
             </FieldDescription>
           </div>
+          <ScaleMosaic files={files} scales={imageScales} onScales={onImageScales} />
         </div>
       )}
 

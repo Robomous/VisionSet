@@ -216,6 +216,43 @@ describe("registering a source", () => {
     expect((form as FormData).get("name")).toBe("a");
   });
 
+  it("sends per-file scales chosen in the mosaic", async () => {
+    on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
+
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
+
+    fireEvent.change(screen.getByTestId("tile-scale-a.png"), { target: { value: "50" } });
+    await userEvent.click(screen.getByTestId("register-source"));
+
+    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
+    const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
+    expect(JSON.parse(form.get("scales") as string)).toEqual({ "a.png": 50 });
+  });
+
+  it("set-all writes every tile and a single tile overrides after", async () => {
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
+
+    fireEvent.change(screen.getByTestId("scale-all"), { target: { value: "50" } });
+    fireEvent.change(screen.getByTestId("tile-scale-b.png"), { target: { value: "100" } });
+
+    expect((screen.getByTestId("tile-scale-a.png") as HTMLInputElement).value).toBe("50");
+    expect((screen.getByTestId("tile-scale-b.png") as HTMLInputElement).value).toBe("100");
+  });
+
+  it("omits the scales part when every tile stores native", async () => {
+    on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
+
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+
+    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
+    const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
+    expect(form.has("scales")).toBe(false);
+  });
+
   it("sends a clip with the extraction rate, chosen before anything is probed", async () => {
     on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
 
