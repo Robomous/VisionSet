@@ -27,7 +27,7 @@ from uuid import UUID
 
 from fastapi import File, Form, Response, UploadFile, status
 from fastapi.exceptions import RequestValidationError
-from pydantic import Field, TypeAdapter, ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from visionset.jobs.ingest import JOB_TYPE as ingest_job_type
 from visionset.jobs.ingest import payload_for as ingest_payload_for
@@ -43,7 +43,7 @@ from visionset.server.models import (
     SourceOut,
     SourcePage,
 )
-from visionset.server.uploads import safe_name, stage
+from visionset.server.uploads import stage
 
 project_router = protected_router(prefix="/projects/{project_id}/sources", tags=["sources"])
 router = protected_router(prefix="/sources", tags=["sources"])
@@ -72,78 +72,6 @@ RangesForm = Annotated[
 
 _RANGES_ADAPTER: Final = TypeAdapter(tuple[TimeRange, ...])
 
-#: A clip's storage scale, as a multipart field. The bounds mirror
-#: ``VideoProvenance.scale_percent``'s own, for ``ExtractionFpsForm``'s reason.
-ScalePercentForm = Annotated[
-    int,
-    Form(
-        ge=1,
-        le=100,
-        description=(
-            "Percent of the native size to store extracted frames at; 100 — the "
-            "default — stores them unscaled. Part of the source's identity, like "
-            "extraction_fps: the same clip at another scale is a second source."
-        ),
-    ),
-]
-
-#: The per-file downscale map, as a multipart field. Multipart carries strings,
-#: so the JSON object rides in one, exactly as ``ranges`` does.
-ScalesForm = Annotated[
-    str | None,
-    Form(
-        description=(
-            'Per-file downscale, as a JSON object of {"filename": percent} with '
-            "integer percents in [1, 100]. Every filename must match an uploaded "
-            "part; a file not named — and any entry of 100 — is stored at its "
-            "decoded size. Part of the source's identity: the same files at "
-            "other scales are a second source."
-        ),
-    ),
-]
-
-_SCALES_ADAPTER: Final = TypeAdapter(dict[str, Annotated[int, Field(ge=1, le=100)]])
-
-
-def _parse_scales(scales: str | None) -> dict[str, int]:
-    """The `scales` field as a plain map, or the 422 a malformed one earns."""
-    if scales is None:
-        return {}
-    try:
-        return dict(_SCALES_ADAPTER.validate_json(scales))
-    except ValidationError as exc:
-        raise RequestValidationError(exc.errors()) from exc
-
-
-def _staged_scales(
-    files: list[UploadFile], staged_names: tuple[str, ...], scales: dict[str, int]
-) -> dict[str, int]:
-    """Client filenames re-keyed to staged names, in upload order.
-
-    Staging can rename a colliding duplicate, and the zip below is the only
-    mapping between what the client called a part and what landed on disk. A
-    scale naming no uploaded file is refused loudly — silently storing that
-    file at native size is how a typo becomes a 4K asset nobody wanted.
-    """
-    matched: set[str] = set()
-    by_staged_name: dict[str, int] = {}
-    for upload, staged_name in zip(files, staged_names, strict=True):
-        percent = scales.get(safe_name(upload.filename))
-        if percent is not None:
-            matched.add(safe_name(upload.filename))
-            by_staged_name[staged_name] = percent
-    if unmatched := set(scales) - matched:
-        raise RequestValidationError(
-            [
-                {
-                    "loc": ("body", "scales"),
-                    "msg": f"no uploaded file is named {sorted(unmatched)}",
-                    "type": "value_error",
-                }
-            ]
-        )
-    return by_staged_name
-
 
 def _parse_ranges(ranges: str | None) -> tuple[TimeRange, ...]:
     """The `ranges` field as domain values, or the 422 a malformed one earns.
@@ -158,6 +86,22 @@ def _parse_ranges(ranges: str | None) -> tuple[TimeRange, ...]:
         return _RANGES_ADAPTER.validate_json(ranges)
     except ValidationError as exc:
         raise RequestValidationError(exc.errors()) from exc
+
+
+#: A clip's storage scale, as a multipart field. The bounds mirror
+#: ``VideoProvenance.scale_percent``'s own, for ``ExtractionFpsForm``'s reason.
+ScalePercentForm = Annotated[
+    int,
+    Form(
+        ge=1,
+        le=100,
+        description=(
+            "Percent of the native size to store extracted frames at; 100 — the "
+            "default — stores them unscaled. Part of the source's identity, like "
+            "extraction_fps: the same clip at another scale is a second source."
+        ),
+    ),
+]
 
 
 @project_router.post("/images", status_code=status.HTTP_201_CREATED, responses=documented(404))
@@ -176,9 +120,8 @@ def register_image_source(
             ),
         ),
     ] = None,
-    scales: ScalesForm = None,
 ) -> SourceOut:
-    """Offer a project a folder of stills, each stored at its own scale.
+    """Offer a project a folder of stills.
 
     The parts are staged as one directory and that directory becomes the source.
     Uploading the same files again returns the **same** source rather than a
@@ -191,22 +134,13 @@ def register_image_source(
     `name` exists because the staged path's basename is a digest; a blank one is
     422 `INVALID_NAME`, refused by the kernel's own `InvalidName` — the domain
     already refuses with a mapped error, so no wire validator restates it.
-
-    `scales` names files to store below native size, and is part of the
-    source's identity: the same files at other scales are a second source.
     """
     # ``capture_params`` is not on the wire. It is an opaque operator-supplied
     # mapping, and threading a JSON object through a multipart form is a
     # contract decision with no caller asking for it yet.
-    by_client_name = _parse_scales(scales)
     staged = stage(workspace.root, files)
     return SourceOut.of(
-        SourceService(workspace).register_images(
-            project_id,
-            staged.directory,
-            display_name=name,
-            image_scales=_staged_scales(files, staged.names, by_client_name),
-        )
+        SourceService(workspace).register_images(project_id, staged.directory, display_name=name)
     )
 
 

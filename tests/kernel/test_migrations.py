@@ -50,7 +50,6 @@ _UNIQUENESS_INDEXES = {
         "coalesce",
         "$.ranges",
         "$.scale_percent",
-        "image_scales",
     ),
     # Partial, so it constrains classification tags and nothing else: two boxes
     # under one class are two facts, two tags of one class are one statement
@@ -194,10 +193,7 @@ def _at_generation_one(path: Path) -> None:
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN credential_env"))
         connection.execute(text("ALTER TABLE project DROP COLUMN created_at"))
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN origin"))
-        # The index reads image_scales, and SQLite refuses to drop a column an
-        # index still references — the index has to go first.
         connection.execute(text("DROP INDEX uq_source_project_kind_path_fps_ranges_scale"))
-        connection.execute(text("ALTER TABLE source DROP COLUMN image_scales"))
         connection.execute(
             text(
                 "CREATE UNIQUE INDEX uq_source_project_kind_path_fps ON source"
@@ -326,12 +322,11 @@ def test_the_reshaped_source_index_still_refuses_a_duplicate_origin(tmp_path: Pa
     migrated.close()
 
 
-def test_the_scale_terms_fork_the_migrated_index(tmp_path: Path) -> None:
+def test_the_scale_term_forks_the_migrated_index(tmp_path: Path) -> None:
     """Migration 18 exercised for real: scale forks identity, its absence collides.
 
-    The first pair differs only in ``$.scale_percent``; the second only in
-    ``image_scales`` — both must land. A row repeating an existing spelling
-    exactly must still be refused.
+    The pair differs only in ``$.scale_percent`` and must land; a row repeating
+    an existing spelling exactly must still be refused.
     """
     whole = (
         '{"metadata": {"width": 64, "height": 48, "fps": 10.0,'
@@ -361,21 +356,6 @@ def test_the_scale_terms_fork_the_migrated_index(tmp_path: Path) -> None:
                 "insert into source (id, project_id, kind, path, registered_at,"
                 " capture_params, video) values ('s2', 'p', 'video', '/clips/a.mp4',"
                 f" '2026-01-02T00:00:00+00:00', '{{}}', '{scaled}')"
-            )
-        )
-        connection.execute(
-            text(
-                "insert into source (id, project_id, kind, path, registered_at,"
-                " capture_params) values ('d1', 'p', 'image_directory', '/stills',"
-                " '2026-01-02T00:00:00+00:00', '{}')"
-            )
-        )
-        connection.execute(
-            text(
-                "insert into source (id, project_id, kind, path, registered_at,"
-                " capture_params, image_scales) values ('d2', 'p', 'image_directory',"
-                " '/stills', '2026-01-02T00:00:00+00:00', '{}',"
-                " '{\"a.png\": 50}')"
             )
         )
     with pytest.raises(IntegrityError), migrated.engine.begin() as connection:
@@ -418,7 +398,7 @@ _DECLARED_TAILS = {
     # three deep and its *order* is the assertion — swapping any two would split
     # the ``create_all`` path from the migration path.
     "annotation_schema": ["description", "created_at", "provenance"],
-    "source": ["display_name", "image_scales"],
+    "source": ["display_name"],
     "asset": ["thumbnail_hash", "ingested_at"],
     # Migration 2 and migration 3, in that order. Both arrive by ``ALTER`` and
     # SQLite appends, so declaring either anywhere but last would split the

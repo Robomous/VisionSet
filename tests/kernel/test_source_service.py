@@ -270,28 +270,6 @@ def test_a_scale_of_one_hundred_is_the_plain_source(tmp_path: Path) -> None:
     fx.close()
 
 
-def test_the_same_directory_with_different_scales_is_a_second_source(tmp_path: Path) -> None:
-    fx = Fixture(tmp_path)
-    first = fx.sources.register_images(fx.project.id, fx.stills)
-    second = fx.sources.register_images(fx.project.id, fx.stills, image_scales={"a.png": 50})
-    assert second.id != first.id
-    assert second.image_scales == {"a.png": 50}
-    assert {s.id for s in fx.sources.list(fx.project.id)} == {first.id, second.id}
-    fx.close()
-
-
-def test_image_scale_spelling_variants_collapse_to_one_source(tmp_path: Path) -> None:
-    """Identity compares the canonical form, never what a caller happened to type."""
-    fx = Fixture(tmp_path)
-    messy = fx.sources.register_images(
-        fx.project.id, fx.stills, image_scales={"b.png": 100, "a.png": 50}
-    )
-    tidy = fx.sources.register_images(fx.project.id, fx.stills, image_scales={"a.png": 50})
-    assert tidy == messy
-    assert len(fx.sources.list(fx.project.id)) == 1
-    fx.close()
-
-
 def test_range_spelling_variants_collapse_to_one_source(tmp_path: Path) -> None:
     """Identity compares the canonical form, never what a caller happened to type."""
     fx = Fixture(tmp_path)

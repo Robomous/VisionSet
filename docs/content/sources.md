@@ -76,25 +76,23 @@ idempotency with nothing to be measured against.
 The consequence is deliberate: **one clip registered at 1 fps and again at 5 fps — or at 100%
 and again at 50% — is two sources over one file**, not one source with a history.
 
-## Storing at a smaller size
+## Storing frames at a smaller size
 
-Both registration methods take an optional downscale, applied while ingest materializes assets:
-the original upload is retained as staged, the *stored* pixels are smaller. A clip takes one
-`scale_percent`, so every extracted frame shares one size; an image directory takes a per-file
-map, `image_scales`, because a batch mixes sizes and each file scales relative to its own. The
-map is stored canonically — entries of 100 dropped, keys sorted — so two spellings of one
-selection cannot fork a source. Each dimension becomes `max(1, (native * percent + 50) // 100)`;
-the ingest screen mirrors that integer formula, so the preview and the stored size cannot drift.
+A clip's registration takes an optional `scale_percent`, applied while ingest extracts frames:
+the original upload is retained as staged, the *stored* frames are smaller, and every frame
+shares one size because a clip has one native size. Each dimension becomes
+`max(1, (native * percent + 50) // 100)`; the ingest screen mirrors that integer formula, so
+the preview and the stored size cannot drift. Image directories always store stills at their
+decoded size — an image batch mixes resolutions, and export is where a uniform size is made.
 
 This is not the export-time resize: [pre-processing recipes](preprocessing.md) bring every
 exported image to one model input size at export. The ingest-time scale exists to cut storage
-and decode cost for sources nobody needs at native resolution, and it is permanent — the assets
-*are* the smaller pixels. Re-ingesting the same origin at another scale is a second source.
+and decode cost for clips nobody needs at native resolution, and it is permanent — the assets
+*are* the smaller pixels. Re-ingesting the same clip at another scale is a second source.
 
 ## Registration is idempotent
 
-The match key is `(kind, path, extraction_fps, ranges, scale)` — a clip's `scale_percent`, an
-image directory's `image_scales`. Registering the same origin twice returns the
+The match key is `(kind, path, extraction_fps, ranges, scale_percent)`. Registering the same origin twice returns the
 same `Source` rather than a second one, so that once ingest gives `asset.source_id` a target,
 "which source did this asset come from?" has one answer.
 
@@ -123,13 +121,13 @@ recorded origin.
 by migration 18 when scale did — over `(project_id, kind, path,
 coalesce(json_extract(video, '$.extraction_fps'), 0),
 coalesce(json_extract(video, '$.ranges'), ''),
-coalesce(json_extract(video, '$.scale_percent'), 0), coalesce(image_scales, ''))`. The
-expression terms are `coalesce`d rather than left to be NULL, because SQLite treats NULLs in a
-unique index as **distinct** - an image directory, whose `video` is NULL, would otherwise never
-collide with itself, which is most of what the index is for. `0` cannot be mistaken for a real
-rate or percent (`extraction_fps` is `gt=0`, `scale_percent` is `ge=1`), and every default —
-an empty selection, an unscaled clip, an all-native directory — omits its key or stores NULL,
-so a row written in any generation lands on the same term.
+coalesce(json_extract(video, '$.scale_percent'), 0))`. The expression terms are `coalesce`d
+rather than left to be NULL, because SQLite treats NULLs in a unique index as **distinct** - an
+image directory, whose `video` is NULL, would otherwise never collide with itself, which is
+most of what the index is for. `0` cannot be mistaken for a real rate or percent
+(`extraction_fps` is `gt=0`, `scale_percent` is `ge=1`), and every default — an empty
+selection, an unscaled clip — omits its JSON key, so a row written in any generation lands on
+the same term.
 
 The two layers do what they do everywhere else in this store. The pre-check is what produces a
 friendly answer; the index is the guarantee. A caller that loses the race sees a raw
@@ -156,9 +154,9 @@ the workspace, so both stay outside the `VisionSetError` tree - the same line
 ## Over HTTP, a path is an upload
 
 `SourceService` registers by path, and an HTTP client has bytes rather than a path. So the
-[REST API](api.md) takes multipart - one `files` part per image plus an optional `scales`
-field (a JSON object of filename to percent), or one `file` part plus `extraction_fps`, an
-optional `ranges` field and an optional `scale_percent` for a clip - writes the parts under
+[REST API](api.md) takes multipart - one `files` part per image, or one `file` part plus
+`extraction_fps`, an optional `ranges` field and an optional `scale_percent` for a clip -
+writes the parts under
 `<workspace>/uploads/`, and registers
 what it wrote. There is **no route that accepts a server-side path**: it would hand every token
 holder an arbitrary-directory read, and the two surfaces that legitimately hold real paths, the

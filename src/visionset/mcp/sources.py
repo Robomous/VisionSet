@@ -87,9 +87,9 @@ def ingest(
             ge=1,
             le=100,
             description=(
-                "Store at this percent of native size — every frame of a video, or "
-                "every file the directory holds now. Part of the source's identity, "
-                "like fps: another scale is a second source. Omitted means 100."
+                "Store extracted frames at this percent of the clip's native size. "
+                "Video sources only. Part of the source's identity, like fps: "
+                "another scale is a second source. Omitted means 100 (unscaled)."
             ),
         ),
     ] = None,
@@ -145,6 +145,8 @@ def ingest(
         return refused(f"fps applies to a video source, and {path} is a directory of stills")
     if ranges and source_path.is_dir():
         return refused(f"ranges applies to a video source, and {path} is a directory of stills")
+    if scale is not None and source_path.is_dir():
+        return refused(f"scale applies to a video source, and {path} is a directory of stills")
     try:
         selection = [
             TimeRange(start_seconds=r.start_seconds, end_seconds=r.end_seconds)
@@ -159,15 +161,7 @@ def ingest(
         resolved = resolve_project(workspace, project)
         service = SourceService(workspace)
         if source_path.is_dir():
-            registered = service.register_images(
-                resolved.id,
-                source_path,
-                image_scales=(
-                    {}
-                    if scale is None
-                    else {item.name: scale for item in source_path.iterdir() if item.is_file()}
-                ),
-            )
+            registered = service.register_images(resolved.id, source_path)
         else:
             registered = service.register_video(
                 resolved.id,

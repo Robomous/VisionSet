@@ -533,9 +533,7 @@ class _NullImageProcessor:
     ) -> bytes:
         return b""
 
-    def stills(
-        self, content: io.IOBase, *, name: str | None = None, scale_percent: int = 100
-    ) -> Iterator[DecodedStill]:
+    def stills(self, content: io.IOBase, *, name: str | None = None) -> Iterator[DecodedStill]:
         return iter(())
 
 
@@ -582,11 +580,9 @@ def test_a_decoded_still_is_frozen_and_defaults_to_pass_through() -> None:
 # --- stills: accept what Pillow decodes, normalized to JPEG and PNG ------------
 
 
-def _stills(path: Path, *, scale_percent: int = 100) -> list[DecodedStill]:
+def _stills(path: Path) -> list[DecodedStill]:
     with path.open("rb") as handle:
-        return list(
-            PillowImageProcessor().stills(handle, name=str(path), scale_percent=scale_percent)
-        )
+        return list(PillowImageProcessor().stills(handle, name=str(path)))
 
 
 def test_a_native_jpeg_passes_through_with_no_payload(tmp_path: Path) -> None:
@@ -659,57 +655,6 @@ def test_a_transcode_is_repeatable_within_this_build(tmp_path: Path) -> None:
     Image.new("RGB", (32, 24), (9, 9, 9)).save(path, format="WEBP")
 
     assert _stills(path)[0].payload == _stills(path)[0].payload
-
-
-def test_a_scaled_native_jpeg_re_encodes_at_the_stored_size(tmp_path: Path) -> None:
-    """Scaling forces the re-encode: the original bytes are no longer the asset."""
-    path = tmp_path / "native.jpg"
-    Image.new("RGB", (100, 80), (200, 10, 10)).save(path, format="JPEG")
-
-    (still,) = _stills(path, scale_percent=50)
-
-    assert still.payload is not None
-    assert still.metadata == ImageMetadata(width=50, height=40, format=ImageFormat.JPEG)
-    assert _decoded(still.payload).size == (50, 40)
-
-
-def test_a_scaled_native_png_re_encodes_as_jpeg(tmp_path: Path) -> None:
-    path = tmp_path / "native.png"
-    Image.new("RGB", (100, 80), (10, 200, 10)).save(path, format="PNG")
-
-    (still,) = _stills(path, scale_percent=50)
-
-    assert still.payload is not None
-    assert still.metadata.format is ImageFormat.JPEG
-    assert (still.metadata.width, still.metadata.height) == (50, 40)
-
-
-def test_scaled_animation_frames_shrink_and_stay_png(tmp_path: Path) -> None:
-    path = tmp_path / "anim.gif"
-    _animated_gif(path, frames=3)
-
-    stills = _stills(path, scale_percent=50)
-
-    assert [still.metadata.format for still in stills] == [ImageFormat.PNG] * 3
-    assert all((s.metadata.width, s.metadata.height) == (8, 6) for s in stills)
-
-
-def test_scale_one_hundred_still_passes_natives_through(tmp_path: Path) -> None:
-    path = tmp_path / "native.jpg"
-    Image.new("RGB", (32, 24), (5, 5, 5)).save(path, format="JPEG")
-
-    (still,) = _stills(path, scale_percent=100)
-
-    assert still.payload is None
-
-
-def test_a_scaled_dimension_never_reaches_zero(tmp_path: Path) -> None:
-    path = tmp_path / "sliver.png"
-    Image.new("RGB", (100, 1), (1, 2, 3)).save(path, format="PNG")
-
-    (still,) = _stills(path, scale_percent=10)
-
-    assert (still.metadata.width, still.metadata.height) == (10, 1)
 
 
 def test_stills_refuses_what_pillow_cannot_decode(tmp_path: Path) -> None:

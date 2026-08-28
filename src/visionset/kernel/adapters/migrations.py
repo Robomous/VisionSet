@@ -392,15 +392,13 @@ def _reshape_source_origin_index(connection: Connection) -> None:
 def _add_source_scale(connection: Connection) -> None:
     """Scale joins the source's identity, so the origin index compares it.
 
-    Two new terms beside fps and ranges: a clip's ``$.scale_percent`` (omitted
-    at 100, so pre-scale rows and unscaled rows share one spelling) and the
-    per-file ``image_scales`` column (NULL when every file stores at its
-    decoded size, for the same reason). SQLite cannot alter an index: the old
-    one is dropped by name and the shared declaration created in its place.
-    As the head reshape this is the one migration that may execute the shared
-    declaration — see ``_reshape_source_origin_index``.
+    One new term beside fps and ranges: a clip's ``$.scale_percent``, omitted
+    at 100 so pre-scale rows and unscaled rows share one spelling. SQLite
+    cannot alter an index: the old one is dropped by name and the shared
+    declaration created in its place. As the head reshape this is the one
+    migration that may execute the shared declaration — see
+    ``_reshape_source_origin_index``.
     """
-    _add_column(connection, "source", "image_scales")
     connection.execute(text("DROP INDEX IF EXISTS uq_source_project_kind_path_fps_ranges"))
     connection.execute(CreateIndex(SOURCE_ORIGIN_UNIQUE, if_not_exists=True))
 

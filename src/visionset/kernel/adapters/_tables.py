@@ -187,12 +187,8 @@ class SourceRow(Base):
     #: A ``VideoProvenance``, or NULL for anything that is not a clip.
     video: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     #: What a caller asked this source to be called; NULL means nobody said.
+    #: The newest column here, so it is declared last — see the class docstring.
     display_name: Mapped[str | None] = mapped_column(String, nullable=True)
-    #: Per-file downscale for an image directory: filename -> percent, always
-    #: canonical (no 100s, sorted keys) so the origin index compares one
-    #: spelling, or NULL when every file stores at its decoded size. The
-    #: newest column here, so it is declared last — see the class docstring.
-    image_scales: Mapped[dict[str, int] | None] = mapped_column(JSON, nullable=True)
 
 
 #: One origin is one source: the backstop under ``SourceService``'s idempotency
@@ -210,10 +206,8 @@ class SourceRow(Base):
 #: written before ranges existed or after — always lands on ``''``, and a row
 #: that names ranges lands on its one canonical JSON spelling.
 #:
-#: The sixth and seventh terms follow the same two precedents: a clip stored
-#: unscaled omits ``$.scale_percent`` (0 cannot be a real percent — the domain
-#: floor is 1), and an image directory whose files all store native has a NULL
-#: ``image_scales``, coalesced to ``''`` exactly as a missing ``$.ranges`` is.
+#: The sixth term follows the same precedent: a clip stored unscaled omits
+#: ``$.scale_percent``, and 0 cannot be a real percent — the domain floor is 1.
 #:
 #: This is SQL reading a JSON column, which the module docstring above reserves
 #: for values "nothing ever queries". An index is not a query: no service gains
@@ -227,7 +221,6 @@ SOURCE_ORIGIN_UNIQUE = Index(
     text("coalesce(json_extract(video, '$.extraction_fps'), 0)"),
     text("coalesce(json_extract(video, '$.ranges'), '')"),
     text("coalesce(json_extract(video, '$.scale_percent'), 0)"),
-    text("coalesce(image_scales, '')"),
     unique=True,
 )
 

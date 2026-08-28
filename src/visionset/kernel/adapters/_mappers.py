@@ -73,7 +73,6 @@ from visionset.kernel.domain import (
     Token,
     VideoProvenance,
     Workspace,
-    canonical_image_scales,
 )
 
 _geometry_adapter: TypeAdapter[Geometry] = TypeAdapter(Geometry)
@@ -378,7 +377,6 @@ def _source_to_row(entity: Source) -> t.Base:
         registered_at=entity.registered_at.isoformat(),
         capture_params=dict(entity.capture_params),
         video=_video_to_json(entity.video),
-        image_scales=canonical_image_scales(entity.image_scales) or None,
     )
 
 
@@ -392,7 +390,6 @@ def _source_to_domain(_: Session, row: Any) -> Source:
         registered_at=datetime.fromisoformat(row.registered_at),
         capture_params=row.capture_params,
         video=None if row.video is None else VideoProvenance.model_validate(row.video),
-        image_scales=row.image_scales or {},
     )
 
 

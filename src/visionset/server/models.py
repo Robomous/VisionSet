@@ -777,13 +777,7 @@ class VideoProvenanceOut(BaseModel):
 # it hands every token holder the layout of the machine. ``name`` is the part a
 # client recognises: the filename it uploaded.
 class SourceOut(BaseModel):
-    """A registered origin: a folder of stills, or a clip.
-
-    `image_scales` is an image directory's per-file downscale, filename to
-    percent. Only files stored below native size appear; an empty object means
-    every file stores at its decoded size. Always empty for a video source,
-    whose single `scale_percent` lives on `video`.
-    """
+    """A registered origin: a folder of stills, or a clip."""
 
     id: UUID
     project_id: UUID
@@ -791,7 +785,6 @@ class SourceOut(BaseModel):
     name: str
     registered_at: datetime
     video: VideoProvenanceOut | None
-    image_scales: dict[str, int]
 
     @classmethod
     def of(cls, source: Source) -> Self:
@@ -806,7 +799,6 @@ class SourceOut(BaseModel):
             name=source.name,
             registered_at=source.registered_at,
             video=None if source.video is None else VideoProvenanceOut.of(source.video),
-            image_scales=dict(source.image_scales),
         )
 
 

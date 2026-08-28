@@ -799,7 +799,6 @@ export function useRegisterSource(projectId: string) {
       ranges?: readonly { start_seconds: number; end_seconds: number }[];
       name?: string;
       scalePercent?: number;
-      scales?: Readonly<Record<string, number>>;
     }) => {
       const extractionFps = input.extractionFps;
       const source =
@@ -827,15 +826,7 @@ export function useRegisterSource(projectId: string) {
               // `name` is what the source will be *called* — without it
               // the server names the source by its staged directory, whose
               // basename is a content digest. `formData` skips `undefined`.
-              body: {
-                files: input.files as unknown as string[],
-                name: input.name,
-                // Multipart carries strings, so the map rides as one JSON
-                // field, the way `ranges` does on the video branch.
-                ...(input.scales !== undefined && Object.keys(input.scales).length > 0
-                  ? { scales: JSON.stringify(input.scales) }
-                  : {}),
-              },
+              body: { files: input.files as unknown as string[], name: input.name },
               bodySerializer: formData,
             }),
           checkRegisterImageSource,

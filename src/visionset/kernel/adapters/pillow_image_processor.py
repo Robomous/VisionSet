@@ -9,7 +9,7 @@ from typing import BinaryIO, Final
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pillow_heif import register_heif_opener
 
-from visionset.kernel.domain import DecodedStill, ImageFormat, ImageMetadata, scaled_dimension
+from visionset.kernel.domain import DecodedStill, ImageFormat, ImageMetadata
 from visionset.kernel.errors import CorruptMedia, UnsupportedMedia
 from visionset.kernel.ports.image_processor import DEFAULT_THUMBNAIL_MAX_EDGE
 
@@ -153,18 +153,6 @@ def _fit(image: Image.Image, max_edge: int) -> Image.Image:
     return _opaque_rgb(working)
 
 
-def _scaled(image: Image.Image, scale_percent: int) -> Image.Image:
-    if scale_percent == 100:
-        return image
-    return image.resize(
-        (
-            scaled_dimension(image.width, scale_percent),
-            scaled_dimension(image.height, scale_percent),
-        ),
-        _RESAMPLING,
-    )
-
-
 def _opaque_rgb(image: Image.Image) -> Image.Image:
     """The compositing tail of :func:`_fit`, alone: full-size, no resampling.
 
@@ -252,22 +240,18 @@ class PillowImageProcessor:
         canvas.save(buffer, format=_THUMBNAIL_PILLOW_NAME, **_THUMBNAIL_ENCODER)
         return buffer.getvalue()
 
-    def stills(
-        self, content: BinaryIO, *, name: str | None = None, scale_percent: int = 100
-    ) -> Iterator[DecodedStill]:
+    def stills(self, content: BinaryIO, *, name: str | None = None) -> Iterator[DecodedStill]:
         """Every dataset-ready still in this file. See the port docstring.
 
         The native gate runs before the frame count on purpose: MPO decodes
         with ``n_frames > 1``, and checking frames first would decompose every
-        burst photo instead of passing its primary frame through. A
-        ``scale_percent`` below 100 closes that gate: the original bytes are no
-        longer the asset, so even a dataset-ready native re-encodes, resized.
+        burst photo instead of passing its primary frame through.
         """
         source = _stream_name(content, name)
         image = self._open(io.BytesIO(_read_all(content)), source)
 
         native = _FORMAT_BY_PILLOW_NAME.get(image.format or "")
-        if native is not None and scale_percent == 100:
+        if native is not None:
             self._load(image, source)
             with image:
                 width, height = image.size
@@ -275,13 +259,13 @@ class PillowImageProcessor:
                 [DecodedStill(metadata=ImageMetadata(width=width, height=height, format=native))]
             )
 
-        if native is None and getattr(image, "n_frames", 1) > 1:
+        if getattr(image, "n_frames", 1) > 1:
             with image:
-                return iter(self._decomposed(image, source, scale_percent))
+                return iter(self._decomposed(image, source))
 
         self._load(image, source)
         with image:
-            flat = _scaled(_opaque_rgb(image), scale_percent)
+            flat = _opaque_rgb(image)
         buffer = io.BytesIO()
         flat.save(buffer, format="JPEG", **_STILL_ENCODER)
         return iter(
@@ -295,9 +279,7 @@ class PillowImageProcessor:
             ]
         )
 
-    def _decomposed(
-        self, image: Image.Image, source: str | None, scale_percent: int
-    ) -> list[DecodedStill]:
+    def _decomposed(self, image: Image.Image, source: str | None) -> list[DecodedStill]:
         """One PNG still per frame — a list, not a generator, on purpose.
 
         Every frame is decoded and encoded before the caller sees the first
@@ -310,7 +292,7 @@ class PillowImageProcessor:
         for index in range(int(getattr(image, "n_frames", 1))):
             try:
                 image.seek(index)
-                frame = _scaled(_opaque_rgb(image), scale_percent)
+                frame = _opaque_rgb(image)
             except Image.DecompressionBombError as exc:
                 raise UnsupportedMedia(str(exc), name=source) from exc
             except (EOFError, OSError, SyntaxError, ValueError) as exc:

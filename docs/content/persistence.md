@@ -55,7 +55,7 @@ a service bug, a forgotten code path, and a second process.
 
 `uq_source_project_kind_path_fps_ranges_scale` is one of the two whose terms are not all
 columns: beside three column terms it compares `coalesce`d expressions over the `video` JSON
-(`$.extraction_fps`, `$.ranges`, `$.scale_percent`) and over the `image_scales` column. SQLite treats NULLs in a unique index as
+(`$.extraction_fps`, `$.ranges`, `$.scale_percent`). SQLite treats NULLs in a unique index as
 distinct, so a nullable column would let every image directory collide with nothing at all — and
 an index is not a query, so no service gains a JSON path from it. That is also why neither it nor
 `uq_annotation_asset_classification`, which is partial, can use `checkfirst`: SQLAlchemy cannot
@@ -287,7 +287,7 @@ object with `_tables` rather than repeating the DDL - `checkfirst=True` on a `Ta
 one absent and re-issues a `CREATE` that then fails on every fresh database. Those ask
 SQLite instead, via `CreateIndex(index, if_not_exists=True)`. Two indexes here are in that
 category: `uq_source_project_kind_path_fps_ranges_scale` (its expression terms are
-`json_extract`/`coalesce` expressions over `video` and `image_scales`) and
+`json_extract`/`coalesce` expressions over `video`) and
 `uq_annotation_asset_classification` (partial, on the tag geometry).
 
 **A column arriving by `ALTER` is declared last on its row class**, because SQLite appends

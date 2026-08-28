@@ -354,10 +354,10 @@ then `IngestService.ingest`. Registration is idempotent, so re-running the same 
 content addressing means it also creates no asset it created before, which is the remedy for an
 interrupted run. The batch id goes to stdout.
 
-`--fps` and `--range` are video-only and usage errors on a folder. `--range START:END` repeats,
-in seconds, and the selection is stored canonically - clamped to the clip, sorted, overlapping
-and touching ranges merged. `--scale` applies to both kinds - every frame of a clip, or every
-file the directory holds now - and, like the rate and the ranges, is part of the source's
+`--fps`, `--range` and `--scale` are video-only and usage errors on a folder. `--range
+START:END` repeats, in seconds, and the selection is stored canonically - clamped to the clip,
+sorted, overlapping and touching ranges merged. `--scale` stores every extracted frame at that
+percent of the clip's native size and, like the rate and the ranges, is part of the source's
 identity: another scale is a second source. The run is **synchronous**, and there is no
 `--resume`: polling needs a second process, which is what `visionset server` and
 `GET /ingest-jobs/{id}` are for. See [ingest.md](ingest.md#at-a-terminal).

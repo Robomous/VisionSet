@@ -2661,7 +2661,7 @@ export interface paths {
         put?: never;
         /**
          * Register Image Source
-         * @description Offer a project a folder of stills, each stored at its own scale.
+         * @description Offer a project a folder of stills.
          *
          *     The parts are staged as one directory and that directory becomes the source.
          *     Uploading the same files again returns the **same** source rather than a
@@ -2674,9 +2674,6 @@ export interface paths {
          *     `name` exists because the staged path's basename is a digest; a blank one is
          *     422 `INVALID_NAME`, refused by the kernel's own `InvalidName` — the domain
          *     already refuses with a mapped error, so no wire validator restates it.
-         *
-         *     `scales` names files to store below native size, and is part of the
-         *     source's identity: the same files at other scales are a second source.
          */
         post: operations["register_image_source"];
         delete?: never;
@@ -3694,11 +3691,6 @@ export interface components {
              * @description What to call the source. Without one it is named by its staged directory, whose basename is a content digest — 64 hex characters nobody can read. Registering the same files again with a new name renames the existing source rather than creating a second one.
              */
             name?: string | null;
-            /**
-             * Scales
-             * @description Per-file downscale, as a JSON object of {"filename": percent} with integer percents in [1, 100]. Every filename must match an uploaded part; a file not named — and any entry of 100 — is stored at its decoded size. Part of the source's identity: the same files at other scales are a second source.
-             */
-            scales?: string | null;
         };
         /** Body_register_video_source */
         Body_register_video_source: {
@@ -5626,11 +5618,6 @@ export interface components {
         /**
          * SourceOut
          * @description A registered origin: a folder of stills, or a clip.
-         *
-         *     `image_scales` is an image directory's per-file downscale, filename to
-         *     percent. Only files stored below native size appear; an empty object means
-         *     every file stores at its decoded size. Always empty for a video source,
-         *     whose single `scale_percent` lives on `video`.
          */
         SourceOut: {
             /**
@@ -5638,10 +5625,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Image Scales */
-            image_scales: {
-                [key: string]: number;
-            };
             kind: components["schemas"]["SourceKind"];
             /** Name */
             name: string;

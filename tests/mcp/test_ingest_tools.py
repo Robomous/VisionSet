@@ -86,15 +86,16 @@ def test_a_clip_ingested_with_a_scale_echoes_it(
     assert result["source"]["video"]["scale_percent"] == 50
 
 
-def test_a_scaled_directory_names_every_file_present(
+def test_scale_for_a_directory_of_stills_is_refused(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     named = schema(monkeypatch, tmp_path)
-    write_images(tmp_path / "incoming", count=2)
-    result = payload(call("ingest", project=named, path=str(tmp_path / "incoming"), scale=50))
+    write_images(tmp_path / "incoming", count=1)
+    message = error(call("ingest", project=named, path=str(tmp_path / "incoming"), scale=50))[
+        "message"
+    ]
 
-    names = {item.name for item in (tmp_path / "incoming").iterdir() if item.is_file()}
-    assert result["source"]["image_scales"] == {name: 50 for name in names}
+    assert "video source" in message
 
 
 def test_ranges_for_a_directory_of_stills_are_refused(

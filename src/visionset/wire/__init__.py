@@ -347,7 +347,6 @@ def source(value: Source) -> dict[str, Any]:
         "name": value.name,
         "registered_at": _moment(value.registered_at),
         "video": None if value.video is None else video_provenance(value.video),
-        "image_scales": dict(value.image_scales),
     }
 
 

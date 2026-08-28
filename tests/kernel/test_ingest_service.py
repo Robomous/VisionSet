@@ -138,9 +138,7 @@ class _WatchingProcessor:
         self._observe()
         return self._real.probe(content, name=name)
 
-    def stills(
-        self, content: BinaryIO, *, name: str | None = None, scale_percent: int = 100
-    ) -> Iterator[DecodedStill]:
+    def stills(self, content: BinaryIO, *, name: str | None = None) -> Iterator[DecodedStill]:
         self._observe()
         return self._real.stills(content, name=name)
 
@@ -166,9 +164,7 @@ class _FailsOnNthFile:
     def probe(self, content: BinaryIO, *, name: str | None = None) -> ImageMetadata:
         return self._real.probe(content, name=name)
 
-    def stills(
-        self, content: BinaryIO, *, name: str | None = None, scale_percent: int = 100
-    ) -> Iterator[DecodedStill]:
+    def stills(self, content: BinaryIO, *, name: str | None = None) -> Iterator[DecodedStill]:
         self._calls += 1
         if self._calls == self._nth:
             raise OSError("the disk went away")
@@ -194,9 +190,7 @@ class _ThumbnaillessProcessor:
     def probe(self, content: BinaryIO, *, name: str | None = None) -> ImageMetadata:
         return self._real.probe(content, name=name)
 
-    def stills(
-        self, content: BinaryIO, *, name: str | None = None, scale_percent: int = 100
-    ) -> Iterator[DecodedStill]:
+    def stills(self, content: BinaryIO, *, name: str | None = None) -> Iterator[DecodedStill]:
         return self._real.stills(content, name=name)
 
     def thumbnail(
@@ -498,31 +492,6 @@ def test_a_frame_takes_its_size_from_the_probe_and_its_format_from_the_port(
 
     assert (asset.width, asset.height) == (clip.width, clip.height)
     assert asset.format is FRAME_FORMAT
-    fixture.close()
-
-
-def test_a_scaled_still_ingests_at_its_own_percent_and_neighbors_stay_native(
-    tmp_path: Path,
-) -> None:
-    """The per-file map applies per file: one entry scales one file, the rest pass through."""
-    fixture = Fixture(tmp_path)
-    paths = write_images(fixture.stills, count=2)
-    source = fixture.sources.register_images(
-        fixture.project.id, fixture.stills, image_scales={paths[0].name: 50}
-    )
-
-    result = fixture.ingest.ingest(source.id)
-
-    by_name = {asset.uri.rsplit("/", 1)[-1]: asset for asset in result.assets}
-    with Image.open(paths[0]) as native:
-        expected = (scaled_dimension(native.width, 50), scaled_dimension(native.height, 50))
-        native_size = native.size
-    scaled = by_name[paths[0].name]
-    untouched = by_name[paths[1].name]
-    assert (scaled.width, scaled.height) == expected
-    assert scaled.format is ImageFormat.JPEG
-    assert (untouched.width, untouched.height) == native_size
-    assert untouched.format is ImageFormat.PNG
     fixture.close()
 
 

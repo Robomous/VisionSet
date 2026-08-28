@@ -260,19 +260,10 @@ def test_a_video_registers_the_scale_it_was_given(root: Path, tmp_path: Path) ->
     assert document["source"]["video"]["scale_percent"] == 50
 
 
-def test_scale_on_a_directory_applies_to_every_file_present(root: Path, tmp_path: Path) -> None:
-    directory = stills(tmp_path)
-    document = payload(root, "ingest", str(directory), "-p", "road-signs", "--scale", "50")
-    names = {path.name for path in directory.iterdir() if path.is_file()}
-    assert document["source"]["image_scales"] == {name: 50 for name in names}
-
-
-def test_a_scale_of_one_hundred_is_the_plain_registration(root: Path, tmp_path: Path) -> None:
-    directory = stills(tmp_path)
-    first = payload(root, "ingest", str(directory), "-p", "road-signs")
-    second = payload(root, "ingest", str(directory), "-p", "road-signs", "--scale", "100")
-    assert second["source"]["id"] == first["source"]["id"]
-    assert second["source"]["image_scales"] == {}
+def test_scale_on_a_directory_exits_two(root: Path, tmp_path: Path) -> None:
+    result = run(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--scale", "50")
+    assert result.exit_code == 2, result.output
+    assert "directory of stills" in usage_error(result)
 
 
 def test_an_out_of_range_scale_exits_two(root: Path, tmp_path: Path) -> None:

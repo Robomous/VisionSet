@@ -152,7 +152,6 @@ const VIDEO_SOURCE = {
     ranges: [],
     scale_percent: 100,
   },
-  image_scales: {},
 };
 
 const IMAGE_SOURCE = {
@@ -162,7 +161,6 @@ const IMAGE_SOURCE = {
   name: "photos",
   registered_at: "2026-07-31T00:00:00.000000Z",
   video: null,
-  image_scales: {},
 };
 
 function job(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -214,43 +212,6 @@ describe("registering a source", () => {
     // file's *stem*, because "a.png" is a file and "a" is a thing you can call a
     // source. Without a name the server would call it by the upload's digest.
     expect((form as FormData).get("name")).toBe("a");
-  });
-
-  it("sends per-file scales chosen in the mosaic", async () => {
-    on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
-
-    render(mount(<IngestScreen projectId={PROJECT} />));
-    await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
-
-    fireEvent.change(screen.getByTestId("tile-scale-a.png"), { target: { value: "50" } });
-    await userEvent.click(screen.getByTestId("register-source"));
-
-    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
-    const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
-    expect(JSON.parse(form.get("scales") as string)).toEqual({ "a.png": 50 });
-  });
-
-  it("set-all writes every tile and a single tile overrides after", async () => {
-    render(mount(<IngestScreen projectId={PROJECT} />));
-    await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
-
-    fireEvent.change(screen.getByTestId("scale-all"), { target: { value: "50" } });
-    fireEvent.change(screen.getByTestId("tile-scale-b.png"), { target: { value: "100" } });
-
-    expect((screen.getByTestId("tile-scale-a.png") as HTMLInputElement).value).toBe("50");
-    expect((screen.getByTestId("tile-scale-b.png") as HTMLInputElement).value).toBe("100");
-  });
-
-  it("omits the scales part when every tile stores native", async () => {
-    on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
-
-    render(mount(<IngestScreen projectId={PROJECT} />));
-    await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
-    await userEvent.click(screen.getByTestId("register-source"));
-
-    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
-    const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
-    expect(form.has("scales")).toBe(false);
   });
 
   it("sends a clip with the extraction rate, chosen before anything is probed", async () => {
