@@ -214,6 +214,12 @@ warn_unused_configs = true
 warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
+# pillow-heif publishes no py.typed marker, so the one symbol imported from it
+# (register_heif_opener) arrives untyped.
+module = "pillow_heif.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "visionset.kernel.*"
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

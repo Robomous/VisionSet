@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import hashlib
 import io
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -533,6 +533,9 @@ class _NullImageProcessor:
     ) -> bytes:
         return b""
 
+    def stills(self, content: io.IOBase, *, name: str | None = None) -> Iterator[DecodedStill]:
+        return iter(())
+
 
 def test_a_workspace_exposes_an_image_processor_by_default(tmp_path: Path) -> None:
     with WorkspaceService.init(tmp_path / "ws") as workspace:
@@ -572,3 +575,90 @@ def test_a_decoded_still_is_frozen_and_defaults_to_pass_through() -> None:
     assert still.frame_timestamp is None
     with pytest.raises(ValidationError):
         still.payload = b"x"  # type: ignore[misc]
+
+
+# --- stills: accept what Pillow decodes, normalized to JPEG and PNG ------------
+
+
+def _stills(path: Path) -> list[DecodedStill]:
+    with path.open("rb") as handle:
+        return list(PillowImageProcessor().stills(handle, name=str(path)))
+
+
+def test_a_native_jpeg_passes_through_with_no_payload(tmp_path: Path) -> None:
+    path = tmp_path / "native.jpg"
+    Image.new("RGB", (32, 24), (200, 10, 10)).save(path, format="JPEG")
+
+    (still,) = _stills(path)
+
+    assert still.payload is None
+    assert still.frame_index is None
+    assert still.metadata == ImageMetadata(width=32, height=24, format=ImageFormat.JPEG)
+
+
+def test_a_native_png_passes_through_with_no_payload(tmp_path: Path) -> None:
+    path = tmp_path / "native.png"
+    Image.new("RGB", (32, 24), (10, 200, 10)).save(path, format="PNG")
+
+    (still,) = _stills(path)
+
+    assert still.payload is None
+    assert still.metadata.format is ImageFormat.PNG
+
+
+def test_a_webp_arrives_as_a_jpeg_payload(tmp_path: Path) -> None:
+    path = tmp_path / "photo.webp"
+    Image.new("RGB", (32, 24), (10, 10, 200)).save(path, format="WEBP")
+
+    (still,) = _stills(path)
+
+    assert still.payload is not None
+    assert still.metadata.format is ImageFormat.JPEG
+    decoded = _decoded(still.payload)
+    assert decoded.format == "JPEG"
+    assert decoded.size == (32, 24)
+
+
+def test_an_heic_arrives_as_a_jpeg_payload(tmp_path: Path) -> None:
+    path = tmp_path / "photo.heic"
+    Image.new("RGB", (32, 24), (120, 60, 30)).save(path, format="HEIF")
+
+    (still,) = _stills(path)
+
+    assert still.payload is not None
+    assert still.metadata.format is ImageFormat.JPEG
+
+
+def test_an_oriented_webp_is_transposed_before_encoding(tmp_path: Path) -> None:
+    path = tmp_path / "turned.webp"
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    Image.new("RGB", (32, 24), (1, 2, 3)).save(path, format="WEBP", exif=exif)
+
+    (still,) = _stills(path)
+
+    assert (still.metadata.width, still.metadata.height) == (24, 32)
+
+
+def test_transparency_composites_onto_white(tmp_path: Path) -> None:
+    path = tmp_path / "logo.webp"
+    Image.new("RGBA", (8, 8), (255, 0, 0, 0)).save(path, format="WEBP", lossless=True)
+
+    (still,) = _stills(path)
+
+    assert still.payload is not None
+    assert _decoded(still.payload).getpixel((4, 4)) == (255, 255, 255)
+
+
+def test_a_transcode_is_repeatable_within_this_build(tmp_path: Path) -> None:
+    path = tmp_path / "photo.webp"
+    Image.new("RGB", (32, 24), (9, 9, 9)).save(path, format="WEBP")
+
+    assert _stills(path)[0].payload == _stills(path)[0].payload
+
+
+def test_stills_refuses_what_pillow_cannot_decode(tmp_path: Path) -> None:
+    path = write_unsupported_file(tmp_path / "notes.txt")
+
+    with pytest.raises(UnsupportedMedia, match="not a recognizable image"):
+        _stills(path)
