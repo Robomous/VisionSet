@@ -14,7 +14,9 @@ entry point would have to accept parameters that are meaningless for half its
 callers.
 
 **Registration is idempotent, and the match key is ``(kind, path,
-extraction_fps, ranges)``.** Registering the same origin twice returns the same
+extraction_fps, ranges, scale)``** — a clip's ``scale_percent`` and a
+directory's per-file ``image_scales`` both fork identity, because the stored
+pixels differ. Registering the same origin twice returns the same
 ``Source`` rather than a second one, so that "which source did this asset come
 from?" has one answer through ``asset.source_id``. The key
 deliberately excludes ``capture_params``: fragmenting one directory into two
@@ -52,6 +54,7 @@ from visionset.kernel.domain import (
     SourceKind,
     TimeRange,
     VideoProvenance,
+    canonical_image_scales,
     canonical_path,
     canonical_ranges,
     normalize_name,
@@ -87,6 +90,7 @@ class SourceService:
         *,
         capture_params: Mapping[str, str] | None = None,
         display_name: str | None = None,
+        image_scales: Mapping[str, int] | None = None,
     ) -> Source:
         """Record a directory of stills as an origin for this project.
 
@@ -125,6 +129,7 @@ class SourceService:
             display_name=(
                 None if display_name is None else normalize_name(display_name, what="source name")
             ),
+            image_scales=canonical_image_scales(image_scales or {}),
         )
 
     def register_video(
@@ -134,6 +139,7 @@ class SourceService:
         *,
         extraction_fps: float = DEFAULT_EXTRACTION_FPS,
         ranges: Sequence[TimeRange] = (),
+        scale_percent: int = 100,
         capture_params: Mapping[str, str] | None = None,
     ) -> Source:
         """Record a video file as an origin, with what a probe makes of it.
@@ -176,7 +182,10 @@ class SourceService:
             SourceKind.VIDEO,
             path,
             video=VideoProvenance(
-                metadata=metadata, extraction_fps=extraction_fps, ranges=canonical
+                metadata=metadata,
+                extraction_fps=extraction_fps,
+                ranges=canonical,
+                scale_percent=scale_percent,
             ),
             capture_params=capture_params,
         )
@@ -212,10 +221,15 @@ class SourceService:
         video: VideoProvenance | None,
         capture_params: Mapping[str, str] | None,
         display_name: str | None = None,
+        image_scales: dict[str, int] | None = None,
     ) -> Source:
         """Add the source, or return the one that already stands for this origin."""
         params = dict(capture_params or {})
-        cut = None if video is None else (video.extraction_fps, video.ranges)
+        scales = image_scales or {}
+        cut = (
+            None if video is None else (video.extraction_fps, video.ranges, video.scale_percent),
+            scales,
+        )
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
             for stored in uow.sources.list(project_id):
@@ -224,7 +238,12 @@ class SourceService:
                 stored_cut = (
                     None
                     if stored.video is None
-                    else (stored.video.extraction_fps, stored.video.ranges)
+                    else (
+                        stored.video.extraction_fps,
+                        stored.video.ranges,
+                        stored.video.scale_percent,
+                    ),
+                    stored.image_scales,
                 )
                 if stored_cut != cut:
                     continue
@@ -252,6 +271,7 @@ class SourceService:
                     display_name=display_name,
                     capture_params=params,
                     video=video,
+                    image_scales=scales,
                 )
             )
 

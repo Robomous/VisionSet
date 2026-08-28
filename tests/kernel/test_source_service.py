@@ -248,6 +248,50 @@ def test_the_same_clip_with_different_ranges_is_a_second_source(tmp_path: Path) 
     fx.close()
 
 
+def test_the_same_clip_at_a_different_scale_is_a_second_source(tmp_path: Path) -> None:
+    """The scale is the third cut parameter, so it forks identity as the rate does."""
+    fx = Fixture(tmp_path)
+    clip = fx.clip()
+    native = fx.sources.register_video(fx.project.id, clip.path, scale_percent=100)
+    half = fx.sources.register_video(fx.project.id, clip.path, scale_percent=50)
+    assert half.id != native.id
+    assert half.require_video().scale_percent == 50
+    assert {s.id for s in fx.sources.list(fx.project.id)} == {native.id, half.id}
+    fx.close()
+
+
+def test_a_scale_of_one_hundred_is_the_plain_source(tmp_path: Path) -> None:
+    fx = Fixture(tmp_path)
+    clip = fx.clip()
+    plain = fx.sources.register_video(fx.project.id, clip.path)
+    explicit = fx.sources.register_video(fx.project.id, clip.path, scale_percent=100)
+    assert explicit == plain
+    assert len(fx.sources.list(fx.project.id)) == 1
+    fx.close()
+
+
+def test_the_same_directory_with_different_scales_is_a_second_source(tmp_path: Path) -> None:
+    fx = Fixture(tmp_path)
+    first = fx.sources.register_images(fx.project.id, fx.stills)
+    second = fx.sources.register_images(fx.project.id, fx.stills, image_scales={"a.png": 50})
+    assert second.id != first.id
+    assert second.image_scales == {"a.png": 50}
+    assert {s.id for s in fx.sources.list(fx.project.id)} == {first.id, second.id}
+    fx.close()
+
+
+def test_image_scale_spelling_variants_collapse_to_one_source(tmp_path: Path) -> None:
+    """Identity compares the canonical form, never what a caller happened to type."""
+    fx = Fixture(tmp_path)
+    messy = fx.sources.register_images(
+        fx.project.id, fx.stills, image_scales={"b.png": 100, "a.png": 50}
+    )
+    tidy = fx.sources.register_images(fx.project.id, fx.stills, image_scales={"a.png": 50})
+    assert tidy == messy
+    assert len(fx.sources.list(fx.project.id)) == 1
+    fx.close()
+
+
 def test_range_spelling_variants_collapse_to_one_source(tmp_path: Path) -> None:
     """Identity compares the canonical form, never what a caller happened to type."""
     fx = Fixture(tmp_path)

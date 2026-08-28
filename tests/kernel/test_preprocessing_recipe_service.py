@@ -196,7 +196,7 @@ def test_migration_seventeen_adds_the_table_to_an_older_file(tmp_path: Path) -> 
     reopened.initialize()
     with reopened.engine.connect() as connection:
         assert "preprocessing_recipes" in inspect(connection).get_table_names()
-    assert reopened.format_version == FORMAT_VERSION == 17
+    assert reopened.format_version == FORMAT_VERSION
     reopened.close()
 
 
