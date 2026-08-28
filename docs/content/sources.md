@@ -51,8 +51,9 @@ name, else the path's last segment, and it is what both wire projections publish
 `register_images` takes it, because a clip's basename is already its filename.
 
 `VideoProvenance` is the port's own `VideoMetadata` — original fps, duration, displayed
-dimensions, codec — plus the cut a decomposition will run at: `extraction_fps`, and the clip
-`ranges` extraction reads, empty meaning the whole clip. Ranges are stored canonically —
+dimensions, codec — plus the cut a decomposition will run at: `extraction_fps`, the clip
+`ranges` extraction reads (empty meaning the whole clip), and `scale_percent`, the percent of
+the native size frames are stored at (100 meaning unscaled). Ranges are stored canonically —
 clamped to the clip, sorted, overlaps and touches merged, a full cover collapsing to the
 empty selection — so two spellings of one selection cannot fork a source. The probe result is
 kept whole rather than re-spelled field by field, because `metadata.fps` is the rate the file was
@@ -72,12 +73,28 @@ assets. That promise only means something if the parameters are part of what "th
 *is* - put them on the ingest job and two runs of one source could legitimately disagree, leaving
 idempotency with nothing to be measured against.
 
-The consequence is deliberate: **one clip registered at 1 fps and again at 5 fps is two sources
-over one file**, not one source with a history.
+The consequence is deliberate: **one clip registered at 1 fps and again at 5 fps — or at 100%
+and again at 50% — is two sources over one file**, not one source with a history.
+
+## Storing at a smaller size
+
+Both registration methods take an optional downscale, applied while ingest materializes assets:
+the original upload is retained as staged, the *stored* pixels are smaller. A clip takes one
+`scale_percent`, so every extracted frame shares one size; an image directory takes a per-file
+map, `image_scales`, because a batch mixes sizes and each file scales relative to its own. The
+map is stored canonically — entries of 100 dropped, keys sorted — so two spellings of one
+selection cannot fork a source. Each dimension becomes `max(1, (native * percent + 50) // 100)`;
+the ingest screen mirrors that integer formula, so the preview and the stored size cannot drift.
+
+This is not the export-time resize: [pre-processing recipes](preprocessing.md) bring every
+exported image to one model input size at export. The ingest-time scale exists to cut storage
+and decode cost for sources nobody needs at native resolution, and it is permanent — the assets
+*are* the smaller pixels. Re-ingesting the same origin at another scale is a second source.
 
 ## Registration is idempotent
 
-The match key is `(kind, path, extraction_fps, ranges)`. Registering the same origin twice returns the
+The match key is `(kind, path, extraction_fps, ranges, scale)` — a clip's `scale_percent`, an
+image directory's `image_scales`. Registering the same origin twice returns the
 same `Source` rather than a second one, so that once ingest gives `asset.source_id` a target,
 "which source did this asset come from?" has one answer.
 
@@ -101,15 +118,18 @@ because nothing referenced a source, so a duplicate was inert - and [ingest](ing
 that, by giving `asset.source_id` a target and letting the winner of a race decide an asset's
 recorded origin.
 
-`uq_source_project_kind_path_fps_ranges` went in with it — born four-term as
-`uq_source_project_kind_path_fps`, reshaped by migration 16 when ranges joined the identity — over
-`(project_id, kind, path, coalesce(json_extract(video, '$.extraction_fps'), 0),
-coalesce(json_extract(video, '$.ranges'), ''))`. The last two terms are expressions rather than
-columns, and they are `coalesce`d rather than left to be NULL, because SQLite treats NULLs in a
+`uq_source_project_kind_path_fps_ranges_scale` went in with it — born four-term as
+`uq_source_project_kind_path_fps`, reshaped by migration 16 when ranges joined the identity and
+by migration 18 when scale did — over `(project_id, kind, path,
+coalesce(json_extract(video, '$.extraction_fps'), 0),
+coalesce(json_extract(video, '$.ranges'), ''),
+coalesce(json_extract(video, '$.scale_percent'), 0), coalesce(image_scales, ''))`. The
+expression terms are `coalesce`d rather than left to be NULL, because SQLite treats NULLs in a
 unique index as **distinct** - an image directory, whose `video` is NULL, would otherwise never
 collide with itself, which is most of what the index is for. `0` cannot be mistaken for a real
-rate (`extraction_fps` is `gt=0`), and an empty selection omits its JSON key when stored, so a
-whole-clip row written in any generation lands on `''`.
+rate or percent (`extraction_fps` is `gt=0`, `scale_percent` is `ge=1`), and every default —
+an empty selection, an unscaled clip, an all-native directory — omits its key or stores NULL,
+so a row written in any generation lands on the same term.
 
 The two layers do what they do everywhere else in this store. The pre-check is what produces a
 friendly answer; the index is the guarantee. A caller that loses the race sees a raw
@@ -136,8 +156,9 @@ the workspace, so both stay outside the `VisionSetError` tree - the same line
 ## Over HTTP, a path is an upload
 
 `SourceService` registers by path, and an HTTP client has bytes rather than a path. So the
-[REST API](api.md) takes multipart - one `files` part per image, or one `file` part plus
-`extraction_fps` and an optional `ranges` field for a clip - writes the parts under
+[REST API](api.md) takes multipart - one `files` part per image plus an optional `scales`
+field (a JSON object of filename to percent), or one `file` part plus `extraction_fps`, an
+optional `ranges` field and an optional `scale_percent` for a clip - writes the parts under
 `<workspace>/uploads/`, and registers
 what it wrote. There is **no route that accepts a server-side path**: it would hand every token
 holder an arbitrary-directory read, and the two surfaces that legitimately hold real paths, the

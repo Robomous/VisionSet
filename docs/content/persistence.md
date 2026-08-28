@@ -48,14 +48,14 @@ never raises `ProjectNameTaken`.
 But a rule with no backstop is a wish, so the store carries the constraint too:
 `uq_project_workspace_name` on `project (workspace_id, name COLLATE NOCASE)`, alongside
 `uq_schema_project_version`, `uq_schema_draft_project_kind`, `uq_member_dataset_asset`,
-`uq_release_dataset_tag`, `uq_asset_project_content_hash`, `uq_source_project_kind_path_fps_ranges`,
+`uq_release_dataset_tag`, `uq_asset_project_content_hash`, `uq_source_project_kind_path_fps_ranges_scale`,
 `uq_annotation_asset_classification`, `uq_token_workspace_name` and
 `uq_inference_connection_name`. The invariant then survives
 a service bug, a forgotten code path, and a second process.
 
-`uq_source_project_kind_path_fps_ranges` is one of the two whose terms are not all columns: its
-fourth is `coalesce(json_extract(video, '$.extraction_fps'), 0)` and its fifth
-`coalesce(json_extract(video, '$.ranges'), '')`. SQLite treats NULLs in a unique index as
+`uq_source_project_kind_path_fps_ranges_scale` is one of the two whose terms are not all
+columns: beside three column terms it compares `coalesce`d expressions over the `video` JSON
+(`$.extraction_fps`, `$.ranges`, `$.scale_percent`) and over the `image_scales` column. SQLite treats NULLs in a unique index as
 distinct, so a nullable column would let every image directory collide with nothing at all — and
 an index is not a query, so no service gains a JSON path from it. That is also why neither it nor
 `uq_annotation_asset_classification`, which is partial, can use `checkfirst`: SQLAlchemy cannot
@@ -286,8 +286,8 @@ object with `_tables` rather than repeating the DDL - `checkfirst=True` on a `Ta
 **SQLAlchemy cannot reflect a partial or expression-based index**, so `checkfirst` reports
 one absent and re-issues a `CREATE` that then fails on every fresh database. Those ask
 SQLite instead, via `CreateIndex(index, if_not_exists=True)`. Two indexes here are in that
-category: `uq_source_project_kind_path_fps_ranges` (its fourth and fifth terms are
-`json_extract` expressions over `video`) and
+category: `uq_source_project_kind_path_fps_ranges_scale` (its expression terms are
+`json_extract`/`coalesce` expressions over `video` and `image_scales`) and
 `uq_annotation_asset_classification` (partial, on the tag geometry).
 
 **A column arriving by `ALTER` is declared last on its row class**, because SQLite appends

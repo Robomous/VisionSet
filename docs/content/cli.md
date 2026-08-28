@@ -19,7 +19,7 @@ visionset schema draft set FILE --project P [--kind K] [--note TEXT] [--revision
 visionset schema draft clear --project P [--kind K]
 visionset schema draft publish --project P [--kind K] [--revision N] [--allow-destructive]
 
-visionset ingest PATH --project P [--fps N] [--range S:E]... [--batch-name NAME] [--start]
+visionset ingest PATH --project P [--fps N] [--range S:E]... [--scale PCT] [--batch-name NAME] [--start]
 visionset batch list --project P
 visionset batch approve BATCH_ID [--jobs-of N] [--start]
 visionset batch pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE]...
@@ -347,8 +347,8 @@ name, no geometry, a select with no options - is refused there, named by its pos
 
 ### `visionset ingest`
 
-`PATH --project P [--fps N] [--range S:E]... [--batch-name NAME]` - **the one command that is
-two SDK calls**:
+`PATH --project P [--fps N] [--range S:E]... [--scale PCT] [--batch-name NAME]` - **the one
+command that is two SDK calls**:
 `SourceService.register_images` or `register_video`, dispatched on whether the path is a directory,
 then `IngestService.ingest`. Registration is idempotent, so re-running the same line registers once;
 content addressing means it also creates no asset it created before, which is the remedy for an
@@ -356,7 +356,9 @@ interrupted run. The batch id goes to stdout.
 
 `--fps` and `--range` are video-only and usage errors on a folder. `--range START:END` repeats,
 in seconds, and the selection is stored canonically - clamped to the clip, sorted, overlapping
-and touching ranges merged. The run is **synchronous**, and there is no
+and touching ranges merged. `--scale` applies to both kinds - every frame of a clip, or every
+file the directory holds now - and, like the rate and the ranges, is part of the source's
+identity: another scale is a second source. The run is **synchronous**, and there is no
 `--resume`: polling needs a second process, which is what `visionset server` and
 `GET /ingest-jobs/{id}` are for. See [ingest.md](ingest.md#at-a-terminal).
 
