@@ -1,6 +1,6 @@
 import { Image } from "lucide-react";
 import type { JSX } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Label } from "../primitives/label";
 
@@ -126,15 +126,21 @@ function MosaicTile({
 }): JSX.Element {
   // jsdom has no object URLs and decodes no images — the tile degrades to
   // name plus slider, the same way the clip timeline renders no player.
-  const url = useMemo(
-    () => (typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : null),
-    [file],
-  );
+  //
+  // Created inside the effect, never memoized: StrictMode mounts, cleans up,
+  // and mounts again, and a memoized URL survives that cycle already revoked —
+  // every thumbnail rendered as a broken image under the dev server. The
+  // remounted effect must mint its own URL, the way the clip preview does.
+  const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
+    if (typeof URL.createObjectURL !== "function") return undefined;
+    const created = URL.createObjectURL(file);
+    setUrl(created);
     return () => {
-      if (url !== null) URL.revokeObjectURL(url);
+      setUrl(null);
+      URL.revokeObjectURL(created);
     };
-  }, [url]);
+  }, [file]);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
 
   return (

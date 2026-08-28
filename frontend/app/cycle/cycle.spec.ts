@@ -386,6 +386,12 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("file-input").setInputFiles(images());
     await expect(page.getByTestId("chosen")).toContainText("3 files");
 
+    // Each caption renders only after its thumbnail's object URL actually
+    // decoded, so this is the assertion that catches a revoked blob — the
+    // StrictMode double-mount once served every tile as a broken image, a
+    // failure only real Chromium can see (jsdom has no object URLs).
+    await expect(page.locator('[data-testid^="tile-size-"]')).toHaveCount(3);
+
     await page.getByTestId("register-source").click();
     await expect(page.getByTestId("source-card")).toBeVisible();
 
