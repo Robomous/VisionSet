@@ -186,13 +186,14 @@ class IngestService:
 
         1. ``source_id``, so one clip's frames stay together rather than
            interleaving with a directory's stills;
-        2. ``frame_index``, so a clip's frames come out **in order** — the one
-           place a sequence genuinely exists. Lexicographic ``uri`` would not do
-           it: a frame's uri is ``{path}#frame={n}``, and that sorts ``#frame=10``
-           before ``#frame=2``;
-        3. ``uri``, which for a directory ingest is the filename, and a directory
-           is walked sorted — so stills come back in the order somebody sees them
-           in their own file browser;
+        2. the **base uri** — the path with any ``#frame=`` fragment cut off —
+           which for a directory ingest is the filename, and a directory is
+           walked sorted, so files come back in the order somebody sees them in
+           their own file browser, each with its own frames beside it;
+        3. ``frame_index``, so frames come out **in order** within their file —
+           the one place a sequence genuinely exists. Lexicographic ``uri``
+           would not do it: a frame's uri is ``{path}#frame={n}``, and that
+           sorts ``#frame=10`` before ``#frame=2``;
         4. ``id``, so the order is total and two calls can never disagree.
 
         **An asset with no arrival sorts last, never first.** ``_store`` stamps
@@ -611,24 +612,46 @@ class IngestService:
         paths = sorted(item for item in directory.iterdir() if item.is_file())
         total = len(paths)
         self._record_progress(job_id, processed=0, total=total, failures=failures)
-        for path in paths:
+        for files_dealt_with, path in enumerate(paths, start=1):
             try:
                 with path.open("rb") as handle:
-                    # Probe first: a file that is going to be refused should
-                    # never leave a blob behind. The ``seek(0)`` between is not
-                    # decoration — ``ImageProcessor`` promises to seek to 0 and
-                    # not to close, and ``BlobStore.put`` promises neither, so
-                    # rewinding for it is the caller's job.
-                    metadata = self._workspace.image_processor.probe(handle, name=str(path))
-                    handle.seek(0)
-                    content_hash = self._workspace.blob_store.put(handle)
-                    # No rewind before this one, and the asymmetry is the port
-                    # contract rather than an oversight: ``ImageProcessor``
-                    # promises to seek to 0 itself, which is exactly what lets
-                    # one open handle serve a probe, a hash and a thumbnail in
-                    # any order. ``BlobStore.put`` promises nothing, which is
-                    # why the rewind above is still the caller's job.
-                    thumbnail_hash = self._cache_thumbnail(handle, name=str(path))
+                    # A file that is going to be refused never leaves a blob
+                    # behind: ``stills`` has decoded the whole file — every
+                    # frame of an animation included — before it yields its
+                    # first item, so a refusal arrives before anything below
+                    # stores a byte.
+                    for still in self._workspace.image_processor.stills(handle, name=str(path)):
+                        uri = (
+                            str(path)
+                            if still.frame_index is None
+                            else f"{path}#frame={still.frame_index}"
+                        )
+                        if still.payload is None:
+                            # The rewind is the caller's job: ``BlobStore.put``
+                            # promises nothing about position, where
+                            # ``ImageProcessor`` seeks to 0 itself — which is
+                            # what lets one handle serve both calls.
+                            handle.seek(0)
+                            content_hash = self._workspace.blob_store.put(handle)
+                            thumbnail_hash = self._cache_thumbnail(handle, name=uri)
+                        else:
+                            content = BytesIO(still.payload)
+                            content_hash = self._workspace.blob_store.put(content)
+                            thumbnail_hash = self._cache_thumbnail(content, name=uri)
+                        candidates.append(
+                            Asset(
+                                project_id=source.project_id,
+                                content_hash=content_hash,
+                                uri=uri,
+                                width=still.metadata.width,
+                                height=still.metadata.height,
+                                format=still.metadata.format,
+                                source_id=source.id,
+                                frame_index=still.frame_index,
+                                frame_timestamp=still.frame_timestamp,
+                                thumbnail_hash=thumbnail_hash,
+                            )
+                        )
             except MediaError as exc:
                 # Relative to the directory being read, never the absolute path
                 # the loop is holding — see ``report_name``. The walk is top
@@ -636,25 +659,14 @@ class IngestService:
                 # ``recursive=True`` would introduce; the rule is applied here
                 # rather than left for that task to remember.
                 failures.append(_failure(report_name(path, root=directory), exc))
-            else:
-                candidates.append(
-                    Asset(
-                        project_id=source.project_id,
-                        content_hash=content_hash,
-                        uri=str(path),
-                        width=metadata.width,
-                        height=metadata.height,
-                        format=metadata.format,
-                        source_id=source.id,
-                        thumbnail_hash=thumbnail_hash,
-                    )
-                )
-            # After every item, read or refused alike: ``processed`` counts what
-            # the run has dealt with, and a report that only appeared at the end
-            # would be invisible for exactly as long as it is interesting.
+            # After every file, read or refused alike: ``processed`` counts the
+            # files the run has dealt with — not the assets they became, which
+            # a decomposed animation would inflate past ``total`` — and a
+            # report that only appeared at the end would be invisible for
+            # exactly as long as it is interesting.
             self._record_progress(
                 job_id,
-                processed=len(candidates) + len(failures),
+                processed=files_dealt_with,
                 total=total,
                 failures=failures,
             )
@@ -971,21 +983,24 @@ def _subject(job_id: UUID) -> str:
     return f"ingest job {job_id}"
 
 
-def _in_stable_order(asset: Asset) -> tuple[str, int, str, str]:
+def _in_stable_order(asset: Asset) -> tuple[str, str, int, str]:
     """The sort key :meth:`IngestService.assets` documents.
 
     Module level rather than a lambda so the reasoning has somewhere to live and
     a test can exercise it against assets alone.
 
-    ``-1`` stands in for a NULL ``frame_index`` because a still has none and
-    ``None`` cannot be compared with an ``int``. It sorts stills before frames
-    within one source, which is a distinction no source actually makes: a source
-    is a directory or a clip, never both.
+    The base uri — the path with any ``#frame=`` fragment cut off — groups a
+    file with its own frames, because a directory source can hold stills *and*
+    a decomposed animation at once. Within the group, ``frame_index`` orders
+    numerically (``#frame=10`` sorts after ``#frame=2``, which text would not),
+    with ``-1`` standing in for a still's NULL because ``None`` cannot be
+    compared with an ``int``. A path and its fragments never collide: the
+    fragment exists precisely because the file itself did not become an asset.
     """
     return (
         str(asset.source_id or ""),
+        asset.uri.partition("#frame=")[0],
         -1 if asset.frame_index is None else asset.frame_index,
-        asset.uri,
         str(asset.id),
     )
 
