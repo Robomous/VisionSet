@@ -30,11 +30,12 @@ from __future__ import annotations
 
 import hashlib
 import io
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 from PIL import Image
+from pydantic import ValidationError
 from tests.fixtures.media import (
     DEFAULT_IMAGE_SIZE,
     write_corrupt_image,
@@ -51,7 +52,7 @@ from visionset.kernel.adapters.pillow_image_processor import (
     _THUMBNAIL_ENCODER,
     _THUMBNAIL_PILLOW_NAME,
 )
-from visionset.kernel.domain import ImageFormat, ImageMetadata
+from visionset.kernel.domain import DecodedStill, ImageFormat, ImageMetadata
 from visionset.kernel.errors import CorruptMedia, MediaError, UnsupportedMedia, VisionSetError
 from visionset.kernel.ports import DEFAULT_THUMBNAIL_MAX_EDGE, THUMBNAIL_FORMAT, ImageProcessor
 from visionset.kernel.services import WorkspaceService
@@ -532,6 +533,9 @@ class _NullImageProcessor:
     ) -> bytes:
         return b""
 
+    def stills(self, content: io.IOBase, *, name: str | None = None) -> Iterator[DecodedStill]:
+        return iter(())
+
 
 def test_a_workspace_exposes_an_image_processor_by_default(tmp_path: Path) -> None:
     with WorkspaceService.init(tmp_path / "ws") as workspace:
@@ -562,3 +566,156 @@ def test_an_image_processor_can_be_injected_at_open(tmp_path: Path) -> None:
         tmp_path / "ws", image_processor_factory=_NullImageProcessor
     ) as workspace:
         assert isinstance(workspace.image_processor, _NullImageProcessor)
+
+
+def test_a_decoded_still_is_frozen_and_defaults_to_pass_through() -> None:
+    still = DecodedStill(metadata=ImageMetadata(width=2, height=1, format=ImageFormat.JPEG))
+    assert still.payload is None
+    assert still.frame_index is None
+    assert still.frame_timestamp is None
+    with pytest.raises(ValidationError):
+        still.payload = b"x"  # type: ignore[misc]
+
+
+# --- stills: accept what Pillow decodes, normalized to JPEG and PNG ------------
+
+
+def _stills(path: Path) -> list[DecodedStill]:
+    with path.open("rb") as handle:
+        return list(PillowImageProcessor().stills(handle, name=str(path)))
+
+
+def test_a_native_jpeg_passes_through_with_no_payload(tmp_path: Path) -> None:
+    path = tmp_path / "native.jpg"
+    Image.new("RGB", (32, 24), (200, 10, 10)).save(path, format="JPEG")
+
+    (still,) = _stills(path)
+
+    assert still.payload is None
+    assert still.frame_index is None
+    assert still.metadata == ImageMetadata(width=32, height=24, format=ImageFormat.JPEG)
+
+
+def test_a_native_png_passes_through_with_no_payload(tmp_path: Path) -> None:
+    path = tmp_path / "native.png"
+    Image.new("RGB", (32, 24), (10, 200, 10)).save(path, format="PNG")
+
+    (still,) = _stills(path)
+
+    assert still.payload is None
+    assert still.metadata.format is ImageFormat.PNG
+
+
+def test_a_webp_arrives_as_a_jpeg_payload(tmp_path: Path) -> None:
+    path = tmp_path / "photo.webp"
+    Image.new("RGB", (32, 24), (10, 10, 200)).save(path, format="WEBP")
+
+    (still,) = _stills(path)
+
+    assert still.payload is not None
+    assert still.metadata.format is ImageFormat.JPEG
+    decoded = _decoded(still.payload)
+    assert decoded.format == "JPEG"
+    assert decoded.size == (32, 24)
+
+
+def test_an_heic_arrives_as_a_jpeg_payload(tmp_path: Path) -> None:
+    path = tmp_path / "photo.heic"
+    Image.new("RGB", (32, 24), (120, 60, 30)).save(path, format="HEIF")
+
+    (still,) = _stills(path)
+
+    assert still.payload is not None
+    assert still.metadata.format is ImageFormat.JPEG
+
+
+def test_an_oriented_webp_is_transposed_before_encoding(tmp_path: Path) -> None:
+    path = tmp_path / "turned.webp"
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    Image.new("RGB", (32, 24), (1, 2, 3)).save(path, format="WEBP", exif=exif)
+
+    (still,) = _stills(path)
+
+    assert (still.metadata.width, still.metadata.height) == (24, 32)
+
+
+def test_transparency_composites_onto_white(tmp_path: Path) -> None:
+    path = tmp_path / "logo.webp"
+    Image.new("RGBA", (8, 8), (255, 0, 0, 0)).save(path, format="WEBP", lossless=True)
+
+    (still,) = _stills(path)
+
+    assert still.payload is not None
+    assert _decoded(still.payload).getpixel((4, 4)) == (255, 255, 255)
+
+
+def test_a_transcode_is_repeatable_within_this_build(tmp_path: Path) -> None:
+    path = tmp_path / "photo.webp"
+    Image.new("RGB", (32, 24), (9, 9, 9)).save(path, format="WEBP")
+
+    assert _stills(path)[0].payload == _stills(path)[0].payload
+
+
+def test_stills_refuses_what_pillow_cannot_decode(tmp_path: Path) -> None:
+    path = write_unsupported_file(tmp_path / "notes.txt")
+
+    with pytest.raises(UnsupportedMedia, match="not a recognizable image"):
+        _stills(path)
+
+
+def _animated_gif(path: Path, frames: int, *, duration_ms: int = 100) -> None:
+    shades = [Image.new("L", (16, 12), 30 + i * 40) for i in range(frames)]
+    shades[0].save(
+        path, format="GIF", save_all=True, append_images=shades[1:], duration=duration_ms
+    )
+
+
+def test_an_animated_gif_decomposes_into_png_frames_in_order(tmp_path: Path) -> None:
+    path = tmp_path / "anim.gif"
+    _animated_gif(path, frames=3)
+
+    stills = _stills(path)
+
+    assert [still.frame_index for still in stills] == [0, 1, 2]
+    assert all(still.metadata.format is ImageFormat.PNG for still in stills)
+    payloads = [still.payload for still in stills]
+    assert all(payload is not None for payload in payloads)
+    assert all(_decoded(payload).format == "PNG" for payload in payloads if payload is not None)
+
+
+def test_frame_timestamps_are_elapsed_time_before_each_frame(tmp_path: Path) -> None:
+    path = tmp_path / "anim.gif"
+    _animated_gif(path, frames=3, duration_ms=250)
+
+    assert [still.frame_timestamp for still in _stills(path)] == [0.0, 0.25, 0.5]
+
+
+def test_a_single_frame_gif_is_one_converted_jpeg(tmp_path: Path) -> None:
+    path = tmp_path / "static.gif"
+    Image.new("P", (16, 12), 40).save(path, format="GIF")
+
+    (still,) = _stills(path)
+
+    assert still.frame_index is None
+    assert still.metadata.format is ImageFormat.JPEG
+
+
+def test_a_multi_picture_jpeg_still_passes_through_whole(tmp_path: Path) -> None:
+    """MPO reports n_frames > 1; the native gate must win or every burst photo decomposes."""
+    path = write_multi_picture_jpeg(tmp_path / "burst.jpg")
+
+    (still,) = _stills(path)
+
+    assert still.payload is None
+    assert still.metadata.format is ImageFormat.JPEG
+
+
+def test_a_truncated_animation_yields_nothing_and_says_corrupt(tmp_path: Path) -> None:
+    path = tmp_path / "cut.gif"
+    _animated_gif(path, frames=6)
+    whole = path.read_bytes()
+    path.write_bytes(whole[: len(whole) - len(whole) // 3])
+
+    with pytest.raises(CorruptMedia):
+        _stills(path)

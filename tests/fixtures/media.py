@@ -236,6 +236,11 @@ def write_video(
     require_ffmpeg()
     width, height = size
     path.parent.mkdir(parents=True, exist_ok=True)
+    # The WebM muxer refuses h264, and `-movflags` is a mov/mp4 private option
+    # that other muxers reject — so both follow the suffix.
+    webm = path.suffix.lower() == ".webm"
+    codec = ["-c:v", "libvpx-vp9"] if webm else ["-c:v", "libx264", "-preset", "ultrafast"]
+    movflags = [] if webm else ["-movflags", "+faststart"]
     _run_ffmpeg(
         [
             "ffmpeg",
@@ -248,14 +253,10 @@ def write_video(
             f"testsrc=size={width}x{height}:rate={fps}:duration={duration_seconds}",
             "-pix_fmt",
             "yuv420p",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
+            *codec,
             "-g",
             str(fps),
-            "-movflags",
-            "+faststart",
+            *movflags,
             "-fflags",
             "+bitexact",
             "-flags:v",

@@ -12,7 +12,7 @@ counted on disk because that is the acceptance criterion in the issue, and "the
 same asset" compares ids rather than row counts.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -20,13 +20,13 @@ from typing import BinaryIO
 from uuid import UUID, uuid4
 
 import pytest
+from PIL import Image
 from pydantic import ValidationError
 from tests.fixtures.media import (
     GeneratedVideo,
     write_corrupt_image,
     write_corrupt_video,
     write_image,
-    write_image_in_unsupported_format,
     write_images,
     write_rotated_video,
     write_unsupported_file,
@@ -52,6 +52,7 @@ from visionset.kernel.domain import (
     INGEST_TRANSITIONS,
     Asset,
     BatchState,
+    DecodedStill,
     GeometryType,
     ImageFormat,
     ImageMetadata,
@@ -135,6 +136,10 @@ class _WatchingProcessor:
         self._observe()
         return self._real.probe(content, name=name)
 
+    def stills(self, content: BinaryIO, *, name: str | None = None) -> Iterator[DecodedStill]:
+        self._observe()
+        return self._real.stills(content, name=name)
+
     def thumbnail(
         self, content: BinaryIO, *, max_edge: int = 256, name: str | None = None
     ) -> bytes:
@@ -155,10 +160,13 @@ class _FailsOnNthFile:
         self._real = PillowImageProcessor()
 
     def probe(self, content: BinaryIO, *, name: str | None = None) -> ImageMetadata:
+        return self._real.probe(content, name=name)
+
+    def stills(self, content: BinaryIO, *, name: str | None = None) -> Iterator[DecodedStill]:
         self._calls += 1
         if self._calls == self._nth:
             raise OSError("the disk went away")
-        return self._real.probe(content, name=name)
+        return self._real.stills(content, name=name)
 
     def thumbnail(
         self, content: BinaryIO, *, max_edge: int = 256, name: str | None = None
@@ -179,6 +187,9 @@ class _ThumbnaillessProcessor:
 
     def probe(self, content: BinaryIO, *, name: str | None = None) -> ImageMetadata:
         return self._real.probe(content, name=name)
+
+    def stills(self, content: BinaryIO, *, name: str | None = None) -> Iterator[DecodedStill]:
+        return self._real.stills(content, name=name)
 
     def thumbnail(
         self, content: BinaryIO, *, max_edge: int = 256, name: str | None = None
@@ -901,7 +912,6 @@ def test_the_report_separates_data_loss_from_operator_noise(tmp_path: Path) -> N
     """Why `IngestFailureKind` exists: a reason sentence cannot be grouped on."""
     fixture = Fixture(tmp_path)
     write_unsupported_file(fixture.stills / "notes.txt")
-    write_image_in_unsupported_format(fixture.stills / "old.bmp")
     write_corrupt_image(fixture.stills / "half.png")
     source = fixture.sources.register_images(fixture.project.id, fixture.stills)
 
@@ -910,7 +920,6 @@ def test_the_report_separates_data_loss_from_operator_noise(tmp_path: Path) -> N
     by_name = {failure.name: failure.kind for failure in result.failures}
     assert by_name == {
         "notes.txt": IngestFailureKind.UNSUPPORTED,
-        "old.bmp": IngestFailureKind.UNSUPPORTED,
         "half.png": IngestFailureKind.CORRUPT,
     }
     fixture.close()
@@ -2418,3 +2427,98 @@ def test_the_key_is_a_total_order_so_two_identical_rows_still_have_one() -> None
     backward = sorted(list(reversed(twins)), key=_in_stable_order)
 
     assert [asset.id for asset in forward] == [asset.id for asset in backward]
+
+
+def test_the_key_interleaves_a_files_frames_at_its_own_name() -> None:
+    """A directory can hold stills and a decomposed animation at once, so the
+    base path groups a file with its frames and the index orders within it."""
+    project, source = uuid4(), uuid4()
+    scrambled = [
+        _sortable(project, uri="c.png", source=source),
+        _sortable(project, uri="b.gif#frame=1", source=source, frame=1),
+        _sortable(project, uri="a.jpg", source=source),
+        _sortable(project, uri="b.gif#frame=0", source=source, frame=0),
+    ]
+
+    ordered = sorted(scrambled, key=_in_stable_order)
+
+    assert [asset.uri for asset in ordered] == [
+        "a.jpg",
+        "b.gif#frame=0",
+        "b.gif#frame=1",
+        "c.png",
+    ]
+
+
+# --- the wide door: convertible stills and decomposed animations ----------------
+
+
+def _write_animated_gif(path: Path, frames: int) -> None:
+    shades = [Image.new("L", (16, 12), 30 + i * 40) for i in range(frames)]
+    shades[0].save(path, format="GIF", save_all=True, append_images=shades[1:], duration=100)
+
+
+def test_a_mixed_directory_yields_stills_frames_and_one_refusal(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_image(fixture.stills / "a.jpg")
+    _write_animated_gif(fixture.stills / "b.gif", frames=3)
+    Image.new("RGB", (32, 24), (120, 60, 30)).save(fixture.stills / "c.heic", format="HEIF")
+    write_unsupported_file(fixture.stills / "notes.txt")
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert (result.created, result.failed) == (5, 1)
+    by_uri = {asset.uri: asset for asset in fixture.assets()}
+    gif = str(fixture.stills / "b.gif")
+    assert {uri for uri in by_uri if "#" in uri} == {f"{gif}#frame={i}" for i in range(3)}
+    assert all(by_uri[f"{gif}#frame={i}"].format is ImageFormat.PNG for i in range(3))
+    assert all(by_uri[f"{gif}#frame={i}"].frame_index == i for i in range(3))
+    assert by_uri[str(fixture.stills / "c.heic")].format is ImageFormat.JPEG
+    assert by_uri[str(fixture.stills / "a.jpg")].format is ImageFormat.JPEG
+    (failure,) = result.failures
+    assert (failure.name, failure.kind) == ("notes.txt", IngestFailureKind.UNSUPPORTED)
+    job = fixture.ingest.get(result.job_id)
+    assert (job.processed, job.total) == (4, 4)
+    fixture.close()
+
+
+def test_a_decomposed_frame_records_its_position_and_a_converted_still_does_not(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    _write_animated_gif(fixture.stills / "anim.gif", frames=2)
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(fixture.stills / "photo.webp", format="WEBP")
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    fixture.ingest.ingest(source.id)
+
+    by_uri = {asset.uri: asset for asset in fixture.assets()}
+    still = by_uri[str(fixture.stills / "photo.webp")]
+    assert (still.frame_index, still.frame_timestamp) == (None, None)
+    frames = sorted(
+        (asset for asset in by_uri.values() if asset.frame_index is not None),
+        key=lambda asset: asset.frame_index or 0,
+    )
+    assert [frame.frame_timestamp for frame in frames] == [0.0, 0.1]
+    fixture.close()
+
+
+def test_a_truncated_animation_leaves_no_assets_and_no_blobs(tmp_path: Path) -> None:
+    """The refused-file invariant holds for a file that would have been many
+    assets: the decode completes before anything is stored."""
+    fixture = Fixture(tmp_path)
+    cut = fixture.stills / "cut.gif"
+    _write_animated_gif(cut, frames=6)
+    whole = cut.read_bytes()
+    cut.write_bytes(whole[: len(whole) - len(whole) // 3])
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert (result.created, result.failed) == (0, 1)
+    (failure,) = result.failures
+    assert failure.kind is IngestFailureKind.CORRUPT
+    assert fixture.assets() == []
+    assert fixture.blob_count() == 0
+    fixture.close()

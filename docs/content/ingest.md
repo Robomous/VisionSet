@@ -52,10 +52,10 @@ reports every item as deduplicated, and is how a folder that grew by three files
 | | image directory | video |
 | --- | --- | --- |
 | what is read | every file at the **top level**, in filename order | one frame per extraction slot, at the rate the source records |
-| decoded by | `ImageProcessor.probe` - dimensions and format from the bytes | `VideoProcessor.frames` - ffmpeg, deterministic within one build |
-| `uri` | the file's absolute path | `/path/clip.mp4#frame=7` |
-| frame position | none | `frame_index` and `frame_timestamp` |
-| damage | one report line per file; the run carries on | the frames ffmpeg managed are kept, plus one report line |
+| decoded by | `ImageProcessor.stills` - anything Pillow reads, normalized to JPEG/PNG | `VideoProcessor.frames` - ffmpeg, deterministic within one build |
+| `uri` | the file's absolute path; `/path/anim.gif#frame=3` for a decomposed animation frame | `/path/clip.mp4#frame=7` |
+| frame position | none for a still; `frame_index` and `frame_timestamp` for an animation frame | `frame_index` and `frame_timestamp` |
+| damage | one report line per file, the whole file refused; the run carries on | the frames ffmpeg managed are kept, plus one report line |
 
 Subdirectories are stepped over and recorded nowhere. Recursion is not a per-run option but a
 question about what *the source is* - "the same source yields the same assets" - so it belongs to

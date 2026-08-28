@@ -3,21 +3,27 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Iterator
 from typing import BinaryIO, Final
 
 from PIL import Image, ImageOps, UnidentifiedImageError
+from pillow_heif import register_heif_opener
 
-from visionset.kernel.domain import ImageFormat, ImageMetadata
+from visionset.kernel.domain import DecodedStill, ImageFormat, ImageMetadata
 from visionset.kernel.errors import CorruptMedia, UnsupportedMedia
 from visionset.kernel.ports.image_processor import DEFAULT_THUMBNAIL_MAX_EDGE
 
-#: Pillow's spelling of every format we accept. Pillow's vocabulary stops here,
-#: the way SQLAlchemy's stops at ``_tables.py``: a second image adapter would
-#: bring its own table rather than teach the domain a third set of names.
+register_heif_opener()
+
+#: Pillow's spelling of every format that passes through untouched. Pillow's
+#: vocabulary stops here, the way SQLAlchemy's stops at ``_tables.py``: a second
+#: image adapter would bring its own table rather than teach the domain a third
+#: set of names.
 #:
-#: Extending the accepted list is this dict plus a member on ``ImageFormat``, and
-#: ``test_image_processor.py`` asserts the two cover the same set, so a half-done
-#: extension fails on the first run instead of at the first file.
+#: This is the pass-through table, not the accepted list — ``stills`` reads
+#: anything Pillow decodes and transcodes what is not in here. It covers exactly
+#: ``ImageFormat``, which ``test_image_processor.py`` asserts, because the bytes
+#: that skip the transcode are precisely the bytes a dataset may hold.
 #:
 #: ``MPO`` is not a fourth format: it is a multi-picture JPEG container — what
 #: phones write in portrait and burst modes — and VisionSet reads its primary
@@ -47,6 +53,15 @@ _THUMBNAIL_PILLOW_NAME: Final = "JPEG"
 #: the call. Pass it explicitly; see :meth:`PillowImageProcessor.thumbnail`.
 _THUMBNAIL_ENCODER: Final[dict[str, object]] = {
     "quality": 85,
+    "subsampling": 0,
+    "optimize": False,
+    "progressive": False,
+}
+
+#: The dataset-still encoder, pinned for the reason ``_THUMBNAIL_ENCODER`` is.
+#: ``quality=95`` because these bytes are training input, not a preview.
+_STILL_ENCODER: Final[dict[str, object]] = {
+    "quality": 95,
     "subsampling": 0,
     "optimize": False,
     "progressive": False,
@@ -135,14 +150,24 @@ def _fit(image: Image.Image, max_edge: int) -> Image.Image:
     """
     working = image.convert("RGBA") if _has_alpha(image) else image.convert("RGB")
     working.thumbnail((max_edge, max_edge), _RESAMPLING, reducing_gap=None)
+    return _opaque_rgb(working)
 
+
+def _opaque_rgb(image: Image.Image) -> Image.Image:
+    """The compositing tail of :func:`_fit`, alone: full-size, no resampling.
+
+    What a convertible still goes through before the dataset encoder sees it —
+    the same fresh-canvas and known-background guarantees, at the image's own
+    size.
+    """
+    working = image.convert("RGBA") if _has_alpha(image) else image.convert("RGB")
     canvas = Image.new("RGB", working.size, _BACKGROUND)
     canvas.paste(working, mask=working.getchannel("A") if working.mode == "RGBA" else None)
     return canvas
 
 
 class PillowImageProcessor:
-    """Decodes JPEG and PNG, reports oriented dimensions, encodes fixed thumbnails.
+    """Decodes what Pillow reads, passes JPEG and PNG through, transcodes the rest.
 
     Holds no state at all — no cache, no handle, no configuration — which is why
     ``WorkspaceService`` builds one per workspace from a zero-argument factory and
@@ -215,6 +240,81 @@ class PillowImageProcessor:
         canvas.save(buffer, format=_THUMBNAIL_PILLOW_NAME, **_THUMBNAIL_ENCODER)
         return buffer.getvalue()
 
+    def stills(self, content: BinaryIO, *, name: str | None = None) -> Iterator[DecodedStill]:
+        """Every dataset-ready still in this file. See the port docstring.
+
+        The native gate runs before the frame count on purpose: MPO decodes
+        with ``n_frames > 1``, and checking frames first would decompose every
+        burst photo instead of passing its primary frame through.
+        """
+        source = _stream_name(content, name)
+        image = self._open(io.BytesIO(_read_all(content)), source)
+
+        native = _FORMAT_BY_PILLOW_NAME.get(image.format or "")
+        if native is not None:
+            self._load(image, source)
+            with image:
+                width, height = image.size
+            return iter(
+                [DecodedStill(metadata=ImageMetadata(width=width, height=height, format=native))]
+            )
+
+        if getattr(image, "n_frames", 1) > 1:
+            with image:
+                return iter(self._decomposed(image, source))
+
+        self._load(image, source)
+        with image:
+            flat = _opaque_rgb(image)
+        buffer = io.BytesIO()
+        flat.save(buffer, format="JPEG", **_STILL_ENCODER)
+        return iter(
+            [
+                DecodedStill(
+                    metadata=ImageMetadata(
+                        width=flat.width, height=flat.height, format=ImageFormat.JPEG
+                    ),
+                    payload=buffer.getvalue(),
+                )
+            ]
+        )
+
+    def _decomposed(self, image: Image.Image, source: str | None) -> list[DecodedStill]:
+        """One PNG still per frame — a list, not a generator, on purpose.
+
+        Every frame is decoded and encoded before the caller sees the first
+        one, so damage at frame four of six raises with nothing yielded and a
+        caller that stores as it consumes leaves no partial file behind. The
+        cost is the whole animation's encoded frames in memory at once.
+        """
+        stills: list[DecodedStill] = []
+        elapsed_ms = 0.0
+        for index in range(int(getattr(image, "n_frames", 1))):
+            try:
+                image.seek(index)
+                frame = _opaque_rgb(image)
+            except Image.DecompressionBombError as exc:
+                raise UnsupportedMedia(str(exc), name=source) from exc
+            except (EOFError, OSError, SyntaxError, ValueError) as exc:
+                raise CorruptMedia(
+                    f"the animation is damaged or truncated at frame {index} ({exc})",
+                    name=source,
+                ) from exc
+            buffer = io.BytesIO()
+            frame.save(buffer, format="PNG")
+            stills.append(
+                DecodedStill(
+                    metadata=ImageMetadata(
+                        width=frame.width, height=frame.height, format=ImageFormat.PNG
+                    ),
+                    payload=buffer.getvalue(),
+                    frame_index=index,
+                    frame_timestamp=elapsed_ms / 1000.0,
+                )
+            )
+            elapsed_ms += float(image.info.get("duration", 0) or 0)
+        return stills
+
     def _decode(self, content: BinaryIO, source: str | None) -> tuple[Image.Image, ImageFormat]:
         """Open, identify, refuse, decode, orient — in that order.
 
@@ -223,10 +323,25 @@ class PillowImageProcessor:
         bytes; the decode comes before the dimensions, so a truncated file is
         refused rather than measured.
         """
-        buffer = io.BytesIO(_read_all(content))
+        image = self._open(io.BytesIO(_read_all(content)), source)
 
+        # Read off the ImageFile before anything transforms it: convert() and the
+        # copying form of exif_transpose() both hand back a format of None.
+        image_format = _FORMAT_BY_PILLOW_NAME.get(image.format or "")
+        if image_format is None:
+            found = image.format or "an unrecognized encoding"
+            accepted = ", ".join(sorted(member.value for member in ImageFormat))
+            image.close()
+            raise UnsupportedMedia(
+                f"{found} is not accepted; VisionSet reads {accepted}", name=source
+            )
+
+        self._load(image, source)
+        return image, image_format
+
+    def _open(self, buffer: io.BytesIO, source: str | None) -> Image.Image:
         try:
-            image = Image.open(buffer)
+            return Image.open(buffer)
         except UnidentifiedImageError as exc:
             # Before the OSError clause, which this subclasses: the other way
             # round, every file that is not an image reads as a corrupt one.
@@ -241,17 +356,7 @@ class PillowImageProcessor:
                 f"the image header is damaged or truncated ({exc})", name=source
             ) from exc
 
-        # Read off the ImageFile before anything transforms it: convert() and the
-        # copying form of exif_transpose() both hand back a format of None.
-        image_format = _FORMAT_BY_PILLOW_NAME.get(image.format or "")
-        if image_format is None:
-            found = image.format or "an unrecognized encoding"
-            accepted = ", ".join(sorted(member.value for member in ImageFormat))
-            image.close()
-            raise UnsupportedMedia(
-                f"{found} is not accepted; VisionSet reads {accepted}", name=source
-            )
-
+    def _load(self, image: Image.Image, source: str | None) -> None:
         try:
             image.load()
             ImageOps.exif_transpose(image, in_place=True)
@@ -263,5 +368,3 @@ class PillowImageProcessor:
             raise CorruptMedia(
                 f"the image data is damaged or truncated ({exc})", name=source
             ) from exc
-
-        return image, image_format

@@ -11,18 +11,14 @@ Both modalities live here, which is why the file is named for the concept and no
 for one of them: :class:`ImageMetadata` for a still, :class:`VideoMetadata` and
 :class:`VideoFrame` for a clip and the frames taken out of it.
 
-**The accepted list is** :class:`ImageFormat` **, and nothing else.** Extending it
-is two adjacent edits — a member here, and the decoder's own spelling of it in
-``PillowImageProcessor._FORMAT_BY_PILLOW_NAME`` — tied together by a test that
-asserts the two cover the same set, so a half-done extension fails on the first
-run rather than at the first file. That cost is the point. Accepting a format is
-a promise that VisionSet will decode it, hash it, thumbnail it and export it for
-as long as the workspaces written today are readable; a ``try: decode`` that
-admits whatever the installed Pillow happens to support would make that promise
-depend on a wheel.
-
-WEBP is the obvious next member. It is not here yet because a format with no
-generated fixture is a format nobody is testing.
+**The dataset vocabulary is** :class:`ImageFormat` **, frozen at two members.**
+Acceptance is wider than the dataset: ``ImageProcessor.stills`` reads anything
+Pillow decodes, but everything outside these two is normalized *into* them at
+ingest — a converted still becomes JPEG, a decomposed animation frame becomes
+PNG — so the promise the enum makes (VisionSet will decode, hash, thumbnail and
+export these for as long as today's workspaces are readable) is made about two
+encodings only, and a dataset consumer never needs a third decoder. What can be
+*read* may drift with the installed Pillow; what a dataset *holds* may not.
 
 **There is deliberately no ``VideoFormat`` beside it.** The asymmetry is the
 point: an image is an asset, a video is a source. Curating :class:`ImageFormat`
@@ -45,11 +41,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ImageFormat(StrEnum):
-    """Every still-image encoding VisionSet accepts. See the module docstring.
+    """Every still-image encoding a dataset may contain. See the module docstring.
 
     A ``StrEnum`` rather than a ``Literal``, unlike ``Asset.modality``: that one
-    has a single member, where an enum would be ceremony, and this one is a
-    closed set whose whole purpose is to grow deliberately. It costs the
+    has a single member, where an enum would be ceremony. This set is **frozen
+    at JPEG and PNG**: acceptance is wider — anything Pillow decodes is read —
+    but everything else is normalized into these two at ingest. It costs the
     persistence layer nothing — a ``StrEnum`` member *is* a ``str``, and the
     tables already store every other enum as ``String``.
     """
@@ -116,6 +113,27 @@ class ImageMetadata(BaseModel):
     width: int = Field(ge=1)
     height: int = Field(ge=1)
     format: ImageFormat
+
+
+class DecodedStill(BaseModel):
+    """One dataset-ready still that came out of reading a file.
+
+    ``payload`` is ``None`` when the original stream's bytes are already the
+    asset (a native JPEG or PNG passes through untouched), and the transcoded
+    bytes otherwise. ``metadata.format`` is always what the asset will record —
+    JPEG or PNG — never the source encoding.
+
+    ``frame_index`` and ``frame_timestamp`` are set only when a multi-frame
+    file decomposed; the timestamp is the elapsed animation time before this
+    frame, in seconds, with a missing per-frame duration counted as zero.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    metadata: ImageMetadata
+    payload: bytes | None = None
+    frame_index: int | None = Field(default=None, ge=0)
+    frame_timestamp: float | None = Field(default=None, ge=0)
 
 
 class VideoMetadata(BaseModel):

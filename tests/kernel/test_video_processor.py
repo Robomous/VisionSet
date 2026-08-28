@@ -674,3 +674,19 @@ def test_injecting_a_video_processor_leaves_the_other_ports_alone(tmp_path: Path
     ) as workspace:
         assert isinstance(workspace.image_processor, PillowImageProcessor)
         assert workspace.root == (tmp_path / "ws").resolve()
+
+
+@pytest.mark.parametrize("suffix", [".mov", ".avi", ".webm", ".mkv"])
+def test_common_containers_probe_and_extract(tmp_path: Path, suffix: str) -> None:
+    """The no-gate design means breadth is a doc claim; this turns it into a test.
+
+    An ffmpeg upgrade that drops a container goes red here instead of in a
+    user's ingest report.
+    """
+    generated = write_video(tmp_path / f"clip{suffix}")
+
+    metadata = FfmpegVideoProcessor().probe(generated.path)
+    frames = _frames(generated.path, fps=1.0)
+
+    assert (metadata.width, metadata.height) == (generated.width, generated.height)
+    assert len(frames) == round(generated.duration_seconds)
