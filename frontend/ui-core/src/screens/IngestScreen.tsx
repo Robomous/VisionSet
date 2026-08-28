@@ -149,6 +149,7 @@ import { Card, CardContent } from "../primitives/card";
 import { Progress } from "../primitives/progress";
 import { Input } from "../primitives/input";
 import { Label } from "../primitives/label";
+import { ScaleField, scaledDimension } from "./ingestScale";
 import { FieldDescription, FieldError } from "../primitives/field";
 import {
   Select,
@@ -286,6 +287,9 @@ export function IngestScreen({
   // overlapping: the kernel canonicalizes on registration, and step 2 echoes
   // the merged form back.
   const [ranges, setRanges] = useState<readonly ClipRange[]>([]);
+  // A clip's storage scale, decided in step 1 like the rate: percent of the
+  // native size frames are stored at, part of the source's identity.
+  const [scalePercent, setScalePercent] = useState(100);
   // The chosen clip as an object URL for the preview player. Null where the
   // platform has no object URLs (jsdom), so the timeline renders no player.
   const [clipUrl, setClipUrl] = useState<string | null>(null);
@@ -331,6 +335,7 @@ export function IngestScreen({
   useEffect(() => {
     setClip(null);
     setRanges([]);
+    setScalePercent(100);
     setUnreadable(false);
     if (!(files.length === 1 && files[0].type.startsWith("video/"))) return;
     const url = typeof URL.createObjectURL === "function" ? URL.createObjectURL(files[0]) : null;
@@ -379,7 +384,7 @@ export function IngestScreen({
     register.mutate(
       {
         files,
-        ...(isVideo ? { extractionFps: rate, ranges } : {}),
+        ...(isVideo ? { extractionFps: rate, ranges, scalePercent } : {}),
         ...(isVideo || stated === "" ? {} : { name: stated }),
       },
       { onSuccess: (registered) => setSource(registered) },
@@ -397,6 +402,7 @@ export function IngestScreen({
   function clearFiles(): void {
     setFiles([]);
     setFps(String(DEFAULT_EXTRACTION_FPS));
+    setScalePercent(100);
     setSourceName("");
     setAttempt((previous) => previous + 1);
     register.reset();
@@ -414,6 +420,7 @@ export function IngestScreen({
   function again(): void {
     setFiles([]);
     setFps(String(DEFAULT_EXTRACTION_FPS));
+    setScalePercent(100);
     setSourceName("");
     setBatchChoice(NEW_BATCH);
     setBatchName("");
@@ -511,6 +518,8 @@ export function IngestScreen({
                     suggestedName={suggestedName}
                     ranges={ranges}
                     onRanges={setRanges}
+                    scalePercent={scalePercent}
+                    onScalePercent={setScalePercent}
                     clipUrl={clipUrl}
                     unreadable={unreadable}
                     estimate={
@@ -589,7 +598,17 @@ export function IngestScreen({
                         label="Duration"
                         value={`${source.video.duration_seconds.toFixed(1)} s`}
                       />
-                      <Fact label="Size" value={`${source.video.width}×${source.video.height}`} />
+                      <Fact
+                        label="Size"
+                        value={
+                          source.video.scale_percent < 100
+                            ? `${source.video.width}×${source.video.height} → ` +
+                              `${scaledDimension(source.video.width, source.video.scale_percent)}×` +
+                              `${scaledDimension(source.video.height, source.video.scale_percent)}` +
+                              ` (${source.video.scale_percent}%)`
+                            : `${source.video.width}×${source.video.height}`
+                        }
+                      />
                       <Fact label="Codec" value={source.video.codec} />
                       <Fact
                         label="Frames expected"
@@ -825,6 +844,8 @@ function SelectionPanel({
   suggestedName,
   ranges,
   onRanges,
+  scalePercent,
+  onScalePercent,
   clipUrl,
   unreadable,
   estimate,
@@ -840,6 +861,8 @@ function SelectionPanel({
   readonly suggestedName: string;
   readonly ranges: readonly ClipRange[];
   readonly onRanges: (ranges: readonly ClipRange[]) => void;
+  readonly scalePercent: number;
+  readonly onScalePercent: (value: number) => void;
   readonly clipUrl: string | null;
   readonly unreadable: boolean;
   readonly estimate: number | null;
@@ -922,6 +945,15 @@ function SelectionPanel({
               aside={
                 <div className="flex flex-col gap-3">
                   <RateField fps={fps} onFps={onFps} />
+                  <ScaleField
+                    percent={scalePercent}
+                    onPercent={onScalePercent}
+                    native={
+                      clip.width !== null && clip.height !== null
+                        ? { width: clip.width, height: clip.height }
+                        : null
+                    }
+                  />
                   <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
                     {estimate !== null && (
                       <>
@@ -942,7 +974,7 @@ function SelectionPanel({
                   </dl>
                   <FieldDescription>
                     Part of what the source <em>is</em> — the same clip registered at another
-                    rate or other ranges becomes a second source.
+                    rate, other ranges, or another scale becomes a second source.
                   </FieldDescription>
                 </div>
               }
@@ -955,9 +987,10 @@ function SelectionPanel({
                 </p>
               )}
               <RateField fps={fps} onFps={onFps} />
+              <ScaleField percent={scalePercent} onPercent={onScalePercent} native={null} />
               <FieldDescription>
-                Part of what the source <em>is</em> — the same clip registered at another rate
-                or other ranges becomes a second source.
+                Part of what the source <em>is</em> — the same clip registered at another rate,
+                other ranges, or another scale becomes a second source.
               </FieldDescription>
             </div>
           )}
