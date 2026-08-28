@@ -280,7 +280,40 @@ class PillowImageProcessor:
         )
 
     def _decomposed(self, image: Image.Image, source: str | None) -> list[DecodedStill]:
-        raise NotImplementedError
+        """One PNG still per frame — a list, not a generator, on purpose.
+
+        Every frame is decoded and encoded before the caller sees the first
+        one, so damage at frame four of six raises with nothing yielded and a
+        caller that stores as it consumes leaves no partial file behind. The
+        cost is the whole animation's encoded frames in memory at once.
+        """
+        stills: list[DecodedStill] = []
+        elapsed_ms = 0.0
+        for index in range(int(getattr(image, "n_frames", 1))):
+            try:
+                image.seek(index)
+                frame = _opaque_rgb(image)
+            except Image.DecompressionBombError as exc:
+                raise UnsupportedMedia(str(exc), name=source) from exc
+            except (EOFError, OSError, SyntaxError, ValueError) as exc:
+                raise CorruptMedia(
+                    f"the animation is damaged or truncated at frame {index} ({exc})",
+                    name=source,
+                ) from exc
+            buffer = io.BytesIO()
+            frame.save(buffer, format="PNG")
+            stills.append(
+                DecodedStill(
+                    metadata=ImageMetadata(
+                        width=frame.width, height=frame.height, format=ImageFormat.PNG
+                    ),
+                    payload=buffer.getvalue(),
+                    frame_index=index,
+                    frame_timestamp=elapsed_ms / 1000.0,
+                )
+            )
+            elapsed_ms += float(image.info.get("duration", 0) or 0)
+        return stills
 
     def _decode(self, content: BinaryIO, source: str | None) -> tuple[Image.Image, ImageFormat]:
         """Open, identify, refuse, decode, orient — in that order.

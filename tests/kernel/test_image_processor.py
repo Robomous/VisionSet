@@ -662,3 +662,60 @@ def test_stills_refuses_what_pillow_cannot_decode(tmp_path: Path) -> None:
 
     with pytest.raises(UnsupportedMedia, match="not a recognizable image"):
         _stills(path)
+
+
+def _animated_gif(path: Path, frames: int, *, duration_ms: int = 100) -> None:
+    shades = [Image.new("L", (16, 12), 30 + i * 40) for i in range(frames)]
+    shades[0].save(
+        path, format="GIF", save_all=True, append_images=shades[1:], duration=duration_ms
+    )
+
+
+def test_an_animated_gif_decomposes_into_png_frames_in_order(tmp_path: Path) -> None:
+    path = tmp_path / "anim.gif"
+    _animated_gif(path, frames=3)
+
+    stills = _stills(path)
+
+    assert [still.frame_index for still in stills] == [0, 1, 2]
+    assert all(still.metadata.format is ImageFormat.PNG for still in stills)
+    payloads = [still.payload for still in stills]
+    assert all(payload is not None for payload in payloads)
+    assert all(_decoded(payload).format == "PNG" for payload in payloads if payload is not None)
+
+
+def test_frame_timestamps_are_elapsed_time_before_each_frame(tmp_path: Path) -> None:
+    path = tmp_path / "anim.gif"
+    _animated_gif(path, frames=3, duration_ms=250)
+
+    assert [still.frame_timestamp for still in _stills(path)] == [0.0, 0.25, 0.5]
+
+
+def test_a_single_frame_gif_is_one_converted_jpeg(tmp_path: Path) -> None:
+    path = tmp_path / "static.gif"
+    Image.new("P", (16, 12), 40).save(path, format="GIF")
+
+    (still,) = _stills(path)
+
+    assert still.frame_index is None
+    assert still.metadata.format is ImageFormat.JPEG
+
+
+def test_a_multi_picture_jpeg_still_passes_through_whole(tmp_path: Path) -> None:
+    """MPO reports n_frames > 1; the native gate must win or every burst photo decomposes."""
+    path = write_multi_picture_jpeg(tmp_path / "burst.jpg")
+
+    (still,) = _stills(path)
+
+    assert still.payload is None
+    assert still.metadata.format is ImageFormat.JPEG
+
+
+def test_a_truncated_animation_yields_nothing_and_says_corrupt(tmp_path: Path) -> None:
+    path = tmp_path / "cut.gif"
+    _animated_gif(path, frames=6)
+    whole = path.read_bytes()
+    path.write_bytes(whole[: len(whole) - len(whole) // 3])
+
+    with pytest.raises(CorruptMedia):
+        _stills(path)
