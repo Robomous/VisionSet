@@ -21,25 +21,59 @@ export function scaledDimension(native: number, percent: number): number {
  * no slider primitive exists in this package and one control does not earn
  * one. Never `preventDefault` its pointer press — a range *drags* on its
  * default action, and cancelling the press is what made one unmovable (#563).
+ *
+ * The block leads with the outcome, not the mechanism: a readout that is
+ * always present (what resolution exists, what will be stored) and a purpose
+ * line that says what the value costs — the two facts a person needs *before*
+ * touching the slider.
  */
 export function ScaleField({
   percent,
   onPercent,
   native,
   id = "scale-percent",
-  preview = true,
+  label = "Stored size",
+  subject = "frame",
+  readout = true,
 }: {
   readonly percent: number;
   readonly onPercent: (value: number) => void;
   readonly native: { readonly width: number; readonly height: number } | null;
   readonly id?: string;
-  /** False where a caller renders its own previews — the mosaic's tiles do. */
-  readonly preview?: boolean;
+  readonly label?: string;
+  /** What one stored item is called in the purpose line: "frame" or "image". */
+  readonly subject?: string;
+  /** False where a caller renders its own readouts — the mosaic's tiles do. */
+  readonly readout?: boolean;
 }): JSX.Element {
+  const pixels = Math.round((percent * percent) / 100);
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>Scale</Label>
+      <div className="flex items-baseline justify-between gap-3">
+        <Label htmlFor={id}>{label}</Label>
+        {readout &&
+          (native !== null ? (
+            percent < 100 ? (
+              <span className="text-xs tabular-nums text-muted-foreground" data-testid="stored-size">
+                {native.width}×{native.height} → {scaledDimension(native.width, percent)}×
+                {scaledDimension(native.height, percent)} · {percent}%
+              </span>
+            ) : (
+              <span
+                className="text-xs tabular-nums text-muted-foreground"
+                data-testid="stored-size-native"
+              >
+                {native.width}×{native.height} · native
+              </span>
+            )
+          ) : (
+            <span className="text-xs tabular-nums text-muted-foreground" data-testid="stored-size-blind">
+              {percent < 100 ? `${percent}% per side · ` : ""}exact size read at upload
+            </span>
+          ))}
+      </div>
       <div className="flex items-center gap-2">
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">10%</span>
         <input
           id={id}
           data-testid={id}
@@ -48,25 +82,20 @@ export function ScaleField({
           max={100}
           step={5}
           value={percent}
-          aria-label="Scale percent"
+          aria-label="Stored size percent"
           aria-valuetext={`${percent}%`}
           onChange={(event) => onPercent(Number(event.target.value))}
           className="h-1 flex-1 cursor-pointer accent-primary"
         />
-        <span className="w-10 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
-          {percent}%
-        </span>
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">100%</span>
       </div>
-      {preview && percent < 100 && (
-        <p
-          className="text-xs text-muted-foreground tabular-nums"
-          data-testid={native !== null ? "stored-size" : "stored-size-blind"}
-        >
-          {native !== null
-            ? `stored at ${scaledDimension(native.width, percent)}×${scaledDimension(native.height, percent)}`
-            : `stored at ${percent}% of the clip's native size — the server reads the exact size`}
-        </p>
-      )}
+      <p className="text-xs text-muted-foreground" data-testid={`${id}-purpose`}>
+        {percent < 100
+          ? `Every ${subject} stored at ${percent}% per side — about ${pixels}% of the ` +
+            `pixels, so smaller files and faster training. Annotations are drawn on ` +
+            `what is stored.`
+          : `Stored as captured. Drag left to store smaller ${subject}s.`}
+      </p>
     </div>
   );
 }
@@ -181,9 +210,11 @@ export function ScaleMosaic({
     <div className="flex flex-col gap-3">
       <ScaleField
         id="scale-all"
+        label="Stored size — set all"
+        subject="image"
         percent={commonPercent(shown, scales)}
         native={null}
-        preview={false}
+        readout={false}
         onPercent={(percent) =>
           onScales(
             percent === 100
@@ -193,8 +224,8 @@ export function ScaleMosaic({
         }
       />
       <p className="text-xs text-muted-foreground">
-        Moving this sets every image; adjust any image below individually. Each scales
-        relative to its own size, and the choice is part of the source&apos;s identity.
+        Sets every image at once — adjust any tile individually after. Each scales relative
+        to its own size, and the choice is part of the source&apos;s identity.
       </p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
         {shown.map((file) => (

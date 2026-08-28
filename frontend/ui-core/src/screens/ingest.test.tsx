@@ -291,7 +291,10 @@ describe("registering a source", () => {
     render(mount(<IngestScreen projectId={PROJECT} />));
     await choose([pick("drive.mp4", "video/mp4")]);
 
-    fireEvent.change(await screen.findByTestId("scale-percent"), { target: { value: "50" } });
+    // Untouched, the readout still states what exists — the fact was missing
+    // from the first design and is the reason the block leads with it.
+    expect((await screen.findByTestId("stored-size-native")).textContent).toContain("1920×1080");
+    fireEvent.change(screen.getByTestId("scale-percent"), { target: { value: "50" } });
     expect(screen.getByTestId("stored-size").textContent).toContain("960×540");
 
     await userEvent.click(screen.getByTestId("register-source"));
