@@ -30,6 +30,11 @@ dependencies = [
     # so it is allowed inside kernel/adapters/ and needs no import-linter change. The 11.0
     # floor is the first release with Python 3.13 wheels, which the classifiers promise.
     "pillow>=11.0",
+    # HEIC/HEIF decoding, registered as a Pillow plugin inside kernel/adapters/ —
+    # the same third-party-library allowance pillow has. Core rather than an
+    # extra: phone photos are a first-contact input, and an ingest that refuses
+    # them until a second install is a broken first run.
+    "pillow-heif>=1.5.0",
     # Settings for the embedded job executor (#328). The first pydantic-settings
     # use in this repository; `server/settings.py` argues why the executor is what
     # finally earned one, and why the four existing bare `os.environ` reads stay

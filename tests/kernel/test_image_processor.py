@@ -35,6 +35,7 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
+from pydantic import ValidationError
 from tests.fixtures.media import (
     DEFAULT_IMAGE_SIZE,
     write_corrupt_image,
@@ -51,7 +52,7 @@ from visionset.kernel.adapters.pillow_image_processor import (
     _THUMBNAIL_ENCODER,
     _THUMBNAIL_PILLOW_NAME,
 )
-from visionset.kernel.domain import ImageFormat, ImageMetadata
+from visionset.kernel.domain import DecodedStill, ImageFormat, ImageMetadata
 from visionset.kernel.errors import CorruptMedia, MediaError, UnsupportedMedia, VisionSetError
 from visionset.kernel.ports import DEFAULT_THUMBNAIL_MAX_EDGE, THUMBNAIL_FORMAT, ImageProcessor
 from visionset.kernel.services import WorkspaceService
@@ -562,3 +563,12 @@ def test_an_image_processor_can_be_injected_at_open(tmp_path: Path) -> None:
         tmp_path / "ws", image_processor_factory=_NullImageProcessor
     ) as workspace:
         assert isinstance(workspace.image_processor, _NullImageProcessor)
+
+
+def test_a_decoded_still_is_frozen_and_defaults_to_pass_through() -> None:
+    still = DecodedStill(metadata=ImageMetadata(width=2, height=1, format=ImageFormat.JPEG))
+    assert still.payload is None
+    assert still.frame_index is None
+    assert still.frame_timestamp is None
+    with pytest.raises(ValidationError):
+        still.payload = b"x"  # type: ignore[misc]

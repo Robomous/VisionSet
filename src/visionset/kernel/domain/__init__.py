@@ -151,6 +151,7 @@ from visionset.kernel.domain.job import (
 from visionset.kernel.domain.media import (
     MEDIA_TYPES,
     OCTET_STREAM,
+    DecodedStill,
     ImageFormat,
     ImageMetadata,
     VideoFrame,
@@ -407,6 +408,7 @@ __all__ = [
     "DatasetMember",
     "DatasetOperation",
     "DatasetStats",
+    "DecodedStill",
     "DomainEvent",
     "DownloadSize",
     "DraftAttribute",
