@@ -35,6 +35,7 @@ export function ScaleField({
   label = "Stored size",
   subject = "frame",
   readout = true,
+  purpose,
 }: {
   readonly percent: number;
   readonly onPercent: (value: number) => void;
@@ -45,6 +46,8 @@ export function ScaleField({
   readonly subject?: string;
   /** False where a caller renders its own readouts — the mosaic's tiles do. */
   readonly readout?: boolean;
+  /** Replaces the computed purpose line — the mosaic's mixed state needs its own. */
+  readonly purpose?: string;
 }): JSX.Element {
   const pixels = Math.round((percent * percent) / 100);
   return (
@@ -90,11 +93,12 @@ export function ScaleField({
         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">100%</span>
       </div>
       <p className="text-xs text-muted-foreground" data-testid={`${id}-purpose`}>
-        {percent < 100
+        {purpose ??
+          (percent < 100
           ? `Every ${subject} stored at ${percent}% per side — about ${pixels}% of the ` +
             `pixels, so smaller files and faster training. Annotations are drawn on ` +
             `what is stored.`
-          : `Stored as captured. Drag left to store smaller ${subject}s.`}
+            : `Stored as captured. Drag left to store smaller ${subject}s.`)}
       </p>
     </div>
   );
@@ -200,6 +204,7 @@ export function ScaleMosaic({
   readonly onScales: (scales: Readonly<Record<string, number>>) => void;
 }): JSX.Element {
   const shown = files.slice(0, MOSAIC_CAP);
+  const mixed = new Set(shown.map((file) => scales[file.name] ?? 100)).size > 1;
   const setOne = (name: string, percent: number): void => {
     const next: Record<string, number> = { ...scales };
     if (percent === 100) delete next[name];
@@ -215,6 +220,7 @@ export function ScaleMosaic({
         percent={commonPercent(shown, scales)}
         native={null}
         readout={false}
+        purpose={mixed ? "Sizes differ per image — each tile below shows its own." : undefined}
         onPercent={(percent) =>
           onScales(
             percent === 100
