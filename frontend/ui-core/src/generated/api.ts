@@ -4349,11 +4349,12 @@ export interface components {
         };
         /**
          * ImageFormat
-         * @description Every still-image encoding VisionSet accepts. See the module docstring.
+         * @description Every still-image encoding a dataset may contain. See the module docstring.
          *
          *     A ``StrEnum`` rather than a ``Literal``, unlike ``Asset.modality``: that one
-         *     has a single member, where an enum would be ceremony, and this one is a
-         *     closed set whose whole purpose is to grow deliberately. It costs the
+         *     has a single member, where an enum would be ceremony. This set is **frozen
+         *     at JPEG and PNG**: acceptance is wider — anything Pillow decodes is read —
+         *     but everything else is normalized into these two at ingest. It costs the
          *     persistence layer nothing — a ``StrEnum`` member *is* a ``str``, and the
          *     tables already store every other enum as ``String``.
          * @enum {string}

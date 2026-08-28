@@ -3088,7 +3088,7 @@
         "type": "object"
       },
       "ImageFormat": {
-        "description": "Every still-image encoding VisionSet accepts. See the module docstring.\n\nA ``StrEnum`` rather than a ``Literal``, unlike ``Asset.modality``: that one\nhas a single member, where an enum would be ceremony, and this one is a\nclosed set whose whole purpose is to grow deliberately. It costs the\npersistence layer nothing \u2014 a ``StrEnum`` member *is* a ``str``, and the\ntables already store every other enum as ``String``.",
+        "description": "Every still-image encoding a dataset may contain. See the module docstring.\n\nA ``StrEnum`` rather than a ``Literal``, unlike ``Asset.modality``: that one\nhas a single member, where an enum would be ceremony. This set is **frozen\nat JPEG and PNG**: acceptance is wider \u2014 anything Pillow decodes is read \u2014\nbut everything else is normalized into these two at ingest. It costs the\npersistence layer nothing \u2014 a ``StrEnum`` member *is* a ``str``, and the\ntables already store every other enum as ``String``.",
         "enum": [
           "jpeg",
           "png"
