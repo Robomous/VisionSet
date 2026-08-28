@@ -45,7 +45,13 @@ _UNIQUENESS_INDEXES = {
     # silently: a three-column index would refuse a clip's second extraction
     # rate, and a nullable fourth column would collide with nothing at all,
     # because SQLite treats NULLs in a unique index as distinct.
-    "uq_source_project_kind_path_fps_ranges": ("json_extract", "coalesce", "$.ranges"),
+    "uq_source_project_kind_path_fps_ranges_scale": (
+        "json_extract",
+        "coalesce",
+        "$.ranges",
+        "$.scale_percent",
+        "image_scales",
+    ),
     # Partial, so it constrains classification tags and nothing else: two boxes
     # under one class are two facts, two tags of one class are one statement
     # made twice.
