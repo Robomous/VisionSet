@@ -39,15 +39,7 @@ import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { RecipeEditor } from "../patterns/RecipeEditor";
 import { RecipeList } from "../patterns/RecipeList";
 import { StaticAnnotationOverlay } from "../patterns/StaticAnnotationOverlay";
-import { Button } from "../primitives/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
-import { FieldError } from "../primitives/field";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FieldError } from "@robomous/ui-core";
 import {
   useActiveSchema,
   useCreatePreprocessingRecipe,

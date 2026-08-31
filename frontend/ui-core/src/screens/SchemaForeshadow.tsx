@@ -21,10 +21,7 @@
 
 import type { JSX } from "react";
 
-import { inlineLink } from "../lib/button";
-import { cn } from "../lib/cn";
-import { Alert, AlertDescription } from "../primitives/alert";
-import { Button } from "../primitives/button";
+import { inlineLink, cn, Alert, AlertDescription, Button } from "@robomous/ui-core";
 import { useProjectReadiness } from "./queries";
 
 export function SchemaForeshadow({

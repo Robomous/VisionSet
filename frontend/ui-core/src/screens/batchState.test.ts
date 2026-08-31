@@ -33,7 +33,7 @@ import {
   type Segment,
 } from "./batchState";
 import type { AssetProgress } from "../annotator/jobQueries";
-import { TONE_BORDER, TONE_FILL } from "../patterns/statusTone";
+import { TONE_BORDER, TONE_FILL } from "@robomous/ui-core";
 
 /** The domain's six, written out so a seventh fails here first. */
 const STATES: readonly AssetProgress[] = [

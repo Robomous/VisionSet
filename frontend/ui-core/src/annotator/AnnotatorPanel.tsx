@@ -87,14 +87,9 @@ import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
 
 import { geometryLabel } from "../data/geometryCategory";
 import { classColor } from "../palette";
-import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/button";
-import { DropdownMenu, DropdownMenuTrigger } from "../primitives/dropdown-menu";
-import { Input } from "../primitives/input";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/tooltip";
+import { Badge, Button, DropdownMenu, DropdownMenuTrigger, Input, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { ClassRegion } from "./ClassRegion";
 import { ReassignMenu } from "./ReassignMenu";
-import { cn } from "../lib/cn";
 
 export interface AnnotatorPanelProps {
   readonly store: AnnotatorStore;

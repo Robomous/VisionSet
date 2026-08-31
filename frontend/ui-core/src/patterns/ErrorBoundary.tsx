@@ -41,7 +41,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 import { refusalProse } from "../data/refusals.js";
-import { Button } from "../primitives/button.js";
+import { Button } from "@robomous/ui-core";
 import { EmptyState } from "./AsyncStates.js";
 
 export interface ErrorBoundaryProps {

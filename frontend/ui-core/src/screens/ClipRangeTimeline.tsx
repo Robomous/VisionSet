@@ -31,7 +31,7 @@ import {
   type SyntheticEvent,
 } from "react";
 
-import { cn } from "../lib/cn";
+import { cn } from "@robomous/ui-core";
 import { clock, mergedRanges, type ClipRange } from "./clipRanges";
 
 function capture(target: Element, pointerId: number): void {

@@ -51,10 +51,8 @@ import { Check } from "lucide-react";
 import type { JSX, KeyboardEvent } from "react";
 
 import { formatGeometries } from "../data/geometryCategory";
-import { cn } from "../lib/cn";
-import { menuSurface } from "../lib/menu";
+import { cn, menuSurface, DropdownMenuContent, DropdownMenuItem } from "@robomous/ui-core";
 import { classColor } from "../palette";
-import { DropdownMenuContent, DropdownMenuItem } from "../primitives/dropdown-menu";
 
 export interface ReassignMenuProps {
   /** The object whose class is being changed. Its geometry decides what fits. */

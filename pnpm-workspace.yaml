@@ -25,4 +25,7 @@ minimumReleaseAge: 4320
 # Packages allowed to skip the wait. Empty, and a new entry should say why in the
 # commit that adds it — an exclusion with no stated reason is a cool-down quietly
 # switched off for one package.
-minimumReleaseAgeExclude: []
+minimumReleaseAgeExclude:
+  # First-party package, released from our own CI minutes before it is
+  # consumed here — the supply-chain cool-down guards third-party releases.
+  - "@robomous/ui-core"

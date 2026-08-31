@@ -155,20 +155,8 @@ import {
 import type { OpenMember } from "../generated/api.js";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { inlineLink } from "../lib/button";
-import { cn } from "../lib/cn";
-import { menuSurface } from "../lib/menu";
+import { inlineLink, cn, menuSurface, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
-import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../primitives/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/tooltip";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { CanvasReassign } from "./CanvasReassign";
 import { EditorNotice, EditorNotices } from "./EditorNotice";

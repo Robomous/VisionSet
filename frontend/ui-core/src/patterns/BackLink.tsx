@@ -20,7 +20,7 @@
 import { ArrowLeft } from "lucide-react";
 import type { JSX } from "react";
 
-import { Button } from "../primitives/button";
+import { Button } from "@robomous/ui-core";
 
 export interface BackLinkProps {
   /** The parent, named: "Batches", a project's name. */

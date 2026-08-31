@@ -34,7 +34,7 @@
 
 import type { HTMLAttributes, JSX, ReactNode } from "react";
 
-import { cn } from "../lib/cn";
+import { cn } from "@robomous/ui-core";
 import { formatCount } from "../lib/format";
 
 export interface StatCardProps extends Omit<HTMLAttributes<HTMLElement>, "onClick"> {

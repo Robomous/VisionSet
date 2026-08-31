@@ -93,27 +93,7 @@ import { JOB_ACTION, declares } from "../data/capabilities";
 import { producesProse } from "../data/geometryCategory";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
-import { Alert, AlertDescription } from "../primitives/alert";
-import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
-import { Input } from "../primitives/input";
-import { Label } from "../primitives/label";
-import { FieldDescription, FieldError } from "../primitives/field";
-import { twoLineTrigger } from "../lib/select";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../primitives/select";
+import { Alert, AlertDescription, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, twoLineTrigger, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import type { BadgeTone, Segment } from "./batchState";
 import type { KnownMembers } from "../generated/api";
 import { jobKeys, useJobProgress } from "../annotator/jobQueries";

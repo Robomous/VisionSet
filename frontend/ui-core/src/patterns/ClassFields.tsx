@@ -24,17 +24,7 @@ import type { JSX } from "react";
 
 import { geometryLabel, groupGeometries } from "../data/geometryCategory";
 import { classColor, hexColor } from "../palette";
-import { Button } from "../primitives/button";
-import { Input } from "../primitives/input";
-import { Label } from "../primitives/label";
-import { FieldDescription } from "../primitives/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../primitives/select";
+import { Button, Input, Label, FieldDescription, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import type { AttributeBody, GeometryType, LabelClassBody } from "../screens/queries";
 
 /**
