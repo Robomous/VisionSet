@@ -160,7 +160,7 @@ export function Styleguide(): JSX.Element {
 
         <Section
           title="Colour"
-          description="Intent, never a value. The shadcn preset's own vocabulary, plus VisionSet's four justified extensions. Every caption is LIGHT_THEME's value for that name."
+          description="Intent, never a value. The shadcn preset's own vocabulary, plus the foundation's brand and VisionSet's four justified extensions. Every caption is LIGHT_THEME's value for that name."
         >
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">
