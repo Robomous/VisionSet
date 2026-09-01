@@ -57,8 +57,7 @@ import type { AnnotatorStore, Geometry, Viewport } from "@visionset/annotator";
 import { Tag } from "lucide-react";
 import type { JSX } from "react";
 
-import { Button } from "../primitives/button";
-import { DropdownMenu, DropdownMenuTrigger } from "../primitives/dropdown-menu";
+import { Button, DropdownMenu, DropdownMenuTrigger } from "@robomous/ui-core";
 import { ReassignMenu } from "./ReassignMenu";
 
 /**

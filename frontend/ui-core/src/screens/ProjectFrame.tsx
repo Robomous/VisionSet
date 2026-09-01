@@ -25,17 +25,7 @@ import { ErrorState } from "../patterns/AsyncStates";
 import { ProjectEyebrow } from "../patterns/ProjectEyebrow";
 import type { AnnotateTarget, ProjectSection } from "../patterns/ProjectNav";
 import { ProjectShell, type ProjectNavData } from "../patterns/ProjectShell";
-import { Button } from "../primitives/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
-import { Input } from "../primitives/input";
-import { Label } from "../primitives/label";
-import { FieldError } from "../primitives/field";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldError } from "@robomous/ui-core";
 import {
   useActiveSchema,
   useBatches,

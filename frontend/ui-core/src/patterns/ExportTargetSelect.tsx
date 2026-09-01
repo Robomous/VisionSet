@@ -17,16 +17,7 @@
 import type { JSX } from "react";
 
 import { GEOMETRY_LABELS } from "../data/geometryCategory";
-import { twoLineTrigger } from "../lib/select";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "../primitives/select";
+import { twoLineTrigger, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import type { ExportTarget } from "../screens/queries";
 
 export interface ExportTargetFamily {

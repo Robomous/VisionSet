@@ -99,8 +99,7 @@ import { CircleHelp, Hand, Plus, Redo2, Sparkles, Undo2 } from "lucide-react";
 import { GeometryIcon } from "./GeometryIcon";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
-import { Button } from "../primitives/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/tooltip";
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
 
 /**
  * Why a declared geometry has no tool yet, keyed by the geometry.

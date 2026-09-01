@@ -53,9 +53,7 @@ import { refusalProse } from "../data/refusals";
 import { formatCount, formatPercent, formatWhen } from "../lib/format";
 import { ErrorState } from "../patterns/AsyncStates";
 import { StatCard } from "../patterns/DataDisplay";
-import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/button";
-import { Skeleton } from "../primitives/skeleton";
+import { Badge, Button, Skeleton } from "@robomous/ui-core";
 import { CreateProjectDialog } from "./ProjectsScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
 import {

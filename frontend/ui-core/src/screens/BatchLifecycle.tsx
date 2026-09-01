@@ -27,27 +27,7 @@ import { SquareCheck } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { inlineLink } from "../lib/button";
-import { progressAria } from "../lib/progress";
-import { Button } from "../primitives/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
-import { Input } from "../primitives/input";
-import { Label } from "../primitives/label";
-import { FieldDescription, FieldError } from "../primitives/field";
-import { Progress } from "../primitives/progress";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../primitives/select";
+import { inlineLink, progressAria, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Progress, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import { annotatedShare, outstandingWork } from "./batchState";
 import {
   useApproveBatch,

@@ -11,6 +11,9 @@ importers:
 
   .:
     devDependencies:
+      '@robomous/ui-core':
+        specifier: ^0.1.0
+        version: 0.1.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)(typescript@6.0.3)
       openapi-typescript:
         specifier: 7.13.0
         version: 7.13.0(typescript@6.0.3)
@@ -123,12 +126,9 @@ importers:
 
   frontend/ui-core:
     dependencies:
-      '@base-ui/react':
-        specifier: ^1.7.0
-        version: 1.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@fontsource-variable/geist':
-        specifier: ^5.3.0
-        version: 5.3.0
+      '@robomous/ui-core':
+        specifier: ^0.1.0
+        version: 0.1.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)(typescript@6.0.3)
       '@tanstack/react-query':
         specifier: ^5.101.4
         version: 5.101.4(react@19.2.8)
@@ -141,30 +141,15 @@ importers:
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
-      clsx:
-        specifier: ^2.1.1
-        version: 2.1.1
       lucide-react:
         specifier: ^1.32.0
         version: 1.33.0(react@19.2.8)
       openapi-fetch:
         specifier: ^0.17.0
         version: 0.17.0
-      radix-ui:
-        specifier: ^1.6.7
-        version: 1.6.7(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      shadcn:
-        specifier: ^4.19.0
-        version: 4.19.0(typescript@6.0.3)
       sonner:
         specifier: ^2.0.8
         version: 2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      tailwind-merge:
-        specifier: ^3.6.0
-        version: 3.6.0
-      tw-animate-css:
-        specifier: ^1.4.0
-        version: 1.4.0
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -1437,6 +1422,13 @@ packages:
   '@redocly/openapi-core@1.34.18':
     resolution: {integrity: sha512-UyKIm0wTPw5BcY7Z2PkbK1Ma260um96LSBWXHrdSMe+ZV0EPMyDfAcUcjjm3qEiGST9OK/1TriekdPCZkn4Q3A==}
     engines: {node: '>=18.17.0', npm: '>=9.5.0'}
+
+  '@robomous/ui-core@0.1.0':
+    resolution: {integrity: sha512-aZXQR8zyjv3NpOw1+H1aPF7P33pWa7s9j97Jsa0RHNZi6G5OtO5+YjaPKn/s7eJ9/M7mAAWB+IP8X6J4vyXM+g==}
+    peerDependencies:
+      react: '>=19'
+      react-dom: '>=19'
+      tailwindcss: '>=4'
 
   '@rolldown/binding-android-arm-eabi@1.2.5':
     resolution: {integrity: sha512-DLe/i+l8ynIBY7XEQ191TeZvCoowIGa18R+dIV30GW7DiOtp74i/xX8hs8GUjW5ARV7VZuie3d6AumSmCwbeRA==}
@@ -5015,6 +5007,31 @@ snapshots:
       yaml-ast-parser: 0.0.43
     transitivePeerDependencies:
       - supports-color
+
+  '@robomous/ui-core@0.1.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)(typescript@6.0.3)':
+    dependencies:
+      '@base-ui/react': 1.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@fontsource-variable/geist': 5.3.0
+      class-variance-authority: 0.7.1
+      clsx: 2.1.1
+      lucide-react: 1.33.0(react@19.2.8)
+      radix-ui: 1.6.7(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
+      shadcn: 4.19.0(typescript@6.0.3)
+      sonner: 2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      tailwind-merge: 3.6.0
+      tailwindcss: 4.3.3
+      tw-animate-css: 1.4.0
+    transitivePeerDependencies:
+      - '@cfworker/json-schema'
+      - '@date-fns/tz'
+      - '@types/react'
+      - '@types/react-dom'
+      - babel-plugin-macros
+      - date-fns
+      - supports-color
+      - typescript
 
   '@rolldown/binding-android-arm-eabi@1.2.5':
     optional: true

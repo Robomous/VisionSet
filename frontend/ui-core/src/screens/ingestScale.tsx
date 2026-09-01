@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 
-import { Label } from "../primitives/label";
+import { Label } from "@robomous/ui-core";
 
 /**
  * The server's scaled-dimension formula, mirrored exactly.

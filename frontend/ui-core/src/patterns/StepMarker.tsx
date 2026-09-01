@@ -11,7 +11,7 @@
 import { Check } from "lucide-react";
 import type { JSX } from "react";
 
-import { cn } from "../lib/cn";
+import { cn } from "@robomous/ui-core";
 
 export type StepState = "upcoming" | "active" | "complete";
 

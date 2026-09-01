@@ -12,9 +12,7 @@
 import { useState, type JSX, type ReactNode } from "react";
 
 import { readStep, writePref } from "../data/prefs";
-import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/button";
-import { FieldError } from "../primitives/field";
+import { Badge, Button, FieldError } from "@robomous/ui-core";
 import { BackLink } from "../patterns/BackLink";
 import {
   DEFAULT_DENSITY,

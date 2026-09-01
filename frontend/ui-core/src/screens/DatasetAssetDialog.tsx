@@ -28,17 +28,9 @@ import type { WireAnnotation } from "../annotator/jobQueries";
 import { refusalProse } from "../data/refusals";
 import { formatWhen } from "../lib/format";
 import { classColor } from "../palette";
-import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/button";
+import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@robomous/ui-core";
 import { DescriptionList, DescriptionRow } from "../patterns/DataDisplay";
 import { StaticAnnotationOverlay } from "../patterns/StaticAnnotationOverlay";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
 import { useActiveSchema, useDatasetAssetAnnotations, type DatasetAsset } from "./queries";
 
 export interface DatasetAssetDialogProps {

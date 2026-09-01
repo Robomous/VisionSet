@@ -50,16 +50,7 @@ import { ChevronDown, Database, Grid3x3, Layers, MoreHorizontal, Network, Pencil
 import { cva } from "class-variance-authority";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
-import { menuSurface } from "../lib/menu";
-import { Button } from "../primitives/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../primitives/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/tabs";
+import { menuSurface, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Tabs, TabsContent, TabsList, TabsTrigger } from "@robomous/ui-core";
 
 /**
  * The four sections of a project, in the order work happens in: what a project

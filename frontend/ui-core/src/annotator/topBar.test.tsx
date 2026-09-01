@@ -23,10 +23,9 @@ import type { JSX, ReactNode } from "react";
 import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
 import { AnnotationPage, REVIEW_ACTIONS } from "./AnnotationPage";
-import { TooltipProvider } from "../primitives/tooltip";
+import { TooltipProvider, TONE_BORDER, TONE_FILL } from "@robomous/ui-core";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
-import { TONE_BORDER, TONE_FILL } from "../patterns/statusTone.js";
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
