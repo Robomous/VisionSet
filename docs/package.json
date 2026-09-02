@@ -11,10 +11,10 @@
     "sync:check": "node scripts/sync-docs.mjs --check"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.41.7",
-    "astro": "^7.2.4",
-    "mermaid": "^11.17.0",
-    "sharp": "^0.35.3",
+    "@astrojs/starlight": "^0.41.9",
+    "astro": "^7.2.9",
+    "mermaid": "^11.17.2",
+    "sharp": "^0.35.4",
     "unist-util-visit": "^5.0.0"
   },
   "pnpm": {
