@@ -159,48 +159,8 @@ import {
   type WeightDownload,
 } from "../data/inferenceQueries";
 import { jobFailureProse, refusalProse } from "../data/refusals";
-import { cn } from "../lib/cn";
-import { menuSurface } from "../lib/menu";
-import { progressAria } from "../lib/progress";
-import { twoLineTrigger } from "../lib/select";
+import { cn, menuSurface, progressAria, twoLineTrigger, Badge, Button, Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Progress, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
-import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "../primitives/card";
-import { Progress } from "../primitives/progress";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../primitives/dropdown-menu";
-import { Input } from "../primitives/input";
-import { Label } from "../primitives/label";
-import { FieldDescription, FieldError } from "../primitives/field";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "../primitives/select";
 import {
   CUSTOM_MODEL,
   DEVICES,

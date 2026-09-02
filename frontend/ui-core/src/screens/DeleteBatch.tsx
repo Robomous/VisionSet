@@ -38,18 +38,7 @@ import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares, withheldBecause } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { cn } from "../lib/cn";
-import { menuSurface } from "../lib/menu";
-import { Button } from "../primitives/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
-import { FieldError } from "../primitives/field";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../primitives/dropdown-menu";
+import { cn, menuSurface, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FieldError, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@robomous/ui-core";
 import { useDeleteBatch, type Batch } from "./queries";
 
 export interface BatchOverflowMenuProps {

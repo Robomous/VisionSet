@@ -17,7 +17,7 @@
 import { render } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 
-import { Dialog, DialogContent, DialogTitle } from "./primitives/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@robomous/ui-core";
 
 const unmountFocusReturned = vi.fn();
 

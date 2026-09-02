@@ -54,7 +54,7 @@
  */
 
 import type { AssetProgress } from "../annotator/jobQueries.js";
-import { TONE_BORDER, TONE_FILL, type StatusTone } from "../patterns/statusTone.js";
+import { TONE_BORDER, TONE_FILL, type StatusTone } from "@robomous/ui-core";
 
 /**
  * The semantic tokens a status may wear, and the whole list of them.

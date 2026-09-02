@@ -1,6 +1,10 @@
 /**
- * `@visionset/ui-core` — the design system, the domain components, and the
- * generated API client.
+ * `@visionset/ui-core` — VisionSet's domain components, screens, and the
+ * generated API client, over the Robomous design system.
+ *
+ * The design system itself lives in `@robomous/ui-core`; this package
+ * re-exports its whole surface so a consumer keeps one import, and adds
+ * what is VisionSet's own.
  *
  * ## What a consumer imports
  *
@@ -32,110 +36,19 @@
  * package promises stays auditable — the rule `generated/api.ts` already follows.
  */
 
-// The design tokens, and their prose contract at the repository root.
-export { cssVar, DARK_THEME, EXTENSIONS, LIGHT_THEME, THEME } from "./tokens.js";
+// The design system, whole: primitives, lib helpers, statusTone, foundation
+// tokens. Everything it exports is re-exported here.
+export * from "@robomous/ui-core";
+
+// The merged token view — foundation plus VisionSet's extensions, so
+// `LIGHT_THEME.stage` keeps answering. Explicit local exports take precedence
+// over the star. (`cssVar`/`THEME` arrive via the star.)
+export { DARK_THEME, EXTENSIONS, LIGHT_THEME } from "./tokens.js";
 
 // The class palette. Re-exported from the annotator, never respelled — see the
 // argument in `palette.ts`.
 export { CLASS_FILL_OPACITY, classColor } from "./palette.js";
 export type { LabelClass } from "./palette.js";
-
-export { inlineLink } from "./lib/button.js";
-export { cn } from "./lib/cn.js";
-export { menuSurface } from "./lib/menu.js";
-export { twoLineTrigger } from "./lib/select.js";
-export { progressAria } from "./lib/progress.js";
-
-// Primitives — Radix behaviour under shadcn Nova styling, iconed with lucide.
-export { Button, buttonVariants } from "./primitives/button.js";
-export {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "./primitives/card.js";
-export { Input } from "./primitives/input.js";
-export { Textarea } from "./primitives/textarea.js";
-export { Label } from "./primitives/label.js";
-export {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-  FieldLegend,
-  FieldSeparator,
-  FieldSet,
-  FieldTitle,
-} from "./primitives/field.js";
-export {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-  InputGroupText,
-  InputGroupTextarea,
-} from "./primitives/input-group.js";
-export {
-  Combobox,
-  ComboboxChip,
-  ComboboxChips,
-  ComboboxChipsInput,
-  ComboboxCollection,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxGroup,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxLabel,
-  ComboboxList,
-  ComboboxSeparator,
-  ComboboxTrigger,
-  ComboboxValue,
-  useComboboxAnchor,
-} from "./primitives/combobox.js";
-export { Badge, badgeVariants } from "./primitives/badge.js";
-export { Alert, AlertAction, AlertDescription, AlertTitle } from "./primitives/alert.js";
-export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "./primitives/dialog.js";
-export { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "./primitives/sheet.js";
-export { Tabs, TabsContent, TabsList, tabsListVariants, TabsTrigger } from "./primitives/tabs.js";
-export { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectScrollDownButton, SelectScrollUpButton, SelectSeparator, SelectTrigger, SelectValue } from "./primitives/select.js";
-export {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuPortal,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "./primitives/dropdown-menu.js";
-export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./primitives/tooltip.js";
-export { Progress } from "./primitives/progress.js";
-export { Skeleton } from "./primitives/skeleton.js";
-export { Toaster } from "./primitives/sonner.js";
-export { toast } from "sonner";
-export {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./primitives/table.js";
 
 // The three states every async surface owes.
 export {

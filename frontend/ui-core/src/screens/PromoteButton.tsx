@@ -48,9 +48,7 @@ import type { JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { inlineLink } from "../lib/button";
-import { Button } from "../primitives/button";
-import { FieldError } from "../primitives/field";
+import { inlineLink, Button, FieldError } from "@robomous/ui-core";
 import { usePromoteBatch, type Batch } from "./queries";
 
 export interface PromoteButtonProps {

@@ -50,24 +50,9 @@ import { useEffect, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
-import { twoLineTrigger } from "../lib/select";
-import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
-import { Badge } from "../primitives/badge";
+import { twoLineTrigger, Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardAction, CardContent, CardHeader, CardTitle, Tabs, TabsContent, TabsList, TabsTrigger, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
 import type { BadgeTone } from "./batchState";
 import { SectionHeader } from "../patterns/SectionHeader";
-import { Button } from "../primitives/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "../primitives/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
-import { Input } from "../primitives/input";
-import { Label } from "../primitives/label";
-import { FieldDescription, FieldError } from "../primitives/field";
 import {
   classBlockers,
   describeClassCount,
@@ -76,14 +61,6 @@ import {
   lostClasses,
   refusalProse,
 } from "../data/refusals";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../primitives/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { ExportTargetSelect } from "../patterns/ExportTargetSelect";
 import { AssetThumbnail } from "./AssetThumbnail";

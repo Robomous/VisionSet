@@ -26,8 +26,7 @@ import { useState, type JSX } from "react";
 import { asApiError } from "../data/errors";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Button } from "../primitives/button";
-import { FieldError } from "../primitives/field";
+import { Button, FieldError } from "@robomous/ui-core";
 import { outstandingWork } from "./batchState";
 import { promotionSummary } from "./PromoteButton";
 import {

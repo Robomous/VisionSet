@@ -67,16 +67,7 @@ import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 import { EditorNotice } from "./EditorNotice";
-import { cn } from "../lib/cn";
-import { twoLineTrigger } from "../lib/select";
-import { Button } from "../primitives/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../primitives/select";
+import { cn, twoLineTrigger, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import type { Connection, SuggestBlocker } from "../data/inferenceQueries";
 
 export interface SuggestPanelProps {

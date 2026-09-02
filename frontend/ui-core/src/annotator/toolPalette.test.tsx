@@ -12,7 +12,7 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { TooltipProvider } from "../primitives/tooltip";
+import { TooltipProvider } from "@robomous/ui-core";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { ToolPalette, toolChoices } from "./ToolPalette";
 

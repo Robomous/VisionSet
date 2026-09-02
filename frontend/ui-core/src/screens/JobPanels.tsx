@@ -37,9 +37,7 @@
 import { useEffect, useState, type JSX, type KeyboardEvent } from "react";
 import { ChevronDown, ChevronRight, User } from "lucide-react";
 
-import { progressAria } from "../lib/progress";
-import { Progress } from "../primitives/progress";
-import { FieldError } from "../primitives/field";
+import { progressAria, Progress, FieldError } from "@robomous/ui-core";
 import { refusalProse } from "../data/refusals";
 import { DEFAULT_JOB_VIEW, JobWorkspace, patchView, type JobView } from "./GalleryControls";
 import { annotatedShare } from "./batchState";

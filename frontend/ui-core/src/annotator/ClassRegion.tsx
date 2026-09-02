@@ -63,8 +63,7 @@ import { useState, type JSX, type RefObject } from "react";
 
 import { formatGeometries, geometryLabel } from "../data/geometryCategory";
 import { classColor } from "../palette";
-import { Button } from "../primitives/button";
-import { Input } from "../primitives/input";
+import { Button, Input } from "@robomous/ui-core";
 import { CLASS_ROW_PX, ClassListRow } from "../patterns/DataDisplay";
 
 /** The fewest rows' worth of height the region ever takes. */

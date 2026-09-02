@@ -47,14 +47,7 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { Check, Eraser, SkipForward, Trash2, Undo2, X } from "lucide-react";
 
 import { Async } from "../data/Async";
-import { Button } from "../primitives/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@robomous/ui-core";
 import { AssetThumbnail } from "./AssetThumbnail";
 import {
   ASSET_ACTION,

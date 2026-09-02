@@ -23,7 +23,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
-import { TooltipProvider } from "../primitives/tooltip";
+import { TooltipProvider } from "@robomous/ui-core";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
 import { stubResizeObserver } from "../testing/resizeObserver.js";

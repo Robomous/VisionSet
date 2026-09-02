@@ -36,19 +36,7 @@ import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { inlineLink } from "../lib/button";
-import { cn } from "../lib/cn";
-import { Button } from "../primitives/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
-import { Input } from "../primitives/input";
-import { Label } from "../primitives/label";
-import { FieldDescription, FieldError } from "../primitives/field";
+import { inlineLink, cn, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError } from "@robomous/ui-core";
 import { useCreateCorrection, type Batch } from "./queries";
 
 /** What a correction covers. `all` sends nothing and lets the server default. */

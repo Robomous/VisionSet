@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
 import { AnnotatorPanel } from "./AnnotatorPanel";
-import { TooltipProvider } from "../primitives/tooltip";
+import { TooltipProvider } from "@robomous/ui-core";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 
 const SCHEMA = {

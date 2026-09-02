@@ -8,7 +8,7 @@
 
 import type { JSX } from "react";
 
-import { Badge } from "../primitives/badge";
+import { Badge } from "@robomous/ui-core";
 
 export interface ProjectEyebrowProps {
   /** The project's name, or the empty string while it is in flight. */
