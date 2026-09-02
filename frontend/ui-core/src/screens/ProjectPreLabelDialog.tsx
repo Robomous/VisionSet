@@ -20,18 +20,7 @@ import { useMemo, useState, type JSX } from "react";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
-import { inlineLink } from "../lib/button";
-import { Alert, AlertDescription } from "../primitives/alert";
-import { Button } from "../primitives/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
-import { Label } from "../primitives/label";
-import { FieldError } from "../primitives/field";
+import { inlineLink, Alert, AlertDescription, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Label, FieldError } from "@robomous/ui-core";
 import {
   DEFAULT_CONFIDENCE,
   NO_SHAPES,

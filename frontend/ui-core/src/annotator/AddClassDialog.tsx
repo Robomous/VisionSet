@@ -91,18 +91,7 @@ import { useEffect, useRef, useState, type JSX } from "react";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { classColor } from "../palette";
-import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
-import { Badge } from "../primitives/badge";
-import { Button } from "../primitives/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
-import { Input } from "../primitives/input";
-import { Label } from "../primitives/label";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label } from "@robomous/ui-core";
 import { formatGeometries } from "../data/geometryCategory";
 import { ClassFields } from "../patterns/ClassFields";
 import type {

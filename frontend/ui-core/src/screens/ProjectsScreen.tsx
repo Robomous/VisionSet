@@ -29,21 +29,8 @@ import { useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { refusalProse } from "../data/refusals";
-import { inlineLink } from "../lib/button";
+import { inlineLink, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Textarea, Label, FieldDescription, FieldError, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
 import { formatWhen } from "../lib/format";
-import { Button } from "../primitives/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/dialog";
-import { Input } from "../primitives/input";
-import { Textarea } from "../primitives/textarea";
-import { Label } from "../primitives/label";
-import { FieldDescription, FieldError } from "../primitives/field";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { AssetThumbnail, ThumbnailPlaceholder } from "./AssetThumbnail";
 import { useCreateProject, useDeleteProject, useProjects, type Project } from "./queries";
 

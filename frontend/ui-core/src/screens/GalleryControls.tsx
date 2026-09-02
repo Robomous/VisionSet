@@ -13,9 +13,7 @@ import { useCallback, useRef, useState, type JSX } from "react";
 import { Play, User, X } from "lucide-react";
 
 import type { AssetProgress } from "../annotator/jobQueries";
-import { Button } from "../primitives/button";
-import { FieldError } from "../primitives/field";
-import { Input } from "../primitives/input";
+import { Button, FieldError, Input } from "@robomous/ui-core";
 import { JOB_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import { DEFAULT_DENSITY, DENSITY_STEPS, FrameGrid } from "./FrameGrid";

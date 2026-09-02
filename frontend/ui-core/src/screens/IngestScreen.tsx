@@ -134,31 +134,13 @@ import {
 } from "react";
 
 import { refusalProse } from "../data/refusals";
-import { cn } from "../lib/cn";
+import { cn, progressAria, STATUS_INK, Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Progress, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
 import { formatBytes, formatCount } from "../lib/format";
-import { progressAria } from "../lib/progress";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
-import { STATUS_INK } from "../patterns/statusTone";
 import { StepMarker } from "../patterns/StepMarker";
-import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
-import { Badge } from "../primitives/badge";
 import type { BadgeTone } from "./batchState";
-import { Button } from "../primitives/button";
-import { Card, CardContent } from "../primitives/card";
-import { Progress } from "../primitives/progress";
-import { Input } from "../primitives/input";
-import { Label } from "../primitives/label";
 import { ScaleField, scaledDimension } from "./ingestScale";
-import { FieldDescription, FieldError } from "../primitives/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../primitives/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/table";
 import { OutcomeNextStep } from "./ComposedTransitions";
 import { SchemaForeshadow } from "./SchemaForeshadow";
 import { ClipRangeTimeline } from "./ClipRangeTimeline";

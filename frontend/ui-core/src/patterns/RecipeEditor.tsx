@@ -20,12 +20,8 @@ import type { JSX, ReactNode } from "react";
 
 import { GEOMETRY_LABELS, GEOMETRY_PLURALS } from "../data/geometryCategory";
 import { refusalProse } from "../data/refusals";
-import { cn } from "../lib/cn";
+import { cn, Button, FieldError, FieldDescription, Input, Label } from "@robomous/ui-core";
 import { formatCount } from "../lib/format";
-import { Button } from "../primitives/button";
-import { FieldError, FieldDescription } from "../primitives/field";
-import { Input } from "../primitives/input";
-import { Label } from "../primitives/label";
 import type { ExportTarget } from "../screens/queries";
 import {
   AMOUNT_MAX,

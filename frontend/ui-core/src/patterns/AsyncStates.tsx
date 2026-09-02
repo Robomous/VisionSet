@@ -20,10 +20,7 @@
 import { Inbox, TriangleAlert } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
-import { cn } from "../lib/cn";
-import { Alert, AlertDescription, AlertTitle } from "../primitives/alert";
-import { Button } from "../primitives/button";
-import { Skeleton } from "../primitives/skeleton";
+import { cn, Alert, AlertDescription, AlertTitle, Button, Skeleton } from "@robomous/ui-core";
 
 export interface LoadingStateProps {
   /** How many placeholder rows. Match the shape being waited for. */
