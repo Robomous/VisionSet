@@ -27,6 +27,10 @@ frontend/*/dist/
 # repository (~/.cache/ms-playwright), so nothing here needs an entry for them.
 test-results/
 playwright-report/
+# Visual baselines are taken in the Playwright container on the machine that compares
+# them (docs/content/architecture/frontend/visual-baselines.md); a committed set would
+# be compared against by nothing in CI.
+frontend/app/e2e/*-snapshots/
 blob-report/
 playwright/.cache/
 

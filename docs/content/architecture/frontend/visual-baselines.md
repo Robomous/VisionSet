@@ -1,7 +1,7 @@
 # Visual baselines
 
 Ten reference images, compared pixel for pixel, produced in one Linux container
-and nowhere else.
+and nowhere else — and kept on the machine that produced them, never in git.
 
 They exist to catch what an assertion cannot see: a token resolving to the wrong
 colour, a font that failed to load, an icon that stopped drawing, a radius or a gap
@@ -31,11 +31,19 @@ Baselines are **not** generated on macOS or Windows. Font rasterisation differs
 between operating systems, and a baseline captured on one and compared on another
 reports that difference as a product regression.
 
+## Where the images live
+
+`frontend/app/e2e/visual.spec.ts-snapshots/` is git-ignored. The first run in the
+container writes the ten baselines there; every later run compares against them.
+A comparison is therefore a statement about *this checkout since its baselines were
+taken*: capture them on the merge-base before starting a visual change, then compare
+after it, and the diff is the change and nothing else. Nothing in CI reads them.
+
 ## Running the comparison
 
 ```bash
-docker run --rm \
-  -v "$PWD:/repo:ro" -w /repo \
+docker run --rm -e CI=true \
+  -v "$PWD:/repo" -w /repo \
   mcr.microsoft.com/playwright:v1.62.1-noble \
   bash -lc 'corepack enable && pnpm install --frozen-lockfile \
     && pnpm --filter @visionset/annotator build \
@@ -43,17 +51,24 @@ docker run --rm \
     && cd frontend/app && CI=1 pnpm exec playwright test --project=visual'
 ```
 
+`-e CI=true` is what lets pnpm replace a host-installed `node_modules` without a
+terminal to ask on, and the mount is writable because Playwright writes its report
+and `test-results/` beside the spec. Afterwards the host's `node_modules` holds Linux
+binaries: run `CI=true pnpm install --frozen-lockfile` and rebuild the two packages
+before running vitest natively again.
+
 The `visual` project is excluded from the default `chromium` project, so the
 ordinary suite does not compare images and this command is the only thing that
 does.
 
-## Updating a baseline
+## Retaking a baseline
 
 Only when the visual change is intended. The same container, with
-`--update-snapshots`:
+`--update-snapshots`, rewrites every baseline whose surface changed and leaves the
+rest byte-identical:
 
 ```bash
-docker run --rm \
+docker run --rm -e CI=true \
   -v "$PWD:/repo" -w /repo \
   mcr.microsoft.com/playwright:v1.62.1-noble \
   bash -lc 'corepack enable && pnpm install --frozen-lockfile \
@@ -62,10 +77,9 @@ docker run --rm \
     && cd frontend/app && CI=1 pnpm exec playwright test --project=visual --update-snapshots'
 ```
 
-Then **look at the images** and run the comparison again before committing. A
-regenerated baseline that nobody opened is a regression that has been written down
-as the new truth. `git diff --stat` naming a `.png` under
-`e2e/visual.spec.ts-snapshots/` is the signal that a review is owed.
+Then **look at the images** and run the comparison again. A retaken baseline that
+nobody opened is a regression that has been written down as the new truth; the
+run's own `is re-generated` lines name the files a review is owed on.
 
 Snapshots are never updated by an ordinary test run. There is no host-native path
 for updating them.
