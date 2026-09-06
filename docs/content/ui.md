@@ -182,7 +182,7 @@ which would be a second spelling of a fact the response already carries.
 
 ### The project view, and the one screen whose section is in the URL
 
-A project has four sections - Overview, Schema, Batches, Dataset - and they are
+A project has four sections - Overview, Batches, Schema, Dataset - and they are
 **navigation**, not four things stacked in one column (#171): at `lg` and above a
 column between the rail and the content, below `lg` a tab strip above it, one
 component (`ProjectNav`) drawing whichever layout `ProjectShell`'s `matchMedia`

@@ -264,27 +264,27 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   await test.step("declare a schema with all four geometries", async () => {
     /*
      * A brand-new project opens on Overview, on **one** invitation chosen from
-     * its real state — no schema and no
-     * images, so the invitation is the classes one and it is the page's only
-     * filled button. This is the first-run path a person actually walks, so the
-     * run walks it: the CTA, not the tab bar.
+     * its real state — no schema and no images, so the invitation is the ingest
+     * one, and the page's only filled button is the header's Ingest. The other
+     * order is a link beneath it, and this run walks that link rather than the
+     * tab bar: a schema first is the road the invitation names as not taken,
+     * and the walk proves it is a real road.
      *
-     * The header's Ingest is asserted outlined here rather than in a unit test
-     * because "exactly one filled button on the page" is a claim about the whole
-     * composed screen, and the header lives outside the panel that owns the
-     * invitation.
+     * The count is asserted here rather than in a unit test because "exactly
+     * one filled button on the page" is a claim about the whole composed screen,
+     * and the header lives outside the panel that owns the invitation.
      */
     await expect(page.getByTestId("overview-empty")).toBeVisible();
     await expect(page.getByTestId("first-run")).toHaveAttribute(
       "data-invitation",
-      "classes-first",
+      "ingest-first",
     );
     await expect(page.locator("button.bg-primary")).toHaveCount(1);
-    await expect(page.getByTestId("go-ingest")).not.toHaveClass(/bg-primary/);
+    await expect(page.getByTestId("go-ingest")).toHaveClass(/bg-primary/);
     // And the retired checklist is gone rather than merely dismissed.
     await expect(page.getByTestId("journey-checklist")).toHaveCount(0);
 
-    await page.getByTestId("first-run-cta").click();
+    await page.getByTestId("first-run-alt").click();
     await expect(page.getByTestId("nav-schema")).toHaveAttribute("aria-current", "page");
 
     // A project starts schema-less on purpose, so the editor opens on an empty
