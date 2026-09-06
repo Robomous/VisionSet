@@ -37,12 +37,14 @@ reports that difference as a product regression.
 container writes the ten baselines there; every later run compares against them.
 A comparison is therefore a statement about *this checkout since its baselines were
 taken*: capture them on the merge-base before starting a visual change, then compare
-after it, and the diff is the change and nothing else. Nothing in CI reads them.
+after it, and the diff is the change and nothing else. The `visual` project exists only
+while `VISIONSET_VISUAL` is set, so CI's `pnpm e2e` and a bare `playwright test` never
+look for the images; the container commands below set it.
 
 ## Running the comparison
 
 ```bash
-docker run --rm -e CI=true \
+docker run --rm -e CI=true -e VISIONSET_VISUAL=1 \
   -v "$PWD:/repo" -w /repo \
   mcr.microsoft.com/playwright:v1.62.1-noble \
   bash -lc 'corepack enable && pnpm install --frozen-lockfile \
@@ -57,9 +59,9 @@ and `test-results/` beside the spec. Afterwards the host's `node_modules` holds 
 binaries: run `CI=true pnpm install --frozen-lockfile` and rebuild the two packages
 before running vitest natively again.
 
-The `visual` project is excluded from the default `chromium` project, so the
-ordinary suite does not compare images and this command is the only thing that
-does.
+The `chromium` project ignores `visual.spec.ts` and the `visual` project is absent
+without the variable, so the ordinary suite never compares images and this command
+is the only thing that does.
 
 ## Retaking a baseline
 
@@ -68,7 +70,7 @@ Only when the visual change is intended. The same container, with
 rest byte-identical:
 
 ```bash
-docker run --rm -e CI=true \
+docker run --rm -e CI=true -e VISIONSET_VISUAL=1 \
   -v "$PWD:/repo" -w /repo \
   mcr.microsoft.com/playwright:v1.62.1-noble \
   bash -lc 'corepack enable && pnpm install --frozen-lockfile \

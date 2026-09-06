@@ -28,8 +28,8 @@ frontend/*/dist/
 test-results/
 playwright-report/
 # Visual baselines are taken in the Playwright container on the machine that compares
-# them (docs/content/architecture/frontend/visual-baselines.md); a committed set would
-# be compared against by nothing in CI.
+# them (docs/content/architecture/frontend/visual-baselines.md); the `visual` project
+# runs only under VISIONSET_VISUAL, so nothing else ever looks for them.
 frontend/app/e2e/*-snapshots/
 blob-report/
 playwright/.cache/

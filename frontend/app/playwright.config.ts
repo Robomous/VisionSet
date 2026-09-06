@@ -159,7 +159,12 @@ export default defineConfig({
       // regression.
       testIgnore: /visual\.spec\.ts$/,
     },
-    {
+    /*
+     * Opt-in, because the baselines are not in git: every run of this project
+     * that is not the container run in `visual-baselines.md` either fails on
+     * ten missing images or writes ten from the wrong renderer.
+     */
+    ...(process.env["VISIONSET_VISUAL"] === undefined ? [] : [{
       /**
        * The reference images, and the environment that is allowed to produce them.
        *
@@ -188,6 +193,6 @@ export default defineConfig({
         // here would photograph that mode instead of the ordinary one — a reference
         // image of a setting most people do not have.
       },
-    },
+    }]),
   ],
 });
