@@ -30,7 +30,7 @@ if [ ! -f "$WORKSPACE/visionset.db" ]; then
   echo "compose: minting a token named 'dev' for API clients"
   SECRET="$(visionset token create --name dev --workspace "$WORKSPACE")"
   echo "compose: ----------------------------------------------------------------"
-  echo "compose: the app is at http://localhost:8080 and needs no token."
+  echo "compose: the app is at http://localhost:${VISIONSET_HTTP_PORT:-8080} and needs no token."
   echo "compose: for curl, the SDK or an MCP client, here is one:"
   echo "compose:   $SECRET"
   echo "compose: shown once. For another:"

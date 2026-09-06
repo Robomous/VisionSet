@@ -189,7 +189,7 @@ you are reaching it through port 8080.
 > session only to a client on this machine — and behind a proxy no request ever looks like one,
 > because the peer is nginx. So the compose stack says `always`. The front door on 8080 is
 > published on every interface, so another device on your network — a phone, a tablet — can open
-> the dev stack at `http://<your address>:8080`; the api and vite ports stay on loopback. The
+> the dev stack at `http://<your address>:8080`; the api and vite publish no host port at all. The
 > consequence is that whoever reaches 8080 is signed in, so the stack trusts the network it runs
 > on. On one that is not yours, set `VISIONSET_UI_SESSION: never` to go back to typing a token,
 > or bind the nginx port to `127.0.0.1` in `docker/compose.yaml`.

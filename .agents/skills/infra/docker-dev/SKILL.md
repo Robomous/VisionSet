@@ -28,19 +28,29 @@ docker compose -f docker/compose.yaml up --remove-orphans
 The app is at **http://localhost:8080** — the only address anyone needs, no token: the server
 signs the browser in itself (`VISIONSET_UI_SESSION: always`).
 
-| Service | What | Port |
+| Service | What | Host port |
 | --- | --- | --- |
 | `nginx` | The front door: `/api/` → api, everything else → vite | **8080** |
-| `api` | `docker/api-dev.sh` — creates the workspace on first boot, then uvicorn `--reload` | 8000 |
-| `app` | `docker/app-dev.sh` — builds annotator + ui-core, watches both, then vite | 5173 |
+| `docs` | Astro dev server, its own door | **4321** |
+| `api` | `docker/api-dev.sh` — creates the workspace on first boot, then uvicorn `--reload` | none — `:8000` on the compose network |
+| `app` | `docker/app-dev.sh` — builds annotator + ui-core, watches both, then vite | none — `:5173` on the compose network |
 
-`nginx` and `docs` publish on every interface — so a phone or another laptop on the same network
-can open `http://<this machine>:8080` and `:4321` — and the app signs that device in too, because
-the API signs in whoever asks. `api` and `app` stay on **127.0.0.1**; on a network you do not
-trust, set `VISIONSET_UI_SESSION: never` or bind 8080 back to loopback.
+**Only `nginx` and `docs` publish a host port**, so the stack takes two ports from the machine
+and leaves the conventional ones free for whatever else runs here. Reach the API through
+`localhost:8080/api/…` and vite through `localhost:8080`; `exec`/`logs` for anything else.
+
+When 8080 is already somebody else's, `VISIONSET_HTTP_PORT` in `docker/.env` moves it, no
+rebuild. **4321 has no equivalent and must not get one**: astro dev resolves routes against the
+port it was told to serve, so a host port that differs from the container's answers 404 on every
+page while the server itself looks healthy — reproduced, not theorised.
+
+Both publish on every interface — so a phone or another laptop on the same network can open
+`http://<this machine>:8080` and `:4321` — and the app signs that device in too, because the API
+signs in whoever asks. On a network you do not trust, set `VISIONSET_UI_SESSION: never` or bind
+8080 back to loopback.
 
 Optional profiles (off unless requested): `--profile postgres`, `--profile minio` (console on
-9001). A `postgres` that exits 1 naming `pg_ctlcluster` and a major-version directory found a
+9001) — both on loopback, since their credentials are `visionset`/`visionset`. A `postgres` that exits 1 naming `pg_ctlcluster` and a major-version directory found a
 volume written by an older major; `docker volume rm visionset_postgres-data` clears it — nothing
 reads this service.
 
@@ -69,7 +79,7 @@ not a fourth mode — the next `build` erases it.
 
 **Override files, not profiles, and the distinction matters for the next optional thing:**
 `profiles:` selects whole services and cannot amend one that is already present (an `api-gpu`
-beside `api` collides on 127.0.0.1:8000); a second `-f` merges properties into an existing
+beside `api` is a second service, not a variant of the first); a second `-f` merges properties into an existing
 service. `postgres`/`minio` are profiles because they are genuinely extra services.
 
 ### Inference-image traps
