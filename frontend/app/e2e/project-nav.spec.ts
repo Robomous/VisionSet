@@ -213,7 +213,7 @@ async function openWithJobs(page: Page, url: string, jobs: readonly string[]): P
   await expect(page.getByTestId("go-annotate")).toBeVisible();
 }
 
-const SECTIONS = ["overview", "schema", "batches", "dataset"] as const;
+const SECTIONS = ["overview", "batches", "schema", "dataset"] as const;
 
 /**
  * How many visible controls are filled with the `primary` token, by computed

@@ -20,11 +20,11 @@ Navigation maps 1:1 to domain objects. This is the target structure; if implemen
                                    column beside the content at ≥lg and a tab strip below, in
                                    this order:
     overview                         Overview (dashboard, see below)
+    batches                          Batches (workflow) — omitted when the host wires no batch route
     schema                           Schema (contract)
                                        ├─ version history: subsection INSIDE Schema, not a sibling section
                                        └─ frames in the way: subsection INSIDE Schema; each row links
                                           out to /projects/:id/batches/:batchId, once per holding batch
-    batches                          Batches (workflow) — omitted when the host wires no batch route
     dataset                          Dataset — a section, not a buried route; four views as tabs
                                        (component state, Overview by default): Overview (counts,
                                        per class) · Assets (the trunk) · Pre-processing (the
@@ -42,8 +42,9 @@ Redirects kept as promises (a bookmarked URL is one):
 ```
 
 **Implemented.** The section order is work order:
-what a project *is* (Overview), what it *means* (Schema), what is *being done*
-(Batches), what came *out* (Dataset). `ProjectSection` in
+what a project *is* (Overview), what came *in* (Batches — an ingest lands in one, and
+it is where the first-run invitation sends people), what it *means* (Schema), what
+came *out* (Dataset). `ProjectSection` in
 `patterns/ProjectNav.tsx` is the union (`ProjectTab` in `screens/ProjectScreen.tsx`
 is its alias); `resolveProjectTab` is the pure function the **host** asks what a
 stale `?tab=` value became, and `projectRedirectTarget` in `routes.tsx` turns that

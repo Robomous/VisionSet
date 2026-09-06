@@ -49,11 +49,11 @@ describe("ProjectNav", () => {
 
     const nav = screen.getByTestId("project-nav");
     const items = within(nav).getAllByRole("link").filter((link) => link.dataset.testid?.startsWith("nav-"));
-    expect(items.map((item) => item.textContent)).toEqual(["Overview", "Schema", "Batches", "Dataset"]);
+    expect(items.map((item) => item.textContent)).toEqual(["Overview", "Batches", "Schema", "Dataset"]);
     expect(items.map((item) => item.getAttribute("href"))).toEqual([
       "/projects/p/overview",
-      "/projects/p/schema",
       "/projects/p/batches",
+      "/projects/p/schema",
       "/projects/p/dataset",
     ]);
     expect(within(nav).getByTestId("project-menu")).toBeTruthy();
@@ -219,8 +219,8 @@ describe("ProjectNav", () => {
     expect(screen.getByTestId("project-tabs")).toBeTruthy();
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Overview",
-      "Schema",
       "Batches",
+      "Schema",
       "Dataset",
     ]);
     expect(screen.getByTestId("nav-overview").getAttribute("aria-selected")).toBe("true");

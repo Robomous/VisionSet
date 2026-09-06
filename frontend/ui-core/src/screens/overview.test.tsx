@@ -357,17 +357,17 @@ describe("firstRunInvitation", () => {
   // the one the page depends on most: a project with both halves is a dashboard,
   // and an invitation over it would be onboarding somebody who is already here.
   it("answers exactly one invitation per state, and none once both halves exist", () => {
-    expect(firstRunInvitation({ hasSchema: false, hasAssets: false })).toBe("classes-first");
+    expect(firstRunInvitation({ hasSchema: false, hasAssets: false })).toBe("ingest-first");
     expect(firstRunInvitation({ hasSchema: true, hasAssets: false })).toBe("ingest");
     expect(firstRunInvitation({ hasSchema: false, hasAssets: true })).toBe("classes-after-ingest");
     expect(firstRunInvitation({ hasSchema: true, hasAssets: true })).toBeNull();
   });
 
   it("hands the filled button to the invitation only where the header has none to lose", () => {
-    // The `ingest` invitation is the exception: the header's Ingest is the same
+    // Both ingest invitations are the exception: the header's Ingest is the same
     // label and the same handler, so the filled one stays up there.
-    expect(invitationOwnsTheAction("classes-first")).toBe(true);
     expect(invitationOwnsTheAction("classes-after-ingest")).toBe(true);
+    expect(invitationOwnsTheAction("ingest-first")).toBe(false);
     expect(invitationOwnsTheAction("ingest")).toBe(false);
     expect(invitationOwnsTheAction(null)).toBe(false);
   });
@@ -417,36 +417,38 @@ describe("the first-run invitation", () => {
     classes: [],
   });
 
-  it("invites a schema-less, empty project to define classes, and nothing else", async () => {
+  it("invites a schema-less, empty project to ingest, and nothing else", async () => {
     readinessOf({ schema: false, stats: empty });
-    const schema = vi.fn();
-    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={schema} onIngest={vi.fn()} />));
+    const ingest = vi.fn();
+    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={ingest} />));
 
     const region = await screen.findByTestId("first-run");
-    expect(region.dataset.invitation).toBe("classes-first");
-    // One filled button on the page, and it is this one.
-    expect(filledButtons()).toEqual([screen.getByTestId("first-run-cta")]);
-    // And the ingest empty state's own button is gone: three voices became one.
-    expect(screen.queryByTestId("overview-ingest")).toBeNull();
+    expect(region.dataset.invitation).toBe("ingest-first");
+    expect(region.textContent).toContain("Ingest your first images");
+    // Zero filled buttons *here*: the page's one is the header's Ingest, which
+    // this panel does not render, and the classes CTA is gone — three voices
+    // became one.
+    expect(filledButtons()).toHaveLength(0);
+    expect(screen.queryByTestId("first-run-cta")).toBeNull();
 
-    await userEvent.click(screen.getByTestId("first-run-cta"));
-    expect(schema).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByTestId("overview-ingest"));
+    expect(ingest).toHaveBeenCalledOnce();
   });
 
   it("names the other order as prose with a link, never as a second filled button", async () => {
     // It guides, it never gates. Both orders are legitimate, so the page says so
     // — and says it without splitting its own hierarchy.
     readinessOf({ schema: false, stats: empty });
-    const ingest = vi.fn();
-    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={ingest} />));
+    const schema = vi.fn();
+    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={schema} onIngest={vi.fn()} />));
 
     const alt = await screen.findByTestId("first-run-alt");
     expect(alt.className).not.toContain("bg-primary");
     expect(screen.getByTestId("first-run").textContent).toContain("both orders work");
-    expect(filledButtons()).toHaveLength(1);
+    expect(filledButtons()).toHaveLength(0);
 
     await userEvent.click(alt);
-    expect(ingest).toHaveBeenCalledOnce();
+    expect(schema).toHaveBeenCalledOnce();
   });
 
   it("invites an ingest once classes exist and nothing is ingested", async () => {
@@ -456,6 +458,8 @@ describe("the first-run invitation", () => {
     const region = await screen.findByTestId("first-run");
     expect(region.dataset.invitation).toBe("ingest");
     expect(screen.getByTestId("overview-ingest")).not.toBeNull();
+    // Classes exist, so there is no other order left to name.
+    expect(screen.queryByTestId("first-run-alt")).toBeNull();
     // Zero filled buttons *here*, because the page's one lives in the header
     // this panel does not render. `ProjectScreen`'s own tests carry the
     // other half of that claim.

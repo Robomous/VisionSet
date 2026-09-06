@@ -2380,8 +2380,8 @@ describe("the project view's sections", () => {
     await screen.findByTestId("overview-panel");
     expect(sectionItems().map((item) => item.textContent)).toEqual([
       "Overview",
-      "Schema",
       "Batches",
+      "Schema",
       // **Dataset, where "Schema history" used to be.** The trunk is the
       // product's central object and was reachable only through an overflow
       // menu, an Overview link and the last step of a checklist; the history is
@@ -3055,8 +3055,20 @@ describe("the project's identity and its one filled control", () => {
     return [...document.querySelectorAll<HTMLElement>("button.bg-primary")];
   }
 
-  it("steps Ingest back while the Overview's invitation owns the filled button", async () => {
+  it("keeps the filled Ingest over an empty, schema-less project, with the other order as prose", async () => {
+    // The invitation and the header say the same thing with the same handler, so
+    // the loud one stays in the header; the classes order is a link beneath.
     headerFor({ schema: false, assets: 0 });
+    render(
+      mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} onTabChange={vi.fn()} />),
+    );
+
+    await screen.findByTestId("first-run-alt");
+    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+  });
+
+  it("steps Ingest back while the Overview's invitation owns the filled button", async () => {
+    headerFor({ schema: false, assets: 48 });
     render(
       mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} onTabChange={vi.fn()} />),
     );
@@ -3066,17 +3078,17 @@ describe("the project's identity and its one filled control", () => {
     expect(screen.getByTestId("go-ingest").className).not.toContain("bg-primary");
   });
 
-  it("lets the invitation act for a host with no onTabChange, by holding the section itself", async () => {
+  it("lets the other order act for a host with no onTabChange, by holding the section itself", async () => {
     // The section is held here when the host does not wire it, so the panel
-    // always has a way into Schema and the invitation always has its button. A
-    // page that rendered the invitation as prose and kept Ingest filled would be
-    // the right count reached by leaving the person nothing to press.
+    // always has a way into Schema and the invitation always has its link. A
+    // page that rendered the other order as bare prose would be the right count
+    // reached by leaving the person nothing to press.
     headerFor({ schema: false, assets: 0 });
     render(mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />));
 
-    const cta = await screen.findByTestId("first-run-cta");
-    expect(filled()).toEqual([cta]);
-    await userEvent.click(cta);
+    const alt = await screen.findByTestId("first-run-alt");
+    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+    await userEvent.click(alt);
     await screen.findByTestId("schema-editor");
   });
 

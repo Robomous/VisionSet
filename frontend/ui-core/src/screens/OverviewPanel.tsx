@@ -284,12 +284,12 @@ function Pipeline({
  * none.
  *
  * Three names for three states rather than a pair of booleans read at every
- * call site. `classes-first` and `classes-after-ingest` lead to the same place
- * and say different things, because "you have nothing yet" and "your images are
- * in, name what you will draw" are sentences for different readers — and only
- * the second one can honestly mention the batch gate.
+ * call site. `ingest-first` and `ingest` lead to the same place and say
+ * different things, because "you have nothing yet" and "your classes are in,
+ * bring the images" are sentences for different readers — and only the first
+ * can honestly offer the other order.
  */
-export type FirstRunInvitation = "classes-first" | "ingest" | "classes-after-ingest";
+export type FirstRunInvitation = "ingest-first" | "ingest" | "classes-after-ingest";
 
 /**
  * The state-driven Overview's one rule.
@@ -302,7 +302,10 @@ export type FirstRunInvitation = "classes-first" | "ingest" | "classes-after-ing
  *
  * **It guides and never gates.** Ingest and Schema stay independently reachable
  * throughout — both orders are legitimate — which is why the alternative path in
- * state 1 is one line of prose and not a second filled button.
+ * state 1 is one line of prose and not a second filled button. Ingest leads
+ * because it is the step with something to look at afterwards: images give the
+ * dashboard its counts and samples, while a schema over an empty project only
+ * changes one chip.
  *
  * A pure function on `imbalanceNote`'s precedent: the state table is the thing
  * worth pinning, and pinning it should not need a DOM.
@@ -312,20 +315,20 @@ export function firstRunInvitation({
   hasAssets,
 }: ProjectReadiness): FirstRunInvitation | null {
   if (hasSchema) return hasAssets ? null : "ingest";
-  return hasAssets ? "classes-after-ingest" : "classes-first";
+  return hasAssets ? "classes-after-ingest" : "ingest-first";
 }
 
 /**
  * Whether the invitation carries the page's one filled button.
  *
  * One spelling, read twice: here to pick the variant, and by `ProjectScreen` to
- * step the header's Ingest back to `secondary` for as long as it holds. The
- * `ingest` invitation is the deliberate exception — the header's Ingest is the
+ * step the header's Ingest back to `secondary` for as long as it holds. Both
+ * ingest invitations are the deliberate exception — the header's Ingest is the
  * same label and the same handler, so the filled one stays up there and
  * this one stays outlined. Either way the page shows exactly one filled button.
  */
 export function invitationOwnsTheAction(invitation: FirstRunInvitation | null): boolean {
-  return invitation === "classes-first" || invitation === "classes-after-ingest";
+  return invitation === "classes-after-ingest";
 }
 
 /**
@@ -350,23 +353,21 @@ function FirstRun({
   readonly onOpenSchema?: () => void;
   readonly onIngest?: () => void;
 }): JSX.Element {
-  if (invitation === "ingest") {
+  if (invitation === "classes-after-ingest") {
     return (
-      // The only voice on the page rather than one of three, so the filled Ingest
-      // above it is not competing with a checklist step pointing somewhere else.
       <div data-testid="first-run" data-invitation={invitation}>
         <EmptyState
-          icon={<Image className="size-8" />}
-          title="Nothing ingested yet"
-          description="Ingest images or a video to see counts, class distribution and samples here."
+          icon={<Tags className="size-8" />}
+          title="Define your classes"
+          // The batch gate is stated, not re-derived: approval is what pins a
+          // schema version, and `SchemaNotFound` is the refusal that already
+          // speaks for itself on the batches surface.
+          description={`${formatCount(assetCount)} ${assetCount === 1 ? "image is" : "images are"} in. Name the classes you will draw — annotation opens from the first approved batch.`}
           action={
-            onIngest === undefined ? undefined : (
-              // `secondary`: the project header's "Ingest" is on screen right
-              // above this one, same label and same handler, so a filled button
-              // here would render the identical action twice.
-              <Button variant="outline" data-testid="overview-ingest" onClick={onIngest}>
-                <Upload aria-hidden="true" />
-                Ingest
+            onOpenSchema === undefined ? undefined : (
+              <Button variant="default" data-testid="first-run-cta" onClick={onOpenSchema}>
+                <Tags aria-hidden="true" />
+                Define classes
               </Button>
             )
           }
@@ -375,33 +376,35 @@ function FirstRun({
     );
   }
 
-  const first = invitation === "classes-first";
+  const first = invitation === "ingest-first";
   return (
+    // The only voice on the page rather than one of three, so the filled Ingest
+    // above it is not competing with a checklist step pointing somewhere else.
     <div data-testid="first-run" data-invitation={invitation}>
       <EmptyState
-        icon={<Tags className="size-8" />}
-        title={first ? "Define your first classes" : "Define your classes"}
+        icon={<Image className="size-8" />}
+        title={first ? "Ingest your first images" : "Nothing ingested yet"}
         description={
           first
-            ? "A class is what you will draw — a box, a polygon, a tag. Name a few and this project is ready for images."
-            : // The batch gate is stated, not re-derived: approval is what pins a
-              // schema version, and `SchemaNotFound` is the refusal that already
-              // speaks for itself on the batches surface.
-              `${formatCount(assetCount)} ${assetCount === 1 ? "image is" : "images are"} in. Name the classes you will draw — annotation opens from the first approved batch.`
+            ? "Images or a video are what you will annotate. Bring a few in and this project is ready for classes."
+            : "Ingest images or a video to see counts, class distribution and samples here."
         }
         action={
           <div className="flex flex-col items-center gap-2">
-            {onOpenSchema !== undefined && (
-              <Button variant="default" data-testid="first-run-cta" onClick={onOpenSchema}>
-                <Tags aria-hidden="true" />
-                Define classes
+            {onIngest !== undefined && (
+              // `secondary`: the project header's "Ingest" is on screen right
+              // above this one, same label and same handler, so a filled button
+              // here would render the identical action twice.
+              <Button variant="outline" data-testid="overview-ingest" onClick={onIngest}>
+                <Upload aria-hidden="true" />
+                Ingest
               </Button>
             )}
             {/* Prose with a link in it, never a second button: both orders are
                 valid and the page must say so without splitting its own
-                hierarchy. Only offered where ingesting is the road not taken —
-                a project that already has images has taken it. */}
-            {first && onIngest !== undefined && (
+                hierarchy. Only offered where defining classes is the road not
+                taken — a project that already has a schema has taken it. */}
+            {first && onOpenSchema !== undefined && (
               <p className="text-xs text-muted-foreground">
                 Or{" "}
                 <Button
@@ -409,9 +412,9 @@ function FirstRun({
                   size="sm"
                   className={cn(inlineLink, "text-xs")}
                   data-testid="first-run-alt"
-                  onClick={onIngest}
+                  onClick={onOpenSchema}
                 >
-                  ingest images first
+                  define classes first
                 </Button>{" "}
                 — both orders work.
               </p>

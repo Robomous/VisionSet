@@ -236,9 +236,10 @@ silent default, and never one remembered from last time: a control's destination
 a function of session history.
 
 **The first run renders exactly one invitation, driven by the project's state.** No classes
-and no images invites the classes (naming the other order beneath it as prose, because both
-are legitimate); classes and no images invites the ingest; images and no classes invites
-the classes again. A project with both gets no invitation and is the dashboard. **It guides
+and no images invites the ingest (naming the other order beneath it as prose, because both
+are legitimate — ingest leads because images are what the dashboard has something to show
+for); classes and no images invites the ingest again; images and no classes invites the
+classes. A project with both gets no invitation and is the dashboard. **It guides
 and never gates** — Ingest and Schema stay independently reachable throughout, and where
 the invitation holds the page's dominant action the navigation steps its own Ingest back
 to a secondary treatment.

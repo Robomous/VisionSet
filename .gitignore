@@ -27,6 +27,10 @@ frontend/*/dist/
 # repository (~/.cache/ms-playwright), so nothing here needs an entry for them.
 test-results/
 playwright-report/
+# Visual baselines are taken in the Playwright container on the machine that compares
+# them (docs/content/architecture/frontend/visual-baselines.md); the `visual` project
+# runs only under VISIONSET_VISUAL, so nothing else ever looks for them.
+frontend/app/e2e/*-snapshots/
 blob-report/
 playwright/.cache/
 

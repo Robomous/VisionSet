@@ -54,11 +54,11 @@ import { menuSurface, Button, DropdownMenu, DropdownMenuContent, DropdownMenuIte
 
 /**
  * The four sections of a project, in the order work happens in: what a project
- * *is*, what it *means*, what is *being done*, what came *out*.
+ * *is*, what came *in* (ingest lands in a batch), what it *means*, what came *out*.
  */
 export type ProjectSection = "overview" | "schema" | "batches" | "dataset";
 
-export const PROJECT_SECTIONS: readonly ProjectSection[] = ["overview", "schema", "batches", "dataset"];
+export const PROJECT_SECTIONS: readonly ProjectSection[] = ["overview", "batches", "schema", "dataset"];
 
 export function isProjectSection(value: string | undefined): value is ProjectSection {
   return PROJECT_SECTIONS.includes(value as ProjectSection);
