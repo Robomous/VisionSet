@@ -8,6 +8,13 @@
 #   App   http://localhost:8080   nginx: /api/ → api, everything else → vite
 #   Docs  http://localhost:4321
 #
+# Those two are the only ports published on the host; api and vite are reached through
+# nginx, so the stack collides with as little else on this machine as possible. If another
+# stack already holds 8080, move the front door in docker/.env — no rebuild:
+#   printf 'VISIONSET_HTTP_PORT=8090\n' >> docker/.env
+# 4321 is fixed: astro dev resolves its routes against the port it was told to serve,
+# so a host port that differs from the container's 404s every page.
+#
 # Everything installs at build time, nothing at run time. After a dependency, manifest,
 # config or Dockerfile change: `docker compose -f docker/compose.yaml build`. Source
 # reloads live: src/visionset (uvicorn --reload), frontend/*/src (vite + tsc --watch),
@@ -49,12 +56,13 @@ services:
       VISIONSET_UI_SESSION: always
       # For gated model weights; empty means no token.
       HF_TOKEN: ${HF_TOKEN:-}
+      # Only so the boot banner names the port nginx was published on.
+      VISIONSET_HTTP_PORT: ${VISIONSET_HTTP_PORT:-8080}
     # Raw uvicorn rather than `visionset server`, which would also serve the compiled
     # bundle that vite replaces here.
     command: sh /workspace/docker/api-dev.sh
-    ports:
-      # Loopback only: nginx and docs are the doors to the network.
-      - "127.0.0.1:8000:8000"
+    # No host port: nginx reaches it over the compose network, and every published port
+    # is one another stack on this machine cannot have. `curl localhost:8080/api/health`.
 
   app:
     build:
@@ -78,13 +86,12 @@ services:
       - ../frontend/app/public:/workspace/frontend/app/public
       - ../docker:/workspace/docker:ro
     environment:
-      # Vite's own /api proxy, so http://localhost:5173 works without nginx.
+      # Vite's own /api proxy, used by nginx's upstream too.
       VISIONSET_API: http://api:8000
       # Bind mounts deliver no inotify events on macOS/Windows.
       CHOKIDAR_USEPOLLING: "true"
     command: sh /workspace/docker/app-dev.sh
-    ports:
-      - "127.0.0.1:5173:5173"
+    # No host port, for the reason the api service gives; nginx serves vite on 8080.
 
   # Beside nginx, not behind it: the docs deploy to their own host (see amplify.yml),
   # so they get their own port here too.
@@ -122,7 +129,7 @@ services:
     ports:
       # 8080 because 80 needs root. Every interface, so another device on the network
       # can open the stack — and it is signed in too; see VISIONSET_UI_SESSION.
-      - "0.0.0.0:8080:80"
+      - "0.0.0.0:${VISIONSET_HTTP_PORT:-8080}:80"
 
   # Neither is wired to anything yet; somewhere to point a future adapter.
   postgres:
@@ -133,7 +140,8 @@ services:
       POSTGRES_USER: visionset
       POSTGRES_PASSWORD: visionset
     ports:
-      - "5432:5432"
+      # Loopback: the credentials above are `visionset`/`visionset`.
+      - "127.0.0.1:5432:5432"
     volumes:
       # The whole directory: from 18 the image keeps the cluster in a version
       # subdirectory and refuses a mount on the old `data/` path.
@@ -148,8 +156,8 @@ services:
       MINIO_ROOT_USER: visionset
       MINIO_ROOT_PASSWORD: visionset
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
 

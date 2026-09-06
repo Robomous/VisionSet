@@ -15,12 +15,12 @@ root, so nothing they write into the checkout ends up owned by somebody you have
 
 | | |
 | --- | --- |
-| The app | **http://localhost:8080** — nginx, the only port you need |
+| The app | **http://localhost:8080** — nginx, the only port you need. Taken by something else? `printf 'VISIONSET_HTTP_PORT=8090\n' >> docker/.env` |
 | The docs | **http://localhost:4321** — `docs/content/` rendered; useful on its own (`up docs`) |
 | Storage | `workspace-data/` (contents git-ignored, the directory itself tracked): `visionset.db` + `blobs/`. Move it with `VISIONSET_DATA=/path` |
 | Who writes it | you — the built services run as `VISIONSET_UID`/`VISIONSET_GID`, default 1000. Another uid? `printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env`, then `--build` |
 | Token | minted on first boot, printed in the `api` logs |
-| Behind the proxy | API on :8000 and vite on :5173 are published too, for curl and for reading a vite error without nginx in the way |
+| Behind the proxy | The API and vite publish no host port — 8080 and 4321 are the only two the stack takes, so it collides with as little else on the machine as possible. `curl localhost:8080/api/health`, and `logs -f app` for a vite error |
 | Live reload | every layer, with nothing restarted: `src/visionset/` through uvicorn `--reload`, `frontend/app/src/` through vite HMR, `frontend/{ui-core,annotator}/src/` through a `tsc --watch` per package that rewrites the `dist/` vite resolves them from, and `docs/content/` through Astro |
 | After a dependency change | `build` — in either language, and nothing else. No `node_modules` is mounted from the host or from a volume, so a rebuilt image is what the containers get |
 | After changing a `package.json`, a tsconfig, `vite.config.ts` or `index.html` | `build` — these are baked into the app image, beside the install they configure |
