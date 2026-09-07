@@ -59,6 +59,12 @@ export default defineConfig({
     globals: false,
     setupFiles: ["./vitest.setup.ts"],
     maxWorkers: MAX_WORKERS,
+    // Vitest 5 clears every mock's call history before each test by default.
+    // harness.test.tsx relies on a module-scope `vi.fn()` carrying its call
+    // count from one test into the next on purpose, to prove the drained
+    // macrotask in vitest.setup.ts actually ran between them — so this suite
+    // keeps vitest 4's default instead.
+    clearMocks: false,
     /**
      * Not a loosening — the number this suite had already chosen three times.
      *
