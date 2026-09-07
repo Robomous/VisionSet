@@ -41,7 +41,7 @@ export interface StatCardProps extends Omit<HTMLAttributes<HTMLElement>, "onClic
   /**
    * Where this card goes, when it goes anywhere.
    *
-   * The `information-architecture` skill's dashboard rule: Overview never
+   * The dashboard rule in `docs/content/ui/navigation.md`: Overview never
    * duplicates a tab's full function, so every number on it is a *pointer* at
    * the section that owns it. A card with no destination is a plain statistic and
    * stays one.

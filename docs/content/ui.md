@@ -53,9 +53,8 @@ the project's default section, Overview; and `/projects/:id?tab=X` - the form th
 sections had before they were path segments - lands on `/projects/:id/X` with every other
 query parameter kept, `versions` going to Schema because the history lives inside it and
 an unknown value going to Overview, because a URL somebody bookmarked is a promise. An
-unknown *segment* is a 404: nothing ever linked to one. The
-[`information-architecture`](../../.agents/skills/frontend/information-architecture/SKILL.md)
-skill is the canonical sitemap.
+unknown *segment* is a 404: nothing ever linked to one.
+[`docs/content/ui/navigation.md`](ui/navigation.md) is the canonical sitemap.
 
 The section segment and the annotator's `?asset=` (#353) are both kept true rather than
 only read, and it is the same rule twice: each is **rewritten** as the page moves, with

@@ -83,6 +83,5 @@ appears in `sys.modules`. A static contract can be satisfied by a deferred impor
 inside a function; a fresh-process check cannot.
 
 If a change fights one of these, the change is wrong - see
-[cross-cutting.md](../cross-cutting.md) for why the boundary sits where it does,
-and the [`kernel-architecture`](../../../../.agents/skills/backend/kernel-architecture/SKILL.md)
-skill for how to add a port, an adapter or a plugin without breaking it.
+[cross-cutting.md](../cross-cutting.md) for why the boundary sits where it does, and
+[kernel.md](kernel.md) for what belongs on each side of it.

@@ -3,7 +3,7 @@
 
 Everything heavy in this package — torch, torchvision, transformers, accelerate,
 huggingface_hub — arrives through here, and it arrives **inside a function**.
-That is the exception ``python-setup`` sanctions ("to keep an optional
+That is the sanctioned exception ("to keep an optional
 dependency optional") and it is load-bearing rather than tidy: ``visionset.jobs``
 imports its handler modules at package import to populate the registry, and the
 API process imports ``visionset.jobs`` in its lifespan. A module-level ``import

@@ -4,8 +4,8 @@
 # CLAUDE.md -> AGENTS.md symlink, created only when no CLAUDE.md exists, so Claude
 # Code reads the same instructions as every other tool with nothing to keep in sync.
 #
-# The canonical, committed source is .agents/skills/{category}/{name}/ — the category
-# layer is for human organisation only; the generated symlink trees are git-ignored.
+# The canonical, committed source is .agents/skills/{name}/; the generated symlink
+# trees are git-ignored.
 #
 # Run once after cloning, and again after adding or removing a skill:
 #   bash scripts/setup_agents.sh
@@ -58,13 +58,12 @@ ensure_dir() {
 
 # Create (or replace) a single per-skill symlink.
 link_skill() {
-  local category="$1"   # a directory under .agents/skills/
-  local skill_name="$2" # e.g. python-setup
-  local dest_dir="$3"   # e.g. $REPO_ROOT/.claude/skills
+  local skill_name="$1" # e.g. ui-capabilities
+  local dest_dir="$2"   # e.g. $REPO_ROOT/.claude/skills
 
   local link_path="$dest_dir/$skill_name"
   # Relative from dest_dir/{skill_name} back to repo root, then into .agents/skills.
-  local target="../../.agents/skills/$category/$skill_name"
+  local target="../../.agents/skills/$skill_name"
 
   if [ -L "$link_path" ]; then
     rm "$link_path"
@@ -96,15 +95,13 @@ echo "Setting up agent skill symlinks..."
 ensure_dir "$REPO_ROOT/.claude/skills"
 ensure_dir "$REPO_ROOT/.cursor/skills"
 
-for category_dir in "$AGENTS_DIR"/*/; do
-  [ -d "$category_dir" ] || continue
-  category="$(basename "$category_dir")"
-  for skill_dir in "$category_dir"*/; do
-    [ -d "$skill_dir" ] || continue
-    skill_name="$(basename "$skill_dir")"
-    link_skill "$category" "$skill_name" "$REPO_ROOT/.claude/skills"
-    link_skill "$category" "$skill_name" "$REPO_ROOT/.cursor/skills"
-  done
+for skill_dir in "$AGENTS_DIR"/*/; do
+  # A directory without a SKILL.md is not a skill — linking it would publish a
+  # leftover empty directory as one.
+  [ -f "$skill_dir/SKILL.md" ] || continue
+  skill_name="$(basename "$skill_dir")"
+  link_skill "$skill_name" "$REPO_ROOT/.claude/skills"
+  link_skill "$skill_name" "$REPO_ROOT/.cursor/skills"
 done
 
 prune_dangling "$REPO_ROOT/.claude/skills"
