@@ -361,7 +361,7 @@ test("a ?tab= address keeps its other query parameters across the redirect", asy
 });
 
 test("the dataset is one press from every other section", async ({ page }) => {
-  // The `information-architecture` rule this task exists for: the trunk is the
+  // The navigation rule this task exists for: the trunk is the
   // product's central object and must be reachable in one click from any project
   // section. It used to take an overflow menu.
   await openCold(page, `/projects/${PROJECT}`);

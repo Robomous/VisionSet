@@ -46,7 +46,7 @@
  *
  * ## The action is a callback, and its absence renders nothing
  *
- * `ui-core` imports no router — `information-architecture` states it — so where
+ * `ui-core` imports no router — `docs/content/ui/navigation.md` states it — so where
  * "set one up" goes is the host's. A host that has nowhere to send somebody
  * passes no callback and gets the explanation with **no control at all**, which
  * is `onOpenGallery`'s established rule: a host that cannot honour a control

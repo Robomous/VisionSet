@@ -87,7 +87,7 @@ export interface GalleryScreenProps {
   /**
    * The dataset — where a promotion from this screen lands (audit F18).
    *
-   * The `information-architecture` skill's rule that the dataset is reachable in
+   * The navigation rule that the dataset is reachable in
    * one click from anywhere it is relevant, applied to the one screen that can
    * put something into it.
    */

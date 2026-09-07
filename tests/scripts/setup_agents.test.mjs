@@ -45,9 +45,9 @@ function makeRepo() {
   const root = mkdtempSync(path.join(os.tmpdir(), "visionset-setup-agents-"));
   mkdirSync(path.join(root, "scripts"));
   copyFileSync(SCRIPT, path.join(root, "scripts", "setup_agents.sh"));
-  mkdirSync(path.join(root, ".agents", "skills", "backend", "python-setup"), { recursive: true });
+  mkdirSync(path.join(root, ".agents", "skills", "ui-capabilities"), { recursive: true });
   writeFileSync(
-    path.join(root, ".agents", "skills", "backend", "python-setup", "SKILL.md"),
+    path.join(root, ".agents", "skills", "ui-capabilities", "SKILL.md"),
     "# a skill\n",
   );
   writeFileSync(path.join(root, "AGENTS.md"), "# canonical instructions\n");
@@ -70,8 +70,8 @@ test("a missing CLAUDE.md becomes the AGENTS.md symlink, beside the skill links"
     assert.ok(lstatSync(claude).isSymbolicLink(), "CLAUDE.md is a symlink");
     assert.equal(readlinkSync(claude), "AGENTS.md");
     for (const tool of [".claude", ".cursor"]) {
-      const link = path.join(root, tool, "skills", "python-setup");
-      assert.ok(lstatSync(link).isSymbolicLink(), `${tool}/skills/python-setup is a symlink`);
+      const link = path.join(root, tool, "skills", "ui-capabilities");
+      assert.ok(lstatSync(link).isSymbolicLink(), `${tool}/skills/ui-capabilities is a symlink`);
     }
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -147,17 +147,33 @@ test("a symlink to some other target is preserved, and the error names both targ
   }
 });
 
+test("a directory holding no SKILL.md is not published as a skill", () => {
+  const root = makeRepo();
+  try {
+    // What a `git rm` of the last skill in a directory leaves behind: the
+    // directory survives in the working tree with nothing in it.
+    mkdirSync(path.join(root, ".agents", "skills", "leftover"));
+    const result = run(root);
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(
+      !existsSync(path.join(root, ".claude", "skills", "leftover")),
+      "an empty directory is not a skill",
+    );
+    assert.ok(existsSync(path.join(root, ".claude", "skills", "ui-capabilities")));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("a symlink whose skill was deleted is pruned on the next run", () => {
   const root = makeRepo();
   try {
     run(root);
-    rmSync(path.join(root, ".agents", "skills", "backend", "python-setup"), {
-      recursive: true,
-    });
+    rmSync(path.join(root, ".agents", "skills", "ui-capabilities"), { recursive: true });
     const again = run(root);
     assert.equal(again.status, 0, again.stderr);
     assert.throws(
-      () => lstatSync(path.join(root, ".claude", "skills", "python-setup")),
+      () => lstatSync(path.join(root, ".claude", "skills", "ui-capabilities")),
       /ENOENT/,
       "the dangling link is gone",
     );

@@ -25,7 +25,7 @@ import {
   slotFor,
 } from "../../frontend/app/e2e-ports.ts";
 
-/** Paths shaped like the ones `refactor-protocol` actually creates. */
+/** Paths shaped like the worktrees a task actually creates. */
 const WORKTREES = [
   "/Users/dev/Develop/Robomous/VisionSet",
   "/Users/dev/Develop/Robomous/visionset-346-e2e-ports",
