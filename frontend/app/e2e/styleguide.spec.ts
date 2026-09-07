@@ -103,14 +103,22 @@ async function ringColourOf(page: Page, locator: Locator): Promise<readonly numb
   return channelsOf(page, ring.slice(0, ring.length - RING_GEOMETRY.length).trim());
 }
 
-/** `--color-primary` — the preset's own near-black neutral, `oklch(0.205 0 0)`. */
-const PRIMARY = [23, 23, 23];
-/** `--color-brand` — the coral, `oklch(0.653 0.178 32.3)`. Identity only; it
- * belongs to exactly two elements (the wordmark, its styleguide swatch) and
- * must never be what a functional control is wearing. */
-const BRAND = [232, 93, 68];
-/** `--color-foreground`, `oklch(0.145 0 0)`. */
-const INK = [10, 10, 10];
+/** `--color-primary` — the near-black neutral, `oklch(0.2 0 0)`. */
+const PRIMARY = [22, 22, 22];
+/** `--color-brand` — Robomous orange, `oklch(0.663 0.205 39.9)`, `#F5580B`.
+ * Identity only; it belongs to exactly two elements (the wordmark, its
+ * styleguide swatch) and must never be what a functional control is wearing. */
+const BRAND = [245, 88, 11];
+/**
+ * `--color-foreground`, `oklch(0.2 0 0)`.
+ *
+ * The same value as `PRIMARY` now: the foundation's palette puts body ink and
+ * the primary fill on one step, where they used to sit two apart. So the
+ * assertions below no longer tell those two roles apart by colour, and a
+ * regression that swapped one for the other would pass. They are kept separate
+ * anyway, because the roles are separate and the values may part again.
+ */
+const INK = [22, 22, 22];
 /** `--color-muted`, `oklch(0.97 0 0)` — the hover/focus fill and the progress track. */
 const MUTED = [245, 245, 245];
 /** `--color-background`, `oklch(1 0 0)` — pure white in this preset (unlike the

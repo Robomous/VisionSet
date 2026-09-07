@@ -12,8 +12,8 @@ importers:
   .:
     devDependencies:
       '@robomous/ui-core':
-        specifier: ^0.2.0
-        version: 0.2.0(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)
+        specifier: ^0.2.1
+        version: 0.2.1(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)
       openapi-typescript:
         specifier: 7.13.0
         version: 7.13.0(typescript@6.0.3)
@@ -127,8 +127,8 @@ importers:
   frontend/ui-core:
     dependencies:
       '@robomous/ui-core':
-        specifier: ^0.2.0
-        version: 0.2.0(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)
+        specifier: ^0.2.1
+        version: 0.2.1(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)
       '@tanstack/react-query':
         specifier: ^5.102.8
         version: 5.102.8(react@19.2.8)
@@ -1326,8 +1326,8 @@ packages:
     resolution: {integrity: sha512-UyKIm0wTPw5BcY7Z2PkbK1Ma260um96LSBWXHrdSMe+ZV0EPMyDfAcUcjjm3qEiGST9OK/1TriekdPCZkn4Q3A==}
     engines: {node: '>=18.17.0', npm: '>=9.5.0'}
 
-  '@robomous/ui-core@0.2.0':
-    resolution: {integrity: sha512-xVcJdWDLBpqymQlAL6ir9xMhNZ2Sj4wvpWT014S9S12qxSf0X6Qc7PN3NdW9xUNNmvlZvcX3PYaetuPKxSMdCA==}
+  '@robomous/ui-core@0.2.1':
+    resolution: {integrity: sha512-/HKlICVpIk4LQdHhWyJOtrqN7d64qWGzyF4sIzJmokxTl6wM84BKBIYTStG8OsjlnxhJhuHgNfKQNJl2QNQDTQ==}
     peerDependencies:
       react: '>=19'
       react-dom: '>=19'
@@ -3881,7 +3881,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@robomous/ui-core@0.2.0(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)':
+  '@robomous/ui-core@0.2.1(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)':
     dependencies:
       '@base-ui/react': 1.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@fontsource-variable/geist': 5.3.0
