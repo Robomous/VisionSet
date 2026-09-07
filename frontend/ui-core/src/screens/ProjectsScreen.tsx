@@ -29,7 +29,7 @@ import { useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { refusalProse } from "../data/refusals";
-import { inlineLink, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Textarea, Label, FieldDescription, FieldError, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Textarea, Label, FieldDescription, FieldError, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
 import { formatWhen } from "../lib/format";
 import { AssetThumbnail, ThumbnailPlaceholder } from "./AssetThumbnail";
 import { useCreateProject, useDeleteProject, useProjects, type Project } from "./queries";
@@ -155,7 +155,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
                   <TableCell>
                     <Button
                       variant="link"
-                      className={inlineLink}
+                      size="inline"
                       data-testid={`open-${project.name}`}
                       onClick={() => onOpenProject(project.id)}
                     >

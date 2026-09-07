@@ -27,7 +27,7 @@ import { SquareCheck } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { inlineLink, progressAria, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Progress, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Progress, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import { annotatedShare, outstandingWork } from "./batchState";
 import {
   useApproveBatch,
@@ -66,7 +66,6 @@ export function BatchProgressBar({
       <Progress
         aria-label="Annotation progress"
         value={share.percent}
-        {...progressAria(share.percent)}
         className="h-2 border border-border"
       />
       {draft ? (
@@ -281,7 +280,7 @@ export function ApproveDialog({
                 {onOpenSchema !== undefined && (
                   <Button
                     variant="link"
-                    className={inlineLink}
+                    size="inline"
                     data-testid="approve-go-schema"
                     onClick={() => {
                       onClose();

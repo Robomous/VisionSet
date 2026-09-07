@@ -36,8 +36,8 @@ and this section move together or not at all.
 | Gate | Holds |
 | --- | --- |
 | `frontend/ui-core/src/tokens.test.ts` | The extension stylesheet and token module agree declaration for declaration; no extension shadows a foundation name; the merged `LIGHT_THEME`/`DARK_THEME` view lost nothing |
-| `tests/scripts/design_system.test.mjs` | Vocabulary discipline over VisionSet's own sources: no retired shapes, no status colour outside the packaged Badge/statusTone, no rival palette, no retired token utilities, `menuSurface` on every menu |
-| `tests/scripts/design_tokens.test.mjs` | No colour in a class string; `brand` confined to its two identity sites; no retired declaration in the extension stylesheet; one icon library; no `tailwind.config.js` |
+| `tests/scripts/design_system.test.mjs` | Vocabulary discipline over VisionSet's own sources: no status colour outside the packaged Badge/statusTone, and no rival palette |
+| `tests/scripts/design_tokens.test.mjs` | No colour in a class string; `brand` confined to its two identity sites; one icon library; no `tailwind.config.js` |
 
 The scan helpers those gates run come from `@robomous/ui-core/gates`, versioned with the
 primitives they describe. A rule no gate holds is a rule under review, not an exemption.
