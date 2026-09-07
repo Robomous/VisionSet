@@ -155,7 +155,7 @@ import {
 import type { OpenMember } from "../generated/api.js";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { inlineLink, cn, menuSurface, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
+import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { CanvasReassign } from "./CanvasReassign";
@@ -2393,7 +2393,7 @@ function Workspace({
                 <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className={menuSurface}>
+            <DropdownMenuContent align="end">
               {/* `Save and stay`, reabsorbed — `xl:hidden` is the exact inverse of
                   the button's `hidden xl:inline-flex`, so the control exists once
                   at every width. Gated on `frameVerbs` for the same reason the
@@ -2498,7 +2498,8 @@ function Workspace({
             declares({ allowed_actions: batchActions }, BATCH_ACTION.createCorrection) && (
               <Button
                 variant="link"
-                className={cn(inlineLink, "text-xs")}
+                size="inline"
+                className="text-xs"
                 data-testid="banner-create-correction"
                 onClick={onOpenGallery}
               >

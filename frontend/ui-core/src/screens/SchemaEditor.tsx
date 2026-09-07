@@ -102,7 +102,7 @@ import { useId, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "
 import { formatGeometries } from "../data/geometryCategory";
 import { asApiError } from "../data/errors";
 import { classBlockers, describeClassCount, refusalProse } from "../data/refusals";
-import { inlineLink, cn, Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardAction, CardContent, CardHeader, CardTitle, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardAction, CardContent, CardHeader, CardTitle, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import { ClassFields, swatchOf } from "../patterns/ClassFields";
 import { ClassListRow } from "../patterns/DataDisplay";
 import { formatCount, formatWhen } from "../lib/format";
@@ -804,8 +804,8 @@ export function SchemaEditor({
           )}
           <Button
             variant="link"
-            size="sm"
-            className={cn(inlineLink, "align-baseline text-xs")}
+            size="inline"
+            className="align-baseline text-xs"
             data-testid="schema-reload"
             disabled={draftLocked}
             onClick={() => {
@@ -837,8 +837,8 @@ export function SchemaEditor({
           {refusalProse(staleDraftError)}{" "}
           <Button
             variant="link"
-            size="sm"
-            className={cn(inlineLink, "align-baseline text-xs")}
+            size="inline"
+            className="align-baseline text-xs"
             data-testid="schema-reload-draft"
             disabled={draftLocked}
             onClick={() => {

@@ -10,14 +10,15 @@
  *
  * Each option's second line is what the target takes: the tasks it accepts for a
  * model, and, for a self-named format with no task vocabulary, the geometries it
- * carries. Composed straight into `SelectItem`'s children — `twoLineTrigger`
- * is what keeps the same two lines readable on the closed control.
+ * carries. Composed straight into `SelectItem`'s children — the trigger's
+ * `multiline` prop is what keeps the same two lines readable once the control
+ * is closed.
  */
 
 import type { JSX } from "react";
 
 import { GEOMETRY_LABELS } from "../data/geometryCategory";
-import { twoLineTrigger, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import type { ExportTarget } from "../screens/queries";
 
 export interface ExportTargetFamily {
@@ -89,7 +90,7 @@ export function ExportTargetSelect({
 }: ExportTargetSelectProps): JSX.Element {
   return (
     <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger id={id} data-testid={testId} className={twoLineTrigger}>
+      <SelectTrigger id={id} data-testid={testId} multiline>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>

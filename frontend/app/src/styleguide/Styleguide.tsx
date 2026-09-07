@@ -66,7 +66,6 @@ import {
   LIGHT_THEME,
   LoadingState,
   Progress,
-  progressAria,
   PROJECT_SECTIONS,
   ProjectEyebrow,
   ProjectNav,
@@ -101,10 +100,7 @@ import {
   TooltipTrigger,
   classColor,
   formatGeometries,
-  inlineLink,
-  menuSurface,
   toast,
-  twoLineTrigger,
 } from "@visionset/ui-core";
 import { Info, MousePointer2, Plus, Square, Trash2 } from "lucide-react";
 import type { JSX, ReactNode } from "react";
@@ -245,7 +241,7 @@ export function Styleguide(): JSX.Element {
               <Trash2 className="size-4" aria-hidden="true" />
               Delete
             </Button>
-            <Button variant="link" className={inlineLink}>
+            <Button variant="link" size="inline">
               Learn more
             </Button>
             <Button disabled>Disabled</Button>
@@ -354,7 +350,7 @@ export function Styleguide(): JSX.Element {
               <Field className="md:col-span-2">
                 <FieldLabel htmlFor="sg-model">Model</FieldLabel>
                 <Select defaultValue="facebook/sam2.1-hiera-base-plus">
-                  <SelectTrigger id="sg-model" className={twoLineTrigger}>
+                  <SelectTrigger id="sg-model" multiline>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -408,7 +404,7 @@ export function Styleguide(): JSX.Element {
             <p className="mb-1 text-xs text-muted-foreground">
               Ingest — 240 of 412. An amount completed, never a polarity.
             </p>
-            <Progress value={58} {...progressAria(58)} aria-label="Ingest progress" />
+            <Progress value={58} aria-label="Ingest progress" />
           </div>
           <div className="max-w-md">
             <p className="mb-1 text-xs text-muted-foreground">
@@ -417,7 +413,6 @@ export function Styleguide(): JSX.Element {
             <Progress
               value={64}
               aria-label="Annotation progress"
-              {...progressAria(64)}
               className="h-2 border border-border"
             />
           </div>
@@ -586,7 +581,7 @@ export function Styleguide(): JSX.Element {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">Actions</Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className={menuSurface}>
+              <DropdownMenuContent align="start">
                 <DropdownMenuItem>Rename</DropdownMenuItem>
                 <DropdownMenuItem>Duplicate schema</DropdownMenuItem>
                 <DropdownMenuSeparator />

@@ -50,7 +50,7 @@ import { useEffect, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
-import { twoLineTrigger, Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardAction, CardContent, CardHeader, CardTitle, Tabs, TabsContent, TabsList, TabsTrigger, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardAction, CardContent, CardHeader, CardTitle, Tabs, TabsContent, TabsList, TabsTrigger, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
 import type { BadgeTone } from "./batchState";
 import { SectionHeader } from "../patterns/SectionHeader";
 import {
@@ -1120,7 +1120,7 @@ function ExportDialog({
               </FieldDescription>
             ) : (
               <Select value={recipe} onValueChange={setRecipe}>
-                <SelectTrigger id="export-recipe" data-testid="export-recipe" className={twoLineTrigger}>
+                <SelectTrigger id="export-recipe" data-testid="export-recipe" multiline>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
