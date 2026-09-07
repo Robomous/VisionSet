@@ -9,7 +9,9 @@ and what must not be broken. How to do ordinary engineering work is your judgmen
 An open-source, **local-first, SDK-first** tool for creating, curating and versioning
 computer-vision training datasets. One Python distribution defines what a dataset *is*; every
 surface — REST, CLI, MCP, browser — is a thin client of that same SDK, and the release artifact
-is a plain `pip` package. A behavior that exists in only one surface is in the wrong place.
+is a plain `pip` package. A domain rule or use-case behavior that exists in only one surface is
+probably in the wrong place; delivery-specific behavior — transport, presentation, navigation,
+CLI formatting, HTTP status mapping — legitimately stays in its own layer.
 
 | Component | Location | Stack |
 | --- | --- | --- |

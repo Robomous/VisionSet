@@ -26,9 +26,10 @@ than loudly.
   beside it. No layer re-derives legality from resource fields — not a service, not a
   route, not a client.
 
-- **Completed work is forward-only.** A `completed` batch or job is a workflow record with
-  no exit, cannot be deleted, and is never reopened. Correction is a new correction batch
-  carrying lineage to its parent — never a move backwards.
+- **Completed work is forward-only.** A `completed` batch cannot be deleted — `BatchImmutable`,
+  and no `confirm` flag lifts it — and is never reopened. A `completed` job has no transition out
+  of `JOB_TRANSITIONS` and is never reopened. Correction is a new correction batch carrying
+  lineage to its parent, never a move backwards.
 
 - **Annotation writability is three-dimensional.** Batch state, job state *and* asset
   progress each gate a write, and none of them implies another. A finished job inside a
