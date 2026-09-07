@@ -36,7 +36,7 @@ import { useState, type JSX } from "react";
 import { Async } from "../data/Async";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { inlineLink, Badge, Button, FieldError, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
+import { Badge, Button, FieldError, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
 import { SectionHeader } from "../patterns/SectionHeader";
 import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
 import { ApproveAndStartButton } from "./ComposedTransitions";
@@ -136,7 +136,7 @@ export function BatchesScreen({
                     <div className="flex flex-col items-start">
                       <Button
                         variant="link"
-                        className={inlineLink}
+                        size="inline"
                         data-testid={`open-batch-${batch.name}`}
                         onClick={() => onOpenBatch(batch.id)}
                       >

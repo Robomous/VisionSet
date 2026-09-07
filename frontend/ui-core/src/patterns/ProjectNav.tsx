@@ -50,7 +50,7 @@ import { ChevronDown, Database, Grid3x3, Layers, MoreHorizontal, Network, Pencil
 import { cva } from "class-variance-authority";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
-import { menuSurface, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Tabs, TabsContent, TabsList, TabsTrigger } from "@robomous/ui-core";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Tabs, TabsContent, TabsList, TabsTrigger } from "@robomous/ui-core";
 
 /**
  * The four sections of a project, in the order work happens in: what a project
@@ -303,7 +303,7 @@ function AnnotateAction({
           <ChevronDown className="size-4" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className={menuSurface}>
+      <DropdownMenuContent align="start">
         {targets.map((batch) => (
           <DropdownMenuItem
             key={batch.id}
@@ -332,7 +332,7 @@ function Overflow({ onRename, onDelete }: ProjectNavProps): JSX.Element | null {
           <MoreHorizontal className="size-4" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className={menuSurface}>
+      <DropdownMenuContent align="start">
         {onRename !== undefined && (
           <DropdownMenuItem data-testid="rename-project" onSelect={onRename}>
             <Pencil className="size-4" aria-hidden="true" />

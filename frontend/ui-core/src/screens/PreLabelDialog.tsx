@@ -93,7 +93,7 @@ import { JOB_ACTION, declares } from "../data/capabilities";
 import { producesProse } from "../data/geometryCategory";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
-import { Alert, AlertDescription, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, twoLineTrigger, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { Alert, AlertDescription, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import type { BadgeTone, Segment } from "./batchState";
 import type { KnownMembers } from "../generated/api";
 import { jobKeys, useJobProgress } from "../annotator/jobQueries";
@@ -456,7 +456,7 @@ export function PreLabelSettings({
             <SelectTrigger
               id="prelabel-model"
               data-testid="prelabel-model"
-              className={twoLineTrigger}
+              multiline
             >
               <SelectValue />
             </SelectTrigger>

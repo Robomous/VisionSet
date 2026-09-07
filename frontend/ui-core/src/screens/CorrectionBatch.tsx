@@ -36,7 +36,7 @@ import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { inlineLink, cn, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError } from "@robomous/ui-core";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError } from "@robomous/ui-core";
 import { useCreateCorrection, type Batch } from "./queries";
 
 /** What a correction covers. `all` sends nothing and lets the server default. */
@@ -285,7 +285,8 @@ export function CorrectionOf({
       ) : (
         <Button
           variant="link"
-          className={cn(inlineLink, "text-xs")}
+          size="inline"
+          className="text-xs"
           data-testid="open-parent-batch"
           onClick={onOpenParent}
         >

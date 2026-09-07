@@ -48,7 +48,7 @@ import type { JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { inlineLink, Button, FieldError } from "@robomous/ui-core";
+import { Button, FieldError } from "@robomous/ui-core";
 import { usePromoteBatch, type Batch } from "./queries";
 
 export interface PromoteButtonProps {
@@ -153,7 +153,7 @@ export function PromoteButton({
       {promote.isSuccess && onOpenDataset !== undefined && (
         <Button
           variant="link"
-          className={inlineLink}
+          size="inline"
           data-testid={`promoted-open-dataset-${batch.name}`}
           onClick={onOpenDataset}
         >

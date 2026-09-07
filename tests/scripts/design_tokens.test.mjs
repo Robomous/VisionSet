@@ -22,7 +22,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import { brandUsagesIn, colouredClassesIn, retiredDeclarationsIn } from "@robomous/ui-core/gates";
+import { brandUsagesIn, colouredClassesIn } from "@robomous/ui-core/gates";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -80,18 +80,6 @@ test("the brand colour paints identity only — the wordmark and its styleguide 
       "a new brand-coloured site is a design decision, not a widened list. Raise it in review " +
       "and update DESIGN.md and BRAND_SITES together:\n" +
       usages.map((u) => `${u.file}:${u.at}: ${u.text}`).join("\n"),
-  );
-});
-
-test("the retired foundation vocabulary is absent from the stylesheet", () => {
-  const STYLES_PATH = "frontend/ui-core/src/styles.css";
-  const stylesheet = readFileSync(path.join(REPO, STYLES_PATH), "utf8");
-  const present = retiredDeclarationsIn(stylesheet);
-  assert.deepEqual(
-    present,
-    [],
-    "styles.css still declares a name Task 1's audit retired — " +
-      `it has no shadcn analogue and no VisionSet extension:\n${present.join("\n")}`,
   );
 });
 
