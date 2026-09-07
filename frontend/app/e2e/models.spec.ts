@@ -213,7 +213,7 @@ function connection(
  * A workspace whose one connection is whatever `next` last returned.
  *
  * Mutable rather than frozen, and derived rather than replayed, for the reason
- * `refactor-protocol` states about doubles: a stub that answers from a script
+ * the rule about doubles: a stub that answers from a script
  * makes a test assert against its own fixture, and a stub whose answer depends on
  * registration order makes it assert against the order too. `next` is asked on
  * every request, so what a test changes is the *workspace*, and the screen reads

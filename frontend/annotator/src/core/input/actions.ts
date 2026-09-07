@@ -143,7 +143,7 @@ export const TOGGLE_HELP = "toggle-help";
  *
  * The third name core writes and the third it cannot execute — there is no field
  * in this package, and there must not be: a chrome-free engine is the whole of
- * `annotator-core`. It is here for the reason the other two are, which is that
+ * this package's claim. It is here for the reason the other two are, which is that
  * **the registry is also the list of keystrokes the annotator takes away from
  * the browser**. An unclaimed `c` would reach whatever the page around the canvas
  * does with a bare letter.

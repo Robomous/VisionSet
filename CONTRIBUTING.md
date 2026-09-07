@@ -475,8 +475,7 @@ it becomes a review artefact:
   shapes or `allowed_actions` or any server behaviour that alters what the UI renders, or changes
   user-visible behaviour at all. When in doubt, it is UI-affecting.
 
-Either way the agent does not merge. The full statement lives in
-`.agents/skills/process/refactor-protocol/SKILL.md`.
+Either way the agent does not merge.
 
 Whether this applies is a property of the working remote, not of anybody's identity: it binds work
 pushed to the canonical repository by an account that holds push permission on it, which is what

@@ -101,7 +101,7 @@ const CONTENT_VIOLATES_SCHEMA = "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA";
  * above it belong to the project page this renders inside — a second answer to
  * "where am I", one panel further in, would contradict the first. The prop
  * survived the move to a tab with no caller passing it, which is the dead
- * flexibility the `information-architecture` rule exists to prevent. Its old
+ * flexibility the navigation rules exist to prevent. Its old
  * route is a redirect, so nothing can reach this screen standalone.
  */
 /**

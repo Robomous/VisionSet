@@ -156,7 +156,7 @@ export function OverviewPanel({
 
       {/*
         The dashboard row: where the project is, as four pointers at the four
-        sections that own it. The `information-architecture` skill's rule is that
+        sections that own it. The rule in `docs/content/ui/navigation.md` is that
         **Overview never duplicates a tab's full function** — so none of these is
         a batch table or a release list, each is the one number that says whether
         the section needs attention, and pressing it goes there.

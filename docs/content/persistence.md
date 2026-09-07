@@ -80,6 +80,19 @@ Clean exit commits; any exception rolls the whole block back. A batch approval t
 partitions into jobs must never leave half its jobs behind, which is why the scope is
 the operation and not the individual write.
 
+### A check never rides in a transaction of its own
+
+A legality check that reads first and writes second leaves the window between them open, and
+SQLite's autocommit is what puts the read outside the write's transaction. Every service write
+path takes one of two shapes, and a new one is held to the same standard rather than inventing
+a third:
+
+- **Push the check into the write method itself** — the `add_schema_version_unless_annotated`
+  shape. The insert is the first write and therefore the statement that opens the transaction,
+  so a prior read would sit in autocommit and reopen the race.
+- **Guard optimistically on the contended datum** — the `set_asset_progress` shape. Pass
+  `expected=` and raise `StaleWrite` when somebody moved it first.
+
 ## What is a column, what is a table, what is JSON
 
 | Kind | Storage | Why |
