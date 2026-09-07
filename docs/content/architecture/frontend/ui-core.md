@@ -120,7 +120,5 @@ Do not add a library for a covered concern without a documented reason.
 
 [`DESIGN.md`](../../../../DESIGN.md) is the contract this package implements.
 [`docs/content/ui.md`](../../ui.md) covers the data shell. The
-[`ui-capabilities`](../../../../.agents/skills/frontend/ui-capabilities/SKILL.md)
-skill governs any state-gated control, and
-[`information-architecture`](../../../../.agents/skills/frontend/information-architecture/SKILL.md)
-is the sitemap.
+`ui-capabilities` skill governs any state-gated control, and
+[`docs/content/ui/navigation.md`](../../ui/navigation.md) is the canonical sitemap.

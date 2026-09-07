@@ -84,5 +84,7 @@ This page is about arrangement. What the services actually do has its own pages:
 [events](../../events.md),
 [persistence](../../persistence.md) and [media](../../media.md).
 
-The [`kernel-architecture`](../../../../.agents/skills/backend/kernel-architecture/SKILL.md)
-skill is the one to read before adding a module here.
+Delivery-layer discipline follows from the same shape: a route, command or tool body
+validates its input, calls one service, and shapes the output. Business logic in one is a
+bug, and the kernel raises domain errors that the boundary translates into HTTP statuses or
+exit codes - it never raises `HTTPException` itself.

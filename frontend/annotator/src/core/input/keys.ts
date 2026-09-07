@@ -12,7 +12,7 @@
  * in an adapter that names a DOM type could be tested at all.
  *
  * So the *shape* is declared here, which is exactly the remedy the
- * `annotator-core` skill names: **"the signature wanted a DOM type for its shape
+ * boundary answers: **"the signature wanted a DOM type for its shape
  * → define the shape in `core/` as a plain interface. That is what the input
  * layer's normalized events are for."** The DOM's `KeyboardEvent` and React's
  * synthetic one both satisfy `KeyPress` structurally, with zero imports on

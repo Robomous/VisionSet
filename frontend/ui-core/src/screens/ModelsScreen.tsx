@@ -4,7 +4,7 @@
  * A top-level destination rather than a project tab: a connection carries no
  * project id, every project uses the same ones, and navigation maps 1:1 to domain
  * objects — so a project tab would state a scope the object does not have.
- * The `information-architecture` skill carries the rail's membership. Named for
+ * `docs/content/ui/navigation.md` carries the rail's membership. Named for
  * the noun it catalogues —
  * the models a workspace can run — rather than for one use of them, because the
  * same list serves the suggest tool, pre-labeling and whatever asks next.
