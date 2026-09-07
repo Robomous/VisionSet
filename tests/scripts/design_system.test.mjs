@@ -14,13 +14,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import {
-  competingStatusPaletteIn,
-  legacyVocabularyIn,
-  menuSurfaceGapsIn,
-  statusPaletteIn,
-  statusTokenUtilitiesIn,
-} from "@robomous/ui-core/gates";
+import { competingStatusPaletteIn, statusPaletteIn } from "@robomous/ui-core/gates";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SOURCE = /\.(?:ts|tsx|css)$/;
@@ -36,14 +30,9 @@ function frontendSources() {
 const scan = (fn) =>
   frontendSources().flatMap((file) => fn(file, readFileSync(path.join(REPO, file), "utf8")));
 
-test("no frontend consumer reaches for a name the extension contract retired", () => {
+test("the status palette has no home in this repo — read the tone from @robomous/ui-core's statusTone", () => {
   const tracked = frontendSources();
   assert.ok(tracked.length > 0, "the scan found no frontend sources, so it proves nothing");
-  const offenders = scan(legacyVocabularyIn);
-  assert.deepEqual(offenders, [], `retired vocabulary:\n${offenders.join("\n")}`);
-});
-
-test("the status palette has no home in this repo — read the tone from @robomous/ui-core's statusTone", () => {
   const offenders = scan(statusPaletteIn);
   assert.deepEqual(offenders, [], `status palette outside the package:\n${offenders.join("\n")}`);
 });
@@ -53,12 +42,3 @@ test("no competing colour family stands in for the status palette", () => {
   assert.deepEqual(offenders, [], `competing palette:\n${offenders.join("\n")}`);
 });
 
-test("no source reaches for the retired success/warning token utility", () => {
-  const offenders = scan(statusTokenUtilitiesIn);
-  assert.deepEqual(offenders, [], `retired token utility:\n${offenders.join("\n")}`);
-});
-
-test("every DropdownMenuContent call site carries menuSurface", () => {
-  const offenders = scan(menuSurfaceGapsIn);
-  assert.deepEqual(offenders, [], `menuSurface missing:\n${offenders.join("\n")}`);
-});

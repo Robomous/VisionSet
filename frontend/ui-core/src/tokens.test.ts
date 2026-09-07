@@ -54,8 +54,13 @@ describe("foundation boundary", () => {
     expect(Object.keys(DARK_THEME).sort()).toEqual(merged);
   });
 
+  // The literal is the point: `foundationTokenNames()` publishes the names and
+  // not the values, so pinning it here is the only way to state that `brand`
+  // arrives from the foundation and is never redeclared in this repository. It
+  // also means a foundation brand change lands as a failing test rather than as
+  // a silent repaint, which is why it is updated in the commit that adopts one.
   it("brand stayed in the foundation", () => {
-    expect(LIGHT_THEME.brand).toBe("oklch(0.653 0.178 32.3)");
+    expect(LIGHT_THEME.brand).toBe("oklch(0.663 0.205 39.9)");
   });
 });
 

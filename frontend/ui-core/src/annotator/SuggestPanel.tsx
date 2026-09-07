@@ -46,7 +46,7 @@
  *
  * ## The action is a callback, and its absence renders nothing
  *
- * `ui-core` imports no router — `information-architecture` states it — so where
+ * `ui-core` imports no router — `docs/content/ui/navigation.md` states it — so where
  * "set one up" goes is the host's. A host that has nowhere to send somebody
  * passes no callback and gets the explanation with **no control at all**, which
  * is `onOpenGallery`'s established rule: a host that cannot honour a control
@@ -67,7 +67,7 @@ import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 import { EditorNotice } from "./EditorNotice";
-import { cn, twoLineTrigger, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import type { Connection, SuggestBlocker } from "../data/inferenceQueries";
 
 export interface SuggestPanelProps {
@@ -456,7 +456,8 @@ function Through({
   return (
     <Select value={active.id} onValueChange={onChoose}>
       <SelectTrigger
-        className={cn(twoLineTrigger, "mt-1")}
+        multiline
+        className="mt-1"
         data-testid="suggest-connection-select"
         aria-label="Model"
       >

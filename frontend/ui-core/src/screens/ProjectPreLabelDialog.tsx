@@ -20,7 +20,7 @@ import { useMemo, useState, type JSX } from "react";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
-import { inlineLink, Alert, AlertDescription, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Label, FieldError } from "@robomous/ui-core";
+import { Alert, AlertDescription, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Label, FieldError } from "@robomous/ui-core";
 import {
   DEFAULT_CONFIDENCE,
   NO_SHAPES,
@@ -266,7 +266,7 @@ function ProjectPreLabelDialog({
               <li key={item.annotation_job_id} className="flex items-center justify-between gap-2">
                 <Button
                   variant="link"
-                  className={inlineLink}
+                  size="inline"
                   onClick={() => onOpenBatch(item.batch_id)}
                 >
                   {label}

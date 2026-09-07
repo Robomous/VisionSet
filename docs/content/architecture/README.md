@@ -7,8 +7,7 @@ follows the same order: start here, then continue into the area you plan to chan
 
 These pages describe the system's *shape*: what each layer is, what it may depend
 on, and where those rules are enforced. They do not restate behavior. Where a topic has an
-authoritative page under [`docs/content/`](../README.md) or a skill under
-`.agents/skills/`, this tree links to the authoritative source instead of
+authoritative page under [`docs/content/`](../README.md), this tree links to it instead of
 duplicating it and risking drift.
 
 ## The system

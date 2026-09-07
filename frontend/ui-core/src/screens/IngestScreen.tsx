@@ -134,7 +134,7 @@ import {
 } from "react";
 
 import { refusalProse } from "../data/refusals";
-import { cn, progressAria, STATUS_INK, Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Progress, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
+import { cn, STATUS_INK, Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Progress, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
 import { formatBytes, formatCount } from "../lib/format";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
@@ -1029,7 +1029,7 @@ function IngestProgress({ job }: { readonly job: IngestJob }): JSX.Element {
           ? `${job.processed} extracted`
           : `${job.processed} of ${job.total}`}
       </p>
-      <Progress aria-label="Ingest progress" value={percent} {...progressAria(percent)} />
+      <Progress aria-label="Ingest progress" value={percent} />
     </div>
   );
 }

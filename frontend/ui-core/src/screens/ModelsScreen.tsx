@@ -4,7 +4,7 @@
  * A top-level destination rather than a project tab: a connection carries no
  * project id, every project uses the same ones, and navigation maps 1:1 to domain
  * objects — so a project tab would state a scope the object does not have.
- * The `information-architecture` skill carries the rail's membership. Named for
+ * `docs/content/ui/navigation.md` carries the rail's membership. Named for
  * the noun it catalogues —
  * the models a workspace can run — rather than for one use of them, because the
  * same list serves the suggest tool, pre-labeling and whatever asks next.
@@ -159,7 +159,7 @@ import {
   type WeightDownload,
 } from "../data/inferenceQueries";
 import { jobFailureProse, refusalProse } from "../data/refusals";
-import { cn, menuSurface, progressAria, twoLineTrigger, Badge, Button, Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Progress, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { cn, Badge, Button, Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Progress, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import {
   CUSTOM_MODEL,
@@ -514,7 +514,7 @@ export function ConnectionCard({
                   <MoreHorizontal aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className={menuSurface}>
+              <DropdownMenuContent align="end">
                 {/*
                   Two checks over the same files, and each label says what its
                   own check *proves* rather than what it is called.
@@ -786,7 +786,6 @@ function RunProgress({
       {percent !== null && (
         <Progress
           value={percent}
-          {...progressAria(percent)}
           data-testid={`${testId}-bar`}
           data-phase={phase}
         />
@@ -1283,7 +1282,7 @@ function ConnectionForm({
                         <SelectTrigger
                           id="connection-model"
                           data-testid="connection-model"
-                          className={twoLineTrigger}
+                          multiline
                         >
                           <SelectValue placeholder="Choose a model" />
                         </SelectTrigger>

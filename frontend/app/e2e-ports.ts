@@ -3,7 +3,7 @@
  *
  * ## Why a derivation and not three constants
  *
- * `refactor-protocol` puts every task in its own git worktree, so several checkouts of
+ * Every task runs in its own git worktree, so several checkouts of
  * this repository run their gates on one machine at the same time. That is the normal
  * working mode here, not an edge case — and three fixed ports made the browser suites
  * single-occupancy. The second `scripts/check.sh` to reach the browser group found 5273

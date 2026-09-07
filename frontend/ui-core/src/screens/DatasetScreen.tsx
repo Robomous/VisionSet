@@ -50,7 +50,7 @@ import { useEffect, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
-import { twoLineTrigger, Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardAction, CardContent, CardHeader, CardTitle, Tabs, TabsContent, TabsList, TabsTrigger, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardAction, CardContent, CardHeader, CardTitle, Tabs, TabsContent, TabsList, TabsTrigger, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
 import type { BadgeTone } from "./batchState";
 import { SectionHeader } from "../patterns/SectionHeader";
 import {
@@ -101,7 +101,7 @@ const CONTENT_VIOLATES_SCHEMA = "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA";
  * above it belong to the project page this renders inside — a second answer to
  * "where am I", one panel further in, would contradict the first. The prop
  * survived the move to a tab with no caller passing it, which is the dead
- * flexibility the `information-architecture` rule exists to prevent. Its old
+ * flexibility the navigation rules exist to prevent. Its old
  * route is a redirect, so nothing can reach this screen standalone.
  */
 /**
@@ -1120,7 +1120,7 @@ function ExportDialog({
               </FieldDescription>
             ) : (
               <Select value={recipe} onValueChange={setRecipe}>
-                <SelectTrigger id="export-recipe" data-testid="export-recipe" className={twoLineTrigger}>
+                <SelectTrigger id="export-recipe" data-testid="export-recipe" multiline>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

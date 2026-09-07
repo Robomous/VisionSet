@@ -46,7 +46,7 @@ import type { JSX } from "react";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { classColor } from "../palette";
-import { inlineLink, cn, STATUS_INK, Button, Skeleton } from "@robomous/ui-core";
+import { cn, STATUS_INK, Button, Skeleton } from "@robomous/ui-core";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { DistributionBar, StatCard, ThumbnailGrid } from "../patterns/DataDisplay";
@@ -156,7 +156,7 @@ export function OverviewPanel({
 
       {/*
         The dashboard row: where the project is, as four pointers at the four
-        sections that own it. The `information-architecture` skill's rule is that
+        sections that own it. The rule in `docs/content/ui/navigation.md` is that
         **Overview never duplicates a tab's full function** — so none of these is
         a batch table or a release list, each is the one number that says whether
         the section needs attention, and pressing it goes there.
@@ -409,8 +409,8 @@ function FirstRun({
                 Or{" "}
                 <Button
                   variant="link"
-                  size="sm"
-                  className={cn(inlineLink, "text-xs")}
+                  size="inline"
+                  className="text-xs"
                   data-testid="first-run-alt"
                   onClick={onOpenSchema}
                 >
@@ -550,7 +550,8 @@ function Samples({
       {onBrowseDataset !== undefined && (
         <Button
           variant="link"
-          className={cn(inlineLink, "self-start")}
+          size="inline"
+          className="self-start"
           data-testid="browse-dataset"
           onClick={onBrowseDataset}
         >

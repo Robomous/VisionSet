@@ -21,7 +21,7 @@
 
 import type { JSX } from "react";
 
-import { inlineLink, cn, Alert, AlertDescription, Button } from "@robomous/ui-core";
+import { Alert, AlertDescription, Button } from "@robomous/ui-core";
 import { useProjectReadiness } from "./queries";
 
 export function SchemaForeshadow({
@@ -41,7 +41,8 @@ export function SchemaForeshadow({
       {onOpenSchema !== undefined && (
         <Button
           variant="link"
-          className={cn(inlineLink, "ml-2")}
+          size="inline"
+          className="ml-2"
           data-testid="foreshadow-schema"
           onClick={onOpenSchema}
         >

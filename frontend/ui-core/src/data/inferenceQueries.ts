@@ -95,7 +95,7 @@ export type CuratedEntry = components["schemas"]["CuratedModelOut"];
  * `geometry` stays `unknown` on top of that, because it is about to go through
  * `parseGeometry` — the annotator's *"unknown in, typed out"* door — and a type
  * the caller then re-narrows anyway would be a second mirror of a kernel shape,
- * which `annotator-core` forbids in so many words.
+ * which the headless annotator boundary forbids in so many words.
  */
 export interface SuggestedRegion {
   readonly geometry: unknown;

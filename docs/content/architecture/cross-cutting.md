@@ -74,9 +74,9 @@ Two consequences follow, and both are load-bearing:
   MCP listing.
 
 The authority is
-[`kernel/domain/capabilities.py`](../../../src/visionset/kernel/domain/capabilities.py)
-and the [`ui-capabilities`](../../../.agents/skills/frontend/ui-capabilities/SKILL.md)
-skill, which also bans the two antipatterns this contract exists to remove.
+[`kernel/domain/capabilities.py`](../../../src/visionset/kernel/domain/capabilities.py).
+The `ui-capabilities` skill states what a client must do with it — the antipatterns this
+contract exists to remove, and how a refusal has to surface.
 
 ## The batch lifecycle, at a glance
 
@@ -92,13 +92,17 @@ stateDiagram-v2
     completed --> [*]
 ```
 
-An asset inside one has its own five states:
+An asset inside one has its own six states:
 
 ```mermaid
 stateDiagram-v2
     direction LR
+    unannotated --> pre_labeled: a model wrote, nobody judged
     unannotated --> annotated
     unannotated --> skipped
+    pre_labeled --> annotated
+    pre_labeled --> unannotated
+    pre_labeled --> skipped
     annotated --> review_pending
     annotated --> skipped
     annotated --> unannotated
@@ -107,6 +111,10 @@ stateDiagram-v2
     review_pending --> annotated
     accepted --> [*]
 ```
+
+`pre_labeled` is where an unattended model write lands, and it is deliberately writable but
+**not promotable**: labels no person has judged must not reach the trunk when the batch
+completes. [`annotations.md`](../annotations.md) has the edge table and which door writes each.
 
 And a job runs `pending → in_progress → completed`.
 
@@ -119,8 +127,9 @@ dimensions.
 There is no route back from `completed`, at any level. Correcting finished work is
 a new batch, not a reopened one.
 
-The settled model - and it *is* settled, not to be re-litigated in an
-implementation task - is the
-[`batch-lifecycle`](../../../.agents/skills/domain/batch-lifecycle/SKILL.md) skill.
+The model is **settled**, and not re-litigated in an implementation task.
 [`docs/content/batches.md`](../batches.md) and [`docs/content/jobs.md`](../jobs.md) are the
-behavioural pages.
+behavioural pages; [`annotations.md`](../annotations.md) covers what a write may do to an
+asset's progress, and [`datasets.md`](../datasets.md) what leaves a completed batch. The
+`dataset-lifecycle-safety` skill carries the short list of invariants an agent has to hold
+in mind while touching any of it.
