@@ -24,7 +24,7 @@ type ProjectStats = components["schemas"]["ProjectStatsOut"];
 const page = checkListProjects;
 const stats = checkGetProjectStats;
 
-const ok = { data: { total: 0, items: [] }, response: { status: 200 } };
+const ok = { ok: true as const, data: { total: 0, items: [] }, status: 200 };
 
 describe("unwrap", () => {
   it("returns the body of a successful answer", () => {
@@ -35,8 +35,9 @@ describe("unwrap", () => {
     const thrown = (): unknown =>
       unwrap(
         {
+          ok: false,
           error: { code: "PROJECT_NOT_FOUND", message: "No project with that id." },
-          response: { status: 404 },
+          status: 404,
         },
         page,
       );
@@ -55,12 +56,13 @@ describe("unwrap", () => {
     try {
       unwrap(
         {
+          ok: false,
           error: {
             code: "INTERNAL_ERROR",
             message: "Something went wrong.",
             detail: { incident_id: "7f1c9a2e" },
           },
-          response: { status: 500 },
+          status: 500,
         },
         page,
       );
@@ -74,7 +76,7 @@ describe("unwrap", () => {
     // A proxy or a gateway answering on the API's behalf. Its HTML in a toast is
     // worse than saying the answer was unrecognisable.
     try {
-      unwrap({ error: "<html>502 Bad Gateway</html>", response: { status: 502 } }, page);
+      unwrap({ ok: false, error: "<html>502 Bad Gateway</html>", status: 502 }, page);
       expect.unreachable();
     } catch (cause) {
       expect((cause as ApiError).code).toBe(MALFORMED_ERROR);
@@ -85,7 +87,7 @@ describe("unwrap", () => {
   it("passes a 204 through as undefined rather than treating it as a failure", () => {
     // `delete_project` and `delete_annotations` both answer 204 with no body, and
     // say so through the contract rather than by the absence of bytes.
-    expect(unwrap({ response: { status: 204 } }, checkNoContent)).toBeUndefined();
+    expect(unwrap({ ok: true, status: 204 }, checkNoContent)).toBeUndefined();
   });
 
   it("refuses a well-formed document of the wrong type, and says where", () => {
@@ -97,7 +99,7 @@ describe("unwrap", () => {
     // actually arrived. That gap is what the check closes.
     const wrongDocument = { items: [], total: 0 } as unknown as ProjectStats;
     try {
-      unwrap({ data: wrongDocument, response: { status: 200 } }, stats);
+      unwrap({ ok: true, data: wrongDocument, status: 200 }, stats);
       expect.unreachable();
     } catch (cause) {
       const failure = cause as ApiError;
@@ -108,11 +110,10 @@ describe("unwrap", () => {
   });
 
   it("refuses a failure that carried no body at all", () => {
-    // `openapi-fetch` reports a non-2xx with `Content-Length: 0` as
-    // `{error: undefined}`, which used to fall through to the empty-body branch —
-    // so a 500 saying nothing read as a successful empty answer.
+    // A non-2xx with no recognisable error body — the contract's error shape is
+    // absent, so `unwrap` reports it as malformed rather than reading it as data.
     try {
-      unwrap({ response: { status: 500 } }, checkNoContent);
+      unwrap({ ok: false, status: 500 }, checkNoContent);
       expect.unreachable();
     } catch (cause) {
       expect((cause as ApiError).code).toBe(MALFORMED_ERROR);
@@ -122,7 +123,7 @@ describe("unwrap", () => {
 
   it("refuses a 200 whose body never arrived", () => {
     // Same branch from the other side: an empty 200 is not a page of zero projects.
-    expect(() => unwrap({ response: { status: 200 } }, page)).toThrow(ApiError);
+    expect(() => unwrap({ ok: true, status: 200 }, page)).toThrow(ApiError);
   });
 });
 
@@ -137,7 +138,7 @@ describe("asApiError", () => {
   });
 
   it("leaves an ApiError alone", () => {
-    const original = new ApiError({ code: "WORKSPACE_BUSY", message: "busy" }, 503);
+    const original = new ApiError({ code: "WORKSPACE_BUSY", message: "busy" }, { status: 503 });
     expect(asApiError(original)).toBe(original);
   });
 });
@@ -146,22 +147,85 @@ describe("the reading rule", () => {
   it("tells two 409s apart by code, which the status cannot do", () => {
     const retryable = new ApiError(
       { code: "DESTRUCTIVE_SCHEMA_CHANGE", message: "…" },
-      409,
+      { status: 409 },
     );
-    const hopeless = new ApiError({ code: "SCHEMA_CHANGE_WOULD_ORPHAN", message: "…" }, 409);
+    const hopeless = new ApiError({ code: "SCHEMA_CHANGE_WOULD_ORPHAN", message: "…" }, { status: 409 });
 
     expect(retryable.status).toBe(hopeless.status);
     expect(retryable.code).not.toBe(hopeless.code);
   });
 
-  it("treats every 401 the same, because the API refuses to distinguish them", () => {
-    // Missing, malformed, unknown, revoked — one identical 401, deliberately, so a
-    // refusal is never an oracle for which credentials exist.
-    for (const code of ["UNAUTHORIZED"]) {
-      expect(new ApiError({ code, message: "…" }, 401).isUnauthorized).toBe(true);
-    }
-    expect(new ApiError({ code: "PROJECT_NOT_FOUND", message: "…" }, 404).isUnauthorized).toBe(
+  it("is unauthorized only when the normalized failure says so, never from status or code alone", () => {
+    // Missing, malformed, unknown, revoked — one identical refusal, deliberately, so a
+    // refusal is never an oracle for which credentials exist. What makes them the same
+    // is the `failure`, not the status: a bare 401 with no `failure` is not unauthorized.
+    expect(
+      new ApiError({ code: "UNAUTHORIZED", message: "…" }, { status: 401, failure: "unauthorized" })
+        .isUnauthorized,
+    ).toBe(true);
+    expect(new ApiError({ code: "UNAUTHORIZED", message: "…" }, { status: 401 }).isUnauthorized).toBe(false);
+    expect(new ApiError({ code: "PROJECT_NOT_FOUND", message: "…" }, { status: 404 }).isUnauthorized).toBe(
       false,
     );
+  });
+});
+
+describe("a refused credential", () => {
+  it("keeps the contract's code and is unauthorized — both, from one answer", () => {
+    const thrown = (() => {
+      try {
+        unwrap(
+          {
+            ok: false,
+            error: { code: "UNAUTHORIZED", message: "That credential is not one." },
+            failure: "unauthorized",
+            status: 401,
+          },
+          checkListProjects,
+        );
+        return null;
+      } catch (cause) {
+        return cause;
+      }
+    })();
+    expect(thrown).toBeInstanceOf(ApiError);
+    const failure = thrown as ApiError;
+    // The code says what was refused. The failure says the credential is unusable.
+    // Neither is derived from the other, and a host may spell the code its own way.
+    expect(failure.code).toBe("UNAUTHORIZED");
+    expect(failure.isUnauthorized).toBe(true);
+  });
+
+  it("is unauthorized whatever the code says, because the failure is what carries it", () => {
+    try {
+      unwrap(
+        { ok: false, error: { code: "SESSION_EXPIRED", message: "again please" }, failure: "unauthorized" },
+        checkListProjects,
+      );
+      expect.unreachable();
+    } catch (cause) {
+      expect((cause as ApiError).code).toBe("SESSION_EXPIRED");
+      expect((cause as ApiError).isUnauthorized).toBe(true);
+    }
+  });
+
+  it("a domain refusal is not unauthorized, however it is coded", () => {
+    try {
+      unwrap({ ok: false, error: { code: "SCHEMA_DRAFT_NOT_FOUND", message: "none" } }, checkListProjects);
+      expect.unreachable();
+    } catch (cause) {
+      expect((cause as ApiError).code).toBe("SCHEMA_DRAFT_NOT_FOUND");
+      expect((cause as ApiError).isUnauthorized).toBe(false);
+    }
+  });
+
+  it("a server that never answered reads as a network failure", () => {
+    try {
+      unwrap({ ok: false, failure: "unreachable" }, checkListProjects);
+      expect.unreachable();
+    } catch (cause) {
+      expect((cause as ApiError).code).toBe(NETWORK_ERROR);
+      expect((cause as ApiError).isUnauthorized).toBe(false);
+    }
   });
 });

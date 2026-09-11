@@ -55,7 +55,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { useApiClient } from "./ApiProvider";
+import { useApiClient } from "./VisionSetDataProvider";
 import { unwrap } from "./errors";
 import {
   checkCheckConnectionIntegrity,
@@ -88,7 +88,7 @@ export type CuratedEntry = components["schemas"]["CuratedModelOut"];
  *
  * `WireAnnotation`'s precedent, one route along and for the identical reason: the
  * spec spells a polygon's points with `prefixItems`, `openapi-typescript` honours
- * it as a **tuple**, and the value `openapi-fetch` hands back widens to
+ * it as a **tuple**, and the value that comes back through the client widens to
  * `number[][]`. The two are the same JSON and TypeScript will not unify them, so
  * naming the shape this module actually reads is the honest answer.
  *

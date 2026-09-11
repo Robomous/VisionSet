@@ -270,9 +270,11 @@ would pay the conversion whoever wrote it. What comes back from
 `GET /jobs/{id}/assets/{asset_id}/annotations` is what the editor takes; what the editor emits is
 what `POST`/`PATCH` accept.
 
-The annotator cannot read the pydantic models, and it must not depend on `@visionset/ui-core` to
-reach the generated client - that package carries `openapi-fetch`, and the editor's contract is
-"no HTTP, no fetching". So the contract travels as bytes, the way `openapi.json` already does.
+The annotator cannot read the pydantic models, and it must not depend on `@visionset/ui-core` at
+all: the editor's contract is "no HTTP, no fetching", and `@visionset/ui-core` is the domain UI
+layer, which reaches data through a client its host supplies. Depending on it to reach a contract
+would trade the annotator's independence for a type. So the contract travels as bytes, the way
+`openapi.json` already does.
 `tests/fixtures/wire_annotations.json` is written by `scripts/export_wire_fixtures.py` from
 `AnnotationOut` itself, and two independent gates hold it in place: a pytest one keeps the file
 matching the application, and a vitest one keeps the TypeScript parsing the file. The frontend CI

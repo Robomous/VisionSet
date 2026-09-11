@@ -27,12 +27,18 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
+// `VisionSetDataProvider` stays a direct import here (rather than going fully
+// through `renderWithData`) because two tests below call `view.rerender(...)`
+// directly: `RenderResult.rerender` does not re-wrap with whatever
+// `renderWithData` used for the first render, so a rerender through a stripped
+// `mount()` would swap out the whole provider subtree and remount
+// `ProjectScreen` — defeating the very thing those two tests assert (that a
+// project switch re-renders, not remounts). See `mountLive` below.
+import { VisionSetDataProvider } from "../data/VisionSetDataProvider";
 import { Toaster } from "@robomous/ui-core";
-import { writeToken } from "../data/session";
 import { ProjectScreen } from "./ProjectScreen";
+import { harnessClient, renderWithData } from "../testing/dataHarness";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const OTHER = "33333333-3333-4333-8333-333333333333";
 
@@ -93,7 +99,6 @@ beforeEach(() => {
   curatedDrafts = new Map();
   sent = [];
   bodies = new Map();
-  writeToken("a-token");
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
     sent.push(request);
@@ -237,14 +242,32 @@ function on(method: string, pattern: RegExp, answer: Answer): void {
   );
 }
 
-function mount(node: ReactNode): JSX.Element {
+/**
+ * `retry: false` only — `refetchOnWindowFocus` stays at its real default, because
+ * this file toggles `focusManager` to test what a window-focus refetch does to a
+ * draft. The harness's own default client turns that refetch off, which is right
+ * for most tests but wrong for this one.
+ */
+function freshClient(): QueryClient {
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
+
+/**
+ * For the two tests that `rerender` across a prop change: keeps the same
+ * `client` identity live across both calls, which is what makes it a rerender
+ * (props changing under `ProjectScreen`) rather than a remount —
+ * `VisionSetDataProvider` keys its cache, and forces a full remount, on its
+ * explicit scope identity, so a stable module-scoped scope is what a rerender
+ * needs here. See the import comment above.
+ */
+const LIVE_CLIENT = harnessClient();
+const LIVE_SCOPE = Symbol("schema-draft-live-test");
+
+function mountLive(node: ReactNode): JSX.Element {
   return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
+    <VisionSetDataProvider client={LIVE_CLIENT} scope={LIVE_SCOPE} makeQueryClient={freshClient}>
       {node}
-    </ApiProvider>
+    </VisionSetDataProvider>
   );
 }
 
@@ -268,7 +291,7 @@ async function regainFocus(): Promise<void> {
 
 describe("the schema draft survives the tab", () => {
   it("keeps what was typed when the tab is switched away and back", async () => {
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
 
@@ -284,14 +307,14 @@ describe("the schema draft survives the tab", () => {
   });
 
   it("does not carry one project's draft into another", async () => {
-    const view = render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    const view = render(mountLive(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
 
     // The route is `/projects/:projectId`, so moving between two projects
     // re-renders this screen rather than remounting it. A draft held above the
     // tab therefore outlives the project it describes unless it says which one.
-    view.rerender(mount(<ProjectScreen projectId={OTHER} tab="schema" />));
+    view.rerender(mountLive(<ProjectScreen projectId={OTHER} tab="schema" />));
 
     await waitFor(() =>
       expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved"),
@@ -302,7 +325,7 @@ describe("the schema draft survives the tab", () => {
 
 describe("the schema draft survives a version published underneath", () => {
   it("does not overwrite a dirty draft when the active version moves", async () => {
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
 
@@ -326,7 +349,7 @@ describe("the schema draft survives a version published underneath", () => {
   });
 
   it("offers reloading the new version as a choice, and it discards", async () => {
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
 
@@ -341,7 +364,7 @@ describe("the schema draft survives a version published underneath", () => {
   });
 
   it("re-seeds an untouched draft silently, because nothing is at stake", async () => {
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
 
     activeSchema = { project_id: PROJECT, version: 4, classes: [...CLASSES, TRAFFIC_LIGHT] };
@@ -366,7 +389,7 @@ describe("the schema draft survives a version published underneath", () => {
         advanced_batches: [],
       },
     });
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
     await userEvent.type(screen.getByTestId("version-note"), "adds pedestrian");
@@ -388,7 +411,7 @@ describe("the schema draft survives a version published underneath", () => {
   });
 
   it("is not disturbed by a refetch that finds the same document", async () => {
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
 
@@ -413,7 +436,7 @@ describe("the schema draft survives a version published underneath", () => {
  */
 describe("reloading over a draft the server still holds", () => {
   it("lets the next autosave succeed, rather than repeating STALE_WRITE", async () => {
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
     // The draft has to actually exist on the server for this walk — a
@@ -455,7 +478,7 @@ describe("reloading over a draft the server still holds", () => {
       }
       return undefined;
     });
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
     await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 2000 });
@@ -527,13 +550,12 @@ describe("saving twice with nothing edited in between", () => {
       return undefined;
     });
 
-    render(
-      mount(
-        <>
-          <ProjectScreen projectId={PROJECT} tab="schema" />
-          <Toaster />
-        </>,
-      ),
+    renderWithData(
+      <>
+        <ProjectScreen projectId={PROJECT} tab="schema" />
+        <Toaster />
+      </>,
+      { queryClient: freshClient() },
     );
     await screen.findByTestId("schema-editor");
     // Class zero, not two: a project with no schema seeds an empty draft, so
@@ -599,7 +621,7 @@ describe("saving twice with nothing edited in between", () => {
       return undefined;
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await userEvent.click(screen.getByTestId("add-class"));
     await userEvent.type(screen.getByTestId("class-name-0"), "pedestrian");
@@ -642,7 +664,7 @@ describe("saving twice with nothing edited in between", () => {
       return undefined;
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
 
@@ -665,13 +687,12 @@ describe("saving twice with nothing edited in between", () => {
  */
 describe("one unnamed class at a time", () => {
   it("refuses a second Add and lands on the class still waiting for a name", async () => {
-    render(
-      mount(
-        <>
-          <ProjectScreen projectId={PROJECT} tab="schema" />
-          <Toaster />
-        </>,
-      ),
+    renderWithData(
+      <>
+        <ProjectScreen projectId={PROJECT} tab="schema" />
+        <Toaster />
+      </>,
+      { queryClient: freshClient() },
     );
     await screen.findByTestId("schema-editor");
     await userEvent.click(screen.getByTestId("add-class"));
@@ -705,7 +726,7 @@ describe("the draft lives on the server", () => {
       updated_at: "2024-01-01T00:00:00Z",
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     const editor = await screen.findByTestId("schema-editor");
 
     // Nobody typed anything in this render — the class came off the server.
@@ -735,7 +756,7 @@ describe("the draft lives on the server", () => {
       updated_at: "2024-01-01T00:00:00Z",
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     const editor = await screen.findByTestId("schema-editor");
 
     // Seeded from the stale server draft — nothing was ever typed here, so
@@ -752,7 +773,7 @@ describe("the draft lives on the server", () => {
   });
 
   it("keeps a dirty local draft when the server draft differs", async () => {
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
     // Let the first autosave land, so this draft holds a real revision — the
@@ -782,7 +803,7 @@ describe("the draft lives on the server", () => {
   });
 
   it("autosaves after the debounce and not on every keystroke", async () => {
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await userEvent.click(screen.getByTestId("add-class"));
     await userEvent.type(screen.getByTestId(`class-name-${CLASSES.length}`), "cat");
@@ -805,13 +826,13 @@ describe("the draft lives on the server", () => {
    * ordinary fast navigation rather than an exotic race.
    */
   it("flushes a pending write for the departing project when the project changes", async () => {
-    const view = render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    const view = render(mountLive(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
     // Still inside the 400ms debounce window — nothing has been sent yet.
     expect(sent.some((request) => request.method === "PUT")).toBe(false);
 
-    view.rerender(mount(<ProjectScreen projectId={OTHER} tab="schema" />));
+    view.rerender(mountLive(<ProjectScreen projectId={OTHER} tab="schema" />));
 
     await waitFor(() => expect(draftPuts).toBeGreaterThan(0), { timeout: 2000 });
     const put = sent.find(
@@ -849,7 +870,7 @@ describe("the draft lives on the server", () => {
         if (event === "pagehide") onPageHide = handler as () => void;
       });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     // Registered on mount, before anything is typed — restored immediately so
     // the interactions below exercise the real `addEventListener`, not the mock.
@@ -889,7 +910,7 @@ describe("the draft lives on the server", () => {
       return undefined;
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
 
@@ -926,7 +947,7 @@ describe("the draft lives on the server", () => {
       },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     const editor = await screen.findByTestId("schema-editor");
     // Seeded from the server, dirty against `active` — nothing typed here, so
     // `held` stays null and `save()` publishes `showing.revision` directly.
@@ -951,7 +972,7 @@ describe("the draft lives on the server", () => {
       },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
     activeSchema = { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] };
@@ -993,7 +1014,7 @@ describe("the draft lives on the server", () => {
       },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
     activeSchema = { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] };

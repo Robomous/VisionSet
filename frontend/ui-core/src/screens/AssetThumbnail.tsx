@@ -4,10 +4,11 @@
  * ## An `<img src>` cannot fetch this, and that is the finding
  *
  * `GET /projects/{p}/assets/{a}/thumbnail` is a **protected route** — every route
- * but `/health` and `/openapi.json` is — and it authenticates with
- * `Authorization: Bearer`. An `<img src="…">` sends no such header. The browser
- * issues that request itself, with cookies and nothing else, so pointing an
- * `<img>` at the route produces a 401 and a broken-image icon on every tile.
+ * but `/health` and `/openapi.json` is — and binary content must travel through
+ * the host's data client, because a bare `<img src="…">` carries no credential
+ * the host may require. The browser issues that request itself, with cookies and
+ * nothing else, so pointing an `<img>` at the route is refused, and every tile is
+ * a broken-image icon.
  *
  * There is no cookie session to fall back on and the API accepts no token in the
  * query string, so the only way through is to fetch the bytes with the credentialed
@@ -39,7 +40,7 @@
 import { Image, ImageOff } from "lucide-react";
 import { useEffect, useState, type JSX } from "react";
 
-import { useApiClient } from "../data/ApiProvider";
+import { useApiClient } from "../data/VisionSetDataProvider";
 
 export interface ThumbnailPlaceholderProps {
   /** What a pointer hover should say about why there is no picture here. */
@@ -120,13 +121,13 @@ export function AssetThumbnail({
       try {
         const result = await client.GET("/projects/{project_id}/assets/{asset_id}/thumbnail", {
           params: { path: { project_id: projectId, asset_id: assetId } },
-          // The route answers `image/jpeg`; without this `openapi-fetch` tries to
-          // parse it as JSON and every tile fails on a syntax error.
-          parseAs: "blob",
+          // The route answers `image/jpeg`; without this the host parses it as
+          // JSON and every tile fails on a syntax error.
+          accept: "blob",
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
-        if (result.error !== undefined || result.data === undefined) {
+        if (!result.ok || result.data === undefined) {
           setFailed(true);
           return;
         }

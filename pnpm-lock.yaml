@@ -53,6 +53,9 @@ importers:
 
   frontend/app:
     dependencies:
+      '@robomous/ui-core':
+        specifier: ^0.2.1
+        version: 0.2.1(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)
       '@visionset/annotator':
         specifier: workspace:*
         version: link:../annotator
@@ -62,6 +65,9 @@ importers:
       lucide-react:
         specifier: ^1.40.0
         version: 1.40.0(react@19.2.8)
+      openapi-fetch:
+        specifier: ^0.17.0
+        version: 0.17.0
       react:
         specifier: ^19.0.0
         version: 19.2.8
@@ -81,6 +87,9 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.1)(jiti@2.7.0))
+      '@tanstack/react-query':
+        specifier: ^5.102.8
+        version: 5.102.8(react@19.2.8)
       '@testing-library/dom':
         specifier: ^10.4.1
         version: 10.4.1

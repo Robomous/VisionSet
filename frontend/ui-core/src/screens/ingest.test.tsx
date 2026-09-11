@@ -3,8 +3,8 @@
  *
  * Two things here can only be checked this way.
  *
- * **The multipart encoding.** `openapi-fetch` JSON-encodes a body by default and
- * has no idea a `File` is special, so a request without a `bodySerializer` sends
+ * **The multipart encoding.** A host encodes a body as JSON by default and has no
+ * idea a `File` is special, so a request without `encode: "multipart"` sends
  * `[object File]` and the server answers 422 about a field that looks correct.
  * The type system is no help — the generated body type is `string` for a binary
  * part — so the only place that bug is visible is in the request that went out.
@@ -15,16 +15,14 @@
  * reader's problem.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
+import type { JSX } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
-import { writeToken } from "../data/session";
 import { probeClip } from "./clipProbe";
 import { IngestScreen } from "./IngestScreen";
+import { renderWithData } from "../testing/dataHarness";
 import { batchActions, datasetOf } from "../testing/wire.fixtures.js";
 
 // The browser-side clip read is substituted whole. The default — a promise that
@@ -34,7 +32,6 @@ vi.mock("./clipProbe", () => ({
   probeClip: vi.fn(() => new Promise(() => {})),
 }));
 
-const API = "http://visionset.test";
 // `ProgressCounts` is seven counters and the server always sends all seven.
 const NO_PROGRESS = {
   unannotated: 0,
@@ -59,7 +56,7 @@ const sent: Request[] = [];
  * Bodies are consumed by the time an assertion runs, so they are read up front.
  *
  * Read by *attempting* `formData()` rather than by inspecting `content-type`:
- * `openapi-fetch` deletes that header when a `bodySerializer` returns a
+ * a host's transport deletes that header when its encoder produces a
  * `FormData`, because only the browser can write the multipart boundary. So the
  * header on a multipart request is absent, and branching on it puts every upload
  * down the JSON path.
@@ -94,7 +91,6 @@ beforeEach(() => {
   handlers = [];
   sent.length = 0;
   bodies.clear();
-  writeToken("a-token");
   vi.stubGlobal("fetch", async (request: Request) => {
     sent.push(request);
     if (request.method !== "GET") bodies.set(request, await readBody(request));
@@ -122,17 +118,6 @@ afterEach(() => {
 function on(method: string, pattern: RegExp, answer: Answer): void {
   handlers.push((request) =>
     request.method === method && pattern.test(new URL(request.url).pathname) ? answer : undefined,
-  );
-}
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
   );
 }
 
@@ -194,14 +179,14 @@ describe("registering a source", () => {
   it("sends images as one multipart part each, not as a JSON body", async () => {
     on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
 
     await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
     const request = sent.find((r) => r.method === "POST");
     const form = bodies.get(request as Request);
-    // A `FormData` at all is the claim: without a `bodySerializer`, `openapi-fetch`
+    // A `FormData` at all is the claim: without `encode: "multipart"`, a host
     // JSON-encodes the body and the server answers 422 about a field that looks
     // correct. The type system cannot see it — a binary part types as `string`.
     expect(isFormData(form)).toBe(true);
@@ -217,7 +202,7 @@ describe("registering a source", () => {
   it("sends a clip with the extraction rate, chosen before anything is probed", async () => {
     on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("drive.mp4", "video/mp4")]);
 
     // The rate lives in the selection panel and is decided *now* — the probe
@@ -240,8 +225,8 @@ describe("registering a source", () => {
     // than a gap in the claim: jsdom's `File` and undici's `FormData` are two
     // realms, so a real `File` appended here is coerced to a string exactly as a
     // jsdom `FormData` was before `vitest.setup.ts` reconciled that pair. The bug
-    // this test exists for — no `bodySerializer`, so the body is JSON — is caught
-    // by the body being a `FormData` at all.
+    // this test exists for — no multipart encoding, so the body is JSON — is
+    // caught by the body being a `FormData` at all.
     expect(form.has("file")).toBe(true);
   });
 
@@ -249,7 +234,7 @@ describe("registering a source", () => {
     vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 10, width: 1920, height: 1080 });
     on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("drive.mp4", "video/mp4")]);
 
     // Untouched, the readout still states what exists — the fact was missing
@@ -267,7 +252,7 @@ describe("registering a source", () => {
   it("sends the default scale untouched, as one hundred", async () => {
     on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("drive.mp4", "video/mp4")]);
     await userEvent.click(screen.getByTestId("register-source"));
 
@@ -279,7 +264,7 @@ describe("registering a source", () => {
   it("offers the slider without a size preview when the clip is unreadable", async () => {
     vi.mocked(probeClip).mockResolvedValueOnce(null);
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("weird.mkv", "video/x-matroska")]);
     await screen.findByTestId("clip-undecodable");
 
@@ -292,7 +277,7 @@ describe("registering a source", () => {
     vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 10, width: 1920, height: 1080 });
     on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("drive.mp4", "video/mp4")]);
     const track = await screen.findByTestId("range-track");
     vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
@@ -325,7 +310,7 @@ describe("registering a source", () => {
   it("says a clip the browser cannot decode is ingested whole", async () => {
     vi.mocked(probeClip).mockResolvedValueOnce(null);
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("weird.mkv", "video/x-matroska")]);
 
     expect((await screen.findByTestId("clip-undecodable")).textContent).toContain(
@@ -339,7 +324,7 @@ describe("registering a source", () => {
   it("shows the probe only after registering, which is the only time it exists", async () => {
     on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("drive.mp4", "video/mp4")]);
     expect(screen.queryByTestId("probe")).toBeNull();
 
@@ -358,7 +343,7 @@ describe("registering a source", () => {
       body: { code: "UNSUPPORTED_MEDIA", message: "notes.txt is not an image." },
     });
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("notes.txt", "text/plain")]);
     await userEvent.click(screen.getByTestId("register-source"));
 
@@ -385,7 +370,7 @@ describe("the selection panel", () => {
   });
 
   it("reads the choice back with a way out that costs nothing", async () => {
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
 
     const selection = screen.getByTestId("selection");
@@ -405,7 +390,7 @@ describe("the selection panel", () => {
   });
 
   it("previews three names of a large bunch and counts the rest", async () => {
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose(
       ["p0", "p1", "p2", "p3", "p4"].map((name) => pick(`${name}.png`, "image/png")),
     );
@@ -422,7 +407,7 @@ describe("the selection panel", () => {
   it("names the source from the field, and suggests the first file's stem", async () => {
     on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
 
     const field = screen.getByTestId("source-name") as HTMLInputElement;
@@ -438,13 +423,13 @@ describe("the selection panel", () => {
   });
 
   it("offers no name field for a clip, whose filename already is one", async () => {
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("drive.mp4", "video/mp4")]);
     expect(screen.queryByTestId("source-name")).toBeNull();
   });
 
   it("shows the rate for a clip, with the second-source consequence beside it", async () => {
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("drive.mp4", "video/mp4")]);
 
     const selection = screen.getByTestId("selection");
@@ -454,7 +439,7 @@ describe("the selection panel", () => {
   });
 
   it("cannot register a clip whose rate is unusable, and says so next door", async () => {
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("drive.mp4", "video/mp4")]);
 
     const button = (): HTMLButtonElement =>
@@ -477,7 +462,7 @@ describe("the selection panel", () => {
   it("estimates the frames from the browser's own read of the clip", async () => {
     vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 47.7, width: 1920, height: 1080 });
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("drive.mp4", "video/mp4")]);
 
     // ceil(47.7 × 1) = 48 — the grid includes t = 0, which the old floor
@@ -502,7 +487,7 @@ describe("the selection panel", () => {
   it("degrades to no estimate when the browser cannot read the clip", async () => {
     // The default mock never settles, which is also jsdom's real behaviour —
     // no media pipeline, so `loadedmetadata` never fires.
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("drive.mp4", "video/mp4")]);
 
     expect(screen.queryByTestId("frames-estimate")).toBeNull();
@@ -534,7 +519,7 @@ describe("one step at a time", () => {
   }
 
   it("opens with the road ahead visible and only the first step live", async () => {
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
 
     expect(state("step-1")).toBe("active");
     expect(state("step-2")).toBe("upcoming");
@@ -546,7 +531,7 @@ describe("one step at a time", () => {
   });
 
   it("registering collapses step 1 to a summary with no live controls", async () => {
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -561,7 +546,7 @@ describe("one step at a time", () => {
   });
 
   it("change files walks back to a clean first step", async () => {
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -595,7 +580,7 @@ describe("one step at a time", () => {
     });
     on("GET", /\/ingest-jobs\//, { status: 200, body: job({ batch_name: digest }) });
 
-    render(mount(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+    renderWithData(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -611,7 +596,7 @@ describe("one step at a time", () => {
   });
 
   it("launching collapses step 2 and hands the flow to the run", async () => {
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -645,7 +630,7 @@ describe("launching a run", () => {
     });
     on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -663,7 +648,7 @@ describe("launching a run", () => {
     on("POST", /\/ingest-jobs$/, { status: 202, body: job({ state: "running" }) });
     on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -686,7 +671,7 @@ describe("launching a run", () => {
       body: { code: "BATCH_NOT_EDITABLE", message: "That batch is already in annotation." },
     });
 
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -707,7 +692,7 @@ describe("watching a run", () => {
   });
 
   async function launch(): Promise<void> {
-    render(mount(<IngestScreen projectId={PROJECT} />));
+    renderWithData(<IngestScreen projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -943,7 +928,7 @@ describe("what a settled run offers next", () => {
   });
 
   async function launch(node: JSX.Element): Promise<void> {
-    render(mount(node));
+    renderWithData(node);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -1125,7 +1110,7 @@ describe("the labels foreshadowing banner (#290)", () => {
   it("warns while the project has no labels, and the link goes to the schema", async () => {
     withSchema(false);
     const opened = vi.fn();
-    render(mount(<IngestScreen projectId={PROJECT} onOpenSchema={opened} />));
+    renderWithData(<IngestScreen projectId={PROJECT} onOpenSchema={opened} />);
 
     const banner = await screen.findByTestId("schema-foreshadow");
     // Foreshadowing, not a gate: ingest itself stays fully usable.
@@ -1137,7 +1122,7 @@ describe("the labels foreshadowing banner (#290)", () => {
 
   it("says nothing once a schema exists", async () => {
     withSchema(true);
-    render(mount(<IngestScreen projectId={PROJECT} onOpenSchema={vi.fn()} />));
+    renderWithData(<IngestScreen projectId={PROJECT} onOpenSchema={vi.fn()} />);
 
     await waitFor(() =>
       expect(sent.some((request) => request.url.endsWith("/schema"))).toBe(true),

@@ -165,7 +165,7 @@ describe("unions", () => {
 
 describe("the two bodies that are not JSON", () => {
   it("accepts binary content and refuses a parsed document", () => {
-    // Without this, an error page served as JSON and read with `parseAs: "blob"`
+    // Without this, an error page served as JSON and read with `accept: "blob"`
     // would be handed to the browser and saved to disk as `release.zip`.
     expect(firstMismatch(checkBlob, new Blob(["x"]))).toBeNull();
     expect(firstMismatch(checkBlob, { code: "NOT_FOUND" })).toBe(

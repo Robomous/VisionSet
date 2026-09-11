@@ -9,10 +9,11 @@ the wire contract still matches this one; `wire_capabilities.json` is how
 them only against each other let a member they both lacked pass.
 
 The annotator cannot read the Python models, and `frontend/annotator` must not
-depend on `@visionset/ui-core` to reach the generated client — that package
-carries `openapi-fetch` as a runtime dependency, and the annotator's contract is
-"no HTTP, no fetching". So the contract travels as bytes, the way `openapi.json`
-already does.
+depend on `@visionset/ui-core` at all: the annotator is headless and
+transport-free — "no HTTP, no fetching" — and `@visionset/ui-core` is the domain
+UI layer, which reaches data through a client its host supplies. Depending on it
+to reach a contract would trade the annotator's independence for a type. So the
+contract travels as bytes, the way `openapi.json` already does.
 
 Two gates, sharing no toolchain, exactly like the spec and its client:
 `tests/server/test_wire_fixtures.py` keeps this file matching the application;

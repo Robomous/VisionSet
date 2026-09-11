@@ -10,16 +10,13 @@
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
-import { writeToken } from "../data/session";
 import { DatasetScreen } from "./DatasetScreen";
+import { renderWithData } from "../testing/dataHarness";
 
-const API = "http://visionset.test";
 // The four list fields `FormatOut` declares with a default. A default means the
 // server serializes them every time, which is why the contract types them as always
 // present rather than optional.
@@ -95,7 +92,6 @@ beforeEach(() => {
   handlers = [];
   sent.length = 0;
   bodies.clear();
-  writeToken("a-token");
   vi.stubGlobal("fetch", async (request: Request) => {
     sent.push(request);
     if (request.method !== "GET") bodies.set(request, await request.clone().text());
@@ -123,17 +119,6 @@ afterEach(() => {
 function on(method: string, pattern: RegExp, answer: Answer): void {
   handlers.push((request) =>
     request.method === method && pattern.test(new URL(request.url).pathname) ? answer : undefined,
-  );
-}
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
   );
 }
 
@@ -275,7 +260,7 @@ const RECIPES = [
 describe("the dataset view", () => {
   it("reports annotations and assets per class, because the two are different questions", async () => {
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
 
     await screen.findByTestId("dataset-stats");
     const row = await screen.findByTestId("class-count-vehicle");
@@ -305,7 +290,7 @@ describe("publishing", () => {
     baseline();
     on("POST", /\/releases$/, { status: 201, body: RELEASE_ROW });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
     await userEvent.click(await screen.findByTestId("publish-release"));
     await userEvent.type(screen.getByTestId("release-tag"), "v2");
     await userEvent.click(screen.getByTestId("publish-submit"));
@@ -332,7 +317,7 @@ describe("publishing", () => {
       },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
     await userEvent.click(await screen.findByTestId("publish-release"));
     await userEvent.type(screen.getByTestId("release-tag"), "v2");
     await userEvent.click(screen.getByTestId("publish-submit"));
@@ -353,7 +338,7 @@ describe("publishing", () => {
       body: { code: "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA", message: "kernel wording" },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
     await userEvent.click(await screen.findByTestId("publish-release"));
     await userEvent.type(screen.getByTestId("release-tag"), "v2");
     await userEvent.click(screen.getByTestId("publish-submit"));
@@ -364,7 +349,7 @@ describe("publishing", () => {
 
   it("refuses a split whose fractions do not sum to one, as the kernel does", async () => {
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
     await userEvent.click(await screen.findByTestId("publish-release"));
     await userEvent.type(screen.getByTestId("release-tag"), "v2");
     await userEvent.click(screen.getByTestId("use-split"));
@@ -400,7 +385,7 @@ describe("verification", () => {
       },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     const releaseCard = await screen.findByTestId("release-v1");
     expect(within(releaseCard).getByRole("heading", { level: 3, name: /v1/i })).not.toBeNull();
     expect(sent.some((r) => r.url.endsWith("/verify"))).toBe(false);
@@ -425,7 +410,7 @@ describe("verification", () => {
       },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("verify-v1"));
     // `checked: 0` — every other number would be about a document that is not the
     // one its hash names.
@@ -449,7 +434,7 @@ describe("verification", () => {
       body: { code: "WORKSPACE_BUSY", message: "database is locked" },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("verify-v1"));
 
     const said = (await screen.findByTestId("verify-error-v1")).textContent ?? "";
@@ -472,7 +457,7 @@ describe("verification", () => {
         cache_mismatches: [],
       },
     });
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("verify-v1"));
     await screen.findByTestId("verified-v1");
 
@@ -507,7 +492,7 @@ describe("downloading a manifest", () => {
       body: { code: "RELEASE_NOT_FOUND", message: "no such release" },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("manifest-v1"));
 
     const said = (await screen.findByTestId("manifest-error-v1")).textContent ?? "";
@@ -520,7 +505,7 @@ describe("export, and the third gate word", () => {
   it("groups the catalog by family and says what each target takes", async () => {
     baseline();
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
     await userEvent.click(screen.getByTestId("export-target"));
 
@@ -546,7 +531,7 @@ describe("export, and the third gate word", () => {
     on("GET", /\/formats$/, { status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
     baseline();
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /YOLOv10/ }));
@@ -566,7 +551,7 @@ describe("export, and the third gate word", () => {
         : undefined,
     );
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
@@ -630,7 +615,7 @@ describe("export, and the third gate word", () => {
           };
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /YOLOv10/ }));
@@ -715,7 +700,7 @@ describe("export, and the third gate word", () => {
       body: backgroundJob({ state, ...overrides }),
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
@@ -810,7 +795,7 @@ describe("a target catalog with nothing in it", () => {
       body: { code: "WORKSPACE_BUSY", message: "Another writer holds the workspace." },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
 
     const said = (await screen.findByTestId("export-targets-error")).textContent ?? "";
@@ -824,7 +809,7 @@ describe("a target catalog with nothing in it", () => {
   it("does not leave a silently empty picker where the failure is (#440)", async () => {
     targetsFail({ status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
     await screen.findByTestId("export-targets-error");
 
@@ -836,7 +821,7 @@ describe("a target catalog with nothing in it", () => {
   it("offers the request again, and asking again asks the server (#440)", async () => {
     targetsFail({ status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
     const failed = await screen.findByTestId("export-targets-error");
 
@@ -852,7 +837,7 @@ describe("a target catalog with nothing in it", () => {
     on("GET", /\/export-targets$/, { status: 200, body: { items: [], total: 0 } });
     baseline();
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
 
     const said = (await screen.findByTestId("export-targets-empty")).textContent ?? "";
@@ -867,7 +852,7 @@ describe("a target catalog with nothing in it", () => {
   it("still lists the targets when there are targets (#440)", async () => {
     baseline();
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
 
     // The success path keeps its picker and neither of the two explanations.
@@ -888,7 +873,7 @@ describe("a target catalog with nothing in it", () => {
 describe("curating the trunk", () => {
   it("lists what is in the trunk, which is what the counts above are counts of", async () => {
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
 
     const tile = await screen.findByTestId(`trunk-asset-${ASSET}`);
     // The frame number when there is one, as the pill over the picture — not a
@@ -902,7 +887,7 @@ describe("curating the trunk", () => {
 
   it("says what removal costs, and is honest that almost nothing is destroyed", async () => {
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
 
     const consequence = await screen.findByTestId("remove-asset-consequence");
@@ -917,7 +902,7 @@ describe("curating the trunk", () => {
 
   it("takes no action until the confirmation is answered", async () => {
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
     await screen.findByTestId("remove-asset-dialog");
 
@@ -929,7 +914,7 @@ describe("curating the trunk", () => {
     baseline();
     on("DELETE", /\/assets\//, { status: 204 });
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
     await userEvent.click(await screen.findByTestId("remove-asset-submit"));
 
@@ -942,7 +927,7 @@ describe("curating the trunk", () => {
     baseline();
     on("DELETE", /\/assets\//, { status: 204 });
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await screen.findByTestId(`trunk-asset-${ASSET}`);
     const before = {
       stats: sent.filter((r) => r.url.endsWith("/stats")).length,
@@ -976,11 +961,7 @@ describe("curating the trunk", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(["batches", "some-batch"], { promoted_asset_count: 12 });
 
-    render(
-      <ApiProvider baseUrl={API} queryClient={client}>
-        <DatasetScreen projectId={PROJECT} tab="assets" />
-      </ApiProvider>,
-    );
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />, { queryClient: client });
     await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
     await userEvent.click(await screen.findByTestId("remove-asset-submit"));
 
@@ -996,7 +977,7 @@ describe("curating the trunk", () => {
       body: { code: "DATASET_NOT_FOUND", message: "No dataset with that id." },
     });
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
     await userEvent.click(await screen.findByTestId("remove-asset-submit"));
 
@@ -1011,7 +992,7 @@ describe("curating the trunk", () => {
 
   it("offers no paging for a trunk that fits on one page", async () => {
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
 
     await screen.findByTestId(`trunk-asset-${ASSET}`);
     expect(screen.queryByTestId("trunk-paging")).toBeNull();
@@ -1036,7 +1017,7 @@ describe("curating the trunk", () => {
     });
     baseline();
 
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await screen.findByTestId("trunk-paging");
     // `total` is the whole trunk, not the page — `docs/content/api.md`: paging bounds
     // the response, not the read.
@@ -1066,7 +1047,7 @@ describe("looking at a member", () => {
   it("opens a preview with the picture, the metadata and the labels drawn over it", async () => {
     previewable();
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
     const preview = await screen.findByTestId("asset-preview");
@@ -1096,7 +1077,7 @@ describe("looking at a member", () => {
   it("hides the overlay on request, and the list stays", async () => {
     previewable();
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
     await screen.findByTestId(`preview-shape-${BOX}`);
 
@@ -1124,7 +1105,7 @@ describe("looking at a member", () => {
     });
     previewable();
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
     const models = await screen.findByTestId("preview-models");
@@ -1147,7 +1128,7 @@ describe("looking at a member", () => {
     });
     previewable();
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await userEvent.click(await screen.findByTestId(`open-${ids[0]}`));
 
     expect(screen.getByTestId("preview-position").textContent).toBe("1 of 3 on this page");
@@ -1168,7 +1149,7 @@ describe("looking at a member", () => {
     previewable();
     baseline();
     on("DELETE", /\/assets\//, { status: 204 });
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
     await userEvent.click(await screen.findByTestId("preview-remove"));
 
@@ -1189,7 +1170,7 @@ describe("looking at a member", () => {
     });
     on("GET", /\/schema$/, { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none" } });
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
     const failure = await screen.findByTestId("preview-labels-error");
@@ -1204,7 +1185,7 @@ describe("looking at a member", () => {
     });
     previewable();
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} tab="assets" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
     await screen.findByTestId("preview-no-overlay");
@@ -1221,7 +1202,7 @@ describe("export, and the recipe beside the target", () => {
     handlers.push((request) =>
       request.method === "POST" && request.url.includes("/export") ? { status: 200, body: {} } : undefined,
     );
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
     expect(screen.getByTestId("export-recipe").textContent).toContain("None");
     await userEvent.click(screen.getByTestId("export-target"));
@@ -1237,7 +1218,7 @@ describe("export, and the recipe beside the target", () => {
     handlers.push((request) =>
       request.method === "POST" && request.url.includes("/export") ? { status: 200, body: {} } : undefined,
     );
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
@@ -1256,7 +1237,7 @@ describe("export, and the recipe beside the target", () => {
   it("says when the project has no recipes, instead of offering a picker with one row", async () => {
     on("GET", /\/preprocessing-recipes$/, { status: 200, body: { items: [], total: 0 } });
     baseline();
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
 
     expect((await screen.findByTestId("export-recipes-empty")).textContent).toContain("Pre-processing view");
@@ -1276,7 +1257,7 @@ describe("export, and the recipe beside the target", () => {
           }
         : undefined,
     );
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
@@ -1305,7 +1286,7 @@ describe("export, and the recipe beside the target", () => {
           }
         : undefined,
     );
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
@@ -1328,7 +1309,7 @@ describe("export, and the recipe beside the target", () => {
         ? { status: 500, body: { code, message } }
         : undefined,
     );
-    render(mount(<DatasetScreen projectId={PROJECT} tab="releases" />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
     await userEvent.click(await screen.findByTestId("export-v1"));
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));

@@ -1,6 +1,7 @@
 /**
- * `@visionset/ui-core` — VisionSet's domain components, screens, and the
- * generated API client, over the Robomous design system.
+ * `@visionset/ui-core` — VisionSet's domain components, screens, and design
+ * tokens, over the Robomous design system, plus the generated typed API
+ * contract and the data port a host implements against it.
  *
  * The design system itself lives in `@robomous/ui-core`; this package
  * re-exports its whole surface so a consumer keeps one import, and adds
@@ -81,22 +82,27 @@ export {
 // How a number and a moment are written, so eight screens do not each decide.
 export { formatCount, formatPercent, formatWhen } from "./lib/format.js";
 
-// The typed client, and the generated contract under the names every
-// openapi-typescript consumer expects.
-export { createApiClient } from "./client.js";
-export type { ApiClientOptions, VisionSetClient } from "./client.js";
+// The generated contract under the names every openapi-typescript consumer expects.
 export type { components, operations, paths } from "./generated/api.js";
 
-// The data shell: one client, one query cache, one answer to a 401.
+// The data contract a host satisfies. The reusable UI reaches the product through
+// this and nothing else; how a request is actually made is the host's business.
+export type {
+  DataFailure,
+  DataResult,
+  PathsFor,
+  VisionSetDataClient,
+  VisionSetRequestIntent,
+} from "./data/port.js";
+
+// The data shell: one cache, VisionSet's cache policy, one answer to a refused
+// credential. The client itself — and the credential it carries — is the host's.
 export {
-  ApiProvider,
   useApiClient,
-  useApiSession,
-  type Access,
-  type ApiProviderProps,
-  type ApiSession,
-} from "./data/ApiProvider.js";
-export { TokenForm, TokenGate, type TokenGateProps } from "./data/TokenGate.js";
+  VisionSetDataProvider,
+  type VisionSetDataScope,
+  type VisionSetDataProviderProps,
+} from "./data/VisionSetDataProvider.js";
 export { Async, type AsyncProps, type AsyncQuery } from "./data/Async.js";
 export {
   ApiError,
@@ -105,7 +111,6 @@ export {
   asApiError,
   unwrap,
   type ErrorBody,
-  type FetchResult,
 } from "./data/errors.js";
 // `unwrap` takes a check, so a consumer calling it needs the type and the checks for
 // the operations it calls. The combinators themselves stay unexported: they are the
@@ -114,12 +119,12 @@ export {
 export { type Check } from "./data/check.js";
 export * as checks from "./generated/checks.js";
 export { DEFAULT_POLL_MS, usePollingQuery, type PollingQueryOptions } from "./data/polling.js";
-export { clearToken, readToken, writeToken } from "./data/session.js";
 
 // Screens. Domain UI, so they live here and not in `@visionset/app`:
-// a capability in the app is one the enterprise UI cannot reuse. Navigation
-// arrives as a callback — a screen that imported a router would only work inside
-// one particular router's tree.
+// a capability in the app is one the enterprise UI cannot reuse. A screen reaches
+// data through `useApiClient` and navigation through a callback — a screen that
+// imported a router would only work inside one particular router's tree — which is
+// what makes it mountable by another host.
 export { ProjectsScreen, type ProjectsScreenProps } from "./screens/ProjectsScreen.js";
 export {
   ProjectScreen,
@@ -224,13 +229,6 @@ export {
   type ClassRegionProps,
 } from "./annotator/ClassRegion.js";
 export { ShortcutSheet, type ShortcutSheetProps } from "./annotator/ShortcutSheet.js";
-
-// Whether the rail starts collapsed. One declaration, guarded storage.
-export {
-  RAIL_COLLAPSED_BY_DEFAULT,
-  readRailCollapsed,
-  writeRailCollapsed,
-} from "./data/railState.js";
 
 // The one way out of a sub-view inside a project. Structural, never `navigate(-1)`.
 export { BackLink, type BackLinkProps } from "./patterns/BackLink.js";

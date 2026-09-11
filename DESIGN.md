@@ -17,8 +17,15 @@ a value in `:root`, a dark counterpart in `.dark`, exposure through `@theme inli
 | --- | --- |
 | `stage` | The annotator's surround — the neutral a photograph is judged against. Its own role: not `muted`'s subtle fill, not `card`'s surface, distinguishable from `background` so a white asset edge still shows where it ends. Usage: [`docs/content/ui/annotator.md`](docs/content/ui/annotator.md#the-stage) |
 | `origin-hub` / `origin-custom` / `origin-robomous` | A model's provenance, as a card's accent edge. A mark: never a surface, never ink, and an origin is a kind rather than a state, so these never stand in for a status. Theme-stable, like the chart palette |
-| `--spacing-sidebar` / `--spacing-sidebar-collapsed` | 240px and 48px, consumed by `AppShell`, its collapse toggle and the content offset, which must agree or the layout jumps on collapse. The collapsed width is the preset's own icon-sidebar width, so with the rail's `p-2` it holds exactly one `size-8` control per row |
-| `--spacing-project-nav` / `--container-page` | 180px project-nav column; the 96rem page cap |
+| `--spacing-project-nav` / `--container-page` | 180px project-nav column; the 96rem page cap — read by `ProjectNav` and `PaddedContent`, both reusable VisionSet surfaces |
+
+A layout value lives with whoever reads it. The rail's two widths, `--spacing-sidebar` and
+`--spacing-sidebar-collapsed` (240px and 48px), are declared in `frontend/app/src/styles.css`
+instead of here: `AppShell`, its collapse toggle and the content offset are the only readers,
+and they must agree or the layout jumps on collapse — the collapsed width is the preset's own
+icon-sidebar width, so with the rail's `p-2` it holds exactly one `size-8` control per row. A
+host mounting VisionSet's screens brings its own global navigation, so nothing reusable reads
+the standalone shell's rail widths.
 
 An extension that turns out to be universal is a candidate to move into the package — that is
 a design decision and a PR against Robomous/ui-core, with the justification written into its

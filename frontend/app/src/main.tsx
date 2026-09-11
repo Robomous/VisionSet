@@ -26,7 +26,6 @@
  */
 
 import {
-  ApiProvider,
   ErrorBoundary,
   TooltipProvider,
   Toaster,
@@ -37,6 +36,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 
+import { OssSessionProvider } from "./data/OssSession";
 import { AppRoutes } from "./routes";
 import "./styles.css";
 
@@ -79,8 +79,8 @@ createRoot(container).render(
   <StrictMode>
     {/*
       Outside the router and outside the providers, which is the only placement
-      that catches all three. A boundary inside `ApiProvider` cannot catch
-      `ApiProvider` failing to mount, and one inside the router cannot catch a
+      that catches all three. A boundary inside `OssSessionProvider` cannot catch
+      `OssSessionProvider` failing to mount, and one inside the router cannot catch a
       bad `basename` — and both of those render as the same white page a user
       cannot tell from a crashed tab.
 
@@ -91,12 +91,12 @@ createRoot(container).render(
     */}
     <ErrorBoundary>
       <BrowserRouter basename={import.meta.env.BASE_URL}>
-        <ApiProvider baseUrl={API_BASE_URL}>
+        <OssSessionProvider baseUrl={API_BASE_URL}>
           <TooltipProvider>
             <AppRoutes />
-            <Toaster position="bottom-right" />
           </TooltipProvider>
-        </ApiProvider>
+        </OssSessionProvider>
+        <Toaster position="bottom-right" />
       </BrowserRouter>
     </ErrorBoundary>
   </StrictMode>,

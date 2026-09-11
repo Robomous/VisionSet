@@ -9,14 +9,10 @@
  * server was sent.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
-import { writeToken } from "../data/session";
 import { DatasetScreen } from "./DatasetScreen";
 import { PreprocessingTab } from "./PreprocessingTab";
 import type { ExportTarget } from "./queries";
@@ -29,8 +25,8 @@ import {
   touch,
   type RecipeSpec,
 } from "./recipeDraft";
+import { renderWithData } from "../testing/dataHarness";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const DATASET = "22222222-2222-4222-8222-222222222222";
 const RELEASE = "33333333-3333-4333-8333-333333333333";
@@ -216,7 +212,6 @@ beforeEach(() => {
   handlers = [];
   sent.length = 0;
   bodies.clear();
-  writeToken("a-token");
   vi.stubGlobal("fetch", async (request: Request) => {
     sent.push(request);
     if (request.method !== "GET") bodies.set(request, await request.clone().text());
@@ -244,17 +239,6 @@ afterEach(() => {
 function on(method: string, pattern: RegExp, answer: Answer): void {
   handlers.push((request) =>
     request.method === method && pattern.test(new URL(request.url).pathname) ? answer : undefined,
-  );
-}
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
   );
 }
 
@@ -310,7 +294,7 @@ describe("the dataset's tab roster", () => {
       status: 200,
       body: { dataset_id: DATASET, asset_count: 0, annotated_asset_count: 0, annotation_count: 0, classes: [] },
     });
-    render(mount(<DatasetScreen projectId={PROJECT} />));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
 
     const tabs = await screen.findByTestId("dataset-tabs");
     const labels = within(tabs)
@@ -330,7 +314,7 @@ describe("the dataset's tab roster", () => {
   it("opens on the view the host names, and hands a normalised one back", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
     const changed = vi.fn();
-    render(mount(<DatasetScreen projectId={PROJECT} tab="preprocessing" onTabChange={changed} />));
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="preprocessing" onTabChange={changed} />);
 
     expect(await screen.findByTestId("preprocessing-tab")).not.toBeNull();
     await userEvent.click(screen.getByTestId("dataset-tab-assets"));
@@ -341,7 +325,7 @@ describe("the dataset's tab roster", () => {
 describe("the recipe list", () => {
   it("lists every recipe with its summary and the target's label, and opens the first", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX), recipeRow("plain", { target: null, steps: [], variants_per_asset: 0 })]);
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
 
     const row = await screen.findByTestId("recipe-yolo-640");
     expect(row.textContent).toContain("letterbox 640×640");
@@ -358,7 +342,7 @@ describe("the recipe list", () => {
 
   it("is an invitation with one verb-first action while there are none", async () => {
     baseline();
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
 
     const empty = await screen.findByTestId("recipes-empty");
     expect(within(empty).getAllByRole("button")).toHaveLength(1);
@@ -370,7 +354,7 @@ describe("the recipe list", () => {
   it("says when the recipes could not be read, rather than showing an empty list", async () => {
     on("GET", /\/preprocessing-recipes$/, { status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
     baseline();
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
 
     const said = (await screen.findByTestId("recipes-error")).textContent ?? "";
     expect(said).toContain("busy");
@@ -381,7 +365,7 @@ describe("the recipe list", () => {
 describe("the editor", () => {
   it("presets the resize from the target's hints and marks the suggestion", async () => {
     baseline();
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await userEvent.click(await screen.findByTestId("recipe-new"));
 
     expect(screen.getByTestId("recipe-step-target").getAttribute("data-state")).toBe("upcoming");
@@ -404,7 +388,7 @@ describe("the editor", () => {
 
   it("keeps a typed size when the target changes, and moves the rest", async () => {
     baseline();
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await userEvent.click(await screen.findByTestId("recipe-new"));
     await chooseTarget(/YOLO11/);
     await userEvent.clear(screen.getByTestId("resize-width"));
@@ -419,7 +403,7 @@ describe("the editor", () => {
 
   it("names the rule beside the field and keeps Save shut with the reason in the footer", async () => {
     baseline();
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await userEvent.click(await screen.findByTestId("recipe-new"));
     await userEvent.type(screen.getByTestId("recipe-name"), "small");
     await chooseTarget(/YOLO11/);
@@ -434,7 +418,7 @@ describe("the editor", () => {
 
   it("ticks the first augmentation with one variant, and clears the count with the last", async () => {
     baseline();
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await userEvent.click(await screen.findByTestId("recipe-new"));
 
     await userEvent.click(screen.getByTestId("augment-brightness_contrast"));
@@ -449,7 +433,7 @@ describe("the editor", () => {
   it("creates a new recipe with the spec the steps describe", async () => {
     baseline();
     on("POST", /\/preprocessing-recipes$/, { status: 201, body: recipeRow("yolo-640", LETTERBOX) });
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await userEvent.click(await screen.findByTestId("recipe-new"));
     await userEvent.type(screen.getByTestId("recipe-name"), "yolo-640");
     await chooseTarget(/YOLO11/);
@@ -477,7 +461,7 @@ describe("the editor", () => {
       status: 200,
       body: recipeRow("yolo-640", { ...LETTERBOX, variants_per_asset: 3 }),
     });
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await screen.findByTestId("recipe-editor");
     expect(screen.getByTestId("recipe-save")).toHaveProperty("disabled", true);
     expect(screen.getByTestId("recipe-footer-note").textContent).toContain("No unsaved changes");
@@ -497,7 +481,7 @@ describe("the editor", () => {
 
   it("discards back to the stored recipe", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await screen.findByTestId("recipe-editor");
     expect(screen.getByTestId("recipe-discard")).toHaveProperty("disabled", true);
 
@@ -516,7 +500,7 @@ describe("the editor", () => {
       status: 409,
       body: { code: "PREPROCESSING_RECIPE_NAME_TAKEN", message: "project 1111 already has a recipe named 'yolo-640'" },
     });
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await userEvent.click(await screen.findByTestId("recipe-new"));
     await userEvent.type(screen.getByTestId("recipe-name"), "yolo-640");
     await userEvent.click(screen.getByTestId("recipe-save"));
@@ -538,7 +522,7 @@ describe("deleting a recipe", () => {
     });
     baseline();
     on("DELETE", /\/preprocessing-recipes\/yolo-640$/, { status: 204 });
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await screen.findByTestId("recipe-editor");
     expect(screen.getByTestId("recipe-yolo-640").getAttribute("aria-current")).toBe("true");
 
@@ -567,7 +551,7 @@ describe("deleting a recipe", () => {
     });
     baseline();
     on("DELETE", /\/preprocessing-recipes\/yolo-640$/, { status: 204 });
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await screen.findByTestId("recipe-editor");
 
     await userEvent.click(screen.getByTestId("recipe-delete-yolo-640"));
@@ -583,7 +567,7 @@ describe("deleting a recipe", () => {
       status: 404,
       body: { code: "PREPROCESSING_RECIPE_NOT_FOUND", message: "project 1111 has no recipe named 'yolo-640'" },
     });
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await screen.findByTestId("recipe-editor");
 
     await userEvent.click(screen.getByTestId("recipe-delete-yolo-640"));
@@ -601,7 +585,7 @@ describe("deleting a recipe", () => {
 
   it("can be cancelled without a request", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await screen.findByTestId("recipe-editor");
 
     await userEvent.click(screen.getByTestId("recipe-delete-yolo-640"));
@@ -616,7 +600,7 @@ describe("deleting a recipe", () => {
 describe("the preview", () => {
   it("samples the project's first asset when no release has a split, and renders each stage", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
 
     const grid = await screen.findByTestId("preview-grid");
     const rows = within(grid).getAllByTestId(/^preview-row-/);
@@ -664,7 +648,7 @@ describe("the preview", () => {
 
   it("names the step the third column shows, and follows the draft's last augmentation", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
     await screen.findByTestId("preview-grid");
 
     await userEvent.click(screen.getByTestId("augment-brightness_contrast"));
@@ -719,7 +703,7 @@ describe("the preview", () => {
       body: { train: [ASSET_C, ASSET_D], val: [ASSET_A], test: [ASSET_B] },
     });
     baseline([recipeRow("plain", { target: null, steps: [], variants_per_asset: 0 })]);
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
 
     await screen.findByTestId("preview-grid");
     await waitFor(() =>
@@ -745,7 +729,7 @@ describe("the preview", () => {
         ? { status: 422, body: { code: "UNSUPPORTED_MEDIA", message: "That file is not an image this server reads." } }
         : undefined,
     );
-    render(mount(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />));
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
 
     await screen.findByTestId("preview-grid");
     await waitFor(() =>

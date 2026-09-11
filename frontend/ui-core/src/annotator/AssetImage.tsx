@@ -2,10 +2,10 @@
  * The asset's own pixels, fetched with the credential.
  *
  * The same problem `AssetThumbnail` has and the same answer: every route but
- * `/health` authenticates with `Authorization: Bearer`, and an `<img src>` sends no
- * header — the browser issues that request itself. So the bytes are fetched through
- * the typed client and handed over as an object URL, which is revoked when the
- * asset changes.
+ * `/health` answers only a credentialed request, and an `<img src>` carries no
+ * credential the host may require — the browser issues that request itself. So
+ * the bytes are fetched through the typed client and handed over as an object
+ * URL, which is revoked when the asset changes.
  *
  * It is a render prop rather than an `<img>`, because the consumer is
  * `AnnotatorCanvas` and the canvas takes a **`imageSrc` string**: the picture is
@@ -25,7 +25,7 @@
 import { ImageOff } from "lucide-react";
 import { useEffect, useState, type JSX, type ReactNode } from "react";
 
-import { useApiClient } from "../data/ApiProvider";
+import { useApiClient } from "../data/VisionSetDataProvider";
 
 export interface AssetImageProps {
   readonly projectId: string;
@@ -53,13 +53,13 @@ export function AssetImage({ projectId, assetId, children }: AssetImageProps): J
       try {
         const result = await client.GET("/projects/{project_id}/assets/{asset_id}/content", {
           params: { path: { project_id: projectId, asset_id: assetId } },
-          // The route answers image bytes; without this `openapi-fetch` parses JSON
-          // and every asset fails on a syntax error.
-          parseAs: "blob",
+          // The route answers image bytes; without this the host parses JSON and
+          // every asset fails on a syntax error.
+          accept: "blob",
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
-        if (result.error !== undefined || result.data === undefined) {
+        if (!result.ok || result.data === undefined) {
           setFailed(true);
           return;
         }

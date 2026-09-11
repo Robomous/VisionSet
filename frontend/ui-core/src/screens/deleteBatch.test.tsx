@@ -20,18 +20,15 @@
  * that reaches it, and the refusal comes back from the stub.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
 import { BatchOverflowMenu } from "./DeleteBatch";
 import type { Batch } from "./queries";
+import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
 
@@ -73,17 +70,6 @@ function on(method: string, pattern: RegExp, answer: Answer): void {
   );
 }
 
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
-  );
-}
-
 function batch(state: Batch["state"], overrides: Partial<Batch> = {}): Batch {
   return {
     id: BATCH,
@@ -119,7 +105,7 @@ describe("what the overflow offers", () => {
   it.each(["draft", "approved", "in_annotation"] as const)(
     "offers delete on a %s batch, because the wire declares it",
     async (state) => {
-      render(mount(<BatchOverflowMenu batch={batch(state)} projectId={PROJECT} />));
+      renderWithData(<BatchOverflowMenu batch={batch(state)} projectId={PROJECT} />);
 
       const item = await openMenu();
 
@@ -129,7 +115,7 @@ describe("what the overflow offers", () => {
   );
 
   it("disables it on a completed batch and says why, rather than hiding it", async () => {
-    render(mount(<BatchOverflowMenu batch={batch("completed")} projectId={PROJECT} />));
+    renderWithData(<BatchOverflowMenu batch={batch("completed")} projectId={PROJECT} />);
 
     const item = await openMenu();
 
@@ -155,13 +141,11 @@ describe("what the overflow offers", () => {
      * Not a contrived pair, either: it is what a newer server looks like from an
      * older client, which is the case the contract exists for.
      */
-    render(
-      mount(
-        <BatchOverflowMenu
-          batch={batch("in_annotation", { allowed_actions: ["complete", "repin"] })}
-          projectId={PROJECT}
-        />,
-      ),
+    renderWithData(
+      <BatchOverflowMenu
+        batch={batch("in_annotation", { allowed_actions: ["complete", "repin"] })}
+        projectId={PROJECT}
+      />,
     );
 
     const item = await openMenu();
@@ -173,7 +157,7 @@ describe("what the overflow offers", () => {
   });
 
   it("does not open the dialog from a disabled item", async () => {
-    render(mount(<BatchOverflowMenu batch={batch("completed")} projectId={PROJECT} />));
+    renderWithData(<BatchOverflowMenu batch={batch("completed")} projectId={PROJECT} />);
 
     await userEvent.click(await openMenu());
 
@@ -184,23 +168,21 @@ describe("what the overflow offers", () => {
 
 describe("what the dialog says", () => {
   it("names the frames that survive and the progress that does not", async () => {
-    render(
-      mount(
-        <BatchOverflowMenu
-          batch={batch("in_annotation", {
-            progress: {
-              unannotated: 20,
-              pre_labeled: 0,
-              annotated: 25,
-              skipped: 3,
-              review_pending: 0,
-              accepted: 0,
-              total: 48,
-            },
-          })}
-          projectId={PROJECT}
-        />,
-      ),
+    renderWithData(
+      <BatchOverflowMenu
+        batch={batch("in_annotation", {
+          progress: {
+            unannotated: 20,
+            pre_labeled: 0,
+            annotated: 25,
+            skipped: 3,
+            review_pending: 0,
+            accepted: 0,
+            total: 48,
+          },
+        })}
+        projectId={PROJECT}
+      />,
     );
 
     await userEvent.click(await openMenu());
@@ -214,7 +196,7 @@ describe("what the dialog says", () => {
   });
 
   it("says nothing about progress for a draft, which has none to lose", async () => {
-    render(mount(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />));
+    renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
 
     await userEvent.click(await openMenu());
 
@@ -224,13 +206,11 @@ describe("what the dialog says", () => {
   });
 
   it("mentions the trunk only when something of this batch is already in it", async () => {
-    render(
-      mount(
-        <BatchOverflowMenu
-          batch={batch("in_annotation", { promoted_asset_count: 12 })}
-          projectId={PROJECT}
-        />,
-      ),
+    renderWithData(
+      <BatchOverflowMenu
+        batch={batch("in_annotation", { promoted_asset_count: 12 })}
+        projectId={PROJECT}
+      />,
     );
 
     await userEvent.click(await openMenu());
@@ -245,10 +225,8 @@ describe("what pressing Delete does", () => {
   it("sends the delete with the confirmation the dialog already took", async () => {
     on("DELETE", /\/batches\/[^/]+$/, { status: 204 });
     const gone = vi.fn();
-    render(
-      mount(
-        <BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} onDeleted={gone} />,
-      ),
+    renderWithData(
+      <BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} onDeleted={gone} />,
     );
 
     await userEvent.click(await openMenu());
@@ -273,10 +251,8 @@ describe("what pressing Delete does", () => {
       },
     });
     const gone = vi.fn();
-    render(
-      mount(
-        <BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} onDeleted={gone} />,
-      ),
+    renderWithData(
+      <BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} onDeleted={gone} />,
     );
 
     await userEvent.click(await openMenu());
@@ -291,7 +267,7 @@ describe("what pressing Delete does", () => {
   });
 
   it("closes with no request when Cancel is pressed", async () => {
-    render(mount(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />));
+    renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
 
     await userEvent.click(await openMenu());
     await userEvent.click(screen.getByText("Cancel"));
@@ -308,8 +284,8 @@ describe("the two anchors are one component", () => {
     // sentence, a different apply — turns this and the cases above red at the
     // anchor that drifted.
     for (const align of ["end", "start"] as const) {
-      const { unmount } = render(
-        mount(<BatchOverflowMenu batch={batch("approved")} projectId={PROJECT} align={align} />),
+      const { unmount } = renderWithData(
+        <BatchOverflowMenu batch={batch("approved")} projectId={PROJECT} align={align} />,
       );
 
       await userEvent.click(await openMenu());

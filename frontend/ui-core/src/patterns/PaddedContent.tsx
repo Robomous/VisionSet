@@ -2,9 +2,9 @@
  * The padded, centred column every list, form and dashboard reads in.
  *
  * One declaration, consumed by the app's padded pane and by the project shell's
- * content area, so the two cannot disagree on how wide a page is. The cap is a
- * layout extension in `@theme inline` (`--container-page`), like the rail's widths,
- * rather than a number spelled at the call site.
+ * content area, so the two cannot disagree on how wide a page is. The cap is the
+ * reusable page-content cap, a layout extension in `@theme inline`
+ * (`--container-page`), rather than a number spelled at the call site.
  */
 
 import type { JSX, ReactNode } from "react";

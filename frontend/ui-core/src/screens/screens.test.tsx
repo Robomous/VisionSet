@@ -19,9 +19,14 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useState, type JSX, type ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
+// `VisionSetDataProvider` and `QueryClient` stay direct imports: three tests
+// below build their own local `wrap` that a `rerender` reuses across a prop
+// change, which needs the same `client` identity (and the same `QueryClient`,
+// since they assert on its cache) present on both sides of the rerender —
+// something `renderWithData`'s result cannot give a caller-driven `rerender`.
+// See each local `wrap` below.
+import { VisionSetDataProvider } from "../data/VisionSetDataProvider";
 import { classColor, hexColor } from "../palette";
-import { writeToken } from "../data/session";
 import { ProjectScreen } from "./ProjectScreen";
 import { ProjectsScreen } from "./ProjectsScreen";
 import {
@@ -30,13 +35,12 @@ import {
   type LabelClassBody,
   type SchemaChangePreview,
 } from "./queries";
+import { harnessClient, renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
 import type { components as capComponents } from "../generated/api.js";
 
 type BatchState = capComponents["schemas"]["BatchState"];
 
-/** See `dataShell.test.tsx`: undici's `Request` needs an absolute URL. */
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 /** A second project, for the draft that must not follow somebody into it. */
 const OTHER_PROJECT = "77777777-7777-4777-8777-777777777777";
@@ -87,7 +91,6 @@ beforeEach(() => {
   sent.length = 0;
   bodies.clear();
   curatedDrafts = new Map();
-  writeToken("a-token");
   vi.stubGlobal("fetch", async (request: Request) => {
     sent.push(request);
     if (request.method !== "GET") bodies.set(request, await request.clone().text());
@@ -169,17 +172,6 @@ function describedBy(dialog: HTMLElement): readonly (string | null)[] {
     .map((id) => document.getElementById(id)?.textContent ?? null);
 }
 
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
-  );
-}
-
 const CLASSES = [
   { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
   { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
@@ -256,7 +248,7 @@ describe("the project list", () => {
       },
     });
 
-    render(mount(<ProjectsScreen onOpenProject={vi.fn()} />));
+    renderWithData(<ProjectsScreen onOpenProject={vi.fn()} />);
 
     await waitFor(() => expect(screen.queryByTestId("projects-table")).not.toBeNull());
     expect(rowNames()).toEqual(["newest", "middle", "oldest"]);
@@ -284,7 +276,7 @@ describe("the project list", () => {
       },
     });
 
-    render(mount(<ProjectsScreen onOpenProject={vi.fn()} />));
+    renderWithData(<ProjectsScreen onOpenProject={vi.fn()} />);
 
     await waitFor(() => expect(screen.queryByTestId("projects-table")).not.toBeNull());
     expect(rowNames()).toEqual(["dated", "legacy-a", "legacy-b"]);
@@ -314,7 +306,7 @@ describe("the project list", () => {
     });
     const opened = vi.fn();
 
-    render(mount(<ProjectsScreen onOpenProject={opened} />));
+    renderWithData(<ProjectsScreen onOpenProject={opened} />);
 
     await waitFor(() => expect(screen.queryByTestId("projects-table")).not.toBeNull());
     await userEvent.click(screen.getByTestId("open-highway"));
@@ -351,7 +343,7 @@ describe("the project list", () => {
     });
     on("GET", /^\/projects\/[^/]+\/assets\/[^/]+\/thumbnail$/, { status: 200, body: "bytes" });
 
-    render(mount(<ProjectsScreen onOpenProject={vi.fn()} />));
+    renderWithData(<ProjectsScreen onOpenProject={vi.fn()} />);
 
     await waitFor(() => expect(screen.queryByTestId("projects-table")).not.toBeNull());
     // The pictured row asks for the asset the wire named — and only that row
@@ -369,7 +361,7 @@ describe("the project list", () => {
 
   it("shows the empty state rather than an empty table", async () => {
     on("GET", /^\/projects$/, { status: 200, body: { items: [], total: 0 } });
-    render(mount(<ProjectsScreen onOpenProject={vi.fn()} />));
+    renderWithData(<ProjectsScreen onOpenProject={vi.fn()} />);
     await waitFor(() => expect(screen.queryByText("No projects yet")).not.toBeNull());
     expect(screen.queryByTestId("projects-table")).toBeNull();
   });
@@ -389,7 +381,7 @@ describe("the project list", () => {
     });
     const opened = vi.fn();
 
-    render(mount(<ProjectsScreen onOpenProject={opened} />));
+    renderWithData(<ProjectsScreen onOpenProject={opened} />);
     await userEvent.click(await screen.findByTestId("new-project"));
     await userEvent.type(screen.getByTestId("project-name"), "highway");
     await userEvent.click(screen.getByTestId("create-submit"));
@@ -410,7 +402,7 @@ describe("the project list", () => {
     });
     const opened = vi.fn();
 
-    render(mount(<ProjectsScreen onOpenProject={opened} />));
+    renderWithData(<ProjectsScreen onOpenProject={opened} />);
     await userEvent.click(await screen.findByTestId("new-project"));
     await userEvent.type(screen.getByTestId("project-name"), "highway");
     await userEvent.click(screen.getByTestId("create-submit"));
@@ -446,7 +438,7 @@ describe("the project list", () => {
     });
     on("DELETE", /^\/projects\//, { status: 204 });
 
-    render(mount(<ProjectsScreen onOpenProject={vi.fn()} />));
+    renderWithData(<ProjectsScreen onOpenProject={vi.fn()} />);
     await userEvent.click(await screen.findByTestId("delete-highway"));
     await userEvent.click(screen.getByTestId("delete-submit"));
 
@@ -516,7 +508,7 @@ describe("the schema editor", () => {
       },
     });
 
-    render(mount(<PreviewSchemaChangeProbe projectId={PROJECT} classes={candidate} />));
+    renderWithData(<PreviewSchemaChangeProbe projectId={PROJECT} classes={candidate} />);
     await userEvent.click(screen.getByTestId("preview-schema-change"));
 
     await waitFor(() =>
@@ -568,7 +560,7 @@ describe("the schema editor", () => {
       },
     });
 
-    render(mount(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={[]} />));
+    renderWithData(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={[]} />);
 
     await waitFor(() =>
       expect(screen.getByTestId("blocking-assets-result").textContent).toBe("1:12:1"),
@@ -576,7 +568,7 @@ describe("the schema editor", () => {
   });
 
   it("stays disabled while nothing is proposed", () => {
-    render(mount(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={null} />));
+    renderWithData(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={null} />);
     expect(screen.getByTestId("blocking-assets-result").textContent).toBe("pending");
     expect(
       sent.some((sentRequest) => new URL(sentRequest.url).pathname.endsWith("/schema/blocking-assets")),
@@ -597,10 +589,12 @@ describe("the schema editor", () => {
       { color: "#38bdf8", attributes: [], name: "vehicle", geometries: ["bbox"] },
     ];
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = harnessClient();
+    const scope = Symbol("schema-blocking-assets-test");
     const wrap = (node: ReactNode): JSX.Element => (
-      <ApiProvider baseUrl={API} queryClient={queryClient}>
+      <VisionSetDataProvider client={client} scope={scope} makeQueryClient={() => queryClient}>
         {node}
-      </ApiProvider>
+      </VisionSetDataProvider>
     );
 
     const { rerender } = render(
@@ -686,7 +680,7 @@ describe("the schema editor", () => {
     });
     const opened = vi.fn();
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={opened} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={opened} />);
 
     const panel = await screen.findByTestId("blocking-assets");
     await within(panel).findByTestId("blocking-asset-list");
@@ -740,10 +734,12 @@ describe("the schema editor", () => {
     projectWithSchema();
     on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = harnessClient();
+    const scope = Symbol("project-switch-test");
     const wrap = (projectId: string): JSX.Element => (
-      <ApiProvider baseUrl={API} queryClient={queryClient}>
+      <VisionSetDataProvider client={client} scope={scope} makeQueryClient={() => queryClient}>
         <ProjectScreen projectId={projectId} tab="schema" onOpenBatch={vi.fn()} />
-      </ApiProvider>
+      </VisionSetDataProvider>
     );
 
     // The project switched *to*, first, so its own queries are warm when it
@@ -779,7 +775,7 @@ describe("the schema editor", () => {
     projectWithSchema();
     on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={vi.fn()} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={vi.fn()} />);
     await screen.findByTestId("schema-editor");
     const asks = (): number =>
       sent.filter((request) =>
@@ -820,10 +816,12 @@ describe("the schema editor", () => {
     projectWithSchema();
     on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = harnessClient();
+    const scope = Symbol("schema-draft-cross-project-test");
     const wrap = (node: ReactNode): JSX.Element => (
-      <ApiProvider baseUrl={API} queryClient={queryClient}>
+      <VisionSetDataProvider client={client} scope={scope} makeQueryClient={() => queryClient}>
         {node}
-      </ApiProvider>
+      </VisionSetDataProvider>
     );
 
     const view = render(
@@ -855,7 +853,7 @@ describe("the schema editor", () => {
     projectWithSchema();
     on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
     await screen.findByTestId("schema-editor");
     // Every row's way onward is a batch. A host with nowhere to send anybody is
@@ -890,7 +888,7 @@ describe("the schema editor", () => {
     });
     on("GET", /schema\/versions$/, { status: 200, body: { items: [], total: 0 } });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
     await waitFor(() => expect(screen.queryByTestId("schema-editor")).not.toBeNull());
     expect(screen.queryByTestId("schema-error")).toBeNull();
@@ -904,7 +902,7 @@ describe("the schema editor", () => {
       body: { published: { project_id: PROJECT, version: 4, classes: CLASSES }, advanced_batches: [] },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     // Versioning is ambient: one persistent line saying what saving would
     // do, rather than a disabled button somebody has to press to find out.
@@ -962,7 +960,7 @@ describe("the schema editor", () => {
       });
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     await userEvent.click(screen.getByTestId("add-class"));
     await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
@@ -1028,7 +1026,7 @@ describe("the schema editor", () => {
           };
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     await removeClass(1);
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -1098,7 +1096,7 @@ describe("the schema editor", () => {
       };
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     await removeClass(1);
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -1137,7 +1135,7 @@ describe("the schema editor", () => {
       };
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     await removeClass(1);
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -1183,7 +1181,7 @@ describe("the schema editor", () => {
       },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     await removeClass(1);
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -1254,7 +1252,7 @@ describe("the schema editor", () => {
           };
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     await removeClass(1);
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -1303,7 +1301,7 @@ describe("the schema editor", () => {
       },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     await removeClass(1);
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -1351,7 +1349,7 @@ describe("the schema editor", () => {
         },
       });
 
-      render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
       await screen.findByTestId("schema-editor");
       await removeClass(1);
       await userEvent.click(screen.getByTestId("save-schema"));
@@ -1378,7 +1376,7 @@ describe("the schema editor", () => {
       },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     await userEvent.click(screen.getByTestId("add-class"));
     await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
@@ -1393,7 +1391,7 @@ describe("the schema editor", () => {
 
   it("offers only the geometries an annotation can carry", async () => {
     projectWithSchema();
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
 
     // `polyline` is offered even where no tool draws one: the API
@@ -1425,7 +1423,7 @@ describe("the schema editor", () => {
    */
   it("groups the geometries it offers under their category", async () => {
     projectWithSchema();
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
 
     // No press: the boxes are on the page, which is the point of the control
@@ -1456,7 +1454,7 @@ describe("the schema editor", () => {
    */
   it("adds a geometry to a class rather than replacing the one it had", async () => {
     projectWithSchema();
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
 
     const before = screen.getByTestId("class-geometry-0-bbox") as HTMLInputElement;
@@ -1476,7 +1474,7 @@ describe("the schema editor", () => {
 
   it("refuses to untick the last geometry, and says why rather than greying out", async () => {
     projectWithSchema();
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
 
     const only = screen.getByTestId("class-geometry-0-bbox") as HTMLInputElement;
@@ -1502,7 +1500,7 @@ describe("the schema editor", () => {
    */
   it("previews a derived class in the colour it is actually drawn in", async () => {
     projectWithSchema();
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
 
     // `lane` declares no colour, so `classColor` derives one. Computed here from
@@ -1535,7 +1533,7 @@ describe("the schema editor", () => {
       body: { published: { project_id: PROJECT, version: 4, classes: CLASSES }, advanced_batches: [] },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     // Dirty by something that is not the colour. An untouched draft sends
     // nothing — the button answers instead of being grey, and that
@@ -1568,7 +1566,7 @@ describe("the schema editor", () => {
       body: { published: { project_id: PROJECT, version: 4, classes: CLASSES }, advanced_batches: [] },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     await userEvent.click(screen.getByTestId("clear-color-0"));
 
@@ -1660,7 +1658,7 @@ describe("the schema version history", () => {
   const NOTHING = { is_destructive: false, destructive_classes: [], changes: [] };
 
   async function open(): Promise<void> {
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     await screen.findByTestId("version-navigator");
   }
@@ -1689,7 +1687,7 @@ describe("the schema version history", () => {
   it("does not render a navigator for a project with one version", async () => {
     // A selector with one entry is furniture. There is no history to navigate.
     withHistory([VERSIONS[2]], VERSIONS[2]);
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
     await screen.findByTestId("schema-editor");
     expect(screen.queryByTestId("version-navigator")).toBeNull();
@@ -1962,7 +1960,7 @@ describe("the schema editor's two panels", () => {
     // The whole point of the layout. Fifty stacked full-width cards is what this
     // replaces, and it is unusable well before fifty.
     withClasses(MANY);
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
     await screen.findByTestId("class-list");
     expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(50);
@@ -1975,7 +1973,7 @@ describe("the schema editor's two panels", () => {
     // The trap the filter creates: a row's index in the *view* is not its index
     // in the schema, and writing through the wrong one edits a different class.
     withClasses(MANY);
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-filter");
 
     await userEvent.type(screen.getByTestId("class-filter"), "class-42");
@@ -1990,7 +1988,7 @@ describe("the schema editor's two panels", () => {
       { name: "Vehicle", geometries: ["bbox"], color: null, attributes: [] },
       { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
     ]);
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-filter");
 
     await userEvent.type(screen.getByTestId("class-filter"), "EHIC");
@@ -1999,7 +1997,7 @@ describe("the schema editor's two panels", () => {
 
   it("says so when a filter matches nothing, rather than showing an empty box", async () => {
     withClasses(MANY);
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-filter");
 
     await userEvent.type(screen.getByTestId("class-filter"), "zzz");
@@ -2008,7 +2006,7 @@ describe("the schema editor's two panels", () => {
 
   it("walks the list with the arrow keys", async () => {
     withClasses(MANY);
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-list");
 
     const rows = screen.getByTestId("class-list").querySelectorAll("button");
@@ -2025,7 +2023,7 @@ describe("the schema editor's two panels", () => {
 
   it("does not walk off either end of the list", async () => {
     withClasses(MANY.slice(0, 2));
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-list");
 
     screen.getByTestId("class-list").querySelectorAll("button")[0].focus();
@@ -2038,7 +2036,7 @@ describe("the schema editor's two panels", () => {
 
   it("adds a class and selects it, so the panel is showing what was just made", async () => {
     withClasses(MANY);
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-list");
 
     await userEvent.click(screen.getByTestId("add-class"));
@@ -2050,7 +2048,7 @@ describe("the schema editor's two panels", () => {
     // A new class has an empty name, so *any* filter hides the row that was just
     // created — and the panel would be editing something the list does not show.
     withClasses(MANY);
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-filter");
 
     await userEvent.type(screen.getByTestId("class-filter"), "class-42");
@@ -2070,7 +2068,7 @@ describe("the schema editor's two panels", () => {
         is_refused: true,
       },
     });
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-list");
 
     await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
@@ -2093,7 +2091,7 @@ describe("the schema editor's two panels", () => {
         is_refused: true,
       },
     });
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={vi.fn()} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={vi.fn()} />);
     await screen.findByTestId("class-list");
 
     await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
@@ -2115,7 +2113,7 @@ describe("the schema editor's two panels", () => {
         is_refused: true,
       },
     });
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-list");
 
     await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
@@ -2138,7 +2136,7 @@ describe("the schema editor's two panels", () => {
         is_refused: false,
       },
     });
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-list");
 
     await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
@@ -2157,7 +2155,7 @@ describe("the schema editor's two panels", () => {
       status: 503,
       body: { code: "NETWORK_ERROR", message: "unreachable" },
     });
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-list");
 
     await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
@@ -2184,7 +2182,7 @@ describe("the schema editor's two panels", () => {
         resolvePreview = resolve;
       });
     });
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-list");
 
     await userEvent.click(screen.getByTestId("remove-class-0"));
@@ -2212,7 +2210,7 @@ describe("the schema editor's two panels", () => {
 
   it("shows each class's annotation count in its panel header", async () => {
     withClasses(MANY);
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
     // The panel renders before the counts arrive — it has a class to show and
     // does not wait on a number to show it — so this waits for the count rather
@@ -2227,7 +2225,7 @@ describe("the schema editor's two panels", () => {
 
   it("lands on the neighbour after a removal rather than on an empty panel", async () => {
     withClasses(MANY.slice(0, 3));
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-list");
 
     await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[2]);
@@ -2242,7 +2240,7 @@ describe("the schema editor's two panels", () => {
 
   it("removes a class that was never named without asking the server", async () => {
     withClasses(CLASSES);
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-list");
     await userEvent.click(screen.getByTestId("add-class"));
     const before = sent.filter((request) => request.url.endsWith("/schema/preview")).length;
@@ -2258,7 +2256,7 @@ describe("the schema editor's two panels", () => {
 
   it("leaves an unnamed class out of the removal preview it cannot be part of", async () => {
     withClasses(CLASSES);
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-list");
     await userEvent.click(screen.getByTestId("add-class"));
 
@@ -2318,7 +2316,7 @@ describe("the project view's sections", () => {
 
   it("shows one section at a time, and the others are not in the DOM", async () => {
     project();
-    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
     // Overview is where a project opens: a project page's subject is
     // its data, and the schema editor renders the same for an empty project and
@@ -2339,7 +2337,7 @@ describe("the project view's sections", () => {
 
   it("presents the sections as navigation, with the open one marked and the others not", async () => {
     project();
-    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
     await screen.findByTestId("overview-panel");
 
     // Structural, never a class string: the styling changed once already
@@ -2359,14 +2357,14 @@ describe("the project view's sections", () => {
 
   it("opens on the section the URL named, and on the default when it names nothing valid", async () => {
     project();
-    const { unmount } = render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    const { unmount } = renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     expect(screen.queryByTestId("overview-panel")).toBeNull();
     unmount();
 
     // A stale link, a typo, or `batches` on a host with no batch route: none of
     // them is an empty page. The default they land on is Overview.
-    render(mount(<ProjectScreen projectId={PROJECT} tab="nonsense" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="nonsense" />);
     await screen.findByTestId("overview-panel");
   });
 
@@ -2375,7 +2373,7 @@ describe("the project view's sections", () => {
     // and it renders identically for an empty project and a 100k-image one —
     // which is the test `DESIGN.md` principle 6 states, about this page.
     project();
-    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
     await screen.findByTestId("overview-panel");
     expect(sectionItems().map((item) => item.textContent)).toEqual([
@@ -2393,7 +2391,7 @@ describe("the project view's sections", () => {
 
   it("still opens on Overview for a host with no batch route", async () => {
     project();
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await screen.findByTestId("overview-panel");
     expect(sectionItems().map((item) => item.textContent)).toEqual([
@@ -2408,7 +2406,7 @@ describe("the project view's sections", () => {
     // default moving again.
     project();
     const changed = vi.fn();
-    render(mount(<ProjectScreen projectId={PROJECT} tab="overview" onTabChange={changed} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="overview" onTabChange={changed} />);
 
     await screen.findByTestId("overview-panel");
     await userEvent.click(screen.getByTestId("nav-dataset"));
@@ -2418,7 +2416,7 @@ describe("the project view's sections", () => {
   it("reports the tab to the host rather than reaching for a router", async () => {
     project();
     const changed = vi.fn();
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" onTabChange={changed} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onTabChange={changed} />);
 
     await screen.findByTestId("schema-editor");
     await userEvent.click(screen.getByTestId("nav-overview"));
@@ -2433,7 +2431,7 @@ describe("the project view's sections", () => {
     // open section is mounted, which is what makes "requests follow the open
     // section" true by construction rather than by every panel remembering.
     project();
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await screen.findByTestId("overview-panel");
     const versionRequests = (): number =>
@@ -2449,7 +2447,7 @@ describe("the project view's sections", () => {
     // asks to rewrite the address bar; this is the screen holding up its end
     // when handed the stale value directly.
     project();
-    render(mount(<ProjectScreen projectId={PROJECT} tab="versions" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="versions" />);
 
     await screen.findByTestId("schema-editor");
     expect(screen.queryByTestId("version-history")).not.toBeNull();
@@ -2487,7 +2485,7 @@ describe("version history", () => {
 
     // Reached through the Schema tab, which is where the history lives now: it
     // is a view *of* the schema rather than a peer of it.
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
     const history = await screen.findByTestId("version-history");
     // `findBy` on the row, not on the card: the card renders immediately and holds
@@ -2543,7 +2541,7 @@ describe("version history", () => {
       status: 200,
       body: { project_id: PROJECT, version: 2, classes: CLASSES },
     });
-    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
     const history = await screen.findByTestId("version-history");
     await within(history).findByTestId("version-1");
@@ -2617,7 +2615,7 @@ describe("version history", () => {
 
     it("collapses the run and leaves the milestones alone", async () => {
       withRun();
-      render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
       const history = await screen.findByTestId("version-history");
       await within(history).findByTestId("version-4");
@@ -2635,7 +2633,7 @@ describe("version history", () => {
 
     it("says how many it stands for, and what the schema looked like after them", async () => {
       withRun();
-      render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
       const history = await screen.findByTestId("version-history");
       const run = await within(history).findByTestId("version-run-2-3");
@@ -2651,7 +2649,7 @@ describe("version history", () => {
 
     it("gives back every row when it is expanded", async () => {
       withRun();
-      render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
       const history = await screen.findByTestId("version-history");
       await within(history).findByTestId("version-run-2-3");
@@ -2697,7 +2695,7 @@ describe("version history", () => {
           total: 2,
         },
       });
-      render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
       const history = await screen.findByTestId("version-history");
       await within(history).findByTestId("version-1");
@@ -2820,7 +2818,7 @@ describe("the project's identity and its one filled control", () => {
   it("renders nothing at all where a description is absent", async () => {
     // Not "No description." — a line about a field rather than about a project.
     headerFor({});
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await screen.findByTestId("project-title");
     expect(screen.queryByTestId("project-description")).toBeNull();
@@ -2829,14 +2827,14 @@ describe("the project's identity and its one filled control", () => {
 
   it("shows a description when there is one", async () => {
     headerFor({ description: "M4 survey" });
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     expect((await screen.findByTestId("project-description")).textContent).toBe("M4 survey");
   });
 
   it("chips the active schema version", async () => {
     headerFor({});
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     expect((await screen.findByTestId("chip-version")).textContent).toContain("v3 active");
   });
@@ -2845,7 +2843,7 @@ describe("the project's identity and its one filled control", () => {
     // `DESIGN.md`: a chip with no data is omitted, never rendered as a
     // placeholder. A project three seconds old is the ordinary case.
     headerFor({ schema: false });
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     // Wait on the Overview's *counted* line, whose request also settles the
     // schema one, so the assertion below is about an answer rather than about a
@@ -2860,7 +2858,7 @@ describe("the project's identity and its one filled control", () => {
    */
   it("says nothing under the Overview title while the count cannot be read", async () => {
     headerFor({ stats: false });
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await waitFor(() => expect(screen.queryByTestId("chip-version")).not.toBeNull());
     expect(screen.queryByTestId("section-meta")).toBeNull();
@@ -2868,7 +2866,7 @@ describe("the project's identity and its one filled control", () => {
 
   it("formats the image count rather than printing a bare integer", async () => {
     headerFor({});
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     expect((await screen.findByTestId("section-meta")).textContent).toContain(
       `${(1248).toLocaleString(undefined)} images`,
@@ -2878,7 +2876,7 @@ describe("the project's identity and its one filled control", () => {
   it("says when data last arrived, relative inside a week", async () => {
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
     headerFor({ lastIngest: twoDaysAgo });
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     expect((await screen.findByTestId("section-meta")).textContent).toMatch(/ · ingested 2d ago$/);
   });
@@ -2886,7 +2884,7 @@ describe("the project's identity and its one filled control", () => {
   it("writes an absolute date once the ingest is older than a week", async () => {
     const longAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
     headerFor({ lastIngest: longAgo.toISOString() });
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     // The date the browser would write, not a hardcoded format: `formatWhen`
     // deliberately follows the viewer's locale.
@@ -2905,7 +2903,7 @@ describe("the project's identity and its one filled control", () => {
     // this project predates the column and cannot be backfilled. Same
     // rule as a missing description: omitted, never placeheld.
     headerFor({});
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     const meta = await screen.findByTestId("section-meta");
     expect(meta.textContent).not.toContain("ingested");
@@ -2919,7 +2917,7 @@ describe("the project's identity and its one filled control", () => {
     // fix was a hand-written guard at each render site. Now the check runs at
     // `unwrap`, so the query fails, the line stays away, and the page still stands.
     headerFor({ lastIngest: 1_754_000_000 });
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await waitFor(() => expect(screen.getByTestId("project-title").textContent).toBe("highway"));
     expect(screen.queryByTestId("section-meta")).toBeNull();
@@ -2927,7 +2925,7 @@ describe("the project's identity and its one filled control", () => {
 
   it("omits the ingest moment when the timestamp will not parse", async () => {
     headerFor({ lastIngest: "not-a-date" });
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     const meta = await screen.findByTestId("section-meta");
     expect(meta.textContent).not.toContain("ingested");
@@ -2936,7 +2934,7 @@ describe("the project's identity and its one filled control", () => {
   it("offers Annotate when a batch is open for annotation, and opens that batch", async () => {
     const opened = vi.fn();
     headerFor({ batchState: "in_annotation" });
-    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />);
 
     const cta = await screen.findByTestId("go-annotate");
     // With nothing to choose between, the button is shaped like one that jumps:
@@ -2980,7 +2978,7 @@ describe("the project's identity and its one filled control", () => {
   it("asks which batch when two are open for annotation, instead of picking one", async () => {
     const opened = vi.fn();
     headerFor({ batches: OPEN_PAIR });
-    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />);
 
     const cta = await screen.findByTestId("go-annotate");
     expect(cta.getAttribute("aria-haspopup")).toBe("menu");
@@ -2997,7 +2995,7 @@ describe("the project's identity and its one filled control", () => {
 
   it("lists only the batches work can happen in, newest first, with their remaining count and pinned version", async () => {
     headerFor({ batches: OPEN_PAIR });
-    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
     await userEvent.click(await screen.findByTestId("go-annotate"));
     await screen.findByTestId("annotate-batch-drive-03");
@@ -3021,7 +3019,7 @@ describe("the project's identity and its one filled control", () => {
   it("opens the batch the menu row names", async () => {
     const opened = vi.fn();
     headerFor({ batches: OPEN_PAIR });
-    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />);
 
     await userEvent.click(await screen.findByTestId("go-annotate"));
     await userEvent.click(await screen.findByTestId("annotate-batch-drive-02"));
@@ -3033,7 +3031,7 @@ describe("the project's identity and its one filled control", () => {
     // `DESIGN.md`'s never-disable rule: a control
     // that leads nowhere is absent, not grey.
     headerFor({ batchState: "draft" });
-    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />);
 
     await screen.findByTestId("go-ingest");
     expect(screen.queryByTestId("go-annotate")).toBeNull();
@@ -3059,8 +3057,8 @@ describe("the project's identity and its one filled control", () => {
     // The invitation and the header say the same thing with the same handler, so
     // the loud one stays in the header; the classes order is a link beneath.
     headerFor({ schema: false, assets: 0 });
-    render(
-      mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} onTabChange={vi.fn()} />),
+    renderWithData(
+      <ProjectScreen projectId={PROJECT} onIngest={vi.fn()} onTabChange={vi.fn()} />,
     );
 
     await screen.findByTestId("first-run-alt");
@@ -3069,8 +3067,8 @@ describe("the project's identity and its one filled control", () => {
 
   it("steps Ingest back while the Overview's invitation owns the filled button", async () => {
     headerFor({ schema: false, assets: 48 });
-    render(
-      mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} onTabChange={vi.fn()} />),
+    renderWithData(
+      <ProjectScreen projectId={PROJECT} onIngest={vi.fn()} onTabChange={vi.fn()} />,
     );
 
     const cta = await screen.findByTestId("first-run-cta");
@@ -3084,7 +3082,7 @@ describe("the project's identity and its one filled control", () => {
     // page that rendered the other order as bare prose would be the right count
     // reached by leaving the person nothing to press.
     headerFor({ schema: false, assets: 0 });
-    render(mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />);
 
     const alt = await screen.findByTestId("first-run-alt");
     expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
@@ -3096,7 +3094,7 @@ describe("the project's identity and its one filled control", () => {
     // The invitation and the header say the same thing with the same handler, so
     // the loud one stays in the header and the panel's stays outlined.
     headerFor({ assets: 0 });
-    render(mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />);
 
     await screen.findByTestId("overview-ingest");
     expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
@@ -3104,7 +3102,7 @@ describe("the project's identity and its one filled control", () => {
 
   it("keeps the filled Ingest once the project has both classes and images", async () => {
     headerFor({});
-    render(mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />);
 
     await screen.findByTestId("overview-stats");
     expect(screen.queryByTestId("first-run")).toBeNull();
@@ -3116,8 +3114,8 @@ describe("the project's identity and its one filled control", () => {
     // navigation still standing back on the Dataset section would be a page with
     // no forward action at all.
     headerFor({ schema: false, assets: 0 });
-    render(
-      mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} tab="dataset" />),
+    renderWithData(
+      <ProjectScreen projectId={PROJECT} onIngest={vi.fn()} tab="dataset" />,
     );
 
     await screen.findByTestId("go-ingest");
@@ -3136,7 +3134,7 @@ describe("the project's identity and its one filled control", () => {
     });
     on("GET", /\/preprocessing-recipes$/, { status: 200, body: { items: [], total: 0 } });
     on("GET", /\/releases$/, { status: 200, body: { items: [], total: 0 } });
-    render(mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} tab="dataset" />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} tab="dataset" />);
 
     await screen.findByTestId("dataset-tabs");
     expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
@@ -3153,7 +3151,7 @@ describe("the project's identity and its one filled control", () => {
 
   it("moves Rename into the overflow, so only two buttons show", async () => {
     headerFor({ batchState: "in_annotation" });
-    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />);
 
     await screen.findByTestId("go-annotate");
     // Rename is behind the menu, so it is not in the document yet.
@@ -3172,7 +3170,7 @@ describe("the project's identity and its one filled control", () => {
 
   it("states the blast radius in counted terms before deleting anything", async () => {
     headerFor({});
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await screen.findByTestId("project-menu");
     await userEvent.click(screen.getByTestId("project-menu"));
@@ -3189,7 +3187,7 @@ describe("the project's identity and its one filled control", () => {
     headerFor({});
     on("DELETE", /^\/projects\/[^/]+$/, { status: 204 });
     const gone = vi.fn();
-    render(mount(<ProjectScreen projectId={PROJECT} onDeleted={gone} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} onDeleted={gone} />);
 
     await screen.findByTestId("project-menu");
     await userEvent.click(screen.getByTestId("project-menu"));

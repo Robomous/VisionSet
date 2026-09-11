@@ -47,7 +47,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { useApiClient } from "../data/ApiProvider";
+import { useApiClient } from "../data/VisionSetDataProvider";
 import { unwrap } from "../data/errors";
 import {
   checkAddAnnotations,
@@ -75,7 +75,7 @@ export type ProgressCounts = components["schemas"]["ProgressCounts"];
  *
  * The generated `AnnotationOut` spells a polygon's points as a **tuple** — the
  * spec uses `prefixItems` and `openapi-typescript` v7 honours it — while the value
- * that comes back through `openapi-fetch` widens to `number[][]`. The two are the
+ * that comes back through the client widens to `number[][]`. The two are the
  * same JSON and TypeScript will not unify them, so naming the shape this module
  * actually reads is the honest answer. It is the `ErrorBody` precedent one layer
  * up: a consumer of a payload declares what it needs rather than importing a type

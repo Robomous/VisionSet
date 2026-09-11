@@ -30,11 +30,11 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { useApiClient } from "../data/ApiProvider";
+import { useApiClient } from "../data/VisionSetDataProvider";
 import { usePollingQuery } from "../data/polling";
 import { asApiError, unwrap } from "../data/errors";
 import type { Refusal } from "../data/refusals";
-import type { VisionSetClient } from "../client";
+import type { VisionSetDataClient } from "../data/port";
 import {
   checkApproveBatch,
   checkAssignJob,
@@ -541,8 +541,15 @@ export function useSchemaDraft(
       const result = await client.GET("/projects/{project_id}/schema/drafts/{kind}", {
         params: { path: { project_id: projectId, kind } },
       });
-      if (result.response.status === 404) return null;
-      return unwrap(result, checkGetSchemaDraft);
+      // "Nobody has started one" is a coded answer, not a status:
+      // `SCHEMA_DRAFT_NOT_FOUND` is what the route documents and what
+      // `docs/content/api.md` requires a client to branch on.
+      try {
+        return unwrap(result, checkGetSchemaDraft);
+      } catch (cause) {
+        if (asApiError(cause).code === "SCHEMA_DRAFT_NOT_FOUND") return null;
+        throw cause;
+      }
     },
     retry: false,
     retryOnMount: false,
@@ -570,18 +577,19 @@ export interface SaveSchemaDraftInput {
  * on a project switch is exactly that caller, and this is its door: a plain
  * function closing over nothing but its own arguments.
  *
- * `keepalive` is the same door for a second caller: a page unloading mid-debounce
- * — a reload pressed a keystroke after the last edit, which is the ordinary case
- * rather than a rare one — tears down an ordinary in-flight `fetch` along with
- * everything else, and the write is lost with no error to show for it. Passed
- * through to `fetch` unset by default, so every other caller is unchanged.
+ * `survivesUnload` is the same door for a second caller: a page unloading
+ * mid-debounce — a reload pressed a keystroke after the last edit, which is the
+ * ordinary case rather than a rare one — tears down an ordinary in-flight
+ * request along with everything else, and the write is lost with no error to
+ * show for it. What a host does to honour it is the host's business; unset by
+ * default, so every other caller is unchanged.
  */
 export async function saveSchemaDraftRequest(
-  client: VisionSetClient,
+  client: VisionSetDataClient,
   projectId: string,
   kind: SchemaDraftKind,
   input: SaveSchemaDraftInput,
-  options?: { readonly keepalive?: boolean },
+  options?: { readonly survivesUnload?: boolean },
 ): Promise<ServerSchemaDraft> {
   return unwrap(
     await client.PUT("/projects/{project_id}/schema/drafts/{kind}", {
@@ -592,7 +600,7 @@ export async function saveSchemaDraftRequest(
         based_on: input.basedOn,
         ...(input.revision === null ? {} : { revision: input.revision }),
       },
-      ...(options?.keepalive === undefined ? {} : { keepalive: options.keepalive }),
+      ...(options?.survivesUnload === undefined ? {} : { survivesUnload: options.survivesUnload }),
     }),
     checkSaveSchemaDraft,
   );
@@ -713,29 +721,6 @@ export const ingestKeys = {
   ingestJob: (jobId: string) => ["ingest-jobs", jobId] as const,
 };
 
-/**
- * `multipart/form-data`, which `openapi-fetch` will not serialize for you.
- *
- * It JSON-encodes a body by default and has no idea a `File` is special, so a
- * request without this sends `[object File]` and the server answers 422 about a
- * field that looks correct. The types still come from the generated contract —
- * only the *encoding* is ours.
- *
- * `files` is one part per image, repeated under the same name, because that is
- * what `list[UploadFile]` reads. A single part holding an array is silently one
- * file with a stringified name.
- */
-function formData(body: Record<string, unknown>): FormData {
-  const form = new FormData();
-  for (const [name, value] of Object.entries(body)) {
-    if (value === undefined || value === null) continue;
-    if (Array.isArray(value)) for (const item of value) form.append(name, item as Blob);
-    else if (value instanceof Blob) form.append(name, value);
-    else form.append(name, String(value));
-  }
-  return form;
-}
-
 export function useSources(projectId: string): UseQueryResult<SourcePage, Error> {
   const client = useApiClient();
   return useQuery({
@@ -816,7 +801,7 @@ export function useRegisterSource(projectId: string) {
                   : {}),
                 scale_percent: input.scalePercent ?? 100,
               },
-              bodySerializer: formData,
+              encode: "multipart",
             }),
             checkRegisterVideoSource,
           )
@@ -825,9 +810,9 @@ export function useRegisterSource(projectId: string) {
               params: { path: { project_id: projectId } },
               // `name` is what the source will be *called* — without it
               // the server names the source by its staged directory, whose
-              // basename is a content digest. `formData` skips `undefined`.
+              // basename is a content digest. The host's encoder skips `undefined`.
               body: { files: input.files as unknown as string[], name: input.name },
-              bodySerializer: formData,
+              encode: "multipart",
             }),
           checkRegisterImageSource,
           );
@@ -1383,7 +1368,7 @@ export function usePreLabelProject(projectId: string) {
 }
 
 async function readPreLabelPlan(
-  client: VisionSetClient,
+  client: VisionSetDataClient,
   batchId: string,
   connectionId: string,
   geometries: readonly GeometryType[] | null,
@@ -2360,7 +2345,7 @@ export function useBackgroundJob(jobId: string | null): UseQueryResult<Backgroun
  * job is read every couple of seconds and wants JSON, and the archive is asked
  * for exactly once.
  *
- * `parseAs: "blob"` and `checkJobArtifact` is `checkBlob` — the contract declares
+ * `accept: "blob"` and `checkJobArtifact` is `checkBlob` — the contract declares
  * this response with an empty schema, OpenAPI for "bytes, and nothing more to
  * say". The check earns its place: an error page served as JSON and read as a blob
  * would otherwise be saved to disk as `release.zip`.
@@ -2372,7 +2357,7 @@ export function useJobArtifact() {
       unwrap(
         await client.GET("/background-jobs/{job_id}/artifact", {
           params: { path: { job_id: jobId } },
-          parseAs: "blob",
+          accept: "blob",
         }),
         checkGetBackgroundJobArtifact,
       ),
@@ -2386,7 +2371,7 @@ export function useDownloadManifest(releaseId: string) {
     mutationFn: async () => {
       const result = await client.GET("/releases/{release_id}/manifest", {
         params: { path: { release_id: releaseId } },
-        parseAs: "blob",
+        accept: "blob",
       });
       return unwrap(result, checkGetReleaseManifest);
     },

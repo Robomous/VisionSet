@@ -17,21 +17,17 @@
  * claim and belong in `e2e/`. What is testable here is the wiring.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
 import { clearPrefs, writePref } from "../data/prefs";
-import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
 import { TooltipProvider } from "@robomous/ui-core";
+import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
-
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
 const JOB = "33333333-3333-4333-8333-333333333333";
@@ -239,7 +235,6 @@ beforeEach(() => {
   };
   suggestRefusal = null;
   suggestHold = null;
-  writeToken("a-token");
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
     matches: true,
@@ -287,18 +282,11 @@ afterEach(() => {
 });
 
 function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      <TooltipProvider>{node}</TooltipProvider>
-    </ApiProvider>
-  );
+  return <TooltipProvider>{node}</TooltipProvider>;
 }
 
 async function open(onConfigureInference?: () => void): Promise<void> {
-  render(
+  renderWithData(
     mount(
       <AnnotationPage
         jobId={JOB}

@@ -14,20 +14,16 @@
  * in a green suite.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
-import { writeToken } from "../data/session";
 import { AnnotationPage, REVIEW_ACTIONS } from "./AnnotationPage";
 import { TooltipProvider, TONE_BORDER, TONE_FILL } from "@robomous/ui-core";
+import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
-
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
 const JOB = "33333333-3333-4333-8333-333333333333";
@@ -202,7 +198,6 @@ beforeEach(() => {
   assetCount = 1;
   annotated = false;
   closedBatch = false;
-  writeToken("a-token");
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
     matches: true,
@@ -234,18 +229,11 @@ afterEach(() => {
 });
 
 function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      <TooltipProvider>{node}</TooltipProvider>
-    </ApiProvider>
-  );
+  return <TooltipProvider>{node}</TooltipProvider>;
 }
 
 async function open(onOpenGallery?: () => void): Promise<void> {
-  render(
+  renderWithData(
     mount(
       <AnnotationPage
         jobId={JOB}
@@ -402,7 +390,7 @@ describe("the single review action", () => {
     // third reviewer action ever landed in one of those states.
     for (const state of PROGRESS_STATES) {
       progress = state;
-      const view = render(mount(<AnnotationPage jobId={JOB} />));
+      const view = renderWithData(mount(<AnnotationPage jobId={JOB} />));
       await screen.findByTestId("annotation-page");
 
       const offered = REVIEW_ACTIONS.filter(
@@ -633,7 +621,7 @@ describe("the flow verb", () => {
       for (const count of [1, 2]) {
         progress = state;
         assetCount = count;
-        const view = render(mount(<AnnotationPage jobId={JOB} />));
+        const view = renderWithData(mount(<AnnotationPage jobId={JOB} />));
         await screen.findByTestId("annotation-page");
 
         const names = filled().map((button) => button.getAttribute("data-testid"));

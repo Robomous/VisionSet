@@ -13,16 +13,14 @@
  * and the job panel it hangs from is `gallery.test.tsx`'s subject.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
+import type { JSX } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
-import { writeToken } from "../data/session";
 import { PreLabelButton } from "./PreLabelDialog";
 import { useBatch, useBatchJobs } from "./queries";
+import { renderWithData } from "../testing/dataHarness";
 import { batchActions, jobActions } from "../testing/wire.fixtures.js";
 import type { Segment } from "./batchState";
 import type { Connection } from "../data/inferenceQueries";
@@ -30,7 +28,6 @@ import type { components } from "../generated/api";
 
 type BatchState = components["schemas"]["BatchState"];
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
 const JOB = "77777777-7777-4777-8777-777777777777";
@@ -42,7 +39,6 @@ const sent: Request[] = [];
 beforeEach(() => {
   handlers = [];
   sent.length = 0;
-  writeToken("a-token");
   vi.stubGlobal("fetch", async (request: Request) => {
     sent.push(request);
     for (const handler of handlers) {
@@ -69,17 +65,6 @@ afterEach(() => {
 function on(method: string, pattern: RegExp, answer: Answer): void {
   handlers.push((request) =>
     request.method === method && pattern.test(new URL(request.url).pathname) ? answer : undefined,
-  );
-}
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
   );
 }
 
@@ -299,7 +284,7 @@ function renderDialog(
   on("GET", /\/pre-label$/, extra.plan ?? { status: 200, body: planOf() });
 
   const onSegment = vi.fn();
-  render(mount(<Host onSegment={onSegment} />));
+  renderWithData(<Host onSegment={onSegment} />);
   return onSegment;
 }
 

@@ -2,9 +2,10 @@
  * Saving a file the API will only hand over to a credentialed request.
  *
  * The **fourth** instance of the same finding, and the first where the payload is
- * not an image: every route but `/health` authenticates with
- * `Authorization: Bearer`, and neither `<img src>` nor `<a href download>` sends
- * one — the browser issues those requests itself, with cookies and nothing else.
+ * not an image: every route but `/health` answers only to a credentialed
+ * request, and neither `<img src>` nor `<a href download>` carries the host's
+ * credential — the browser issues those requests itself, with cookies and nothing
+ * else.
  * So a download is a `fetch` through the typed client, an object URL, and an
  * anchor clicked once.
  *

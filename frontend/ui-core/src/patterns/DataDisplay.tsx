@@ -23,7 +23,7 @@
  * ## Why `ThumbnailGrid` does not know what a thumbnail is
  *
  * `AssetThumbnail` fetches — it has to, because the preview route is protected
- * and an `<img src>` sends no `Authorization` header. If the grid imported it,
+ * and an `<img src>` carries no credential the host may require. If the grid imported it,
  * the grid would fetch, and "props are data-only" would stop being true for the
  * one component most likely to be reused with something else in its tiles.
  *

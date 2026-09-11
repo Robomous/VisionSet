@@ -8,8 +8,8 @@ defined by what it is *allowed to know*.
 
 ```mermaid
 flowchart TB
-    App["@visionset/app\nroutes · shell · composition"]
-    UiCore["@visionset/ui-core\nscreens · design system · generated client"]
+    App["@visionset/app\nroutes · shell · transport adapter · composition"]
+    UiCore["@visionset/ui-core\nscreens · design system · generated contract · data port"]
     Annotator["@visionset/annotator\nheadless engine + React adapter"]
 
     App --> UiCore
@@ -17,8 +17,8 @@ flowchart TB
     UiCore --> Annotator
 
     React["react (peer)"]
-    Radix["Radix · TanStack Query · openapi-fetch"]
-    Router["react-router"]
+    Radix["Radix · TanStack Query"]
+    Router["react-router · openapi-fetch"]
 
     Annotator -.-> React
     UiCore -.-> Radix
@@ -31,8 +31,8 @@ Arrows are `dependencies` in each `package.json`. The interesting part is what i
 | Package | Depends on | Never |
 | --- | --- | --- |
 | [`annotator`](annotator.md) | nothing at runtime; `react` is an optional peer | HTTP, a design system, a router |
-| [`ui-core`](ui-core.md) | `@visionset/annotator`, Radix, TanStack Query, `openapi-fetch` | a router |
-| [`app`](app.md) | both of the above, `react-router` | domain logic |
+| [`ui-core`](ui-core.md) | `@visionset/annotator`, Radix, TanStack Query; `openapi-fetch` is a dependency for consumer-resolvable type references in emitted declarations, never a runtime/value import | a router, HTTP |
+| [`app`](app.md) | both of the above, `react-router`, `openapi-fetch` as an actual client | domain logic |
 
 Read down the right-hand column and the architecture falls out. The annotator
 ships with **zero runtime dependencies**, so an application can embed it without
@@ -62,7 +62,7 @@ product.
 
 - [annotator.md](annotator.md) - the headless engine and the boundary that keeps
   it headless.
-- [ui-core.md](ui-core.md) - screens, the design system, and the generated client.
+- [ui-core.md](ui-core.md) - screens, the design system, and the generated contract.
 - [app.md](app.md) - the router shell.
 
 [`DESIGN.md`](../../../../DESIGN.md) is the visual contract and the file to read

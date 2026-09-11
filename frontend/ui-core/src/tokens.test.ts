@@ -31,14 +31,12 @@ describe("extension declarations", () => {
     for (const [name, value] of dark) expect(EXTENSION_DARK[name]).toBe(value);
   });
 
-  it("@theme inline exposes every extension and the shell's layout widths, and nothing else", () => {
+  it("@theme inline exposes every extension and the reusable layout values, and nothing else", () => {
     const inline = rawDeclarations(blockBody(STYLESHEET, "@theme inline {"));
     for (const name of EXTENSIONS) expect(inline.get(`--color-${name}`)).toBe(`var(--${name})`);
-    expect(inline.get("--spacing-sidebar")).toBe("240px");
-    expect(inline.get("--spacing-sidebar-collapsed")).toBe("48px");
     expect(inline.get("--spacing-project-nav")).toBe("180px");
     expect(inline.get("--container-page")).toBe("96rem");
-    expect(inline.size).toBe(EXTENSIONS.length + 4);
+    expect(inline.size).toBe(EXTENSIONS.length + 2);
   });
 });
 

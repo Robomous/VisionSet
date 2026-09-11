@@ -9,16 +9,18 @@
  * `SchemaChangeWouldOrphan`'s docstring warns about. `ApiError` therefore carries
  * the code as its first field and the status as an afterthought.
  *
- * ## Why this exists at all, when `openapi-fetch` already types the error
+ * ## Why this exists at all, when the port already types the answer
  *
- * `openapi-fetch` never throws: it answers `{data, error, response}` and leaves the
- * branch to the caller. TanStack Query's entire model is the opposite — a query
- * function either resolves or rejects, and "rejected" is what drives `isError`,
- * retries and the error boundary. `unwrap` is the one adapter between the two, and
- * it is the reason no screen in this repository ever writes `if (error)` by hand.
+ * The port's `DataResult` never throws: it answers `{ok, data, error, failure,
+ * status}` and leaves the branch to the caller. TanStack Query's entire model is
+ * the opposite — a query function either resolves or rejects, and "rejected" is
+ * what drives `isError`, retries and the error boundary. `unwrap` is the one
+ * adapter between the two, and it is the reason no screen in this repository ever
+ * writes `if (error)` by hand.
  */
 
 import { firstMismatch, type Check } from "./check";
+import type { DataFailure, DataResult } from "./port";
 
 /**
  * The shape every VisionSet error response carries.
@@ -39,17 +41,34 @@ export interface Incident {
   readonly incidentId?: string;
 }
 
+export interface ApiErrorOptions {
+  /** Diagnostic only. Absent when the host is not HTTP. */
+  readonly status?: number;
+  /** The normalized cross-host condition, when the host reported one. */
+  readonly failure?: DataFailure;
+}
+
 export class ApiError extends Error {
   /** The stable machine-readable code. **This** is what a caller branches on. */
   readonly code: string;
   readonly status: number;
+  /**
+   * The normalized condition, orthogonal to `code`.
+   *
+   * The code says what was refused — VisionSet kernel vocabulary, identical under
+   * any host. This says the credential is not usable, and is normalized because a
+   * host's credential-refusal vocabulary is its own. Neither is derived from the
+   * other.
+   */
+  readonly failure?: DataFailure;
   readonly detail: Record<string, unknown> | null;
 
-  constructor(body: ErrorBody, status: number) {
+  constructor(body: ErrorBody, options: ApiErrorOptions = {}) {
     super(body.message);
     this.name = "ApiError";
     this.code = body.code;
-    this.status = status;
+    this.status = options.status ?? 0;
+    if (options.failure !== undefined) this.failure = options.failure;
     this.detail = body.detail ?? null;
   }
 
@@ -66,12 +85,16 @@ export class ApiError extends Error {
   }
 
   /**
-   * The credential was missing, malformed, unknown or revoked — the API answers
-   * one identical 401 for all four, deliberately, so that a refusal is never an
-   * oracle for which credentials exist.
+   * The credential in use is not one.
+   *
+   * Read off the normalized failure, never off a status and never off a code: the
+   * host reports a normalized unauthorized failure for a missing, malformed,
+   * unknown or revoked credential — deliberately, so a refusal is never an oracle
+   * for which credentials exist — and the reusable UI does not interpret any
+   * host's credential vocabulary to tell those cases apart.
    */
   get isUnauthorized(): boolean {
-    return this.status === 401;
+    return this.failure === "unauthorized";
   }
 }
 
@@ -83,16 +106,17 @@ export const MALFORMED_ERROR = "MALFORMED_RESPONSE";
 /**
  * Turn anything into an `ApiError`, so a caller has one type to handle.
  *
- * A `TypeError` from `fetch` (server down, DNS, a cancelled request) has no body
- * and no status, and it is the most likely failure of all on a local-first tool
- * whose server the user starts by hand. Giving it a code of its own means the
- * error surface can say "the server is not answering" instead of rendering
- * `undefined`.
+ * A raw thrown value was never normalized from a `DataResult` — a cancellation, a
+ * programming error in the host's client code — and it is the most likely failure
+ * of all on a local-first tool whose server the user starts by hand. Giving it a
+ * code of its own means the error surface can say "the server is not answering"
+ * instead of rendering `undefined`. No `failure` is carried for it: claiming one
+ * would be inventing a normalized condition nobody reported.
  */
 export function asApiError(cause: unknown): ApiError {
   if (cause instanceof ApiError) return cause;
   const message = cause instanceof Error ? cause.message : String(cause);
-  return new ApiError({ code: NETWORK_ERROR, message }, 0);
+  return new ApiError({ code: NETWORK_ERROR, message }, { status: 0 });
 }
 
 /** A response body that is really the contract's error shape. */
@@ -102,83 +126,72 @@ function isErrorBody(value: unknown): value is ErrorBody {
   return typeof candidate["code"] === "string" && typeof candidate["message"] === "string";
 }
 
-/**
- * What `openapi-fetch` hands back, narrowed to what `unwrap` needs.
- *
- * `data` is `unknown` rather than the response's static type, which is the honest
- * signature for a function whose entire premise is that the static type is not
- * evidence: what `unwrap` returns is what the *check* proved, and taking the
- * contract's word for the body here would be asserting the thing being tested.
- *
- * It is also what keeps an open vocabulary usable. `openapi-fetch` wraps every
- * response in a deep mapped type (`Readable`), and a mapped type does not survive
- * the `(string & {})` tail an open vocabulary's members carry: the intersection
- * satisfies `T extends object`, so the map walks `string`'s own members and the
- * field arrives as an object type with `charAt` on it. Naming that type in an
- * assignment is what fails; not naming it costs nothing, because the value is
- * checked at runtime one line below.
- */
-export interface FetchResult {
-  readonly data?: unknown;
-  readonly error?: unknown;
-  readonly response: { readonly status: number };
+/** What the host said, for a message a bug report can quote. */
+function answered(status: number | undefined): string {
+  return status === undefined ? "The server answered" : `The server answered ${status}`;
 }
 
 /**
- * `{data, error}` → the data, or a thrown `ApiError`.
+ * `DataResult` → the data, or a thrown `ApiError`.
  *
- * The single adapter between `openapi-fetch`'s branch-on-a-field model and
- * TanStack Query's resolve-or-reject one. Every query and mutation in the product
- * goes through it, which is what makes "no hand-written `if (error)`" true by
+ * The single adapter between the port's answer-or-refusal model and TanStack
+ * Query's resolve-or-reject one. Every query and mutation in the product goes
+ * through it, which is what makes "no hand-written `if (error)`" true by
  * construction rather than by review.
  *
- * A response that is an error but *not* the contract's shape still becomes an
+ * A response that is a refusal but *not* the contract's shape still becomes an
  * `ApiError`, under `MALFORMED_RESPONSE`. That case is a proxy or a gateway
  * answering on the API's behalf, and rendering its HTML in a toast is worse than
  * saying so.
  *
  * ## The `check` argument, and why it is not optional
  *
- * `openapi-fetch` types a response off the contract and verifies nothing at
- * runtime, so this function used to return `result.data` unexamined — a
- * well-formed JSON document of the wrong type reached a screen intact, and one
- * `undefined` in a formatter took the page down with it, three times over one
- * milestone. `check` closes it: pass the generated check for the
- * operation being called, from `../generated/checks`.
+ * The port types an answer off the contract and verifies nothing at runtime, so
+ * this function used to return `result.data` unexamined — a well-formed JSON
+ * document of the wrong type reached a screen intact, and one `undefined` in a
+ * formatter took the page down with it, three times over one milestone. `check`
+ * closes it: pass the generated check for the operation being called, from
+ * `../generated/checks`.
  *
  * It is required rather than optional because an optional gate is one every new
  * call site may forget, and the ones that forgot would be the ones that broke.
  * But note what the compiler does and does not buy here: a *missing* check fails
  * to compile, while a *wrong* one does not. The check alone decides what comes
  * back — `result` says nothing about the type, by the deliberate choice argued on
- * `FetchResult` — so `unwrap(projectResult, checkDatasetOut)` compiles and returns
+ * `DataResult` — so `unwrap(projectResult, checkDatasetOut)` compiles and returns
  * a `DatasetOut` nobody asked for. Pairing each call with its own operation is
  * therefore enforced by `tests/scripts/checks_wiring.test.mjs`, not by `tsc`, and
  * that gate is what has actually caught mispaired calls.
  */
-export function unwrap<T>(result: FetchResult, check: Check<T>): T {
-  if (result.error !== undefined) {
-    if (isErrorBody(result.error)) throw new ApiError(result.error, result.response.status);
-    throw new ApiError(
-      {
-        code: MALFORMED_ERROR,
-        message: `The server answered ${result.response.status} with a body this client does not recognise.`,
-      },
-      result.response.status,
-    );
-  }
+export function unwrap<T>(result: DataResult, check: Check<T>): T {
+  const carry: ApiErrorOptions = {
+    ...(result.status === undefined ? {} : { status: result.status }),
+    ...(result.failure === undefined ? {} : { failure: result.failure }),
+  };
 
-  // A failure that carried no body at all. `openapi-fetch` reports one as
-  // `{error: undefined}` — see its `Content-Length: 0` branch — which the check
-  // above cannot see, so without this a 500 saying nothing would fall through to
-  // the data branch and read as a successful empty answer.
-  if (result.response.status < 200 || result.response.status >= 300) {
+  if (!result.ok) {
+    // Nothing answered. On a local-first tool whose server the user starts by
+    // hand, this is the likeliest failure of all, and it earns its own code so a
+    // surface can say "the server is not answering" rather than render `undefined`.
+    if (result.failure === "unreachable") {
+      throw new ApiError(
+        { code: NETWORK_ERROR, message: "No answer from the server." },
+        carry,
+      );
+    }
+    // The contract's own error shape. The code is canonical and passes through
+    // untouched; `carry` adds the normalized failure beside it.
+    if (isErrorBody(result.error)) throw new ApiError(result.error, carry);
+    // A failure that is not the contract's shape: a body-less refusal, or a proxy
+    // or gateway answering HTML on the API's behalf. Rendering that in a toast is
+    // worse than saying so. No status is needed to recognise it — "the host did
+    // not produce a contract answer" is the whole fact.
     throw new ApiError(
       {
         code: MALFORMED_ERROR,
-        message: `The server answered ${result.response.status} with no body at all.`,
+        message: `${answered(result.status)} with a body this client does not recognise.`,
       },
-      result.response.status,
+      carry,
     );
   }
 
@@ -191,10 +204,10 @@ export function unwrap<T>(result: FetchResult, check: Check<T>): T {
     throw new ApiError(
       {
         code: MALFORMED_ERROR,
-        message: `The server answered ${result.response.status} with a body this client does not recognise: ${mismatch}.`,
+        message: `${answered(result.status)} with a body this client does not recognise: ${mismatch}.`,
         detail: { expected: mismatch },
       },
-      result.response.status,
+      carry,
     );
   }
   return result.data as T;

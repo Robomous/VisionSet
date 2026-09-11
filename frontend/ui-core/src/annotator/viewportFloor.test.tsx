@@ -13,15 +13,13 @@
  * query is the browser suite's half.
  */
 
-import { QueryClient } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
+import type { JSX } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
-import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
+import { renderWithData } from "../testing/dataHarness";
 import { batchActions, jobActions } from "../testing/wire.fixtures.js";
 import {
   ANNOTATOR_MIN_VIEWPORT_PX,
@@ -29,7 +27,6 @@ import {
   useViewportAtLeast,
 } from "./viewportFloor";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
 const JOB = "33333333-3333-4333-8333-333333333333";
@@ -47,7 +44,6 @@ function stubMatchMedia(matches: boolean): { listeners: number } {
 }
 
 beforeEach(() => {
-  writeToken("a-token");
   vi.stubGlobal("fetch", (request: Request) => {
     const path = new URL(request.url).pathname;
     const body =
@@ -97,17 +93,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   globalThis.sessionStorage.clear();
 });
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
-  );
-}
 
 describe("the floor", () => {
   it("is 768, a standard iPad in portrait and Tailwind's md", () => {
@@ -162,7 +147,7 @@ describe("following the viewport", () => {
 describe("the gate", () => {
   it("renders the explanation instead of the editor below the floor", async () => {
     stubMatchMedia(false);
-    render(mount(<AnnotationPage jobId={JOB} />));
+    renderWithData(<AnnotationPage jobId={JOB} />);
 
     const state = await screen.findByTestId("viewport-too-narrow");
     expect(state.textContent).toContain("768px");
@@ -178,7 +163,7 @@ describe("the gate", () => {
     // beside this page and, on a fresh tab, no history behind it.
     stubMatchMedia(false);
     const onOpenGallery = vi.fn();
-    render(mount(<AnnotationPage jobId={JOB} onOpenGallery={onOpenGallery} />));
+    renderWithData(<AnnotationPage jobId={JOB} onOpenGallery={onOpenGallery} />);
 
     await userEvent.click(await screen.findByTestId("too-narrow-gallery"));
     expect(onOpenGallery).toHaveBeenCalledWith(PROJECT, BATCH);
@@ -186,7 +171,7 @@ describe("the gate", () => {
 
   it("says its piece without waiting for the walk that resolves the button", () => {
     stubMatchMedia(false);
-    render(mount(<AnnotationPage jobId={JOB} />));
+    renderWithData(<AnnotationPage jobId={JOB} />);
 
     // Synchronously, on the first paint: the sentence is useful on its own, and a
     // spinner in front of it would not be.
@@ -195,7 +180,7 @@ describe("the gate", () => {
 
   it("mounts the editor above the floor", async () => {
     stubMatchMedia(true);
-    render(mount(<AnnotationPage jobId={JOB} />));
+    renderWithData(<AnnotationPage jobId={JOB} />);
 
     // The job's own queries answer empty here, so this stops at the loading
     // state — which is enough: the claim is that the gate let it through.

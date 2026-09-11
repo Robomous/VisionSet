@@ -120,7 +120,7 @@ src/visionset/          Single Python distribution (one wheel, one import namesp
   _static/              Compiled UI bundle lands here at build time (ships in the wheel)
 frontend/
   annotator/            @visionset/annotator — headless annotation engine (no React in core/)
-  ui-core/              @visionset/ui-core — domain components, tokens, generated API client
+  ui-core/              @visionset/ui-core — domain components, tokens, generated API contract
   app/                  @visionset/app — OSS product shell (Vite + React, never published)
 tests/                  Python tests, incl. machine-enforced architecture contracts
 examples/               Six runnable end-to-end scripts, all exercised in CI
@@ -130,6 +130,10 @@ docker/                 Dev-only compose environment (never the release artifact
 scripts/                Repo automation (OpenAPI export, version sync, bundling, dist build)
 .agents/skills/         Coding-agent skills, tool-agnostic (see AGENTS.md)
 ```
+
+`ui-core` reaches data through a small contract rather than any particular transport, so its
+screens are mountable by a host other than this application — the OSS app you see here is one
+implementation of that host, not the only one there could be.
 
 ## Documentation
 

@@ -5,8 +5,9 @@
  * `@robomous/ui-core/styles.css`, imported first. Declared here is only what
  * is VisionSet's own, each following shadcn's extension convention — a value
  * in `:root`, a dark counterpart in `.dark`, exposure through `@theme inline`
- * — plus the shell's layout widths. `src/tokens.ts` mirrors the colour
- * extensions and `tokens.test.ts` asserts the two agree. A consuming app
+ * — plus the project navigation's width and the page-content cap.
+ * `src/tokens.ts` mirrors the colour extensions and `tokens.test.ts` asserts
+ * the two agree. A consuming app
  * still imports exactly this file:
  *
  *     import "@visionset/ui-core/styles.css";
@@ -54,10 +55,10 @@
   --color-origin-custom: var(--origin-custom);
   --color-origin-robomous: var(--origin-robomous);
 
-  /* The rail's two widths — the AppShell, its collapse toggle and the
-     content offset have to agree on them or the layout jumps. */
-  --spacing-sidebar: 240px;
-  --spacing-sidebar-collapsed: 48px;
+  /* The project navigation's width and the page-content cap stay here,
+     unlike the rail's widths, because `ProjectNav` and `PaddedContent` read
+     them — they are reusable VisionSet surfaces, so these values are part of
+     the domain experience rather than the standalone shell. */
   --spacing-project-nav: 180px;
   --container-page: 96rem;
 }

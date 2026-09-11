@@ -15,15 +15,13 @@
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
-import { writeToken } from "../data/session";
 import { GalleryScreen } from "./GalleryScreen";
 import { defaultOpenJob } from "./JobPanels";
+import { renderWithData } from "../testing/dataHarness";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 import type { Job } from "./queries";
 import type { components } from "../generated/api.js";
@@ -31,7 +29,6 @@ import type { components } from "../generated/api.js";
 type BatchState = components["schemas"]["BatchState"];
 type JobState = components["schemas"]["AnnotationJobState"];
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
 const JOB_A = "77777777-7777-4777-8777-777777777777";
@@ -68,7 +65,6 @@ beforeEach(() => {
     [JOB_A, { ...NO_PROGRESS, total: 2, unannotated: 2 }],
     [JOB_B, { ...NO_PROGRESS, total: 1, unannotated: 1 }],
   ]);
-  writeToken("a-token");
   vi.stubGlobal("fetch", async (request: Request) => {
     sent.push(request);
     for (const handler of handlers) {
@@ -101,15 +97,6 @@ function on(method: string, pattern: RegExp, answer: Answer | (() => Answer)): v
         ? answer()
         : answer
       : undefined,
-  );
-}
-
-function mount(node: ReactNode): JSX.Element {
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return (
-    <ApiProvider baseUrl={API} queryClient={client}>
-      {node}
-    </ApiProvider>
   );
 }
 
@@ -221,15 +208,15 @@ function stubs(batchOverrides: Record<string, unknown> = {}, jobs?: readonly Job
 }
 
 function renderGallery(): void {
-  render(
-    mount(
-      <GalleryScreen
-        projectId={PROJECT}
-        batchId={BATCH}
-        onOpenAsset={vi.fn()}
-        onOpenJob={vi.fn()}
-      />,
-    ),
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  renderWithData(
+    <GalleryScreen
+      projectId={PROJECT}
+      batchId={BATCH}
+      onOpenAsset={vi.fn()}
+      onOpenJob={vi.fn()}
+    />,
+    { queryClient: client },
   );
 }
 
@@ -347,8 +334,8 @@ describe("which panel opens", () => {
   it("opens nothing until every job's progress has answered", async () => {
     // A panel opened off half-read counts is a panel that flips to a different
     // job once the rest land — the wrong job's frames, then a jump. The gate sits
-    // under `globalThis.fetch` *before* the client is built, because
-    // `openapi-fetch` reads that reference once at `createClient()` time.
+    // under `globalThis.fetch` *before* `render`, because the progress requests
+    // go out during that initial render.
     progressIs(JOB_A, { total: 2, annotated: 2 });
     progressIs(JOB_B, { total: 1, unannotated: 1 });
     const inner = globalThis.fetch;

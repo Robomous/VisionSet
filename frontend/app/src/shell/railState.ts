@@ -15,7 +15,7 @@
  *
  * ## `localStorage`, where the credential uses `sessionStorage`
  *
- * The opposite call from `session.ts`, and for the opposite reason. A credential
+ * The opposite call from `data/token.ts`, and for the opposite reason. A credential
  * scoped to the tab is a *security* property — closing the tab should forget it.
  * A layout preference has no such property to protect and every reason to persist:
  * a default that resets on every page load is not a default, it is a reset, and a
@@ -54,7 +54,7 @@ function storage(): Storage | null {
   try {
     const probe = globalThis.localStorage;
     // Presence is not availability: the property exists and the *access* throws.
-    // A probe write is the only honest check — `session.ts`'s finding, one
+    // A probe write is the only honest check — `token.ts`'s finding, one
     // storage over.
     probe.setItem(`${STORAGE_KEY}.probe`, "1");
     probe.removeItem(`${STORAGE_KEY}.probe`);

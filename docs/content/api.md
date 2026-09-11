@@ -782,24 +782,54 @@ cannot 401, so the guard and its documented response travel together on the rout
 `protected_router()` in `server/dependencies.py`. Build every non-public router with it rather
 than repeating `Depends(require_token)` per route; see [auth.md](auth.md).
 
-## The generated client
+## The generated contract
 
 Nobody writes a VisionSet HTTP call by hand. `frontend/ui-core/src/generated/api.ts` is generated
 from the committed `openapi.json` by [`openapi-typescript`](https://openapi-ts.dev), pinned to an
-**exact** version in the root `package.json`, and `@visionset/ui-core` wraps it in a typed client:
+**exact** version in the root `package.json`. `@visionset/ui-core` ships those types and a small
+data port built from them, `VisionSetDataClient` — it does not ship a client. The host builds one
+and hands it in:
 
 ```ts
-import { createApiClient } from "@visionset/ui-core";
+import { useMemo } from "react";
+import { VisionSetDataProvider } from "@visionset/ui-core";
+import { createOssDataClient } from "./data/ossClient";
 
-const api = createApiClient({ baseUrl: "http://127.0.0.1:8000", token });
+function VisionSetHost({
+  token,
+  sessionId,
+  signOut,
+}: {
+  token: string;
+  sessionId: string;
+  signOut: () => void;
+}) {
+  const client = useMemo(
+    () => createOssDataClient({ baseUrl: "http://127.0.0.1:8000", token }),
+    [token],
+  );
+  // This is an opaque host authority identifier, not the bearer token.
+  const scope = useMemo(() => ({ authority: sessionId }), [sessionId]);
 
-const { data, error } = await api.GET("/projects/{project_id}", {
-  params: { path: { project_id: id } },
-});
+  return (
+    <VisionSetDataProvider client={client} scope={scope} onUnauthorized={signOut}>
+      <App />
+    </VisionSetDataProvider>
+  );
+}
 ```
 
-The URL, its path parameters, the query, the request body and both response shapes are all typed
-off the contract. A misspelled route or a wrong parameter type fails to compile.
+A screen never constructs a client; it reads the one the host provided with `useApiClient()`. The
+URL, its path parameters, the query, the request body and both response shapes are all typed off
+the contract. A misspelled route or a wrong parameter type fails to compile.
+
+`scope` is the opaque identity of the effective authorization/data authority. Change it whenever
+the principal, tenant, organization, workspace, credential authority, or equivalent data scope
+changes; keep it stable when only the adapter implementation object changes. Do not use the raw
+bearer token as this value. One scope owns cache isolation, subtree remount, and the
+unauthorized-once window, so prior-scope data is inaccessible before descendants render under a
+new scope. Returning to an earlier identity after another scope was active starts a new
+unauthorized-once activation without admitting late responses from its earlier activation.
 
 Regenerate with `pnpm generate:client` and **commit the result** - never hand-edit it. The output
 is a tracked artifact for the same reason the spec is: a contract change then shows up in the pull
@@ -836,11 +866,11 @@ So `pnpm generate:client` emits a second committed artifact beside the types -
 carry, plus one alias per operation named after its `operationId` - and `unwrap` takes one:
 
 ```ts
-import { checkGetProjectStats } from "@visionset/ui-core";
+import { checks, unwrap } from "@visionset/ui-core";
 
 const stats = unwrap(
-  await api.GET("/projects/{project_id}/stats", { params: { path: { project_id: id } } }),
-  checkGetProjectStats,
+  await client.GET("/projects/{project_id}/stats", { params: { path: { project_id: id } } }),
+  checks.checkGetProjectStats,
 );
 ```
 

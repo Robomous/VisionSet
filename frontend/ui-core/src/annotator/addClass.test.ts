@@ -9,13 +9,12 @@
  * sequence directly and fails if it flips.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement, useState, type ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
+import { renderWithData } from "../testing/dataHarness";
 import { AddClassDialog, composeVersion, defaultNote, runAddClass } from "./AddClassDialog";
 import {
   useDiscardSchemaDraft,
@@ -394,11 +393,7 @@ describe("the session, backed by the project's annotation draft", () => {
       );
     }
 
-    return createElement(ApiProvider, {
-      baseUrl: "http://visionset.test",
-      queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-      children: createElement(Harness),
-    });
+    return createElement(Harness);
   }
 
   it("banks an added class to the annotation draft, not only to component state", async () => {
@@ -416,7 +411,7 @@ describe("the session, backed by the project's annotation draft", () => {
       },
     });
 
-    render(harness());
+    renderWithData(harness());
     await screen.findByTestId("add-class-dialog");
 
     await userEvent.type(screen.getByTestId("class-name-new"), "crossing");
@@ -448,7 +443,7 @@ describe("the session, backed by the project's annotation draft", () => {
       },
     });
 
-    render(harness());
+    renderWithData(harness());
 
     // Silently resuming would publish classes nobody at this keyboard typed —
     // this is the one place that cannot happen quietly.
@@ -495,7 +490,7 @@ describe("the session, backed by the project's annotation draft", () => {
       },
     });
 
-    render(harness());
+    renderWithData(harness());
     await screen.findByTestId("add-class-dialog");
 
     await userEvent.type(screen.getByTestId("class-name-new"), "crossing");
@@ -525,7 +520,7 @@ describe("the session, backed by the project's annotation draft", () => {
     });
     on("DELETE", /\/schema\/drafts\/annotation$/, { status: 204 });
 
-    render(harness());
+    renderWithData(harness());
     await screen.findByTestId("add-class-dialog");
 
     await userEvent.type(screen.getByTestId("class-name-new"), "cone");
@@ -548,7 +543,7 @@ describe("the session, backed by the project's annotation draft", () => {
   it("reads the annotation draft only while the dialog is open", async () => {
     noDraft();
 
-    render(harness({ startOpen: false }));
+    renderWithData(harness({ startOpen: false }));
 
     // Given a moment for a stray request to have shown up, if one were going to.
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -588,7 +583,7 @@ describe("the session, backed by the project's annotation draft", () => {
       body: { code: "INTERNAL_ERROR", message: "the draft could not be discarded" },
     });
 
-    render(harness());
+    renderWithData(harness());
     await screen.findByTestId("resumed-draft");
 
     await userEvent.click(screen.getByTestId("discard-resumed"));
@@ -624,7 +619,7 @@ describe("the session, backed by the project's annotation draft", () => {
       body: { code: "INTERNAL_ERROR", message: "the draft could not be discarded" },
     });
 
-    render(harness());
+    renderWithData(harness());
     await screen.findByTestId("add-class-dialog");
 
     await userEvent.type(screen.getByTestId("class-name-new"), "cone");
@@ -700,7 +695,7 @@ describe("the session, backed by the project's annotation draft", () => {
       });
     });
 
-    render(harness());
+    renderWithData(harness());
     await screen.findByTestId("resumed-draft");
 
     await userEvent.click(screen.getByTestId("discard-resumed"));

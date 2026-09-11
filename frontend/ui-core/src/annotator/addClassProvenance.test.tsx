@@ -21,20 +21,17 @@
  * that each surface pins its own answer, never the size of the change.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
 import { Toaster, TooltipProvider } from "@robomous/ui-core";
-import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
+import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
 const JOB = "33333333-3333-4333-8333-333333333333";
@@ -155,7 +152,6 @@ beforeEach(() => {
   draftWrites.length = 0;
   publishedSchema = null;
   draft = null;
-  writeToken("a-token");
   // A viewport at least the annotator's floor, or no store and no palette mount
   // at all — see `viewportFloor.test.tsx` for why that gate exists.
   vi.stubGlobal("matchMedia", (query: string) => ({
@@ -247,21 +243,18 @@ afterEach(() => {
 
 function mount(node: ReactNode): JSX.Element {
   return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
+    <>
       {/* The page announces the published session, so the toaster has to be in
           the tree — a `toast()` with nowhere to land renders nothing and fails
           silently, which is the same shape as the feature not working. */}
       <TooltipProvider>{node}</TooltipProvider>
       <Toaster />
-    </ApiProvider>
+    </>
   );
 }
 
 it("publishes a class added mid-job through the project's `annotation` draft", async () => {
-  render(mount(<AnnotationPage jobId={JOB} />));
+  renderWithData(mount(<AnnotationPage jobId={JOB} />));
 
   await userEvent.click(await screen.findByTestId("tool-add-class"));
   await userEvent.type(await screen.findByTestId("class-name-new"), "crossing");
@@ -293,7 +286,7 @@ it("publishes a class added mid-job through the project's `annotation` draft", a
  * `POST .../publish` is asked to send only a revision.
  */
 it("publishes a whole session as one version, in the order they were written", async () => {
-  render(mount(<AnnotationPage jobId={JOB} />));
+  renderWithData(mount(<AnnotationPage jobId={JOB} />));
 
   await userEvent.click(await screen.findByTestId("tool-add-class"));
   await userEvent.type(await screen.findByTestId("class-name-new"), "cone");
@@ -327,7 +320,7 @@ it("publishes a whole session as one version, in the order they were written", a
  * here.
  */
 it("opens the dialog on the name the class list's create row was typed with", async () => {
-  render(mount(<AnnotationPage jobId={JOB} />));
+  renderWithData(mount(<AnnotationPage jobId={JOB} />));
 
   await userEvent.type(await screen.findByTestId("class-filter"), "crossing");
   await userEvent.click(screen.getByTestId("class-create"));
@@ -338,7 +331,7 @@ it("opens the dialog on the name the class list's create row was typed with", as
 it("opens empty from the tool strip, where nobody named a class", async () => {
   // `+` means "I want a class", not a particular one — and carrying the previous
   // opening's name into it would be a prefill nobody asked for.
-  render(mount(<AnnotationPage jobId={JOB} />));
+  renderWithData(mount(<AnnotationPage jobId={JOB} />));
 
   await userEvent.type(await screen.findByTestId("class-filter"), "crossing");
   await userEvent.click(screen.getByTestId("class-create"));
@@ -360,7 +353,7 @@ it("opens empty from the tool strip, where nobody named a class", async () => {
  * and arms one class, neither of which anybody watched happen.
  */
 it("arms the last class written and names it", async () => {
-  render(mount(<AnnotationPage jobId={JOB} />));
+  renderWithData(mount(<AnnotationPage jobId={JOB} />));
 
   await userEvent.click(await screen.findByTestId("tool-add-class"));
   await userEvent.type(await screen.findByTestId("class-name-new"), "cone");

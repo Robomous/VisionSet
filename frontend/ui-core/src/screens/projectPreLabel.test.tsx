@@ -7,19 +7,15 @@
  * so the two suites stay independent files.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
-import { writeToken } from "../data/session";
 import { BatchesScreen } from "./BatchesScreen";
+import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
 import type { Connection } from "../data/inferenceQueries";
 
-const API = "http://api.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const OPEN = "22222222-2222-4222-8222-222222222222";
 const OPEN_EMPTY = "33333333-3333-4333-8333-333333333333";
@@ -34,7 +30,6 @@ const sent: Request[] = [];
 beforeEach(() => {
   handlers = [];
   sent.length = 0;
-  writeToken("a-token");
   vi.stubGlobal("fetch", async (request: Request) => {
     sent.push(request);
     for (const handler of handlers) {
@@ -61,17 +56,6 @@ afterEach(() => {
 function on(method: string, pattern: RegExp, answer: Answer): void {
   handlers.push((request) =>
     request.method === method && pattern.test(new URL(request.url).pathname) ? answer : undefined,
-  );
-}
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
   );
 }
 
@@ -164,7 +148,7 @@ function stubBatches(items: unknown[], connections: readonly Connection[] = [con
 }
 
 function renderBatches(): void {
-  render(mount(<BatchesScreen projectId={PROJECT} onOpenBatch={() => undefined} />));
+  renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={() => undefined} />);
 }
 
 /** A full `BackgroundJobOut`, the shape every `PreLabelFanOutItemOut.job` carries. */

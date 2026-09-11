@@ -69,7 +69,7 @@ export default defineConfig({
      * Not a loosening — the number this suite had already chosen three times.
      *
      * Vitest's 5000ms default is a bound for a pure function, and several tests
-     * here are not that: they mount a screen under a real `ApiProvider`, wait on
+     * here are not that: they mount a screen under a real `VisionSetDataProvider`, wait on
      * TanStack Query and drive a dozen `userEvent` interactions. Three in
      * `models.test.tsx` are slower still by design — `CONNECTION_POLL_MS` is
      * 2000ms and they sleep 1.5 poll intervals to prove a poll *stopped*, which is

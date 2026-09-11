@@ -25,9 +25,9 @@
  * ## It starts collapsed, and the answer lives in one place
  *
  * `readRailCollapsed` is the whole decision: collapsed unless a stored
- * preference says otherwise. It is in `ui-core` rather than inline here because a
- * default spelled at a call site is a default that gets spelled twice, and because
- * a module is testable where a `useState` argument is not.
+ * preference says otherwise. It is its own module rather than inline here because
+ * a default spelled at a call site is a default that gets spelled twice, and
+ * because a module is testable where a `useState` argument is not.
  *
  * The state is read once, in a **lazy initializer**. An effect that corrected the
  * width on mount would paint the wrong one first, and a rail that visibly snaps
@@ -36,9 +36,10 @@
  *
  * ## Why the collapsed width is a token
  *
- * 240px / 48px are in `ui-core`'s `@theme` rather than here, because three
- * things have to agree on them — the rail, the toggle and the content offset — and
- * `DESIGN.md` calls them "a single source of truth" for that reason. A grid
+ * 240px / 48px are this standalone OSS app's tokens in `styles.css`, because
+ * three things have to agree on them — the rail, the toggle and the content
+ * offset. Reusable project/page layout tokens remain in `ui-core`; a host that
+ * brings its own navigation must not inherit a rail it does not render. A grid
  * template reading `w-sidebar` cannot drift from a rail that *is* `w-sidebar`.
  * Collapsed, the rail is the preset's icon-sidebar width: `p-2` around one
  * `size-8` control per row, so an icon is centred because nothing else fits.
@@ -83,17 +84,12 @@
  */
 
 import { Cpu, Folders, House, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import {
-  Button,
-  buttonVariants,
-  cn,
-  PaddedContent,
-  readRailCollapsed,
-  useApiSession,
-  writeRailCollapsed,
-} from "@visionset/ui-core";
+import { Button, buttonVariants, cn, PaddedContent } from "@visionset/ui-core";
 import { useState, type JSX, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router";
+
+import { useOssSession } from "../data/OssSession";
+import { readRailCollapsed, writeRailCollapsed } from "./railState";
 
 export function AppShell(): JSX.Element {
   // A **lazy initializer**, never an effect: an effect that corrects the
@@ -232,7 +228,7 @@ export function FullBleedPane(): JSX.Element {
  * token form for somebody who wants to reach a different workspace.
  */
 function SignOut({ collapsed }: { readonly collapsed: boolean }): JSX.Element {
-  const { access, signOut } = useApiSession();
+  const { access, signOut } = useOssSession();
   const label = access === "session" ? "Use a token" : "Sign out";
   return (
     <RailButton testId="rail-sign-out" label={label} onClick={signOut} wide={!collapsed}>

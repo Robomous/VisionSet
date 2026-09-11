@@ -101,7 +101,7 @@ export function writeToken(token: string): void {
 /**
  * Forget the credential.
  *
- * Called on an explicit sign-out and on **any** 401 — see `ApiProvider`. A 401 is
+ * Called on an explicit sign-out and on **any** 401 — see `OssSession`. A 401 is
  * the API saying this credential is missing, malformed, unknown or revoked, and
  * all four mean the same thing to a client: the token we are holding is not one.
  */

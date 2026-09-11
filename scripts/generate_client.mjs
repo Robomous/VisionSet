@@ -255,7 +255,7 @@ function refName(ref) {
  * Four kinds, and each is a decision recorded in `docs/content/api.md`: a `$ref` becomes that
  * schema's check; a 204 becomes `checkNoContent`; an empty schema (`{}`, OpenAPI's "bytes,
  * and nothing more to say") becomes `checkBlob`, because every such operation here is read
- * with `parseAs: "blob"`; an inline schema is compiled in place.
+ * with `accept: "blob"`; an inline schema is compiled in place.
  */
 export function responsesOf(spec) {
   const answers = [];

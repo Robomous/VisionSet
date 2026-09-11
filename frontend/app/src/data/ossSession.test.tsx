@@ -1,9 +1,9 @@
 /**
- * The data shell, driven end to end without a server.
+ * The OSS session, driven end to end without a server.
  *
  * The subject is the 401 flow, and it is the one behaviour here that cannot be
  * checked any other way: it spans the provider, the query cache, the session
- * storage and the gate, and each of those in isolation looks fine. `createApiClient`
+ * storage and the gate, and each of those in isolation looks fine. `createOssDataClient`
  * takes a `fetch` for exactly this — `openapi-fetch` offers the option, so no seam
  * was invented, and production never passes one.
  *
@@ -28,12 +28,10 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { ApiProvider, useApiClient } from "./ApiProvider";
-import { Async } from "./Async";
-import { checkListProjects } from "../generated/checks";
-import { ApiError, unwrap } from "./errors";
-import { readToken, writeToken } from "./session";
-import { TokenGate } from "./TokenGate";
+import { useApiClient, Async, unwrap, checks } from "@visionset/ui-core";
+import { readToken, writeToken } from "./token";
+import { OssSessionProvider, useOssSession } from "./OssSession";
+import { TokenGate } from "../shell/TokenGate";
 
 afterEach(() => {
   globalThis.sessionStorage.clear();
@@ -90,7 +88,7 @@ function Projects(): JSX.Element {
   const client = useApiClient();
   const query = useQuery({
     queryKey: ["projects"],
-    queryFn: async () => unwrap(await client.GET("/projects", {}), checkListProjects),
+    queryFn: async () => unwrap(await client.GET("/projects", {}), checks.checkListProjects),
   });
   return (
     <Async query={query} empty={{ title: "No projects yet" }}>
@@ -106,13 +104,13 @@ describe("the client carries the credential", () => {
     vi.stubGlobal("fetch", stub.fetch);
 
     render(
-      <ApiProvider baseUrl={API} queryClient={silentClient()}>
+      <OssSessionProvider baseUrl={API} makeQueryClient={silentClient}>
         <Projects />
-      </ApiProvider>,
+      </OssSessionProvider>,
     );
 
     await waitFor(() => expect(stub.calls.length).toBeGreaterThan(0));
-    // The provider's own client, not one the test built: `createApiClient` bakes
+    // The provider's own client, not one the test built: `createOssDataClient` bakes
     // the header in at construction, so this is the claim that the session and the
     // client cannot drift.
     expect(stub.calls[0].headers.get("authorization")).toBe("Bearer secret-token");
@@ -130,11 +128,11 @@ describe("the browser session", () => {
     vi.stubGlobal("fetch", stub.fetch);
 
     render(
-      <ApiProvider baseUrl={API} queryClient={silentClient()}>
+      <OssSessionProvider baseUrl={API} makeQueryClient={silentClient}>
         <TokenGate>
           <Projects />
         </TokenGate>
-      </ApiProvider>,
+      </OssSessionProvider>,
     );
 
     // The browser session at the level this package owns it: the product, with
@@ -155,11 +153,11 @@ describe("the browser session", () => {
     vi.stubGlobal("fetch", stub.fetch);
 
     render(
-      <ApiProvider baseUrl={API} queryClient={silentClient()}>
+      <OssSessionProvider baseUrl={API} makeQueryClient={silentClient}>
         <TokenGate>
           <Projects />
         </TokenGate>
-      </ApiProvider>,
+      </OssSessionProvider>,
     );
 
     await waitFor(() => expect(screen.queryByTestId("token-input")).not.toBeNull());
@@ -180,17 +178,76 @@ describe("the browser session", () => {
     vi.stubGlobal("fetch", stub.fetch);
 
     render(
-      <ApiProvider baseUrl={API} queryClient={silentClient()}>
+      <OssSessionProvider baseUrl={API} makeQueryClient={silentClient}>
         <TokenGate>
           <Projects />
         </TokenGate>
-      </ApiProvider>,
+      </OssSessionProvider>,
     );
 
     await waitFor(() => expect(screen.queryByTestId("token-input")).not.toBeNull());
     // Still the form a beat later, rather than the gate oscillating.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.queryByTestId("token-input")).not.toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("signing out of a browser session makes the previous cache unreachable", async () => {
+    // The token is `null` for the whole of this test: a browser session never has
+    // one. If the client were keyed on the token, nothing would change here and the
+    // signed-out application would read the signed-in application's answers.
+    const signedIn = stubFetch(
+      [[200, { items: [{ id: "p1", name: "highway", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null }], total: 1 }]],
+      { session: true },
+    );
+    vi.stubGlobal("fetch", signedIn.fetch);
+
+    function SignOutButton(): JSX.Element {
+      const { signOut } = useOssSession();
+      return (
+        <button type="button" data-testid="sign-out" onClick={signOut}>
+          Sign out
+        </button>
+      );
+    }
+
+    // `Projects` sits OUTSIDE `TokenGate` here, deliberately. `signOut` sets
+    // `access` to `"none"`, and the gate then renders `TokenForm` INSTEAD of its
+    // children — so a reading component placed *inside* the gate is unmounted by
+    // the gate itself the instant sign-out happens, and "highway" would vanish
+    // whether or not the cache were isolated. Keeping `Projects` mounted across
+    // the transition is what makes the assertion below about the cache rather
+    // than about the gate.
+    const view = render(
+      <OssSessionProvider baseUrl={API} makeQueryClient={silentClient}>
+        <Projects />
+        <TokenGate>
+          <SignOutButton />
+        </TokenGate>
+      </OssSessionProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("projects").textContent).toContain("highway"));
+
+    // A server answering a different list once signed out.
+    const signedOut = stubFetch([[200, { items: [], total: 0 }]]);
+    vi.stubGlobal("fetch", signedOut.fetch);
+
+    await userEvent.click(screen.getByTestId("sign-out"));
+    // Synchronous, deliberately not behind `waitFor`: the claim is that "highway"
+    // never paints again, not merely that it is gone once things settle — and
+    // `Projects` is still mounted right here to make that claim mean something.
+    expect(view.container.textContent).not.toContain("highway");
+
+    // And the isolation was not merely a paint that happened to go blank: a fresh
+    // request actually went out under the new identity, proving the remount
+    // re-fetched rather than the old answer merely being unmounted somewhere.
+    await waitFor(() => expect(signedOut.calls.length).toBeGreaterThan(0));
+
+    // The gate goes back to the form, because signing out of a browser session
+    // leaves no credential at all.
+    await waitFor(() => expect(screen.queryByTestId("token-input")).not.toBeNull());
 
     vi.unstubAllGlobals();
   });
@@ -203,11 +260,11 @@ describe("the 401 flow", () => {
     vi.stubGlobal("fetch", stub.fetch);
 
     render(
-      <ApiProvider baseUrl={API} queryClient={silentClient()}>
+      <OssSessionProvider baseUrl={API} makeQueryClient={silentClient}>
         <TokenGate>
           <Projects />
         </TokenGate>
-      </ApiProvider>,
+      </OssSessionProvider>,
     );
 
     // Started inside the gate, because a token was in storage…
@@ -226,11 +283,11 @@ describe("the 401 flow", () => {
     vi.stubGlobal("fetch", stub.fetch);
 
     render(
-      <ApiProvider baseUrl={API} queryClient={silentClient()}>
+      <OssSessionProvider baseUrl={API} makeQueryClient={silentClient}>
         <TokenGate>
           <Projects />
         </TokenGate>
-      </ApiProvider>,
+      </OssSessionProvider>,
     );
 
     // The error surface, not the sign-in form — and the code is what it leads with.
@@ -252,11 +309,11 @@ describe("the token form", () => {
     vi.stubGlobal("fetch", stub.fetch);
 
     render(
-      <ApiProvider baseUrl={API} queryClient={silentClient()}>
+      <OssSessionProvider baseUrl={API} makeQueryClient={silentClient}>
         <TokenGate>
           <Projects />
         </TokenGate>
-      </ApiProvider>,
+      </OssSessionProvider>,
     );
 
     await screen.findByTestId("token-input");
@@ -280,11 +337,11 @@ describe("the token form", () => {
     vi.stubGlobal("fetch", () => Promise.reject(new TypeError("Failed to fetch")));
 
     render(
-      <ApiProvider baseUrl={API} queryClient={silentClient()}>
+      <OssSessionProvider baseUrl={API} makeQueryClient={silentClient}>
         <TokenGate>
           <Projects />
         </TokenGate>
-      </ApiProvider>,
+      </OssSessionProvider>,
     );
 
     await userEvent.type(await screen.findByTestId("token-input"), "anything");
@@ -304,11 +361,11 @@ describe("the token form", () => {
     vi.stubGlobal("fetch", stub.fetch);
 
     render(
-      <ApiProvider baseUrl={API} queryClient={silentClient()}>
+      <OssSessionProvider baseUrl={API} makeQueryClient={silentClient}>
         <TokenGate>
           <Projects />
         </TokenGate>
-      </ApiProvider>,
+      </OssSessionProvider>,
     );
 
     await userEvent.type(await screen.findByTestId("token-input"), "good-token");
@@ -318,104 +375,5 @@ describe("the token form", () => {
     expect(readToken()).toBe("good-token");
 
     vi.unstubAllGlobals();
-  });
-});
-
-describe("Async", () => {
-  it("renders the empty state for the API's own list envelope", () => {
-    render(
-      <Async query={{ data: { items: [], total: 0 }, isPending: false, isError: false, error: null }} empty={{ title: "No projects yet" }}>
-        {() => <span data-testid="rows" />}
-      </Async>,
-    );
-    expect(screen.getByText("No projects yet")).not.toBeNull();
-    expect(screen.queryByTestId("rows")).toBeNull();
-  });
-
-  it("does not guess emptiness when a screen did not ask for it", () => {
-    // `dataset_stats` answers zeroes about a real dataset. Guessing would hide it.
-    render(
-      <Async query={{ data: { total: 0 }, isPending: false, isError: false, error: null }}>
-        {() => <span data-testid="stats" />}
-      </Async>,
-    );
-    expect(screen.queryByTestId("stats")).not.toBeNull();
-  });
-
-  it("shows skeletons while a query is pending, never children with no data", () => {
-    render(
-      <Async query={{ data: undefined, isPending: true, isError: false, error: null }}>
-        {(data) => <span data-testid="boom">{JSON.stringify(data)}</span>}
-      </Async>,
-    );
-    expect(screen.queryByTestId("boom")).toBeNull();
-    expect(screen.getByText("Loading")).not.toBeNull();
-  });
-
-  /**
-   * A kernel identifier is not a title.
-   *
-   * The error branch used to head itself with the `code`, so a person met
-   * "SCHEMA_NOT_FOUND" where the sentence should be. The code is still on screen
-   * and still selectable — it is what a bug report quotes — but on the meta line
-   * under the sentence rather than instead of it.
-   */
-  const failing = (error: unknown) => ({
-    data: undefined,
-    isPending: false,
-    isError: true,
-    error,
-  });
-
-  it("leads with the sentence and keeps the code where a report can quote it", () => {
-    render(
-      <Async query={failing(new ApiError({ code: "SCHEMA_NOT_FOUND", message: "no schema" }, 404))}>
-        {() => <span data-testid="rows" />}
-      </Async>,
-    );
-    expect(screen.getByText("This project has no labels yet — define them first.")).not.toBeNull();
-    // Once, and on the meta line: anywhere else it would be the heading again.
-    expect(screen.getAllByText("SCHEMA_NOT_FOUND")).toHaveLength(1);
-    expect(screen.getByTestId("error-code").textContent).toBe("SCHEMA_NOT_FOUND");
-  });
-
-  it("keeps the server's own message for a code the vocabulary does not restate", () => {
-    render(
-      <Async
-        query={failing(new ApiError({ code: "TEAPOT", message: "This server is a teapot." }, 418))}
-      >
-        {() => <span data-testid="rows" />}
-      </Async>,
-    );
-    expect(screen.getByText("This server is a teapot.")).not.toBeNull();
-    expect(screen.getByTestId("error-code").textContent).toBe("TEAPOT");
-  });
-
-  it("says the code once when the last-resort sentence already carries it", () => {
-    // No entry and no server message: `refusalProse` writes the code into the
-    // sentence itself, and repeating it below would be the only thing on the line.
-    render(
-      <Async query={failing(new ApiError({ code: "TEAPOT", message: "" }, 418))}>
-        {() => <span data-testid="rows" />}
-      </Async>,
-    );
-    expect(screen.getByText("The server refused this (TEAPOT).")).not.toBeNull();
-    expect(screen.queryByTestId("error-code")).toBeNull();
-  });
-
-  it("puts the incident id beside the code, because a 5xx is reported by both", () => {
-    render(
-      <Async
-        query={failing(
-          new ApiError(
-            { code: "WORKSPACE_BUSY", message: "", detail: { incident_id: "inc-42" } },
-            503,
-          ),
-        )}
-      >
-        {() => <span data-testid="rows" />}
-      </Async>,
-    );
-    expect(screen.getByTestId("error-code").textContent).toBe("WORKSPACE_BUSY · Incident inc-42");
   });
 });

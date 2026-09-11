@@ -65,7 +65,7 @@ describe("what a thrown render becomes", () => {
     quietly(() =>
       render(
         <ErrorBoundary>
-          <Boom throws={new ApiError({ code: "WORKSPACE_BUSY", message: "locked" }, 503)} />
+          <Boom throws={new ApiError({ code: "WORKSPACE_BUSY", message: "locked" }, { status: 503 })} />
         </ErrorBoundary>,
       ),
     );

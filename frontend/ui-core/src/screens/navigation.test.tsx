@@ -14,22 +14,18 @@
  * exactly what a way out must not rely on.
  */
 
-import { QueryClient } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
-import { writeToken } from "../data/session";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
 import { GalleryScreen } from "./GalleryScreen";
 import { IngestScreen } from "./IngestScreen";
 import { ProjectScreen } from "./ProjectScreen";
+import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
 const DATASET = "66666666-6666-4666-8666-666666666666";
@@ -104,7 +100,6 @@ function answer(path: string): unknown {
 const NOW = "2026-08-01T00:00:00Z";
 
 beforeEach(() => {
-  writeToken("a-token");
   vi.stubGlobal("fetch", (request: Request) => {
     const path = new URL(request.url).pathname;
     const body = answer(path);
@@ -121,17 +116,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   globalThis.sessionStorage.clear();
 });
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
-  );
-}
 
 describe("the control itself", () => {
   it("names its destination and calls it", async () => {
@@ -184,7 +168,7 @@ const SUBVIEWS = [
 describe.each(SUBVIEWS)("$name", ({ parent, sentinel, render: renderScreen }) => {
   it("names its parent, and calls back from it", async () => {
     const onBack = vi.fn();
-    render(mount(renderScreen(onBack)));
+    renderWithData(renderScreen(onBack));
 
     // Waited for rather than read once: ingest names a project whose query is
     // still in flight on the first paint, and `parentLabel` deliberately renders
@@ -200,7 +184,7 @@ describe.each(SUBVIEWS)("$name", ({ parent, sentinel, render: renderScreen }) =>
   });
 
   it("draws none at all when the host has nowhere to send anybody", async () => {
-    render(mount(renderScreen()));
+    renderWithData(renderScreen());
 
     // Waited for, not read immediately: every one of these screens paints a
     // loading state first, and asserting absence against a skeleton would pass
@@ -212,7 +196,7 @@ describe.each(SUBVIEWS)("$name", ({ parent, sentinel, render: renderScreen }) =>
 
 describe("a section has no way out of its own", () => {
   it("draws no back control on the project, whose navigation is beside it", async () => {
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
     await screen.findByTestId("project-screen");
     expect(screen.queryByTestId("back-link")).toBeNull();
   });
@@ -222,7 +206,7 @@ describe("the gallery says which batch you are looking at", () => {
   it("names the batch, which it never did before", async () => {
     // The one page in the product with no header: a grid of thumbnails and a
     // count, legible only if you remembered which tile you clicked.
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     const title = await screen.findByTestId("batch-title");
     await waitFor(() => expect(title.textContent).toBe("drive-01"));
   });
