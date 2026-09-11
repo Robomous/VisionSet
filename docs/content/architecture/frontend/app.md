@@ -1,7 +1,30 @@
 # @visionset/app
 
 [`frontend/app/`](../../../../frontend/app/) is the shell: routes, layout,
-composition. It is deliberately the thinnest package in the repository.
+composition - and the one place in the workspace that knows the product's data
+arrives over HTTP from a server at a URL. It is deliberately the thinnest package
+that could own that, never the thickest.
+
+## What lives here and nowhere else
+
+`src/data/ossClient.ts` is `@visionset/ui-core`'s `VisionSetDataClient` port,
+implemented with `openapi-fetch` and a bearer token - the only module in the
+repository that constructs one. `src/data/OssSession.tsx` is the credential and
+session state machine above it: the four-state probe (`checking`, `session`,
+`token`, `none`) that asks `GET /session` once per mount, and the client identity
+that state machine hands to `VisionSetDataProvider`. `src/shell/TokenGate.tsx` is
+the form that appears when the server will not sign the browser in on its own.
+
+The rail's collapsed/expanded state - `src/shell/railState.ts`, read on mount and
+written back on toggle - and the rail's own layout widths,
+`--spacing-sidebar`/`--spacing-sidebar-collapsed` in `src/styles.css`, are the
+app's too: a host mounting VisionSet's screens brings its own global navigation,
+so nothing reusable needs to read the standalone shell's rail.
+
+None of this is domain logic. `@visionset/ui-core` declares only the shape a host
+must satisfy - `VisionSetDataClient` and `VisionSetDataProviderProps` - and never
+how a credential is obtained or a session probed; this package is that shape's one
+implementation in this repository.
 
 ## What a route does
 

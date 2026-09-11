@@ -10,16 +10,13 @@
  * fixture was empty.
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { QueryClient } from "@tanstack/react-query";
-import type { JSX, ReactNode } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 
-import { ApiProvider } from "../data/ApiProvider";
 import { HomeScreen } from "./HomeScreen";
+import { renderWithData } from "../testing/dataHarness";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
 const JOB = "33333333-3333-4333-8333-333333333333";
@@ -89,17 +86,6 @@ function resume(overrides: Record<string, unknown> = {}): Record<string, unknown
   };
 }
 
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
-  );
-}
-
 /** Every filled button in the document. The rule is a count, so this is the subject. */
 function filledButtons(container: HTMLElement): string[] {
   return [...container.querySelectorAll("button.bg-primary")].map(
@@ -111,7 +97,7 @@ function filledButtons(container: HTMLElement): string[] {
 
 it("reserves the final layout while loading, so nothing shifts", async () => {
   on("GET", /\/home$/, { status: 200, body: homeBody({ projects: [] }) });
-  const { container } = render(mount(<HomeScreen />));
+  const { container } = renderWithData(<HomeScreen />);
 
   const loading = screen.getByTestId("home-loading");
   expect(loading.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
@@ -123,7 +109,7 @@ it("reserves the final layout while loading, so nothing shifts", async () => {
 
 it("renders a retryable alert when the page cannot be read", async () => {
   on("GET", /\/home$/, { status: 500, body: { code: "INTERNAL_ERROR", message: "no" } });
-  render(mount(<HomeScreen />));
+  renderWithData(<HomeScreen />);
 
   expect(await screen.findByRole("alert")).toBeTruthy();
 });
@@ -133,7 +119,7 @@ it("says a refusal in the vocabulary's sentence, not the kernel's", async () => 
     status: 503,
     body: { code: "NOT_A_WORKSPACE", message: "/srv/data is not a workspace" },
   });
-  render(mount(<HomeScreen />));
+  renderWithData(<HomeScreen />);
 
   const alert = await screen.findByRole("alert");
   expect(alert.textContent).toContain("not pointed at a workspace");
@@ -147,7 +133,7 @@ it("invites a first project when the workspace holds none", async () => {
     status: 200,
     body: homeBody({ totals: { projects: 0, assets: 0, annotations: 0, releases: 0 } }),
   });
-  render(mount(<HomeScreen />));
+  renderWithData(<HomeScreen />);
 
   await screen.findByTestId("home-first-run");
   expect(screen.getByText("Start your first project")).toBeTruthy();
@@ -164,7 +150,7 @@ it("shows the dashboard once a project exists, with honest zeros", async () => {
     status: 200,
     body: homeBody({ totals: { projects: 1, assets: 0, annotations: 0, releases: 0 } }),
   });
-  render(mount(<HomeScreen />));
+  renderWithData(<HomeScreen />);
 
   await screen.findByTestId("home");
   expect(screen.queryByTestId("home-first-run")).toBeNull();
@@ -175,7 +161,7 @@ it("shows the dashboard once a project exists, with honest zeros", async () => {
 
 it("offers the batch to carry on with, and where inside it", async () => {
   on("GET", /\/home$/, { status: 200, body: homeBody({ resume: resume() }) });
-  render(mount(<HomeScreen onContinue={() => {}} />));
+  renderWithData(<HomeScreen onContinue={() => {}} />);
 
   const card = await screen.findByTestId("home-resume");
   expect(card.getAttribute("data-kind")).toBe("annotate");
@@ -196,7 +182,7 @@ it("shows the frame it would open, fetched off the hash the wire carries", async
     body: homeBody({ resume: resume({ thumbnail_hash: "cafebabe" }) }),
   });
   on("GET", /\/thumbnail$/, { status: 200, body: null });
-  render(mount(<HomeScreen onContinue={() => {}} />));
+  renderWithData(<HomeScreen onContinue={() => {}} />);
 
   const image = await screen.findByTestId("thumbnail");
   expect(image.getAttribute("src")).toContain("blob:");
@@ -207,7 +193,7 @@ it("shows the frame it would open, fetched off the hash the wire carries", async
 
 it("draws the placeholder for a frame with no cached preview, and asks for nothing", async () => {
   on("GET", /\/home$/, { status: 200, body: homeBody({ resume: resume() }) });
-  render(mount(<HomeScreen onContinue={() => {}} />));
+  renderWithData(<HomeScreen onContinue={() => {}} />);
 
   await screen.findByTestId("home-resume");
   expect(screen.getByTestId("thumbnail-placeholder")).toBeTruthy();
@@ -222,13 +208,11 @@ it("sends the reviewer to the frame awaiting review, on the same route", async (
       resume: resume({ kind: "review", annotated: 200, total: 200, review_pending: 12 }),
     }),
   });
-  render(
-    mount(
-      <HomeScreen
-        onContinue={(job, asset) => opened.push([job, asset])}
-        onOpenBatch={() => expect.unreachable("review opens the editor, not the gallery")}
-      />,
-    ),
+  renderWithData(
+    <HomeScreen
+      onContinue={(job, asset) => opened.push([job, asset])}
+      onOpenBatch={() => expect.unreachable("review opens the editor, not the gallery")}
+    />,
   );
 
   const card = await screen.findByTestId("home-resume");
@@ -253,7 +237,7 @@ it("renders what the wire declares rather than deriving it from the other fields
     status: 200,
     body: homeBody({ resume: resume({ kind: "annotate", review_pending: 7 }) }),
   });
-  render(mount(<HomeScreen onContinue={() => {}} />));
+  renderWithData(<HomeScreen onContinue={() => {}} />);
 
   const card = await screen.findByTestId("home-resume");
   expect(screen.getByTestId("home-resume-cta").textContent).toContain("Continue annotating");
@@ -263,7 +247,7 @@ it("renders what the wire declares rather than deriving it from the other fields
 it("hands the annotator the frame the card named", async () => {
   const opened: [string, string | null][] = [];
   on("GET", /\/home$/, { status: 200, body: homeBody({ resume: resume() }) });
-  render(mount(<HomeScreen onContinue={(job, asset) => opened.push([job, asset])} />));
+  renderWithData(<HomeScreen onContinue={(job, asset) => opened.push([job, asset])} />);
 
   await userEvent.click(await screen.findByTestId("home-resume-cta"));
 
@@ -278,13 +262,11 @@ it("falls back to opening the batch when no frame is left to label", async () =>
       resume: resume({ kind: "open", next_asset_id: null, annotated: 200 }),
     }),
   });
-  render(
-    mount(
-      <HomeScreen
-        onContinue={() => expect.unreachable("there is no frame to continue at")}
-        onOpenBatch={(project, batch) => opened.push([project, batch])}
-      />,
-    ),
+  renderWithData(
+    <HomeScreen
+      onContinue={() => expect.unreachable("there is no frame to continue at")}
+      onOpenBatch={(project, batch) => opened.push([project, batch])}
+    />,
   );
 
   const cta = await screen.findByTestId("home-resume-cta");
@@ -318,7 +300,7 @@ it("omits the resume card when nothing is open for annotation", async () => {
       ],
     }),
   });
-  render(mount(<HomeScreen onContinue={() => {}} />));
+  renderWithData(<HomeScreen onContinue={() => {}} />);
 
   await screen.findByTestId("home");
   expect(screen.queryByTestId("home-resume")).toBeNull();
@@ -339,7 +321,7 @@ it("omits the attention section rather than saying nothing is wrong", async () =
       ],
     }),
   });
-  render(mount(<HomeScreen onContinue={() => {}} />));
+  renderWithData(<HomeScreen onContinue={() => {}} />);
 
   await screen.findByTestId("home");
   // The page is populated — the card and the list both rendered — so this
@@ -380,7 +362,7 @@ it("lists what is waiting, and links only the row that has somewhere to go", asy
       ],
     }),
   });
-  render(mount(<HomeScreen onOpenBatch={(project, batch) => opened.push([project, batch])} />));
+  renderWithData(<HomeScreen onOpenBatch={(project, batch) => opened.push([project, batch])} />);
 
   const rows = await screen.findAllByTestId("home-attention-row");
   expect(rows).toHaveLength(2);
@@ -414,7 +396,7 @@ it("names a model-labeled batch as waiting on an annotator, and links it to the 
       ],
     }),
   });
-  render(mount(<HomeScreen onOpenBatch={(project, batch) => opened.push([project, batch])} />));
+  renderWithData(<HomeScreen onOpenBatch={(project, batch) => opened.push([project, batch])} />);
 
   const row = await screen.findByTestId("home-attention-row");
   expect(row.textContent).toContain("48 model-labeled frames waiting on an annotator");
@@ -427,7 +409,7 @@ it("names a model-labeled batch as waiting on an annotator, and links it to the 
 
 it("omits the activity feed rather than rendering an empty one", async () => {
   on("GET", /\/home$/, { status: 200, body: homeBody({ resume: resume(), activity: [] }) });
-  render(mount(<HomeScreen onContinue={() => {}} />));
+  renderWithData(<HomeScreen onContinue={() => {}} />);
 
   await screen.findByTestId("home");
   expect(screen.getByTestId("home-resume")).toBeTruthy();
@@ -446,7 +428,7 @@ it("separates thousands and reports a share over a real denominator", async () =
       ],
     }),
   });
-  render(mount(<HomeScreen />));
+  renderWithData(<HomeScreen />);
 
   const stats = await screen.findByTestId("home-stats");
   expect(stats.textContent).toContain("12,400");
@@ -461,7 +443,7 @@ it("reports a share of zero rather than a division by nothing", async () => {
       projects: [{ project_id: PROJECT, name: "New", asset_count: 0, annotated_fraction: 0 }],
     }),
   });
-  render(mount(<HomeScreen />));
+  renderWithData(<HomeScreen />);
 
   const row = await screen.findByTestId("home-project-row");
   expect(row.textContent).toContain("0% annotated");
@@ -475,7 +457,7 @@ it("shows exactly one filled button in the first-run state", async () => {
     status: 200,
     body: homeBody({ totals: { projects: 0, assets: 0, annotations: 0, releases: 0 } }),
   });
-  const { container } = render(mount(<HomeScreen />));
+  const { container } = renderWithData(<HomeScreen />);
 
   await screen.findByTestId("home-first-run");
   expect(filledButtons(container)).toEqual(["Create project"]);
@@ -494,8 +476,8 @@ it.each([
         resume: resume({ kind, next_asset_id: kind === "open" ? null : ASSET }),
       }),
     });
-    const { container } = render(
-      mount(<HomeScreen onContinue={() => {}} onOpenBatch={() => {}} />),
+    const { container } = renderWithData(
+      <HomeScreen onContinue={() => {}} onOpenBatch={() => {}} />,
     );
 
     await screen.findByTestId("home-resume");
@@ -507,7 +489,7 @@ it.each([
 
 it("still shows exactly one filled button when nothing is open for annotation", async () => {
   on("GET", /\/home$/, { status: 200, body: homeBody({ resume: null }) });
-  const { container } = render(mount(<HomeScreen />));
+  const { container } = renderWithData(<HomeScreen />);
 
   await screen.findByTestId("home");
   // Zero filled buttons fails the rule exactly as two would: the page would be
@@ -520,7 +502,7 @@ it("opens the create dialog from the first-run invitation", async () => {
     status: 200,
     body: homeBody({ totals: { projects: 0, assets: 0, annotations: 0, releases: 0 } }),
   });
-  render(mount(<HomeScreen />));
+  renderWithData(<HomeScreen />);
 
   await userEvent.click(await screen.findByTestId("home-create-project"));
 

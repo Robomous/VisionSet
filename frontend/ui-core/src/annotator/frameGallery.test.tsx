@@ -20,20 +20,17 @@
  * jsdom can answer and what needs a browser.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
-import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
 import { TooltipProvider, TONE_BORDER, TONE_FILL } from "@robomous/ui-core";
+import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
 const JOB = "33333333-3333-4333-8333-333333333333";
@@ -133,7 +130,6 @@ function answer(path: string): unknown {
 
 beforeEach(() => {
   sent.length = 0;
-  writeToken("a-token");
   // The top bar this file clicks through is a row of Tooltip triggers. See
   // `testing/resizeObserver.ts`.
   stubResizeObserver();
@@ -165,20 +161,13 @@ afterEach(() => {
 });
 
 function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      <TooltipProvider>{node}</TooltipProvider>
-    </ApiProvider>
-  );
+  return <TooltipProvider>{node}</TooltipProvider>;
 }
 
 /** The editor, with the leave-the-editor callback recorded rather than wired. */
 async function open(): Promise<ReturnType<typeof vi.fn>> {
   const onOpenGallery = vi.fn();
-  render(mount(<AnnotationPage jobId={JOB} onOpenGallery={onOpenGallery} />));
+  renderWithData(mount(<AnnotationPage jobId={JOB} onOpenGallery={onOpenGallery} />));
   await screen.findByTestId("annotation-page");
   return onOpenGallery;
 }

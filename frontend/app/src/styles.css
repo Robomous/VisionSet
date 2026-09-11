@@ -13,3 +13,17 @@
 
 /* This app's own sources, so a class used only here still produces CSS. */
 @source ".";
+
+/*
+ * The standalone shell's own layout values.
+ *
+ * The rail's two widths — `AppShell`, its collapse toggle and the content offset
+ * have to agree on them or the layout jumps. They live here rather than in
+ * `@visionset/ui-core` because nothing reusable reads them: a host mounting
+ * VisionSet's screens brings its own global navigation, and inheriting the width
+ * of a rail it does not draw would be inheriting this application's shape.
+ */
+@theme inline {
+  --spacing-sidebar: 240px;
+  --spacing-sidebar-collapsed: 48px;
+}

@@ -9,22 +9,19 @@
  * server — every path here stubs the answer, never the question.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
 import {
   ApproveAndStartButton,
   CompleteAndPromoteButton,
   OutcomeNextStep,
 } from "./ComposedTransitions";
 import type { Batch } from "./queries";
+import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
 const JOB = "77777777-7777-4777-8777-777777777777";
@@ -63,17 +60,6 @@ afterEach(() => vi.unstubAllGlobals());
 function on(method: string, pattern: RegExp, answer: Answer): void {
   handlers.push((request) =>
     request.method === method && pattern.test(new URL(request.url).pathname) ? answer : undefined,
-  );
-}
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
   );
 }
 
@@ -128,7 +114,7 @@ describe("Approve and start", () => {
     schemaExists(true);
     on("POST", /\/approve$/, { status: 200, body: approved });
     on("POST", /\/start$/, { status: 200, body: started });
-    render(mount(<ApproveAndStartButton batch={batch()} projectId={PROJECT} />));
+    renderWithData(<ApproveAndStartButton batch={batch()} projectId={PROJECT} />);
 
     await userEvent.click(await screen.findByTestId("approve-start-drive-01"));
 
@@ -152,7 +138,7 @@ describe("Approve and start", () => {
       status: 409,
       body: { code: "INVALID_TRANSITION", message: "batch 'drive-01' is 'approved'" },
     });
-    render(mount(<ApproveAndStartButton batch={batch()} projectId={PROJECT} />));
+    renderWithData(<ApproveAndStartButton batch={batch()} projectId={PROJECT} />);
 
     await userEvent.click(await screen.findByTestId("approve-start-drive-01"));
 
@@ -170,7 +156,7 @@ describe("Approve and start", () => {
       status: 409,
       body: { code: "EMPTY_BATCH", message: "batch 'drive-01' has no assets" },
     });
-    render(mount(<ApproveAndStartButton batch={batch()} projectId={PROJECT} />));
+    renderWithData(<ApproveAndStartButton batch={batch()} projectId={PROJECT} />);
 
     await userEvent.click(await screen.findByTestId("approve-start-drive-01"));
 
@@ -182,14 +168,14 @@ describe("Approve and start", () => {
 
   it("is not offered without an active schema to pin", async () => {
     schemaExists(false);
-    render(mount(<ApproveAndStartButton batch={batch()} projectId={PROJECT} />));
+    renderWithData(<ApproveAndStartButton batch={batch()} projectId={PROJECT} />);
     await waitFor(() => expect(sent.some((r) => r.url.endsWith("/schema"))).toBe(true));
     expect(screen.queryByTestId("approve-start-drive-01")).toBeNull();
   });
 
   it("is not offered on a batch that does not declare approve", async () => {
     schemaExists(true);
-    render(mount(<ApproveAndStartButton batch={started} projectId={PROJECT} />));
+    renderWithData(<ApproveAndStartButton batch={started} projectId={PROJECT} />);
     await waitFor(() => expect(sent.some((r) => r.url.endsWith("/schema"))).toBe(true));
     expect(screen.queryByTestId("approve-start-drive-01")).toBeNull();
   });
@@ -240,14 +226,12 @@ describe("Complete and promote", () => {
     on("POST", /\/complete$/, { status: 200, body: completed });
     on("POST", /\/promote$/, { status: 200, body: assets(3) });
     const openDataset = vi.fn();
-    render(
-      mount(
-        <CompleteAndPromoteButton
-          batch={settled}
-          projectId={PROJECT}
-          onOpenDataset={openDataset}
-        />,
-      ),
+    renderWithData(
+      <CompleteAndPromoteButton
+        batch={settled}
+        projectId={PROJECT}
+        onOpenDataset={openDataset}
+      />,
     );
 
     await userEvent.click(screen.getByTestId("complete-promote-drive-01"));
@@ -270,7 +254,7 @@ describe("Complete and promote", () => {
       status: 409,
       body: { code: "BATCH_NOT_COMPLETE", message: "batch 'drive-01' is 'in_annotation'" },
     });
-    render(mount(<CompleteAndPromoteButton batch={settled} projectId={PROJECT} />));
+    renderWithData(<CompleteAndPromoteButton batch={settled} projectId={PROJECT} />);
 
     await userEvent.click(screen.getByTestId("complete-promote-drive-01"));
 
@@ -282,13 +266,11 @@ describe("Complete and promote", () => {
   });
 
   it("is withheld while frames are outstanding, as Complete is", () => {
-    render(
-      mount(
-        <CompleteAndPromoteButton
-          batch={batch({ state: "in_annotation", schema_version: 3 })}
-          projectId={PROJECT}
-        />,
-      ),
+    renderWithData(
+      <CompleteAndPromoteButton
+        batch={batch({ state: "in_annotation", schema_version: 3 })}
+        projectId={PROJECT}
+      />,
     );
     expect((screen.getByTestId("complete-promote-drive-01") as HTMLButtonElement).disabled).toBe(
       true,
@@ -296,7 +278,7 @@ describe("Complete and promote", () => {
   });
 
   it("is not offered on a batch that does not declare complete", () => {
-    render(mount(<CompleteAndPromoteButton batch={completed} projectId={PROJECT} />));
+    renderWithData(<CompleteAndPromoteButton batch={completed} projectId={PROJECT} />);
     expect(screen.queryByTestId("complete-promote-drive-01")).toBeNull();
   });
 });
@@ -309,10 +291,8 @@ describe("the ingest outcome's next step", () => {
   it("fills Approve and start when the project has a schema, and steps Open batch down", async () => {
     schemaExists(true);
     draft();
-    render(
-      mount(
-        <OutcomeNextStep projectId={PROJECT} batchId={BATCH} onOpenBatch={vi.fn()} />,
-      ),
+    renderWithData(
+      <OutcomeNextStep projectId={PROJECT} batchId={BATCH} onOpenBatch={vi.fn()} />,
     );
     const composed = await screen.findByTestId("approve-start-drive-01");
     expect(composed.dataset.variant).toBe("default");
@@ -324,15 +304,13 @@ describe("the ingest outcome's next step", () => {
     schemaExists(false);
     draft();
     const openSchema = vi.fn();
-    render(
-      mount(
-        <OutcomeNextStep
-          projectId={PROJECT}
-          batchId={BATCH}
-          onOpenBatch={vi.fn()}
-          onOpenSchema={openSchema}
-        />,
-      ),
+    renderWithData(
+      <OutcomeNextStep
+        projectId={PROJECT}
+        batchId={BATCH}
+        onOpenBatch={vi.fn()}
+        onOpenSchema={openSchema}
+      />,
     );
     const remedy = await screen.findByTestId("approve-needs-schema");
     expect(remedy.textContent).toContain("Approving needs a schema");
@@ -348,10 +326,8 @@ describe("the ingest outcome's next step", () => {
       body: { code: "INTERNAL_ERROR", message: "schema is unreachable" },
     });
     draft();
-    render(
-      mount(
-        <OutcomeNextStep projectId={PROJECT} batchId={BATCH} onOpenBatch={vi.fn()} />,
-      ),
+    renderWithData(
+      <OutcomeNextStep projectId={PROJECT} batchId={BATCH} onOpenBatch={vi.fn()} />,
     );
     await waitFor(() => expect(sent.some((r) => r.url.endsWith("/schema"))).toBe(true));
     expect(screen.queryByTestId("approve-needs-schema")).toBeNull();
@@ -376,10 +352,8 @@ describe("the ingest outcome's next step", () => {
       }
       return undefined;
     });
-    render(
-      mount(
-        <OutcomeNextStep projectId={PROJECT} batchId={BATCH} onOpenBatch={vi.fn()} />,
-      ),
+    renderWithData(
+      <OutcomeNextStep projectId={PROJECT} batchId={BATCH} onOpenBatch={vi.fn()} />,
     );
 
     await userEvent.click(await screen.findByTestId("approve-start-drive-01"));

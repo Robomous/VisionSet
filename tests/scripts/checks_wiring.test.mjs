@@ -3,10 +3,10 @@
 // Every `unwrap` is paired with the check for the operation it actually calls.
 //
 // This gate exists because the compiler cannot provide it, and that is worth stating
-// precisely rather than assuming. `unwrap<T>(result: FetchResult, check: Check<T>)` makes
+// precisely rather than assuming. `unwrap<T>(result: DataResult, check: Check<T>)` makes
 // a *missing* check a compile error — but not a *wrong* one, and it cannot: the check is
 // the only thing that says what comes back, because `result.data` is deliberately
-// `unknown` (argued on `FetchResult`, whose whole premise is that the response's static
+// `unknown` (argued on `DataResult`, whose whole premise is that the response's static
 // type is not evidence). So
 //
 //     unwrap(projectResult, checkDatasetOut)

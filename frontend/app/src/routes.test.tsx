@@ -9,12 +9,13 @@
  * is the address, never the data.
  */
 
-import { ApiProvider, writeToken } from "@visionset/ui-core";
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 import { MemoryRouter, useLocation } from "react-router";
 
+import { OssSessionProvider } from "./data/OssSession";
+import { writeToken } from "./data/token";
 import { AppRoutes, PARENT, projectRedirectTarget } from "./routes";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -27,10 +28,10 @@ function Location(): JSX.Element {
 function open(url: string): void {
   render(
     <MemoryRouter initialEntries={[url]}>
-      <ApiProvider baseUrl="http://localhost/api">
+      <OssSessionProvider baseUrl="http://localhost/api">
         <AppRoutes />
         <Location />
-      </ApiProvider>
+      </OssSessionProvider>
     </MemoryRouter>,
   );
 }

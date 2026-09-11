@@ -16,6 +16,22 @@
  * and put a class of conditional-type bug into this repository permanently. Type
  * imports are erased at build: this package ships no reference to it, and
  * `tests/scripts/ui_core_boundary.test.mjs` holds that line.
+ *
+ * ## Two clauses beyond the result shape
+ *
+ * **A request cancelled through its `signal` rejects.** The gallery and the
+ * annotator cancel transfers they no longer need, and they tell a cancellation
+ * apart from a failure by catching it — a host that reported an abort as
+ * `unreachable` would paint every scrolled-past tile as broken. Cancellation is
+ * not a failure of the request; it is the caller changing its mind.
+ *
+ * **An unexpected fault in the host's own client code rejects too.** A serializer
+ * bug or a programming error is not an answer about the product, and reporting one
+ * as `unreachable` sends somebody to check whether their server is running when
+ * the fault is in the client. What resolves as a `DataResult` is every *expected*
+ * outcome of asking a host a question: an answer, a refusal, and a host that could
+ * not be reached. `unreachable` means specifically that the host was contacted and
+ * produced no response — not that something threw.
  */
 import type { Client, ClientPathsWithMethod, MaybeOptionalInit } from "openapi-fetch";
 

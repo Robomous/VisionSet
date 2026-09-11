@@ -14,18 +14,15 @@
  * never the question — the approve request goes out on every path.
  */
 
-import { QueryClient } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
 import { ApproveDialog, BatchProgressBar } from "./BatchLifecycle";
 import type { Batch } from "./queries";
+import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
 
@@ -67,17 +64,6 @@ function on(method: string, pattern: RegExp, answer: Answer): void {
   );
 }
 
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
-  );
-}
-
 const DRAFT: Batch = {
   id: BATCH,
   project_id: PROJECT,
@@ -108,7 +94,7 @@ describe("the approve dialog's refusals", () => {
     });
     const opened = vi.fn();
     const closed = vi.fn();
-    render(mount(<ApproveDialog batch={DRAFT} onClose={closed} onOpenSchema={opened} />));
+    renderWithData(<ApproveDialog batch={DRAFT} onClose={closed} onOpenSchema={opened} />);
 
     await userEvent.click(screen.getByTestId("approve-submit"));
 
@@ -130,7 +116,7 @@ describe("the approve dialog's refusals", () => {
       status: 404,
       body: { code: "SCHEMA_NOT_FOUND", message: "This project has no schema version yet." },
     });
-    render(mount(<ApproveDialog batch={DRAFT} onClose={vi.fn()} />));
+    renderWithData(<ApproveDialog batch={DRAFT} onClose={vi.fn()} />);
 
     await userEvent.click(screen.getByTestId("approve-submit"));
 
@@ -148,7 +134,7 @@ describe("the approve dialog's refusals", () => {
       status: 409,
       body: { code: "BATCH_NOT_EDITABLE", message: "drive-01 is already approved." },
     });
-    render(mount(<ApproveDialog batch={DRAFT} onClose={vi.fn()} onOpenSchema={vi.fn()} />));
+    renderWithData(<ApproveDialog batch={DRAFT} onClose={vi.fn()} onOpenSchema={vi.fn()} />);
 
     await userEvent.click(screen.getByTestId("approve-submit"));
 
@@ -175,7 +161,7 @@ describe("the approve dialog's refusals", () => {
       },
     });
     const closed = vi.fn();
-    render(mount(<ApproveDialog batch={DRAFT} onClose={closed} onOpenSchema={vi.fn()} />));
+    renderWithData(<ApproveDialog batch={DRAFT} onClose={closed} onOpenSchema={vi.fn()} />);
 
     await userEvent.click(screen.getByTestId("approve-submit"));
     await waitFor(() => expect(closed).toHaveBeenCalledOnce());

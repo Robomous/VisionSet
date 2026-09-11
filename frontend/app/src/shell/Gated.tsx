@@ -7,7 +7,7 @@
  * which is the whole reason the boundary is expressed here and not in `main.tsx`.
  */
 
-import { TokenGate } from "@visionset/ui-core";
+import { TokenGate } from "./TokenGate";
 import type { JSX } from "react";
 import { Outlet } from "react-router";
 

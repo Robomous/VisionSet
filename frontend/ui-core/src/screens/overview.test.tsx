@@ -8,18 +8,15 @@
  * be got wrong: assets but no annotations is *not* empty.
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { QueryClient } from "@tanstack/react-query";
-import type { JSX, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiProvider } from "../data/ApiProvider";
 import { IMBALANCE_MIN_CLASSES, IMBALANCE_SHARE, imbalanceNote } from "./imbalance";
 import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
+import { renderWithData } from "../testing/dataHarness";
 import { datasetOf, releaseOf } from "../testing/wire.fixtures.js";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 
 // Every field `AssetOut` declares beyond the id and project. The server sends all of
@@ -107,17 +104,6 @@ function on(method: string, pattern: RegExp, answer: Answer): void {
     request.method === method && pattern.test(new URL(request.url).pathname)
       ? { status: answer.status, body: answer.body ?? null }
       : undefined,
-  );
-}
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
   );
 }
 
@@ -212,7 +198,7 @@ describe("imbalanceNote", () => {
 describe("the Overview panel", () => {
   it("reserves the final layout while loading, so nothing shifts", async () => {
     serve(statsOf());
-    const { container } = render(mount(<OverviewPanel projectId={PROJECT} />));
+    const { container } = renderWithData(<OverviewPanel projectId={PROJECT} />);
 
     const loading = screen.getByTestId("overview-loading");
     // Two rows of four — the pipeline pointers and the counts — plus four
@@ -232,7 +218,7 @@ describe("the Overview panel", () => {
         message: `project ${PROJECT} not found in workspace /tmp/ws`,
       },
     });
-    render(mount(<OverviewPanel projectId={PROJECT} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} />);
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("That project is no longer on record.");
@@ -242,7 +228,7 @@ describe("the Overview panel", () => {
 
   it("shows the four counts, formatted", async () => {
     serve(statsOf());
-    render(mount(<OverviewPanel projectId={PROJECT} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} />);
 
     const stats = await screen.findByTestId("overview-stats");
     expect(stats.textContent).toContain((1248).toLocaleString(undefined));
@@ -252,7 +238,7 @@ describe("the Overview panel", () => {
 
   it("ranks the distribution by count, largest first", async () => {
     serve(statsOf());
-    render(mount(<OverviewPanel projectId={PROJECT} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} />);
 
     const rows = (await screen.findByTestId("overview-distribution")).textContent ?? "";
     expect(rows.indexOf("dog")).toBeLessThan(rows.indexOf("person"));
@@ -261,7 +247,7 @@ describe("the Overview panel", () => {
 
   it("shows the imbalance note when the distribution earns one", async () => {
     serve(statsOf());
-    render(mount(<OverviewPanel projectId={PROJECT} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} />);
 
     expect((await screen.findByTestId("imbalance-note")).textContent).toContain("bicycle");
   });
@@ -276,7 +262,7 @@ describe("the Overview panel", () => {
         ],
       }),
     );
-    render(mount(<OverviewPanel projectId={PROJECT} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} />);
 
     await screen.findByTestId("overview-distribution");
     expect(screen.queryByTestId("imbalance-note")).toBeNull();
@@ -285,7 +271,7 @@ describe("the Overview panel", () => {
   it("invites a first ingest when the project holds nothing", async () => {
     serve(statsOf({ asset_count: 0, annotated_asset_count: 0, annotation_count: 0, classes: [] }));
     const ingest = vi.fn();
-    render(mount(<OverviewPanel projectId={PROJECT} onIngest={ingest} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} onIngest={ingest} />);
 
     const empty = await screen.findByTestId("overview-empty");
     // An invitation, not an apology.
@@ -305,7 +291,7 @@ describe("the Overview panel", () => {
         classes: [],
       }),
     );
-    render(mount(<OverviewPanel projectId={PROJECT} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} />);
 
     const stats = await screen.findByTestId("overview-stats");
     expect(screen.queryByTestId("overview-empty")).toBeNull();
@@ -321,7 +307,7 @@ describe("the Overview panel", () => {
       ],
       total: 1245,
     });
-    render(mount(<OverviewPanel projectId={PROJECT} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} />);
 
     expect((await screen.findByTestId("thumbnail-overflow")).textContent).toBe(
       `+${(1243).toLocaleString(undefined)}`,
@@ -333,7 +319,7 @@ describe("the Overview panel", () => {
       items: [{ id: "a", project_id: PROJECT, ...ASSET_REST }],
       total: 1,
     });
-    render(mount(<OverviewPanel projectId={PROJECT} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} />);
 
     await screen.findByTestId("overview-samples");
     await waitFor(() => expect(screen.queryByTestId("thumbnail-overflow")).toBeNull());
@@ -343,7 +329,7 @@ describe("the Overview panel", () => {
     serveTrunk();
     on("GET", /\/stats$/, { status: 500, body: { code: "BOOM", message: "counting failed" } });
     on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
-    render(mount(<OverviewPanel projectId={PROJECT} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} />);
 
     expect((await screen.findByRole("alert")).textContent).toContain("counting failed");
   });
@@ -420,7 +406,7 @@ describe("the first-run invitation", () => {
   it("invites a schema-less, empty project to ingest, and nothing else", async () => {
     readinessOf({ schema: false, stats: empty });
     const ingest = vi.fn();
-    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={ingest} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={ingest} />);
 
     const region = await screen.findByTestId("first-run");
     expect(region.dataset.invitation).toBe("ingest-first");
@@ -440,7 +426,7 @@ describe("the first-run invitation", () => {
     // — and says it without splitting its own hierarchy.
     readinessOf({ schema: false, stats: empty });
     const schema = vi.fn();
-    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={schema} onIngest={vi.fn()} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} onOpenSchema={schema} onIngest={vi.fn()} />);
 
     const alt = await screen.findByTestId("first-run-alt");
     expect(alt.className).not.toContain("bg-primary");
@@ -453,7 +439,7 @@ describe("the first-run invitation", () => {
 
   it("invites an ingest once classes exist and nothing is ingested", async () => {
     readinessOf({ stats: empty });
-    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={vi.fn()} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={vi.fn()} />);
 
     const region = await screen.findByTestId("first-run");
     expect(region.dataset.invitation).toBe("ingest");
@@ -469,7 +455,7 @@ describe("the first-run invitation", () => {
 
   it("invites classes over a project that ingested first, and says where annotation opens", async () => {
     readinessOf({ schema: false, stats: statsOf({ asset_count: 48 }) });
-    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={vi.fn()} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={vi.fn()} />);
 
     const region = await screen.findByTestId("first-run");
     expect(region.dataset.invitation).toBe("classes-after-ingest");
@@ -485,14 +471,14 @@ describe("the first-run invitation", () => {
 
   it("says one image rather than 1 images", async () => {
     readinessOf({ schema: false, stats: statsOf({ asset_count: 1 }) });
-    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} />);
 
     expect((await screen.findByTestId("first-run")).textContent).toContain("1 image is in");
   });
 
   it("invites nothing once the project has both classes and images", async () => {
     readinessOf({ stats: statsOf({ asset_count: 48 }) });
-    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={vi.fn()} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={vi.fn()} />);
 
     // The dashboard is there, so this is not "nothing rendered".
     await screen.findByTestId("overview-pipeline");
@@ -505,7 +491,7 @@ describe("the first-run invitation", () => {
     // Asserted on the state that would render step one, which is
     // where a survivor would show up first.
     readinessOf({ schema: false, stats: empty });
-    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} />);
 
     await screen.findByTestId("first-run");
     expect(screen.queryByTestId("journey")).toBeNull();
@@ -520,7 +506,7 @@ describe("the first-run invitation", () => {
     // true whatever the schema turns out to be; a classes invitation would be a
     // guess about the one fact the page could not obtain.
     serve(empty);
-    render(mount(<OverviewPanel projectId={PROJECT} onIngest={vi.fn()} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} onIngest={vi.fn()} />);
 
     const region = await screen.findByTestId("first-run");
     expect(region.dataset.invitation).toBe("ingest");
@@ -531,7 +517,7 @@ describe("the first-run invitation", () => {
     // invitation that is true without the schema fact, so the page renders its
     // dashboard and stays quiet.
     serve(statsOf({ asset_count: 48 }));
-    render(mount(<OverviewPanel projectId={PROJECT} onIngest={vi.fn()} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} onIngest={vi.fn()} />);
 
     await screen.findByTestId("overview-stats");
     expect(screen.queryByTestId("first-run")).toBeNull();
@@ -546,15 +532,13 @@ describe("the pipeline row", () => {
   it("points each card at the section that owns it", async () => {
     readinessOf({ stats: statsOf({ asset_count: 48 }) });
     const go = { schema: vi.fn(), batches: vi.fn(), dataset: vi.fn() };
-    render(
-      mount(
-        <OverviewPanel
-          projectId={PROJECT}
-          onOpenSchema={go.schema}
-          onOpenBatches={go.batches}
-          onBrowseDataset={go.dataset}
-        />,
-      ),
+    renderWithData(
+      <OverviewPanel
+        projectId={PROJECT}
+        onOpenSchema={go.schema}
+        onOpenBatches={go.batches}
+        onBrowseDataset={go.dataset}
+      />,
     );
 
     await screen.findByTestId("overview-pipeline");
@@ -573,7 +557,7 @@ describe("the pipeline row", () => {
     // A card with somewhere to go is an action, and an action a mouse alone can
     // take is half a control.
     readinessOf({ stats: statsOf({ asset_count: 48 }) });
-    render(mount(<OverviewPanel projectId={PROJECT} onOpenBatches={vi.fn()} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} onOpenBatches={vi.fn()} />);
 
     const card = await screen.findByTestId("pipeline-batches");
     expect(card.tagName).toBe("BUTTON");
@@ -588,7 +572,7 @@ describe("the pipeline row", () => {
     // measurement of nothing.
     readinessOf({ stats: statsOf({ asset_count: 48 }), batches: [] });
 
-    render(mount(<OverviewPanel projectId={PROJECT} />));
+    renderWithData(<OverviewPanel projectId={PROJECT} />);
 
     // `findByText`, not `findByTestId` then read: the card renders immediately
     // with an em dash while its query is in flight, so reading `textContent` off

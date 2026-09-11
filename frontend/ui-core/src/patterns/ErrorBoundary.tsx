@@ -7,7 +7,7 @@
  * `unhandledrejection` handler existed anywhere in this product (audit §4). A
  * render that threw took the whole document with it and left the user looking at
  * white — no message, no reload, no indication that anything had happened. The
- * only global mutation subscriber handles 401 sign-out and nothing else.
+ * only global mutation subscriber handles a refused credential and nothing else.
  *
  * That is the ordinary cost of a missing boundary. The sharper cost was the four
  * `void someAsyncMutation()` call sites in the annotator: each rejects on a

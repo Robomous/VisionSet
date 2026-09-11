@@ -48,12 +48,10 @@
 import { Key } from "lucide-react";
 import { useEffect, useState, type FormEvent, type JSX, type ReactNode } from "react";
 
-import { createApiClient } from "../client";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, FieldDescription, FieldError } from "@robomous/ui-core";
-import { useApiSession } from "./ApiProvider";
-import { refusalProse } from "./refusals";
-import { asApiError, NETWORK_ERROR, unwrap } from "./errors";
-import { checkListProjects } from "../generated/checks";
+import { asApiError, checks, NETWORK_ERROR, refusalProse, unwrap } from "@visionset/ui-core";
+import { useOssSession } from "../data/OssSession";
+import { createOssDataClient } from "../data/ossClient";
 
 export interface TokenGateProps {
   /** Rendered once a credential is held. */
@@ -63,7 +61,7 @@ export interface TokenGateProps {
 /**
  * Show `children` once a credential is held, and the form when none is.
  *
- * A 401 anywhere in the app clears the session (`ApiProvider`), so this component
+ * A 401 anywhere in the app clears the session (`OssSession`), so this component
  * is also the "your token was revoked while you were working" screen — without
  * knowing anything about that, which is the point of handling the 401 in one
  * place.
@@ -74,7 +72,7 @@ export interface TokenGateProps {
  * would put a login screen in front of the one user who never has to see one.
  */
 export function TokenGate({ children }: TokenGateProps): JSX.Element {
-  const { access, ensureAccess } = useApiSession();
+  const { access, ensureAccess } = useOssSession();
   // Asked from here rather than on the provider's mount, so that the two routes
   // deliberately outside this gate issue no request at all — they have no server
   // to authenticate against, and on a page with no API behind it a failed probe
@@ -86,7 +84,7 @@ export function TokenGate({ children }: TokenGateProps): JSX.Element {
 }
 
 export function TokenForm(): JSX.Element {
-  const { baseUrl, signIn } = useApiSession();
+  const { baseUrl, signIn } = useOssSession();
   const [value, setValue] = useState("");
   const [failure, setFailure] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -99,7 +97,7 @@ export function TokenForm(): JSX.Element {
     setChecking(true);
     setFailure(null);
     try {
-      const probe = createApiClient({ baseUrl, token: candidate });
+      const probe = createOssDataClient({ baseUrl, token: candidate });
       // The cheapest authenticated route in the contract. The answer is thrown
       // away — only its status is the question. There is deliberately no `limit`:
       // `docs/content/api.md` gives paging parameters to exactly one collection, the batch
@@ -107,7 +105,7 @@ export function TokenForm(): JSX.Element {
       // Checked like every other read, even though the answer is discarded: a server
       // that cannot answer `/projects` in the contract's shape is not one to sign into,
       // and an exemption here would be a hole the wiring gate has to allowlist forever.
-      unwrap(await probe.GET("/projects", {}), checkListProjects);
+      unwrap(await probe.GET("/projects", {}), checks.checkListProjects);
       signIn(candidate);
     } catch (cause) {
       setFailure(refusalOf(cause));

@@ -1,27 +1,20 @@
 /**
  * View preferences — the ones a person sets on a screen and expects to find again.
  *
- * ## Why this is `localStorage` when `data/session.ts` argues against it
+ * ## Why this is `localStorage`
  *
- * That module rejected `localStorage` for the **token**, and every word of the
- * argument was about the token: a long-lived bearer credential written to disk
- * with no expiry, in a product whose whole security model is "you minted this by
- * hand". None of that is true of "how wide are the thumbnails". A preference is
- * not a credential, and the property that made `sessionStorage` right there — it
- * dies with the tab — is exactly what makes it wrong here, because a preference
- * that resets every time you open a new tab is not a preference.
+ * A preference is not a credential: losing it costs a viewer one re-adjustment —
+ * they widen the thumbnails again — not a re-authentication. So per-viewer storage
+ * is the right place for it on its own terms, and no host needs to be involved in
+ * keeping it.
  *
- * So the two coexist and answer different questions, and this file exists rather
- * than a second knob on `session.ts` so that neither can quietly acquire the
- * other's semantics.
+ * ## The guard is a probe write, not a presence check
  *
- * ## The guard is copied deliberately, not the storage
- *
- * `session.ts`'s hard-won finding transfers whole: **web storage throws rather
- * than returning null when a browser refuses it** — Safari in private browsing,
- * and any embedding with storage partitioned off. An uncaught throw here happens
- * during the first render of a screen, before an error boundary exists, and shows
- * a blank page. Presence is not availability, so the check is a probe write.
+ * **Web storage throws rather than returning null when a browser refuses it** —
+ * Safari in private browsing, and any embedding with storage partitioned off. An
+ * uncaught throw here happens during the first render of a screen, before an error
+ * boundary exists, and shows a blank page. Presence is not availability, so the
+ * check is a probe write.
  *
  * The fallback is an in-memory map: the preference degrades to "until you
  * reload" instead of to "the batch view is white".

@@ -24,17 +24,15 @@
  * accumulate and that the request goes out with the right window.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
+import type { ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
-import { writeToken } from "../data/session";
 import { BatchesScreen } from "./BatchesScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { GalleryScreen, columnsFor } from "./GalleryScreen";
+import { renderWithData } from "../testing/dataHarness";
 import { assetActions, batchActions, jobActions, datasetOf } from "../testing/wire.fixtures.js";
 import type { components } from "../generated/api.js";
 import { TONE_BORDER, TONE_FILL } from "@robomous/ui-core";
@@ -43,7 +41,6 @@ type BatchState = components["schemas"]["BatchState"];
 type JobState = components["schemas"]["AnnotationJobState"];
 type Progress = components["schemas"]["AssetProgress"];
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
 const SOURCE = "66666666-6666-4666-8666-666666666666";
@@ -58,7 +55,6 @@ beforeEach(() => {
   handlers = [];
   sent.length = 0;
   bodies.clear();
-  writeToken("a-token");
   vi.stubGlobal("fetch", async (request: Request) => {
     sent.push(request);
     if (request.method !== "GET") bodies.set(request, await request.clone().text());
@@ -86,17 +82,6 @@ afterEach(() => {
 function on(method: string, pattern: RegExp, answer: Answer): void {
   handlers.push((request) =>
     request.method === method && pattern.test(new URL(request.url).pathname) ? answer : undefined,
-  );
-}
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
   );
 }
 
@@ -194,7 +179,7 @@ describe("the batch table", () => {
       },
     });
 
-    render(mount(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+    renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
     await screen.findByTestId("batches-table");
 
     expect(screen.queryByTestId("approve-a")).not.toBeNull();
@@ -212,7 +197,7 @@ describe("the batch table", () => {
 
   it("shows no schema version until approval, because that is when it pins", async () => {
     on("GET", /\/batches$/, { status: 200, body: { items: [batch()], total: 1 } });
-    render(mount(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+    renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
     await screen.findByTestId("batches-table");
     expect(screen.getByTestId("batch-drive-01").textContent).toContain("—");
   });
@@ -257,7 +242,7 @@ describe("the labels foreshadowing banner (#290)", () => {
   it("warns while the project has no labels, and the link goes to the schema", async () => {
     withSchema(false);
     const opened = vi.fn();
-    render(mount(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} onOpenSchema={opened} />));
+    renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} onOpenSchema={opened} />);
 
     const banner = await screen.findByTestId("schema-foreshadow");
     expect(banner.textContent).toContain("labels before annotating");
@@ -267,7 +252,7 @@ describe("the labels foreshadowing banner (#290)", () => {
 
   it("says nothing once a schema exists", async () => {
     withSchema(true);
-    render(mount(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} onOpenSchema={vi.fn()} />));
+    renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} onOpenSchema={vi.fn()} />);
 
     await screen.findByTestId("batches-table");
     // Wait for the readiness sources to have answered, so this asserts a
@@ -286,7 +271,7 @@ describe("the approval dialog", () => {
   });
 
   async function open(): Promise<void> {
-    render(mount(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+    renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
     await screen.findByTestId("batches-table");
     await userEvent.click(screen.getByTestId("approve-drive-01"));
     await screen.findByTestId("approve-dialog");
@@ -400,7 +385,7 @@ describe("the gallery", () => {
     on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, { status: 200, body: assets(100, 0, 250) });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     // Found by path, not by position: the screen also reads the project, the
     // batch and the source, and which of the four lands first is not something
     // this claim is about.
@@ -426,7 +411,7 @@ describe("the gallery", () => {
     });
     on("GET", /\/assets$/, { status: 200, body: assets(5, 0, 48) });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
 
     // The three things the old header could not say. The state badge reads the
     // kernel's vocabulary in a person's words; the readout counts everything past
@@ -464,7 +449,7 @@ describe("the gallery", () => {
       },
     });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
 
     // `BatchOut` is seven fields and not one of them is a source, a resolution or
     // a moment — so every part of this line is derived: the name and rate from
@@ -489,7 +474,7 @@ describe("the gallery", () => {
       body: { total: 1, items: [asset(0, { ingested_at: null, source_id: null })] },
     });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
 
     const facts = await screen.findByTestId("batch-facts");
     expect(facts.textContent).not.toContain("ago");
@@ -500,7 +485,7 @@ describe("the gallery", () => {
   it("offers approval from the batch view itself, which the screen never did", async () => {
     on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
 
     // The defect this closes: a draft batch opened here was a dead end. Every
     // tile was disabled with a `title` explaining that jobs had not been cut, and
@@ -514,7 +499,7 @@ describe("the gallery", () => {
     on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch({ state: "approved" }) });
     on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     await waitFor(() =>
       expect(screen.getByTestId("batch-state").textContent).toContain("approved"),
     );
@@ -546,7 +531,7 @@ describe("the gallery", () => {
     // lies about the collection it is filtering.
     on("GET", /\/assets$/, { status: 200, body: mixed() });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
 
     await waitFor(() =>
       expect(screen.getByTestId("segment-all").textContent).toContain("All (48)"),
@@ -568,7 +553,7 @@ describe("the gallery", () => {
     });
     oneJob({ counts: { total: 3, unannotated: 2, pre_labeled: 1 } });
     on("GET", /\/assets$/, { status: 200, body: assets(3) });
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     await screen.findByTestId("segment-pre_labeled");
 
     fireEvent.click(screen.getByTestId("segment-pre_labeled"));
@@ -597,7 +582,7 @@ describe("the gallery", () => {
     });
     oneJob({ assetCount: 2, counts: { total: 2, pre_labeled: 2 } });
     on("GET", /\/assets$/, { status: 200, body: assets(2) });
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     const order = (await screen.findByTestId("sort-order")) as HTMLSelectElement;
 
     expect(order.textContent).toMatch(/prompt affinity/i);
@@ -613,7 +598,7 @@ describe("the gallery", () => {
   it("shows a draft no sort control, because a draft has no scores", async () => {
     on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, { status: 200, body: assets(2) });
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     await screen.findByTestId("tile-asset-0");
     expect(screen.queryByTestId("sort-order")).toBeNull();
   });
@@ -635,7 +620,7 @@ describe("the gallery", () => {
         ],
       },
     });
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
 
     expect((await screen.findByTestId("state-asset-0")).textContent).toBe("3 boxes");
     const card = screen.getByTestId("state-asset-1");
@@ -661,7 +646,7 @@ describe("the gallery", () => {
       return undefined;
     });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     await screen.findByTestId("tile-asset-0");
 
     fireEvent.click(screen.getByTestId("segment-pre_labeled"));
@@ -707,7 +692,7 @@ describe("the gallery", () => {
     });
 
     it("says nothing about progress it has not created yet", async () => {
-      render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+      renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
       await waitFor(() =>
         expect(screen.getByTestId("batch-state").textContent).toContain("pending approval"),
       );
@@ -718,7 +703,7 @@ describe("the gallery", () => {
     });
 
     it("offers no filter, because every frame is in the same state", async () => {
-      render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+      renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
       await waitFor(() =>
         expect(screen.getByTestId("batch-state").textContent).toContain("pending approval"),
       );
@@ -730,7 +715,7 @@ describe("the gallery", () => {
     });
 
     it("offers the selection membership editing needs, and only that", async () => {
-      render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+      renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
       const tile = await screen.findByTestId("tile-asset-0");
 
       // A draft used to render no selection at all, because every action a
@@ -752,7 +737,7 @@ describe("the gallery", () => {
     });
 
     it("does not label every frame with the same empty status", async () => {
-      render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+      renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
       await screen.findByTestId("tile-asset-0");
       // `progress` is null on all forty-eight, so "unannotated" is true of every
       // one and distinguishes none — and a per-tile "draft" repeats the header's
@@ -770,7 +755,7 @@ describe("the gallery", () => {
     oneJob({ state: "pending", batchState: "approved", assetCount: 5, counts: { total: 5, unannotated: 5 } });
     on("GET", /\/assets$/, { status: 200, body: mixed() });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     await waitFor(() => expect(screen.queryByTestId("segments")).not.toBeNull());
 
     // The other half of the claim above: hidden *before* approval, not removed.
@@ -790,7 +775,7 @@ describe("the gallery", () => {
     oneJob({ assetCount: 5, counts: { total: 5, annotated: 5 } });
     on("GET", /\/assets$/, { status: 200, body: mixed() });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     await waitFor(() => expect(screen.queryByTestId("state-asset-1")).not.toBeNull());
 
     // `word` is what the *timeline* names every state by — `progressLabel`,
@@ -840,7 +825,7 @@ describe("the gallery", () => {
   it("keeps the empty state for a batch with nothing in it", async () => {
     on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, { status: 200, body: assets(0, 0, 0) });
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     await waitFor(() => expect(screen.queryByText("This batch is empty")).not.toBeNull());
   });
 
@@ -848,7 +833,7 @@ describe("the gallery", () => {
     on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch({ state: "in_annotation" }) });
     on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     const slider = (await screen.findByTestId("density")) as HTMLInputElement;
 
     // There was a fifth rung at 320 and it went: four tiles across a wide pane
@@ -862,7 +847,7 @@ describe("the gallery", () => {
   it("remembers the thumbnail density across a remount", async () => {
     on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch({ state: "in_annotation" }) });
     on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
-    const first = render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    const first = renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
 
     const slider = await screen.findByTestId("density");
     fireEvent.change(slider, { target: { value: "3" } });
@@ -873,7 +858,7 @@ describe("the gallery", () => {
     // `data/prefs.ts`: a view setting is not a credential, and the property that
     // made session storage right there is what makes it wrong here.
     first.unmount();
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     expect(((await screen.findByTestId("density")) as HTMLInputElement).value).toBe("3");
   });
 
@@ -887,7 +872,7 @@ describe("the gallery", () => {
     on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch({ state: "in_annotation" }) });
     on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     expect(((await screen.findByTestId("density")) as HTMLInputElement).value).toBe("2");
   });
 
@@ -934,7 +919,7 @@ describe("the gallery", () => {
 
     on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, { status: 200, body: assets(6, 0, 6) });
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     const grid = await screen.findByTestId("gallery-grid");
     expect(grid.getAttribute("data-columns")).toBe("1");
   });
@@ -942,7 +927,7 @@ describe("the gallery", () => {
   it("has no scrollable box of its own any more", async () => {
     on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, { status: 200, body: assets(6, 0, 6) });
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
 
     // The class half of the layout change, greppable here; whether the *document*
     // is really the scroll parent is a computed-style question and belongs in a
@@ -966,15 +951,15 @@ describe("the gallery", () => {
  * both are testable here.
  */
 describe("an asset's preview", () => {
-  function thumb(hash: string | null): JSX.Element {
-    return mount(
+  function thumb(hash: string | null): ReactNode {
+    return (
       <AssetThumbnail
         projectId={PROJECT}
         assetId="asset-1"
         thumbnailHash={hash}
         alt="frame 1"
         className="size-full"
-      />,
+      />
     );
   }
 
@@ -982,20 +967,19 @@ describe("an asset's preview", () => {
     // A preview that would not render is deliberately not an `IngestFailure` — the
     // asset exists and nothing was lost — so a NULL hash is a state to draw. The
     // remedy, `backfill_thumbnails`, is CLI and MCP only, so there is no button.
-    render(thumb(null));
+    renderWithData(thumb(null));
     expect(screen.queryByTestId("thumbnail-placeholder")).not.toBeNull();
     expect(sent).toHaveLength(0);
   });
 
   it("fetches the bytes with the credential instead of pointing an <img> at the route", async () => {
     on("GET", /\/thumbnail$/, { status: 200, body: null });
-    render(thumb("cafebabe"));
+    renderWithData(thumb("cafebabe"));
 
-    // The whole reason this component exists: every route but `/health` needs
-    // `Authorization: Bearer`, and an `<img src>` sends no header — so an `<img>`
-    // aimed at the API is a 401 and a broken-image icon on every tile.
+    // The whole reason this component exists: the preview route answers only to a
+    // credentialed request, and an `<img src>` carries no credential — so an
+    // `<img>` aimed at the API is refused and every tile is a broken-image icon.
     await waitFor(() => expect(sent.some((r) => r.url.endsWith("/thumbnail"))).toBe(true));
-    expect(sent[0].headers.get("authorization")).toBe("Bearer a-token");
     for (const image of screen.queryAllByRole("img")) {
       expect(image.getAttribute("src") ?? "").not.toContain("/thumbnail");
     }
@@ -1005,7 +989,7 @@ describe("an asset's preview", () => {
     // A fast scroll unmounts tiles before their bytes land; `live = false`
     // discarded the result but let the download run to completion.
     on("GET", /\/thumbnail$/, { status: 200, body: null });
-    const view = render(thumb("cafebabe"));
+    const view = renderWithData(thumb("cafebabe"));
     await waitFor(() => expect(sent).toHaveLength(1));
 
     view.unmount();
@@ -1019,7 +1003,7 @@ describe("an asset's preview", () => {
     handlers.push(() => {
       throw new TypeError("network down");
     });
-    render(thumb("cafebabe"));
+    renderWithData(thumb("cafebabe"));
 
     const tile = await screen.findByTestId("thumbnail-placeholder");
     expect(tile.getAttribute("title")).toBe("The preview could not be loaded.");
@@ -1080,7 +1064,7 @@ describe("finishing a batch", () => {
   }
 
   async function pressComplete(): Promise<void> {
-    render(mount(<BatchesScreen projectId={PROJECT_ID} onOpenBatch={vi.fn()} />));
+    renderWithData(<BatchesScreen projectId={PROJECT_ID} onOpenBatch={vi.fn()} />);
     await screen.findByTestId("batches-table");
     await userEvent.click(screen.getByTestId("complete-drive-01"));
   }
@@ -1211,7 +1195,7 @@ describe("finishing a batch", () => {
       },
     });
 
-    render(mount(<BatchesScreen projectId={PROJECT_ID} onOpenBatch={vi.fn()} />));
+    renderWithData(<BatchesScreen projectId={PROJECT_ID} onOpenBatch={vi.fn()} />);
     await screen.findByTestId("batches-table");
 
     // `JobService.complete` would refuse this, and the screen can already see the
@@ -1283,7 +1267,7 @@ describe("the bulk bar", () => {
     on("PUT", /\/progress$/, { status: 200, body: { asset_id: "asset-0", progress: "skipped" } });
     on("GET", /\/annotations$/, { status: 200, body: [] });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     await screen.findByTestId("tile-asset-0");
   }
 
@@ -1474,7 +1458,7 @@ describe("the bulk bar", () => {
       return { status: 204, body: null };
     });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     fireEvent.click(await screen.findByTestId("segment-pre_labeled"));
     await screen.findByTestId("select-asset-0");
     selectAll(2);
@@ -1518,7 +1502,7 @@ describe("the bulk bar", () => {
       return { status: 200, body: { asset_id: url.pathname.split("/").at(-2), progress: "annotated" } };
     });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     fireEvent.click(await screen.findByTestId("segment-pre_labeled"));
     await screen.findByTestId("select-asset-0");
     selectAll(2);
@@ -1692,7 +1676,7 @@ describe("the bulk bar", () => {
     });
     on("GET", /\/annotations$/, { status: 200, body: [] });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
     await screen.findByTestId("tile-asset-0");
     expect(screen.getByTestId("state-asset-0").textContent).toContain("in review");
 
@@ -2084,15 +2068,13 @@ describe("the job panel's way into the annotator", () => {
     });
 
     const openedJob = vi.fn();
-    render(
-      mount(
-        <GalleryScreen
-          projectId={PROJECT}
-          batchId={BATCH}
-          onOpenAsset={vi.fn()}
-          onOpenJob={openedJob}
-        />,
-      ),
+    renderWithData(
+      <GalleryScreen
+        projectId={PROJECT}
+        batchId={BATCH}
+        onOpenAsset={vi.fn()}
+        onOpenJob={openedJob}
+      />,
     );
     // The job's workspace first: the frames belong to the job, so there are no
     // tiles at all until the roster and its counts have both landed. One job
@@ -2288,7 +2270,7 @@ describe("the gallery header's own next step", () => {
     on("GET", /\/annotations$/, { status: 200, body: [] });
     oneJob({ batchState, assetCount: states.length, counts: { total: states.length, unannotated: states.length } });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={vi.fn()} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={vi.fn()} />);
     await screen.findByTestId("tile-asset-0");
   }
 
@@ -2349,7 +2331,7 @@ describe("the gallery header's own next step", () => {
     on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
 
     const opened = vi.fn();
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={opened} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={opened} />);
     await userEvent.click(await screen.findByTestId("start-batch"));
 
     // The badge moves — the batch actually re-reads as `in_annotation` — and
@@ -2360,10 +2342,9 @@ describe("the gallery header's own next step", () => {
   });
 
   it("disables Start while the transition is in flight, not only after the click", async () => {
-    // The gate has to sit under `globalThis.fetch` *before* the client is
-    // built — `openapi-fetch` reads `globalThis.fetch` once, at
-    // `createClient()` time, so stubbing it after `render` would wrap a
-    // reference this client never uses.
+    // The gate has to sit under `globalThis.fetch` *before* `render`: the
+    // screen's first requests go out during that initial render, so a stub
+    // installed afterwards never sees the ones this test is about.
     const inner = globalThis.fetch;
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
@@ -2388,7 +2369,7 @@ describe("the gallery header's own next step", () => {
     on("GET", /\/annotations$/, { status: 200, body: [] });
     on("POST", /\/start$/, { status: 200, body: batch({ state: "in_annotation", schema_version: 1 }) });
 
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={vi.fn()} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={vi.fn()} />);
     await screen.findByTestId("start-batch");
 
     await userEvent.click(screen.getByTestId("start-batch"));
@@ -2440,7 +2421,7 @@ describe("the jobs accordion", () => {
       status: 200,
       body: { ...NO_PROGRESS, total: 3, unannotated: 3 },
     });
-    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
   }
 
   /**

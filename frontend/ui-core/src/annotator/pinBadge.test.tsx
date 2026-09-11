@@ -15,19 +15,17 @@
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
 import { TooltipProvider } from "@robomous/ui-core";
-import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
+import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
 const JOB = "33333333-3333-4333-8333-333333333333";
@@ -129,7 +127,6 @@ function answer(path: string, search: string): unknown {
 beforeEach(() => {
   asked.length = 0;
   activeVersion = 3;
-  writeToken("a-token");
   // The badge this file opens sits in the top bar, among Tooltip triggers. See
   // `testing/resizeObserver.ts`.
   stubResizeObserver();
@@ -157,19 +154,12 @@ afterEach(() => {
 });
 
 function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      <TooltipProvider>{node}</TooltipProvider>
-    </ApiProvider>
-  );
+  return <TooltipProvider>{node}</TooltipProvider>;
 }
 
 /** The badge, once the page has walked job → batch → pinned schema → assets. */
 async function badge(): Promise<HTMLElement> {
-  render(mount(<AnnotationPage jobId={JOB} />));
+  renderWithData(mount(<AnnotationPage jobId={JOB} />));
   return screen.findByTestId("pinned-schema");
 }
 
@@ -203,13 +193,7 @@ describe("what it fetches, and when", () => {
     // a comparison left enabled would keep refetching over a closed popover. A
     // disabled query ignores an invalidation; an enabled one answers it.
     const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <ApiProvider baseUrl={API} queryClient={queries}>
-        <TooltipProvider>
-          <AnnotationPage jobId={JOB} />
-        </TooltipProvider>
-      </ApiProvider>,
-    );
+    renderWithData(mount(<AnnotationPage jobId={JOB} />), { queryClient: queries });
 
     await userEvent.click(await screen.findByTestId("pinned-schema"));
     await screen.findByTestId("pin-diff");

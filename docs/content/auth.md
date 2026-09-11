@@ -189,9 +189,11 @@ endpoint: it takes no input and trades nothing, so there is nothing to talk it i
 
 ### When the form still appears
 
-`TokenForm` is still there, for the cases where the server will not sign a browser in: a LAN
+The token form is still there, for the cases where the server will not sign a browser in: a LAN
 client of a `--host 0.0.0.0` server, a deployment running `never`, or a loopback server reached by
-a name it does not recognise as itself. In the app's rail, the sign-out control reads **"Use a
+a name it does not recognise as itself. It is the standalone application's, not the reusable
+package's — what the reusable package owns is one normalized answer to a refused credential, not
+how one is collected. In the app's rail, the sign-out control reads **"Use a
 token"** while a session is in use, because that is what it does - it cannot delete a cookie it
 cannot read, so it stops using it *here* and a reload signs you back in. On the machine serving
 your own files that is the right behaviour; anywhere else the credential is a token and the button

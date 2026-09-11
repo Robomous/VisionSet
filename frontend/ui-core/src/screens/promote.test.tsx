@@ -16,16 +16,13 @@
  * is not a failure**, and there are two different reasons for it.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
-import { writeToken } from "../data/session";
 import { CorrectionButton, CorrectionOf, defaultCorrectionName } from "./CorrectionBatch";
 import { PromoteButton, promotionSummary } from "./PromoteButton";
+import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
 import type { Batch } from "./queries";
 
@@ -61,7 +58,6 @@ describe("what a press promoted, in one sentence", () => {
   });
 });
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
 
@@ -72,7 +68,6 @@ const posted: { url: string; body: unknown }[] = [];
 
 beforeEach(() => {
   handlers = [];
-  writeToken("a-token");
   posted.length = 0;
   vi.stubGlobal("fetch", async (request: Request) => {
     if (request.method !== "GET") {
@@ -101,17 +96,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   globalThis.sessionStorage.clear();
 });
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
-  );
-}
 
 function batch(overrides: Partial<Batch> = {}): Batch {
   return {
@@ -148,13 +132,11 @@ function answersPromote(total: number): void {
 
 describe("the control", () => {
   it("is drawn only where the batch declares promote", () => {
-    render(
-      mount(
-        <PromoteButton
-          batch={batch({ state: "in_annotation", allowed_actions: batchActions("in_annotation") })}
-          projectId={PROJECT}
-        />,
-      ),
+    renderWithData(
+      <PromoteButton
+        batch={batch({ state: "in_annotation", allowed_actions: batchActions("in_annotation") })}
+        projectId={PROJECT}
+      />,
     );
     expect(screen.queryByTestId("promote-drive-01")).toBeNull();
   });
@@ -164,7 +146,7 @@ describe("the control", () => {
     // not a report — and it also made a second press look forbidden when it is
     // merely a no-op.
     answersPromote(3);
-    render(mount(<PromoteButton batch={batch()} projectId={PROJECT} />));
+    renderWithData(<PromoteButton batch={batch()} projectId={PROJECT} />);
 
     await userEvent.click(screen.getByTestId("promote-drive-01"));
 
@@ -179,7 +161,7 @@ describe("the control", () => {
     // there from the place the work was finished.
     answersPromote(3);
     const opened = vi.fn();
-    render(mount(<PromoteButton batch={batch()} projectId={PROJECT} onOpenDataset={opened} />));
+    renderWithData(<PromoteButton batch={batch()} projectId={PROJECT} onOpenDataset={opened} />);
 
     await userEvent.click(screen.getByTestId("promote-drive-01"));
     await userEvent.click(await screen.findByTestId("promoted-open-dataset-drive-01"));
@@ -190,7 +172,7 @@ describe("the control", () => {
   it("says what is already in the trunk before anybody presses anything", () => {
     // The half that survives a reload: `promoted_asset_count` is derived per
     // read, so a session that did not do the promoting still sees it.
-    render(mount(<PromoteButton batch={batch({ promoted_asset_count: 3 })} projectId={PROJECT} />));
+    renderWithData(<PromoteButton batch={batch({ promoted_asset_count: 3 })} projectId={PROJECT} />);
 
     expect(screen.getByTestId("promoted-count-drive-01").textContent).toBe(
       "3 of 48 in the dataset",
@@ -198,7 +180,7 @@ describe("the control", () => {
   });
 
   it("says nothing about the trunk when nothing is in it", () => {
-    render(mount(<PromoteButton batch={batch()} projectId={PROJECT} />));
+    renderWithData(<PromoteButton batch={batch()} projectId={PROJECT} />);
     expect(screen.queryByTestId("promoted-count-drive-01")).toBeNull();
   });
 
@@ -208,7 +190,7 @@ describe("the control", () => {
         ? { status: 409, body: { code: "BATCH_NOT_COMPLETE", message: "jobs outstanding" } }
         : undefined,
     );
-    render(mount(<PromoteButton batch={batch()} projectId={PROJECT} />));
+    renderWithData(<PromoteButton batch={batch()} projectId={PROJECT} />);
 
     await userEvent.click(screen.getByTestId("promote-drive-01"));
 
@@ -257,13 +239,11 @@ describe("the correction control", () => {
   it("is drawn only where the batch declares it", () => {
     // Correcting an open batch is not a correction — it is the work, in the
     // batch already there.
-    render(
-      mount(
-        <CorrectionButton
-          batch={batch({ state: "in_annotation", allowed_actions: batchActions("in_annotation") })}
-          projectId={PROJECT}
-        />,
-      ),
+    renderWithData(
+      <CorrectionButton
+        batch={batch({ state: "in_annotation", allowed_actions: batchActions("in_annotation") })}
+        projectId={PROJECT}
+      />,
     );
     expect(screen.queryByTestId("correct-drive-01")).toBeNull();
   });
@@ -272,7 +252,7 @@ describe("the correction control", () => {
     // The server's own default is the parent's whole membership, so re-listing
     // forty-eight ids to say so would be telling the API something it knows.
     answersCorrection();
-    render(mount(<CorrectionButton batch={batch()} projectId={PROJECT} />));
+    renderWithData(<CorrectionButton batch={batch()} projectId={PROJECT} />);
 
     await userEvent.click(screen.getByTestId("correct-drive-01"));
     await userEvent.click(await screen.findByTestId("correction-submit"));
@@ -287,10 +267,8 @@ describe("the correction control", () => {
 
   it("offers the selection as a scope, and sends exactly it", async () => {
     answersCorrection();
-    render(
-      mount(
-        <CorrectionButton batch={batch()} projectId={PROJECT} selection={["a", "b"]} />,
-      ),
+    renderWithData(
+      <CorrectionButton batch={batch()} projectId={PROJECT} selection={["a", "b"]} />,
     );
 
     await userEvent.click(screen.getByTestId("correct-drive-01"));
@@ -309,7 +287,7 @@ describe("the correction control", () => {
     // A scope choice whose second option covers nothing is a choice between
     // doing something and doing nothing.
     answersCorrection();
-    render(mount(<CorrectionButton batch={batch()} projectId={PROJECT} selection={[]} />));
+    renderWithData(<CorrectionButton batch={batch()} projectId={PROJECT} selection={[]} />);
 
     await userEvent.click(screen.getByTestId("correct-drive-01"));
 
@@ -320,7 +298,7 @@ describe("the correction control", () => {
   it("goes to the correction it just made", async () => {
     answersCorrection();
     const opened = vi.fn();
-    render(mount(<CorrectionButton batch={batch()} projectId={PROJECT} onOpenBatch={opened} />));
+    renderWithData(<CorrectionButton batch={batch()} projectId={PROJECT} onOpenBatch={opened} />);
 
     await userEvent.click(screen.getByTestId("correct-drive-01"));
     await userEvent.click(await screen.findByTestId("correction-submit"));
@@ -334,7 +312,7 @@ describe("the correction control", () => {
         ? { status: 409, body: { code: "INVALID_TRANSITION", message: "not completed" } }
         : undefined,
     );
-    render(mount(<CorrectionButton batch={batch()} projectId={PROJECT} />));
+    renderWithData(<CorrectionButton batch={batch()} projectId={PROJECT} />);
 
     await userEvent.click(screen.getByTestId("correct-drive-01"));
     await userEvent.click(await screen.findByTestId("correction-submit"));
@@ -349,20 +327,20 @@ describe("the correction control", () => {
 
 describe("lineage", () => {
   it("says what a batch corrects", () => {
-    render(mount(<CorrectionOf parentName="drive-01" />));
+    renderWithData(<CorrectionOf parentName="drive-01" />);
     expect(screen.getByTestId("correction-of").textContent).toContain("Correction of drive-01");
   });
 
   it("says nothing for a batch that corrects nothing", () => {
     // Most batches. A badge saying "not a correction" on every one would be
     // noise on the many to inform the few.
-    render(mount(<CorrectionOf parentName={undefined} />));
+    renderWithData(<CorrectionOf parentName={undefined} />);
     expect(screen.queryByTestId("correction-of")).toBeNull();
   });
 
   it("links to the parent when the host can open one", async () => {
     const opened = vi.fn();
-    render(mount(<CorrectionOf parentName="drive-01" onOpenParent={opened} />));
+    renderWithData(<CorrectionOf parentName="drive-01" onOpenParent={opened} />);
 
     await userEvent.click(screen.getByTestId("open-parent-batch"));
 

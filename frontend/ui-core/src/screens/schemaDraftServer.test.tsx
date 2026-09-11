@@ -11,13 +11,11 @@
  * GET count is unchanged after a PUT lands.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
+import type { JSX } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
 import { asApiError } from "../data/errors";
 import {
   useBatch,
@@ -28,8 +26,8 @@ import {
   type Batch,
   type SchemaDraftKind,
 } from "./queries";
+import { renderWithData } from "../testing/dataHarness";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
 
@@ -68,17 +66,6 @@ afterEach(() => vi.unstubAllGlobals());
 function on(method: string, pattern: RegExp, answer: Answer): void {
   handlers.push((request) =>
     request.method === method && pattern.test(new URL(request.url).pathname) ? answer : undefined,
-  );
-}
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
   );
 }
 
@@ -184,18 +171,18 @@ describe("useSchemaDraft", () => {
       body: { code: "SCHEMA_DRAFT_NOT_FOUND", message: "no draft yet" },
     });
 
-    render(mount(<DraftView projectId={PROJECT} kind="curated" />));
+    renderWithData(<DraftView projectId={PROJECT} kind="curated" />);
 
     await waitFor(() => expect(screen.getByTestId("draft-value").textContent).toBe("null"));
     expect(screen.getByTestId("draft-value").textContent).not.toContain("error");
   });
 
   it("resolves the 404 to null without erroring, in exactly one request", async () => {
-    // The property this hook actually implements: the 404 is intercepted and
-    // turned into a successful `null` before `unwrap` ever sees it, so it never
-    // rejects and never retries — there is nothing here for `retry: false` to
-    // prevent. This is what would go red if that interception were removed and
-    // the 404 fell through to `unwrap`, which is the regression that matters.
+    // The property this hook actually implements: `unwrap` does reject, and the
+    // refusal is converted to a successful `null` by its coded reason, so the
+    // query resolves and never retries — there is nothing here for `retry: false`
+    // to prevent. This is what would go red if that conversion were removed and
+    // the refusal surfaced as an error, which is the regression that matters.
     let draftReads = 0;
     handlers.push((request) => {
       const path = new URL(request.url).pathname;
@@ -206,7 +193,7 @@ describe("useSchemaDraft", () => {
       return undefined;
     });
 
-    render(mount(<DraftView projectId={PROJECT} kind="curated" />));
+    renderWithData(<DraftView projectId={PROJECT} kind="curated" />);
 
     await waitFor(() => expect(screen.getByTestId("draft-value").textContent).toBe("null"));
     expect(screen.getByTestId("draft-is-error").textContent).toBe("false");
@@ -241,7 +228,7 @@ describe("useSaveSchemaDraft", () => {
       },
     });
 
-    render(mount(<SaveView projectId={PROJECT} kind="curated" />));
+    renderWithData(<SaveView projectId={PROJECT} kind="curated" />);
     await waitFor(() => expect(screen.getByTestId("draft-value").textContent).toBe("none"));
     expect(draftReads).toBe(1);
 
@@ -278,7 +265,7 @@ describe("useSaveSchemaDraft", () => {
       return undefined;
     });
 
-    render(mount(<SaveView projectId={PROJECT} kind="curated" />));
+    renderWithData(<SaveView projectId={PROJECT} kind="curated" />);
     await waitFor(() => expect(screen.getByTestId("draft-value").textContent).toBe("none"));
 
     await userEvent.click(screen.getByTestId("save"));
@@ -310,7 +297,7 @@ describe("useSaveSchemaDraft", () => {
       body: { code: "STALE_WRITE", message: "the draft moved since this was read" },
     });
 
-    render(mount(<SaveView projectId={PROJECT} kind="curated" />));
+    renderWithData(<SaveView projectId={PROJECT} kind="curated" />);
     await waitFor(() => expect(screen.getByTestId("draft-value").textContent).toBe("none"));
 
     await userEvent.click(screen.getByTestId("save"));
@@ -344,7 +331,7 @@ describe("usePublishSchemaDraft", () => {
       },
     });
 
-    render(mount(<PublishView projectId={PROJECT} kind="curated" batchId={BATCH} />));
+    renderWithData(<PublishView projectId={PROJECT} kind="curated" batchId={BATCH} />);
     await waitFor(() => expect(projectReads).toBe(1));
     await waitFor(() => expect(batchReads).toBe(1));
 
@@ -414,7 +401,7 @@ describe("usePublishSchemaDraft", () => {
       );
     }
 
-    render(mount(<View />));
+    renderWithData(<View />);
     await waitFor(() => expect(screen.getByTestId("draft-value").textContent).toBe("3"));
 
     await userEvent.click(screen.getByTestId("publish"));

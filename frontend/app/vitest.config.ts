@@ -14,7 +14,11 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: false,
-    include: ["src/**/*.test.tsx"],
+    // Both extensions. The app owns transport, token persistence, rail state and
+    // its own layout-token assertions, and none of those is a component — so a
+    // `.tsx`-only pattern silently skips them and reports green for a run that
+    // discovered nothing.
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     setupFiles: ["./vitest.setup.ts"],
   },
 });

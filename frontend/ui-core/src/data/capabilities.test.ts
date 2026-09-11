@@ -165,7 +165,7 @@ describe("why an action is not on offer", () => {
 
 describe("turning a refusal into a sentence", () => {
   const refused = (code: string, message = "kernel wording"): ApiError =>
-    new ApiError({ code, message }, 409);
+    new ApiError({ code, message }, { status: 409 });
 
   it("restates a code the vocabulary knows", () => {
     expect(refusalProse(refused("BATCH_NOT_IN_ANNOTATION"))).toBe(

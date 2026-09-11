@@ -1,13 +1,14 @@
 /**
  * The combinators the generated response checks are built from.
  *
- * This is the hand-written half of `./generated/checks.ts`, exactly as `../client.ts`
- * is the hand-written half of `../generated/api.ts`: the generator decides *what* the
- * contract says, and this module decides what checking it means.
+ * This is the hand-written half of `./generated/checks.ts`, exactly as the port a host
+ * implements (this package's `VisionSetDataClient`) is the hand-written half of
+ * `../generated/api.ts`: the generator decides *what* the contract says, and this
+ * module decides what checking it means.
  *
  * ## Why a check exists at all
  *
- * `openapi-fetch` gives every response a static type off the contract, and nothing
+ * The client gives every response a static type off the contract, and nothing
  * whatsoever at runtime. `unwrap` used to return `result.data` unexamined, so a
  * well-formed JSON document of the *wrong* type reached a screen intact and one
  * `undefined` in a formatter took the page down with it. That happened three times
@@ -158,7 +159,7 @@ export const isJsonValue: Check<unknown> = (value): value is unknown => {
 };
 
 /**
- * A body read with `parseAs: "blob"`.
+ * A body read with `accept: "blob"`.
  *
  * A real check rather than a pass-through, and it earns it: without one, an error
  * page served as JSON and read as a blob would be handed to the browser and saved to
@@ -173,7 +174,7 @@ export const checkBlob: Check<Blob> = (value, at, report): value is Blob => {
 /**
  * A 204, or any other answer the contract says carries no body.
  *
- * `openapi-fetch` reports those as `data: undefined`, so this is the one check that
+ * The client reports those as `data: undefined`, so this is the one check that
  * expects to be handed nothing.
  */
 export const checkNoContent: Check<undefined> = (value, at, report): value is undefined => {

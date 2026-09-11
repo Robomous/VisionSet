@@ -16,20 +16,17 @@
  * with two frames in it and nothing else.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
 import { TooltipProvider } from "@robomous/ui-core";
-import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
+import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
 const JOB = "33333333-3333-4333-8333-333333333333";
@@ -105,7 +102,6 @@ function answer(path: string): unknown {
 }
 
 beforeEach(() => {
-  writeToken("a-token");
   // This file clicks through the tool strip and the top bar, both rows of
   // Tooltip triggers. See `testing/resizeObserver.ts`.
   stubResizeObserver();
@@ -132,21 +128,14 @@ afterEach(() => {
 });
 
 function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      <TooltipProvider>{node}</TooltipProvider>
-    </ApiProvider>
-  );
+  return <TooltipProvider>{node}</TooltipProvider>;
 }
 
 it("keeps the drawing class when the next frame opens", async () => {
   // Somebody labelling vehicles across a clip picks the class once. It used to
   // reset on every frame, because the state that held it belonged to a component
   // keyed on the asset.
-  render(mount(<AnnotationPage jobId={JOB} />));
+  renderWithData(mount(<AnnotationPage jobId={JOB} />));
 
   await userEvent.click(await screen.findByTestId("class-row-vehicle-name"));
   expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBe("true");
@@ -164,13 +153,13 @@ it("does not carry it into a different job", async () => {
   // The other edge of the same scope. `AnnotationPage` is rebuilt when the job
   // changes, which is what stops a class — like a clipboard — reaching a frame
   // judged against somebody else's pinned schema.
-  const { unmount } = render(mount(<AnnotationPage jobId={JOB} />));
+  const { unmount } = renderWithData(mount(<AnnotationPage jobId={JOB} />));
 
   await userEvent.click(await screen.findByTestId("class-row-vehicle-name"));
   expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBe("true");
   unmount();
 
-  render(mount(<AnnotationPage jobId={JOB} />));
+  renderWithData(mount(<AnnotationPage jobId={JOB} />));
 
   // Nothing armed: the panel's rows are the readout now, and none of them is
   // selected. There is no "Select" row to read — select mode is the tool strip's.

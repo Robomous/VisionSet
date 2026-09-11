@@ -11,7 +11,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { clearToken, readToken, writeToken } from "./session";
+import { clearToken, readToken, writeToken } from "./token";
 
 afterEach(() => {
   vi.unstubAllGlobals();

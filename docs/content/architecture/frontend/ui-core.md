@@ -1,8 +1,8 @@
 # @visionset/ui-core
 
 [`frontend/ui-core/`](../../../../frontend/ui-core/) is where the product's UI
-actually lives: the design system, the domain screens, and the typed client that
-talks to the API. Everything except routing.
+actually lives: the design system, the domain screens, and the generated contract
+they read data against. Everything except routing and the transport itself.
 
 ## The layers inside it
 
@@ -11,7 +11,7 @@ flowchart TB
     Screens["screens/ + annotator/\nthe domain surfaces"]
     Patterns["patterns/\nasync states, back link, class fields, data display"]
     Primitives["primitives/\nButton, Dialog, Select, Table, Tabs, Badge…"]
-    Data["data/\nApiProvider, TokenGate, check, refusals"]
+    Data["data/\nport, VisionSetDataProvider, check, refusals"]
     Generated["generated/\napi.ts + checks.ts — from openapi.json"]
     Tokens["styles.css + tokens.ts\nthe @theme block"]
 
@@ -35,22 +35,45 @@ The same rule runs the other way and is worth stating because it decides a lot o
 small questions: a host that cannot honour a control **passes no callback and gets
 no control**, rather than a dead one.
 
-## No module below `ApiProvider` calls `fetch`
+## Nothing in this package calls `fetch`
 
-One client, one query cache, one answer to a 401. `data/ApiProvider.tsx` holds
-where the API is, which credential is in use, and what happens when that
-credential stops working; screens get the typed client through a hook.
+`data/port.ts` declares `VisionSetDataClient`, the data contract a host satisfies -
+a path, an init object, an answer shaped like `{ok, data}` or `{ok: false, error,
+failure}`. There is no base URL in it, no header, no credential. `openapi-fetch`
+appears there in **type position only**, describing the request shapes the
+generated contract declares; the package never constructs one, and
+`tests/scripts/ui_core_boundary.test.mjs` holds that line by scanning the shipped
+source for a value import.
 
-The 401 is handled once, in a cache subscription, because a token revoked while an
-annotator has a job open produces a 401 from whichever background refetch happens
-to fire next - and a per-screen `if (error.status === 401)` would leave that
-screen showing an error and every other screen showing stale data forever.
+`data/VisionSetDataProvider.tsx` is what screens actually sit inside: one query
+cache, VisionSet's cache policy, and one answer to a refused credential -
+`useApiClient()` is how a screen reads the client the host handed in. The rule used
+to be "no module below `ApiProvider` calls `fetch`"; it is now stricter and
+machine-checked rather than a review convention: nothing in the shipped package
+calls `fetch` at all, because there is nothing in it that could.
 
-## The generated client, and the check beside it
+A refusal reported through the port comes in two parts, kept deliberately
+separate. `ErrorBody.code` is canonical for every domain refusal - VisionSet's own
+kernel says `SCHEMA_DRAFT_NOT_FOUND` or `DESTRUCTIVE_SCHEMA_CHANGE` and a screen
+branches on that string under any host. `DataFailure` normalizes only two things a
+domain code cannot express, because the vocabulary for a *credential* refusal
+belongs to whichever host authenticates: `"unauthorized"` and `"unreachable"`.
+Nothing else joins that union.
+
+Unauthorized is reported to the host **at most once per credential** - a cache
+subscription, not an `onError` on the `QueryClient` a host may supply its own copy
+of, and the same identity a cache is keyed to, so a host handing in a new client
+mid-render gets a fresh cache and a reset latch together rather than as two
+mechanisms that could disagree. A token revoked while an annotator has a job open
+produces the failure from whichever background refetch happens to fire next - and
+a per-screen check would leave that screen showing an error and every other screen
+showing stale data forever.
+
+## The generated contract, and the check beside it
 
 `src/generated/` is written from the committed [`openapi.json`](../../../../openapi.json)
-and is never hand-edited. `openapi-fetch` types a response off the contract and
-verifies **nothing** at runtime, so `unwrap` takes a generated *check* as well:
+and is never hand-edited. It types a response off the contract and verifies
+**nothing** at runtime, so `unwrap` takes a generated *check* as well:
 
 ```mermaid
 flowchart LR

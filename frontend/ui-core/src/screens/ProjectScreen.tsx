@@ -70,7 +70,7 @@ import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "
 
 import { formatGeometries } from "../data/geometryCategory";
 import { Async } from "../data/Async";
-import { useApiClient } from "../data/ApiProvider";
+import { useApiClient } from "../data/VisionSetDataProvider";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { Badge, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
@@ -370,7 +370,7 @@ export function ProjectScreen({
    * and unlike `beforeunload` it asks nothing of the user and holds no
    * navigation open.
    *
-   * `keepalive` is the point: an ordinary `fetch` started here is not
+   * `survivesUnload` is the point: an ordinary request started here is not
    * guaranteed to finish once the page is already unloading, which is the
    * same loss under a different name. Sent through `saveSchemaDraftRequest`
    * directly rather than the mutation object, for the same reason the project
@@ -393,7 +393,7 @@ export function ProjectScreen({
           basedOn: held.basedOn,
           revision: held.revision,
         },
-        { keepalive: true },
+        { survivesUnload: true },
       ).catch(() => {
         // Best-effort: the page is already gone by the time this settles, so
         // there is nowhere left to announce a refusal.

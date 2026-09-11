@@ -135,15 +135,15 @@ if (typeof URL.revokeObjectURL !== "function") {
  * reason — so that global is *Node's* `Storage`, not jsdom's. It is unaffected
  * only because Node's `sessionStorage` works with no flag while its
  * `localStorage` is `undefined` without `--localstorage-file`. That is why
- * `data/session.ts` and its tests pass under both majors while
- * `data/railState.ts` and `data/prefs.ts` do not. Any explanation predicting
+ * the OSS app's `data/token.ts` and its tests pass under both majors while
+ * `data/prefs.ts` does not. Any explanation predicting
  * both would break is wrong.
  *
- * The product code needs nothing: `storage()` in both modules probes with a write
+ * The product code needs nothing: `storage()` in `prefs.ts` probes with a write
  * and answers `null` from its `catch`, so the caller already gets the default —
  * the behaviour that guard exists for, arriving through a cause nobody
- * anticipated. What has no `localStorage` is the eight test *bodies*, which reach
- * the property directly, as a browser lets them.
+ * anticipated. What has no `localStorage` is the test *bodies*, which reach the
+ * property directly, as a browser lets them.
  *
  * Assigned on a `typeof` check rather than with `??=`: a property that is
  * declared and `undefined` satisfies neither `??=` nor a call, which is exactly
@@ -151,17 +151,20 @@ if (typeof URL.revokeObjectURL !== "function") {
  * jsdom release.
  *
  * The stand-in is jsdom's real `Storage` rather than a hand-rolled `Map`, because
- * `railState.test.ts` asserts the availability probe **leaves nothing behind**:
- * a stub that swallowed writes would turn that test green while proving nothing.
- * A `url` is mandatory — jsdom's default `about:blank` is an opaque origin and
- * throws `SecurityError` on the first access. Setup runs per test file, so each
- * worker gets its own empty store and nothing is shared across them, so long as
- * files stay isolated, which is vitest's default. Passing `--localstorage-file`
- * is not the fix, tempting as it looks for the `ExperimentalWarning` this block
- * leaves behind: it makes the `typeof` check above pass, so this block is
- * skipped, and the suite runs against Node's one process-wide on-disk store —
- * `railState.test.ts`'s `afterEach` `clear()` would wipe a concurrently running
- * file's data.
+ * this package still reaches `localStorage` through `data/prefs.ts`:
+ * `screens/gallery.test.tsx`'s density preference writes through the UI, unmounts
+ * and remounts within one test to assert the value actually survives, and
+ * `screens/jobPanels.test.tsx`'s `afterEach` calls `.clear()` between tests. A stub
+ * that swallowed writes, or whose `.clear()` was a no-op, would fail the first
+ * silently wrong and the second not at all. A `url` is mandatory — jsdom's default
+ * `about:blank` is an opaque origin and throws `SecurityError` on the first access.
+ * Setup runs per test file, so each worker gets its own empty store and nothing is
+ * shared across them, so long as files stay isolated, which is vitest's default.
+ * Passing `--localstorage-file` is not the fix, tempting as it looks for the
+ * `ExperimentalWarning` this block leaves behind: it makes the `typeof` check
+ * above pass, so this block is skipped, and the suite runs against Node's one
+ * process-wide on-disk store — `screens/jobPanels.test.tsx`'s `afterEach`
+ * `clear()` would wipe a concurrently running file's data.
  */
 if (typeof globalThis.localStorage?.setItem !== "function") {
   const { JSDOM } = await import("jsdom");

@@ -15,15 +15,13 @@
  * with it the ordering — so the trunk two-hop is gone and the count is two.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
+import type { JSX } from "react";
 
-import { ApiProvider } from "../data/ApiProvider";
 import { useActiveSchema, useProjectReadiness, useProjectStats } from "./queries";
+import { renderWithData } from "../testing/dataHarness";
 
-const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 
 type Answer = { status: number; body?: unknown };
@@ -63,17 +61,6 @@ function on(method: string, pattern: RegExp, answer: Answer): void {
     request.method === method && pattern.test(new URL(request.url).pathname)
       ? { status: answer.status, body: answer.body ?? null }
       : undefined,
-  );
-}
-
-function mount(node: ReactNode): JSX.Element {
-  return (
-    <ApiProvider
-      baseUrl={API}
-      queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {node}
-    </ApiProvider>
   );
 }
 
@@ -127,7 +114,7 @@ const SCHEMALESS: Answer = {
 describe("useProjectReadiness", () => {
   it("reads the schema-less 404 as an answer rather than as a failure", async () => {
     serve({ schema: SCHEMALESS });
-    render(mount(<Readiness projectId={PROJECT} />));
+    renderWithData(<Readiness projectId={PROJECT} />);
 
     expect((await screen.findByTestId("has-schema")).textContent).toBe("false");
     expect(screen.getByTestId("has-assets").textContent).toBe("false");
@@ -135,7 +122,7 @@ describe("useProjectReadiness", () => {
 
   it("answers both true once the project has classes and images", async () => {
     serve({ stats: statsOf({ asset_count: 48 }) });
-    render(mount(<Readiness projectId={PROJECT} />));
+    renderWithData(<Readiness projectId={PROJECT} />);
 
     expect((await screen.findByTestId("has-schema")).textContent).toBe("true");
     expect(screen.getByTestId("has-assets").textContent).toBe("true");
@@ -146,7 +133,7 @@ describe("useProjectReadiness", () => {
     // first are both legitimate — so the hook has to be able to report the second
     // order, and the third invitation is the surface that reads it.
     serve({ schema: SCHEMALESS, stats: statsOf({ asset_count: 48 }) });
-    render(mount(<Readiness projectId={PROJECT} />));
+    renderWithData(<Readiness projectId={PROJECT} />);
 
     expect((await screen.findByTestId("has-schema")).textContent).toBe("false");
     expect(screen.getByTestId("has-assets").textContent).toBe("true");
@@ -157,7 +144,7 @@ describe("useProjectReadiness", () => {
     // not know — and a readiness computed from half an answer would confidently
     // invite a project with fifty classes to define its first one.
     serve({ schema: { status: 500, body: { code: "BOOM", message: "no" } } });
-    render(mount(<Readiness projectId={PROJECT} />));
+    renderWithData(<Readiness projectId={PROJECT} />);
 
     await waitFor(() => expect(sent.filter((r) => r.url.endsWith("/schema")).length).toBe(1));
     await waitFor(() => expect(sent.filter((r) => r.url.endsWith("/stats")).length).toBe(1));
@@ -171,15 +158,13 @@ describe("useProjectReadiness", () => {
     // both queries anyway. **Two, and not one beyond what the header runs** — the
     // count is the claim, so the assertion is the total and not a subset.
     serve({ stats: statsOf({ asset_count: 48 }) });
-    render(
-      mount(
-        <>
-          <Header projectId={PROJECT} />
-          <Readiness projectId={PROJECT} />
-          {/* A second reader, to make the deduplication the subject. */}
-          <Readiness projectId={PROJECT} />
-        </>,
-      ),
+    renderWithData(
+      <>
+        <Header projectId={PROJECT} />
+        <Readiness projectId={PROJECT} />
+        {/* A second reader, to make the deduplication the subject. */}
+        <Readiness projectId={PROJECT} />
+      </>,
     );
 
     await screen.findAllByTestId("has-schema");

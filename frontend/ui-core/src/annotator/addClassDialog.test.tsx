@@ -250,7 +250,7 @@ describe("the refusal it has to make legible", () => {
             code: "SCHEMA_VERSION_CONFLICT",
             message: "another writer created this schema version first",
           },
-          409,
+          { status: 409 },
         ),
       }),
     );
@@ -273,7 +273,7 @@ describe("the refusal it has to make legible", () => {
             code: "DESTRUCTIVE_SCHEMA_CHANGE",
             message: "re-pinning narrows what this batch allows",
           },
-          409,
+          { status: 409 },
         ),
       }),
     );

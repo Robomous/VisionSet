@@ -1352,8 +1352,10 @@ one. Left out rather than stored where it would not survive a round trip.
 
 ## No screen calls `fetch`
 
-`frontend/ui-core/src/client.ts` is the only hand-written module that knows how a
-request is made, and `createApiClient` is the only thing that builds one. Everything
+Nothing in `@visionset/ui-core` calls `fetch`, constructs a transport, or knows a base
+URL or a credential - `tests/scripts/ui_core_boundary.test.mjs` holds that line. A
+screen reaches data through `VisionSetDataClient`, the port the package declares and a
+host satisfies; the OSS app's own implementation is `createOssDataClient`. Everything
 about *what* can be requested - paths, parameters, bodies, response shapes - comes
 from `src/generated/api.ts`, generated from the committed `openapi.json` and gated
 against it on every pull request. A screen that mistypes a route fails to compile.
@@ -1364,14 +1366,14 @@ A screen reaches the client through a hook:
 const client = useApiClient();
 const projects = useQuery({
   queryKey: ["projects"],
-  queryFn: async () => unwrap(await client.GET("/projects", {})),
+  queryFn: async () => unwrap(await client.GET("/projects", {}), checks.checkListProjects),
 });
 ```
 
-`unwrap` is the single adapter between the two models in play. `openapi-fetch` never
-throws - it answers `{data, error, response}` and leaves the branch to the caller -
-while TanStack Query's entire model is resolve-or-reject, and "rejected" is what
-drives `isError`, retries and the error surface. Because every call goes through
+`unwrap` is the single adapter between the two models in play. The port's `DataResult`
+never throws - it answers `{ok, data, error, failure, status}` and leaves the branch to
+the caller - while TanStack Query's entire model is resolve-or-reject, and "rejected" is
+what drives `isError`, retries and the error surface. Because every call goes through
 `unwrap`, no screen in this repository writes `if (error)` by hand.
 
 ## Reading a refusal
@@ -1396,7 +1398,7 @@ thing a person can quote when the message itself is deliberately withheld.
 
 There are no accounts, and since #179 there is usually nothing to type either.
 
-**On this machine, the server signs the browser in.** `ApiProvider` asks once, with
+**On this machine, the server signs the browser in.** The app asks once, with
 `GET /session`; the server answers by setting an `HttpOnly` cookie when the request
 came from loopback *and* addressed the server as loopback. The whole argument - the
 modes, the DNS-rebinding case, why a cookie is safer here than what it replaced -
@@ -1404,13 +1406,16 @@ is in [auth.md](auth.md#the-browser-session). What matters on this side is that 
 credential is one **no script here can read**, so "am I signed in?" is a question
 the app has to ask rather than answer by looking.
 
-That is why `ApiSession.access` exists and the gate does not test `token !== null`.
-Four states: `checking` (the one round trip, during which `TokenGate` renders
-**nothing** - a login form that flashes in front of somebody who never has to see
-one is worse than a blank frame), `session`, `token`, `none`. The probe runs once
-per mount, which is what keeps `signOut` meaningful: one that could run again would
-sign a machine-local user straight back in, and a 401 on a session would oscillate
-through the gate forever.
+That is why the app's own session state exists and the gate does not test
+`token !== null`. Four states: `checking` (the one round trip, during which the
+app's `TokenGate` renders **nothing** - a login form that flashes in front of
+somebody who never has to see one is worse than a blank frame), `session`, `token`,
+`none`. The probe runs once per mount, which is what keeps `signOut` meaningful: one
+that could run again would sign a machine-local user straight back in, and a 401 on
+a session would oscillate through the gate forever. This whole state machine - the
+probe, the four states, the gate - is the standalone application's; the reusable
+package underneath takes a client already carrying a credential and never asks how
+one was obtained.
 
 **A token is the other credential**, minted out of band with
 `visionset token create --name ui`, presented as `Authorization: Bearer`, and the
@@ -1455,11 +1460,12 @@ of to a blank page.
 
 ## The 401 is handled once
 
-`ApiProvider` subscribes to the query cache and the mutation cache, and any 401 from
-anywhere clears the token. It is a **subscription**, not an `onError` on the
-`QueryClient` the provider builds, and the difference is load-bearing: the client is
-a prop, so a caller may supply their own, and a handler configured at construction is
-then simply absent for the whole application.
+`VisionSetDataProvider` subscribes to the query cache and the mutation cache, and any
+`unauthorized` failure from anywhere calls the host's `onUnauthorized` once per
+credential - in this app, that clears the token. It is a **subscription**, not an
+`onError` on the `QueryClient` the provider builds, and the difference is
+load-bearing: the client is a prop, so a caller may supply their own, and a handler
+configured at construction is then simply absent for the whole application.
 
 Handling it per screen fails in a specific way. A token revoked while an annotator
 has a job open produces a 401 from whichever request fires next - usually a
@@ -1492,8 +1498,9 @@ polling a state somebody adds later.
 
 ## Where the API is
 
-`ApiProvider` takes `baseUrl` and the app decides it - a library that reads
-`import.meta.env` is a library that can only be built one way.
+The reusable package never reads `import.meta.env` - a library that did could only
+be built one way. The app decides `baseUrl` and hands it to `createOssDataClient`
+when it builds the client the reusable package will use.
 
 - **Production**: `""`. `visionset server` serves the API at the root and the bundle at
   `/app`, so a relative request already lands on it.

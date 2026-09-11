@@ -400,7 +400,7 @@ test("the forms this gate is about are all still there, and none nests", () => {
   assert.deepEqual(
     withForms.map(([file]) => file).sort(),
     [
-      "frontend/ui-core/src/data/TokenGate.tsx",
+      "frontend/app/src/shell/TokenGate.tsx",
       "frontend/ui-core/src/screens/DatasetScreen.tsx",
       "frontend/ui-core/src/screens/IngestScreen.tsx",
       "frontend/ui-core/src/screens/ModelsScreen.tsx",

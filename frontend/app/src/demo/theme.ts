@@ -85,7 +85,7 @@ export const RADIUS = {
 /**
  * `DESIGN.md` → spacing: the 4 / 8 / 16 / 24 / 32 rhythm.
  *
- * Not imported: the design system's own rail widths live in `styles.css`'s
+ * Not imported: this package's own rail widths live in `styles.css`'s
  * `--spacing-sidebar*` extensions, which this showcase never draws. Ordinary
  * rhythm is Tailwind's numeric scale over there, which has no meaning in a
  * `style={{}}` object, so it is spelled as numbers here.

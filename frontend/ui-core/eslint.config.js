@@ -21,4 +21,32 @@ export default tseslint.config(
       "react-hooks/exhaustive-deps": "error",
     },
   },
+  {
+    // `openapi-fetch` describes the request shapes the generated contract
+    // declares, and that description is worth borrowing in type position — it is
+    // erased at build, so the shipped package holds no reference to it. Importing
+    // it as a *value* would put a transport inside the reusable UI, which is the
+    // one thing the host boundary exists to prevent.
+    //
+    // `src/testing` is exempt because it never ships: `tsconfig.build.json`
+    // excludes it, and the test harness needs a real client to answer a stubbed
+    // `fetch`. The boundary being defended is the shipped reusable UI.
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+    ignores: ["src/testing/**"],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "openapi-fetch",
+              allowTypeImports: true,
+              message:
+                "Type-only. A value import puts a transport in the reusable UI — the host supplies the client (see src/data/port.ts).",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );
