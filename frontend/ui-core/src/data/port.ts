@@ -14,8 +14,10 @@
  * the most accurate available description of "the request shapes this contract
  * declares", and re-deriving sixty of them by hand would duplicate the contract
  * and put a class of conditional-type bug into this repository permanently. Type
- * imports are erased at build: this package ships no reference to it, and
- * `tests/scripts/ui_core_boundary.test.mjs` holds that line.
+ * imports are erased from emitted JavaScript: the package ships no runtime
+ * reference to it. Its emitted declarations intentionally retain type-only
+ * references, so `openapi-fetch` remains a consumer-resolvable dependency;
+ * `tests/scripts/ui_core_boundary.test.mjs` holds the runtime boundary.
  *
  * ## Two clauses beyond the result shape
  *

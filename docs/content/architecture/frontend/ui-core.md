@@ -60,14 +60,15 @@ domain code cannot express, because the vocabulary for a *credential* refusal
 belongs to whichever host authenticates: `"unauthorized"` and `"unreachable"`.
 Nothing else joins that union.
 
-Unauthorized is reported to the host **at most once per credential** - a cache
-subscription, not an `onError` on the `QueryClient` a host may supply its own copy
-of, and the same identity a cache is keyed to, so a host handing in a new client
-mid-render gets a fresh cache and a reset latch together rather than as two
-mechanisms that could disagree. A token revoked while an annotator has a job open
-produces the failure from whichever background refetch happens to fire next - and
-a per-screen check would leave that screen showing an error and every other screen
-showing stale data forever.
+Unauthorized is reported to the host **at most once per authorization/data scope**.
+The host supplies that opaque scope explicitly; it keys the cache, descendant
+remount, and refusal latch together, so a stable adapter can safely cross a
+principal, tenant, workspace, or credential transition without exposing prior
+data. The provider observes normalized refusal results from every port call,
+including direct binary and imperative requests, while cache subscriptions remain
+a backstop for errors raised directly by TanStack work. A token revoked while an
+annotator has a job open therefore triggers one host response rather than every
+view racing to erase the token.
 
 ## The generated contract, and the check beside it
 

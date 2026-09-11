@@ -1460,12 +1460,12 @@ of to a blank page.
 
 ## The 401 is handled once
 
-`VisionSetDataProvider` subscribes to the query cache and the mutation cache, and any
-`unauthorized` failure from anywhere calls the host's `onUnauthorized` once per
-credential - in this app, that clears the token. It is a **subscription**, not an
-`onError` on the `QueryClient` the provider builds, and the difference is
-load-bearing: the client is a prop, so a caller may supply their own, and a handler
-configured at construction is then simply absent for the whole application.
+`VisionSetDataProvider` observes every normalized `unauthorized` answer from the
+port, including a direct asset or thumbnail request, and calls the host's
+`onUnauthorized` once per authorization/data scope - in this app, that clears the
+token. Cache subscriptions remain a backstop rather than the sole mechanism: the
+client is a prop, so a caller may supply their own, and a handler configured at
+construction is then simply absent for the whole application.
 
 Handling it per screen fails in a specific way. A token revoked while an annotator
 has a job open produces a 401 from whichever request fires next - usually a

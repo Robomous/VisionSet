@@ -31,7 +31,7 @@ Arrows are `dependencies` in each `package.json`. The interesting part is what i
 | Package | Depends on | Never |
 | --- | --- | --- |
 | [`annotator`](annotator.md) | nothing at runtime; `react` is an optional peer | HTTP, a design system, a router |
-| [`ui-core`](ui-core.md) | `@visionset/annotator`, Radix, TanStack Query; `openapi-fetch` in name only - a `dependency` whose types the generated contract needs, never imported as a value | a router, HTTP |
+| [`ui-core`](ui-core.md) | `@visionset/annotator`, Radix, TanStack Query; `openapi-fetch` is a dependency for consumer-resolvable type references in emitted declarations, never a runtime/value import | a router, HTTP |
 | [`app`](app.md) | both of the above, `react-router`, `openapi-fetch` as an actual client | domain logic |
 
 Read down the right-hand column and the architecture falls out. The annotator

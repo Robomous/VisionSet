@@ -8,13 +8,13 @@
  */
 import { screen, waitFor } from "@testing-library/react";
 import { useQuery } from "@tanstack/react-query";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
 import { checkListProjects } from "../generated/checks";
 import { unwrap } from "../data/errors";
 import { useApiClient } from "../data/VisionSetDataProvider";
-import { HARNESS_BASE_URL, renderWithData } from "./dataHarness";
+import { HARNESS_BASE_URL, harnessClient, renderWithData } from "./dataHarness";
 
 beforeEach(() => {
   vi.stubGlobal("fetch", () =>
@@ -43,4 +43,37 @@ it("renders a component that reads the client", async () => {
 
 it("publishes the base URL its requests carry, so a test can assert on the URL", () => {
   expect(HARNESS_BASE_URL).toMatch(/^https?:\/\//);
+});
+
+describe("the independent harness's response-body classification", () => {
+  it.each([
+    ["SyntaxError", new SyntaxError("bad JSON")],
+    ["TypeError", new TypeError("body stream failed")],
+    ["RangeError", new RangeError("arbitrary body-reader failure")],
+  ])("normalizes a %s from response body consumption", async (_name, bodyFailure) => {
+    vi.stubGlobal("fetch", () => {
+      const response = new Response(JSON.stringify({ items: [], total: 0 }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+      Object.defineProperty(response, "text", { value: () => Promise.reject(bodyFailure) });
+      return Promise.resolve(response);
+    });
+
+    await expect(harnessClient().GET("/projects")).resolves.toEqual({ ok: false, status: 201 });
+  });
+
+  it("rethrows a post-response fault outside body consumption", async () => {
+    const bug = new RangeError("not a body failure");
+    vi.stubGlobal("fetch", () => {
+      const response = new Response(JSON.stringify({ items: [], total: 0 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+      Object.defineProperty(response, "ok", { get: () => { throw bug; } });
+      return Promise.resolve(response);
+    });
+
+    await expect(harnessClient().GET("/projects")).rejects.toThrow(bug);
+  });
 });

@@ -97,12 +97,44 @@ function isCancellation(cause: unknown, signal: AbortSignal | undefined): boolea
  * This is the whole reason the adapter can classify honestly. `TypeError` is what
  * the Fetch standard rejects with when a request could not be made — and also what
  * a bad argument or a serializer bug throws *before* a request is attempted. The
- * class of a thrown value cannot tell those apart. Two observed facts can: whether
- * `fetch` was invoked, and whether it produced a `Response`.
+ * class of a thrown value cannot tell those apart. Observed behavior can: whether
+ * `fetch` was invoked, whether it produced a `Response`, and whether a response
+ * reader had started consuming that response.
  */
 interface Attempt {
   invoked: boolean;
   response: Response | undefined;
+  bodyConsumptionStarted: boolean;
+}
+
+/**
+ * Every standard `Response` method which starts consuming its body.
+ *
+ * Parsing JSON after `text()` is also covered: once a reader has started, a
+ * later parser failure belongs to the arrived response rather than to the
+ * adapter. This observes the seam instead of trying to guess from an error's
+ * constructor which layer threw it.
+ */
+const BODY_READERS = new Set<PropertyKey>(["arrayBuffer", "blob", "bytes", "formData", "json", "text"]);
+
+function observeBodyConsumption(response: Response, attempt: Attempt): Response {
+  // Do not proxy `response` itself: a test double (and a perfectly valid custom
+  // Response implementation) may define a reader as non-configurable, which a
+  // Proxy is forbidden to replace. The delegating target keeps those invariants
+  // while the handler always invokes platform members on the real response.
+  return new Proxy(Object.create(response) as Response, {
+    get(_target, property) {
+      // Get against the real response so platform accessors (such as `ok`) keep
+      // their required receiver. A fault from one of those accessors is outside
+      // body consumption and is therefore deliberately allowed to rethrow.
+      const value = Reflect.get(response, property, response);
+      if (!BODY_READERS.has(property) || typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        attempt.bodyConsumptionStarted = true;
+        return Reflect.apply(value, response, args);
+      };
+    },
+  });
 }
 
 export function createOssDataClient(options: OssClientOptions): VisionSetDataClient {
@@ -123,13 +155,13 @@ export function createOssDataClient(options: OssClientOptions): VisionSetDataCli
       attempt.invoked = true;
       const response = await (options.fetch ?? globalThis.fetch)(input);
       attempt.response = response;
-      return response;
+      return observeBodyConsumption(response, attempt);
     };
 
   const verb =
     (method: (typeof VERBS)[number]) =>
     async (path: string, init?: Record<string, unknown>): Promise<DataResult> => {
-      const attempt: Attempt = { invoked: false, response: undefined };
+      const attempt: Attempt = { invoked: false, response: undefined, bodyConsumptionStarted: false };
       // VisionSet's three request intents, translated into the transport's words.
       // This mapping is the whole reason the port does not simply re-export the
       // library's options: `accept`, `encode` and `survivesUnload` are statements
@@ -160,11 +192,10 @@ export function createOssDataClient(options: OssClientOptions): VisionSetDataCli
         // already handled above.
         if (attempt.response === undefined) return { ok: false, failure: "unreachable" };
 
-        // A Response arrived and reading its body threw. That is a malformed contract
-        // answer, not an absent server — and the status it arrived with is preserved,
-        // because it is the one diagnostic saying whether the gateway or the
-        // application answered. `unwrap` reports it as MALFORMED_RESPONSE.
-        if (cause instanceof SyntaxError || cause instanceof TypeError) {
+        // A Response arrived and its body reader was entered. That is a malformed
+        // contract answer, whatever value the reader or its parser throws; the
+        // status it carried remains the diagnostic for what answered.
+        if (attempt.bodyConsumptionStarted) {
           return { ok: false, status: attempt.response.status };
         }
 

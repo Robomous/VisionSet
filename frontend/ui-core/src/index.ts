@@ -100,6 +100,7 @@ export type {
 export {
   useApiClient,
   VisionSetDataProvider,
+  type VisionSetDataScope,
   type VisionSetDataProviderProps,
 } from "./data/VisionSetDataProvider.js";
 export { Async, type AsyncProps, type AsyncQuery } from "./data/Async.js";

@@ -36,9 +36,10 @@
  *
  * ## Why the collapsed width is a token
  *
- * 240px / 48px are in `ui-core`'s `@theme` rather than here, because three
- * things have to agree on them — the rail, the toggle and the content offset — and
- * `DESIGN.md` calls them "a single source of truth" for that reason. A grid
+ * 240px / 48px are this standalone OSS app's tokens in `styles.css`, because
+ * three things have to agree on them — the rail, the toggle and the content
+ * offset. Reusable project/page layout tokens remain in `ui-core`; a host that
+ * brings its own navigation must not inherit a rail it does not render. A grid
  * template reading `w-sidebar` cannot drift from a rail that *is* `w-sidebar`.
  * Collapsed, the rail is the preset's icon-sidebar width: `p-2` around one
  * `size-8` control per row, so an icon is centred because nothing else fits.

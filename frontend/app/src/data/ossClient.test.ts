@@ -277,22 +277,66 @@ describe("the outcomes the seam distinguishes, one test each", () => {
     expect(result.failure).toBe("unauthorized");
   });
 
-  it("5. an unexpected fault AFTER a response arrived RETHROWS", async () => {
-    // A response came back, and then something that is not a body parse broke. It
-    // is a client bug, and a bug must not masquerade as a malformed answer from a
-    // server that answered perfectly well. Produced honestly: a real Response whose
-    // body reader rejects with something no parser produces.
-    const bug = new RangeError("not a parse failure");
+  it.each([
+    ["SyntaxError", new SyntaxError("bad JSON")],
+    ["TypeError", new TypeError("body stream failed")],
+    ["RangeError", new RangeError("arbitrary body-reader failure")],
+  ])(
+    "5. a %s while reading an arrived response body is malformed, not a rethrow",
+    async (_name, bodyFailure) => {
+      const client = answering(() => {
+        const response = json({ items: [], total: 0 }, 201);
+        // With no Content-Length, openapi-fetch reads an ok JSON response through
+        // `.text()`. The *place* the error happens, not its class, decides this
+        // outcome.
+        Object.defineProperty(response, "text", { value: () => Promise.reject(bodyFailure) });
+        return response;
+      });
+
+      await expect(client.GET("/projects")).resolves.toEqual({ ok: false, status: 201 });
+    },
+  );
+
+  it("6. an unrelated fault after a response arrived RETHROWS", async () => {
+    const bug = new RangeError("not a body failure");
     const client = answering(() => {
       const response = json({ items: [], total: 0 }, 200);
-      // `text`, not `json`: with no Content-Length header (unset by this
-      // environment's Response), openapi-fetch reads the body via `.text()` and
-      // parses it by hand rather than calling `.json()` — that is the method
-      // actually invoked once a response has arrived, so it is the one sabotaged.
-      Object.defineProperty(response, "text", { value: () => Promise.reject(bug) });
+      // This is read before openapi-fetch asks a response reader to consume the
+      // body, so it is deliberately outside the marked seam.
+      Object.defineProperty(response, "ok", { get: () => { throw bug; } });
       return response;
     });
+
     await expect(client.GET("/projects")).rejects.toThrow(bug);
+  });
+
+  it("7. concurrent responses do not share the body-consumption marker", async () => {
+    let releaseA: (() => void) | undefined;
+    const postResponseBug = new RangeError("outside body consumption");
+    const client = createOssDataClient({
+      baseUrl: BASE,
+      fetch: (input) => {
+        if (input.url.endsWith("/projects")) {
+          return new Promise<Response>((resolve) => {
+            releaseA = () => {
+              const response = json({ items: [], total: 0 }, 200);
+              Object.defineProperty(response, "ok", { get: () => { throw postResponseBug; } });
+              resolve(response);
+            };
+          });
+        }
+        return Promise.resolve(json({ classes: [], revision: 1 }, 200));
+      },
+    });
+
+    const a = client.GET("/projects");
+    const b = client.GET("/home");
+    await expect(b).resolves.toMatchObject({ ok: true });
+
+    releaseA?.();
+    // B consumed its body first. If this state were shared with A, A's unrelated
+    // response fault would incorrectly be normalized as a malformed body.
+    await expect(a).rejects.toThrow(postResponseBug);
   });
 });
 

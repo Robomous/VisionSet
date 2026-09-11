@@ -23,10 +23,11 @@ export default tseslint.config(
   },
   {
     // `openapi-fetch` describes the request shapes the generated contract
-    // declares, and that description is worth borrowing in type position — it is
-    // erased at build, so the shipped package holds no reference to it. Importing
-    // it as a *value* would put a transport inside the reusable UI, which is the
-    // one thing the host boundary exists to prevent.
+    // declares, and that description is worth borrowing in type position. It is
+    // erased from emitted JavaScript, though emitted declarations intentionally
+    // retain the type references, so it remains a consumer-resolvable dependency.
+    // Importing it as a *value* would put a transport inside the reusable UI,
+    // which is the one thing the host boundary exists to prevent.
     //
     // `src/testing` is exempt because it never ships: `tsconfig.build.json`
     // excludes it, and the test harness needs a real client to answer a stubbed

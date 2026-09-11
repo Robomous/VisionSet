@@ -590,8 +590,9 @@ describe("the schema editor", () => {
     ];
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const client = harnessClient();
+    const scope = Symbol("schema-blocking-assets-test");
     const wrap = (node: ReactNode): JSX.Element => (
-      <VisionSetDataProvider client={client} makeQueryClient={() => queryClient}>
+      <VisionSetDataProvider client={client} scope={scope} makeQueryClient={() => queryClient}>
         {node}
       </VisionSetDataProvider>
     );
@@ -734,8 +735,9 @@ describe("the schema editor", () => {
     on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const client = harnessClient();
+    const scope = Symbol("project-switch-test");
     const wrap = (projectId: string): JSX.Element => (
-      <VisionSetDataProvider client={client} makeQueryClient={() => queryClient}>
+      <VisionSetDataProvider client={client} scope={scope} makeQueryClient={() => queryClient}>
         <ProjectScreen projectId={projectId} tab="schema" onOpenBatch={vi.fn()} />
       </VisionSetDataProvider>
     );
@@ -815,8 +817,9 @@ describe("the schema editor", () => {
     on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const client = harnessClient();
+    const scope = Symbol("schema-draft-cross-project-test");
     const wrap = (node: ReactNode): JSX.Element => (
-      <VisionSetDataProvider client={client} makeQueryClient={() => queryClient}>
+      <VisionSetDataProvider client={client} scope={scope} makeQueryClient={() => queryClient}>
         {node}
       </VisionSetDataProvider>
     );

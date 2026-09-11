@@ -9,9 +9,9 @@
  * and no consumer resolving `@visionset/ui-core` is one import away from it.
  *
  * The client is built **once per `renderWithData` call** and must never move inside
- * a component body: D6 keys the QueryClient on client identity, so a client
- * constructed during render would be a new identity on every render, rebuilding the
- * cache every render and hanging every screen test on a query that never settles.
+ * a component body: D6 keys the QueryClient on authorization/data scope, so a
+ * scope constructed during render would rebuild the cache every render and hang
+ * every screen test on a query that never settles.
  *
  * The translation below is deliberately this file's own and not the OSS adapter's.
  * A test double that shares code with the host under test stops being evidence —
@@ -34,6 +34,7 @@ import { VisionSetDataProvider } from "../data/VisionSetDataProvider";
  * was built with, rather than repeating a literal that can drift.
  */
 export const HARNESS_BASE_URL = "http://visionset.test";
+const HARNESS_SCOPE = Symbol("visionset-test-harness");
 
 export interface HarnessOptions {
   /** A pre-built cache. Pass one with retries off when a test asserts on failure. */
@@ -86,6 +87,23 @@ function isCancellation(cause: unknown, signal: AbortSignal | undefined): boolea
 interface Attempt {
   invoked: boolean;
   response: Response | undefined;
+  bodyConsumptionStarted: boolean;
+}
+
+/** See the independent OSS adapter's response-body observation seam. */
+const BODY_READERS = new Set<PropertyKey>(["arrayBuffer", "blob", "bytes", "formData", "json", "text"]);
+
+function observeBodyConsumption(response: Response, attempt: Attempt): Response {
+  return new Proxy(Object.create(response) as Response, {
+    get(_target, property) {
+      const value = Reflect.get(response, property, response);
+      if (!BODY_READERS.has(property) || typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        attempt.bodyConsumptionStarted = true;
+        return Reflect.apply(value, response, args);
+      };
+    },
+  });
 }
 
 /**
@@ -109,13 +127,13 @@ export function harnessClient(): VisionSetDataClient {
       attempt.invoked = true;
       const response = await globalThis.fetch(input);
       attempt.response = response;
-      return response;
+      return observeBodyConsumption(response, attempt);
     };
 
   const verb =
     (method: (typeof VERBS)[number]) =>
     async (path: string, init?: Record<string, unknown>): Promise<DataResult> => {
-      const attempt: Attempt = { invoked: false, response: undefined };
+      const attempt: Attempt = { invoked: false, response: undefined, bodyConsumptionStarted: false };
       const { accept, encode, survivesUnload, ...rest } = init ?? {};
       try {
         const result = await (http[method] as (p: string, i: unknown) => Promise<unknown>)(path, {
@@ -130,7 +148,7 @@ export function harnessClient(): VisionSetDataClient {
         if (isCancellation(cause, init?.["signal"] as AbortSignal | undefined)) throw cause;
         if (!attempt.invoked) throw cause;
         if (attempt.response === undefined) return { ok: false, failure: "unreachable" };
-        if (cause instanceof SyntaxError || cause instanceof TypeError) {
+        if (attempt.bodyConsumptionStarted) {
           return { ok: false, status: attempt.response.status };
         }
         throw cause;
@@ -145,7 +163,7 @@ export function harnessClient(): VisionSetDataClient {
 export function renderWithData(ui: ReactNode, options: HarnessOptions = {}): RenderResult {
   const queryClient = options.queryClient ?? harnessQueryClient();
   return render(
-    <VisionSetDataProvider client={harnessClient()} makeQueryClient={() => queryClient}>
+    <VisionSetDataProvider client={harnessClient()} scope={HARNESS_SCOPE} makeQueryClient={() => queryClient}>
       {ui}
     </VisionSetDataProvider>,
   );

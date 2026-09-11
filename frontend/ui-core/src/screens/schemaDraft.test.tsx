@@ -256,15 +256,16 @@ function freshClient(): QueryClient {
  * For the two tests that `rerender` across a prop change: keeps the same
  * `client` identity live across both calls, which is what makes it a rerender
  * (props changing under `ProjectScreen`) rather than a remount —
- * `VisionSetDataProvider` keys its cache, and forces a full remount, on the
- * `client` prop's identity, so a stable module-scoped client is what a rerender
+ * `VisionSetDataProvider` keys its cache, and forces a full remount, on its
+ * explicit scope identity, so a stable module-scoped scope is what a rerender
  * needs here. See the import comment above.
  */
 const LIVE_CLIENT = harnessClient();
+const LIVE_SCOPE = Symbol("schema-draft-live-test");
 
 function mountLive(node: ReactNode): JSX.Element {
   return (
-    <VisionSetDataProvider client={LIVE_CLIENT} makeQueryClient={freshClient}>
+    <VisionSetDataProvider client={LIVE_CLIENT} scope={LIVE_SCOPE} makeQueryClient={freshClient}>
       {node}
     </VisionSetDataProvider>
   );

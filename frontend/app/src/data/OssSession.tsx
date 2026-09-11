@@ -6,10 +6,10 @@
  * must not each decide for itself — where the API is and which credential is
  * being used — and it builds the host's data client, credential included, for
  * `VisionSetDataProvider` to hand out through `useApiClient`. What happens when
- * that credential stops working — the cache policy, the once-per-credential
+ * that credential stops working — the cache policy, the once-per-scope
  * unauthorized callback — is `VisionSetDataProvider`'s job, not this module's;
- * this module only tells it *which* client is current and what to do when it is
- * refused.
+ * this module tells it the current client, an opaque authorization/data scope,
+ * and what to do when that scope is refused.
  *
  * ## Two credentials, and only one of them is visible from here
  *
@@ -96,7 +96,7 @@ export interface OssSessionProviderProps {
    * way.
    */
   readonly baseUrl: string;
-  /** A cache factory. Tests pass one with retries off; production does not pass one. */
+  /** A cache factory. It must return a fresh client for each authorization/data scope. */
   readonly makeQueryClient?: () => QueryClient;
   readonly children: ReactNode;
 }
@@ -113,12 +113,14 @@ export function OssSessionProvider({
   // show a spinner to: only a browser without one starts out `checking`.
   const [access, setAccess] = useState<Access>(token === null ? "checking" : "token");
 
-  // The identity a cache belongs to. A browser-session sign-out leaves the token `null`
-  // as it already was, so keying on the token alone would hand the signed-out state the
-  // signed-in state's cache — which is the hole this closes.
-  const scope = token === null ? `access:${access}` : `token:${token}`;
-  // Keyed on `scope`, not on `token`: `scope` is what distinguishes a signed-out
-  // browser session from a browser that never had a token, and both hold `token === null`.
+  // The host-owned identity a cache belongs to. It is deliberately opaque rather
+  // than a token-derived string: a bearer must never cross the reusable boundary
+  // merely to identify its cache. A browser-session sign-out leaves the token
+  // `null` as it already was, so keying on the token alone would hand the signed-out
+  // state the signed-in state's cache — which is the hole this closes.
+  const scope = useMemo(() => Symbol("oss-data-scope"), [baseUrl, access, token]);
+  // Keyed on `scope`, not on `token`: `scope` distinguishes a signed-out browser
+  // session from a browser that never had a token, even though both hold `token === null`.
   //
   // `checking` → `session`/`none` is therefore also a scope change, so it rebuilds
   // this client and remounts everything below `VisionSetDataProvider` — with
@@ -137,8 +139,8 @@ export function OssSessionProvider({
     writeToken(next);
     setToken(next);
     setAccess("token");
-    // No `queries.clear()` here: changing `token` changes `scope`, which changes
-    // the client identity `VisionSetDataProvider` keys its cache on, which is what
+    // No `queries.clear()` here: changing `token` changes `scope`, which is the
+    // identity `VisionSetDataProvider` keys its cache on, which is what
     // makes the previous cache unreachable before any descendant renders against
     // the new one.
   }, []);
@@ -184,7 +186,12 @@ export function OssSessionProvider({
 
   return (
     <OssSessionContext.Provider value={session}>
-      <VisionSetDataProvider client={client} onUnauthorized={signOut} makeQueryClient={makeQueryClient}>
+      <VisionSetDataProvider
+        client={client}
+        scope={scope}
+        onUnauthorized={signOut}
+        makeQueryClient={makeQueryClient}
+      >
         {children}
       </VisionSetDataProvider>
     </OssSessionContext.Provider>

@@ -11,8 +11,9 @@ that could own that, never the thickest.
 implemented with `openapi-fetch` and a bearer token - the only module in the
 repository that constructs one. `src/data/OssSession.tsx` is the credential and
 session state machine above it: the four-state probe (`checking`, `session`,
-`token`, `none`) that asks `GET /session` once per mount, and the client identity
-that state machine hands to `VisionSetDataProvider`. `src/shell/TokenGate.tsx` is
+`token`, `none`) that asks `GET /session` once per mount, and the opaque
+authorization/data scope that state machine hands to `VisionSetDataProvider`.
+`src/shell/TokenGate.tsx` is
 the form that appears when the server will not sign the browser in on its own.
 
 The rail's collapsed/expanded state - `src/shell/railState.ts`, read on mount and
