@@ -227,6 +227,23 @@ describe("unauthorized is reported once per authorization/data scope", () => {
     await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(2));
   });
 
+  it("returning to an earlier scope starts a fresh unauthorized activation window", async () => {
+    const onUnauthorized = vi.fn();
+    const client = clientAnswering(() => UNAUTHORIZED);
+    const scopeA = {};
+    const scopeB = {};
+    const { swap } = mount(client, onUnauthorized, <Projects queryKey="activation" />, scopeA);
+
+    await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
+    // B is healthy, so this verifies that the new A window is not accidentally
+    // suppressed by a latch remembered from A's earlier activation.
+    swap(clientAnswering(() => ({ ok: true, data: { items: [], total: 2 }, status: 200 })), scopeB);
+    await waitFor(() => expect(screen.getByTestId("activation").textContent).toBe("2"));
+    swap(client, scopeA);
+
+    await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(2));
+  });
+
   it("a direct port call reports unauthorized through the shared latch", async () => {
     const onUnauthorized = vi.fn();
 
@@ -322,5 +339,48 @@ describe("unauthorized is reported once per authorization/data scope", () => {
     resolveFirst?.(UNAUTHORIZED);
     await Promise.resolve();
     expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it("does not accept an old A response after A -> B -> A", async () => {
+    const onUnauthorized = vi.fn();
+    let resolveFirstA: ((result: DataResult) => void) | undefined;
+    let resolveSecondA: ((result: DataResult) => void) | undefined;
+    let calls = 0;
+    const client = {
+      GET: () => {
+        calls += 1;
+        if (calls === 1 || calls === 3) {
+          return new Promise<DataResult>((resolve) => {
+            if (calls === 1) resolveFirstA = resolve;
+            else resolveSecondA = resolve;
+          });
+        }
+        return Promise.resolve({ ok: true, data: { items: [], total: 0 }, status: 200 });
+      },
+    } as unknown as VisionSetDataClient;
+    const scopeA = {};
+    const scopeB = {};
+
+    function Direct(): JSX.Element {
+      const api = useApiClient();
+      useEffect(() => {
+        void api.GET("/projects");
+      }, [api]);
+      return <output>started</output>;
+    }
+
+    const { swap } = mount(client, onUnauthorized, <Direct />, scopeA);
+    await waitFor(() => expect(resolveFirstA).toBeDefined());
+    swap(client, scopeB);
+    await waitFor(() => expect(calls).toBe(2));
+    swap(client, scopeA);
+    await waitFor(() => expect(resolveSecondA).toBeDefined());
+
+    resolveFirstA?.(UNAUTHORIZED);
+    await Promise.resolve();
+    expect(onUnauthorized).not.toHaveBeenCalled();
+
+    resolveSecondA?.(UNAUTHORIZED);
+    await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
   });
 });

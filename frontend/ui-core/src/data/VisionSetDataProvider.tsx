@@ -90,7 +90,11 @@ const ClientContext = createContext<VisionSetDataClient | null>(null);
  */
 export type VisionSetDataScope = string | number | symbol | object;
 
-type UnauthorizedObserver = (scope: VisionSetDataScope, result: DataResult) => void;
+type UnauthorizedObserver = (
+  scope: VisionSetDataScope,
+  activation: number,
+  result: DataResult,
+) => void;
 
 /**
  * A supplied QueryClient is stateful, so its identity is part of the host's
@@ -118,6 +122,7 @@ function associateQueryClientScope(
 function observeUnauthorized(
   client: VisionSetDataClient,
   scope: VisionSetDataScope,
+  activation: number,
   observe: UnauthorizedObserver,
 ): VisionSetDataClient {
   const verb =
@@ -128,7 +133,7 @@ function observeUnauthorized(
         client,
         args,
       ).then((result) => {
-        observe(scope, result);
+        observe(scope, activation, result);
         return result;
       });
 
@@ -155,10 +160,10 @@ export interface VisionSetDataProviderProps {
   /**
    * The active authorization/data scope is no longer usable.
    *
-   * Called **at most once per `scope` identity**, however many query, mutation, or
-   * direct port refusals arrive. The host's job is to replace the scope; supplying
-   * a new scope resets the latch, so a replacement that is itself refused reports
-   * once in its own turn.
+   * Called **at most once per active `scope` activation**, however many query,
+   * mutation, or direct port refusals arrive. Replacing the scope resets the
+   * latch; returning to a prior scope after another was active starts a fresh
+   * activation without accepting late results from its earlier activation.
    */
   readonly onUnauthorized?: () => void;
   /**
@@ -206,16 +211,27 @@ export function VisionSetDataProvider({
     return { identity: nextIdentity.current++, queries };
   }, [scope]);
 
-  // One call per scope. Refs outlive effects, so StrictMode's mount-unmount-remount
-  // cannot produce a second callback for the same scope. Checking the active scope
-  // also prevents a late response from a discarded scope signing out its successor.
+  // One call per active scope activation. An activation number is essential in
+  // addition to the opaque identity: after A -> B -> A, a late answer from the
+  // first A must not be accepted as an answer from the second A. Refs outlive
+  // effects, so StrictMode's effect replay cannot produce a second callback.
   const activeScope = useRef<VisionSetDataScope>(scope);
-  activeScope.current = scope;
+  const activeActivation = useRef(0);
+  const signalledActivation = useRef<number | undefined>(undefined);
+  if (!Object.is(activeScope.current, scope)) {
+    activeScope.current = scope;
+    activeActivation.current += 1;
+    signalledActivation.current = undefined;
+  }
+  const activation = activeActivation.current;
   const currentOnUnauthorized = useRef(onUnauthorized);
   currentOnUnauthorized.current = onUnauthorized;
-  const signalled = useRef<VisionSetDataScope | null>(null);
   const refuse = useMemo(
-    () => (candidateScope: VisionSetDataScope, result: DataResult | unknown): void => {
+    () => (
+      candidateScope: VisionSetDataScope,
+      candidateActivation: number,
+      result: DataResult | unknown,
+    ): void => {
       const unauthorized =
         typeof result === "object" &&
         result !== null &&
@@ -225,24 +241,25 @@ export function VisionSetDataProvider({
       if (
         !unauthorized ||
         !Object.is(activeScope.current, candidateScope) ||
-        Object.is(signalled.current, candidateScope)
+        activeActivation.current !== candidateActivation ||
+        signalledActivation.current === candidateActivation
       ) {
         return;
       }
-      signalled.current = candidateScope;
+      signalledActivation.current = candidateActivation;
       currentOnUnauthorized.current?.();
     },
     [],
   );
   const observedClient = useMemo(
-    () => observeUnauthorized(client, scope, refuse),
-    [client, scope, refuse],
+    () => observeUnauthorized(client, scope, activation, refuse),
+    [client, scope, activation, refuse],
   );
 
   useEffect(() => {
     const refuseCacheError = (error: unknown): void => {
       if (!asApiError(error).isUnauthorized) return;
-      refuse(scope, { ok: false, failure: "unauthorized" });
+      refuse(scope, activation, { ok: false, failure: "unauthorized" });
     };
     const stops = [
       queries.getQueryCache().subscribe((event) => {
@@ -253,7 +270,7 @@ export function VisionSetDataProvider({
       }),
     ];
     return () => stops.forEach((stop) => stop());
-  }, [queries, scope, refuse]);
+  }, [queries, scope, activation, refuse]);
 
   return (
     <QueryClientProvider client={queries} key={identity}>

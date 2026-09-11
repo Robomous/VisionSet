@@ -60,7 +60,9 @@ domain code cannot express, because the vocabulary for a *credential* refusal
 belongs to whichever host authenticates: `"unauthorized"` and `"unreachable"`.
 Nothing else joins that union.
 
-Unauthorized is reported to the host **at most once per authorization/data scope**.
+Unauthorized is reported to the host **at most once per active authorization/data scope
+activation**. Returning to a scope after another one was active starts a new window; late
+responses from its prior activation remain ignored.
 The host supplies that opaque scope explicitly; it keys the cache, descendant
 remount, and refusal latch together, so a stable adapter can safely cross a
 principal, tenant, workspace, or credential transition without exposing prior

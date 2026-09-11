@@ -96,7 +96,7 @@ export interface OssSessionProviderProps {
    * way.
    */
   readonly baseUrl: string;
-  /** A cache factory. It must return a fresh client for each authorization/data scope. */
+  /** A cache factory. It must return a fresh QueryClient for each authorization/data scope. */
   readonly makeQueryClient?: () => QueryClient;
   readonly children: ReactNode;
 }

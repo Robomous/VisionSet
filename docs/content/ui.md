@@ -1462,7 +1462,7 @@ of to a blank page.
 
 `VisionSetDataProvider` observes every normalized `unauthorized` answer from the
 port, including a direct asset or thumbnail request, and calls the host's
-`onUnauthorized` once per authorization/data scope - in this app, that clears the
+`onUnauthorized` once per active authorization/data-scope activation - in this app, that clears the
 token. Cache subscriptions remain a backstop rather than the sole mechanism: the
 client is a prop, so a caller may supply their own, and a handler configured at
 construction is then simply absent for the whole application.

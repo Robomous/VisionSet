@@ -310,6 +310,28 @@ describe("the outcomes the seam distinguishes, one test each", () => {
     await expect(client.GET("/projects")).rejects.toThrow(bug);
   });
 
+  it("6b. an adapter fault after a valid body is consumed RETHROWS", async () => {
+    const bug = new RangeError("normalization bug");
+    const client = answering(() => {
+      const response = json({ items: [], total: 0 }, 200);
+      const status = response.status;
+      let reads = 0;
+      // `openapi-fetch` first reads this while deciding how to consume the valid
+      // body. The next read is this adapter's `normalize` step, after `.text()`
+      // and JSON parsing have completed. It must not be caught as a body failure.
+      Object.defineProperty(response, "status", {
+        get: () => {
+          reads += 1;
+          if (reads === 2) throw bug;
+          return status;
+        },
+      });
+      return response;
+    });
+
+    await expect(client.GET("/projects")).rejects.toThrow(bug);
+  });
+
   it("7. concurrent responses do not share the body-consumption marker", async () => {
     let releaseA: (() => void) | undefined;
     const postResponseBug = new RangeError("outside body consumption");

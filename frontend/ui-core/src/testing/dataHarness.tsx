@@ -135,15 +135,15 @@ export function harnessClient(): VisionSetDataClient {
     async (path: string, init?: Record<string, unknown>): Promise<DataResult> => {
       const attempt: Attempt = { invoked: false, response: undefined, bodyConsumptionStarted: false };
       const { accept, encode, survivesUnload, ...rest } = init ?? {};
+      let result: unknown;
       try {
-        const result = await (http[method] as (p: string, i: unknown) => Promise<unknown>)(path, {
+        result = await (http[method] as (p: string, i: unknown) => Promise<unknown>)(path, {
           ...rest,
           fetch: instrument(attempt),
           ...(accept === "blob" ? { parseAs: "blob" } : {}),
           ...(encode === "multipart" ? { bodySerializer: formData } : {}),
           ...(survivesUnload === true ? { keepalive: true } : {}),
         });
-        return normalize(result as Parameters<typeof normalize>[0]);
       } catch (cause) {
         if (isCancellation(cause, init?.["signal"] as AbortSignal | undefined)) throw cause;
         if (!attempt.invoked) throw cause;
@@ -153,6 +153,9 @@ export function harnessClient(): VisionSetDataClient {
         }
         throw cause;
       }
+      // Keep adapter-owned normalization outside the observed transport/body
+      // seam: a harness bug must reject rather than masquerade as bad data.
+      return normalize(result as Parameters<typeof normalize>[0]);
     };
 
   return Object.fromEntries(

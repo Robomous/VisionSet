@@ -168,15 +168,15 @@ export function createOssDataClient(options: OssClientOptions): VisionSetDataCli
       // any host can honour; `parseAs`, `bodySerializer` and `keepalive` are how
       // this one happens to honour them.
       const { accept, encode, survivesUnload, ...rest } = init ?? {};
+      let result: unknown;
       try {
-        const result = await (http[method] as (p: string, i: unknown) => Promise<unknown>)(path, {
+        result = await (http[method] as (p: string, i: unknown) => Promise<unknown>)(path, {
           ...rest,
           fetch: instrument(attempt),
           ...(accept === "blob" ? { parseAs: "blob" } : {}),
           ...(encode === "multipart" ? { bodySerializer: formData } : {}),
           ...(survivesUnload === true ? { keepalive: true } : {}),
         });
-        return normalize(result as Parameters<typeof normalize>[0]);
       } catch (cause) {
         if (isCancellation(cause, init?.["signal"] as AbortSignal | undefined)) throw cause;
 
@@ -203,6 +203,10 @@ export function createOssDataClient(options: OssClientOptions): VisionSetDataCli
         // and it must not be dressed up as a bad answer from a server that answered.
         throw cause;
       }
+      // This is deliberately outside the transport/body-consumption catch. A
+      // response-body failure is a malformed answer; a bug in adapter-owned
+      // post-processing is still a programming fault and must reject.
+      return normalize(result as Parameters<typeof normalize>[0]);
     };
 
   return Object.fromEntries(

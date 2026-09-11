@@ -76,4 +76,26 @@ describe("the independent harness's response-body classification", () => {
 
     await expect(harnessClient().GET("/projects")).rejects.toThrow(bug);
   });
+
+  it("rethrows an adapter fault after a valid body is consumed", async () => {
+    const bug = new RangeError("normalization bug");
+    vi.stubGlobal("fetch", () => {
+      const response = new Response(JSON.stringify({ items: [], total: 0 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+      const status = response.status;
+      let reads = 0;
+      Object.defineProperty(response, "status", {
+        get: () => {
+          reads += 1;
+          if (reads === 2) throw bug;
+          return status;
+        },
+      });
+      return Promise.resolve(response);
+    });
+
+    await expect(harnessClient().GET("/projects")).rejects.toThrow(bug);
+  });
 });
