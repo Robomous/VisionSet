@@ -3,13 +3,17 @@
  * authorization/data scope, and unauthorized is reported once per scope.
  */
 import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { useEffect, type JSX, type ReactNode } from "react";
+import { startTransition, Suspense, useEffect, useState, type JSX, type ReactNode } from "react";
 
 import { unwrap } from "./errors";
 import type { DataResult, VisionSetDataClient } from "./port";
-import { useApiClient, VisionSetDataProvider } from "./VisionSetDataProvider";
+import {
+  useApiClient,
+  VisionSetDataProvider,
+  type VisionSetDataScope,
+} from "./VisionSetDataProvider";
 import { checkListProjects } from "../generated/checks";
 
 /** A client that answers whatever it is told to, and is a distinct identity. */
@@ -23,6 +27,14 @@ const UNAUTHORIZED: DataResult = {
   failure: "unauthorized",
   status: 401,
 };
+
+function deferred<T>() {
+  let resolve: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve: resolve! };
+}
 
 /**
  * One component, one query key.
@@ -151,6 +163,50 @@ describe("a cache belongs to one authorization/data scope", () => {
     mount(clientAnswering(() => ({ ok: true, data: {}, status: 200 })), vi.fn(), <QueryClientProbe />, scope, makeQueryClient);
     await waitFor(() => expect(screen.getByTestId("query-client").textContent).toBe("ready"));
     expect(received).toBe(shared);
+  });
+
+  it("does not associate a QueryClient with an abandoned speculative scope", async () => {
+    const shared = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const makeQueryClient = () => shared;
+    const client = clientAnswering(() => ({ ok: true, data: {}, status: 200 }));
+    const scopeA = {};
+    const scopeB = {};
+    const never = deferred<void>();
+
+    function Suspend(): null {
+      throw never.promise;
+    }
+
+    function Ready(): JSX.Element {
+      return <output data-testid="committed-client">ready</output>;
+    }
+
+    function Host(): JSX.Element {
+      const [scope, setScope] = useState<VisionSetDataScope | undefined>(undefined);
+      return (
+        <>
+          <button onClick={() => startTransition(() => setScope(scopeB))}>speculate B</button>
+          <button onClick={() => setScope(scopeA)}>commit A</button>
+          <Suspense fallback={<output>loading</output>}>
+            {scope === undefined ? null : (
+              <VisionSetDataProvider client={client} scope={scope} makeQueryClient={makeQueryClient}>
+                {scope === scopeB ? <Suspend /> : <Ready />}
+              </VisionSetDataProvider>
+            )}
+          </Suspense>
+        </>
+      );
+    }
+
+    const view = render(<Host />);
+    fireEvent.click(screen.getByRole("button", { name: "speculate B" }));
+    fireEvent.click(screen.getByRole("button", { name: "commit A" }));
+    try {
+      await waitFor(() => expect(screen.getByTestId("committed-client").textContent).toBe("ready"));
+    } finally {
+      view.unmount();
+      never.resolve();
+    }
   });
 });
 
@@ -382,5 +438,108 @@ describe("unauthorized is reported once per authorization/data scope", () => {
 
     resolveSecondA?.(UNAUTHORIZED);
     await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps committed A active when a transition to B is abandoned", async () => {
+    const onUnauthorized = vi.fn();
+    const pendingA = deferred<DataResult>();
+    const client = { GET: () => pendingA.promise } as unknown as VisionSetDataClient;
+    const scopeA = {};
+    const scopeB = {};
+    const never = deferred<void>();
+
+    function SuspendB({ active }: { readonly active: boolean }): null {
+      if (active) throw never.promise;
+      return null;
+    }
+
+    function Direct(): JSX.Element {
+      const api = useApiClient();
+      useEffect(() => {
+        void api.GET("/projects");
+      }, [api]);
+      return <output data-testid="concurrent-direct">started</output>;
+    }
+
+    function Host(): JSX.Element {
+      const [towardB, setTowardB] = useState(false);
+      return (
+        <>
+          <button onClick={() => startTransition(() => setTowardB(true))}>switch</button>
+          <Suspense fallback={<output>loading</output>}>
+            <VisionSetDataProvider client={client} scope={towardB ? scopeB : scopeA} onUnauthorized={onUnauthorized}>
+              <SuspendB active={towardB} />
+              <Direct />
+            </VisionSetDataProvider>
+          </Suspense>
+        </>
+      );
+    }
+
+    const view = render(<Host />);
+    await waitFor(() => expect(screen.getByTestId("concurrent-direct").textContent).toBe("started"));
+    fireEvent.click(screen.getByRole("button", { name: "switch" }));
+
+    try {
+      pendingA.resolve(UNAUTHORIZED);
+      await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
+    } finally {
+      view.unmount();
+      never.resolve();
+    }
+  });
+
+  it("keeps the committed unauthorized callback when a replacement render is abandoned", async () => {
+    const committed = vi.fn();
+    const speculative = vi.fn();
+    const pendingA = deferred<DataResult>();
+    const client = { GET: () => pendingA.promise } as unknown as VisionSetDataClient;
+    const scope = {};
+    const never = deferred<void>();
+
+    function SuspendReplacement({ active }: { readonly active: boolean }): null {
+      if (active) throw never.promise;
+      return null;
+    }
+
+    function Direct(): JSX.Element {
+      const api = useApiClient();
+      useEffect(() => {
+        void api.GET("/projects");
+      }, [api]);
+      return <output data-testid="callback-direct">started</output>;
+    }
+
+    function Host(): JSX.Element {
+      const [replacement, setReplacement] = useState(false);
+      return (
+        <>
+          <button onClick={() => startTransition(() => setReplacement(true))}>replace</button>
+          <Suspense fallback={<output>loading</output>}>
+            <VisionSetDataProvider
+              client={client}
+              scope={scope}
+              onUnauthorized={replacement ? speculative : committed}
+            >
+              <SuspendReplacement active={replacement} />
+              <Direct />
+            </VisionSetDataProvider>
+          </Suspense>
+        </>
+      );
+    }
+
+    const view = render(<Host />);
+    await waitFor(() => expect(screen.getByTestId("callback-direct").textContent).toBe("started"));
+    fireEvent.click(screen.getByRole("button", { name: "replace" }));
+
+    try {
+      pendingA.resolve(UNAUTHORIZED);
+      await waitFor(() => expect(committed).toHaveBeenCalledTimes(1));
+      expect(speculative).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      never.resolve();
+    }
   });
 });

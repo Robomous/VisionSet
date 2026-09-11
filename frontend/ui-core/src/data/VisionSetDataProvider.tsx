@@ -46,6 +46,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   type JSX,
@@ -92,7 +93,7 @@ export type VisionSetDataScope = string | number | symbol | object;
 
 type UnauthorizedObserver = (
   scope: VisionSetDataScope,
-  activation: number,
+  activation: symbol,
   result: DataResult,
 ) => void;
 
@@ -107,22 +108,34 @@ type UnauthorizedObserver = (
  */
 const queryClientScopes = new WeakMap<QueryClient, VisionSetDataScope>();
 
-function associateQueryClientScope(
+function validateQueryClientScope(
   queries: QueryClient,
   scope: VisionSetDataScope,
 ): QueryClient {
   if (queryClientScopes.has(queries) && !Object.is(queryClientScopes.get(queries), scope)) {
     throw new Error("A QueryClient may only be used for one authorization/data scope");
   }
-  queryClientScopes.set(queries, scope);
   return queries;
+}
+
+function associateQueryClientScope(queries: QueryClient, scope: VisionSetDataScope): void {
+  validateQueryClientScope(queries, scope);
+  queryClientScopes.set(queries, scope);
+}
+
+function activationForScope(scope: VisionSetDataScope): symbol {
+  // Keep the opaque value out of the token and its description: scope may be a
+  // host-defined string, but it is not diagnostic material.
+  return Symbol(
+    typeof scope === "object" ? "object authorization/data activation" : "scalar authorization/data activation",
+  );
 }
 
 /** Keep direct and TanStack-mediated port calls on the same normalized-failure seam. */
 function observeUnauthorized(
   client: VisionSetDataClient,
   scope: VisionSetDataScope,
-  activation: number,
+  activation: symbol,
   observe: UnauthorizedObserver,
 ): VisionSetDataClient {
   const verb =
@@ -207,29 +220,42 @@ export function VisionSetDataProvider({
     // cache cannot be repurposed for a new authorization/data identity. Reject
     // that composition before descendants render rather than silently replacing
     // the caller's client (and its cache policy) with ui-core's default.
-    const queries = associateQueryClientScope(candidate, scope);
+    const queries = validateQueryClientScope(candidate, scope);
     return { identity: nextIdentity.current++, queries };
   }, [scope]);
 
-  // One call per active scope activation. An activation number is essential in
-  // addition to the opaque identity: after A -> B -> A, a late answer from the
-  // first A must not be accepted as an answer from the second A. Refs outlive
-  // effects, so StrictMode's effect replay cannot produce a second callback.
-  const activeScope = useRef<VisionSetDataScope>(scope);
-  const activeActivation = useRef(0);
-  const signalledActivation = useRef<number | undefined>(undefined);
-  if (!Object.is(activeScope.current, scope)) {
-    activeScope.current = scope;
-    activeActivation.current += 1;
-    signalledActivation.current = undefined;
-  }
-  const activation = activeActivation.current;
-  const currentOnUnauthorized = useRef(onUnauthorized);
-  currentOnUnauthorized.current = onUnauthorized;
+  // `useMemo` supplies a fresh, opaque generation for every rendered scope
+  // transition without touching authorization state. It becomes active only in
+  // the layout effect below: React may abandon a concurrent render, in which
+  // case its generation must never affect the currently committed tree.
+  const activation = useMemo(() => activationForScope(scope), [scope]);
+  const committed = useRef<
+    | {
+        scope: VisionSetDataScope;
+        activation: symbol;
+        queries: QueryClient;
+        onUnauthorized: (() => void) | undefined;
+        signalled: boolean;
+      }
+    | undefined
+  >(undefined);
+
+  useLayoutEffect(() => {
+    const previous = committed.current;
+    // Validate while rendering (above) so known cross-scope reuse never reaches
+    // descendants; publish global ownership only after this tree has committed.
+    associateQueryClientScope(queries, scope);
+    if (previous?.activation === activation) {
+      previous.onUnauthorized = onUnauthorized;
+    } else {
+      committed.current = { scope, activation, queries, onUnauthorized, signalled: false };
+    }
+  }, [activation, onUnauthorized, queries, scope]);
+
   const refuse = useMemo(
     () => (
       candidateScope: VisionSetDataScope,
-      candidateActivation: number,
+      candidateActivation: symbol,
       result: DataResult | unknown,
     ): void => {
       const unauthorized =
@@ -240,14 +266,15 @@ export function VisionSetDataProvider({
         (result as Extract<DataResult, { ok: false }>).failure === "unauthorized";
       if (
         !unauthorized ||
-        !Object.is(activeScope.current, candidateScope) ||
-        activeActivation.current !== candidateActivation ||
-        signalledActivation.current === candidateActivation
+        committed.current === undefined ||
+        !Object.is(committed.current.scope, candidateScope) ||
+        committed.current.activation !== candidateActivation ||
+        committed.current.signalled
       ) {
         return;
       }
-      signalledActivation.current = candidateActivation;
-      currentOnUnauthorized.current?.();
+      committed.current.signalled = true;
+      committed.current.onUnauthorized?.();
     },
     [],
   );
