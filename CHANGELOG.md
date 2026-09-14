@@ -11,6 +11,8 @@ nothing was being distributed. This is the first version that is.
 
 ## [Unreleased]
 
+## [0.0.1b3] — 2026-09-14
+
 ### Added
 
 - **Pre-processing: resize and augmentation recipes applied at export.** Part of the
@@ -647,5 +649,6 @@ them and the numbers say what each one cost.
 | **M6** — the beta | `v0.0.1-beta.1` | 2026-07-31 | Exporters, the wheel, and the thirty-minute flow as a gate, 11 issues |
 | **beta.2** — the correction | `v0.0.1-beta.2` | 2026-07-31 | Five defects a manual pass over the wheel found, each with the guard that would have caught it, 6 issues |
 
+[0.0.1b3]: https://github.com/Robomous/VisionSet/releases/tag/v0.0.1-beta.3
 [0.0.1b2]: https://github.com/Robomous/VisionSet/releases/tag/v0.0.1-beta.2
 [0.0.1b1]: https://github.com/Robomous/VisionSet/releases/tag/v0.0.1-beta.1

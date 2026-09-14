@@ -26,11 +26,11 @@ def test_version_file_is_the_beta(declared_version: str) -> None:
     PEP 440 hides a pre-release from a plain `pip install` — which is what makes
     publishing it safe rather than premature. See `docs/content/releasing.md`.
 
-    `0.0.1b2` is the beta corrected: `0.0.1b1` shipped with three defects a manual
-    pass over the **wheel** found and a green suite could not, and a
-    published version is never edited in place.
+    `0.0.1b3` is the third beta. A published version is never edited in place, so
+    every correction is another release, and the pin here is what makes the bump a
+    deliberate edit rather than something a stray command can do quietly.
     """
-    assert declared_version == "0.0.1b2"
+    assert declared_version == "0.0.1b3"
 
 
 def test_installed_distribution_reports_the_declared_version(declared_version: str) -> None:

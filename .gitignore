@@ -48,6 +48,11 @@ frontend/app/bench-results.json
 docs/src/content/docs/
 docs/.astro/
 
+# import-linter's analysis cache. Grimp writes a nested `.gitignore` holding `*`
+# inside it, which git honours and hatchling does not read — so without this line
+# the directory is invisible in `git status` and still ships inside the sdist.
+.import_linter_cache/
+
 # Compiled UI bundle travels in the wheel, never in git
 src/visionset/_static/*
 !src/visionset/_static/README.md
