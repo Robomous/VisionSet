@@ -203,7 +203,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6 # reads packageManager from package.json
+      - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
 
       - uses: actions/setup-node@v7
         with:
@@ -259,7 +259,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6 # reads packageManager from package.json
+      - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
 
       - uses: actions/setup-node@v7
         with:
@@ -358,7 +358,7 @@ jobs:
       - name: Sync environment
         run: uv sync --locked
 
-      - uses: pnpm/action-setup@v6 # reads packageManager from package.json
+      - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
 
       - uses: actions/setup-node@v7
         with:
@@ -423,7 +423,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6 # reads packageManager from package.json
+      - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
 
       - uses: actions/setup-node@v7
         with:
@@ -506,7 +506,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             -o Acquire::Retries=3 -o Acquire::http::Timeout=15 ffmpeg
 
-      - uses: pnpm/action-setup@v6 # reads packageManager from package.json
+      - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
 
       - uses: actions/setup-node@v7
         with:
@@ -712,7 +712,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6 # reads packageManager from package.json
+      - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
 
       - uses: actions/setup-node@v7
         with:
@@ -808,7 +808,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6 # reads packageManager from package.json
+      - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
 
       - uses: actions/setup-node@v7
         with:
