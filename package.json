@@ -14,15 +14,7 @@
     "generate:client:check": "node scripts/generate_client.mjs --check",
     "bundle:static": "node scripts/bundle_static.mjs"
   },
-  "packageManager": "pnpm@10.30.2",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ],
-    "overrides": {
-      "js-yaml@4.3.0": "4.3.2"
-    }
-  },
+  "packageManager": "pnpm@12.4.1",
   "devDependencies": {
     "@robomous/ui-core": "^0.2.1",
     "openapi-typescript": "7.13.0",

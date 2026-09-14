@@ -28,3 +28,17 @@ minimumReleaseAge: 4320
 # Packages allowed to skip the wait. Empty, and a new entry should say why in the
 # commit that adds it.
 minimumReleaseAgeExclude: []
+
+# Install-script permissions and forced resolutions, repeated here for the same
+# reason the cool-down is: a nested workspace root inherits nothing from the parent.
+#
+# esbuild and sharp each fetch a platform binary in a postinstall; the Astro build
+# cannot start without either.
+allowBuilds:
+  esbuild: true
+  sharp: true
+
+# lodash-es: a published security advisory, reached transitively through the site's
+# toolchain.
+overrides:
+  lodash-es: 4.18.1

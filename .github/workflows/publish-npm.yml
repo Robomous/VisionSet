@@ -1,0 +1,136 @@
+# Publish the two public frontend packages to npm over trusted publishing.
+#
+# No credentials anywhere, and that is the design — the same bargain
+# `publish-pypi.yml` makes with PyPI. `id-token: write` lets the job mint a
+# short-lived OIDC token; npm exchanges it for an upload credential scoped to this
+# workflow in this repository. There is no token to leak, rotate or commit, and no
+# one-time password to type, which is what previously made an npm release a hand
+# step somebody had to be awake for.
+#
+# The configuration lives on each package's npm settings page and names this
+# workflow **by filename**. Renaming this file breaks the exchange, and npm's own
+# documentation warns that a wrong field surfaces only when a publish is attempted
+# — there is nothing that validates it beforehand. A rename must move both sides.
+# The npm side also has an explicit "allow npm publish" permission distinct from
+# staged publishing; without it the exchange succeeds and the upload is refused.
+#
+# ## Why this needs pnpm 11 or newer
+#
+# Two requirements meet in one command. `@visionset/ui-core` declares
+# `"@visionset/annotator": "workspace:*"`, and only pnpm rewrites that to a concrete
+# version as it packs — a publish that ships the literal `workspace:*` string is
+# uninstallable by anybody. Separately, pnpm gained OIDC support in 11; pnpm 10 had
+# none and could only publish with a credential. Before 11 these two needs pulled
+# in opposite directions and the job had to be done by hand.
+#
+# ## The ordering is load-bearing
+#
+# annotator is published before ui-core, because ui-core's rewritten dependency
+# names a version that has to exist on the registry already.
+name: Publish to npm
+
+# Manual only, like the PyPI publish, and dispatched against the release tag so
+# what is published is the tagged tree rather than whatever a branch holds at the
+# moment somebody pressed the button.
+#
+# Being dispatch-only it never reports on a pull request, so it must never be added
+# to `main`'s required-checks ruleset — a required check that never reports leaves
+# every pull request blocked forever with nothing red to read.
+on:
+  workflow_dispatch:
+    inputs:
+      dist-tag:
+        description: "npm dist-tag to publish under"
+        required: true
+        default: beta
+        type: string
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      # A `permissions:` block sets every scope it does not name to `none`, and
+      # `actions/checkout` authenticates with GITHUB_TOKEN — hence `contents`.
+      contents: read
+      id-token: write
+    steps:
+      # Every `uses:` here is pinned to a commit, for the reason spelled out in
+      # publish-pypi.yml: `id-token: write` is a job scope, so any step in this job
+      # can trade an OIDC token for the right to publish under the `@visionset`
+      # scope. A tag or a branch is a pointer its owner can move; a commit is not.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        # Nothing is pushed back from here — the packages leave over npm's API, not
+        # over git — so the token has no reason to stay in `.git/config`.
+        with:
+          persist-credentials: false
+
+      # v6.1.0 is the first release that can install pnpm 12, and the floating `v6`
+      # tag still points at a commit that cannot. reads packageManager from package.json
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          # **Deliberately no `registry-url`.** Setting it makes this action write an
+          # `.npmrc` containing `_authToken=${NODE_AUTH_TOKEN}`. With no such variable
+          # in the environment the placeholder is never substituted and the literal
+          # string is sent as a bearer token, which takes precedence over the OIDC
+          # exchange and fails the publish with a 404 that says nothing about the real
+          # cause. The default registry is the public one, which is where these go.
+
+      - name: pnpm must be new enough to exchange an OIDC token
+        # OIDC landed in pnpm 11. An older pnpm does not fail on the handshake — it
+        # falls back to looking for a credential, finds none, and reports a missing
+        # token, which reads as a configuration problem rather than a version one.
+        run: |
+          have=$(pnpm --version)
+          if [ "$(printf '%s\n11.0.0\n' "$have" | sort -V | head -1)" != "11.0.0" ]; then
+            echo "::error::pnpm $have cannot perform the OIDC exchange; 11 or newer is required"
+            exit 1
+          fi
+          echo "pnpm $have, node $(node --version)"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: A packed tarball must carry no workspace protocol
+        # The failure this whole shape exists to prevent, asserted on the bytes that
+        # would be uploaded rather than trusted. A package that ships `workspace:*`
+        # installs for nobody, and npm does not let a published version be replaced.
+        #
+        # Packed into a scratch directory and thrown away: this proves the rewrite
+        # happens, and the publish below packs again from the same tree.
+        run: |
+          pnpm --filter @visionset/annotator pack --pack-destination "$RUNNER_TEMP/check"
+          pnpm --filter @visionset/ui-core   pack --pack-destination "$RUNNER_TEMP/check"
+          for tarball in "$RUNNER_TEMP"/check/*.tgz; do
+            manifest=$(tar -xzOf "$tarball" package/package.json)
+            if printf '%s' "$manifest" | grep -q '"workspace:'; then
+              echo "::error::$(basename "$tarball") still declares a workspace: dependency"
+              printf '%s\n' "$manifest" | grep '"workspace:'
+              exit 1
+            fi
+          done
+          echo "no workspace: protocol in either tarball"
+
+      # No `NODE_AUTH_TOKEN`, no `.npmrc`, no `--provenance`: under trusted publishing
+      # npm generates and uploads provenance attestations by itself.
+      #
+      # The dist-tag reaches the shell through the environment rather than through
+      # `${{ }}` interpolation: an expression is pasted into the script before it
+      # runs, so a value carrying shell syntax would execute in a job that holds
+      # publish rights. `$DIST_TAG` is read by the shell as data instead.
+      - name: Publish @visionset/annotator
+        env:
+          DIST_TAG: ${{ inputs.dist-tag }}
+        run: pnpm --filter @visionset/annotator publish --access public --tag "$DIST_TAG" --no-git-checks
+
+      - name: Publish @visionset/ui-core
+        env:
+          DIST_TAG: ${{ inputs.dist-tag }}
+        run: pnpm --filter @visionset/ui-core publish --access public --tag "$DIST_TAG" --no-git-checks

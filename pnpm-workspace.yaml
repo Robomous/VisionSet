@@ -29,3 +29,23 @@ minimumReleaseAgeExclude:
   # First-party package, released from our own CI minutes before it is
   # consumed here — the supply-chain cool-down guards third-party releases.
   - "@robomous/ui-core"
+
+# Packages permitted to run an install script. pnpm runs none by default, because a
+# postinstall is arbitrary code executing with your credentials at install time —
+# the cool-down above buys time to notice a bad release, and this decides which
+# releases get to run anything at all.
+#
+# esbuild's postinstall fetches the platform binary for the machine doing the
+# install. Without it `vite` and `vitest` have no binary to call, and every frontend
+# build and test fails at startup rather than at resolution.
+allowBuilds:
+  esbuild: true
+
+# Forced resolutions. An entry here is a version this repository takes regardless of
+# what the dependency graph asked for, so each one should say why it exists.
+#
+# js-yaml: a published security advisory, reached transitively. The override is what
+# makes the fix reach every consumer of it in the tree rather than only the one that
+# happened to be updated.
+overrides:
+  js-yaml@4.3.0: 4.3.2

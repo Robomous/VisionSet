@@ -169,24 +169,30 @@ uv publish dist/*                # or: python -m twine upload dist/*
 
 ### 5. Publish the npm packages
 
-**Publishing needs a one-time password, so it is a hand step and cannot be automated.** The npm
-account carries two-factor auth on writes; no token in this repository or in CI can answer that
-challenge. `pnpm login --registry https://registry.npmjs.org` first if `npm whoami` does not
-already name the publishing account.
+**The publish path is [`.github/workflows/publish-npm.yml`](../../.github/workflows/publish-npm.yml),
+and like the PyPI one it needs no credentials from anybody.** It is `workflow_dispatch` only, so a
+human starts it deliberately, and it is dispatched against the tag for the same reason:
 
 ```bash
-bash scripts/build_dist.sh                                  # or: pnpm -r build
-pnpm --filter @visionset/annotator publish --access public --tag beta
-pnpm --filter @visionset/ui-core   publish --access public --tag beta
+gh workflow run publish-npm.yml --ref v0.0.1-beta.3 -f dist-tag=beta
+gh run watch "$(gh run list --workflow=publish-npm.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 ```
 
-**The order is load-bearing**, for the reason in [the scope](#the-npm-scope): ui-core's rewritten
-dependency on annotator names a version that has to exist already.
+**No token exists anywhere, and that is the design.** `id-token: write` lets the job mint an OIDC
+token that npm exchanges for a short-lived upload credential. The configuration lives on each
+package's npm settings page and names the workflow **by filename**, exactly as PyPI's names
+`publish-pypi.yml`; it also carries a separate *allow `npm publish`* permission, without which the
+exchange succeeds and the upload is refused. A wrong field there surfaces only when a publish is
+attempted — there is nothing that validates it beforehand.
 
-Both packages are built by `tsc` before packing, and `pnpm publish` refuses a tree with
-uncommitted changes unless told otherwise — so publish from the tagged commit, clean. Check what
-is about to leave with `pnpm --filter <pkg> pack` and read the tarball: `dist/` must be in it, and
-`workspace:*` must **not** appear in the packed `package.json`.
+**The order inside the workflow is load-bearing**, for the reason in
+[the scope](#the-npm-scope): ui-core's rewritten dependency on annotator names a version that has
+to exist on the registry already. The workflow also packs both tarballs and fails if either still
+declares a `workspace:` dependency, because a published version cannot be replaced.
+
+**This needs pnpm 11 or newer, and the repository is on 12.** pnpm 10 could not perform the OIDC
+exchange, and npm cannot do the `workspace:*` rewrite — so before pnpm 11 the two requirements
+pulled in opposite directions and this step had to be done by hand with a one-time password.
 
 ### 6. Verify it from outside
 

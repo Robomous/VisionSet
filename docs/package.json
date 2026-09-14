@@ -17,14 +17,5 @@
     "mermaid": "^12.0.0",
     "sharp": "^0.35.4",
     "unist-util-visit": "^5.0.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "sharp"
-    ],
-    "overrides": {
-      "lodash-es": "4.18.1"
-    }
   }
 }
