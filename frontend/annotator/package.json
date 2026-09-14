@@ -1,8 +1,17 @@
 {
   "name": "@visionset/annotator",
-  "version": "0.0.1-beta.2",
+  "version": "0.0.1-beta.3",
   "description": "Headless annotation engine: interaction state machine + geometry + input in pure TypeScript, with replaceable render adapters (React first).",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Robomous/VisionSet.git",
+    "directory": "frontend/annotator"
+  },
+  "homepage": "https://github.com/Robomous/VisionSet#readme",
+  "bugs": {
+    "url": "https://github.com/Robomous/VisionSet/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

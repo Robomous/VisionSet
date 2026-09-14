@@ -431,10 +431,12 @@ The first artifact anyone installs is the beta: bump `VERSION` to `0.0.1b1`, run
 `0.0.1-beta` is *lower* than `0.1.0` in both version orderings, which is why `VERSION`
 sits at `0.0.1.dev0` rather than the `0.1.0.dev0` the repo was bootstrapped with.
 
-**The beta ships to PyPI, and nothing ships to npm** — decided in #69, with the reasoning
-and the whole runbook in [docs/content/releasing.md](docs/content/releasing.md). The short version: pip is
-the vehicle the product is designed around, and a pre-release is invisible to a plain
-`pip install`, so publishing one is safe rather than premature.
+**The beta ships to PyPI as one wheel, and two of the three frontend packages ship to npm**
+— `@visionset/annotator` and `@visionset/ui-core`, at the same version, in that order;
+`@visionset/app` is `private: true` and its bundle ships inside the wheel. The reasoning and
+the whole runbook are in [docs/content/releasing.md](docs/content/releasing.md). The short
+version: pip is the vehicle the product is designed around, and a pre-release is invisible to
+a plain `pip install`, so publishing one is safe rather than premature.
 
 ## Commits
 

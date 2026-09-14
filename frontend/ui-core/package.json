@@ -1,8 +1,17 @@
 {
   "name": "@visionset/ui-core",
-  "version": "0.0.1-beta.2",
+  "version": "0.0.1-beta.3",
   "description": "VisionSet domain components, design tokens, and the generated typed API contract with the data port a host implements. UI primitives: Radix behaviour under shadcn Nova styling, with lucide icons.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Robomous/VisionSet.git",
+    "directory": "frontend/ui-core"
+  },
+  "homepage": "https://github.com/Robomous/VisionSet#readme",
+  "bugs": {
+    "url": "https://github.com/Robomous/VisionSet/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
