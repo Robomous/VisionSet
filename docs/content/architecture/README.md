@@ -24,7 +24,7 @@ flowchart TB
         Cli["visionset.cli\nTyper"]
         Mcp["visionset.mcp\nMCP tools"]
         Kernel["visionset.kernel\ndomain · ports · services"]
-        Adapters["kernel.adapters\nSQLite · filesystem · Pillow · ffmpeg"]
+        Adapters["kernel.adapters\nSQLite · filesystem · Pillow"]
     end
 
     Store[("Workspace\none directory, one SQLite file")]
@@ -59,7 +59,7 @@ whole thing.
 ## Where to go next
 
 - [backend/](backend/README.md) - the layer stack, and a page per package.
-- [frontend/](frontend/README.md) - the three workspace packages and how they
+- [frontend/](frontend/README.md) - the four workspace packages and how they
   depend on each other.
 - [cross-cutting.md](cross-cutting.md) - the two machine-enforced boundaries, the
   capabilities contract, and the batch lifecycle at a glance.

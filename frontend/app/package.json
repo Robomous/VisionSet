@@ -1,7 +1,7 @@
 {
   "name": "@visionset/app",
   "version": "0.0.1-beta.3",
-  "description": "VisionSet OSS product shell. Private — never published to npm; the compiled bundle ships inside the Python wheel.",
+  "description": "VisionSet OSS product shell. Private \u2014 never published to npm; the compiled bundle ships inside the Python wheel.",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@robomous/ui-core": "^0.2.1",
     "@visionset/annotator": "workspace:*",
+    "@visionset/media": "workspace:*",
     "@visionset/ui-core": "workspace:*",
     "lucide-react": "^1.44.0",
     "openapi-fetch": "^0.17.0",

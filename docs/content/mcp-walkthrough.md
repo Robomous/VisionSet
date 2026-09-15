@@ -76,18 +76,22 @@ is the third fold: there is no `list_schema_versions`, because the parent alread
 
 ```
 ingest project="road-signs" path="/abs/incoming"
-->  {"created": 4, "deduplicated": 0, "failed": 0, "partial": 0, "batch_id": "...", "failures": []}
+->  {"created": 4, "deduplicated": 0, "failed": 0, "batch_id": "...", "failures": [], ...}
 ```
 
-One tool, and it **blocks until the run has finished**. The kernel splits registration in two -
-a clip needs a rate and a probe where a folder needs neither - and `ingest` dispatches on whether
-the path is a directory, so `register_image_source`, `register_video_source` and `start_ingest`
-became one call. A video is the same call with `extraction_fps`.
+One tool, and it **blocks until the run has finished**. `register_image_source` and `start_ingest`
+became one call, because there is nothing an agent does between them.
+
+**It takes a directory of still images, and nothing else.** There is no video path here at all:
+a clip is decoded by a browser, on the user's own machine, and only the frames it was cut into
+ever reach the server — so no tool in this server decodes video, `register_video_source` does not
+exist, and there is no `extraction_fps` parameter to pass. Pointed at a clip, `ingest` refuses and
+says to open the project's Ingest screen. Re-encoding the file first is not a way round it.
 
 There is no job to poll and no `resume_ingest`, and that is a stated limit rather than an omission:
 a stdio server has no background worker, so an agent driving a resume loop would block for exactly
-as long as doing the work. If a call is cut off, call `ingest` again - registration is idempotent on
-`(kind, path, extraction_fps)` and content addressing means the re-run creates nothing.
+as long as doing the work. If a call is cut off, call `ingest` again - registration is idempotent
+and content addressing means the re-run creates nothing.
 
 `failed` and `failures` are how a run reports the files it could not read *while still succeeding*.
 An unreadable JPEG in a folder of five thousand is not a reason to refuse the other 4,999.

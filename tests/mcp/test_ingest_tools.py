@@ -1,8 +1,9 @@
 """``ingest`` / ``list_sources`` / ``backfill_thumbnails``.
 
-``ingest`` is the one tool standing for three parity candidates, so what is
-pinned here is chiefly that the dispatch and the refusals happen at this level
-rather than reaching the kernel as tracebacks.
+``ingest`` is the one tool standing for two parity candidates, so what is
+pinned here is chiefly that the refusals happen at this level rather than
+reaching the kernel as tracebacks — and, above all, that a video is refused with
+a sentence an agent can act on rather than one it will try to work around.
 """
 
 from __future__ import annotations
@@ -11,13 +12,7 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from tests.fixtures.media import (
-    require_ffmpeg,
-    write_corrupt_video,
-    write_images,
-    write_unsupported_file,
-    write_video,
-)
+from tests.fixtures.media import write_image, write_images, write_unsupported_file
 from tests.mcp._flow import call, error, payload, schema
 
 from visionset.kernel.services import IngestService, ProjectService, WorkspaceService
@@ -56,83 +51,6 @@ def test_the_run_id_is_not_called_job_id_because_no_tool_can_read_one(
     assert error(call("get_job", job_id=result["ingest_job_id"]))["message"]
 
 
-def test_a_clip_ingested_with_ranges_extracts_only_inside_them(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Five grid points sit in [0.5, 1.5) at 5 fps, and the echo is canonical."""
-    named = schema(monkeypatch, tmp_path)
-    write_video(tmp_path / "clip.mp4", size=(160, 120))
-    result = payload(
-        call(
-            "ingest",
-            project=named,
-            path=str(tmp_path / "clip.mp4"),
-            fps=5,
-            ranges=[{"start_seconds": 0.5, "end_seconds": 1.5}],
-        )
-    )
-
-    assert result["created"] == 5
-    assert result["source"]["video"]["ranges"] == [{"start_seconds": 0.5, "end_seconds": 1.5}]
-
-
-def test_a_clip_ingested_with_a_scale_echoes_it(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    named = schema(monkeypatch, tmp_path)
-    write_video(tmp_path / "clip.mp4", size=(160, 120))
-    result = payload(call("ingest", project=named, path=str(tmp_path / "clip.mp4"), scale=50))
-
-    assert result["source"]["video"]["scale_percent"] == 50
-
-
-def test_scale_for_a_directory_of_stills_is_refused(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    named = schema(monkeypatch, tmp_path)
-    write_images(tmp_path / "incoming", count=1)
-    message = error(call("ingest", project=named, path=str(tmp_path / "incoming"), scale=50))[
-        "message"
-    ]
-
-    assert "video source" in message
-
-
-def test_ranges_for_a_directory_of_stills_are_refused(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    named = schema(monkeypatch, tmp_path)
-    write_images(tmp_path / "incoming", count=1)
-    message = error(
-        call(
-            "ingest",
-            project=named,
-            path=str(tmp_path / "incoming"),
-            ranges=[{"start_seconds": 0.0, "end_seconds": 1.0}],
-        )
-    )["message"]
-
-    assert "video source" in message
-
-
-def test_an_inverted_range_is_refused_before_any_work(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """The kernel refusal is a bare ValidationError, so the tool answers first."""
-    named = schema(monkeypatch, tmp_path)
-    write_video(tmp_path / "clip.mp4")
-    message = error(
-        call(
-            "ingest",
-            project=named,
-            path=str(tmp_path / "clip.mp4"),
-            ranges=[{"start_seconds": 1.5, "end_seconds": 0.5}],
-        )
-    )["message"]
-
-    assert "selection" in message
-
-
 def test_ingesting_the_same_directory_again_creates_nothing_new(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -158,7 +76,7 @@ def test_a_file_that_is_not_an_image_is_reported_and_the_run_carries_on(
     assert len(result["failures"]) == 1
     # `IngestFailure.name` is whatever the run's own loop was holding, which for a
     # directory walk is the full path rather than the basename. Worth knowing
-    # rather than worth changing: unlike `Source.path` and `Asset.uri`, which are
+    # rather than worth changing: unlike `Source.locator` and `Asset.uri`, which are
     # deliberately unpublished, this one already travels on the wire through
     # `IngestFailureOut` and is the same string the REST API and the CLI report.
     assert result["failures"][0]["name"].endswith("notes.txt")
@@ -177,25 +95,37 @@ def test_a_missing_path_is_refused_before_any_work(
     assert "no such path" in refusal["message"]
 
 
-def test_a_non_positive_rate_is_refused_rather_than_raising(
+def test_a_video_is_refused_and_told_where_import_actually_lives(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # `register_video` refuses this with a bare ValueError. Pydantic cannot express
-    # an exclusive lower bound through `Field(gt=...)` here without also rejecting
-    # the None default, so it is checked in the body — the CLI's `--fps` problem.
+    """The refusal this tool exists to make well.
+
+    An agent told only "not supported" goes looking for another route — a second
+    tool, a re-encode, a decoder beside the workspace — so the message has to say
+    where video import is *and* that there is nothing here to find.
+    """
     named = schema(monkeypatch, tmp_path)
-    write_images(tmp_path / "incoming", count=1)
-    refusal = error(call("ingest", project=named, path=str(tmp_path / "incoming"), fps=0))
-    assert "greater than zero" in refusal["message"]
+    clip = tmp_path / "drive.mp4"
+    clip.write_bytes(b"not really a video, and it never gets read")
+
+    message = error(call("ingest", project=named, path=str(clip)))["message"]
+
+    assert "is not a directory" in message
+    assert "imported in the browser" in message
+    assert "Ingest screen" in message
+    assert "No tool here decodes video" in message
 
 
-def test_a_rate_given_for_a_directory_of_stills_is_refused(
+def test_a_lone_image_gets_the_same_refusal(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """The branch is `is_dir()`, not a suffix list, and the sentence stays true."""
     named = schema(monkeypatch, tmp_path)
-    write_images(tmp_path / "incoming", count=1)
-    refusal = error(call("ingest", project=named, path=str(tmp_path / "incoming"), fps=2.0))
-    assert "directory of stills" in refusal["message"]
+    photo = write_image(tmp_path / "one.png")
+
+    message = error(call("ingest", project=named, path=str(photo)))["message"]
+
+    assert "directory of still images" in message
 
 
 def test_the_batch_can_be_named(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -207,39 +137,6 @@ def test_the_batch_can_be_named(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     listed = payload(call("list_batches", project=named))
     assert [b["name"] for b in listed["items"]] == ["first pass"]
     assert listed["items"][0]["id"] == result["batch_id"]
-
-
-def test_a_clip_is_decomposed_into_frames(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    require_ffmpeg()
-    named = schema(monkeypatch, tmp_path)
-    clip = write_video(tmp_path / "clip.mp4", size=(96, 72))
-    result = payload(call("ingest", project=named, path=str(clip.path), fps=1.0))
-    assert result["source"]["kind"] == "video"
-    # The rate is part of what the source *is*, so it comes back on the source.
-    assert result["source"]["video"]["extraction_fps"] == 1.0
-    assert result["created"] == 2
-
-
-def test_a_damaged_clip_reports_what_it_recovered(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """An agent decides in the moment on the same numbers a person does.
-
-    Which is the whole argument for putting the counts in the result rather than in the
-    reason sentence — an agent that has to parse "after 8 frames" out of prose is an agent
-    that will eventually parse it wrong.
-    """
-    require_ffmpeg()
-    named = schema(monkeypatch, tmp_path)
-    clip = write_corrupt_video(tmp_path / "broken.mp4", size=(96, 72), fps=10, duration_seconds=2.0)
-
-    result = payload(call("ingest", project=named, path=str(clip.path), fps=5.0))
-
-    assert result["failures"][0]["kind"] == "partial"
-    assert result["failures"][0]["frames_produced"] == result["created"] > 0
-    assert result["failures"][0]["frames_expected_estimate"] == 10
-    assert result["failed"] == 0
-    assert result["partial"] == 1
 
 
 def test_sources_are_listed_without_the_path_they_live_at(

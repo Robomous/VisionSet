@@ -34,8 +34,10 @@ from visionset.kernel.domain import (
     Release,
     SchemaDraft,
     Source,
+    StagedFrame,
     TaskGroup,
     Token,
+    VideoImport,
     Workspace,
 )
 
@@ -118,6 +120,27 @@ class UnitOfWork(Protocol):
 
     @property
     def ingest_jobs(self) -> Repository[IngestJob]: ...
+
+    @property
+    def video_imports(self) -> Repository[VideoImport]:
+        """Browser-driven import sessions, parented on the project.
+
+        A session is the other ingestion shape and deliberately not an
+        ``IngestJob``: it has a middle — frames arrive into it over many calls —
+        where a run is one call that either finishes or does not.
+        """
+        ...
+
+    @property
+    def video_import_frames(self) -> Repository[StagedFrame]:
+        """The frames staged for one session, parented on the session.
+
+        Read whole — ``list(import_id)`` is the only shape any caller wants,
+        both to adjudicate an append and to build the assets at commit — so a
+        lookup by ordinal is a dict the service builds rather than a query the
+        port grows.
+        """
+        ...
 
     @property
     def assets(self) -> Repository[Asset]: ...
@@ -330,6 +353,26 @@ class UnitOfWork(Protocol):
         see.
 
         Raises ``EntityNotFound`` if there is no such batch.
+        """
+        ...
+
+    def recount_video_import_frames(self, import_id: UUID, *, at: datetime) -> int:
+        """Set a session's ``received_frame_count`` to the rows it actually holds.
+
+        **A derivation written in SQL, for :meth:`add_batch_assets`' reason.** The
+        count is ``COUNT(*)`` over ``video_import_frame``, evaluated inside the
+        updating statement rather than read before it. Read first and written
+        second, it is a plain lost update: two appends of different frames to one
+        session both read the same number, both add to it, and the session ends
+        holding fewer than it stores — which is unrecoverable, because re-sending
+        a staged frame is idempotent and never increments.
+
+        A value that is recomputed from the rows cannot drift from them at all,
+        so there is no ``expected`` here and nothing to reconcile; ``at`` stamps
+        ``updated_at`` in the same statement so the row takes one write.
+
+        Returns the count it stored. Raises ``EntityNotFound`` if there is no such
+        session.
         """
         ...
 

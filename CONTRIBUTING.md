@@ -504,18 +504,27 @@ feedback is answered.
   — so the ESLint half is what covers them.
 - Never commit fixture media. `**/workspace-data/` is git-ignored for a reason (v1 shipped
   929 MB of images into git history; we do not repeat that).
-- Generate media instead: `tests/fixtures/media.py` writes tiny images (Pillow) and tiny
-  `testsrc` clips (ffmpeg) into a `tmp_path`. Equal arguments produce byte-identical output, so
-  dedup and content-addressing tests can rely on it.
+- **One written exception**, and it is narrow: `frontend/media/test-fixtures/` holds four
+  synthetic clips totalling about 7 KB. They exist because this distribution decodes no video
+  and therefore cannot encode one either — there is no `tests/fixtures/media.py` equivalent a
+  test could call, and the only encoder in the building is the browser's. They are produced by
+  `frontend/media/scripts/make-fixtures.mjs` inside the Playwright Chromium this repository
+  already installs, and that generator is committed beside them so the bytes can be reproduced
+  rather than trusted. Anything larger, or anything a host-side generator could write, is the
+  rule above and not this exception.
+- Generate media instead: `tests/fixtures/media.py` writes tiny images (Pillow) into a `tmp_path`.
+  Equal arguments produce byte-identical output, so dedup and content-addressing tests can rely on
+  it.
 - `tests/architecture/test_tracked_file_sizes.py` enforces the rule: any tracked file over
   200 KB fails the build unless it is in that module's `ALLOWLIST`, which grants a *higher
   ceiling*, never an unbounded one. `git ls-files` reads the index, so a merely staged binary
   already trips it.
-- Video tests need the **ffmpeg** binary (`brew install ffmpeg` / `sudo apt-get install
-  ffmpeg`). Without it they skip locally; CI installs it and sets `VISIONSET_REQUIRE_FFMPEG=1`,
-  which turns that skip into a hard failure so a broken install cannot pass unnoticed. The
-  container route needs nothing on the host — `docker/api.Dockerfile` installs it into the image,
-  and CI's `docker` job builds that image and runs the video tests inside it.
+- Video needs no binary anywhere, on the host or in the image: this distribution decodes none.
+  A clip is demuxed and decoded by the browser, so the tests that exercise it are browser tests —
+  `pnpm --filter @visionset/media test:browser` runs them in Chromium against the committed
+  clips Chromium itself encoded — regenerate them with `pnpm --filter @visionset/media fixtures`,
+  which is a one-shot, not a step in the test run. `tests/scripts/no_server_video_decode.test.mjs`
+  is the gate that keeps a server-side decoder from coming back.
 
 ### The two halves of the inference matrix
 

@@ -154,7 +154,6 @@ from visionset.kernel.domain.media import (
     DecodedStill,
     ImageFormat,
     ImageMetadata,
-    VideoFrame,
     VideoMetadata,
     media_type_of,
 )
@@ -301,6 +300,15 @@ from visionset.kernel.domain.token import (
     hash_secret,
 )
 from visionset.kernel.domain.transitions import require_move, require_state
+from visionset.kernel.domain.video_import import (
+    DEFAULT_EXTRACTION_FPS,
+    SAMPLING_POLICY_VERSION,
+    VIDEO_FRAME_FORMAT,
+    IncomingFrame,
+    StagedFrame,
+    VideoImport,
+    VideoImportState,
+)
 from visionset.kernel.domain.workspace import Workspace
 
 __all__ = [
@@ -530,9 +538,15 @@ __all__ = [
     "ThumbnailBackfill",
     "TimeRange",
     "Token",
-    "VideoFrame",
     "VideoMetadata",
     "VideoProvenance",
+    "VideoImportState",
+    "VideoImport",
+    "StagedFrame",
+    "IncomingFrame",
+    "VIDEO_FRAME_FORMAT",
+    "SAMPLING_POLICY_VERSION",
+    "DEFAULT_EXTRACTION_FPS",
     "Workspace",
     "assign_split",
     "canonical_bytes",

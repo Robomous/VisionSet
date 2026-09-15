@@ -232,10 +232,10 @@ export const checkHomeOut: Check<Schemas["HomeOut"]> =
   /*#__PURE__*/ object({ "activity": [true, arrayOf(checkActivityEntryOut)], "attention": [true, arrayOf(checkAttentionItemOut)], "projects": [true, arrayOf(checkProjectSummaryOut)], "resume": [true, either([checkResumeTargetOut, isNull] as const)], "totals": [true, checkWorkspaceTotalsOut] } as const);
 
 export const checkIngestFailureKind: Check<Schemas["IngestFailureKind"]> =
-  /*#__PURE__*/ oneOf(["unsupported", "corrupt", "partial"] as const);
+  /*#__PURE__*/ oneOf(["unsupported", "corrupt"] as const);
 
 export const checkIngestFailureOut: Check<Schemas["IngestFailureOut"]> =
-  /*#__PURE__*/ object({ "frames_expected_estimate": [true, either([isInteger, isNull] as const)], "frames_produced": [true, either([isInteger, isNull] as const)], "kind": [true, checkIngestFailureKind], "name": [true, isString], "reason": [true, isString] } as const);
+  /*#__PURE__*/ object({ "kind": [true, checkIngestFailureKind], "name": [true, isString], "reason": [true, isString] } as const);
 
 export const checkIngestState: Check<Schemas["IngestState"]> =
   /*#__PURE__*/ oneOf(["pending", "running", "completed", "failed"] as const);
@@ -376,7 +376,7 @@ export const checkClipRange: Check<Schemas["ClipRange"]> =
   /*#__PURE__*/ object({ "end_seconds": [true, isNumber], "start_seconds": [true, isNumber] } as const);
 
 export const checkVideoProvenanceOut: Check<Schemas["VideoProvenanceOut"]> =
-  /*#__PURE__*/ object({ "codec": [true, isString], "duration_seconds": [true, isNumber], "extraction_fps": [true, isNumber], "fps": [true, isNumber], "height": [true, isInteger], "ranges": [true, arrayOf(checkClipRange)], "scale_percent": [true, isInteger], "width": [true, isInteger] } as const);
+  /*#__PURE__*/ object({ "codec": [true, isString], "duration_seconds": [true, isNumber], "extraction_fps": [true, isNumber], "fps": [true, either([isNumber, isNull] as const)], "height": [true, isInteger], "materializer": [true, either([isString, isNull] as const)], "policy_version": [true, either([isInteger, isNull] as const)], "ranges": [true, arrayOf(checkClipRange)], "scale_percent": [true, isInteger], "width": [true, isInteger] } as const);
 
 export const checkSourceOut: Check<Schemas["SourceOut"]> =
   /*#__PURE__*/ object({ "id": [true, isString], "kind": [true, checkSourceKind], "name": [true, isString], "project_id": [true, isString], "registered_at": [true, isString], "video": [true, either([checkVideoProvenanceOut, isNull] as const)] } as const);
@@ -411,16 +411,25 @@ export const checkSuggestedRegion: Check<Schemas["SuggestedRegion"]> =
 export const checkSuggestionOut: Check<Schemas["SuggestionOut"]> =
   /*#__PURE__*/ object({ "applied": [true, checkAppliedParameters], "confidence": [true, isNumber], "model_ref": [true, isString], "parameters": [true, arrayOf(checkSuggestParameter)], "regions": [true, arrayOf(checkSuggestedRegion)] } as const);
 
+export const checkVideoImportState: Check<Schemas["VideoImportState"]> =
+  /*#__PURE__*/ oneOf(["open", "committed", "aborted"] as const);
+
+export const checkVideoImportOut: Check<Schemas["VideoImportOut"]> =
+  /*#__PURE__*/ object({ "batch_id": [true, either([isString, isNull] as const)], "expected_frame_count": [true, isInteger], "id": [true, isString], "project_id": [true, isString], "received_frame_count": [true, isInteger], "source_id": [true, isString], "started_at": [true, isString], "state": [true, checkVideoImportState], "updated_at": [true, isString] } as const);
+
 // One alias per operation. `unwrap` takes these, never a schema check directly, so that
 // `tests/scripts/checks_wiring.test.mjs` can pair every call with its own operationId.
 
+export const checkAbortVideoImport = checkNoContent;
 export const checkAddAnnotations = checkAnnotationPage;
 export const checkAddBatchAssets = checkBatchMembershipOut;
+export const checkAppendVideoImportFrames = checkVideoImportOut;
 export const checkApproveBatch = checkBatchOut;
 export const checkAssignJob = checkJobOut;
 export const checkCancelBackgroundJob = checkBackgroundJobOut;
 export const checkCheckConnectionIntegrity = checkBackgroundJobOut;
 export const checkCheckExport = checkExportCompatibilityOut;
+export const checkCommitVideoImport = checkBatchOut;
 export const checkCompareSchemaVersions = checkSchemaDiffOut;
 export const checkCompleteBatch = checkBatchOut;
 export const checkCompleteJob = checkJobOut;
@@ -462,6 +471,7 @@ export const checkGetReleaseManifest = checkBlob;
 export const checkGetSchemaDraft = checkSchemaDraftOut;
 export const checkGetSchemaVersion = checkSchemaVersionOut;
 export const checkGetSource = checkSourceOut;
+export const checkGetVideoImport = checkVideoImportOut;
 export const checkHealth: Check<operations["health"]["responses"][200]["content"]["application/json"]> =
   /*#__PURE__*/ mapOf(isString);
 export const checkInferenceDownloadSize = checkDownloadSizeOut;
@@ -497,7 +507,6 @@ export const checkPromoteBatch = checkAssetPage;
 export const checkPublishRelease = checkReleaseOut;
 export const checkPublishSchemaDraft = checkSchemaPublicationOut;
 export const checkRegisterImageSource = checkSourceOut;
-export const checkRegisterVideoSource = checkSourceOut;
 export const checkRemoveBatchAssets = checkBatchMembershipOut;
 export const checkRemoveDatasetAsset = checkNoContent;
 export const checkRenameProject = checkProjectOut;
@@ -508,6 +517,7 @@ export const checkSetAssetProgress = checkAssetProgressOut;
 export const checkStartBatch = checkBatchOut;
 export const checkStartIngest = checkIngestJobOut;
 export const checkStartJob = checkJobOut;
+export const checkStartVideoImport = checkVideoImportOut;
 export const checkSuggestRegion = checkSuggestionOut;
 export const checkTestConnectionEndpoint = checkConnectionOut;
 export const checkUpdateAnnotations = checkAnnotationPage;

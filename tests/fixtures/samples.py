@@ -185,7 +185,7 @@ SCHEMA_CHANGE_PREVIEW = SchemaChangePreview(
 SOURCE = Source(
     project_id=PROJECT.id,
     kind=SourceKind.VIDEO,
-    path=str(Path("/workspace/incoming/clip.mp4")),
+    locator=str(Path("/workspace/incoming/clip.mp4")),
     # Fully populated, per this module's rule: a ``None`` here would let the
     # display-name half of the wire projections go unchecked.
     display_name="dashcam morning run",
@@ -209,17 +209,9 @@ INGEST_FAILURE = IngestFailure(
     name="notes.txt", kind=IngestFailureKind.UNSUPPORTED, reason="not a recognizable image"
 )
 
-#: The other shape a report entry has, and the one that carries the two counts.
-#: A second constant rather than fields on the one above, because the domain
-#: refuses to let a single entry hold both: `partial` names what arrived and the
-#: other two kinds name what did not, so a fully-populated sample of each is the
-#: only way this module's rule can be kept.
-PARTIAL_EXTRACTION = IngestFailure(
-    name="broken.mp4",
-    kind=IngestFailureKind.PARTIAL,
-    reason="the video is damaged or truncated after 8 frames",
-    frames_produced=8,
-    frames_expected_estimate=20,
+#: The other kind, so a projection cannot pass by hardcoding one of them.
+CORRUPT_FAILURE = IngestFailure(
+    name="half-written.png", kind=IngestFailureKind.CORRUPT, reason="the image data ends early"
 )
 
 BATCH = Batch(
@@ -250,7 +242,7 @@ INGEST_JOB = IngestJob(
     batch_name=BATCH.name,
     processed=2,
     total=3,
-    failures=(INGEST_FAILURE, PARTIAL_EXTRACTION),
+    failures=(INGEST_FAILURE, CORRUPT_FAILURE),
 )
 
 ASSET = Asset(

@@ -39,6 +39,7 @@ from visionset.server.routes import (
     releases,
     schemas,
     sources,
+    video_imports,
 )
 
 # A module may contribute more than one router: ``sources``, ``batches``,
@@ -55,6 +56,10 @@ ROUTERS: Final[tuple[APIRouter, ...]] = (
     sources.project_router,
     sources.router,
     ingest.router,
+    # Beside the sources they produce: a video import *is* how a video source is
+    # registered, since no clip is ever uploaded — see ``routes/video_imports.py``.
+    video_imports.project_router,
+    video_imports.router,
     assets.router,
     batches.project_router,
     batches.router,
@@ -104,4 +109,5 @@ __all__ = [
     "releases",
     "schemas",
     "sources",
+    "video_imports",
 ]

@@ -91,7 +91,6 @@ import {
   checkPublishRelease,
   checkPublishSchemaDraft,
   checkRegisterImageSource,
-  checkRegisterVideoSource,
   checkRemoveDatasetAsset,
   checkRenameProject,
   checkResumeIngest,
@@ -100,6 +99,9 @@ import {
   checkSetAssetProgress,
   checkStartBatch,
   checkStartIngest,
+  checkAbortVideoImport,
+  checkCommitVideoImport,
+  checkStartVideoImport,
   checkStartJob,
   checkVerifyRelease,
 } from "../generated/checks";
@@ -761,63 +763,33 @@ export function useBatches(projectId: string): UseQueryResult<BatchPage, Error> 
 }
 
 /**
- * Register images or a clip, and get the probe back.
+ * Register images, and get the source back.
  *
- * **`extraction_fps` belongs to the source, not to the run**, which is the fact
- * this whole screen is shaped around: "same source, same assets" only means
- * something if the parameters are part of what the source *is*. So the rate is
- * chosen here, before anything has been probed — and registering the same clip at
- * a different rate, or over other ranges, produces a **second source**,
- * deliberately.
+ * **Images only.** A clip is never registered by upload: this server holds no
+ * decoder, so the browser materializes frames locally and `useStartVideoImport`
+ * opens the session that receives them. The video branch that used to live here
+ * posted to `/projects/{project_id}/sources/video`, a route that no longer exists.
  *
- * Registration is idempotent on `(kind, path, extraction_fps, ranges)` and upload staging
- * is content-addressed, so re-registering the same bytes at the same rate returns
- * the source that already exists rather than a duplicate.
+ * Registration is idempotent and upload staging is content-addressed, so
+ * re-registering the same bytes returns the source that already exists rather
+ * than a duplicate.
  */
 export function useRegisterSource(projectId: string) {
   const client = useApiClient();
   const queries = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      files: readonly File[];
-      extractionFps?: number;
-      ranges?: readonly { start_seconds: number; end_seconds: number }[];
-      name?: string;
-      scalePercent?: number;
-    }) => {
-      const extractionFps = input.extractionFps;
-      const source =
-        extractionFps !== undefined
-        ? unwrap(
-            await client.POST("/projects/{project_id}/sources/video", {
-              params: { path: { project_id: projectId } },
-              body: {
-                file: input.files[0] as unknown as string,
-                extraction_fps: extractionFps,
-                // Multipart carries strings, so the selection rides as one JSON
-                // field; the kernel canonicalizes and the response echoes that.
-                ...(input.ranges !== undefined && input.ranges.length > 0
-                  ? { ranges: JSON.stringify(input.ranges) }
-                  : {}),
-                scale_percent: input.scalePercent ?? 100,
-              },
-              encode: "multipart",
-            }),
-            checkRegisterVideoSource,
-          )
-        : unwrap(
-            await client.POST("/projects/{project_id}/sources/images", {
-              params: { path: { project_id: projectId } },
-              // `name` is what the source will be *called* — without it
-              // the server names the source by its staged directory, whose
-              // basename is a content digest. The host's encoder skips `undefined`.
-              body: { files: input.files as unknown as string[], name: input.name },
-              encode: "multipart",
-            }),
-          checkRegisterImageSource,
-          );
-      return source;
-    },
+    mutationFn: async (input: { files: readonly File[]; name?: string }) =>
+      unwrap(
+        await client.POST("/projects/{project_id}/sources/images", {
+          params: { path: { project_id: projectId } },
+          // `name` is what the source will be *called* — without it
+          // the server names the source by its staged directory, whose
+          // basename is a content digest. The host's encoder skips `undefined`.
+          body: { files: input.files as unknown as string[], name: input.name },
+          encode: "multipart",
+        }),
+        checkRegisterImageSource,
+      ),
     onSuccess: () => queries.invalidateQueries({ queryKey: ingestKeys.sources(projectId) }),
   });
 }
@@ -895,6 +867,84 @@ export function useResumeIngest() {
       ),
     onSuccess: (_data, jobId) =>
       queries.invalidateQueries({ queryKey: ingestKeys.ingestJob(jobId) }),
+  });
+}
+
+// --- browser video import -----------------------------------------------------
+
+export type VideoImport = components["schemas"]["VideoImportOut"];
+export type VideoImportStart = components["schemas"]["VideoImportStart"];
+
+/**
+ * Declare a clip and open the session its frames will arrive in.
+ *
+ * **No video bytes travel here.** The body is what the host's decoder read off
+ * the container plus the cut about to be materialized; the file stays on the
+ * machine it is already on. A session registers a source of its own, which is why
+ * this invalidates the source list even though no assets exist yet.
+ *
+ * There is deliberately **no `useAppendFrames` beside this**. Frames reach the
+ * server through the host's `FrameSink`, because the materializer calls
+ * `append` itself and treats the returned promise as its back-pressure ack — a
+ * React mutation cannot sit in that loop, and a host whose frames go to object
+ * storage rather than to this API must be able to replace that half alone.
+ */
+export function useStartVideoImport(projectId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: VideoImportStart) =>
+      unwrap(
+        await client.POST("/projects/{project_id}/video-imports", {
+          params: { path: { project_id: projectId } },
+          body: input,
+        }),
+        checkStartVideoImport,
+      ),
+    onSuccess: () => queries.invalidateQueries({ queryKey: ingestKeys.sources(projectId) }),
+  });
+}
+
+/**
+ * Turn every staged frame into an asset, in one transaction, and answer the batch.
+ *
+ * Refused with 409 `VIDEO_IMPORT_INCOMPLETE` while any expected frame is missing —
+ * the gate the session exists for, since a batch silently short of a stretch of
+ * its clip is undetectable downstream. Idempotent, so a retried commit answers the
+ * batch the first one made rather than a second one.
+ */
+export function useCommitVideoImport(projectId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (importId: string) =>
+      unwrap(
+        await client.POST("/video-imports/{import_id}/commit", {
+          params: { path: { import_id: importId } },
+        }),
+        checkCommitVideoImport,
+      ),
+    onSuccess: () => queries.invalidateQueries({ queryKey: ["projects", projectId] }),
+  });
+}
+
+/**
+ * Throw the session away: no assets, no batch, nothing staged reaches the project.
+ *
+ * What a cancel calls, and what a materialization that died calls on its way out —
+ * a half-import left open is staged bytes nobody will ever claim. Aborting twice
+ * still answers 204, so a double cancel is not an error to handle.
+ */
+export function useAbortVideoImport() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: async (importId: string) =>
+      unwrap(
+        await client.DELETE("/video-imports/{import_id}", {
+          params: { path: { import_id: importId } },
+        }),
+        checkAbortVideoImport,
+      ),
   });
 }
 

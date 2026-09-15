@@ -297,7 +297,7 @@ def main(dest: Path) -> Summary:
         # taken now would be stale by the time anything used it.
         incoming = _write_frames(dest / "incoming", FRAME_COUNT)
         source = sources.register_images(project.id, incoming)
-        _say(f"source {source.kind.value} registered at {source.path}")
+        _say(f"source {source.kind.value} registered at {source.locator}")
 
         # (5) Ingest hashes every file, stores the bytes once (content-addressed,
         # so re-running this creates nothing), records what the decoder made of

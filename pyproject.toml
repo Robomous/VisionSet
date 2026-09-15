@@ -9,6 +9,10 @@ description = "Open-source, local-first tool for creating, curating, and version
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
+# Shipped beside the licence because the wheel redistributes a compiled browser bundle:
+# whatever that bundle contains travels with the wheel, and one of those dependencies is
+# MPL-2.0. See THIRD-PARTY-NOTICES.md.
+license-files = ["LICENSE", "THIRD-PARTY-NOTICES.md"]
 authors = [{ name = "Robomous Inc." }]
 keywords = ["computer-vision", "datasets", "annotation", "labeling", "physical-ai"]
 classifiers = [
@@ -174,7 +178,7 @@ dev = [
 # deliberately NOT in `dev`: it brings torch, so it is roughly two gigabytes in
 # front of every `uv sync`. CI installs this group in its own job and sets
 # VISIONSET_REQUIRE_ULTRALYTICS=1, which turns the local skip into an error —
-# the ffmpeg rule from #22, for its reason.
+# the same require-not-skip rule CI uses for every optional runtime.
 yolo = [
     "ultralytics>=8.3",
 ]

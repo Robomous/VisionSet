@@ -32,16 +32,9 @@ from visionset.kernel.ports.point_segmenter import PointSegmenter
 from visionset.kernel.ports.preprocessing import PreprocessingDriver, driver_for
 from visionset.kernel.ports.progress_reporter import ProgressReporter
 from visionset.kernel.ports.provider import Provider, Runner, WeightsSource
-from visionset.kernel.ports.video_processor import (
-    DEFAULT_EXTRACTION_FPS,
-    FRAME_FORMAT,
-    VideoProcessor,
-)
 
 __all__ = [
-    "DEFAULT_EXTRACTION_FPS",
     "DEFAULT_THUMBNAIL_MAX_EDGE",
-    "FRAME_FORMAT",
     "THUMBNAIL_FORMAT",
     "UNINITIALIZED",
     "AuthProvider",
@@ -62,7 +55,6 @@ __all__ = [
     "Repository",
     "Runner",
     "UnitOfWork",
-    "VideoProcessor",
     "WeightsSource",
     "resolve_target",
     "validate_targets",

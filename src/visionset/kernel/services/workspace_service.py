@@ -4,8 +4,8 @@
 Every kernel operation happens in the context of exactly one workspace, so this
 module is also the **single composition point** for the default adapters. It is
 the only place in the kernel that names ``SqliteMetadataStore``,
-``FilesystemBlobStore``, ``InProcessEventBus``, ``PillowImageProcessor``,
-``FfmpegVideoProcessor`` or ``StoredTokenAuthProvider``; everything above it — later
+``FilesystemBlobStore``, ``InProcessEventBus``, ``PillowImageProcessor`` or
+``StoredTokenAuthProvider``; everything above it — later
 services, the REST surface, the CLI, MCP — receives an open ``WorkspaceService``
 and reaches the ports through it. Swapping an adapter is therefore a change to
 two functions here and to nowhere else.
@@ -22,10 +22,10 @@ workspace is open and are checkpointed away by ``close()``. They still belong to
 the workspace while they are there: a copy taken mid-run that includes only
 ``visionset.db`` is missing whatever has not been checkpointed yet.
 
-Five of the seven ports have no line in that layout, and that is the point: the
-event bus is in-process, the two media processors are decoders, and the auth
-provider and the job queue both read tables inside the database above, so none of
-them leaves anything behind. They are composed here anyway, because a workspace is what
+Four of the six ports have no line in that layout, and that is the point: the
+event bus is in-process, the image processor is a decoder, and the auth provider
+and the job queue both read tables inside the database above, so none of them
+leaves anything behind. They are composed here anyway, because a workspace is what
 services are handed and every port has to arrive with it.
 
 There is no sidecar file carrying the format version. It lives inside the
@@ -59,7 +59,6 @@ from types import TracebackType
 from uuid import UUID
 
 from visionset.kernel.adapters import (
-    FfmpegVideoProcessor,
     FilesystemBlobStore,
     InProcessEventBus,
     PillowImageProcessor,
@@ -84,7 +83,6 @@ from visionset.kernel.ports import (
     JobQueue,
     MetadataStore,
     UnitOfWork,
-    VideoProcessor,
 )
 
 #: The metadata store. Its presence is what makes a directory a workspace.
@@ -119,11 +117,6 @@ type EventBusFactory = Callable[[], EventBus]
 #: decoder has no state at all. It is composed here anyway, because this module is
 #: the only one allowed to name an adapter.
 type ImageProcessorFactory = Callable[[], ImageProcessor]
-#: Zero-argument, like its image sibling. The video decoder needs an external
-#: program rather than a library, but that is the adapter's problem and not the
-#: workspace's: a missing ffmpeg is discovered by the call that needs it, so a
-#: machine without one still opens workspaces and still ingests images.
-type VideoProcessorFactory = Callable[[], VideoProcessor]
 #: Two arguments, unlike every factory above, and the first port that is derived
 #: from another one: verifying a token means reading the workspace's own ``token``
 #: table, scoped to the workspace that owns it. ``StoredTokenAuthProvider`` binds
@@ -208,7 +201,7 @@ def _workspace_above(start: Path) -> Path | None:
 
 
 class WorkspaceService:
-    """One open workspace: its identity, its directory, and its seven ports.
+    """One open workspace: its identity, its directory, and its six ports.
 
     Instances come from :meth:`init` and :meth:`open`. Constructing one directly
     is the injection seam — hand it ports and nothing here touches a disk.
@@ -218,8 +211,8 @@ class WorkspaceService:
     *factories* on ``init``/``open`` carry them instead: no module-level
     singleton, no import from a delivery module, and each default named once.
 
-    The event bus and the two media processors have no path to be derived from
-    and could have been plain defaults, but they take the same shape anyway — one
+    The event bus and the image processor have no path to be derived from and
+    could have been plain defaults, but they take the same shape anyway — one
     place naming each default, one of each per open workspace. A module-level
     default would be a singleton shared by every workspace in the process, which
     is precisely the thing two workspaces open at once must not have.
@@ -237,7 +230,6 @@ class WorkspaceService:
         blob_store: BlobStore,
         event_bus: EventBus,
         image_processor: ImageProcessor,
-        video_processor: VideoProcessor,
         auth_provider: AuthProvider,
         job_queue: JobQueue,
     ) -> None:
@@ -247,7 +239,6 @@ class WorkspaceService:
         self._blob_store = blob_store
         self._event_bus = event_bus
         self._image_processor = image_processor
-        self._video_processor = video_processor
         self._auth_provider = auth_provider
         self._job_queue = job_queue
 
@@ -263,7 +254,6 @@ class WorkspaceService:
         blob_store_factory: BlobStoreFactory = FilesystemBlobStore,
         event_bus_factory: EventBusFactory = InProcessEventBus,
         image_processor_factory: ImageProcessorFactory = PillowImageProcessor,
-        video_processor_factory: VideoProcessorFactory = FfmpegVideoProcessor,
         auth_provider_factory: AuthProviderFactory = StoredTokenAuthProvider,
         job_queue_factory: JobQueueFactory = SqliteJobQueue,
     ) -> WorkspaceService:
@@ -313,7 +303,7 @@ class WorkspaceService:
                 metadata_store.close()
             _undo_init(root, created_root=created_root)
             raise
-        # The four remaining factories cannot touch the disk — three take no
+        # The three remaining factories cannot touch the disk — two take no
         # arguments at all, and the auth provider only stores the two references
         # it is handed — so they run outside the block that would undo a
         # half-made workspace. A future port whose construction can fail moves
@@ -325,7 +315,6 @@ class WorkspaceService:
             blob_store,
             event_bus_factory(),
             image_processor_factory(),
-            video_processor_factory(),
             auth_provider_factory(metadata_store, workspace.id),
             job_queue_factory(metadata_store),
         )
@@ -339,7 +328,6 @@ class WorkspaceService:
         blob_store_factory: BlobStoreFactory = FilesystemBlobStore,
         event_bus_factory: EventBusFactory = InProcessEventBus,
         image_processor_factory: ImageProcessorFactory = PillowImageProcessor,
-        video_processor_factory: VideoProcessorFactory = FfmpegVideoProcessor,
         auth_provider_factory: AuthProviderFactory = StoredTokenAuthProvider,
         job_queue_factory: JobQueueFactory = SqliteJobQueue,
     ) -> WorkspaceService:
@@ -396,7 +384,6 @@ class WorkspaceService:
             blob_store,
             event_bus_factory(),
             image_processor_factory(),
-            video_processor_factory(),
             auth_provider_factory(metadata_store, rows[0].id),
             job_queue_factory(metadata_store),
         )
@@ -441,10 +428,15 @@ class WorkspaceService:
     def image_processor(self) -> ImageProcessor:
         """Decoding, dimensions and thumbnails for still images.
 
-        Reached through the handle like the other four ports, which is what lets
-        an ingest service take a ``WorkspaceService`` and still name no adapter —
+        Reached through the handle like every other port, which is what lets an
+        ingest service take a ``WorkspaceService`` and still name no adapter —
         the rule this module exists to keep, and the reason a decoder is composed
         here rather than defaulted in the service that uses it.
+
+        It is the only decoder a workspace has. Video never reaches this process:
+        a client materializes frames from a clip that stays on its own machine
+        and posts them as ordinary JPEGs, which arrive here as images like any
+        other — see ``VideoImportService``.
 
         Nothing in the workspace layout corresponds to it. Like the event bus it
         leaves nothing on disk, and unlike the event bus it holds no state at all,
@@ -453,23 +445,6 @@ class WorkspaceService:
         and means every port arrives the same way.
         """
         return self._image_processor
-
-    @property
-    def video_processor(self) -> VideoProcessor:
-        """Probing and frame extraction for video.
-
-        Composed on exactly the terms the image processor is, including the part
-        that looks like it should be an exception: the default adapter needs
-        ffmpeg on the machine, and building one still cannot fail. That is
-        deliberate. Checking for the binary here would mean a workspace full of
-        JPEGs refuses to open on a laptop with no ffmpeg installed, so the check
-        belongs to the call that actually needs to decode something.
-
-        The one way this port differs in use: what it returns owns a running
-        program. A workspace has no say in that lifetime — the iterator does — so
-        :meth:`close` has nothing to do here either.
-        """
-        return self._video_processor
 
     @property
     def auth_provider(self) -> AuthProvider:
@@ -496,7 +471,7 @@ class WorkspaceService:
     def job_queue(self) -> JobQueue:
         """Where background work waits, and where a poller reads its state.
 
-        The **seventh** port, appended last to both classmethods rather than
+        The **sixth** port, appended last to both classmethods rather than
         inserted, which is the rule this class states about itself: the two
         constructors bind positionally, so a parameter added in the middle
         silently re-binds every one after it.

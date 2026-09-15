@@ -70,7 +70,7 @@ def _populate(workspace: WorkspaceService, project_id: UUID, dataset_id: UUID) -
             )
         )
         uow.sources.add(
-            Source(project_id=project_id, kind=SourceKind.IMAGE_DIRECTORY, path="/tmp/in")
+            Source(project_id=project_id, kind=SourceKind.IMAGE_DIRECTORY, locator="/tmp/in")
         )
         asset = uow.assets.add(
             Asset(project_id=project_id, content_hash=content_hash, uri="/tmp/in/a.png")

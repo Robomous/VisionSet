@@ -79,7 +79,7 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
         Source(
             project_id=project.id,
             kind=SourceKind.VIDEO,
-            path="/data/clip.mp4",
+            locator="/data/clip.mp4",
             registered_at=datetime(2026, 7, 27, 8, 0, tzinfo=UTC),
             capture_params={"lens": "24mm"},
             video=VideoProvenance(
@@ -393,7 +393,7 @@ def test_a_source_video_provenance_and_timestamp_round_trip(tmp_path: Path) -> N
         source = uow.sources.get(_seed(uow)[2][1])
         assert source is not None
         assert source.kind is SourceKind.VIDEO
-        assert source.path == "/data/clip.mp4"
+        assert source.locator == "/data/clip.mp4"
         assert source.capture_params == {"lens": "24mm"}
         assert source.require_video() == VideoProvenance(
             metadata=VideoMetadata(
@@ -414,7 +414,7 @@ def test_a_source_without_video_provenance_round_trips_as_none(tmp_path: Path) -
             Source(
                 project_id=project_id,
                 kind=SourceKind.IMAGE_DIRECTORY,
-                path="/data/stills",
+                locator="/data/stills",
             )
         )
         read_back = uow.sources.get(stored.id)

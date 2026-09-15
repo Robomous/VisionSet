@@ -840,3 +840,100 @@ INFERENCE_CONNECTION_NAME_UNIQUE = Index(
     InferenceConnectionRow.name.collate("NOCASE"),
     unique=True,
 )
+
+
+class VideoImportRow(Base):
+    """A browser-driven import in flight: what was promised, and what has arrived.
+
+    ``batch_id`` carries a foreign key, which this table can afford where
+    ``IngestJobRow`` could not: it arrives with the table, in ``create_all``, so
+    the ``ALTER TABLE`` problem that row's docstring describes never comes up.
+    ``SET NULL`` on the same terms — deleting the batch does not un-happen the
+    import.
+
+    ``source_id`` cascades: the ``VIDEO`` source is created by ``start`` and
+    exists only to carry this import's provenance, so a session outliving it
+    would be a record of a materialization from nothing.
+    """
+
+    __tablename__ = "video_import"
+
+    id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        SaUuid, ForeignKey("project.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    source_id: Mapped[UUID] = mapped_column(
+        SaUuid, ForeignKey("source.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    state: Mapped[str] = mapped_column(String, nullable=False)
+    #: The server's own count over the session's selection — never the client's.
+    expected_frame_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Distinct ordinals staged so far, which a retry must not advance.
+    received_frame_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: What the caller asked the committed batch to be called; NULL means nobody
+    #: said, and commit falls back to the source's name.
+    batch_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: An existing draft this session was aimed at, checked at ``start``. NULL is
+    #: the ordinary case: commit creates a batch of its own.
+    #:
+    #: **No foreign key, deliberately.** This records what the caller asked for,
+    #: not a live reference, and the two ways a constraint could express it are
+    #: both wrong: ``ON DELETE SET NULL`` erases the difference between "nobody
+    #: named a target" and "the target was deleted", so commit would invent a
+    #: batch of its own — the one outcome nobody asked for — while ``RESTRICT``
+    #: would make an open session veto the deletion of an ordinary draft. Keeping
+    #: the id lets ``commit`` answer ``BatchNotFound``, which is the contract the
+    #: route publishes.
+    target_batch_id: Mapped[UUID | None] = mapped_column(SaUuid, nullable=True)
+    #: The batch this session committed into. NULL until it commits — a session
+    #: that is abandoned or aborted never reaches one.
+    batch_id: Mapped[UUID | None] = mapped_column(
+        SaUuid, ForeignKey("batch.id", ondelete="SET NULL"), nullable=True
+    )
+    #: ISO-8601 with offset, never SQLite ``DATETIME``. See the module docstring.
+    started_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class VideoImportFrameRow(Base):
+    """One frame staged for a session: stored, hashed, and not yet an asset.
+
+    **The unique constraint is the identity**, and the primary key is not. A
+    frame is addressed by ``(import_id, ordinal)`` — that pair is what an append
+    upserts on and what a conflict is adjudicated against — while ``id`` exists
+    only so the row is an ordinary entity the shared repository can carry. The
+    constraint is therefore load-bearing rather than tidy: without it a lost race
+    between two appends at one ordinal would stage the frame twice and make
+    ``received_frame_count`` a number nothing could reconcile.
+
+    ``ON DELETE CASCADE`` from ``video_import`` is how an abort disposes of a
+    session's frames. The blobs behind them are left where they are: they are
+    content-addressed, so an orphan is unreachable rather than wrong, and this
+    repository already accepts that for every refused ingest.
+    """
+
+    __tablename__ = "video_import_frame"
+    __table_args__ = (
+        UniqueConstraint("import_id", "ordinal", name="uq_video_import_frame_ordinal"),
+    )
+
+    id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
+    import_id: Mapped[UUID] = mapped_column(
+        SaUuid, ForeignKey("video_import.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    #: The extraction-grid index: ``ordinal / extraction_fps`` seconds into the
+    #: clip, counted from its start and never from the selection's. A session
+    #: cut from 5 s at 1 fps therefore stages 5, 6, 7 — see ``VideoProvenance.selects``.
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: The exact grid point asked for, and the presentation time of the sample
+    #: actually drawn for it. Two numbers, never conflated — see ``StagedFrame``.
+    requested_timestamp: Mapped[float] = mapped_column(Float, nullable=False)
+    source_timestamp: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: SHA-256 of the bytes **this process** received, not a client's claim.
+    content_hash: Mapped[str] = mapped_column(String, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    image_format: Mapped[str] = mapped_column(String, nullable=False)
+    #: A rendered preview, or NULL when it would not render — a cache, exactly
+    #: as on ``asset``, and the state ``backfill_thumbnails`` repairs.
+    thumbnail_hash: Mapped[str | None] = mapped_column(String, nullable=True)

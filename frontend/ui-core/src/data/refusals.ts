@@ -143,6 +143,23 @@ export const REFUSAL_PROSE: Record<string, string> = {
   INGEST_JOB_NOT_FOUND: "That run is no longer on record.",
   SOURCE_NOT_FOUND: "That source is no longer on record.",
 
+  // Browser video import. **No sentence here offers to decode on the server**:
+  // there is no server-side decoder, and a remedy pointing at one would send
+  // somebody looking for a path that was deliberately removed. The remedy for
+  // every one of these is the same — import the clip again — and each says so in
+  // the terms of what actually went wrong.
+  VIDEO_IMPORT_NOT_FOUND: "That import is no longer on record.",
+  VIDEO_IMPORT_INCOMPLETE:
+    "Some frames of this clip never arrived, so it was not imported — a batch missing part of its clip is worse than no batch. Import the clip again.",
+  VIDEO_IMPORT_NOT_OPEN:
+    "This import has already finished — committed or thrown away. Start a new one to import more frames.",
+  FRAME_CONTENT_CONFLICT:
+    "The same position in this clip was sent twice with different pictures, so this import cannot be trusted and was stopped. Import the clip again.",
+  FRAME_ORDINAL_OUT_OF_RANGE:
+    "A frame arrived from outside the stretch of clip this import covers. Import the clip again, and keep the rate and the selection as they were when it started.",
+  FRAME_TIMESTAMP_OFF_GRID:
+    "A frame arrived describing a different moment of the clip than the position it claims, so this import cannot be trusted. Import the clip again.",
+
   // Background runs.
   BACKGROUND_JOB_NOT_FOUND: "That background job is no longer on record.",
 

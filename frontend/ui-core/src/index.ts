@@ -104,6 +104,16 @@ export {
   type VisionSetDataProviderProps,
 } from "./data/VisionSetDataProvider.js";
 export { Async, type AsyncProps, type AsyncQuery } from "./data/Async.js";
+
+// The media shell: a second host-injected runtime beside the data client, for
+// browser video import. No runtime supplied → no video control, the same rule
+// navigation's callbacks already follow.
+export {
+  useMediaRuntime,
+  VisionSetMediaProvider,
+  type VisionSetMediaProviderProps,
+} from "./media/VisionSetMediaProvider.js";
+export type { VisionSetMediaRuntime } from "./media/port.js";
 export {
   ApiError,
   MALFORMED_ERROR,

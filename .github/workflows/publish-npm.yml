@@ -1,4 +1,4 @@
-# Publish the two public frontend packages to npm over trusted publishing.
+# Publish the three public frontend packages to npm over trusted publishing.
 #
 # No credentials anywhere, and that is the design — the same bargain
 # `publish-pypi.yml` makes with PyPI. `id-token: write` lets the job mint a
@@ -17,16 +17,17 @@
 # ## Why this needs pnpm 11 or newer
 #
 # Two requirements meet in one command. `@visionset/ui-core` declares
-# `"@visionset/annotator": "workspace:*"`, and only pnpm rewrites that to a concrete
-# version as it packs — a publish that ships the literal `workspace:*` string is
-# uninstallable by anybody. Separately, pnpm gained OIDC support in 11; pnpm 10 had
-# none and could only publish with a credential. Before 11 these two needs pulled
-# in opposite directions and the job had to be done by hand.
+# `"@visionset/annotator": "workspace:*"` and `"@visionset/media": "workspace:*"`, and
+# only pnpm rewrites those to a concrete version as it packs — a publish that ships the
+# literal `workspace:*` string is uninstallable by anybody. Separately, pnpm gained OIDC
+# support in 11; pnpm 10 had none and could only publish with a credential. Before 11
+# these two needs pulled in opposite directions and the job had to be done by hand.
 #
 # ## The ordering is load-bearing
 #
-# annotator is published before ui-core, because ui-core's rewritten dependency
-# names a version that has to exist on the registry already.
+# annotator and media are published before ui-core, because ui-core's rewritten
+# dependencies name versions that have to exist on the registry already. annotator
+# before media is arbitrary — neither depends on the other — kept alphabetical.
 name: Publish to npm
 
 # Manual only, like the PyPI publish, and dispatched against the release tag so
@@ -127,6 +128,7 @@ jobs:
         # happens, and the publish below packs again from the same tree.
         run: |
           pnpm --filter @visionset/annotator pack --pack-destination "$RUNNER_TEMP/check"
+          pnpm --filter @visionset/media     pack --pack-destination "$RUNNER_TEMP/check"
           pnpm --filter @visionset/ui-core   pack --pack-destination "$RUNNER_TEMP/check"
           for tarball in "$RUNNER_TEMP"/check/*.tgz; do
             manifest=$(tar -xzOf "$tarball" package/package.json)
@@ -136,7 +138,7 @@ jobs:
               exit 1
             fi
           done
-          echo "no workspace: protocol in either tarball"
+          echo "no workspace: protocol in any tarball"
 
       # No `NODE_AUTH_TOKEN`, no `.npmrc`, no `--provenance`: under trusted publishing
       # npm generates and uploads provenance attestations by itself.
@@ -149,6 +151,11 @@ jobs:
         env:
           DIST_TAG: ${{ inputs.dist-tag }}
         run: pnpm --filter @visionset/annotator publish --access public --tag "$DIST_TAG" --no-git-checks
+
+      - name: Publish @visionset/media
+        env:
+          DIST_TAG: ${{ inputs.dist-tag }}
+        run: pnpm --filter @visionset/media publish --access public --tag "$DIST_TAG" --no-git-checks
 
       - name: Publish @visionset/ui-core
         env:

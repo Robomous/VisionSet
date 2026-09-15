@@ -86,6 +86,11 @@ export default defineConfig({
       // First, so a taken port is a sentence rather than four builds and a wheel's
       // worth of waiting followed by uvicorn's own complaint about it.
       "node frontend/app/e2e-ports.ts --guard cycle",
+      // `@visionset/media` first: `ui-core` and `app` both compile against its
+      // `dist/`, and pnpm builds no dependency a `--filter` did not name — so
+      // without this the chain dies at the `ui-core` build on any clone that has
+      // never built it, which is every clone in CI.
+      "pnpm --filter @visionset/media build",
       "pnpm --filter @visionset/annotator build",
       "pnpm --filter @visionset/ui-core build",
       "pnpm --filter @visionset/app build",

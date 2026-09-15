@@ -1,11 +1,10 @@
 """`IngestService`: content identity, recorded origin, and the per-file report.
 
-Two things shape this file, both inherited from `test_source_service.py`.
-
-The ffmpeg requirement arrives through `write_video`, which calls `require_ffmpeg`
-itself — there is deliberately no module-level skip. Most of what is asserted here
-(dedup, the report, batch targeting, the not-found ladders) is about stills and has
-to run on a machine with no ffmpeg at all.
+**There is no video here at all**, and that is the service's shape rather than an
+omission in its tests: `IngestService` reads a directory of files this process can
+open. A clip is decoded by a browser and arrives through `VideoImportService`,
+which has its own file. The multi-frame assertions that remain are about animated
+GIFs, which really are decomposed here.
 
 Assertions are about the contract rather than the implementation: "one blob" is
 counted on disk because that is the acceptance criterion in the issue, and "the
@@ -23,14 +22,10 @@ import pytest
 from PIL import Image
 from pydantic import ValidationError
 from tests.fixtures.media import (
-    GeneratedVideo,
     write_corrupt_image,
-    write_corrupt_video,
     write_image,
     write_images,
-    write_rotated_video,
     write_unsupported_file,
-    write_video,
 )
 
 from visionset.kernel import (
@@ -40,7 +35,6 @@ from visionset.kernel import (
     IngestJobNotFound,
     InvalidName,
     InvalidTransition,
-    MediaToolUnavailable,
     ProjectNotFound,
     SourceNotFound,
     ThumbnailNotCached,
@@ -61,18 +55,9 @@ from visionset.kernel.domain import (
     IngestJob,
     IngestState,
     LabelClass,
-    Project,
-    Source,
-    SourceKind,
-    TimeRange,
-    VideoFrame,
-    VideoMetadata,
-    VideoProvenance,
-    scaled_dimension,
 )
 from visionset.kernel.ports import (
     DEFAULT_THUMBNAIL_MAX_EDGE,
-    FRAME_FORMAT,
     THUMBNAIL_FORMAT,
 )
 from visionset.kernel.services import (
@@ -90,32 +75,10 @@ from visionset.kernel.services import (
 from visionset.kernel.services.ingest_service import _in_stable_order
 
 
-class _NoFfmpeg:
-    """A `VideoProcessor` on a machine with no decoder installed.
-
-    Injected through the composition point rather than monkeypatched, because
-    that seam is exactly what `WorkspaceService` documents it is for.
-    """
-
-    def probe(self, source: Path, *, name: str | None = None) -> VideoMetadata:
-        raise MediaToolUnavailable("ffmpeg is not installed; install it and try again")
-
-    def frames(
-        self,
-        source: Path,
-        *,
-        fps: float = 1.0,
-        ranges: tuple[TimeRange, ...] = (),
-        name: str | None = None,
-        scale: tuple[int, int] | None = None,
-    ) -> "list[VideoFrame]":
-        raise MediaToolUnavailable("ffmpeg is not installed; install it and try again")
-
-
 class _WatchingProcessor:
     """The real decoder, plus a look at the run's own row before each file.
 
-    Injected through the composition point, like `_NoFfmpeg`. The look is taken
+    Injected through the composition point. The look is taken
     through a **second** `WorkspaceService` opened on the same directory,
     because what is being tested is that the counters are committed while the
     run is still going — a read on the service doing the work would prove less.
@@ -199,30 +162,6 @@ class _ThumbnaillessProcessor:
         raise UnsupportedMedia("no preview today")
 
 
-def _planted_video_source(workspace: WorkspaceService, project: Project, tmp_path: Path) -> Source:
-    """A video source written straight to the store, because registering probes.
-
-    The subject of the tests that use this is the extraction, not the
-    registration, and registration would fail first on a machine with no ffmpeg.
-    """
-    clip = tmp_path / "clip.mp4"
-    clip.write_bytes(b"not really a clip")
-    with workspace.unit_of_work() as uow:
-        return uow.sources.add(
-            Source(
-                project_id=project.id,
-                kind=SourceKind.VIDEO,
-                path=str(clip),
-                video=VideoProvenance(
-                    metadata=VideoMetadata(
-                        width=64, height=48, fps=10.0, duration_seconds=2.0, codec="h264"
-                    ),
-                    extraction_fps=1.0,
-                ),
-            )
-        )
-
-
 class Fixture:
     """A workspace with one project, a directory to fill, and every service."""
 
@@ -237,9 +176,6 @@ class Fixture:
         self.project = self.projects.create(f"{name}-project")
         self.stills = tmp_path / f"{name}-stills"
         self.stills.mkdir()
-
-    def clip(self, name: str = "clip.mp4", **kwargs: object) -> GeneratedVideo:
-        return write_video(self.tmp_path / name, **kwargs)  # type: ignore[arg-type]
 
     def blob_hashes(self) -> set[str]:
         """Every blob on disk, named by its hash — `put` is content-addressed."""
@@ -427,164 +363,6 @@ def test_an_empty_directory_produces_an_empty_draft_batch(tmp_path: Path) -> Non
     fixture.close()
 
 
-# --- a clip ---------------------------------------------------------------
-
-
-@pytest.mark.parametrize(("rate", "expected"), [(1.0, 2), (5.0, 10), (10.0, 20)])
-def test_a_clip_becomes_one_asset_per_extracted_frame(
-    tmp_path: Path, rate: float, expected: int
-) -> None:
-    """The fixture is 10 fps for 2 s, so these three land exactly rather than round."""
-    fixture = Fixture(tmp_path)
-    clip = fixture.clip()
-    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=rate)
-
-    result = fixture.ingest.ingest(source.id)
-
-    assert result.created == expected
-    fixture.close()
-
-
-def test_every_frame_records_where_in_the_clip_it_came_from(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-    clip = fixture.clip()
-    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=5.0)
-
-    result = fixture.ingest.ingest(source.id)
-
-    assert [asset.frame_index for asset in result.assets] == list(range(10))
-    assert [asset.frame_timestamp for asset in result.assets] == [
-        pytest.approx(index / 5.0) for index in range(10)
-    ]
-    fixture.close()
-
-
-def test_a_frame_uri_names_the_clip_and_the_frame(tmp_path: Path) -> None:
-    """The spelling `MediaError`'s docstring already fixed for a decoded frame."""
-    fixture = Fixture(tmp_path)
-    clip = fixture.clip()
-    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=1.0)
-
-    result = fixture.ingest.ingest(source.id)
-
-    assert [asset.uri for asset in result.assets] == [
-        f"{source.path}#frame=0",
-        f"{source.path}#frame=1",
-    ]
-    fixture.close()
-
-
-def test_a_frame_takes_its_size_from_the_probe_and_its_format_from_the_port(
-    tmp_path: Path,
-) -> None:
-    """Frames are not re-decoded to confirm what the port already guarantees.
-
-    `VideoProcessor` owes every frame in `FRAME_FORMAT` at the dimensions `probe`
-    reported, and that promise is asserted in the port's own tests. Paying a
-    Pillow decode per frame to re-check it would also route our own encoder's
-    output into an operator's per-file report.
-    """
-    fixture = Fixture(tmp_path)
-    clip = fixture.clip()
-    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=1.0)
-
-    asset = fixture.ingest.ingest(source.id).assets[0]
-
-    assert (asset.width, asset.height) == (clip.width, clip.height)
-    assert asset.format is FRAME_FORMAT
-    fixture.close()
-
-
-def test_a_scaled_clip_ingests_frames_at_the_stored_size(tmp_path: Path) -> None:
-    """The asset records the scaled dimensions, and the pixels agree with them."""
-    fixture = Fixture(tmp_path)
-    clip = fixture.clip()
-    source = fixture.sources.register_video(
-        fixture.project.id, clip.path, extraction_fps=1.0, scale_percent=50
-    )
-
-    result = fixture.ingest.ingest(source.id)
-
-    expected = (scaled_dimension(clip.width, 50), scaled_dimension(clip.height, 50))
-    assert result.assets
-    for asset in result.assets:
-        assert (asset.width, asset.height) == expected
-    with (
-        fixture.workspace.blob_store.get(result.assets[0].content_hash) as blob,
-        Image.open(blob) as picture,
-    ):
-        assert picture.size == expected
-    fixture.close()
-
-
-def test_a_rotated_clip_yields_frames_at_their_displayed_size(tmp_path: Path) -> None:
-    """The display matrix is applied; a 64x48 file held upright ingests as 48x64."""
-    fixture = Fixture(tmp_path)
-    clip = write_rotated_video(tmp_path / "upright.mp4")
-    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=1.0)
-
-    asset = fixture.ingest.ingest(source.id).assets[0]
-
-    assert (asset.width, asset.height) == (clip.height, clip.width)
-    fixture.close()
-
-
-def test_a_truncated_clip_keeps_what_decoded_and_reports_the_break(tmp_path: Path) -> None:
-    """Partial success is the contract: ffmpeg yields, then says the bytes ran out."""
-    fixture = Fixture(tmp_path)
-    clip = write_corrupt_video(tmp_path / "broken.mp4")
-    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=10.0)
-
-    result = fixture.ingest.ingest(source.id)
-
-    assert 0 < result.created < clip.frame_count
-    assert [failure.kind for failure in result.failures] == [IngestFailureKind.PARTIAL]
-    # The clip's filename, not `source.path` — that one is absolute.
-    assert result.failures[0].name == "broken.mp4"
-    assert source.path not in result.failures[0].name
-    assert fixture.ingest.get(result.job_id).state is IngestState.COMPLETED
-    fixture.close()
-
-
-def test_a_truncated_clip_reports_how_much_of_it_arrived(tmp_path: Path) -> None:
-    """The run holds both numbers, so the report states them instead of a sentence.
-
-    `frames_produced` is exact — it is the length of what the loop kept — and matches the
-    assets that landed, which is what makes "the frames are in the batch" checkable rather
-    than reassuring. `frames_expected_estimate` is `duration × extraction_fps` off the probe
-    the source already carries: at 10 fps over the fixture's two seconds, twenty.
-    """
-    fixture = Fixture(tmp_path)
-    clip = write_corrupt_video(tmp_path / "broken.mp4")
-    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=10.0)
-
-    result = fixture.ingest.ingest(source.id)
-
-    reported = result.failures[0]
-    assert reported.frames_produced == result.created
-    assert reported.frames_expected_estimate == clip.frame_count
-    # A partial is not a file the run could not read, and the two counts say so
-    # apart: something arrived, and this is how much of it did not.
-    assert result.partial == 1
-    assert result.failed == 0
-    fixture.close()
-
-
-def test_a_clip_that_reads_to_the_end_reports_nothing_at_all(tmp_path: Path) -> None:
-    """Silence is the ok-state. A clean run has nothing to say about itself."""
-    fixture = Fixture(tmp_path)
-    clip = fixture.clip()
-    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=10.0)
-
-    result = fixture.ingest.ingest(source.id)
-
-    assert result.created == clip.frame_count
-    assert result.failures == ()
-    assert result.partial == 0
-    assert result.failed == 0
-    fixture.close()
-
-
 # --- identity is the content hash -----------------------------------------
 
 
@@ -714,69 +492,6 @@ def test_the_store_refuses_a_second_source_for_one_origin(tmp_path: Path) -> Non
 
     with pytest.raises(ConstraintViolated), fixture.workspace.unit_of_work() as uow:
         uow.sources.add(source.model_copy(update={"id": uuid4()}))
-    fixture.close()
-
-
-def test_one_clip_at_two_rates_is_still_two_sources(tmp_path: Path) -> None:
-    """The fourth index term is doing work rather than decorating the other three."""
-    fixture = Fixture(tmp_path)
-    clip = fixture.clip()
-
-    slow = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=1.0)
-    fast = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=5.0)
-
-    assert slow.id != fast.id
-    fixture.close()
-
-
-def test_overlapping_selections_across_two_sources_share_their_frames(tmp_path: Path) -> None:
-    """Byte-identical grid frames collapse by content hash, exactly as a re-ingest does."""
-    fixture = Fixture(tmp_path)
-    clip = fixture.clip()
-    head = fixture.sources.register_video(
-        fixture.project.id,
-        clip.path,
-        extraction_fps=5.0,
-        ranges=[TimeRange(start_seconds=0.0, end_seconds=1.0)],
-    )
-    late = fixture.sources.register_video(
-        fixture.project.id,
-        clip.path,
-        extraction_fps=5.0,
-        ranges=[TimeRange(start_seconds=0.5, end_seconds=1.5)],
-    )
-
-    first = fixture.ingest.ingest(head.id)
-    second = fixture.ingest.ingest(late.id)
-
-    assert first.created == 5
-    assert second.created == 3
-    assert second.deduplicated == 2
-    assert fixture.content_blob_count() == 8
-    fixture.close()
-
-
-def test_a_ranged_clip_records_grid_indices_on_its_assets(tmp_path: Path) -> None:
-    """`#frame=k` is the grid name: the same moment is named the same with or
-    without a selection."""
-    fixture = Fixture(tmp_path)
-    clip = fixture.clip()
-    source = fixture.sources.register_video(
-        fixture.project.id,
-        clip.path,
-        extraction_fps=5.0,
-        ranges=[TimeRange(start_seconds=0.5, end_seconds=1.5)],
-    )
-
-    result = fixture.ingest.ingest(source.id)
-
-    assert [asset.frame_index for asset in result.assets] == list(range(3, 8))
-    assert [asset.uri for asset in result.assets] == [
-        f"{source.path}#frame={k}" for k in range(3, 8)
-    ]
-    assert [asset.frame_timestamp for asset in result.assets] == [
-        pytest.approx(k / 5.0) for k in range(3, 8)
-    ]
     fixture.close()
 
 
@@ -913,7 +628,7 @@ def test_a_report_line_keeps_the_name_and_the_reason_apart(tmp_path: Path) -> No
 def test_a_report_line_names_the_file_without_naming_the_server(tmp_path: Path) -> None:
     """This report travels to REST, the CLI and MCP, and must not carry
     the absolute path the run's own loop happened to be holding — the one place a
-    server path reached a client, while `Source.path` and `Asset.uri` are kept
+    server path reached a client, while `Source.locator` and `Asset.uri` are kept
     off the wire on purpose.
     """
     fixture = Fixture(tmp_path)
@@ -928,7 +643,7 @@ def test_a_report_line_names_the_file_without_naming_the_server(tmp_path: Path) 
     # first and tell us nothing.
     assert str(fixture.stills) not in failure.name
     assert str(tmp_path) not in failure.name
-    assert source.path not in failure.name
+    assert source.locator not in failure.name
     fixture.close()
 
 
@@ -979,23 +694,6 @@ def test_a_completed_run_leaves_a_job_pointing_at_its_source_and_its_batch(
     assert job.batch_id == result.batch_id
     assert job.error is None
     fixture.close()
-
-
-def test_a_missing_decoder_fails_the_job_and_is_re_raised(tmp_path: Path) -> None:
-    """One broken machine is not five thousand broken files — hence no report line."""
-    workspace = WorkspaceService.init(tmp_path / "ws", video_processor_factory=_NoFfmpeg)
-    projects = ProjectService(workspace)
-    ingest = IngestService(workspace)
-    source = _planted_video_source(workspace, projects.create("p"), tmp_path)
-
-    with pytest.raises(MediaToolUnavailable):
-        ingest.ingest(source.id)
-
-    job = ingest.list(source.id)[0]
-    assert job.state is IngestState.FAILED
-    assert "ffmpeg" in (job.error or "")
-    assert job.batch_id is None
-    workspace.close()
 
 
 def test_a_source_that_has_been_deleted_fails_the_job_and_is_re_raised(tmp_path: Path) -> None:
@@ -1157,20 +855,6 @@ def test_an_empty_directory_records_a_total_of_zero(tmp_path: Path) -> None:
     fixture.close()
 
 
-def test_a_clip_records_no_total_because_extraction_decides_it(tmp_path: Path) -> None:
-    """`VideoMetadata` carries no frame count, so a total here would be a guess."""
-    fixture = Fixture(tmp_path)
-    clip = fixture.clip()
-    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=1.0)
-
-    result = fixture.ingest.ingest(source.id)
-
-    job = fixture.ingest.get(result.job_id)
-    assert job.total is None
-    assert job.processed == len(result.assets)
-    fixture.close()
-
-
 # --- the report, on the row -----------------------------------------------
 
 
@@ -1196,17 +880,28 @@ def test_a_run_records_which_files_failed_and_why(tmp_path: Path) -> None:
 
 
 def test_a_fatal_cause_is_recorded_apart_from_the_per_file_report(tmp_path: Path) -> None:
-    """One broken machine is not five thousand broken files, on the row too."""
-    workspace = WorkspaceService.init(tmp_path / "ws", video_processor_factory=_NoFfmpeg)
-    ingest = IngestService(workspace)
-    source = _planted_video_source(workspace, ProjectService(workspace).create("p"), tmp_path)
+    """One broken machine is not five thousand broken files, on the row too.
 
-    with pytest.raises(MediaToolUnavailable):
+    The decoder gives up on the first file with something that is not a
+    `MediaError` — a disk that went away — so nothing is reportable per file and
+    the whole run carries the cause instead.
+    """
+    workspace = WorkspaceService.init(
+        tmp_path / "ws", image_processor_factory=lambda: _FailsOnNthFile(1)
+    )
+    ingest = IngestService(workspace)
+    project = ProjectService(workspace).create("p")
+    stills = tmp_path / "stills"
+    stills.mkdir()
+    write_images(stills, count=2)
+    source = SourceService(workspace).register_images(project.id, stills)
+
+    with pytest.raises(OSError, match="the disk went away"):
         ingest.ingest(source.id)
 
     job = ingest.list(source.id)[0]
     assert job.state is IngestState.FAILED
-    assert "ffmpeg" in (job.error or "")
+    assert "the disk went away" in (job.error or "")
     assert job.failures == ()
     workspace.close()
 
@@ -1555,20 +1250,6 @@ def test_two_identical_files_share_one_preview_blob(tmp_path: Path) -> None:
     fixture.ingest.ingest(source.id)
 
     assert fixture.blob_count() == 2
-    fixture.close()
-
-
-def test_a_frame_gets_a_preview_too(tmp_path: Path) -> None:
-    """The no-re-probe rule is about reported metadata, not about the cache."""
-    fixture = Fixture(tmp_path)
-    clip = fixture.clip(fps=10, duration_seconds=1.0)
-    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=1.0)
-
-    result = fixture.ingest.ingest(source.id)
-
-    assert result.assets
-    assert all(asset.thumbnail_hash is not None for asset in result.assets)
-    assert {_preview(fixture, asset).format for asset in result.assets} == {THUMBNAIL_FORMAT}
     fixture.close()
 
 
@@ -2078,32 +1759,32 @@ def test_stills_come_back_in_filename_order(tmp_path: Path) -> None:
     fixture.close()
 
 
-def test_a_clips_frames_come_back_in_frame_order_not_lexicographic_uri_order(
+def test_frames_come_back_in_frame_order_not_lexicographic_uri_order(
     tmp_path: Path,
 ) -> None:
     """The reason the sort key is not simply the uri.
 
     A frame's uri is `{path}#frame={n}`, so sorting those as strings puts
     `#frame=10` between `#frame=1` and `#frame=2`. With ten or more frames that
-    is visible; with nine it is not, which is why the clip below is long enough
-    to have a two-digit index.
+    is visible; with nine it is not, which is why the animation below is long
+    enough to have a two-digit index.
     """
     fixture = Fixture(tmp_path)
-    clip = fixture.clip()
-    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=10.0)
+    _write_animated_gif(fixture.stills / "anim.gif", frames=12)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
     fixture.ingest.ingest(source.id)
 
     listed = fixture.ingest.assets(fixture.project.id)
     indexes = [asset.frame_index for asset in listed]
 
-    assert len(indexes) > 10, "the clip must be long enough to reach a two-digit index"
+    assert len(indexes) > 10, "the animation must be long enough to reach a two-digit index"
     assert indexes == sorted(index for index in indexes if index is not None)
     fixture.close()
 
 
 def test_two_sources_do_not_interleave(tmp_path: Path) -> None:
-    """Grouped by source, so a clip's frames stay together rather than being
-    shuffled through a directory's stills."""
+    """Grouped by source, so one folder's assets stay together rather than being
+    shuffled through another's."""
     fixture = Fixture(tmp_path)
     write_images(fixture.stills, count=3)
     stills = fixture.sources.register_images(fixture.project.id, fixture.stills)
@@ -2478,7 +2159,10 @@ def test_the_key_interleaves_a_files_frames_at_its_own_name() -> None:
 
 
 def _write_animated_gif(path: Path, frames: int) -> None:
-    shades = [Image.new("L", (16, 12), 30 + i * 40) for i in range(frames)]
+    # A stride small enough that twelve frames still land on twelve distinct
+    # greys: two frames of one shade are one asset, and a test counting frames
+    # would read that as the decomposition losing some.
+    shades = [Image.new("L", (16, 12), 30 + i * 18) for i in range(frames)]
     shades[0].save(path, format="GIF", save_all=True, append_images=shades[1:], duration=100)
 
 

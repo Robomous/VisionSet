@@ -59,6 +59,7 @@ export const sidebar = [
           { slug: "architecture/frontend/app" },
           { slug: "architecture/frontend/ui-core" },
           { slug: "architecture/frontend/annotator" },
+          { slug: "architecture/frontend/media" },
           { slug: "architecture/frontend/visual-baselines" },
         ],
       },

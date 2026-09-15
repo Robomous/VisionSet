@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Same rollup-plugin-dts / TypeScript 6 baseUrl deprecation tsup's declaration
+    // bundler trips as @visionset/annotator's — see that package's tsconfig.build.json.
+    "ignoreDeprecations": "6.0",
+    // Emit-only. The no-DOM gate is `tsc -p tsconfig.json`, which still excludes
+    // src/mediabunny; this config has to declare the adapter's own libs to emit it.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "exclude": ["src/**/*.test.ts"]
+}

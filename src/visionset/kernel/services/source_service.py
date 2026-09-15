@@ -6,23 +6,22 @@ clip* is where a project's assets came from, when it was registered, and what a
 probe made of it. Materializing assets out of it is the ingest pipeline's job;
 this service only ever writes one row.
 
-**Two registration methods, not one ``register(kind=...)``.** The arguments
-genuinely differ: a clip needs a decomposition rate and gets probed, a directory
-needs neither and is not walked. That is the same argument that made
-``ImageProcessor`` and ``VideoProcessor`` two protocols instead of one — a single
-entry point would have to accept parameters that are meaningless for half its
-callers.
+**One registration method, and it registers a directory.** A ``VIDEO`` source
+is not made here at all: the server never sees a clip, so there is nothing to
+open and nothing to probe. ``VideoImportService.start`` is the only door to one,
+and it writes its ``VideoProvenance`` from what a client's decoder declared.
+This service still *reads* both kinds — ``get``, ``list`` and
+:meth:`require_source` know nothing about how a row was written.
 
 **Registration is idempotent, and the match key is ``(kind, path,
-extraction_fps, ranges, scale_percent)``** — a clip's scale forks identity,
-because the stored pixels differ. Registering the same origin twice returns the same
+extraction_fps, ranges, scale_percent)``** — the video half of that key is dead
+weight for the one writer left here and is kept because the stored rows and the
+unique index still carry it. Registering the same origin twice returns the same
 ``Source`` rather than a second one, so that "which source did this asset come
 from?" has one answer through ``asset.source_id``. The key
 deliberately excludes ``capture_params``: fragmenting one directory into two
 sources because an operator typed a different lens note would defeat the point.
-It also excludes the probed ``VideoMetadata`` — a clip replaced at a known path
-is still that path's source, so its recorded provenance is **refreshed in
-place** rather than left describing a file that is gone. ``registered_at`` is
+It also excludes the stored ``VideoMetadata``. ``registered_at`` is
 never rewritten; it is the first registration.
 
 **That idempotency now has a constraint underneath it.** It shipped without one,
@@ -37,13 +36,13 @@ finds the winner's row and returns it. A caller that instead waits out the
 store's ``busy_timeout`` sees ``WorkspaceBusy``, and the remedy is the same.
 
 Composition follows the rule in ``docs/content/workspaces.md``: this service takes an
-open ``WorkspaceService`` and nothing else, and reaches ``video_processor``
-through it. It never names an adapter.
+open ``WorkspaceService`` and nothing else, and reaches every port through it.
+It never names an adapter.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 from uuid import UUID
 
@@ -51,14 +50,11 @@ from visionset.kernel.domain import (
     Project,
     Source,
     SourceKind,
-    TimeRange,
-    VideoProvenance,
     canonical_path,
-    canonical_ranges,
     normalize_name,
 )
 from visionset.kernel.errors import ProjectNotFound, SourceNotFound
-from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS, UnitOfWork
+from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services.workspace_service import WorkspaceService
 
 
@@ -105,8 +101,7 @@ class SourceService:
         digest). It is not part of the identity key: providing a new one renames
         the existing source, and ``None`` leaves whatever is stored alone —
         every nameless re-registration would otherwise erase the name somebody
-        stated. Only this method takes it, deliberately: a clip's basename *is*
-        its filename, so ``register_video`` has no caller with this problem yet.
+        stated.
 
         Raises:
             ProjectNotFound: no such project in this workspace.
@@ -117,74 +112,33 @@ class SourceService:
         path = canonical_path(directory)
         if not Path(path).is_dir():
             raise NotADirectoryError(f"{path} is not a directory")
-        return self._register(
-            project_id,
-            SourceKind.IMAGE_DIRECTORY,
-            path,
-            video=None,
-            capture_params=capture_params,
-            display_name=(
-                None if display_name is None else normalize_name(display_name, what="source name")
-            ),
-        )
-
-    def register_video(
-        self,
-        project_id: UUID,
-        clip: Path,
-        *,
-        extraction_fps: float = DEFAULT_EXTRACTION_FPS,
-        ranges: Sequence[TimeRange] = (),
-        scale_percent: int = 100,
-        capture_params: Mapping[str, str] | None = None,
-    ) -> Source:
-        """Record a video file as an origin, with what a probe makes of it.
-
-        ``ranges``, like the rate, is part of the source's identity. It is
-        canonicalized against the probed duration — clamped, sorted, merged —
-        so two spellings of one selection are one source and a different
-        selection is a second source. Empty means the whole clip.
-
-        The probe runs **before** the transaction opens. It is an out-of-process
-        decoder, and holding a write transaction open across a subprocess is how
-        a single-writer SQLite store ends up making every other writer wait out
-        its ``busy_timeout`` and fail with ``WorkspaceBusy`` — the same reason
-        ``examples/sdk_end_to_end.py`` puts its blob writes outside the
-        ``unit_of_work``.
-
-        The consequence is worth knowing: re-registering an already-known clip
-        still needs ffmpeg, because the freshly probed metadata is what keeps the
-        stored provenance honest when the file behind the path has changed.
-
-        ``extraction_fps`` is part of the source's identity, not a per-run
-        option: the same clip at 1 fps and at 5 fps is two sources. See
-        ``domain/source.py`` for why the parameters live here and not on the job.
-
-        Raises:
-            ProjectNotFound: no such project in this workspace.
-            FileNotFoundError: there is nothing at ``clip``.
-            ValueError: ``extraction_fps`` is not positive.
-            MediaToolUnavailable: ffmpeg is not installed on this machine.
-            UnsupportedMedia: the file is intact and is not a video we read.
-            CorruptMedia: the file is a video we read, and it is damaged.
-        """
-        if extraction_fps <= 0:
-            raise ValueError(f"extraction_fps must be positive, got {extraction_fps}")
-        path = canonical_path(clip)
-        metadata = self._workspace.video_processor.probe(Path(path))
-        canonical = canonical_ranges(ranges, duration_seconds=metadata.duration_seconds)
-        return self._register(
-            project_id,
-            SourceKind.VIDEO,
-            path,
-            video=VideoProvenance(
-                metadata=metadata,
-                extraction_fps=extraction_fps,
-                ranges=canonical,
-                scale_percent=scale_percent,
-            ),
-            capture_params=capture_params,
-        )
+        name = None if display_name is None else normalize_name(display_name, what="source name")
+        params = dict(capture_params or {})
+        with self._workspace.unit_of_work() as uow:
+            self._require_project(uow, project_id)
+            for stored in uow.sources.list(project_id):
+                if stored.kind is not SourceKind.IMAGE_DIRECTORY or stored.locator != path:
+                    continue
+                # ``None`` means the caller said nothing, which must keep the
+                # stored name — not erase it. A provided name renames: a label
+                # is curation, not provenance, so the last statement wins.
+                changes: dict[str, object] = {}
+                if stored.capture_params != params:
+                    changes["capture_params"] = params
+                if name is not None and stored.display_name != name:
+                    changes["display_name"] = name
+                if not changes:
+                    return stored
+                return uow.sources.update(stored.model_copy(update=changes))
+            return uow.sources.add(
+                Source(
+                    project_id=project_id,
+                    kind=SourceKind.IMAGE_DIRECTORY,
+                    locator=path,
+                    display_name=name,
+                    capture_params=params,
+                )
+            )
 
     # --- lookups shared by the operations above ----------------------------
 
@@ -207,62 +161,6 @@ class SourceService:
         raise SourceNotFound(
             f"no source {source_id} in workspace {self._workspace.workspace.name!r}"
         )
-
-    def _register(
-        self,
-        project_id: UUID,
-        kind: SourceKind,
-        path: str,
-        *,
-        video: VideoProvenance | None,
-        capture_params: Mapping[str, str] | None,
-        display_name: str | None = None,
-    ) -> Source:
-        """Add the source, or return the one that already stands for this origin."""
-        params = dict(capture_params or {})
-        cut = None if video is None else (video.extraction_fps, video.ranges, video.scale_percent)
-        with self._workspace.unit_of_work() as uow:
-            self._require_project(uow, project_id)
-            for stored in uow.sources.list(project_id):
-                if stored.kind is not kind or stored.path != path:
-                    continue
-                stored_cut = (
-                    None
-                    if stored.video is None
-                    else (
-                        stored.video.extraction_fps,
-                        stored.video.ranges,
-                        stored.video.scale_percent,
-                    )
-                )
-                if stored_cut != cut:
-                    continue
-                # ``None`` means the caller said nothing, which must keep the
-                # stored name — not erase it. A provided name renames: a label
-                # is curation, not provenance, so the last statement wins.
-                changes: dict[str, object] = {}
-                if stored.video != video or stored.capture_params != params:
-                    # The path and parameters match, so this is the same source;
-                    # the file behind it moved on. Refresh what was read off it
-                    # rather than leaving a record that describes bytes nobody
-                    # can produce any more.
-                    changes["video"] = video
-                    changes["capture_params"] = params
-                if display_name is not None and stored.display_name != display_name:
-                    changes["display_name"] = display_name
-                if not changes:
-                    return stored
-                return uow.sources.update(stored.model_copy(update=changes))
-            return uow.sources.add(
-                Source(
-                    project_id=project_id,
-                    kind=kind,
-                    path=path,
-                    display_name=display_name,
-                    capture_params=params,
-                    video=video,
-                )
-            )
 
     def _require_project(self, uow: UnitOfWork, project_id: UUID) -> Project:
         """The project, or refuse because this workspace does not have it."""

@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""The vision document's success metric, executable: video to a YOLO dataset.
+"""The vision document's success metric, executable: images to a YOLO dataset.
 
-*Install VisionSet, point it at a clip, draw fifty boxes, and hand a trainer a
-dataset — in under half an hour.* That sentence is what the whole build is for,
-and this is it as a program: one project, one video, fifty bounding boxes over
-the frames it yielded, one release, one YOLO export that ``ultralytics`` agrees
-is a dataset.
+*Install VisionSet, point it at a folder of photographs, draw fifty boxes, and
+hand a trainer a dataset — in under half an hour.* That sentence is what the
+whole build is for, and this is it as a program: one project, fifty images,
+fifty bounding boxes over them, one release, one YOLO export that
+``ultralytics`` agrees is a dataset.
+
+Video is not exercised here. Importing a video is a **browser** capability now
+— see [`docs/content/ingest.md`](../docs/content/ingest.md) — so there is no
+server-side decode left for a wheel-only flow like this one to drive; the
+photographs below stand in for whatever a batch's images are actually from.
 
 It is also **M6's gate**. The CI job installs the built wheel into an empty
 virtual environment and runs this file — nothing from the repository is on the
 path, so what is exercised is what a user gets from ``pip``. A run that reaches
-the end proves the wheel, the entry points, the plugin discovery, the media
-toolchain and every service in the cycle at once.
+the end proves the wheel, the entry points, the plugin discovery and every
+service in the cycle at once.
 
 **Every stage is timed and named**, which is the point of :func:`stage` rather
 than a bare sequence of calls: a failure here has to say *which step* of the
@@ -31,9 +36,9 @@ Run it:
 
     python examples/thirty_minute_flow.py [destination]
 
-It needs **ffmpeg** on the PATH, because it makes its own clip rather than
-committing one. ``ultralytics`` is optional: without it the export is still
-written and checked structurally, and the final assertion says it was skipped.
+It needs no media binary at all. ``ultralytics`` is optional: without it the
+export is still written and checked structurally, and the final assertion says
+it was skipped.
 """
 
 from __future__ import annotations
@@ -41,7 +46,6 @@ from __future__ import annotations
 import contextlib
 import os
 import shutil
-import subprocess
 import sys
 import time
 from collections.abc import Iterator
@@ -49,6 +53,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
+
+from PIL import Image
 
 from visionset import __version__
 from visionset.formats.registry import exporter
@@ -83,16 +89,14 @@ from visionset.kernel.services import (
 #: than a measurement.
 WALL_CLOCK_CEILING_SECONDS = 600.0
 
-#: Ten seconds at 5 fps: fifty frames, one box each.
-CLIP_SECONDS = 10
-CLIP_FPS = 30
-CLIP_SIZE = (320, 240)
-EXTRACTION_FPS = 5.0
+STILL_SIZE = (64, 48)
 
 #: The number in the promise, and it is a real constraint rather than a round
-#: figure: fifty is what the extraction above yields, so every frame gets exactly
-#: one box and the count is a property of the run rather than a slice of it.
+#: figure: fifty is how many photographs the folder below holds, so every image
+#: gets exactly one box and the count is a property of the run rather than a
+#: slice of it.
 BOX_COUNT = 50
+PHOTO_COUNT = BOX_COUNT
 
 CLASSES: tuple[LabelClass, ...] = (
     LabelClass(name="vehicle", geometries=(GeometryType.BBOX,), color="#eb5a47"),
@@ -104,12 +108,6 @@ SPLIT = SplitRecipe(train=0.7, val=0.15, test=0.15, seed=42)
 FORMAT_NAME = "ultralytics"
 
 ULTRALYTICS_REQUIRED_ENV = "VISIONSET_REQUIRE_ULTRALYTICS"
-
-FFMPEG_MISSING = (
-    "ffmpeg is not on PATH, and this flow decomposes a video.\n"
-    "Install it with `brew install ffmpeg` (macOS) or "
-    "`sudo apt-get install ffmpeg` (Debian/Ubuntu), then run this again."
-)
 
 
 @dataclass(frozen=True)
@@ -156,40 +154,26 @@ def stage(name: str) -> Iterator[None]:
     print(f"    ok ({elapsed:.1f}s)", flush=True)
 
 
-def write_clip(path: Path) -> Path:
-    """Ten seconds of ``testsrc``, generated rather than committed.
+def write_stills(directory: Path, count: int) -> Path:
+    """A folder of ``count`` photographs, each with its own pixels.
 
-    The flags are ``tests/fixtures/media.write_video``'s, duplicated on purpose:
-    an example may shell out to ffmpeg and may never import the test fixtures,
-    which answer a missing binary with ``pytest.skip`` — meaningless in a script.
-
-    **The size matters.** Below roughly 96x72 the pattern's per-frame movement
-    falls under what the scaler and encoder resolve, consecutive frames come out
-    byte-identical, and content addressing deduplicates them — so a ten-second
-    clip yields fewer assets than extraction slots and the feature working reads
-    as a shortfall. 320x240 clears that floor comfortably.
+    Each image's bytes depend on its index, so no two deduplicate by accident
+    and the folder yields exactly ``count`` assets — a property this flow's box
+    count depends on.
     """
-    width, height = CLIP_SIZE
-    path.parent.mkdir(parents=True, exist_ok=True)
-    command = [
-        "ffmpeg",
-        "-nostdin",
-        "-loglevel", "error",
-        "-f", "lavfi",
-        "-i", f"testsrc=size={width}x{height}:rate={CLIP_FPS}:duration={CLIP_SECONDS}",
-        "-pix_fmt", "yuv420p",
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-g", str(CLIP_FPS),
-        "-movflags", "+faststart",
-        "-fflags", "+bitexact",
-        "-flags:v", "+bitexact",
-        "-y", str(path),
-    ]  # fmt: skip
-    result = subprocess.run(command, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise SystemExit(f"ffmpeg could not generate {path.name}:\n{result.stderr}")
-    return path
+    directory.mkdir(parents=True, exist_ok=True)
+    width, height = STILL_SIZE
+    for index in range(count):
+        pixels = bytes(
+            channel
+            for y in range(height)
+            for x in range(width)
+            for channel in ((x * 5 + index * 61) % 256, (y * 7) % 256, (x + y + index * 23) % 256)
+        )
+        Image.frombytes("RGB", STILL_SIZE, pixels).save(
+            directory / f"photo-{index:03d}.png", format="PNG"
+        )
+    return directory
 
 
 def _box(asset_id: UUID, index: int) -> Annotation:
@@ -214,11 +198,6 @@ def _box(asset_id: UUID, index: int) -> Annotation:
 
 def main(dest: Path) -> Summary:
     """Drive an empty directory to a YOLO dataset, and report what happened."""
-    if shutil.which("ffmpeg") is None:
-        # Before anything is written, so a machine without the binary leaves no
-        # half-made workspace behind.
-        raise SystemExit(FFMPEG_MISSING)
-
     _TIMINGS.clear()
     started = time.monotonic()
     print(f"VisionSet {__version__} — the thirty-minute flow", flush=True)
@@ -238,14 +217,14 @@ def main(dest: Path) -> Summary:
             project = projects.create("dashcam", description="The thirty-minute flow")
             schemas.create_version(project.id, CLASSES)
 
-        with stage("generate a ten-second clip"):
-            clip = write_clip(dest / "clips" / "road.mp4")
+        with stage(f"generate {PHOTO_COUNT} photographs"):
+            photos = write_stills(dest / "incoming", PHOTO_COUNT)
 
-        with stage("register the clip as a source"):
-            source = sources.register_video(project.id, clip, extraction_fps=EXTRACTION_FPS)
+        with stage("register the folder as a source"):
+            source = sources.register_images(project.id, photos)
 
-        with stage("ingest: decode, hash, store, and fill a batch"):
-            run = ingest.ingest(source.id, batch_name="road-5fps")
+        with stage("ingest: hash, store, and fill a batch"):
+            run = ingest.ingest(source.id, batch_name="road-photos")
             if run.failed:
                 raise SystemExit(f"{run.failed} file(s) failed to ingest: {run.failures}")
             batch_id = run.batch_id
@@ -262,7 +241,7 @@ def main(dest: Path) -> Summary:
         with stage(f"draw {BOX_COUNT} boxes"):
             if len(assets) < BOX_COUNT:
                 raise SystemExit(
-                    f"the clip yielded {len(assets)} assets, which is fewer than the "
+                    f"the folder yielded {len(assets)} assets, which is fewer than the "
                     f"{BOX_COUNT} boxes this flow draws one apiece"
                 )
             for index, asset in enumerate(assets[:BOX_COUNT]):
@@ -404,7 +383,7 @@ def _clear_previous_run(dest: Path) -> None:
     Named directories only. ``init`` refuses a non-empty workspace, which is the
     behaviour worth keeping rather than working around.
     """
-    for name in ("workspace", "clips", "export"):
+    for name in ("workspace", "incoming", "export"):
         shutil.rmtree(dest / name, ignore_errors=True)
 
 
@@ -415,6 +394,6 @@ if __name__ == "__main__":
     summary = main(destination)
     print()
     print(f"done in {summary.seconds:.1f}s")
-    print(f"  {summary.asset_count} frames, {summary.labelled_boxes} boxes")
+    print(f"  {summary.asset_count} images, {summary.labelled_boxes} boxes")
     print(f"  release {summary.release_tag} ({summary.manifest_hash[:12]}…)")
     print(f"  dataset at {summary.export_directory}")

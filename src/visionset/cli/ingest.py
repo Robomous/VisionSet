@@ -1,16 +1,19 @@
 # usage: from visionset.cli.ingest import backfill_thumbnails, ingest
-"""``visionset ingest`` — a path in, a batch out. And the preview backfill.
+"""``visionset ingest`` — a directory in, a batch out. And the preview backfill.
 
-**The one command in the CLI that is two service calls**, and it earns it.
-``SourceService`` has two registration methods because a clip needs a rate and a
-probe while a folder needs neither; ``IngestService`` has one ``ingest`` because
-the source already carries the kind, the path and the rate. A person typing a
-path does not want to say which of the two it is, and does not have to — the
-dispatch is ``path.is_dir()``.
+**The one command in the CLI that is two service calls**, and it earns it:
+``SourceService.register_images`` records the origin and ``IngestService.ingest``
+reads it, and nobody typing a path wants to say that twice.
 
-Registering twice is free: registration is idempotent on
-``(kind, path, extraction_fps, ranges, scale_percent)``, so running this again
-on the same folder finds the same source. Ingesting again is nearly free too —
+**A video is refused here, by name.** Nothing in this process decodes one: a
+clip is imported in the browser, which reads it locally and uploads the frames,
+so the honest answer to ``visionset ingest drive.mp4`` is a sentence pointing at
+that screen. Falling back to "treat it as an image" would put a refusal from a
+decoder where a refusal from the product belongs.
+
+Registering twice is free: registration is idempotent on the directory, so
+running this again on the same folder finds the same source. Ingesting again is
+nearly free too —
 content addressing means a re-run creates no assets it created before — which
 is also the remedy for the one
 gap this command has: interrupting it leaves the job row at ``running``, and
@@ -46,7 +49,6 @@ from pathlib import Path
 from typing import Annotated, Final
 
 import typer
-from pydantic import ValidationError
 
 from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
@@ -58,73 +60,41 @@ from visionset.cli.batches import (
     second_step,
     start_after_approval,
 )
-from visionset.kernel.domain import (
-    BatchState,
-    IngestFailure,
-    IngestFailureKind,
-    IngestResult,
-    TimeRange,
-)
-from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS
+from visionset.kernel.domain import BatchState, IngestResult
 from visionset.kernel.services import BatchService, IngestService, SourceService
 
 _FAILURE_COLUMNS: Final = ("FILE", "KIND", "REASON")
+
+#: What ``ingest`` says when it is handed something other than a directory.
+#:
+#: The video case is the one people will hit, so the sentence names it and names
+#: where to go; it stays true of a lone JPEG, which is the other way to get here.
+#: Shared with ``visionset.mcp.sources`` in intent only — each surface spells its
+#: own remedy, because "open the Ingest screen" and "there is no tool for this"
+#: are answers to different readers.
+VIDEO_IS_A_BROWSER_IMPORT: Final = (
+    "ingest takes a directory of still images. A video is imported in the browser: "
+    "run `visionset server`, open the project's Ingest screen and choose the clip "
+    "there — it is decoded on your machine and uploaded as frames. Nothing in this "
+    "process decodes video."
+)
 
 
 def _report(result: IngestResult) -> None:
     """Say what the run did, on stderr, with the refused files named one per line.
 
-    On stderr and never on stdout, which carries the batch id alone — a damaged
-    clip still fills a batch, so ``BATCH=$(visionset ingest …)`` has to keep
-    working through a partial run.
-
-    The partials come first and in sentences, because they are the lines that ask
-    for a decision: what arrived is already stored, and the remedy is a good copy
-    rather than anything to fix here. The refusals stay a table below them.
+    On stderr and never on stdout, which carries the batch id alone — a directory
+    with one unreadable file still fills a batch, so
+    ``BATCH=$(visionset ingest …)`` has to keep working through the report.
     """
     note(
         f"Ingested {result.created} new and {result.deduplicated} already-known "
         f"assets into batch {result.batch_id}."
     )
-    for failure in result.failures:
-        if failure.kind is IngestFailureKind.PARTIAL:
-            note(f"  {failure.name}  {_recovered(failure)}")
-            note("    The frames are in the batch; re-ingest a good copy to replace them.")
-    refused = [f for f in result.failures if f.kind is not IngestFailureKind.PARTIAL]
-    if refused:
+    if result.failures:
         note(f"{result.failed} file(s) could not be used:")
-        for failure in refused:
+        for failure in result.failures:
             note(f"  {failure.name}  {failure.kind.value}  {failure.reason}")
-
-
-def _recovered(failure: IngestFailure) -> str:
-    """Half a line: ``damaged source: 8 frame(s) recovered (container claimed about 20)``.
-
-    The denominator is dropped rather than guessed when the container did not
-    give one — see ``IngestFailure.frames_expected_estimate`` — and it is hedged
-    when it did, because a damaged container's own metadata is suspect.
-    """
-    produced = failure.frames_produced or 0
-    recovered = f"damaged source: {produced} frame(s) recovered"
-    if failure.frames_expected_estimate is None:
-        return recovered
-    return f"{recovered} (container claimed about {failure.frames_expected_estimate})"
-
-
-def _parse_range(spec: str) -> TimeRange:
-    """``START:END`` in seconds, or the usage error a malformed spelling earns.
-
-    The domain's own bounds (a start at or after zero, an end after the start)
-    refuse here too: `TimeRange` raises a bare `ValidationError`, which is not a
-    `VisionSetError` and would print a traceback rather than a sentence.
-    """
-    head, sep, tail = spec.partition(":")
-    if not sep:
-        raise typer.BadParameter(f"--range must be START:END in seconds, got {spec!r}")
-    try:
-        return TimeRange(start_seconds=float(head), end_seconds=float(tail))
-    except (ValueError, ValidationError) as exc:
-        raise typer.BadParameter(f"--range {spec!r}: {exc}") from exc
 
 
 def ingest(
@@ -133,43 +103,10 @@ def ingest(
         typer.Argument(
             exists=True,
             readable=True,
-            help="A directory of stills, or a video file.",
+            help="A directory of still images.",
         ),
     ],
     project: ProjectOption,
-    fps: Annotated[
-        float | None,
-        typer.Option(
-            "--fps",
-            help=(
-                "Frames per second to extract. Video sources only; defaults to "
-                f"{DEFAULT_EXTRACTION_FPS}."
-            ),
-        ),
-    ] = None,
-    range_specs: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--range",
-            help=(
-                "A stretch of the clip to extract, as START:END in seconds; repeatable. "
-                "Video sources only. Overlaps merge; the whole clip is the default."
-            ),
-        ),
-    ] = None,
-    scale: Annotated[
-        int | None,
-        typer.Option(
-            "--scale",
-            min=1,
-            max=100,
-            help=(
-                "Store extracted frames at this percent of the clip's native size. "
-                "Video sources only. Part of the source's identity, like --fps: "
-                "another scale is a second source. Defaults to 100."
-            ),
-        ),
-    ] = None,
     batch_name: Annotated[
         str | None,
         typer.Option(
@@ -188,11 +125,13 @@ def ingest(
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
-    """Register a source and ingest it, into one batch.
+    """Register a directory of images and ingest it, into one batch.
 
-    A directory is read top level only, sorted, with no filter on the suffix —
+    The directory is read top level only, sorted, with no filter on the suffix —
     anything that is not an image is reported per file and the run carries on.
-    A video file is decomposed into frames at `--fps`.
+
+    A video file is refused: importing one happens in the browser, which decodes
+    it locally and uploads the frames.
 
     Files are addressed by content, so ingesting the same bytes twice gives one
     asset. That is what makes re-running this safe after an interruption.
@@ -201,40 +140,12 @@ def ingest(
     ingest is committed before approval is attempted, so a refused approval — a
     project with no schema — leaves a draft batch, and the output names it.
     """
-    # ``typer.Option`` can express ``min=`` but not Click's ``min_open``, so a
-    # ``gt=0`` bound has to be checked here. It has to be checked *somewhere*:
-    # ``SourceService.register_video`` refuses a non-positive rate with a bare
-    # ``ValueError``, which is not a ``VisionSetError`` and would print a
-    # traceback rather than a sentence.
-    if fps is not None and fps <= 0:
-        raise typer.BadParameter("--fps must be greater than zero")
-    if fps is not None and source.is_dir():
-        raise typer.BadParameter(
-            f"--fps applies to a video source; {source} is a directory of stills"
-        )
-    if range_specs and source.is_dir():
-        raise typer.BadParameter(
-            f"--range applies to a video source; {source} is a directory of stills"
-        )
-    if scale is not None and source.is_dir():
-        raise typer.BadParameter(
-            f"--scale applies to a video source; {source} is a directory of stills"
-        )
-    ranges = [_parse_range(spec) for spec in range_specs or ()]
+    if not source.is_dir():
+        raise typer.BadParameter(f"{source} is not a directory. {VIDEO_IS_A_BROWSER_IMPORT}")
 
     with opened_workspace(workspace) as service:
         resolved = resolve_project(service, project)
-        sources = SourceService(service)
-        if source.is_dir():
-            registered = sources.register_images(resolved.id, source)
-        else:
-            registered = sources.register_video(
-                resolved.id,
-                source,
-                extraction_fps=DEFAULT_EXTRACTION_FPS if fps is None else fps,
-                ranges=ranges,
-                scale_percent=100 if scale is None else scale,
-            )
+        registered = SourceService(service).register_images(resolved.id, source)
         note(f"Reading {registered.kind.value.replace('_', ' ')} {source}…")
         result = IngestService(service).ingest(registered.id, batch_name=batch_name)
         if start:
@@ -263,11 +174,6 @@ def ingest(
                 "created": result.created,
                 "deduplicated": result.deduplicated,
                 "failed": result.failed,
-                # A separate count from ``failed`` rather than a subset of it: a
-                # clip that put frames in the batch is not a file the run could
-                # not use, and a script branching on ``failed`` should not see
-                # one.
-                "partial": result.partial,
                 "failures": [wire.ingest_failure(f) for f in result.failures],
             }
         )

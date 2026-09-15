@@ -541,7 +541,8 @@ class SourceNotFound(VisionSetError):
     ``FileNotFoundError`` and a path that is a file where a directory was wanted
     is a ``NotADirectoryError`` — both are about the machine, not about the
     workspace, and both stay outside the ``VisionSetError`` tree for the reason
-    ``MediaToolUnavailable`` sits outside ``MediaError``.
+    ``LocalInferenceUnavailable`` stays outside ``MediaError``: they answer
+    "what is wrong with this machine?", never "what is wrong with this file?".
     """
 
 
@@ -769,7 +770,7 @@ class ExportFormatNotFound(VisionSetError):
 
     A missing format is the caller naming something that is not there, not a
     machine that is missing a tool: the sibling to compare it with is
-    ``SourceNotFound``, not ``MediaToolUnavailable``. Installing a distribution
+    ``SourceNotFound``, not ``LocalInferenceUnavailable``. Installing a distribution
     that registers the format is what fixes it.
     """
 
@@ -927,10 +928,10 @@ class MediaError(VisionSetError):
     repeats the name; the name is a field, and a report that spelled it into every
     sentence would be a list of strings rather than a table.
 
-    Named for media rather than for images because the video processor raises the
-    same two: a codec ffmpeg will not open is ``UnsupportedMedia`` and a truncated
-    clip is ``CorruptMedia``. The split is by *remedy*, not by modality — a
-    modality split would have produced four errors describing two situations.
+    Named for media rather than for images because the split is by *remedy* and
+    not by modality: "intact and not for us" and "for us and broken" are the two
+    situations, whatever a future decoder is pointed at. A modality split would
+    have produced four errors describing the same two.
     """
 
     def __init__(self, reason: str, *, name: str | None = None) -> None:
@@ -972,25 +973,6 @@ class CorruptMedia(MediaError):
     to be, and admitting a file on that claim is how a dataset acquires an asset
     whose bytes nobody can read until a training run trips over it. That is why
     probing pays for a full decode per file instead of sniffing.
-    """
-
-
-class MediaToolUnavailable(VisionSetError):
-    """A media adapter needs an external program, and it is not installed.
-
-    Deliberately **not** a ``MediaError``, and the distance is the whole point.
-    Every error in that family answers "what is wrong with this file?"; this one
-    answers "what is wrong with this machine?". An ingest catches the media
-    family per item and carries on, so if this were in it, a missing decoder
-    would be recorded five thousand times against five thousand innocent files
-    and the run would report a data problem it does not have. It is the *fatal
-    cause* an ingest job records once, next to the per-file report.
-
-    Named for the tool rather than for the program, because the kernel does not
-    know which program: only the adapter does, and only the adapter spells its
-    name. The message is where that lands, and it carries an install hint — the
-    remedy here is a package manager, so an error that merely says "unavailable"
-    has told the operator nothing they did not already suspect.
     """
 
 
@@ -1192,7 +1174,7 @@ class InferenceConnectionNotSetUp(VisionSetError):
 class InferenceConnectionNotRunnable(VisionSetError):
     """Nothing in this build can run a connection of that kind.
 
-    The ``MediaToolUnavailable`` reading, one layer up: this answers "what is
+    The ``LocalInferenceUnavailable`` reading, one layer up: this answers "what is
     missing from this software?" rather than "what is wrong with this
     connection?". A model family no installed driver serves, a recorded driver
     that is not installed or does not serve what the model declares — no amount
@@ -1208,20 +1190,20 @@ class InferenceConnectionNotRunnable(VisionSetError):
 class LocalInferenceUnavailable(VisionSetError):
     """Running a model locally needs the optional runtime, and it is absent.
 
-    ``MediaToolUnavailable``'s exact shape, and it is here for the same three
-    reasons that error gives. It answers "what is wrong with this machine?",
-    never "what is wrong with this connection?" — so a run that hits it records
-    one fatal cause rather than blaming the configuration it was handed. It is
-    not transient, so it is not a 503: retrying never succeeds until somebody
-    installs the extra. And the **message is the remedy**, carrying the exact
-    command, because an error that merely says "unavailable" has told an
-    operator nothing they had not already worked out.
+    **The kernel's one "what is wrong with this machine?" error**, and the
+    reference the others in this file point at. Three things follow from that
+    reading. It never means "what is wrong with this connection?" — so a run
+    that hits it records one fatal cause rather than blaming the configuration
+    it was handed, instead of being caught per item and blamed on five thousand
+    innocent ones. It is not transient, so it is not a 503: retrying never
+    succeeds until somebody installs the extra. And the **message is the
+    remedy**, carrying the exact command, because an error that merely says
+    "unavailable" has told an operator nothing they had not already worked out.
 
     Which command that is lives at the raise site, in ``visionset.inference``,
-    for the reason ``MediaToolUnavailable`` is "named for the tool rather than
-    for the program": the kernel does not know what the extra is called, and
-    should not learn — it knows only that something outside it declined to be
-    importable.
+    and is named for the capability rather than for the package: the kernel does
+    not know what the extra is called, and should not learn — it knows only that
+    something outside it declined to be importable.
 
     Being raised at all is a fact about the *installation*, never about the
     domain, which is why no capability is gated on it: ``download_weights`` is
@@ -1243,7 +1225,7 @@ class InferenceOutOfMemory(VisionSetError):
     where the runtime is present, installed and working, so a caller told to
     install the extra it already has has been told nothing.
 
-    Not transient, so not a 503, on ``MediaToolUnavailable``'s licence: freeing a
+    Not transient, so not a 503, on ``LocalInferenceUnavailable``'s licence: freeing a
     device is something a person does rather than something a wait does, and the
     same request against the same model on the same device fails again.
 
@@ -1362,7 +1344,7 @@ class PreprocessingDriverNotFound(VisionSetError):
     Unlike a format, a step kind is not something a caller can mistype — the
     recipe grammar admits only the kinds this distribution ships drivers for —
     so reaching this means the installation is missing a plugin it was built
-    with. What is wrong is the machine, on ``MediaToolUnavailable``'s terms,
+    with. What is wrong is the machine, on ``LocalInferenceUnavailable``'s terms,
     and the message names the kind and lists the drivers that are installed.
     """
 
@@ -1395,4 +1377,137 @@ class PreprocessingRecipeNameTaken(VisionSetError):
     The ``ReleaseTagTaken`` rule for a recipe: checked before writing so the
     caller gets a sentence, and refused by a unique index so a race cannot slip
     past the check. Renaming onto a taken name is the same refusal.
+    """
+
+
+class VideoImportNotFound(VisionSetError):
+    """No video-import session with that id lives in this workspace.
+
+    The ``IngestJobNotFound`` rule for the other ingestion shape, and a separate
+    class for the same reason: a browser import and a server-driven ingest run
+    are different entities with different lifecycles, and one ``except`` catching
+    both would be catching two things because they share a word.
+
+    A session belonging to another workspace reads as missing rather than as
+    forbidden, like every other cross-scope reference in the kernel.
+    """
+
+
+class VideoImportNotOpen(VisionSetError):
+    """The session has already been committed or aborted, and is final either way.
+
+    Both ends of ``VideoImportState`` are terminal, so this is the answer to
+    appending to a session somebody cancelled, aborting one that already became
+    a batch, and committing one that was thrown away. The remedy is always a new
+    session, never a move backwards: the frames of a committed session are
+    assets that may already be annotated, and an aborted session's frames are
+    gone.
+
+    Deliberately **not** ``InvalidTransition``, which reports a move refused by a
+    declared transition table. There is no table here — see
+    ``VideoImportState`` — so an error naming one would point at a declaration
+    that does not exist.
+    """
+
+
+class FrameOrdinalOutOfRange(VisionSetError):
+    """A frame was offered at a grid position the session does not have.
+
+    An ordinal is an **extraction-grid index** — ``ordinal / extraction_fps``
+    seconds into the clip, counted from the clip's start and not the selection's
+    — so the session's own ranges are what say whether it holds one. An index
+    outside them is not a frame nobody wants; it is evidence that the client's
+    grid and the server's disagree. Refusing it is what keeps
+    ``received_frame_count == expected`` from being satisfiable by frames that
+    are not on the selected grid at all.
+
+    Deliberately **not** bounded by ``expected_frame_count``. That is a count,
+    not an index bound, and the two coincide only for a selection starting at
+    zero: a cut from 5 s at 1 fps expects three frames whose indices are 5, 6
+    and 7, every one of which a count bound refuses.
+    """
+
+
+class FrameTimestampOffGrid(VisionSetError):
+    """A frame's declared timestamp is not the one its ordinal names.
+
+    An ordinal is an **extraction-grid index**, so the grid point it names is
+    ``ordinal / extraction_fps`` — a number the server divides out of the
+    session's own provenance, never one it takes from the descriptor beside the
+    ordinal. A descriptor claiming anything else contradicts the ordinal it
+    arrived with, and the server has no way to pick which of the two halves to
+    believe: the ordinal decides where the frame is staged, the timestamp
+    decides what the asset records it as, and one of them is wrong. Correcting
+    it silently is the one thing that must not happen, because the result is a
+    stored provenance nobody produced.
+
+    ``source_timestamp`` is bounded the same way and on one side only. It is the
+    presentation time of the sample the decoder actually drew for that grid
+    point, which is the last sample at or before it — so one *after* the grid
+    point is not a late frame but a number that cannot have come from that
+    sampling at all.
+
+    Not a :class:`FrameOrdinalOutOfRange`: the index itself is fine here, and the
+    session does hold it. Not a :class:`FrameContentConflict` either — nothing
+    disagrees about bytes, and there is no earlier frame to be in conflict with.
+    """
+
+
+class FrameContentConflict(VisionSetError):
+    """Two different frames were offered at one grid position.
+
+    Re-posting a frame is ordinary: a chunked upload that lost its connection
+    retries, and the same bytes at the same ordinal are a no-op. Different bytes
+    at the same ordinal are not a retry, and the session cannot choose between
+    them — one of the two is wrong and the server has no way to know which.
+
+    Adjudicated on the hash the **server** computed from what it received, never
+    on one the client supplied; see ``IncomingFrame``.
+    """
+
+
+class VideoImportTooLarge(VisionSetError):
+    """The declaration would stage more than one import may hold — in frames or in pixels.
+
+    A bound on the *work*, not a statement about the clip, and two of them
+    because a declaration commissions work along two axes. A **selected cut**
+    holding more grid points than anybody can send is one: the count over the
+    canonical ranges, so a long recording is not refused for being long — ten
+    seconds of a two-hour drive is an ordinary import, and narrowing a selection
+    is a remedy rather than advice. A geometry whose product is absurd is the
+    other: it promises frames no decoder here could open, and leaves the per-part
+    size ceiling — which is derived from that geometry — with nothing bounding
+    it. Both are refused at ``start``, before a source row, a session row or a
+    single frame exists.
+
+    It is a refusal of the declaration rather than of any one frame, which is why
+    it is not a ``FrameOrdinalOutOfRange``: nothing was offered yet. The remedy
+    is a narrower selection or a lower rate, both of which the caller already
+    has, and both of which ``expected_frame_count`` makes checkable in advance.
+    """
+
+
+class TooManyOpenVideoImports(VisionSetError):
+    """This project already holds as many open import sessions as it may.
+
+    Every ``start`` writes a source and a session row before a frame arrives,
+    and an abandoned session — a closed tab, a decoder that gave up — is never
+    reported by anybody. The cap is what keeps "open a session" from being an
+    unbounded write for whoever holds a token, and it counts only sessions that
+    are still ``open``: a committed one is a dataset's provenance and an aborted
+    one is swept on its own schedule.
+
+    The remedy is to finish or abort a session that is already open, or to wait
+    for the abandoned ones to be swept.
+    """
+
+
+class VideoImportIncomplete(VisionSetError):
+    """The session was asked to commit before every expected frame arrived.
+
+    The gate that makes a browser-materialized batch trustworthy. A
+    materialization can die halfway — a closed tab, a decoder that gave up, an
+    upload that stalled — and committing what arrived would produce a batch
+    silently missing a stretch of its clip, which nothing downstream could ever
+    detect. The remedy is to finish appending, or to abort.
     """

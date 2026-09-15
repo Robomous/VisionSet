@@ -1,0 +1,53 @@
+{
+  "name": "@visionset/media",
+  "version": "0.0.1-beta.3",
+  "description": "Video import core: sampling policy, grid arithmetic and materializer contracts, framework- and browser-free.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Robomous/VisionSet.git",
+    "directory": "frontend/media"
+  },
+  "homepage": "https://github.com/Robomous/VisionSet#readme",
+  "bugs": {
+    "url": "https://github.com/Robomous/VisionSet/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./mediabunny": {
+      "types": "./dist/mediabunny/index.d.ts",
+      "import": "./dist/mediabunny/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "THIRD-PARTY-NOTICES.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:browser": "playwright test -c playwright.media.config.ts",
+    "fixtures": "node scripts/make-fixtures.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.browser.json",
+    "lint": "eslint src browser && pnpm run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.5.1",
+    "eslint": "^10.10.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^5.0.0"
+  },
+  "dependencies": {
+    "mediabunny": "1.56.1"
+  }
+}

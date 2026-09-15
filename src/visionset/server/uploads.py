@@ -2,23 +2,27 @@
 """Where an uploaded file lands before a source is registered over it.
 
 The kernel registers a source by **path**: `SourceService.register_images` takes
-a directory and `register_video` takes a file, both of which have to exist on
-this machine. An HTTP client has bytes. This module is the one place that bridges
-the two, and it is deliberately a *server* concern — the CLI and MCP surfaces
-already hold real paths and never come through here.
+a directory that has to exist on this machine. An HTTP client has bytes. This
+module is the one place that bridges the two, and it is deliberately a *server*
+concern — the CLI and MCP surfaces already hold real paths and never come
+through here.
 
 **Uploads are staged content-addressed**, under ``<workspace>/uploads/<digest>/``,
 where the digest names the whole part set: sha-256 over the sorted
-``name:sha256`` lines. One rule for one clip and for fifty stills. The property
-that buys is worth the arithmetic — the same bytes under the same filenames land
-on the same path, so `SourceService`'s own ``(kind, path, extraction_fps)``
-idempotency answers a repeated upload with the *same* `Source` instead of a
-second one over a second copy.
+``name:sha256`` lines. The property that buys is worth the arithmetic — the same
+bytes under the same filenames land on the same path, so `SourceService`'s own
+origin idempotency answers a repeated upload with the *same* `Source` instead of
+a second one over a second copy.
 
 **Nothing is buffered whole.** Starlette spools an `UploadFile` to disk past
 1 MiB and hands over a plain synchronous file object, so a ``def`` handler reads
 it here in chunks straight into the staging file. ``upload.read()`` would undo
 that in one line and must not appear in this module.
+
+Video-import frames do **not** come through here. They are never a source's
+origin — a staged directory would be a second home for bytes the blob store
+already content-addresses — so ``routes/video_imports.py`` hands them straight to
+the kernel.
 
 **Staged uploads are never deleted**, which is the posture blobs already have
 (`BlobStore` has no ``delete``). A workspace's disk grows with what was offered
@@ -56,11 +60,6 @@ class StagedUpload:
 
     directory: Path
     names: tuple[str, ...]
-
-    @property
-    def only(self) -> Path:
-        """The single staged file, for a route that accepted exactly one."""
-        return self.directory / self.names[0]
 
 
 def safe_name(filename: str | None) -> str:

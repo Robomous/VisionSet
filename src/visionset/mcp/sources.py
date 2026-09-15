@@ -1,14 +1,17 @@
 # usage: from visionset.mcp import sources
-"""Ingest tools: one path in, one batch out. And what has been registered before.
+"""Ingest tools: one directory in, one batch out. And what was registered before.
 
-**Four parity candidates collapse into ``ingest``.** ``register_image_source``,
-``register_video_source`` and ``start_ingest`` are three tools describing one
-intention, and the split exists in the kernel for a reason that does not reach
-this far up: ``SourceService`` has two registration methods because a clip needs
-a rate and a probe while a folder needs neither, and ``IngestService`` has one
-``ingest`` because by then the source already carries the kind, the path and the
-rate. An agent holding a path should not have to say which of the two it has —
-the dispatch is ``path.is_dir()``, exactly as ``visionset ingest`` does it.
+**Two parity candidates collapse into ``ingest``.** ``register_image_source``
+and ``start_ingest`` are two tools describing one intention, and the split exists
+in the kernel because a source outlives the run that reads it. An agent holding a
+path does not care.
+
+**There is no video tool, and there is deliberately no way to ask for one.** A
+clip is decoded by the client that holds it — a browser, locally — and arrives
+here as frames that were already images. An agent that hands this tool an ``.mp4``
+gets a sentence saying so, because the alternative is an agent inventing a
+workaround: re-encoding the clip itself, or shelling out to a decoder beside the
+workspace, both of which would put bytes nobody audited into a dataset.
 
 **A local path, never an upload.** ``server/uploads.py`` exists because HTTP has
 bytes where the kernel has paths; an agent runs beside the workspace and has the
@@ -20,156 +23,88 @@ here.
 stdio server has no background worker: something has to do the decode, and
 "resume" done by the agent would block for exactly as long as doing it in the
 first place. The finished job comes back in the answer. If a call is cut off part
-way, the remedy is to call ``ingest`` again — registration is idempotent on
-``(kind, path, extraction_fps)`` and content addressing means the re-run creates
-nothing it created before. That is the same argument that gave the CLI no
-``--resume``.
+way, the remedy is to call ``ingest`` again — registration is idempotent on the
+directory and content addressing means the re-run creates nothing it created
+before. That is the same argument that gave the CLI no ``--resume``.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Final
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import Field
 
 from visionset import wire
-from visionset.kernel.domain import TimeRange
-from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS
 from visionset.kernel.services import IngestService, SourceService
 from visionset.mcp._errors import refused
 from visionset.mcp._resolve import ProjectRef, resolve_project
 from visionset.mcp._workspace import opened_workspace
 
-
-class ClipRangeInput(BaseModel):
-    """One stretch of a clip to extract, half-open: start_seconds <= t < end_seconds."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    start_seconds: float = Field(description="Where the stretch begins, in seconds from zero.")
-    end_seconds: float = Field(description="Where it ends, exclusive. Must be after the start.")
+#: What ``ingest`` answers when it is handed anything but a directory.
+#:
+#: It closes the door rather than only shutting it: an agent told "not supported"
+#: looks for another way in, so the sentence says where video import actually
+#: lives and that no tool here reaches it. True of a lone JPEG too, which is the
+#: other way to arrive at this branch.
+VIDEO_IS_A_BROWSER_IMPORT: Final = (
+    "ingest takes a directory of still images. A video is imported in the browser, "
+    "which decodes it on the user's own machine and uploads the frames: ask the user "
+    "to open the project's Ingest screen in the VisionSet UI. No tool here decodes "
+    "video, and re-encoding the clip yourself is not a substitute."
+)
 
 
 def ingest(
     project: ProjectRef,
     path: Annotated[
         str,
-        Field(
-            description=(
-                "An absolute path on this machine: a directory of still images, or "
-                "a single video file."
-            )
-        ),
+        Field(description="An absolute path on this machine to a directory of still images."),
     ],
-    fps: Annotated[
-        float | None,
-        Field(
-            description=(
-                "Frames per second to extract. Video sources only; defaults to "
-                f"{DEFAULT_EXTRACTION_FPS}. Must be greater than zero."
-            )
-        ),
-    ] = None,
-    ranges: Annotated[
-        list[ClipRangeInput] | None,
-        Field(
-            description=(
-                "Which stretches of the clip to extract, each half-open [start, end) in "
-                "seconds. Video sources only; omitted means the whole clip. Overlaps "
-                "merge, and the selection is part of the source's identity, like fps."
-            )
-        ),
-    ] = None,
-    scale: Annotated[
-        int | None,
-        Field(
-            ge=1,
-            le=100,
-            description=(
-                "Store extracted frames at this percent of the clip's native size. "
-                "Video sources only. Part of the source's identity, like fps: "
-                "another scale is a second source. Omitted means 100 (unscaled)."
-            ),
-        ),
-    ] = None,
     batch_name: Annotated[
         str | None,
         Field(description="Name the batch this run fills. Defaults to the source's own name."),
     ] = None,
 ) -> dict[str, Any]:
-    """Register a source and read it into one batch. Blocks until the run finishes.
+    """Register a directory of images and read it into one batch. Blocks until done.
 
-    A directory is read top level only, in filename order, with no filter on the
-    suffix — anything that is not a usable image is reported in `failures` and
-    the run carries on. A video file is decomposed into frames at `fps`, and the
-    rate is part of what the source *is*: the same clip registered at 1 and at 5
-    is two sources, deliberately.
+    The directory is read top level only, in filename order, with no filter on
+    the suffix — anything that is not a usable image is reported in `failures`
+    and the run carries on.
+
+    **Video is not ingested here.** A clip is imported through the browser, which
+    decodes it on the user's machine and uploads the frames; pointed at one, this
+    refuses and says so. There is no other tool for it.
 
     Assets are addressed by content, so ingesting the same bytes twice yields one
     asset. `created` counts new assets and `deduplicated` counts ones already
     known; both went into the batch. That is also why re-running this after an
     interrupted call is safe and nearly free.
 
-    A damaged clip is read as far as its bytes go, and what came out is kept. It
-    is counted in `partial` rather than in `failed`, and its `failures` entry
-    carries `frames_produced` beside `frames_expected_estimate` — how much
-    arrived, and roughly how much the container claimed. Those frames are already
-    in the batch; the remedy is to ingest a good copy, which content addressing
-    makes cheap. An ingest that read everything reports none of this.
-
-    The `batch_id` it returns is what `approve_batch` takes next. A long video
-    can make this call take minutes; there is no progress to poll from here.
+    The `batch_id` it returns is what `approve_batch` takes next.
 
     `ingest_job_id` names *this run* and nothing else — there is no tool that
     reads it back, and it is not an annotation job. Annotation jobs do not exist
     yet at this point: `approve_batch` is what cuts them, and the ids it returns
     are the ones `get_job` and the rest of the loop take.
 
-    Refuses before doing any work if the path does not exist, if `fps` is not
-    positive, if a range is inverted or starts before zero, or if `fps` or
-    `ranges` was given for a directory of stills.
+    Refuses before doing any work if the path does not exist or is not a
+    directory.
     """
     source_path = Path(path)
-    # Three refusals the kernel raises *outside* the VisionSetError tree, so
+    # Two refusals the kernel raises *outside* the VisionSetError tree, so
     # `guarded` would not catch them and the client would get a traceback's text
-    # instead of an envelope. `canonical_path` resolves strictly
-    # (FileNotFoundError), `register_images` wants a directory
-    # (NotADirectoryError), and `register_video` refuses a non-positive rate with
-    # a bare ValueError.
+    # instead of an envelope: `canonical_path` resolves strictly
+    # (FileNotFoundError) and `register_images` wants a directory
+    # (NotADirectoryError).
     if not source_path.exists():
         return refused(f"no such path: {path}")
-    if fps is not None and fps <= 0:
-        return refused("fps must be greater than zero")
-    if fps is not None and source_path.is_dir():
-        return refused(f"fps applies to a video source, and {path} is a directory of stills")
-    if ranges and source_path.is_dir():
-        return refused(f"ranges applies to a video source, and {path} is a directory of stills")
-    if scale is not None and source_path.is_dir():
-        return refused(f"scale applies to a video source, and {path} is a directory of stills")
-    try:
-        selection = [
-            TimeRange(start_seconds=r.start_seconds, end_seconds=r.end_seconds)
-            for r in ranges or ()
-        ]
-    except ValidationError as exc:
-        # The kernel's refusal is a bare ValidationError, outside the
-        # VisionSetError tree, so `guarded` would answer with a traceback's text.
-        return refused(f"ranges is not a usable selection: {exc}")
+    if not source_path.is_dir():
+        return refused(f"{path} is not a directory. {VIDEO_IS_A_BROWSER_IMPORT}")
 
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)
-        service = SourceService(workspace)
-        if source_path.is_dir():
-            registered = service.register_images(resolved.id, source_path)
-        else:
-            registered = service.register_video(
-                resolved.id,
-                source_path,
-                extraction_fps=DEFAULT_EXTRACTION_FPS if fps is None else fps,
-                ranges=selection,
-                scale_percent=100 if scale is None else scale,
-            )
+        registered = SourceService(workspace).register_images(resolved.id, source_path)
         result = IngestService(workspace).ingest(registered.id, batch_name=batch_name)
     return {
         "source": wire.source(registered),
@@ -181,9 +116,6 @@ def ingest(
         "created": result.created,
         "deduplicated": result.deduplicated,
         "failed": result.failed,
-        # Its own count, not a subset of `failed`: a damaged clip that put frames
-        # in the batch is not a file the run could not use.
-        "partial": result.partial,
         "failures": [wire.ingest_failure(f) for f in result.failures],
     }
 
@@ -194,7 +126,8 @@ def list_sources(project: ProjectRef) -> dict[str, Any]:
     Use it to see what has already been ingested before ingesting again. `name`
     is the path's last component only; the full path is not published, because it
     describes this machine's disk and not anything a caller can act on. A video
-    source carries the probe result and the extraction rate under `video`.
+    source — one a browser import created — carries what its decoder read off the
+    clip and the rate it was decomposed at, under `video`.
     """
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)

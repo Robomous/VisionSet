@@ -139,6 +139,11 @@ export default defineConfig({
       // followed by vite's own four words about it.
       "node e2e-ports.ts --guard e2e && " +
       "pnpm --filter @visionset/annotator build && " +
+      // Before ui-core, which now depends on it. `--filter` builds no dependency it
+      // was not named, so leaving this out means ui-core bundles whatever happens to
+      // be in `frontend/media/dist` — a stale copy, or on a fresh clone nothing at
+      // all, which fails the build outright rather than quietly.
+      "pnpm --filter @visionset/media build && " +
       "pnpm --filter @visionset/ui-core build && " +
       `vite --port ${PORT.e2e} --strictPort`,
     url: `http://localhost:${PORT.e2e}`,

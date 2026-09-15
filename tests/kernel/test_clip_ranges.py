@@ -1,8 +1,9 @@
 """`TimeRange`, canonicalization, and the one frame-count formula.
 
-No ffmpeg here: everything is arithmetic over domain values. The adapter's own
-file proves the same formula against a real extraction, fractional boundaries
-included, so these two files together are the estimate-equals-extraction claim.
+Everything here is arithmetic over domain values, and deliberately nothing else:
+this formula has to give the same answer in Python and in `@visionset/media`,
+which is what makes "expected" a fact the server computes rather than a count a
+client asserts. `frontend/media/src/ranges.test.ts` is its mirror.
 """
 
 from itertools import permutations

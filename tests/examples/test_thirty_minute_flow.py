@@ -10,7 +10,7 @@ Two halves, deliberately, because they answer different questions. This one asks
 "does the cycle still work?"; that one asks "does what we ship still work?", and
 a wheel missing its entry points passes the first and fails the second.
 
-The assertions are about *outcomes* — how many frames a clip yields, how many
+The assertions are about *outcomes* — how many assets a folder yields, how many
 boxes reach the dataset, what `data.yaml` says — never about the narration, which
 is free to change.
 """
@@ -25,13 +25,6 @@ from types import ModuleType
 from typing import Any
 
 import pytest
-from tests.fixtures.media import require_ffmpeg
-
-# The example generates its own clip. Locally a missing binary is a skip; in CI,
-# where VISIONSET_REQUIRE_FFMPEG=1, it is an error — a silently skipped video
-# test looks exactly like a passing one. A *test* may reach into `tests/`, while
-# the example it drives deliberately may not.
-require_ffmpeg()
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "examples" / "thirty_minute_flow.py"
 
@@ -52,14 +45,13 @@ def summary(example: ModuleType, tmp_path_factory: pytest.TempPathFactory) -> An
     return example.main(tmp_path_factory.mktemp("thirty-minute-flow"))
 
 
-def test_the_clip_yields_one_frame_per_box(summary: Any, example: ModuleType) -> None:
-    """Fifty is a property of the extraction, not a slice of it.
+def test_the_folder_yields_one_asset_per_box(summary: Any, example: ModuleType) -> None:
+    """Fifty is a property of the ingest, not a slice of it.
 
-    Ten seconds at 5 fps is fifty frames, and the flow draws one box on each. If
-    the clip ever yields fewer — a smaller frame size would do it, because the
-    pattern stops moving enough for consecutive frames to differ and content
-    addressing collapses them — the example refuses rather than quietly drawing
-    fewer boxes.
+    Fifty photographs in and fifty assets out, with one box drawn on each. If the
+    folder ever yields fewer — two stills that happen to be byte-identical would
+    do it, since content addressing collapses them — the example refuses rather
+    than quietly drawing fewer boxes.
     """
     assert summary.asset_count == example.BOX_COUNT
     assert summary.labelled_boxes == example.BOX_COUNT
@@ -105,6 +97,6 @@ def test_the_flow_finishes_well_inside_its_ceiling(summary: Any, example: Module
 def test_every_stage_is_named_and_timed(summary: Any) -> None:
     """Which is what makes a failure actionable rather than a traceback."""
     names = [name for name, _ in summary.stages]
-    assert "ingest: decode, hash, store, and fill a batch" in names
+    assert "ingest: hash, store, and fill a batch" in names
     assert any(name.startswith("export as") for name in names)
     assert all(elapsed >= 0 for _, elapsed in summary.stages)

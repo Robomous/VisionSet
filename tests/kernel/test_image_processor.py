@@ -16,9 +16,8 @@ that do not are exactly what a hand-rolled tag reader gets wrong.
 
 The third is **determinism**, and it is the one with a caveat. Two runs on one machine produce
 byte-identical thumbnails; two machines with different Pillow or libjpeg builds need not. So
-every assertion here is about *repeatability* and none is about a literal hash — the same rule
-`tests/fixtures/media.py` states for ffmpeg, for the same reason. What a thumbnail cache gets
-out of this is a key, not an identity.
+every assertion here is about *repeatability* and none is about a literal hash. What a
+thumbnail cache gets out of this is a key, not an identity.
 
 Two practical notes for anyone adding a case. `Image.thumbnail` never enlarges, and the fixture
 default is 32x24, so every scaling test has to ask for a bigger source explicitly. And the

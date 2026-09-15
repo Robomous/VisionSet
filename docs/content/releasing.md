@@ -13,10 +13,11 @@ shipping without the app in it. An sdist is built beside it and published too, s
 is possible on a platform without a wheel; there is nothing platform-specific in either, so both
 are `py3-none-any`.
 
-**Two npm packages.** `@visionset/annotator` and `@visionset/ui-core` are published as
-libraries, at the same version as the wheel; the app compiled into the wheel consumes the same two
-through the workspace. `@visionset/app` is the product shell and is explicitly never published -
-it is `private: true`, and its bundle ships inside the wheel. See [the scope](#the-npm-scope).
+**Three npm packages.** `@visionset/annotator`, `@visionset/media` and `@visionset/ui-core` are
+published as libraries, at the same version as the wheel; the app compiled into the wheel consumes
+the same three through the workspace. `@visionset/app` is the product shell and is explicitly
+never published - it is `private: true`, and its bundle ships inside the wheel. See
+[the scope](#the-npm-scope).
 
 ## Where the beta ships: **PyPI, as `0.0.1b1`**
 
@@ -46,15 +47,25 @@ page will not show you a year from now, attached to the commit they came from.
 
 ## The npm scope
 
-`@visionset` is a registered npm organisation holding the two published packages.
+`@visionset` is a registered npm organisation holding the three published packages.
 `pnpm version:sync` translates `VERSION` into npm semver (`0.0.1b3` → `0.0.1-beta.3`) and
 `pnpm version:check` gates the drift, so the npm versions are never chosen - they are derived.
 
-**`pnpm publish`, never `npm publish`.** `@visionset/ui-core` declares
-`"@visionset/annotator": "workspace:*"`. pnpm rewrites that to the concrete version as it packs;
-npm ships the literal `workspace:*` string, and the published package is then uninstallable by
-anybody. This is also why the two are published in dependency order - annotator first, so the
-version ui-core's rewritten dependency names already exists on the registry.
+`@visionset/media` is the video-import core plus a mediabunny-backed browser adapter: sampling
+policy and grid arithmetic in a plain, framework-free entrypoint (`@visionset/media`), and the
+concrete decoder behind a `./mediabunny` subpath so a host chooses the adapter rather than having
+one forced on it. It bundles its own module worker (`dist/mediabunny/worker.js`) so the adapter
+has no bare specifier to resolve at runtime, and it redistributes mediabunny (MPL-2.0, unmodified)
+under [`THIRD-PARTY-NOTICES.md`](../../THIRD-PARTY-NOTICES.md), carried into its own tarball.
+
+**`pnpm publish`, never `npm publish`.** `@visionset/ui-core` declares both
+`"@visionset/annotator": "workspace:*"` and `"@visionset/media": "workspace:*"`. pnpm rewrites
+those to the concrete versions as it packs; npm ships the literal `workspace:*` string, and the
+published package is then uninstallable by anybody. This is also why the packages are published in
+dependency order - **annotator, then media, then ui-core** - so the versions ui-core's rewritten
+dependencies name already exist on the registry. annotator and media are independent leaves
+(neither depends on the other or on ui-core); ui-core is the one package that depends on both, so
+it is always published last.
 
 **Publish under `latest`, not `beta`, for as long as every published version is a prerelease.**
 The usual advice is the opposite, and the reason it does not apply here is worth stating. That
@@ -200,9 +211,10 @@ exchange succeeds and the upload is refused. A wrong field there surfaces only w
 attempted — there is nothing that validates it beforehand.
 
 **The order inside the workflow is load-bearing**, for the reason in
-[the scope](#the-npm-scope): ui-core's rewritten dependency on annotator names a version that has
-to exist on the registry already. The workflow also packs both tarballs and fails if either still
-declares a `workspace:` dependency, because a published version cannot be replaced.
+[the scope](#the-npm-scope): ui-core's rewritten dependencies on annotator and media name versions
+that have to exist on the registry already, so it publishes last. The workflow also packs all
+three tarballs and fails if any still declares a `workspace:` dependency, because a published
+version cannot be replaced.
 
 **This needs pnpm 11 or newer, and the repository is on 12.** pnpm 10 could not perform the OIDC
 exchange, and npm cannot do the `workspace:*` rewrite — so before pnpm 11 the two requirements
@@ -225,11 +237,16 @@ resolve its own dependency:
 ```bash
 cd $(mktemp -d) && npm init -y >/dev/null
 npm install --no-save @visionset/ui-core@0.0.1-beta.3
-node -e "console.log(require('./node_modules/@visionset/ui-core/package.json').dependencies['@visionset/annotator'])"
+node -e "console.log(require('./node_modules/@visionset/ui-core/package.json').dependencies)"
 ```
 
-The last line must print a concrete version, never `workspace:*`, and the install must have
-resolved `@visionset/annotator` alongside it.
+The printed dependencies must name concrete versions for `@visionset/annotator` and
+`@visionset/media`, never `workspace:*`, and the install must have resolved both alongside
+`ui-core`. `scripts/verify_npm_packages.sh` runs the same shape of check locally, before a
+tag exists, against the packed tarballs rather than the published registry - including an
+explicit assertion that `@visionset/media`'s tarball still carries `dist/mediabunny/worker.js`
+and `THIRD-PARTY-NOTICES.md`, since neither failure would otherwise surface before a consumer hits
+it at runtime.
 
 `format list` is the useful one: it reads installed entry-point metadata, so a non-empty answer
 proves the distribution was assembled correctly and not merely uploaded. Then confirm the other

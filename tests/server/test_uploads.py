@@ -7,6 +7,7 @@ routing instead. What a route does with the result is `test_sources.py`.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 from io import BytesIO
 from pathlib import Path
@@ -14,6 +15,7 @@ from pathlib import Path
 import pytest
 from fastapi import UploadFile
 
+import visionset.server as server_package
 from visionset.server.uploads import FALLBACK_NAME, UPLOADS_DIRNAME, safe_name, stage
 
 
@@ -48,11 +50,11 @@ def test_a_filename_that_names_nothing_usable_falls_back(sent: str | None) -> No
 
 
 def test_a_staged_part_lands_under_uploads_with_its_bytes(tmp_path: Path) -> None:
-    staged = stage(tmp_path, [part("clip.mp4", b"video bytes")])
+    staged = stage(tmp_path, [part("a.png", b"image bytes")])
 
     assert staged.directory.parent == tmp_path / UPLOADS_DIRNAME
-    assert staged.names == ("clip.mp4",)
-    assert staged.only.read_bytes() == b"video bytes"
+    assert staged.names == ("a.png",)
+    assert (staged.directory / "a.png").read_bytes() == b"image bytes"
 
 
 def test_the_same_bytes_under_the_same_name_stage_to_the_same_directory(tmp_path: Path) -> None:
@@ -160,3 +162,65 @@ def test_an_upload_that_dies_partway_leaves_no_staging_directory(tmp_path: Path)
     # and nothing survives: no private directory, and no published one either,
     # because the digest that would have named it was never computed.
     assert not staging_root.exists() or list(staging_root.iterdir()) == []
+
+
+# --- nothing is read whole ---------------------------------------------------
+
+
+#: Every server module that handles a multipart part, and therefore every module
+#: the rule below is about. Derived rather than listed: a module that starts
+#: taking `UploadFile` joins this set without anybody remembering to add it.
+def _part_handling_modules() -> list[Path]:
+    root = Path(server_package.__file__).parent
+    return sorted(
+        path for path in root.rglob("*.py") if "UploadFile" in path.read_text(encoding="utf-8")
+    )
+
+
+def _whole_file_reads(source: str) -> list[str]:
+    """Every ``x.read()`` with no size argument, named by its receiver.
+
+    AST rather than a text search, so the sentence in this module's own docstring
+    — which says the words ``upload.read()`` out loud — is not itself a
+    violation, and so a `read(_CHUNK)` one line away is not a false positive.
+    """
+    found: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "read"
+            and not node.args
+            and not node.keywords
+        ):
+            found.append(ast.unparse(node))
+    return found
+
+
+def test_no_part_handling_module_reads_a_handle_whole() -> None:
+    """The streaming rule, made executable instead of only written down.
+
+    `uploads.py`'s docstring has said since it was written that `upload.read()`
+    must not appear in it, and the image path has honoured it. The video-frame
+    route did not: it read every part of a chunk whole, so thirty-two parts
+    Starlette had already spooled to disk came back as thirty-two copies in
+    memory and were then copied again through the decoder. Prose did not catch
+    that, because prose does not fail a build.
+
+    A no-argument `read()` is the whole signature of the mistake: it is the one
+    spelling that ignores how big the thing is. `read(_CHUNK)` is the rule being
+    followed, and a size ceiling somewhere else is no substitute — an unbounded
+    read of a bounded file is still a copy nobody needed.
+    """
+    modules = _part_handling_modules()
+    # The sweep is derived, so it can also find nothing and pass. `uploads.py` is
+    # the module this rule was written for and will always be in the set; naming
+    # it is what keeps a vacuous sweep from reading as a clean one.
+    assert "uploads.py" in {path.name for path in modules}
+
+    offenders = {
+        path.name: calls
+        for path in modules
+        if (calls := _whole_file_reads(path.read_text(encoding="utf-8")))
+    }
+    assert offenders == {}

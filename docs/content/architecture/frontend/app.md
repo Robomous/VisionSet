@@ -27,6 +27,19 @@ must satisfy - `VisionSetDataClient` and `VisionSetDataProviderProps` - and neve
 how a credential is obtained or a session probed; this package is that shape's one
 implementation in this repository.
 
+The composition root supplies a second runtime the same way: `VisionSetMediaRuntime`
+(`ui-core`'s `media/port.ts`) needs a materializer and a `FrameSink`, and this package
+is the only place both are wired together. The materializer is
+`MediabunnyVideoMaterializer` from `@visionset/media/mediabunny`, used unmodified - a
+host does not get its own decoder, it gets the one reusable package. The `FrameSink`
+is this repository's own: `src/data/` builds one backed by the existing
+`VisionSetDataClient`, posting materialized frames as multipart chunks over the same
+transport `ossClient.ts` already speaks, to `VideoImportService`'s session endpoints.
+Nothing about the materializer or the sink protocol is enterprise-specific - a
+managed host replaces only the `FrameSink`'s destination, the same way it replaces
+`ossClient.ts` today, which is what proves the boundary actually sits where
+[ui-core.md](ui-core.md) says it does.
+
 ## What a route does
 
 ```mermaid

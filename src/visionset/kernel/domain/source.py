@@ -2,10 +2,10 @@
 """Where a project's raw data came from, and what we know about it.
 
 A :class:`Source` is the record that some bytes were *offered* to a project. It
-is not annotatable and holds no pixels: it names an origin on disk, says when it
-was registered, and — for a clip — carries what ``VideoProcessor.probe`` read off
-it plus the rate a decomposition will run at. Assets are what an ingest
-*materializes* from it; this is the receipt.
+is not annotatable and holds no pixels: it names an origin, says when it was
+registered, and — for a clip — carries what a client's decoder read off the
+container plus the rate the decomposition ran at. Assets are what an ingest or a
+video import *materializes*; this is the receipt.
 
 **Decomposition parameters live here, not on the ingest job.** A source can be
 ingested more than once, and the promise is that the same source yields the same
@@ -42,12 +42,14 @@ class SourceKind(StrEnum):
     An enum, where ``DatasetChange.operation`` and ``VideoMetadata.codec`` are
     plain ``str``. That doctrine turns on one question — *can something outside
     this build write the value?* A change-log entry outlives the release that
-    wrote it and a codec name is whatever ffmpeg decides to call it, so both have
-    to stay readable when they name something this build never heard of.
+    wrote it and a codec name is whatever the decoder that read it decides to
+    call it, so both have to stay readable when they name something this build
+    never heard of.
 
-    Neither applies here. ``SourceService`` is the only door to a ``Source``, so
-    no foreign writer exists; the kernel **branches** on this value, in the two
-    registration methods and in the invariant tying :attr:`Source.video` to
+    Neither applies here. ``SourceService`` and ``VideoImportService`` are the
+    only two doors to a ``Source``, one per member, so no foreign writer exists;
+    the kernel **branches** on this value, in the invariant tying
+    :attr:`Source.video` to
     :attr:`SourceKind.VIDEO`, and a branch on a magic string is the shape this
     codebase replaces with a table; and the set grows by a deliberate kernel
     change with a service method behind it. That is ``ImageFormat`` /
@@ -88,9 +90,13 @@ class TimeRange(BaseModel):
     inside, the one at ``end_seconds`` is not, so two ranges meeting at a
     boundary share no frame and ``ceil(end*fps) - ceil(start*fps)`` counts
     exactly what extraction emits.
+
+    ``allow_inf_nan=False`` for ``VideoMetadata``'s reason: an infinite bound
+    satisfies every comparison this model makes and blows up in the arithmetic
+    downstream of it.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     start_seconds: float = Field(ge=0)
     end_seconds: float
@@ -170,13 +176,13 @@ def scaled_dimension(native: int, percent: int) -> int:
 class VideoProvenance(BaseModel):
     """What a clip was, and how we chose to cut it.
 
-    :attr:`metadata` is ``VideoProcessor.probe``'s answer, kept whole rather than
-    re-spelled field by field: ``fps`` there is the *original* rate the file was
-    shot at, which is provenance, and re-declaring it beside
-    :attr:`extraction_fps` is how the two come to be confused. Note that
-    video-derived asset identity is reproducible within one ffmpeg build and not
-    across builds — see ``ports/video_processor.py`` — so these numbers describe
-    the file, not a promise about what a later re-ingest will produce.
+    :attr:`metadata` is what the client's decoder read off the container, kept
+    whole rather than re-spelled field by field: ``fps`` there is the *original*
+    rate the file was shot at — ``None`` for a variable-rate clip, which has no
+    single one — and re-declaring it beside :attr:`extraction_fps` is how the two
+    come to be confused. These numbers
+    describe the file; they are not a promise about what a second import of the
+    same clip would produce — see :attr:`policy_version` below.
 
     :attr:`ranges` is the other half of the cut beside :attr:`extraction_fps`:
     which stretches of the clip extraction reads, empty meaning the whole clip.
@@ -186,18 +192,54 @@ class VideoProvenance(BaseModel):
     :attr:`scale_percent` is the third cut parameter: the percent of the native
     size frames are stored at, 100 meaning unscaled. Extraction emits every
     frame at :attr:`stored_width` × :attr:`stored_height`; :attr:`metadata`
-    keeps the probe's native numbers, because what the clip *was* is provenance.
+    keeps the declared native numbers, because what the clip *was* is provenance.
+
+    :attr:`policy_version` and :attr:`materializer` are the other half of the
+    record, and they are about the *decomposition* rather than the clip. Frame
+    bytes are not reproducible across decoders — two browsers can disagree over
+    the same container, let alone two decoders — so rather than promise a
+    nobody can keep, a source states which sampling policy was in force and what
+    drew the frames. Both default to ``None``, and that is the honest reading of
+    a source registered before either field existed: its stored blob carries
+    neither key, and defaulting the version to today's ``SAMPLING_POLICY_VERSION``
+    would make a legacy row indistinguishable from one this build produced —
+    which is the single thing the field exists to tell apart. Whoever stamps a
+    decomposition passes the version; nothing infers one.
 
     Frozen, like every other value in the domain that is a pure function of some
     bytes and a choice.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     metadata: VideoMetadata
     extraction_fps: float = Field(gt=0)
     ranges: tuple[TimeRange, ...] = ()
     scale_percent: int = Field(default=100, ge=1, le=100)
+    policy_version: int | None = Field(default=None, ge=1)
+    materializer: str | None = None
+
+    def selects(self, grid_index: int) -> bool:
+        """Whether that extraction-grid index is one this selection holds.
+
+        The index convention is the one :func:`grid_bounds` defines and the one a
+        client materializes against: ``grid_index / extraction_fps`` seconds into
+        the clip, whatever the selection starts at. It is **not** a position
+        within the selection, so a session cut from 5 s at 1 fps holds 5, 6, 7
+        and not 0, 1, 2 — and bounding it by the frame *count* instead, which is
+        what :func:`expected_frames` answers, refuses every frame of any
+        selection that does not begin at zero.
+        """
+        bounds = grid_bounds(self.ranges, fps=self.extraction_fps) or (
+            # An empty selection is the whole clip, whose grid is [0, its own count).
+            (
+                0,
+                expected_frames(
+                    (), duration_seconds=self.metadata.duration_seconds, fps=self.extraction_fps
+                ),
+            ),
+        )
+        return any(start <= grid_index < end for start, end in bounds)
 
     @property
     def stored_width(self) -> int:
@@ -227,9 +269,15 @@ class Source(BaseModel):
     provenance blob onto an image-directory row. Every other mutable model here
     validates field by field, where assignment is already covered.
 
+    :attr:`locator` identifies an origin; only :attr:`SourceKind.IMAGE_DIRECTORY`
+    promises it is a filesystem path this process can open, canonicalized by
+    :func:`canonical_path`. Nothing else in the kernel is entitled to assume
+    that — a future origin kind can hand back whatever names it, opaque to
+    everyone but the code that registered it.
+
     :attr:`registered_at` is timezone-aware UTC, the convention for every
     timestamp in the domain, and it records the **first** registration:
-    re-registering a known origin refreshes what was probed, never this.
+    re-registering a known origin refreshes what is stored about it, never this.
 
     :attr:`capture_params` is opaque operator-supplied provenance — lens, rig,
     site, whatever the person running the ingest wants on the record. Nothing in
@@ -253,7 +301,7 @@ class Source(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     project_id: UUID
     kind: SourceKind
-    path: str
+    locator: str
     display_name: str | None = None
     registered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     capture_params: dict[str, str] = Field(default_factory=dict)
@@ -261,14 +309,14 @@ class Source(BaseModel):
 
     @property
     def name(self) -> str:
-        """What to call this source: the stated name, else the path's last segment.
+        """What to call this source: the stated name, else the locator's last segment.
 
         The one spelling of the resolution. Both wire projections
         (``server.models.SourceOut`` and ``visionset.wire.source``) publish this
-        rather than re-deriving from ``path`` — two derivations is how the API
+        rather than re-deriving from ``locator`` — two derivations is how the API
         and the CLI would eventually answer differently.
         """
-        return self.display_name if self.display_name is not None else PurePath(self.path).name
+        return self.display_name if self.display_name is not None else PurePath(self.locator).name
 
     @field_validator("registered_at")
     @classmethod

@@ -130,10 +130,10 @@ updates:
   # which. Dependabot cannot fix the re-pointing, but it can propose the version
   # bumps, and the same three days apply.
   #
-  # Both Dockerfiles pin a major-and-flavour tag rather than a digest, which is
-  # the deliberate trade docker/api.Dockerfile's header argues for (the ffmpeg
-  # version that comes with the distribution is the thing being chosen). A digest
-  # pin would be stricter and would also make every security patch a manual bump.
+  # Both Dockerfiles pin a major-and-flavour tag rather than a digest, so a patch
+  # to the base image arrives as a normal version bump instead of a manual re-pin.
+  # A digest pin would be stricter and would also make every security patch a
+  # manual bump.
   - package-ecosystem: "docker"
     directory: "/docker"
     schedule:

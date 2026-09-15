@@ -1067,17 +1067,44 @@ thresholds and a threshold filter are deliberately not here yet.
 
 ### The ingest flow, and the order the domain forces
 
-The issue asks for an fps parameter "with original-fps display from the probe".
-Those two cannot happen in that order, and the screen says so rather than
-designing around it.
+The screen runs **two flows, picked by the chosen file's kind rather than by a branch inside one
+flow**: `ImageIngestFlow` for a folder or a set of stills, `VideoImportFlow` for a clip. They do
+not share a lifecycle, because the things behind them do not - a directory is one synchronous
+`IngestJob`, a clip is a `VideoImportService` session with an arbitrary stretch of time in the
+middle. See [ingest.md](ingest.md#a-video-import-is-a-session-not-a-run).
 
-`extraction_fps` belongs to the **source**, not to the run - "same source, same
-assets" only means something if the parameters are part of what the source *is* -
-and the probe result exists only once the clip is registered. So the rate is chosen
-first, the clip is registered, and then its native fps, duration, codec and
-resolution are shown. Registering the same clip at another rate — or over other
-clip ranges — produces a **second source**, deliberately: idempotency is on
-`(kind, path, extraction_fps, ranges)`.
+#### A clip is inspected before anything is registered
+
+The original issue asked for an fps parameter "with original-fps display from the probe", and
+said the two could not happen in that order because the probe only existed once the clip was
+registered. **That order is now the other way round.** Nothing about a clip reaches the server
+until a person has already seen what it is: `@visionset/media` opens the file in this browser and
+answers container, codec, display size, duration and source rate, and only then is a rate chosen,
+a session opened and the first frame sent. The clip itself is never uploaded at all - only the
+frames it is cut into - and the screen says so under the controls, because it is the fact that
+explains everything else about the flow.
+
+The facts come off the container, never off the extension, and each can be missing without the
+card falling apart: an unparsed container reads `unreadable`, and **Source rate** reads
+`variable` where the inspection's `sourceFps` is null. That field is **optional on purpose** -
+it is the rate the clip was *shot* at, and a variable-frame-rate clip (a screen recording, a
+phone throttling its sensor) has no single one. It rides to the server as `VideoMetadata.fps`,
+still null, and the rate the import is being *cut* at is never written there to fill the gap:
+that one is `extraction_fps`, and confusing the two is what the split exists to prevent.
+
+A clip the browser's decoder will not take does not get a rate control at all. It gets one of
+`VideoRefusal`'s closed set of reasons, each written as its own title and remedy: no video track,
+a container that would not parse, a codec this browser's `VideoDecoder` does not handle (another
+browser may; re-encoding to H.264 will), or a browser with no WebCodecs, `OffscreenCanvas` or
+module worker to offer - which is also what a page served outside a secure context looks like.
+No session is opened in any of those cases, so a refusal costs the project nothing.
+
+**Every import is a new source, and none of them collide.** A `VIDEO` source's locator is the
+opaque `video-import:<uuid4>` the session mints, so importing the same clip twice - at the same
+rate, over the same ranges - produces two sources and re-does the work. Only content addressing
+saves the storage: identical frames collapse to one asset, which is why the outcome says the
+batch can hold fewer frames than the estimate. There is nothing here for a person to deduplicate
+against, and the screen does not pretend otherwise.
 
 A decodable clip gets an editor-shaped block in step 1: a compact preview
 player, the cut's facts beside it — rate, frame count, selection — and a
@@ -1088,37 +1115,57 @@ its last one closes (the clip's partial final second is the one shorter
 cell), and only the marker seconds are labelled under the track, as plain
 numbers. The handles drag and nudge by one second (shift for ten), Delete
 removes a range, and a click scrubs the player — inside a selected
-range it previews, playing from that moment and stopping where the range ends. The selection rides
-to registration as typed and the kernel canonicalizes; the probe card's `Ranges`
-fact echoes the canonical form, which is where an overlapping selection is first
-seen merged. The frame estimate is exact — the mirrored `ceil` arithmetic over
-the merged selection, the same numbers the extraction filter is built from. A
-clip the browser cannot decode gets no timeline and one line saying it will be
-ingested whole.
+range it previews, playing from that moment and stopping where the range ends. Beside the
+timeline sit the rate, the scale, and the **Target batch** - `New batch` or one of the project's
+draft batches, because only a draft can take frames and offering an approved one would be
+offering a refusal. The frame estimate is exact — the mirrored `ceil` arithmetic over the merged
+selection, ported from the kernel so the number shown here is the number the server will expect.
+**Import frames** stays disabled until the clip is decodable, the rate is a positive number and
+the estimate is not zero; nothing else is spelled out, because the reason is in the panel
+directly above the button.
 
-Three more things it inherits:
+#### An import in flight has a denominator, and a cancel that costs nothing
+
+Step 2 shows `materialized of expected` frames against a bar, which the video flow can do and the
+directory flow cannot: `expected_frame_count` was computed server-side at `start`, from the
+canonical ranges and the rate, so there is a denominator before the first frame exists. The
+count beside it is the main thread's own tally of what the sink actually took — see
+[`media`](architecture/frontend/media.md) for why the decoder is not asked for it.
+
+**Cancel** is offered for as long as the import is in flight, and its description is the whole
+point of the session: it stops decoding and throws the staged frames away, and no assets and no
+batch have been created yet, so there is nothing to undo afterwards. A cancelled import says so,
+naming what was not added rather than claiming the project is untouched, and leaves the form ready
+for another clip. There is no Resume: a stalled session is aborted and
+restarted, because half a clip's frames are not a batch anybody asked for.
+
+A commit that is refused renders as prose - a batch approved or deleted while the clip decoded,
+a session still missing a frame - separately from a failure of the decode itself, because the
+two have different remedies. When commit succeeds the outcome names the batch, links into it,
+and offers **Import another clip**.
+
+#### What the directory flow still carries
 
 - **Refusals split by when they can be known** (#28). A bad batch target is 404 or
   409 *before a job row exists*, so it renders on the launch form. Everything after
   the launch is on the job: `error` is the one fatal cause, `failures` is the
   per-item report.
-- **`total` is `null` for a clip.** `VideoMetadata` carries no frame count by
-  design, so an extraction has no denominator until it is over - a directory states
-  its total before the first file. The progress readout shows a count instead of a
-  percentage rather than inventing one.
+- **`processed` has a total, because a directory can be counted first.** A directory
+  states how many files it holds before the first one is read. That is the readout
+  this flow shows, and it is the one thing the video flow gets from somewhere else
+  entirely.
 - **The per-file report is grouped by kind**, which is the whole reason
   `IngestFailureKind` exists: `unsupported` is operator noise, `corrupt` is data
   loss, and reading fifty rows to notice the second is the mistake a table can
   prevent. Names are rendered as basenames with the full string in `title`, because
   for a *directory* ingest `IngestFailure.name` is the full server path - a known
   kernel inconsistency, deliberately left alone.
-- **A `partial` entry is not in that table** (#452). It is the one kind that is not
-  a total loss - a damaged clip read as far as its bytes went, whose frames are in
-  the batch - so it renders as prose above the table: what arrived, roughly what the
-  container claimed, and the remedy, which is a good copy re-ingested. The table
-  below counts only the files that produced nothing. This card is the whole of where
-  that fact is ever stated: nothing is stamped on the assets, no later view mentions
-  it, and a run that read everything renders neither report.
+- **There is no `partial` card any more.** This section used to describe one, for the
+  one failure kind that was not a total loss - a damaged clip read as far as its bytes
+  went, whose frames were in the batch. It went with the server-side decoder that
+  produced it (#452): `IngestFailureKind` has two members, both a total loss for the
+  file they name, and the half-decoded clip is now a session holding frames and zero
+  assets rather than a batch with a footnote.
 
 Nothing is filtered in the browser and there is no `react-dropzone`. Every filter
 the library would apply - MIME type, size, per-file rejection - is a rule the server
@@ -1145,10 +1192,11 @@ Three things decide the shape:
   has nothing to open, and one that failed before materializing a batch never gets
   one - which is why the button is conditional rather than decorative. `batch_name`
   *is* resolved at enqueue, so a partial run can still say where its assets are.
-- **The outcome quotes no number.** `processed` is not the size of the batch on
-  either path: a directory ingest counts refused items into it and a video ingest
-  does not, and content addressing collapses identical items into one asset. The
-  count that is honest is the batch's own, one click away.
+- **The outcome quotes no number.** `processed` counts refused items too, and content
+  addressing collapses identical items into one asset, so it is not the size of the
+  batch. The count that is honest is the batch's own, one click away. The video flow
+  reaches the same conclusion from the other direction: its `expected_frame_count` is
+  exact and still not the batch's size, for the deduplication reason alone.
 
 ### The schema editor, and the three 409s
 

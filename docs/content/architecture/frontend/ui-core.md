@@ -35,6 +35,34 @@ The same rule runs the other way and is worth stating because it decides a lot o
 small questions: a host that cannot honour a control **passes no callback and gets
 no control**, rather than a dead one.
 
+## A second host-injected runtime, for browser video import
+
+`data/port.ts` is not the only seam a host satisfies. `media/port.ts` declares
+`VisionSetMediaRuntime` - a `VideoMaterializer` that decodes a file into frames and a
+`createFrameSink` that says where those frames go - and `VisionSetMediaProvider` /
+`useMediaRuntime()` carry it the same way `VisionSetDataProvider` / `useApiClient()`
+carry the data client. The package depends on `@visionset/media`'s **root
+entrypoint only**: it knows the shape of a materializer and a sink, never which
+concrete materializer decodes a file or which transport a `FrameSink` writes to. It
+never imports `@visionset/media/mediabunny`, the Mediabunny-backed browser adapter -
+that choice, like the transport behind `VisionSetDataClient`, belongs to whichever
+package composes the application (see [app.md](app.md)).
+
+Unlike the data client, this runtime is optional, and the reason is the same rule
+already stated above: **a host that cannot honour a control passes no callback and
+gets no control.** Browser video import is a capability some hosts will not offer at
+all - a build running somewhere `VideoDecoder` does not exist, or a host with its own
+upload path entirely - so `useMediaRuntime()` answers absence as a plain, renderable
+`null` rather than throwing. That is deliberately different from `useApiClient()`,
+which throws on a missing client because every screen in this package assumes a data
+client exists; no screen here has an equivalent unconditional assumption about video
+import, so there is exactly one hook, nullable, and no second
+`useOptionalMediaRuntime` beside it.
+
+`tests/scripts/ui_core_boundary.test.mjs` holds the never-import half of this the same
+way it holds the `fetch` boundary below: it now also refuses a `@visionset/media/mediabunny`
+import, value or type, anywhere in this package's shipped source.
+
 ## Nothing in this package calls `fetch`
 
 `data/port.ts` declares `VisionSetDataClient`, the data contract a host satisfies -

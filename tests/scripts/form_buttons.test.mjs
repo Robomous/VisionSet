@@ -304,11 +304,14 @@ test("formRanges spans the form and stops at its close", () => {
  * than quietly widening it, which is the failure mode an allow-list normally has.
  */
 const RENDERED_INSIDE_FORMS = {
-  // The chosen-files summary inside `IngestScreen`'s upload form; its "Clear"
-  // button is a plain control sitting between the file input and Upload. Declared
-  // in the same file as that form and several hundred lines below it, which is
-  // exactly why this is scoped to the component rather than the file.
-  SelectionPanel: "frontend/ui-core/src/screens/IngestScreen.tsx",
+  // The chosen-files summary inside `ImageIngestFlow`'s upload form. It holds no
+  // `<Button>` of its own any more — it renders `ClearSelection`, below.
+  SelectionPanel: "frontend/ui-core/src/screens/ImageIngestFlow.tsx",
+  // The "Clear" control that summary renders. It lives in `ingestSteps.tsx` rather
+  // than beside the form because the ingest screen split into an image flow and a
+  // video flow and both offer it, so it became one spelling instead of two that
+  // could drift apart on a test id or an aria-label.
+  ClearSelection: "frontend/ui-core/src/screens/ingestSteps.tsx",
   // `AsyncStates`' error card carries a Retry, and `ModelsScreen`'s connection
   // form renders one when the connection list fails to load.
   ErrorState: "frontend/ui-core/src/patterns/AsyncStates.tsx",
@@ -351,10 +354,21 @@ test("a form's buttons that live in another file are typed too, and the list nam
     // listed here is listed *because* it holds a button, so a span with none in
     // it means the span is wrong, not that the code is clean.
     const [from, to] = componentRange(text, name);
+    const span = text.slice(from, to);
+    // A listed component earns its place either by holding a button itself or by
+    // rendering another listed component that does — one hop, resolved through this
+    // list and never by following imports, which is the line the docstring above
+    // draws. Both halves still have to be true of every name: this one, and being
+    // reachable from a form below. What the second form admits is a component that
+    // is shared by two flows rather than declared beside the form it serves.
+    const rendersListed = Object.keys(RENDERED_INSIDE_FORMS).some(
+      (other) => other !== name && new RegExp(`<${other}(?=[\\s/>])`).test(span),
+    );
     assert.ok(
-      /<Button(?=[\s/>])/.test(text.slice(from, to)),
-      `${name} is listed as holding a button and the scanned span of ${file} has none — ` +
-        "componentRange is not covering the component's JSX",
+      /<Button(?=[\s/>])/.test(span) || rendersListed,
+      `${name} is listed as holding a button and the scanned span of ${file} has none, ` +
+        "and renders no other listed component either — componentRange is not covering " +
+        "the component's JSX",
     );
 
     return typelessButtonsInComponent(file, text, name);
@@ -369,16 +383,34 @@ test("a form's buttons that live in another file are typed too, and the list nam
   // The half that keeps the list honest: a name that no longer renders inside a
   // form is an allowance nobody is using, and it would go on excusing the file
   // from nothing while reading as though it meant something.
-  const insideSomeForm = (name) =>
-    [...sources].some(([, text]) => {
-      const ranges = formRanges(text);
-      const uses = new RegExp(`<${name}(?=[\\s/>])`, "g");
-      let use;
-      while ((use = uses.exec(text)) !== null) {
-        if (ranges.some(([from, to]) => use.index >= from && use.index < to)) return true;
-      }
-      return false;
+  // Reachability, with the same single hop the button check allows: a name counts if
+  // it is used inside a `<form>`, or inside the span of another listed component that
+  // is itself used inside one. `seen` bounds it to one pass per name, so a pair of
+  // listed components rendering each other cannot vouch for itself in a cycle.
+  const usedInside = (name, [from, to], text) => {
+    const uses = new RegExp(`<${name}(?=[\\s/>])`, "g");
+    let use;
+    while ((use = uses.exec(text)) !== null) {
+      if (use.index >= from && use.index < to) return true;
+    }
+    return false;
+  };
+
+  const insideSomeForm = (name, seen = new Set()) => {
+    if (seen.has(name)) return false;
+    seen.add(name);
+    return [...sources].some(([, text]) =>
+      formRanges(text).some((range) => usedInside(name, range, text)),
+    ) || Object.entries(RENDERED_INSIDE_FORMS).some(([host, hostFile]) => {
+      if (host === name) return false;
+      const text = sources.get(hostFile);
+      return (
+        text !== undefined &&
+        usedInside(name, componentRange(text, host), text) &&
+        insideSomeForm(host, seen)
+      );
     });
+  };
 
   const stale = Object.keys(RENDERED_INSIDE_FORMS).filter((name) => !insideSomeForm(name));
   assert.deepEqual(
@@ -402,7 +434,7 @@ test("the forms this gate is about are all still there, and none nests", () => {
     [
       "frontend/app/src/shell/TokenGate.tsx",
       "frontend/ui-core/src/screens/DatasetScreen.tsx",
-      "frontend/ui-core/src/screens/IngestScreen.tsx",
+      "frontend/ui-core/src/screens/ImageIngestFlow.tsx",
       "frontend/ui-core/src/screens/ModelsScreen.tsx",
       "frontend/ui-core/src/screens/ProjectFrame.tsx",
       "frontend/ui-core/src/screens/ProjectsScreen.tsx",

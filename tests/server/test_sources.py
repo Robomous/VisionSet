@@ -14,13 +14,8 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from tests.fixtures.media import write_image, write_video
+from tests.fixtures.media import write_image
 from tests.server._api import api_client
-
-# Above `testsrc`'s resolution floor: below roughly 96x72 its per-frame movement
-# falls under the scaler and consecutive frames come out byte-identical, which
-# ingest then deduplicates. See `docs/content/examples.md`.
-CLIP_SIZE = (160, 120)
 
 
 @pytest.fixture()
@@ -44,20 +39,6 @@ def image_part(tmp_path: Path, name: str, seed: int = 0) -> tuple[str, tuple[str
 
 def post_images(client: TestClient, project: str, *parts: Any) -> Any:
     return client.post(f"/projects/{project}/sources/images", files=list(parts))
-
-
-def post_video(client: TestClient, project: str, clip: Path, **form: Any) -> Any:
-    return client.post(
-        f"/projects/{project}/sources/video",
-        files={"file": (clip.name, clip.read_bytes(), "video/mp4")},
-        data=form,
-    )
-
-
-@pytest.fixture()
-def clip(tmp_path: Path) -> Path:
-    """A real clip. `write_video` is what requires ffmpeg, so image tests stay free of it."""
-    return write_video(tmp_path / "made" / "drive.mp4", size=CLIP_SIZE).path
 
 
 # --- registering stills ------------------------------------------------------
@@ -196,135 +177,21 @@ def test_a_blank_name_is_422_with_the_kernel_wording(
     assert response.json()["code"] == "INVALID_NAME"
 
 
-# --- registering a clip ------------------------------------------------------
+# --- the route that used to take a clip --------------------------------------
 
 
-def test_uploading_a_clip_registers_a_video_source(
-    client: TestClient, project: str, clip: Path
-) -> None:
-    response = post_video(client, project, clip, extraction_fps=5)
+def test_uploading_a_clip_is_gone_rather_than_deprecated(client: TestClient, project: str) -> None:
+    """No server-side decoding, and no shim pretending otherwise.
 
-    assert response.status_code == 201, response.text
-    body = response.json()
-    assert body["kind"] == "video"
-    assert body["name"] == "drive.mp4"
-    assert body["video"]["extraction_fps"] == 5
-    # The rate the file was shot at, which is not the rate we cut it at.
-    assert body["video"]["fps"] == 10
-    assert (body["video"]["width"], body["video"]["height"]) == CLIP_SIZE
-
-
-def test_a_clip_registered_at_two_rates_is_two_sources(
-    client: TestClient, project: str, clip: Path
-) -> None:
-    """The rate is part of what the source is — `docs/content/sources.md`."""
-    slow = post_video(client, project, clip, extraction_fps=1)
-    fast = post_video(client, project, clip, extraction_fps=5)
-
-    assert slow.json()["id"] != fast.json()["id"]
-
-
-def test_the_default_rate_is_one_frame_per_second(
-    client: TestClient, project: str, clip: Path
-) -> None:
-    response = post_video(client, project, clip)
-
-    assert response.json()["video"]["extraction_fps"] == 1.0
-    assert response.json()["video"]["ranges"] == []
-
-
-def test_a_clip_registered_with_ranges_echoes_them_canonically(
-    client: TestClient, project: str, clip: Path
-) -> None:
-    """Overlaps merge and order is fixed, so the response is the identity spelling."""
-    response = post_video(
-        client,
-        project,
-        clip,
-        ranges=(
-            '[{"start_seconds": 1.2, "end_seconds": 1.8},'
-            ' {"start_seconds": 0.2, "end_seconds": 1.5}]'
-        ),
-    )
-
-    assert response.status_code == 201, response.text
-    assert response.json()["video"]["ranges"] == [{"start_seconds": 0.2, "end_seconds": 1.8}]
-
-
-def test_a_clip_with_different_ranges_is_a_second_source(
-    client: TestClient, project: str, clip: Path
-) -> None:
-    """Ranges are the other half of the cut, so they fork identity as the rate does."""
-    head = post_video(client, project, clip, ranges='[{"start_seconds": 0, "end_seconds": 1}]')
-    tail = post_video(client, project, clip, ranges='[{"start_seconds": 1, "end_seconds": 2}]')
-
-    assert head.json()["id"] != tail.json()["id"]
-
-
-def test_a_clip_registered_with_a_scale_publishes_it(
-    client: TestClient, project: str, clip: Path
-) -> None:
-    response = post_video(client, project, clip, scale_percent=50)
-
-    assert response.status_code == 201, response.text
-    assert response.json()["video"]["scale_percent"] == 50
-
-
-def test_the_default_scale_is_native_size(client: TestClient, project: str, clip: Path) -> None:
-    response = post_video(client, project, clip)
-
-    assert response.json()["video"]["scale_percent"] == 100
-
-
-def test_a_clip_at_two_scales_is_two_sources(client: TestClient, project: str, clip: Path) -> None:
-    native = post_video(client, project, clip)
-    half = post_video(client, project, clip, scale_percent=50)
-
-    assert native.json()["id"] != half.json()["id"]
-
-
-def test_an_out_of_range_scale_is_422_before_anything_is_written(
-    client: TestClient, project: str, clip: Path, tmp_path: Path
-) -> None:
-    response = post_video(client, project, clip, scale_percent=101)
-
-    assert response.status_code == 422
-    assert not list((tmp_path / "workspace" / "uploads").rglob("*")) or True
-
-
-@pytest.mark.parametrize(
-    "bad",
-    ["not json", '[{"start_seconds": 2, "end_seconds": 1}]', '[{"start": 0}]'],
-    ids=["not-json", "inverted", "wrong-keys"],
-)
-def test_malformed_ranges_are_422_before_anything_is_written(
-    client: TestClient, project: str, clip: Path, bad: str
-) -> None:
-    """Parsed against the kernel's own bounds, so its bare ValidationError never 500s."""
-    response = post_video(client, project, clip, ranges=bad)
-
-    assert response.status_code == 422, response.text
-    assert response.json()["code"] == "VALIDATION_ERROR"
-
-
-def test_a_non_positive_rate_is_422_before_anything_is_written(
-    client: TestClient, project: str, clip: Path
-) -> None:
-    """`gt=0` on the form field, so the kernel's bare `ValueError` is unreachable."""
-    response = post_video(client, project, clip, extraction_fps=0)
-
-    assert response.status_code == 422
-    assert response.json()["code"] == "VALIDATION_ERROR"
-
-
-def test_uploading_something_that_is_not_a_video_is_422(client: TestClient, project: str) -> None:
+    A video is imported by a client that decodes it locally — `test_video_imports.py`
+    — so the old upload route answers 404 like any other path this API does not have.
+    """
     response = client.post(
         f"/projects/{project}/sources/video",
-        files={"file": ("notes.txt", b"not a video", "text/plain")},
+        files={"file": ("drive.mp4", b"not a video either", "video/mp4")},
     )
 
-    assert response.status_code == 422
-    assert response.json()["code"] == "UNSUPPORTED_MEDIA"
+    assert response.status_code == 404
 
 
 # --- reading -----------------------------------------------------------------
@@ -398,7 +265,6 @@ def test_listing_sources_of_an_unknown_project_is_404(client: TestClient) -> Non
     ("method", "path"),
     [
         ("POST", "/projects/{project}/sources/images"),
-        ("POST", "/projects/{project}/sources/video"),
         ("GET", "/projects/{project}/sources"),
         ("GET", "/sources/00000000-0000-0000-0000-000000000000"),
         ("POST", "/sources/00000000-0000-0000-0000-000000000000/ingest-jobs"),

@@ -1,0 +1,42 @@
+{
+  "width": 64,
+  "height": 64,
+  "fps": 8,
+  "frames": 8,
+  "colours": [
+    "#ff0000",
+    "#00ff00",
+    "#0000ff",
+    "#ffff00",
+    "#ff00ff",
+    "#00ffff",
+    "#ffffff",
+    "#000000"
+  ],
+  "clips": [
+    {
+      "file": "vp8.webm",
+      "container": "WebM",
+      "codec": "vp8",
+      "width": 64,
+      "height": 64,
+      "rotation": 0
+    },
+    {
+      "file": "vp9.webm",
+      "container": "WebM",
+      "codec": "vp9",
+      "width": 64,
+      "height": 64,
+      "rotation": 0
+    },
+    {
+      "file": "rotated.mp4",
+      "container": "MP4",
+      "codec": "avc",
+      "width": 64,
+      "height": 32,
+      "rotation": 90
+    }
+  ]
+}

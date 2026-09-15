@@ -43,7 +43,7 @@ Nothing calls `model_dump()` on a domain model. That would publish whatever the
 domain happens to hold today and silently republish whatever it holds tomorrow.
 Three fields make the case, and each is deliberately absent from what ships:
 
-- `Asset.uri` and `Source.path` are absolute paths on the machine running the
+- `Asset.uri` and `Source.locator` are absolute paths on the machine running the
   server. A caller reading one learns the layout of somebody's disk.
 - `Batch.asset_ids` is a batch's whole roll call, which for fifty thousand frames
   must not travel on every read of its name.

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Final
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from visionset.kernel.domain.asset import Asset
 
@@ -80,42 +80,32 @@ class IngestFailureKind(StrEnum):
     report unable to separate the kinds would bury real data loss under ordinary
     operator noise, and a reason sentence cannot be grouped on.
 
-    ``PARTIAL`` is the third member and the only one that is not a total loss.
-    It exists because the two below cannot say the thing an operator most needs
-    to hear about a damaged clip: *some of it is in your batch*. Filing a
-    truncated video as ``CORRUPT`` is true of the file and misleading about the
-    run, which had just created assets from it.
+    Two members, and there is no partial read: a run reads one file at a time and
+    a file either decoded or did not. The kind that used to say "some of this
+    clip reached your batch" went with server-side video decoding — a clip is
+    materialized by a client now, and a materialization that stops halfway leaves
+    an uncommitted ``VideoImport`` rather than a half-filled batch.
     """
 
     #: Intact, and not something VisionSet accepts. Operator noise, usually.
     UNSUPPORTED = "unsupported"
     #: A format we do accept, whose bytes will not decode. Data loss.
     CORRUPT = "corrupt"
-    #: Read in part. What arrived is stored; what did not is gone. Data loss too,
-    #: but with a remainder, which is why the counts below travel with it.
-    PARTIAL = "partial"
 
 
 class IngestFailure(BaseModel):
     """What became of one item an ingest run could not simply read.
 
     ``name`` is the run's own name for the item — a filename for a file on disk,
-    ``clip.mp4#frame=42`` for a frame — and never the exception's, which
-    ``MediaError`` documents as reporting rather than identity. ``reason`` never
-    repeats the name, which is what lets a report be a table instead of a list
-    of sentences. It is built by ``report_name`` below, which is what keeps a
-    server path out of it.
+    ``clip.gif#frame=42`` for a frame of a decomposed animation — and never the
+    exception's, which ``MediaError`` documents as reporting rather than
+    identity. ``reason`` never repeats the name, which is what lets a report be a
+    table instead of a list of sentences. It is built by ``report_name`` below,
+    which is what keeps a server path out of it.
 
-    **The counts belong to ``PARTIAL`` alone**, and the model refuses any other
-    arrangement. That is not tidiness: a report entry has to be groupable on its
-    kind, so an ``UNSUPPORTED`` entry allowed to carry ``frames_produced=0``
-    would give the report two ways to say "nothing arrived" and force every
-    reader to check both. The invariant runs the other way too: ``PARTIAL``
-    without a count is a prose sentence where a number belongs.
-
-    A **positive** count, specifically. Zero frames out of a clip is not a
-    partial read of it; it is a clip that did not read, which the adapter already
-    reports as ``UnsupportedMedia`` and this report already has a kind for.
+    Three fields and no counts. An entry means the item did not become an asset
+    at all, so there is nothing to count: it is groupable on its kind, and the
+    kind is the whole of what a reader has to branch on.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -123,33 +113,12 @@ class IngestFailure(BaseModel):
     name: str
     kind: IngestFailureKind
     reason: str
-    #: How many frames of a damaged clip were extracted and kept. ``PARTIAL``
-    #: only; NULL everywhere else. Exact — it is the length of what the run kept.
-    frames_produced: int | None = Field(default=None, gt=0)
-    #: What the container claimed to hold, as ``duration × extraction_fps`` off
-    #: the probe the source already carries. ``PARTIAL`` only, and **optional
-    #: within it**: it is an estimate and is named as one. ``VideoMetadata``
-    #: deliberately carries no frame count — for a variable-rate stream the
-    #: product is a guess — and a damaged container's own metadata is suspect
-    #: besides. A partial with no denominator still states what it recovered.
-    frames_expected_estimate: int | None = Field(default=None, ge=0)
-
-    @model_validator(mode="after")
-    def _counts_belong_to_a_partial_read(self) -> IngestFailure:
-        counted = self.kind is IngestFailureKind.PARTIAL
-        if counted and self.frames_produced is None:
-            raise ValueError("a partial read must say how many frames it produced")
-        if not counted and (
-            self.frames_produced is not None or self.frames_expected_estimate is not None
-        ):
-            raise ValueError(f"{self.kind.value} recovered nothing, so it counts no frames")
-        return self
 
 
 def report_name(item: Path | str, *, root: Path | None = None) -> str:
     """What a report calls one item, with the server's own layout left out.
 
-    ``Source.path`` and ``Asset.uri`` are deliberately unpublished — an absolute
+    ``Source.locator`` and ``Asset.uri`` are deliberately unpublished — an absolute
     path is useless to a client and needlessly disclosive, which is why
     ``SourceOut.name`` carries a basename and reaching bytes goes through a
     route keyed on an asset id. ``IngestFailure.name`` used to carry one anyway,
@@ -207,17 +176,16 @@ class IngestJob(BaseModel):
     #: Written while the run is in flight, which is what makes it pollable.
     processed: int = Field(default=0, ge=0)
     #: Items the source offered, or NULL when that is not knowable in advance.
-    #: A directory can be listed; a clip cannot, because ``VideoMetadata``
-    #: deliberately carries no frame count — the number an ingest wants is what
-    #: extraction produced, and anything else would be a guess with a VFR clip.
+    #: A directory can be listed, so a run over one states it before the first
+    #: decode; the column stays nullable because the row exists from the moment
+    #: the run is enqueued, which is before anything has been counted.
     total: int | None = Field(default=None, ge=0)
     #: The per-file report of the **current** attempt. A resumed run starts a
     #: fresh one rather than accumulating across attempts.
     #:
-    #: It holds every item that was not simply read, including the ones that were
-    #: read *in part*. An item read whole is absent: silence
-    #: is the ok-state, and a run that reported one line per healthy file would
-    #: be five thousand lines of nothing on a directory ingest.
+    #: It holds every item that could not be read. An item read whole is absent:
+    #: silence is the ok-state, and a run that reported one line per healthy file
+    #: would be five thousand lines of nothing on a directory ingest.
     failures: tuple[IngestFailure, ...] = ()
 
 
@@ -261,18 +229,8 @@ class IngestResult(BaseModel):
 
     @property
     def failed(self) -> int:
-        """How many items could not be read at all.
-
-        A ``PARTIAL`` entry is deliberately **not** one of them: counting a clip
-        that put eight frames in the batch as a file the run could not read would
-        contradict the assets it just created.
-        """
-        return len(self.failures) - self.partial
-
-    @property
-    def partial(self) -> int:
-        """How many items were read in part, with what arrived kept."""
-        return sum(1 for failure in self.failures if failure.kind is IngestFailureKind.PARTIAL)
+        """How many items could not be read."""
+        return len(self.failures)
 
 
 class ThumbnailBackfill(BaseModel):

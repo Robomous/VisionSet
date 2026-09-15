@@ -6,20 +6,26 @@ files that do several of them at once. There are six:
 | Example | What it drives | Milestone |
 | --- | --- | --- |
 | [`sdk_end_to_end.py`](../../examples/sdk_end_to_end.py) | an empty directory to a release whose every byte can be re-hashed and checked | M1 |
-| [`ingest_end_to_end.py`](../../examples/ingest_end_to_end.py) | a ten-second clip and a folder of stills to an approved, partitioned batch | M2 |
+| [`ingest_end_to_end.py`](../../examples/ingest_end_to_end.py) | two folders of stills - one a rerun, one overlapping - to an approved, partitioned batch | M2 |
 | [`http_end_to_end.py`](../../examples/http_end_to_end.py) | the same cycle over HTTP, against a real server on a real port, with a bearer token | M3 |
 | [`cli_end_to_end.sh`](../../examples/cli_end_to_end.sh) | the same cycle from a shell, using nothing but the `visionset` command | M3 |
 | [`mcp_end_to_end.py`](../../examples/mcp_end_to_end.py) | the same cycle over MCP stdio, spawning `visionset mcp` and talking down its pipe | M3 |
-| [`thirty_minute_flow.py`](../../examples/thirty_minute_flow.py) | a clip to a YOLO dataset a trainer loads, every stage timed against a wall-clock ceiling | M6 |
+| [`thirty_minute_flow.py`](../../examples/thirty_minute_flow.py) | photographs to a YOLO dataset a trainer loads, every stage timed against a wall-clock ceiling | M6 |
 
 ```bash
 uv run python examples/sdk_end_to_end.py
-uv run python examples/ingest_end_to_end.py     # needs ffmpeg
+uv run python examples/ingest_end_to_end.py
 uv run python examples/http_end_to_end.py
 uv run bash examples/cli_end_to_end.sh
 uv run python examples/mcp_end_to_end.py
-uv run python examples/thirty_minute_flow.py    # needs ffmpeg
+uv run python examples/thirty_minute_flow.py
 ```
+
+None of the six needs a media binary of any kind any more. Video import is a **browser**
+capability - a client decodes a clip locally and posts frames it already materialized - so there
+is no server-side decode left for a script to demonstrate, and `ingest_end_to_end.py` and
+`thirty_minute_flow.py` are both stills-only. See [ingest.md](ingest.md) for where a video import
+actually lives.
 
 **Why M3 has three.** The standing rule is one example per milestone. M3's exit criterion is
 *the same flow three ways* - REST, CLI, MCP - so for this milestone the count is the
@@ -148,72 +154,52 @@ is ignored and why an example that needs pictures makes its own.
 # The ingest example
 
 Where [`sdk_end_to_end.py`](../../examples/sdk_end_to_end.py) treats ingest as one stage,
-[`ingest_end_to_end.py`](../../examples/ingest_end_to_end.py) is about nothing else. It generates a
-ten-second clip, registers it twice at two different rates, ingests a folder of stills with one
-file that is not an image, and stops at an approved batch cut into two jobs. Nothing is annotated
-and nothing is released.
+[`ingest_end_to_end.py`](../../examples/ingest_end_to_end.py) is about nothing else. It ingests a
+folder of fifty photographs with one file that is not an image, re-ingests the same folder to
+show that creates nothing, ingests a second folder that overlaps the first by content, and stops
+at an approved batch cut into two jobs. Nothing is annotated and nothing is released. Video is
+not exercised: importing one is a browser capability now, so there is no server-side decoder left
+for a script like this to drive - see [ingest.md](ingest.md).
 
 ## What it does
 
 | Stage | What happens | Owned by |
 | --- | --- | --- |
 | Project | `ProjectService.create` + `SchemaService.create_version` - one class, because approval needs a version to pin | [projects.md](projects.md), [schemas.md](schemas.md) |
-| Clip | ten seconds of `testsrc` at 10 fps, written by ffmpeg | - |
-| Source | `register_video(..., extraction_fps=5.0)` - the rate is part of *what the source is* | [sources.md](sources.md) |
-| Assets | `IngestService.ingest` → **50 assets** in a draft batch, each with a frame index and timestamp | [ingest.md](ingest.md) |
-| Progress | `IngestService.get(job_id)` → `processed=50`, `total=None` | [ingest.md](ingest.md) |
+| Source | `register_images` over a folder of 50 synthetic photographs plus a `notes.txt` | [sources.md](sources.md) |
+| Assets | `IngestService.ingest` → **50 assets** in a draft batch; `notes.txt` is one reported `IngestFailure` | [ingest.md](ingest.md) |
+| Progress | `IngestService.get(job_id)` → `processed=50`, `total=50` | [ingest.md](ingest.md) |
 | Batch | `approve(BySize(size=25))` → 2 jobs of 25, schema pinned | [batches.md](batches.md) |
-| Re-run | the same source again → `created=0`, `deduplicated=50` | [ingest.md](ingest.md) |
-| Second rate | `register_video(..., extraction_fps=1.0)` → a *different* source, 10 frames, none new | [sources.md](sources.md) |
-| Stills | three PNGs and a `notes.txt` → `total=4`, `created=3`, one `IngestFailure` | [ingest.md](ingest.md) |
+| Re-run | the same source again → `created=0`, `deduplicated=50`, same asset ids | [ingest.md](ingest.md) |
+| Second folder | 2 photographs byte-identical to the first folder's, 8 new → a *different* source, `created=8` | [sources.md](sources.md) |
 | Previews | every asset carries a `thumbnail_hash` | [media.md](media.md) |
 
-## Four things it is built to demonstrate
+## Three things it is built to demonstrate
 
-**A clip cannot state its total, and a directory can.** `IngestJob.processed` climbs to 50 while
-`total` stays NULL, because `VideoMetadata` deliberately carries no frame count - it would be a
-guess for a variable-rate clip, and the number an ingest actually wants is what extraction
-produced. The image directory *can* be listed, so it states `4` before reading the first file.
-Both numbers are written to the row as the run goes, which is what makes them pollable from
-another process rather than a return value dressed up as progress.
+**A directory states its total before the first file.** `IngestJob.processed` climbs to 50
+against `total=50`, both written to the row as the run goes, which is what makes them pollable
+from another process rather than a return value dressed up as progress. The stray file is
+reported, not skipped: `notes.txt` produces one `IngestFailure` - `name`, `kind`, `reason`, where
+the reason never repeats the name so a surface can group by kind instead of reading prose - and
+the run still ends `completed`, because guessing which files an operator meant to offer is a
+policy the kernel would be inventing.
 
-**One file registered at two rates is two sources whose frames are one set.** Decomposition
-parameters live on the source, so `extraction_fps=5.0` and `extraction_fps=1.0` over the same
-path are two origins - "the same source yields the same assets" only means something if the
-parameters deciding those assets are part of what the source *is*. And yet the coarse run creates
-nothing: identity is content, and the ten frames it cuts are byte-for-byte frames the finer run
-already stored. Their recorded origin stays the first sighting's, because origin is provenance
-and provenance is never rewritten.
+**Two different sources can hold the same asset, and identity does not care which one got there
+first.** The second folder is a distinct `Source` - a different directory is a different origin -
+but two of its photographs are byte-identical to ones the first folder already ingested, and
+content addressing collapses them on sight: `created=8` for ten files offered, not ten. Their
+recorded origin stays the first folder's, because origin is provenance and provenance is never
+rewritten once an asset exists.
 
-That alignment is a property of *this* extractor and not a promise the port makes. The fps filter
-rounds **up** onto the grid, so both rates land on whole seconds; under the default rounding a
-1 fps pass would take the picture from 0.4 s and label it 0.0.
+**Re-ingesting a source is a no-op that still succeeds.** Running `ingest` again over the exact
+same source creates nothing (`created=0`, `deduplicated=50`) and returns the same asset ids in a
+new draft batch, because a batch is an ephemeral unit of work and two may legitimately name the
+same assets. That is the whole remedy for an interrupted run: content addressing means a redo
+costs re-hashing and nothing else.
 
-**A file that is not an image is reported, not skipped.** `notes.txt` produces one
-`IngestFailure` - `name`, `kind`, `reason`, where the reason never repeats the name so a surface
-can group by kind instead of reading prose - and the run still ends `completed`. Guessing which
-files an operator meant to offer is a policy the kernel would be inventing. Failure splits by
-remedy, which is also why a missing ffmpeg would fail the whole job instead: one broken machine
-is not five thousand broken files.
-
-**The clip is 160×120, and that is load-bearing.** `testsrc` moves a little between frames; below
-roughly 96×72 that movement falls under what the scaler and encoder still resolve, and
-consecutive frames come out byte-identical. Content addressing then does exactly what it promises
-and collapses them - a ten-second clip at 5 fps yields *forty* assets, the feature working and
-reading as a shortfall. The example says so in a comment where the constant is declared.
-
-## Why this one needs ffmpeg
-
-The SDK example boasts of needing nothing. This one checks `shutil.which("ffmpeg")` before it
-writes anything and exits with an install hint if the binary is absent, because a video is a
-container wrapped around a codec and the only honest way to write one is the tool that reads it.
-CI installs ffmpeg for exactly this reason, and the smoke test gates on
-`tests/fixtures/media.require_ffmpeg()` - a skip locally, an error under `VISIONSET_REQUIRE_FFMPEG=1`.
-
-The generation command is `tests/fixtures/media.write_video`'s, duplicated rather than imported:
-that module is a test fixture, it imports pytest, and its answer to a missing binary is
-`pytest.skip`, which means nothing in a script. The stills, by contrast, are Pillow's work - a
-real dependency since #16, so a second hand-rolled PNG encoder beside it would be archaeology.
+The stills are Pillow's work - a real dependency since #16 - written with `write_stills`, a small
+deterministic pixel generator that lets the second folder reuse a couple of indices from the
+first and get byte-identical overlap without copying a file.
 
 
 ---
@@ -264,7 +250,7 @@ else in the walk would notice.
 
 ## What it deliberately does not need
 
-No HTTP client library, no `jq`, no ffmpeg, and no file on disk for its inputs - the four PNGs are
+No HTTP client library, no `jq`, and no file on disk for its inputs - the four PNGs are
 built in memory and uploaded as bytes, because that is what an HTTP client has. Its one requirement
 is that `visionset` is on `PATH`, which `uv run` arranges.
 
@@ -302,9 +288,9 @@ trip `set -e`, which is what makes demonstrating a failure safe.
 
 ## What it deliberately does not need
 
-**No ffmpeg**, so it runs anywhere the package installs - stills only, six of them plus one
-`notes.txt` that is deliberately not an image, so the per-file report has something in it. **No
-`jq`**, because the column format is designed to be read with `awk`. **No `curl` and no server**:
+**Media of any kind.** Its images are six PNGs plus one `notes.txt` that is deliberately not an
+image, so the per-file report has something in it. **No `jq`**, because the column format is
+designed to be read with `awk`. **No `curl` and no server**:
 the CLI calls the SDK in-process, which is the whole point of it being a sibling of the REST API
 rather than a client of it.
 
@@ -374,7 +360,7 @@ distinction a status code could not carry, and the reason the envelope has no `c
 
 No development dependency: `mcp` is a runtime dependency, so its client half ships with the
 package, and the async bridge is `asyncio.run` from the standard library rather than the `anyio.run`
-the tests use. No server, no port, no ffmpeg. Its one requirement is `visionset` on `PATH`.
+the tests use. No server, no port. Its one requirement is `visionset` on `PATH`.
 
 ---
 
@@ -383,9 +369,9 @@ the tests use. No server, no port, no ffmpeg. Its one requirement is `visionset`
 ## What it does
 
 `examples/thirty_minute_flow.py` is the sentence the product exists for, written as a program:
-a ten-second clip becomes fifty frames, fifty boxes, a verified release and a YOLO dataset
-`ultralytics` agrees to load. It drives the SDK the way the [SDK example](#the-sdk-example) does
-and ends where none of the others do — at a trainer reading the output.
+fifty photographs become fifty boxes, a verified release and a YOLO dataset `ultralytics` agrees
+to load. It drives the SDK the way the [SDK example](#the-sdk-example) does and ends where none of
+the others do — at a trainer reading the output.
 
 ## What makes it different from the other five
 
@@ -408,6 +394,6 @@ the cheap half.
 
 ## What it needs
 
-**ffmpeg**, because it generates its own clip — the requirement the ingest example has, for the
-same reason. `ultralytics` is optional locally and required in CI. It writes into
-`./thirty-minute-flow` with no argument, or wherever you name.
+**No media binary at all.** Its fifty photographs are Pillow's work, the same `write_stills`
+helper the ingest example uses. `ultralytics` is optional locally and required in CI. It writes
+into `./thirty-minute-flow` with no argument, or wherever you name.

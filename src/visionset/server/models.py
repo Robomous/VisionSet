@@ -55,6 +55,7 @@ from visionset.inference import (
     produces_of,
 )
 from visionset.kernel.domain import (
+    DEFAULT_EXTRACTION_FPS,
     DEFAULT_TOLERANCE,
     MAXIMUM_TOLERANCE,
     MINIMUM_TOLERANCE,
@@ -148,7 +149,11 @@ from visionset.kernel.domain import (
     Step,
     SuggestParameter,
     Task,
+    TimeRange,
     TransformedAnnotation,
+    VideoImport,
+    VideoImportState,
+    VideoMetadata,
     VideoProvenance,
     WeightDownload,
     WorkspaceSummary,
@@ -726,7 +731,7 @@ class SchemaVersionCreate(BaseModel):
 class ClipRange(BaseModel):
     """One stretch of a clip to extract, half-open: start_seconds <= t < end_seconds."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     start_seconds: float
     end_seconds: float
@@ -743,16 +748,32 @@ class VideoProvenanceOut(BaseModel):
     stored at; 100 means unscaled. `width` and `height` stay the clip's own —
     what is stored is each dimension scaled by this percent. Also part of the
     source's identity.
+
+    `policy_version` and `materializer` describe the *decomposition* rather than
+    the clip, and both are `null` for a source registered before either existed.
+    Frame bytes are not reproducible across decoders, so rather than promise a
+    reproducibility nobody can keep, a source says which spelling of the sampling
+    rules was in force and what drew the frames — which is only legible to a
+    client if it is published, so it is.
     """
 
     width: int
     height: int
-    fps: float
+    #: The rate the clip was shot at, `null` where it has no single one — a
+    #: variable-frame-rate recording. Never the rate it was cut at; that is
+    #: `extraction_fps`.
+    fps: float | None
     duration_seconds: float
     codec: str
     extraction_fps: float
     ranges: tuple[ClipRange, ...]
     scale_percent: int
+    #: Which spelling of the sampling rules cut these frames, `null` for a
+    #: source that predates the field.
+    policy_version: int | None
+    #: What decoded them — a browser's media stack, say — `null` when nothing
+    #: recorded one.
+    materializer: str | None
 
     @classmethod
     def of(cls, provenance: VideoProvenance) -> Self:
@@ -768,14 +789,17 @@ class VideoProvenanceOut(BaseModel):
                 for r in provenance.ranges
             ),
             scale_percent=provenance.scale_percent,
+            policy_version=provenance.policy_version,
+            materializer=provenance.materializer,
         )
 
 
-# ``Source.path`` is deliberately absent, and this is the one omission worth
-# stating twice. It is an absolute path on the server's own filesystem, inside
-# the workspace's staging area — a client can do nothing with it, and publishing
-# it hands every token holder the layout of the machine. ``name`` is the part a
-# client recognises: the filename it uploaded.
+# ``Source.locator`` is deliberately absent, and this is the one omission worth
+# stating twice. For a folder of stills it is an absolute path on the server's
+# own filesystem, inside the workspace's staging area — publishing it hands every
+# token holder the layout of the machine — and for a clip it is the opaque
+# ``video-import:<uuid>`` that names nothing at all. A client can do nothing with
+# either. ``name`` is the part it recognises: the filename it uploaded.
 class SourceOut(BaseModel):
     """A registered origin: a folder of stills, or a clip."""
 
@@ -806,39 +830,149 @@ class SourcePage(Page[SourceOut]):
     """A page of sources."""
 
 
+# --- video imports ------------------------------------------------------------
+
+
+# Every bound below mirrors the domain's own, and that is what this model is for
+# rather than tidiness: ``VideoMetadata`` refuses a non-positive duration with a
+# *pydantic* ``ValidationError``, which is neither a ``VisionSetError`` nor a
+# ``RequestValidationError`` and so answers 500. Declared here, the same refusal
+# is the ordinary 422 every other malformed body gets. ``allow_inf_nan`` is that
+# rule applied to the bound nobody writes down: JSON's ``1e400`` parses to
+# ``inf``, which passes ``gt=0`` and dies in the first multiplication after it.
+class VideoMetadataBody(BaseModel):
+    """What a client's decoder read off the clip, as displayed.
+
+    `fps` is the rate the clip was **shot** at, not the rate it is being cut at
+    — that one is `extraction_fps`, and it belongs to the import rather than to
+    the file. Omit it, or send `null`, when the decoder reports no single rate: a
+    variable-frame-rate clip has none, and the extraction rate standing in for it
+    would record a property the clip does not have.
+    """
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    width: int = Field(ge=1)
+    height: int = Field(ge=1)
+    fps: float | None = Field(default=None, gt=0)
+    duration_seconds: float = Field(gt=0)
+    codec: str = Field(min_length=1)
+
+    def to_domain(self) -> VideoMetadata:
+        return VideoMetadata(
+            width=self.width,
+            height=self.height,
+            fps=self.fps,
+            duration_seconds=self.duration_seconds,
+            codec=self.codec,
+        )
+
+
+class VideoImportStart(BaseModel):
+    """Everything a session needs to be opened, which is metadata and no bytes.
+
+    `batch_id` and `batch_name` are the two ways of naming where the frames
+    land, exactly as on `POST /sources/{source_id}/ingest-jobs`: the first joins
+    a draft batch that already exists, the second names one the commit creates,
+    and neither lets the batch take the clip's own name. Sending both is
+    refused rather than resolved — a body that names a batch *and* asks for a new
+    one says two different things, and picking one of them silently is how
+    somebody's frames end up somewhere they did not choose.
+    """
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    display_name: str
+    metadata: VideoMetadataBody
+    extraction_fps: float = Field(default=DEFAULT_EXTRACTION_FPS, gt=0)
+    ranges: tuple[ClipRange, ...] = ()
+    scale_percent: int = Field(default=100, ge=1, le=100)
+    batch_id: UUID | None = None
+    batch_name: str | None = None
+    #: What decoded the frames, recorded as provenance beside the sampling policy
+    #: — ``"mediabunny/1.56.1"`` and the like. Frame bytes are not reproducible
+    #: across decoders, so the honest record is which one produced them.
+    materializer: str | None = None
+
+    @model_validator(mode="after")
+    def _one_destination_at_most(self) -> Self:
+        if self.batch_id is not None and self.batch_name is not None:
+            raise ValueError("pass batch_id or batch_name, not both")
+        return self
+
+    def to_ranges(self) -> tuple[TimeRange, ...]:
+        return tuple(
+            TimeRange(start_seconds=one.start_seconds, end_seconds=one.end_seconds)
+            for one in self.ranges
+        )
+
+
+# The parallel array the frames route reads, one entry per uploaded part. It
+# rides in a multipart *string* field, so it never reaches ``components.schemas``
+# and the roster in ``tests/server/test_openapi_contract.py`` does not cover it —
+# hence ``extra="forbid"`` here explicitly rather than by that convention.
+class FrameDescriptor(BaseModel):
+    """Where one uploaded frame sits in the clip, and what size it claims to be."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    ordinal: int = Field(ge=0)
+    requested_timestamp: float = Field(ge=0)
+    source_timestamp: float | None = Field(default=None, ge=0)
+    width: int = Field(ge=1)
+    height: int = Field(ge=1)
+
+
+class VideoImportOut(BaseModel):
+    """A browser-driven import: how many frames are expected, and how many arrived."""
+
+    id: UUID
+    project_id: UUID
+    source_id: UUID
+    state: VideoImportState
+    expected_frame_count: int
+    received_frame_count: int
+    # NULL until commit, for the reason an ingest job's is: a session that never
+    # commits never reaches a batch.
+    batch_id: UUID | None
+    started_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def of(cls, session: VideoImport) -> Self:
+        return cls(
+            id=session.id,
+            project_id=session.project_id,
+            source_id=session.source_id,
+            state=session.state,
+            expected_frame_count=session.expected_frame_count,
+            received_frame_count=session.received_frame_count,
+            batch_id=session.batch_id,
+            started_at=session.started_at,
+            updated_at=session.updated_at,
+        )
+
+
 # --- ingest ------------------------------------------------------------------
 
 
-# ``partial`` is the kind that is not a total loss: the clip was read as far as
-# its bytes went and those frames are in the batch, so the two counts travel with
-# it. They are null on every other kind, which the domain enforces rather than
-# merely intends — see ``IngestFailure``.
 class IngestFailureOut(BaseModel):
     """What became of one item the run could not simply read."""
 
     name: str
     kind: IngestFailureKind
     reason: str
-    frames_produced: int | None
-    frames_expected_estimate: int | None
 
     @classmethod
     def of(cls, failure: IngestFailure) -> Self:
-        return cls(
-            name=failure.name,
-            kind=failure.kind,
-            reason=failure.reason,
-            frames_produced=failure.frames_produced,
-            frames_expected_estimate=failure.frames_expected_estimate,
-        )
+        return cls(name=failure.name, kind=failure.kind, reason=failure.reason)
 
 
 # The polling contract. ``processed``/``total``/``failures`` are written to the
 # row as the run goes, so this says where a run *is* rather than where it ended;
-# ``total`` is null for a clip, because ``VideoMetadata`` carries no frame count
-# by design and a guess is worse than an honest absence. ``error`` is the fatal
-# cause and is a different field from ``failures`` on purpose — one broken
-# machine is not five thousand broken files.
+# ``total`` is null until the run knows how much there is to read. ``error`` is
+# the fatal cause and is a different field from ``failures`` on purpose — one
+# broken machine is not five thousand broken files.
 class IngestJobOut(BaseModel):
     """One run of one source, and how far it has got."""
 
@@ -919,7 +1053,7 @@ class ItemFailureOut(BaseModel):
 #
 # ``payload`` is **absent**. It is an internal contract between a surface and a
 # handler, it can name a path, and nothing on the client side has any business
-# reading it — the rule that keeps ``Source.path`` and ``Asset.uri`` off the wire.
+# reading it — the rule that keeps ``Source.locator`` and ``Asset.uri`` off the wire.
 # ``result`` is present because it is the answer: it is how a caller learns an
 # export finished and where the archive is.
 class BackgroundJobOut(BaseModel):
@@ -970,7 +1104,7 @@ class BackgroundJobPage(Page[BackgroundJobOut]):
 # --- assets ------------------------------------------------------------------
 
 
-# ``Asset.uri`` is absent for the reason ``Source.path`` is: it is a server-side
+# ``Asset.uri`` is absent for the reason ``Source.locator`` is: it is a server-side
 # path, and for a frame it is that path plus ``#frame=N``. The bytes are reached
 # through the download routes instead, which address an asset by *id* and carry
 # the hashes below as their ``ETag`` — a hash names bytes and not a media type,

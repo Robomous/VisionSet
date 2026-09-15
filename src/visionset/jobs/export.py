@@ -112,7 +112,7 @@ def run(
 
     The path in ``result`` is **relative to the workspace root**, because an
     absolute one is a server-side path on the wire — the rule that keeps
-    ``Source.path`` and ``Asset.uri`` unpublished. The route that serves the
+    ``Source.locator`` and ``Asset.uri`` unpublished. The route that serves the
     archive rejoins it to the root it already has.
     """
     if reporter.is_cancelled():

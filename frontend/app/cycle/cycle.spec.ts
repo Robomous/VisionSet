@@ -21,12 +21,13 @@
  *
  * ## What it deliberately does not do
  *
- * **The source is images, not a video.** The issue says "generated video"; the
- * browser difference between the two is one number in one form, and the video path
- * is already driven end to end by `examples/ingest_end_to_end.py` in the `e2e (cli)`
- * job and by the ingest screen's own component tests. Buying it here costs an apt
- * install of ffmpeg and a decode inside a five-minute budget, for coverage that
- * exists. Recorded rather than skipped quietly.
+ * **The source is images, not a video.** The issue says "generated video"; video is
+ * now a browser capability rather than a server one, so the two paths no longer share
+ * a pipeline to sample here at all. Decoding is covered where it happens —
+ * `@visionset/media`'s own Chromium suite and the ingest screen's component tests —
+ * and the whole browser-to-batch walk has its own spec. Buying a real decode inside
+ * this five-minute budget would re-test that for coverage that already exists.
+ * Recorded rather than skipped quietly.
  *
  * **The export is addressed to a target, and the archive is opened.** The release
  * holds a box, a polygon and a polyline; `yolo11` takes the first two and drops the

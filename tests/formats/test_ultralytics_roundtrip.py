@@ -94,7 +94,7 @@ Drawing = Callable[[int, UUID], list[Annotation]]
 
 
 def require_ultralytics() -> None:
-    """Skip locally, fail in CI — the ``require_ffmpeg`` rule, one subsystem over."""
+    """Skip locally, fail in CI — the ``require_local_inference`` rule, one subsystem over."""
     try:
         import ultralytics  # noqa: F401
     except ImportError:

@@ -6,12 +6,12 @@ hashing every item, storing the bytes once, writing the row that names them, and
 putting the result in a draft batch somebody can approve. Nothing else in the
 kernel may create an ``Asset``.
 
-**One ``ingest``, where ``SourceService`` has two ``register_*``.** That split
-was made because the arguments genuinely differed — a clip needs a rate and a
-probe, a directory needs neither. Here they do not differ at all: the source
-already carries its kind, its path and its decomposition rate, so the branch is
-on ``SourceKind`` and the caller passes one id. A second entry point would ask
-callers to re-state something the source already knows.
+**This service does not know what a video is.** It reads an origin *this
+process can open*, which is a directory of stills and nothing else. A clip never
+reaches the server at all — a client decodes it locally and posts frames — so
+that work is ``VideoImportService``, a use case of its own shape rather than a
+branch in here. A ``VIDEO`` source is a receipt for frames somebody else
+materialized; pointed at one, this service has nothing to read.
 
 **Identity is content; origin is provenance.** Two registered directories
 holding the same photograph produce one blob and one asset, and that asset keeps
@@ -20,9 +20,9 @@ follows. Re-running an ingest therefore creates nothing and is not an error; it
 is how a source that grew by three files is caught up.
 
 **The long middle of the run is in no transaction.** Decoding is a Pillow pass
-over thousands of files or an out-of-process ffmpeg, and holding a write
-transaction open across either is how a single-writer SQLite store starts making
-every other writer wait out its ``busy_timeout`` and fail with ``WorkspaceBusy``.
+over thousands of files, and holding a write transaction open across it is how a
+single-writer SQLite store starts making every other writer wait out its
+``busy_timeout`` and fail with ``WorkspaceBusy``.
 So the run resolves what it needs, closes
 the transaction, does the work, and opens another to record it. Blob writes
 happen out there too, before any row exists: ``BlobStore.put`` is not
@@ -49,19 +49,10 @@ write re-reads the row inside its own transaction. That is what
 **Failure splits by remedy, exactly as the media errors do.** A file that is not
 an image, or one whose bytes will not decode, is *reported* — one entry in the
 job's ``failures``, and the run carries on, because an operator with five
-thousand files needs the other four thousand nine hundred. A missing ffmpeg is
-not a file's fault at all; it fails the job outright and is re-raised, which is
-precisely why ``MediaToolUnavailable`` sits outside the ``MediaError`` family.
-
-**A damaged clip is a third case, and it is the only one with a remainder.**
-Extraction yields the frames it managed and then says the bytes ran out, so the
-run has both an entry to write and assets to keep. That entry is ``PARTIAL`` and
-it carries the two numbers — what arrived, and what the container claimed — so
-the surfaces can say "eight of about twenty" instead of "this file is corrupt"
-about a run that had just filled a batch. The report is where it stops:
-nothing about a partial run is stamped on an asset or a batch, and an asset
-lifted out of a damaged clip is an ordinary asset from the moment the ingest
-result has been read.
+thousand files needs the other four thousand nine hundred. Anything that is
+wrong with the *machine* rather than with a file fails the job outright and is
+re-raised: one broken machine is not five thousand broken files, and that is the
+line ``MediaError`` draws.
 
 **A preview is a cache, so it fails softly.** Every item also gets a thumbnail,
 stored content-addressed beside its content and named by ``Asset.thumbnail_hash``
@@ -103,8 +94,6 @@ from visionset.kernel.domain import (
     Source,
     SourceKind,
     ThumbnailBackfill,
-    VideoProvenance,
-    expected_frames,
     normalize_name,
     report_name,
     require_move,
@@ -116,9 +105,10 @@ from visionset.kernel.errors import (
     MediaError,
     ProjectNotFound,
     ThumbnailNotCached,
+    UnsupportedMedia,
     WorkspaceCorrupt,
 )
-from visionset.kernel.ports import FRAME_FORMAT, BlobStore, UnitOfWork
+from visionset.kernel.ports import BlobStore, UnitOfWork
 from visionset.kernel.services.batch_service import BatchService
 from visionset.kernel.services.source_service import SourceService
 from visionset.kernel.services.workspace_service import WorkspaceService
@@ -289,14 +279,30 @@ class IngestService:
         is the only thing that crosses. :meth:`resume` already reads it as "the
         batch this attempt was headed for".
 
+        **Only a directory of images is run here.** A run opens the source's
+        locator, and ``Source.locator`` promises openability for
+        ``IMAGE_DIRECTORY`` alone — a clip's is the opaque ``video-import:<uuid>``
+        this process has nothing to do with, because its frames are materialized
+        by a client and posted to ``VideoImportService``. Accepting one produced a
+        ``202`` and then a run that died on a ``FileNotFoundError`` nobody asked
+        for, so the family is refused here, before a row exists.
+
         Raises:
             SourceNotFound: no such source in this workspace.
+            UnsupportedMedia: the source is not a directory of images, so this
+                process cannot read it at all.
             BatchNotFound: ``batch_id`` names no batch in this workspace.
             BatchNotEditable: the target batch is past ``draft``.
             InvalidName: ``batch_name`` is blank once stripped.
         """
         with self._workspace.unit_of_work() as uow:
             source = self._sources.require_source(uow, source_id)
+            if source.kind is not SourceKind.IMAGE_DIRECTORY:
+                raise UnsupportedMedia(
+                    f"a {source.kind.value} source is not read by this server; a clip's"
+                    " frames are decoded by a client and posted to a video import",
+                    name=source.name,
+                )
             self._require_project(uow, source.project_id)
             name = self._target_name(uow, source, batch_id, batch_name)
             return uow.ingest_jobs.add(
@@ -313,9 +319,7 @@ class IngestService:
         """Read the source, store what it holds, and put it all in one batch.
 
         A directory source is read at its top level, in filename order; anything
-        below a subdirectory is not looked at. A video source is decomposed at
-        the rate the source itself records, and each frame becomes an asset
-        carrying the position it came from.
+        below a subdirectory is not looked at.
 
         The batch is either an existing draft named by ``batch_id`` — checked to
         be editable *before* anything is decoded, because finding out afterwards
@@ -338,10 +342,6 @@ class IngestService:
             InvalidName: ``batch_name`` is blank once stripped.
             FileNotFoundError: the source's path is no longer on disk.
             NotADirectoryError: a directory source's path is now a file.
-            WorkspaceCorrupt: a video source carries no provenance.
-            MediaToolUnavailable: ffmpeg is not installed on this machine. The
-                job records it and is marked failed before it is re-raised — one
-                broken machine is not five thousand broken files.
         """
         # Enqueue then pick it straight back up. The two halves are spelled
         # separately because a caller that cannot wait — the HTTP surface, a
@@ -479,7 +479,7 @@ class IngestService:
             except FileNotFoundError:
                 missing.append(asset_id)
             except MediaError as exc:
-                # ``Asset.uri`` is unpublished for the same reason ``Source.path``
+                # ``Asset.uri`` is unpublished for the same reason ``Source.locator``
                 # is, and this report travels: no root is in hand here, so the
                 # basename is the answer — which keeps a frame's ``#frame=n``,
                 # the only part of that string a reader can act on.
@@ -577,19 +577,10 @@ class IngestService:
             )
 
     def _read(self, source: Source, job_id: UUID) -> tuple[list[Asset], list[IngestFailure]]:
-        """Decode and store every item, outside any transaction.
+        """Every file at the top of the source's directory, in filename order.
 
         Returns candidate assets in the order the source offered them, plus one
-        entry per item that could not be read at all.
-        """
-        if source.kind is SourceKind.VIDEO:
-            return self._read_video(source, job_id)
-        return self._read_directory(source, job_id)
-
-    def _read_directory(
-        self, source: Source, job_id: UUID
-    ) -> tuple[list[Asset], list[IngestFailure]]:
-        """Every file at the top of the directory, in filename order.
+        entry per item that could not be read at all. Outside any transaction.
 
         Top level only. Recursion is not a per-run option but a question about
         what *the source is* — "the same source yields the same assets" — so it
@@ -601,14 +592,13 @@ class IngestService:
         rather than skipped, because guessing which files an operator meant to
         offer is a policy the kernel would be inventing.
 
-        This is the one path that can state a ``total`` up front, because
-        listing a directory is cheap and exact. The write before the loop is
-        what publishes it — and what makes an empty directory record ``0 of 0``
-        rather than nothing at all.
+        A ``total`` is stated up front, because listing a directory is cheap and
+        exact. The write before the loop is what publishes it — and what makes an
+        empty directory record ``0 of 0`` rather than nothing at all.
         """
         candidates: list[Asset] = []
         failures: list[IngestFailure] = []
-        directory = Path(source.path)
+        directory = Path(source.locator)
         paths = sorted(item for item in directory.iterdir() if item.is_file())
         total = len(paths)
         self._record_progress(job_id, processed=0, total=total, failures=failures)
@@ -672,100 +662,6 @@ class IngestService:
             )
         return candidates, failures
 
-    def _read_video(self, source: Source, job_id: UUID) -> tuple[list[Asset], list[IngestFailure]]:
-        """One asset per extracted frame, at the rate the source records.
-
-        The frames are **not** re-probed. ``VideoProcessor`` guarantees each one
-        is a complete image in ``FRAME_FORMAT`` at the dimensions ``probe``
-        reported, and that guarantee is asserted where it belongs, in the port's
-        own tests. Decoding every frame a second time to re-confirm it would
-        also mean putting our own encoder's output into an operator's per-file
-        report — a failure nobody could act on.
-
-        They *are* thumbnailed, and that is not a contradiction of the paragraph
-        above. What must not be re-derived is anything an operator reads back as
-        a fact about their clip; a preview is a cache artifact reported to
-        nobody, and a gallery showing tiles for stills and blanks for frames
-        would be the worse outcome for the sake of a rule about metadata. It is
-        this path's only use of ``ImageProcessor``.
-
-        Damage arrives once and terminally: ffmpeg yields the frames it managed
-        and *then* says the bytes ran out, so the refusal is caught around the
-        loop and what was extracted is kept. The loop is left by falling out of
-        it, which is one of the two ways the port allows an iterator to be
-        released.
-
-        **And this is the one caller that can count the loss**, which is why the
-        partial-extraction report is assembled here rather than in ``_failure``.
-        Both numbers are already in hand when the refusal arrives: what arrived is
-        the length of ``candidates``, and what was expected is the domain's own
-        count over the probe and selection this source has carried since it was
-        registered. Neither costs a second pass over the clip — the estimate is
-        the same arithmetic the ingest screen shows as "Frames expected" before
-        a run starts.
-
-        ``total`` stays NULL for the whole run, and honestly so. ``VideoMetadata``
-        carries no frame count by design — it would be a guess for a
-        variable-rate clip and the number an ingest wants is what extraction
-        actually produced — so a total here would be arithmetic presented as
-        fact. ``processed`` still climbs, which is what a poller needs.
-        """
-        provenance = source.require_video()
-        candidates: list[Asset] = []
-        failures: list[IngestFailure] = []
-        clip = Path(source.path)
-        frames = self._workspace.video_processor.frames(
-            clip,
-            fps=provenance.extraction_fps,
-            ranges=provenance.ranges,
-            name=clip.name,
-            scale=(
-                None
-                if provenance.scale_percent == 100
-                else (provenance.stored_width, provenance.stored_height)
-            ),
-        )
-        self._record_progress(job_id, processed=0, total=None, failures=failures)
-        try:
-            for frame in frames:
-                uri = f"{source.path}#frame={frame.index}"
-                # One buffer serves both. ``put`` leaves it at the end and
-                # ``thumbnail`` seeks back to 0 itself, which is the same port
-                # contract the directory path leans on.
-                content = BytesIO(frame.content)
-                content_hash = self._workspace.blob_store.put(content)
-                candidates.append(
-                    Asset(
-                        project_id=source.project_id,
-                        content_hash=content_hash,
-                        uri=uri,
-                        width=provenance.stored_width,
-                        height=provenance.stored_height,
-                        format=FRAME_FORMAT,
-                        source_id=source.id,
-                        frame_index=frame.index,
-                        frame_timestamp=frame.timestamp,
-                        thumbnail_hash=self._cache_thumbnail(content, name=uri),
-                    )
-                )
-                self._record_progress(
-                    job_id, processed=len(candidates), total=None, failures=failures
-                )
-        except MediaError as exc:
-            # The clip's own filename, which is already what ``frames`` was told
-            # to call it. ``source.path`` is absolute and would put the server's
-            # directory layout in a client's failure table.
-            failures.append(
-                _extraction_failure(
-                    report_name(clip),
-                    exc,
-                    produced=len(candidates),
-                    expected=_expected_frames(provenance),
-                )
-            )
-            self._record_progress(job_id, processed=len(candidates), total=None, failures=failures)
-        return candidates, failures
-
     def _cache_thumbnail(self, content: BinaryIO, *, name: str) -> str | None:
         """Render a preview and store it, or hand back NULL and carry on.
 
@@ -774,7 +670,7 @@ class IngestService:
         ``IngestFailure``: that error means "this file did not become an asset,
         so go and fix the file", and here the asset exists, its bytes are
         stored and nothing was lost. Letting the refusal reach
-        ``_read_directory``'s ``except MediaError`` would report a perfectly
+        ``_read``'s ``except MediaError`` would report a perfectly
         good file as unreadable *and* leave behind the orphan blob that probing
         first exists to prevent — a bug that would look like the feature
         working.
@@ -794,63 +690,16 @@ class IngestService:
         return self._workspace.blob_store.put(BytesIO(rendered))
 
     def _store(self, project_id: UUID, candidates: list[Asset]) -> tuple[list[Asset], list[UUID]]:
-        """Write the rows, reusing whatever content the project already holds.
+        """A transaction of this run's own, around the shared dedup rule.
 
-        The project's assets are read once, into a map keyed by content hash,
-        rather than queried per item — ``Repository`` has one query shape, and a
-        service never builds SQL. The whole-project read is affordable at this
-        scale and the fix when it stops being is a port method, not an import.
-
-        The map is updated as the run proceeds, so two identical files inside one
-        directory become one asset rather than a pair the new unique index would
-        refuse at commit.
-
-        A deduplicated candidate is otherwise discarded whole — its origin is
-        the *second* sighting and is never written — with one exception, and the
-        exception is precise. ``thumbnail_hash`` is not provenance but a cache,
-        so filling a NULL from a candidate that has one is not a rewrite; it is
-        the cache being populated by whoever first held the bytes. That is what
-        makes re-ingesting a source enough to give assets written before the
-        cache existed their previews. A value already there is **never**
-        replaced: a second encode yields the same blob on this machine and a
-        different one on another, so the swap would cost a write and buy
-        nothing.
-
-        ``ingested_at`` is stamped **here**, and this is the only place in the
-        product that writes it. Here rather than where the candidates are built,
-        because the column means "when the row was first written" and this is
-        that moment — which is also what makes the dedup branch correct without
-        saying anything: a deduplicated candidate never reaches ``add``, so the
-        stored arrival goes on naming the run that created it.
-
-        One timestamp for the whole run, read once before the loop rather than
-        per asset. A single ingest is a single arrival, so a thousand stills
-        differing by microseconds would be false precision — and it leaves the
-        ordering *within* a run to ``_in_stable_order``, which has actual
-        meaning, rather than to whichever file the loop reached first.
+        The rule itself is ``store_assets`` below, which the video-import commit
+        shares. What is this method's own is the scope: an ingest run has already
+        decoded and hashed everything by the time it gets here, so opening the
+        transaction at the last possible moment is what keeps a single-writer
+        store from waiting out a decode.
         """
-        stamped_at = datetime.now(UTC)
-        assets: list[Asset] = []
-        created: list[UUID] = []
-        seen: set[UUID] = set()
         with self._workspace.unit_of_work() as uow:
-            known = {asset.content_hash: asset for asset in uow.assets.list(project_id)}
-            for candidate in candidates:
-                stored = known.get(candidate.content_hash)
-                if stored is None:
-                    arriving = candidate.model_copy(update={"ingested_at": stamped_at})
-                    stored = uow.assets.add(arriving)
-                    known[stored.content_hash] = stored
-                    created.append(stored.id)
-                elif stored.thumbnail_hash is None and candidate.thumbnail_hash is not None:
-                    stored = uow.assets.update(
-                        stored.model_copy(update={"thumbnail_hash": candidate.thumbnail_hash})
-                    )
-                    known[stored.content_hash] = stored
-                if stored.id not in seen:
-                    seen.add(stored.id)
-                    assets.append(stored)
-        return assets, created
+            return store_assets(uow, project_id, candidates, stamped_at=datetime.now(UTC))
 
     def _materialize(
         self, project_id: UUID, name: str, batch_id: UUID | None, assets: list[Asset]
@@ -952,12 +801,19 @@ class IngestService:
         Both refusals belong here, before the decode: a blank name and a frozen
         batch are things a caller can fix, and finding either out after five
         thousand files have been hashed helps nobody.
+
+        ``Source.name`` rather than a third derivation off the locator. The domain
+        already resolves "what to call this source" once — the stated display name
+        else the locator's last segment — and both wire projections publish that
+        one answer. Re-deriving it here published the locator's tail under another
+        name, which for an upload is a 64-character digest and for a clip is the
+        opaque ``video-import:<uuid>`` no caller was ever meant to see.
         """
         if batch_id is not None:
             batch = self._batches.require_draft(uow, batch_id)
             self._require_project(uow, batch.project_id)
             return batch.name
-        return normalize_name(batch_name or Path(source.path).name, what="batch")
+        return normalize_name(batch_name or source.name, what="batch")
 
     def _require_project(self, uow: UnitOfWork, project_id: UUID) -> Project:
         """The project, or refuse because this workspace does not have it."""
@@ -1013,6 +869,74 @@ def _in_stable_order(asset: Asset) -> tuple[str, str, int, str]:
     )
 
 
+def store_assets(
+    uow: UnitOfWork,
+    project_id: UUID,
+    candidates: list[Asset],
+    *,
+    stamped_at: datetime,
+) -> tuple[list[Asset], list[UUID]]:
+    """Write the rows, reusing whatever content the project already holds.
+
+    Module level and taking a ``uow``, because there are two callers and they
+    need different transaction scopes: an ingest run gives this a transaction of
+    its own, while a video import commits assets, a batch and the session's own
+    state together and cannot afford a second one. Both need the *same* dedup
+    rule, and two spellings of it is two places for it to be got wrong.
+
+    The project's assets are read once, into a map keyed by content hash,
+    rather than queried per item — ``Repository`` has one query shape, and a
+    service never builds SQL. The whole-project read is affordable at this
+    scale and the fix when it stops being is a port method, not an import.
+
+    The map is updated as the run proceeds, so two identical files inside one
+    directory — or two grid positions of one clip that drew the same frame —
+    become one asset rather than a pair the unique index would refuse at commit.
+
+    A deduplicated candidate is otherwise discarded whole — its origin is
+    the *second* sighting and is never written — with one exception, and the
+    exception is precise. ``thumbnail_hash`` is not provenance but a cache,
+    so filling a NULL from a candidate that has one is not a rewrite; it is
+    the cache being populated by whoever first held the bytes. That is what
+    makes re-ingesting a source enough to give assets written before the
+    cache existed their previews. A value already there is **never**
+    replaced: a second encode yields the same blob on this machine and a
+    different one on another, so the swap would cost a write and buy
+    nothing.
+
+    ``stamped_at`` is written into ``ingested_at``, and this is the only place in
+    the product that writes it. Here rather than where the candidates are built,
+    because the column means "when the row was first written" and this is
+    that moment — which is also what makes the dedup branch correct without
+    saying anything: a deduplicated candidate never reaches ``add``, so the
+    stored arrival goes on naming the run that created it.
+
+    One timestamp for the whole run, passed in rather than read here, so a
+    thousand stills differing by microseconds cannot present false precision —
+    and it leaves the ordering *within* a run to ``_in_stable_order``, which has
+    actual meaning, rather than to whichever file the loop reached first.
+    """
+    assets: list[Asset] = []
+    created: list[UUID] = []
+    seen: set[UUID] = set()
+    known = {asset.content_hash: asset for asset in uow.assets.list(project_id)}
+    for candidate in candidates:
+        stored = known.get(candidate.content_hash)
+        if stored is None:
+            stored = uow.assets.add(candidate.model_copy(update={"ingested_at": stamped_at}))
+            known[stored.content_hash] = stored
+            created.append(stored.id)
+        elif stored.thumbnail_hash is None and candidate.thumbnail_hash is not None:
+            stored = uow.assets.update(
+                stored.model_copy(update={"thumbnail_hash": candidate.thumbnail_hash})
+            )
+            known[stored.content_hash] = stored
+        if stored.id not in seen:
+            seen.add(stored.id)
+            assets.append(stored)
+    return assets, created
+
+
 def _open_blob(blobs: BlobStore, content_hash: str, subject: str) -> BinaryIO:
     """A readable handle on one blob, or say the workspace is damaged.
 
@@ -1038,12 +962,10 @@ def _failure(name: str, exc: MediaError) -> IngestFailure:
     it through ``report_name`` first, which is what keeps the server's own
     directory layout out of a report that travels to a client.
 
-    The two branches are the whole of what an *image* can be — ``UnsupportedMedia``
+    The two branches are the whole of what an item can be — ``UnsupportedMedia``
     is "intact and not for us", ``CorruptMedia`` is "for us and broken" — and
-    nothing read one file at a time can be read in part. ``PARTIAL`` is therefore
-    unreachable from here by construction rather than by omission; the one caller
-    that can produce it is :meth:`IngestService._read_video`, through
-    :func:`_extraction_failure` below.
+    nothing read one file at a time can be read in part, which is why the report
+    has no third kind.
     """
     kind = (
         IngestFailureKind.CORRUPT
@@ -1051,51 +973,3 @@ def _failure(name: str, exc: MediaError) -> IngestFailure:
         else IngestFailureKind.UNSUPPORTED
     )
     return IngestFailure(name=name, kind=kind, reason=exc.reason)
-
-
-def _extraction_failure(
-    name: str, exc: MediaError, *, produced: int, expected: int | None
-) -> IngestFailure:
-    """The same report line for a clip, which can end up with some of itself read.
-
-    ``produced`` decides the kind, and it decides it the way the adapter already
-    decided which error to raise: extraction answers ``UnsupportedMedia`` when
-    nothing came out and ``CorruptMedia`` when the bytes ran out partway, so on
-    this path the two already mean "nothing arrived" and "some of it did".
-    Reading the count rather than the exception's type is
-    what keeps the report honest if that ever stops being true — a ``0`` here can
-    never be published as a partial read, whatever was raised.
-
-    ``expected`` rides along only when there is a partial to attach it to. It is
-    an estimate and the model says so; see ``IngestFailure``.
-    """
-    if produced > 0:
-        return IngestFailure(
-            name=name,
-            kind=IngestFailureKind.PARTIAL,
-            reason=exc.reason,
-            frames_produced=produced,
-            frames_expected_estimate=expected,
-        )
-    return _failure(name, exc)
-
-
-def _expected_frames(provenance: VideoProvenance) -> int | None:
-    """What the selection holds, from the probe stored when the source was registered.
-
-    The domain's ``expected_frames`` — exact, matching what the extraction
-    filter emits, and mirrored by the ingest screen. The earlier ``floor``
-    spelling undercounted by one on every fractional product.
-
-    ``None`` is reachable in principle rather than in practice — ``VideoMetadata``
-    refuses a non-positive duration, so a registered source always has one — and
-    the branch stays because the report's contract is that the denominator is
-    optional. A future probe that cannot time a damaged container must be able to
-    say so here without the report losing the count it *does* have.
-    """
-    seconds = provenance.metadata.duration_seconds
-    if seconds <= 0:
-        return None
-    return expected_frames(
-        provenance.ranges, duration_seconds=seconds, fps=provenance.extraction_fps
-    )
