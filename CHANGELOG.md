@@ -739,3 +739,5 @@ them and the numbers say what each one cost.
 [0.0.1b3]: https://github.com/Robomous/VisionSet/releases/tag/v0.0.1-beta.3
 [0.0.1b2]: https://github.com/Robomous/VisionSet/releases/tag/v0.0.1-beta.2
 [0.0.1b1]: https://github.com/Robomous/VisionSet/releases/tag/v0.0.1-beta.1
+
+<!-- CI verification: this line proves an inert-only diff wakes no job. Not for merge. -->
