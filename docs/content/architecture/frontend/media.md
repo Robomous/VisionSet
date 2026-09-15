@@ -71,7 +71,7 @@ released, not just that a promise settled.
 ## Back-pressure is bounded, and the bound is the ack
 
 The protocol between the main thread and the worker is small on purpose: `inspect`,
-`materialize`, `ack` and `cancel` out; `inspection`, `chunk`, `progress`, `done` and
+`materialize`, `ack` and `cancel` out; `inspection`, `expected`, `chunk`, `done` and
 `error` back. The one that carries the architecture is `ack`. The worker decodes and
 encodes at most `FRAME_CHUNK_SIZE` (8) frames, posts them as one `chunk`, and then
 **stops** - it does not decode the next frame until the main thread posts `ack` back.
@@ -85,6 +85,13 @@ and filling the worker's heap with encoded frames nobody has accepted yet. `Fram
 is the same interface a host supplies through `@visionset/ui-core`'s
 `VisionSetMediaRuntime` (see [ui-core.md](ui-core.md)), so the sink that produces the
 ack is always the host's, never this package's own guess at a reasonable buffer.
+
+**There is no `progress` message, and that follows from the same rule.** The worker
+announces `expected` once, before the first chunk, and never reports a running count:
+it decodes ahead of delivery by up to one chunk and a `cancel` throws that lead away,
+so a number it sent would describe frames the sink may never be handed. Progress is
+therefore derived on the main thread - `expected` from the worker, the delivered count
+from the chunks the sink actually took - which is the only place both halves are known.
 
 ## Related
 

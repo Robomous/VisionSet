@@ -173,11 +173,18 @@ class VideoMetadata(BaseModel):
     is the number an import actually needs — that one is how many grid points the
     selection holds, which ``expected_frames`` computes from the cut.
 
+    **No infinity and no NaN.** ``json.loads("1e400")`` is ``inf``, and ``inf``
+    satisfies ``gt=0`` — so without this a declared duration could be infinite,
+    and the first thing that multiplied it would raise ``OverflowError`` from
+    inside whatever call happened to reach it rather than be refused at the
+    door. NaN fails ``gt=0`` already; refusing both in one place is what makes
+    that an intention rather than an accident of comparison.
+
     Frozen, like every other value in the domain that is a pure function of some
     bytes.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     width: int = Field(ge=1)
     height: int = Field(ge=1)

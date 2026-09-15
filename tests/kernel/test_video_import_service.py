@@ -14,12 +14,14 @@ decode.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 from PIL import Image
+from pydantic import ValidationError
 
 from visionset.kernel.domain import (
     SAMPLING_POLICY_VERSION,
@@ -33,6 +35,7 @@ from visionset.kernel.domain import (
     TimeRange,
     VideoImportState,
     VideoMetadata,
+    VideoProvenance,
 )
 from visionset.kernel.errors import (
     BatchNotEditable,
@@ -42,10 +45,12 @@ from visionset.kernel.errors import (
     FrameOrdinalOutOfRange,
     InvalidName,
     ProjectNotFound,
+    TooManyOpenVideoImports,
     UnsupportedMedia,
     VideoImportIncomplete,
     VideoImportNotFound,
     VideoImportNotOpen,
+    VideoImportTooLarge,
 )
 from visionset.kernel.services import (
     BatchService,
@@ -54,6 +59,12 @@ from visionset.kernel.services import (
     SchemaService,
     VideoImportService,
     WorkspaceService,
+)
+from visionset.kernel.services.video_import_service import (
+    ABANDONED_AFTER,
+    MAX_IMPORT_FRAMES,
+    MAX_OPEN_IMPORTS,
+    frame_byte_ceiling,
 )
 
 FRAME_SIZE = (16, 12)
@@ -98,7 +109,12 @@ def _frame(
         source_timestamp=source_timestamp,
         width=size[0],
         height=size[1],
-        content=_png(ordinal if seed is None else seed, size) if content is None else content,
+        # A stream, because that is what a part is — see `IncomingFrame`. A
+        # `BytesIO` stands in for the spooled handle the route hands over, and
+        # every pass the service makes seeks it itself.
+        content=BytesIO(
+            _png(ordinal if seed is None else seed, size) if content is None else content
+        ),
     )
 
 
@@ -303,6 +319,173 @@ def test_an_unusable_declaration_is_refused_by_the_domain(fixture: Fixture) -> N
         )
 
 
+def test_a_cut_that_would_stage_an_absurd_number_of_frames_is_refused(
+    fixture: Fixture,
+) -> None:
+    """Every field is in bounds and their product is not, which is the whole defect.
+
+    `1e18` seconds at `1e5` fps passes every validator on the way in and then
+    died in the mapper, on an integer SQLite has no column wide enough to hold.
+    An infinite rate is the same arithmetic reached from the other side — the
+    product is `inf`, which `math.ceil` refuses rather than rounds — and it is
+    checked here rather than left to `VideoProvenance`, because the refusal has
+    to come before anything is constructed from it.
+
+    Nothing is written either way: the assertion at the end is that half.
+    """
+    for duration, rate in ((1e18, 1e5), (10.0, float("inf"))):
+        with pytest.raises(VideoImportTooLarge):
+            fixture.imports.start(
+                fixture.project.id,
+                display_name="clip.webm",
+                metadata=_metadata(duration),
+                extraction_fps=rate,
+            )
+    with fixture.workspace.unit_of_work() as uow:
+        assert uow.sources.list(fixture.project.id) == []
+
+
+def test_a_declaration_carrying_a_non_finite_number_is_refused_by_the_model(
+    fixture: Fixture,
+) -> None:
+    """`json.loads("1e400")` is `inf`, and `inf` satisfies `gt=0`.
+
+    So the bound nobody writes down has to be written down: without it an
+    infinite duration is stored as a clip's provenance and raises `OverflowError`
+    in the first arithmetic that reaches it, which is a 500 rather than a
+    refusal.
+    """
+    with pytest.raises(ValidationError):
+        _metadata(float("inf"))
+    with pytest.raises(ValidationError):
+        TimeRange(start_seconds=0.0, end_seconds=float("inf"))
+
+
+def test_a_cut_just_under_the_ceiling_is_still_accepted(fixture: Fixture) -> None:
+    """The bound is on the declaration, not on the clip: one below it opens."""
+    session = fixture.imports.start(
+        fixture.project.id,
+        display_name="clip.webm",
+        metadata=_metadata(float(MAX_IMPORT_FRAMES - 1)),
+        extraction_fps=1.0,
+    )
+    assert session.expected_frame_count == MAX_IMPORT_FRAMES - 1
+
+
+def test_a_geometry_no_decoder_could_open_is_refused_at_the_declaration(
+    fixture: Fixture,
+) -> None:
+    """The other half of the size question, and the half that bounds one request.
+
+    The per-part byte ceiling is derived from this geometry, so an unbounded
+    declaration is an unbounded part — the bound has to be here, not only on the
+    frame count.
+    """
+    huge = VideoMetadata(width=40_000, height=40_000, fps=30.0, duration_seconds=2.0, codec="vp9")
+    with pytest.raises(VideoImportTooLarge):
+        fixture.imports.start(
+            fixture.project.id, display_name="clip.webm", metadata=huge, extraction_fps=1.0
+        )
+    # The downscale is part of the declaration, so it is part of the answer: the
+    # same clip at a percent that brings it under the bound opens.
+    assert (
+        fixture.imports.start(
+            fixture.project.id,
+            display_name="clip.webm",
+            metadata=huge,
+            extraction_fps=1.0,
+            scale_percent=10,
+        )
+        is not None
+    )
+
+
+def test_a_project_may_not_hold_more_open_sessions_than_the_cap(fixture: Fixture) -> None:
+    """Every `start` writes a source and a session before a frame arrives."""
+    for _ in range(MAX_OPEN_IMPORTS):
+        fixture.start()
+    with pytest.raises(TooManyOpenVideoImports):
+        fixture.start()
+    # Ending one makes room, which is what makes the cap a cap rather than a
+    # lifetime quota.
+    fixture.imports.abort(fixture.imports.get(_any_open(fixture)).id)
+    assert fixture.start() is not None
+
+
+def test_the_cap_counts_this_project_only(fixture: Fixture) -> None:
+    other = fixture.projects.create("second")
+    for _ in range(MAX_OPEN_IMPORTS):
+        fixture.start()
+    assert fixture.start(project=other) is not None
+
+
+def test_an_abandoned_session_is_swept_with_its_source_and_its_frames(
+    fixture: Fixture,
+) -> None:
+    """The sweep deletes the *source*, which is what bounds the rows.
+
+    An expiry that reaped sessions alone would leave one `VIDEO` source per
+    abandoned attempt behind forever — the same unbounded growth one table over.
+    `video_import.source_id` cascades, so one delete takes all three.
+    """
+    abandoned = fixture.start()
+    fixture.imports.append_frames(abandoned, [_frame(0)])
+    _age(fixture, abandoned, ABANDONED_AFTER + timedelta(minutes=1))
+
+    fixture.start()
+
+    with pytest.raises(VideoImportNotFound):
+        fixture.imports.get(abandoned)
+    with fixture.workspace.unit_of_work() as uow:
+        assert uow.video_import_frames.list(abandoned) == []
+        assert len(uow.sources.list(fixture.project.id)) == 1
+
+
+def test_a_committed_session_is_never_swept(fixture: Fixture) -> None:
+    """Its source is the provenance of assets somebody is annotating."""
+    batch_id = fixture.filled_batch()
+    committed = fixture.start()
+    fixture.imports.abort(committed)
+    with fixture.workspace.unit_of_work() as uow:
+        for session in uow.video_imports.list(fixture.project.id):
+            session.updated_at = datetime.now(UTC) - ABANDONED_AFTER - timedelta(minutes=1)
+            uow.video_imports.update(session)
+
+    fixture.start()
+
+    assert fixture.batches.get(batch_id).asset_ids
+    assert len(fixture.ingest.assets(fixture.project.id)) == 3
+
+
+def test_a_session_still_being_filled_is_not_swept(fixture: Fixture) -> None:
+    """`updated_at` moves on every accepted chunk, so a live import refreshes it."""
+    live = fixture.start()
+    _age(fixture, live, ABANDONED_AFTER + timedelta(minutes=1))
+    fixture.imports.append_frames(live, [_frame(0)])
+
+    fixture.start()
+
+    assert fixture.imports.get(live).received_frame_count == 1
+
+
+def _any_open(fixture: Fixture) -> UUID:
+    with fixture.workspace.unit_of_work() as uow:
+        return next(
+            session.id
+            for session in uow.video_imports.list(fixture.project.id)
+            if session.state is VideoImportState.OPEN
+        )
+
+
+def _age(fixture: Fixture, import_id: UUID, by: timedelta) -> None:
+    """Backdate a session's `updated_at`, which is what the sweep reads."""
+    with fixture.workspace.unit_of_work() as uow:
+        session = uow.video_imports.get(import_id)
+        assert session is not None
+        session.updated_at = datetime.now(UTC) - by
+        uow.video_imports.update(session)
+
+
 # --- appending frames -------------------------------------------------------
 
 
@@ -418,7 +601,7 @@ def test_a_descriptor_that_lies_about_its_size_is_refused(fixture: Fixture) -> N
     """A descriptor and its bytes disagreeing means the two grids have drifted."""
     import_id = fixture.start()
     lying = IncomingFrame(
-        ordinal=0, requested_timestamp=0.0, width=999, height=999, content=_png(0)
+        ordinal=0, requested_timestamp=0.0, width=999, height=999, content=BytesIO(_png(0))
     )
     with pytest.raises(UnsupportedMedia, match="declares"):
         fixture.imports.append_frames(import_id, [lying])
@@ -475,6 +658,100 @@ def test_an_unknown_session_is_not_found(fixture: Fixture) -> None:
         fixture.imports.get(uuid4())
 
 
+def test_a_frame_that_is_not_the_size_the_session_declared_is_refused(
+    fixture: Fixture,
+) -> None:
+    """The check a client cannot satisfy by being consistent with itself.
+
+    A descriptor compared with the client's own bytes is circular — both halves
+    come from the same place — so a caller could declare one geometry and post
+    another, leaving a source saying one thing and its assets another while
+    `SOURCE_ORIGIN_UNIQUE` keyed on the declaration. Here the frame and its
+    descriptor agree perfectly; what they disagree with is the session.
+    """
+    import_id = fixture.start()
+    with pytest.raises(UnsupportedMedia):
+        fixture.imports.append_frames(import_id, [_frame(0, size=(FRAME_SIZE[0] * 2, 8))])
+    assert fixture.imports.get(import_id).received_frame_count == 0
+
+
+def test_a_part_heavier_than_a_frame_of_this_session_is_refused_before_it_is_decoded(
+    fixture: Fixture,
+) -> None:
+    """The bound nothing in the stack had: `FRAMES_PER_REQUEST` counts parts, never bytes.
+
+    The part here is not an image at all, and the refusal still names its
+    *weight* — which is the assertion that matters. A size check made after the
+    probe would answer `UNSUPPORTED_MEDIA` about the format, having already
+    decoded whatever arrived; this one is made off the handle, before a byte is
+    read.
+    """
+    import_id = fixture.start()
+    ceiling = frame_byte_ceiling(_provenance_of(fixture, import_id))
+    over = IncomingFrame(
+        ordinal=0,
+        requested_timestamp=0.0,
+        width=FRAME_SIZE[0],
+        height=FRAME_SIZE[1],
+        content=BytesIO(b"\xff" * (ceiling + 1)),
+    )
+
+    with pytest.raises(UnsupportedMedia, match="weigh"):
+        fixture.imports.append_frames(import_id, [over])
+    assert fixture.imports.get(import_id).received_frame_count == 0
+
+
+def test_the_weight_ceiling_is_derived_from_what_a_frame_must_decode_to(
+    fixture: Fixture,
+) -> None:
+    """A session that stores quarter-size frames accepts quarter-size parts.
+
+    A fixed number would have to be the largest frame anybody might send, which
+    is no bound at all for the session that declared a small one. The declaration
+    already says exactly what a frame of this import is.
+    """
+    full = frame_byte_ceiling(_provenance_of(fixture, fixture.start()))
+    scaled = frame_byte_ceiling(_provenance_of(fixture, fixture.start(scale_percent=50)))
+    assert scaled < full
+
+    import_id = fixture.start(scale_percent=50)
+    between = IncomingFrame(
+        ordinal=0,
+        requested_timestamp=0.0,
+        width=FRAME_SIZE[0] // 2,
+        height=FRAME_SIZE[1] // 2,
+        content=BytesIO(b"\xff" * (scaled + 1)),
+    )
+    with pytest.raises(UnsupportedMedia, match="weigh"):
+        fixture.imports.append_frames(import_id, [between])
+
+
+def _provenance_of(fixture: Fixture, import_id: UUID) -> VideoProvenance:
+    with fixture.workspace.unit_of_work() as uow:
+        session = uow.video_imports.get(import_id)
+        assert session is not None
+        source = uow.sources.get(session.source_id)
+    assert source is not None
+    return source.require_video()
+
+
+def test_a_scaled_session_takes_frames_at_the_scaled_size_and_nothing_else(
+    fixture: Fixture,
+) -> None:
+    """`stored_width`/`stored_height` is the geometry, not `metadata.width`.
+
+    The declared metadata is what the clip *was*; what a frame must be is that
+    after the declared downscale, which is the arithmetic the materializer runs
+    too. A check written against the metadata would refuse every scaled import.
+    """
+    import_id = fixture.start(scale_percent=50)
+    scaled = (FRAME_SIZE[0] // 2, FRAME_SIZE[1] // 2)
+    with pytest.raises(UnsupportedMedia):
+        fixture.imports.append_frames(import_id, [_frame(0)])
+    session = fixture.imports.append_frames(import_id, [_frame(0, size=scaled)])
+    assert session.received_frame_count == 1
+
+
 # --- the invariant ----------------------------------------------------------
 
 
@@ -510,6 +787,26 @@ def test_an_aborted_session_is_no_longer_committable(fixture: Fixture) -> None:
         fixture.imports.commit(import_id)
     with pytest.raises(VideoImportNotOpen):
         fixture.imports.append_frames(import_id, [_frame(0)])
+
+
+def test_a_committed_session_keeps_no_staged_rows(fixture: Fixture) -> None:
+    """Commit disposes of its frames exactly as abort does, and for the same reason.
+
+    The session is terminal either way, so nothing will read them again; the
+    table's `ON DELETE CASCADE` never fires for either ending, because neither
+    one deletes the session row. Left behind, a half-hour clip at 1 fps is
+    eighteen hundred dead rows per import.
+    """
+    import_id = fixture.start()
+    fixture.imports.append_frames(import_id, [_frame(0), _frame(1), _frame(2)])
+    batch = fixture.imports.commit(import_id)
+
+    with fixture.workspace.unit_of_work() as uow:
+        assert uow.video_import_frames.list(import_id) == []
+    assert len(batch.asset_ids) == 3
+    # The count is the record of what this import committed, not a count of rows
+    # that still exist.
+    assert fixture.imports.get(import_id).received_frame_count == 3
 
 
 def test_aborting_twice_is_a_no_op(fixture: Fixture) -> None:

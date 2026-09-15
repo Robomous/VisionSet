@@ -1441,6 +1441,39 @@ class FrameContentConflict(VisionSetError):
     """
 
 
+class VideoImportTooLarge(VisionSetError):
+    """The declaration would stage more than one import may hold — in frames or in pixels.
+
+    A bound on the *work*, not a statement about the clip, and two of them
+    because a declaration commissions work along two axes. A duration and an
+    extraction rate whose product is absurd promises more grid points than
+    anybody can send; a geometry whose product is absurd promises frames no
+    decoder here could open, and leaves the per-part size ceiling — which is
+    derived from that geometry — with nothing bounding it. Both are refused at
+    ``start``, before a source row, a session row or a single frame exists.
+
+    It is a refusal of the declaration rather than of any one frame, which is why
+    it is not a ``FrameOrdinalOutOfRange``: nothing was offered yet. The remedy
+    is a narrower selection or a lower rate, both of which the caller already
+    has, and both of which ``expected_frame_count`` makes checkable in advance.
+    """
+
+
+class TooManyOpenVideoImports(VisionSetError):
+    """This project already holds as many open import sessions as it may.
+
+    Every ``start`` writes a source and a session row before a frame arrives,
+    and an abandoned session — a closed tab, a decoder that gave up — is never
+    reported by anybody. The cap is what keeps "open a session" from being an
+    unbounded write for whoever holds a token, and it counts only sessions that
+    are still ``open``: a committed one is a dataset's provenance and an aborted
+    one is swept on its own schedule.
+
+    The remedy is to finish or abort a session that is already open, or to wait
+    for the abandoned ones to be swept.
+    """
+
+
 class VideoImportIncomplete(VisionSetError):
     """The session was asked to commit before every expected frame arrived.
 

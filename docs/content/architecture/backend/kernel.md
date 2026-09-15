@@ -45,7 +45,7 @@ service against an object literal.
 | --- | --- | --- |
 | [`domain/`](../../../../src/visionset/kernel/domain/) | pydantic models, the transition tables, the capability tables | Pure values. Imports nothing from the rest of the kernel. |
 | [`ports/`](../../../../src/visionset/kernel/ports/) | `Protocol` declarations | Signatures name domain types and standard-library types. Nothing else. |
-| [`services/`](../../../../src/visionset/kernel/services/) | the fifteen services | The only way to change anything. Take an open `WorkspaceService` and reach ports through it. |
+| [`services/`](../../../../src/visionset/kernel/services/) | the sixteen services | The only way to change anything. Take an open `WorkspaceService` and reach ports through it. |
 | [`adapters/`](../../../../src/visionset/kernel/adapters/) | SQLite, the filesystem, Pillow | The only place a third-party library is named. |
 
 ## The purity contract

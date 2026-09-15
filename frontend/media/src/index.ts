@@ -1,7 +1,7 @@
 /**
- * Video import sampling policy, versioned so a future change to it stays legible
- * (`browser-video-import.tmp.md` §4). Bump this whenever the grid, clamp or scale
- * arithmetic below changes shape.
+ * Video import sampling policy, versioned so a future change to it stays legible.
+ * The policy itself is written down in `docs/content/architecture/frontend/media.md`;
+ * bump this whenever the grid, clamp or scale arithmetic below changes shape.
  */
 export const SAMPLING_POLICY_VERSION = 1;
 
@@ -218,8 +218,9 @@ export interface VideoMaterializer {
 }
 
 /**
- * The bounded chunk a materializer pushes per `FrameSink.append` call — the
- * backpressure unit `browser-video-import.tmp.md` §6.1 describes: decoding
- * waits for the sink to ack one chunk before producing the next.
+ * The bounded chunk a materializer pushes per `FrameSink.append` call, and the
+ * unit backpressure is measured in: decoding waits for the sink to ack one
+ * chunk before producing the next, so a slow upload stalls the decoder rather
+ * than filling the heap.
  */
 export const FRAME_CHUNK_SIZE = 8;

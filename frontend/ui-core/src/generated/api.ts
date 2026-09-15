@@ -2759,6 +2759,14 @@ export interface paths {
          *     Every import registers a source of its own, so starting twice over one file
          *     is two sources and never a collision. Identical frames still deduplicate by
          *     content, which is the only thing that deduplicates them.
+         *
+         *     **Opening a session writes rows, so two limits guard it.** A cut whose
+         *     whole-clip grid holds more frames than one session may stage is 422
+         *     `VIDEO_IMPORT_TOO_LARGE` — every field of such a body is individually in
+         *     bounds, and it is their product that is not. A project already holding the
+         *     most open sessions it may is 409 `TOO_MANY_OPEN_VIDEO_IMPORTS`; commit or
+         *     abort one of them, or leave it to the sweep that this same call runs over
+         *     sessions nothing has touched for a day.
          */
         post: operations["start_video_import"];
         delete?: never;
@@ -3131,6 +3139,9 @@ export interface paths {
          *     clip, and nothing downstream could detect it — the assets are perfectly good
          *     images and the batch looks like any other.
          *
+         *     The staged rows are disposed of here, exactly as an abort disposes of them:
+         *     they are assets now, and the session is terminal either way.
+         *
          *     **Idempotent.** A repeated commit answers the batch the first one created and
          *     writes nothing, so a client that retried a timed-out request never gets a
          *     second batch. Committing an import that was aborted is 409
@@ -3174,12 +3185,25 @@ export interface paths {
          *     A descriptor count that does not match the part count is 422 — the two
          *     arrays have drifted apart, and nothing here could pick which to believe.
          *
-         *     Every frame is decoded before it is stored, so a part that is not a PNG, or
-         *     one whose bytes disagree with the size its descriptor declares, is 422
-         *     `UNSUPPORTED_MEDIA` and one that will not decode at all is 422
-         *     `CORRUPT_MEDIA`. A descriptor that does not describe its own bytes is not a
-         *     frame with bad metadata; it is evidence a client's grid and this session's
-         *     have diverged, which is worth finding out now rather than in a training run.
+         *     Every frame is decoded before it is stored, so a part that is not a PNG is
+         *     422 `UNSUPPORTED_MEDIA` and one that will not decode at all is 422
+         *     `CORRUPT_MEDIA`.
+         *
+         *     **A part heavier than a frame of this session could be is 422
+         *     `UNSUPPORTED_MEDIA` before it is decoded at all** — the ceiling is that
+         *     geometry's own raster, which no honest encoding of it exceeds. Parts are
+         *     streamed rather than read whole, so a chunk costs one decoded frame rather
+         *     than thirty-two.
+         *
+         *     **A frame must decode to the geometry the session declared** — the clip's
+         *     `width`/`height` after `scale_percent` — and anything else is 422
+         *     `UNSUPPORTED_MEDIA`. Those are display dimensions, so a clip the container
+         *     rotates is already described the way its decoder draws it and needs nothing
+         *     special. Comparing a part with its own descriptor is the same check between
+         *     two halves of one claim, and it is also made: a descriptor that does not
+         *     describe its own bytes is not a frame with bad metadata, it is evidence a
+         *     client's grid and this session's have diverged, which is worth finding out
+         *     now rather than in a training run.
          *
          *     **Re-sending a frame is free.** The same ordinal carrying the same bytes is a
          *     retry — a chunked upload that lost its connection is the ordinary case — so

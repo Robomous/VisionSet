@@ -25,10 +25,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Final
+from typing import BinaryIO, Final
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SkipValidation, field_validator
 
 from visionset.kernel.domain.media import ImageFormat
 
@@ -160,16 +160,37 @@ class IncomingFrame(BaseModel):
     a descriptor that disagrees with its bytes means the client's grid and the
     server's record have drifted apart, and finding that out now is much cheaper
     than finding it out in a training run.
+
+    :attr:`content` is an open **stream**, not ``bytes``, and that is the one
+    thing about this model that is not a matter of taste. A chunk carries many
+    frames and a caller holds the whole chunk while the service stages it, so
+    ``bytes`` here means every part of the chunk resident at once — and then
+    copied again into the decoder. A stream is what every other media path in
+    this kernel already takes: ``BlobStore.put`` and ``ImageProcessor`` read in
+    chunks, so a frame is hashed and stored without ever being whole in memory,
+    and its size can be read off the handle before anything touches its bytes.
+
+    It must be **seekable**: the frame is probed, rewound, hashed into the blob
+    store and rendered to a thumbnail, which is four passes over one handle. An
+    HTTP part spooled by the server, and a ``BytesIO``, both are.
+
+    Pydantic validates nothing about it — ``SkipValidation``, because ``BinaryIO``
+    is a typing construct with no runtime ``isinstance`` behind it, and a
+    protocol enumerating the file methods would be a second, weaker spelling of
+    the one the ports already name. The bounds that matter here are on the
+    numbers beside it.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(
+        frozen=True, extra="forbid", allow_inf_nan=False, arbitrary_types_allowed=True
+    )
 
     ordinal: int = Field(ge=0)
     requested_timestamp: float = Field(ge=0)
     source_timestamp: float | None = Field(default=None, ge=0)
     width: int = Field(ge=1)
     height: int = Field(ge=1)
-    content: bytes
+    content: SkipValidation[BinaryIO]
 
 
 class StagedFrame(BaseModel):
@@ -200,7 +221,7 @@ class StagedFrame(BaseModel):
     ordinal)`` is, and the table's unique constraint is what says so.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     id: UUID = Field(default_factory=uuid4)
     import_id: UUID

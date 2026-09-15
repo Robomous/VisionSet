@@ -4,6 +4,12 @@
 media, but prose does not fail a build. This does. Fixtures are generated at runtime instead;
 `tests/fixtures/media.py` is the sanctioned way to get one.
 
+The one exception CONTRIBUTING.md grants — the roughly 7 KB of synthetic clips under
+`frontend/media/test-fixtures/`, which exist because this distribution decodes no video and so
+cannot encode one either — needs no entry below: each file is a few kilobytes and clears the
+ceiling by three orders of magnitude. That is the point of a size ceiling rather than a name
+list. If one of them ever approaches 200 KB, the right answer is a smaller clip.
+
 `git ls-files` reads the *index*, so a binary that is merely staged already trips the guard —
 it fires before the commit lands, which is the whole point.
 """

@@ -15,7 +15,9 @@ through an earlier rebuild), and rebuilding them from scratch under time
 pressure is how that class of bug gets back in.
 """
 
+import json
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import inspect, text
@@ -24,6 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters._tables import META_TABLE, Base
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
+from visionset.kernel.domain import IngestFailureKind
 from visionset.kernel.errors import (
     WorkspaceCorrupt,
     WorkspaceFormatTooNew,
@@ -280,6 +283,78 @@ def test_a_connection_written_before_the_column_is_given_the_origin_its_kind_imp
             text("select name, origin from inference_connection order by name")
         ).all()
     assert rows == [("local", "huggingface"), ("remote", "custom")]
+    migrated.close()
+
+
+def test_a_failure_report_written_before_the_counts_were_retired_still_reads(
+    tmp_path: Path,
+) -> None:
+    """Migration 20, read back through the domain rather than out of the column.
+
+    Reading the JSON would prove only that the keys are gone. What broke is
+    ``IngestFailure.model_validate``: the model forbids extras, every blob a
+    previous release wrote carries the two retired counts, and a report that
+    will not validate is a 500 on every route that lists an ingest job. So the
+    assertion is the round trip the routes make.
+
+    The ``unsupported`` entry is here because the counts rode on *every* kind as
+    ``null``, which is the half of this defect that is easy to miss.
+    """
+    job_id = uuid4()
+    source_id = uuid4()
+    failures = json.dumps(
+        [
+            {
+                "name": "notes.txt",
+                "kind": "unsupported",
+                "reason": "not an image",
+                "frames_produced": None,
+                "frames_expected_estimate": None,
+            },
+            {
+                "name": "drive.mp4",
+                "kind": "partial",
+                "reason": "the bytes ran out",
+                "frames_produced": 8,
+                "frames_expected_estimate": 20,
+            },
+        ]
+    )
+    old = tmp_path / "old.db"
+    _at_generation_one(old)
+    with SqliteMetadataStore(old).engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'clips')")
+        )
+        connection.execute(
+            text(
+                "insert into source (id, project_id, kind, path, registered_at, capture_params)"
+                " values (:source, 'p', 'image_directory', '/clips',"
+                " '2026-01-01T00:00:00+00:00', '{}')"
+            ),
+            {"source": source_id.hex},
+        )
+        connection.execute(
+            text(
+                "insert into ingest_job (id, source_id, state, processed, failures)"
+                " values (:id, :source, 'completed', 2, :failures)"
+            ),
+            {"id": job_id.hex, "source": source_id.hex, "failures": failures},
+        )
+
+    migrated = SqliteMetadataStore(old)
+    migrated.initialize()
+    with migrated.unit_of_work() as uow:
+        job = uow.ingest_jobs.get(job_id)
+    assert job is not None
+    assert [(failure.kind, failure.name) for failure in job.failures] == [
+        (IngestFailureKind.UNSUPPORTED, "notes.txt"),
+        # A partial read was a refinement of "these bytes will not decode", and
+        # the counts it carried are folded into the sentence rather than lost.
+        (IngestFailureKind.CORRUPT, "drive.mp4"),
+    ]
+    assert job.failures[1].reason == "the bytes ran out; 8 of about 20 frames were kept"
     migrated.close()
 
 
@@ -792,7 +867,7 @@ def test_a_generation_eighteen_file_gains_the_video_import_tables(tmp_path: Path
 
     migrated = SqliteMetadataStore(old)
     migrated.initialize()
-    assert migrated.format_version == FORMAT_VERSION == 19
+    assert migrated.format_version == FORMAT_VERSION == 20
     with migrated.engine.connect() as connection:
         tables = set(inspect(connection).get_table_names())
     assert {"video_import", "video_import_frame"} <= tables

@@ -90,9 +90,13 @@ class TimeRange(BaseModel):
     inside, the one at ``end_seconds`` is not, so two ranges meeting at a
     boundary share no frame and ``ceil(end*fps) - ceil(start*fps)`` counts
     exactly what extraction emits.
+
+    ``allow_inf_nan=False`` for ``VideoMetadata``'s reason: an infinite bound
+    satisfies every comparison this model makes and blows up in the arithmetic
+    downstream of it.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     start_seconds: float = Field(ge=0)
     end_seconds: float
@@ -206,7 +210,7 @@ class VideoProvenance(BaseModel):
     bytes and a choice.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     metadata: VideoMetadata
     extraction_fps: float = Field(gt=0)

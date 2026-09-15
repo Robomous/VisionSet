@@ -183,8 +183,15 @@ export function ClipRangeTimeline({
     return pixels * (durationSeconds / rect.width);
   }
 
+  /**
+   * A position along the track, or the left edge when there is no track to be
+   * along. A container that carried no duration divides to `NaN` here, and
+   * `left: NaN%` is a declaration the engine drops silently and jsdom throws
+   * parsing — so the whole screen dies over a decoration. Nothing is positioned
+   * on a timeline with no length anyway.
+   */
   function percent(seconds: number): string {
-    return `${(seconds / durationSeconds) * 100}%`;
+    return durationSeconds > 0 ? `${(seconds / durationSeconds) * 100}%` : "0%";
   }
 
   function moveEndpoint(index: number, side: "start" | "end", seconds: number): void {
@@ -425,7 +432,7 @@ export function ClipRangeTimeline({
               // Clamped to the track's inside: at 100% the line would paint on
               // the border, outside the rounded box — and the element's own
               // duration can outrun the probe's by a rounding.
-              left: `min(${(Math.min(playhead, durationSeconds) / durationSeconds) * 100}%, calc(100% - 1px))`,
+              left: `min(${percent(Math.min(playhead, durationSeconds))}, calc(100% - 1px))`,
             }}
             aria-hidden="true"
           />

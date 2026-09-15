@@ -25,9 +25,9 @@ only thing that makes it a video frame is the ``VIDEO`` source it points at.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
-from io import BytesIO
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime, timedelta
+from io import SEEK_END, BytesIO
+from typing import TYPE_CHECKING, BinaryIO, Final
 from uuid import UUID, uuid4
 
 from visionset.kernel.domain import (
@@ -48,17 +48,21 @@ from visionset.kernel.domain import (
     canonical_ranges,
     expected_frames,
     normalize_name,
+    scaled_dimension,
 )
 from visionset.kernel.errors import (
     BatchNotFound,
+    ConstraintViolated,
     FrameContentConflict,
     FrameOrdinalOutOfRange,
     MediaError,
     ProjectNotFound,
+    TooManyOpenVideoImports,
     UnsupportedMedia,
     VideoImportIncomplete,
     VideoImportNotFound,
     VideoImportNotOpen,
+    VideoImportTooLarge,
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
@@ -67,6 +71,104 @@ from visionset.kernel.services.ingest_service import store_assets
 
 if TYPE_CHECKING:
     from visionset.kernel.services.workspace_service import WorkspaceService
+
+MAX_IMPORT_FRAMES: Final = 100_000
+"""The most grid points one session may promise, and so the most it may stage.
+
+A bound on the *work* a single declaration can commission, checked before any
+row is written. Two things make it necessary rather than tidy. A declared
+duration and an extraction rate are both floats a caller chooses, and their
+product is what every count downstream is computed from: at ``1e18`` seconds and
+``1e5`` fps every validator passes and the row store is then asked for an
+integer SQLite has no column wide enough to hold. And a session that promises
+more frames than anybody can send is a session that can never commit, so it
+stages rows until it is swept and then stages them again.
+
+A hundred thousand is far past any real import and far short of anything the
+store notices: at the default rate it is twenty-seven hours of footage, at 30 fps
+it is fifty-five minutes, and either way it is more than three thousand requests
+of thirty-two frames before the session could complete. Anything above it is a
+declaration nobody meant.
+"""
+
+MAX_FRAME_PIXELS: Final = 40_000_000
+"""The largest frame geometry a session may declare, in pixels after the downscale.
+
+The bound that makes the per-part byte ceiling a number rather than a formula.
+That ceiling is derived from what a frame must decode to — see
+:func:`frame_byte_ceiling` — so without a bound on the geometry itself the
+"largest part this route accepts" is whatever a caller declared, which is no
+bound at all.
+
+Forty million is past 8K in both spellings — UHD is 33.2 Mpx, DCI 35.4 — and
+short of anything an ordinary machine decodes without swapping: at four bytes a
+pixel the raster alone is 160 MB, and the decoder needs it whole whatever the
+encoding. Beyond this the refusal is honest rather than arbitrary, because the
+frame could not be decoded here anyway.
+"""
+
+MAX_OPEN_IMPORTS: Final = 16
+"""How many sessions one project may hold ``open`` at once.
+
+``start`` writes a source row and a session row before a single frame arrives,
+and an abandoned session reports itself to nobody — so without a cap, opening
+one is an unbounded write for whoever holds a token. It counts only ``open``
+sessions: a committed one is a dataset's provenance and an aborted one is
+already on the sweeper's list.
+
+Sixteen because a person decodes one clip at a time in one tab, and the number
+has to leave room for several tabs plus whatever a crashed one left behind
+inside the sweep window, while still being a number rather than a direction.
+"""
+
+ABANDONED_AFTER: Final = timedelta(hours=24)
+"""How long a session that is not committed may sit untouched before it is swept.
+
+``updated_at`` moves on every accepted chunk, so a live import — however long its
+decode — refreshes this constantly and is never a candidate. A day of complete
+silence is a tab nobody is coming back to: nothing in any surface can resume a
+session whose id was only ever held in a browser's memory.
+
+The sweep runs at ``start``, which is the one call that also makes rows. There is
+no background sweeper and deliberately so: a local-first single-writer store has
+no daemon to hang one on, and the cost of the pass is one already-indexed read of
+the project's own sessions.
+"""
+
+
+_BYTES_PER_PIXEL: Final = 4
+"""What one pixel of a decoded frame costs: 8-bit RGBA, which is what a canvas holds.
+
+The multiplier in :func:`frame_byte_ceiling`, and deliberately the *decoded*
+cost rather than a guess at a compressed one. A PNG larger than its own raster
+is not a frame somebody encoded badly; it is not a plausible encoding of that
+geometry at all.
+"""
+
+_PNG_ENVELOPE: Final = 64 * 1024
+"""Slack over the raster: the signature, the chunk headers, the per-row filter
+byte, and zlib's own framing on data that will not compress. Fixed rather than
+proportional, because every one of those is a constant or a function of height
+that a fixed sixty-four kilobytes covers for any geometry this service accepts.
+"""
+
+
+def frame_byte_ceiling(selection: VideoProvenance) -> int:
+    """The most one frame part of this session may weigh, from what it must decode to.
+
+    Public because it is the number the refusal quotes and the number a test
+    reasons from, and derived rather than configured because the session already
+    declares the only thing it could be derived from: every frame of this import
+    must decode to ``stored_width x stored_height`` — that is the check beside
+    this one — so a part heavier than that geometry's own raster cannot be one.
+
+    A ceiling rather than an estimate, and nothing here tries to guess how well a
+    real frame compresses. A photograph lands ten or twenty times under this; the
+    number exists to refuse the part that is a thousand times over it, before
+    anything has read a byte of it.
+    """
+    pixels = selection.stored_width * selection.stored_height
+    return pixels * _BYTES_PER_PIXEL + _PNG_ENVELOPE
 
 
 class VideoImportService:
@@ -129,16 +231,56 @@ class VideoImportService:
         batch has been cut into jobs already, and finding that out after the
         decoding is finding it out after the work.
 
+        **The session is also what a caller could make unboundedly many of**, so
+        three refusals guard the row store rather than the dataset. A cut whose
+        whole-clip grid holds more than ``MAX_IMPORT_FRAMES`` points is refused
+        before the count is even taken — see that constant — as is a frame
+        geometry over ``MAX_FRAME_PIXELS``, which is what gives the per-part
+        weight ceiling something finite to be derived from. A project already
+        holding ``MAX_OPEN_IMPORTS`` open sessions is refused until one of them
+        ends, and the same pass sweeps what is genuinely abandoned; see
+        :meth:`_make_room`.
+
         Raises:
             ProjectNotFound: no such project in this workspace.
             BatchNotFound: ``batch_id`` names no batch of this project.
             BatchNotEditable: the target batch is past ``draft``.
+            TooManyOpenVideoImports: this project already holds the most open
+                sessions it may.
+            VideoImportTooLarge: the declared cut would stage more frames than
+                one session may hold, or frames larger than one may decode.
             InvalidName: ``display_name``, or a provided ``batch_name``, is
                 blank once stripped.
             ValueError: the declared metadata or cut parameters are not usable —
                 a non-positive rate, a scale outside 1-100, or a selection that
                 holds no grid point at all.
         """
+        if metadata.duration_seconds * extraction_fps > MAX_IMPORT_FRAMES:
+            # Before ``expected_frames``, not after, and that order is the whole
+            # of why this is one comparison rather than two. The clip's own grid
+            # is ``ceil(duration * fps)`` and no selection can hold more than it,
+            # so bounding the product bounds the count — and bounding it *first*
+            # is what keeps a product that overflowed to ``inf`` out of
+            # ``math.ceil``, which raises ``OverflowError`` rather than rounding.
+            raise VideoImportTooLarge(
+                f"a clip of {metadata.duration_seconds}s at {extraction_fps} fps holds more"
+                f" than {MAX_IMPORT_FRAMES} frames; narrow the selection or lower the rate"
+            )
+        if (
+            scaled_dimension(metadata.width, scale_percent)
+            * scaled_dimension(metadata.height, scale_percent)
+            > MAX_FRAME_PIXELS
+        ):
+            # The other half of "how much work is this", and the half that bounds
+            # a single request rather than the session: the per-part byte ceiling
+            # is derived from this geometry, so an unbounded declaration is an
+            # unbounded part. Computed from the arguments rather than from
+            # ``provenance`` below, because the refusal belongs before anything
+            # is constructed from them.
+            raise VideoImportTooLarge(
+                f"frames of {metadata.width}x{metadata.height} at {scale_percent}% hold more"
+                f" than {MAX_FRAME_PIXELS} pixels; scale the import down"
+            )
         provenance = VideoProvenance(
             metadata=metadata,
             extraction_fps=extraction_fps,
@@ -163,6 +305,7 @@ class VideoImportService:
         name = normalize_name(display_name, what="source name")
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
+            self._make_room(uow, project_id)
             if batch_id is not None:
                 target = self._batches.require_draft(uow, batch_id)
                 if target.project_id != project_id:
@@ -242,13 +385,20 @@ class VideoImportService:
         refuses a file after storing part of it does the same — and an
         unreachable blob is wasted space rather than a wrong answer.
 
+        **A frame is a stream and is never held whole.** ``IncomingFrame.content``
+        is an open handle, so a chunk of thirty-two frames costs thirty-two open
+        handles rather than thirty-two frames of memory, and a part too heavy to
+        be a frame of this session is refused off its size before a byte of it is
+        read — see :meth:`_stage`.
+
         Raises:
             VideoImportNotFound: no such session in this workspace.
             VideoImportNotOpen: the session was already committed or aborted.
             FrameOrdinalOutOfRange: an ordinal is not a grid index the session's
                 selection holds.
             FrameContentConflict: an ordinal already holds different bytes.
-            UnsupportedMedia: a frame is not PNG, or is not the size it declared.
+            UnsupportedMedia: a frame is not PNG, is not the geometry this
+                session stores, or weighs more than that geometry can.
             CorruptMedia: a frame is a PNG whose bytes will not decode.
         """
         with self._workspace.unit_of_work() as uow:
@@ -256,6 +406,43 @@ class VideoImportService:
             self._require_open(session)
             selection = self._require_source(uow, session).require_video()
         staged = [self._stage(session, selection, frame) for frame in frames]
+        try:
+            return self._record(import_id, staged)
+        except ConstraintViolated:
+            # ``(import_id, ordinal)`` is unique, and the adjudication above
+            # reads the staged rows *before* it inserts: two genuinely
+            # concurrent appends at one never-yet-staged ordinal both find it
+            # free, and the loser's insert is refused by the index rather than
+            # settled by the rule. The re-read is the settlement — the winner's
+            # row is now visible, so the same pass answers what it was always
+            # meant to: identical bytes are a retry that writes nothing, and
+            # different bytes are ``FrameContentConflict``.
+            #
+            # A second transaction rather than a recovery inside the first:
+            # a constraint violation ends the transaction it happened in, so
+            # nothing this call had already staged survives it, and re-running
+            # the whole pass is what puts those frames back.
+            #
+            # One retry, not a loop. A second violation means a *third* writer
+            # arrived inside it, which is not a shape any client of this session
+            # has — the frames of one clip are sent by the page that decoded it —
+            # and a store refusing a write under contention is better reported
+            # than retried forever.
+            return self._record(import_id, staged)
+
+    def _record(self, import_id: UUID, staged: Sequence[StagedFrame]) -> VideoImport:
+        """One pass of "stage what is not held, refuse what disagrees", in one write.
+
+        Split out of :meth:`append_frames` so that the retry a constraint
+        violation earns is the same code and not a second spelling of the rule.
+
+        Raises:
+            VideoImportNotFound: no such session in this workspace.
+            VideoImportNotOpen: the session was already committed or aborted.
+            FrameContentConflict: an ordinal already holds different bytes.
+            ConstraintViolated: another writer staged one of these ordinals
+                between the read below and the insert.
+        """
         with self._workspace.unit_of_work() as uow:
             session = self.require_import(uow, import_id)
             self._require_open(session)
@@ -307,6 +494,15 @@ class VideoImportService:
         first. The batch is then shorter than the frame count, which is the
         honest report.
 
+        **The staged rows go**, exactly as they do on an abort and for the same
+        reason: they have become assets, the session is terminal, and no read
+        will ever reach them again. Deleting them here is not tidiness — a
+        half-hour clip at 1 fps leaves eighteen hundred rows per import, and the
+        table's ``ON DELETE CASCADE`` never fires for either ending, because
+        neither one deletes the session row. ``received_frame_count`` stays
+        where it is: it is the record of what this import committed, not a
+        count of rows that still exist.
+
         **The destination was chosen at start, and is checked again here.** A
         session aimed at an existing draft can find it approved or deleted in the
         minutes it spent decoding, and the honest answer then is the same refusal
@@ -353,6 +549,8 @@ class VideoImportService:
             now = datetime.now(UTC)
             assets, _ = store_assets(uow, session.project_id, candidates, stamped_at=now)
             batch = self._destination(uow, session, source, [asset.id for asset in assets])
+            for frame in frames:
+                uow.video_import_frames.delete(frame.id)
             session.state = VideoImportState.COMMITTED
             session.batch_id = batch.id
             session.updated_at = now
@@ -421,6 +619,43 @@ class VideoImportService:
 
     # --- the parts the operations above share ------------------------------
 
+    def _make_room(self, uow: UnitOfWork, project_id: UUID) -> None:
+        """Sweep what this project abandoned, then refuse it a session too many.
+
+        **The sweep deletes the source, not the session**, and that is the whole
+        reason it bounds anything. ``start`` writes a ``VIDEO`` source beside
+        every session, and an expiry that reaped sessions alone would leave one
+        source per attempt behind forever — the same unbounded growth one table
+        over. ``video_import.source_id`` cascades, so deleting the source takes
+        the session and every frame staged under it in one statement, and the
+        content-addressed blobs are left exactly where :meth:`abort` leaves
+        them, for the reason stated there.
+
+        **A committed session is never swept.** Its source is the provenance of
+        assets somebody is annotating, and its row is the record of where they
+        came from. Everything else — a session still ``open`` that nobody has
+        touched since ``ABANDONED_AFTER``, and an aborted one that has served
+        its purpose as an answer — is a row nothing will ever read again.
+
+        The cap is counted after the sweep so that a project whose sessions are
+        all stale is not refused on the strength of rows this call has just
+        deleted.
+        """
+        cutoff = datetime.now(UTC) - ABANDONED_AFTER
+        still_open = 0
+        for session in uow.video_imports.list(project_id):
+            if session.state is VideoImportState.COMMITTED:
+                continue
+            if session.updated_at <= cutoff:
+                uow.sources.delete(session.source_id)
+            elif session.state is VideoImportState.OPEN:
+                still_open += 1
+        if still_open >= MAX_OPEN_IMPORTS:
+            raise TooManyOpenVideoImports(
+                f"project {project_id} already holds {still_open} open video imports;"
+                " finish or abort one before starting another"
+            )
+
     def _stage(
         self, session: VideoImport, selection: VideoProvenance, frame: IncomingFrame
     ) -> StagedFrame:
@@ -437,17 +672,54 @@ class VideoImportService:
         session. The two agree only for a clip cut from zero — a session cut from
         5 s at 1 fps expects three frames and their indices are 5, 6, 7 — so
         bounding by the count refuses every frame of every other selection.
+
+        **The size is checked against the declaration, and only then against the
+        descriptor.** Comparing a client's descriptor with the client's own bytes
+        is circular: both halves come from the same place, so a client declaring
+        a 1920x1080 clip at 50% and posting consistent 4096x4096 frames used to
+        pass every check and leave a source saying one thing and its assets
+        another. ``stored_width``/``stored_height`` is the third party — the
+        geometry the session was opened with, and the one the source's identity
+        is keyed on. Note that ``metadata`` is *display* dimensions, so a clip
+        the container rotates is already described the way its decoder will
+        draw it; a rotated import matches this check rather than fighting it.
+
+        **How heavy the part is, asked before anything reads it.** The frame
+        arrives as a handle rather than as bytes, so its size is a seek and a
+        ``tell`` — no decode, no copy, nothing resident — and a part over
+        :func:`frame_byte_ceiling` is refused there. That ordering is the point:
+        every check below has to look at the bytes, and "this is not a frame" is
+        a much cheaper sentence to reach before a gigabyte has been decoded than
+        after. The stream is then handed on as it is: ``probe``, ``BlobStore.put``
+        and ``thumbnail`` all read in chunks, so the only thing this method ever
+        holds whole is one decoded raster.
         """
         if not selection.selects(frame.ordinal):
             raise FrameOrdinalOutOfRange(
                 f"frame {frame.ordinal} is not on the grid video import {session.id} selected"
             )
         name = f"video import {session.id}#frame={frame.ordinal}"
-        content = BytesIO(frame.content)
+        content = frame.content
+        content.seek(0, SEEK_END)
+        weight = content.tell()
+        ceiling = frame_byte_ceiling(selection)
+        if weight > ceiling:
+            raise UnsupportedMedia(
+                f"a frame of this import may weigh {ceiling} bytes and this one weighs {weight}",
+                name=name,
+            )
+        content.seek(0)
         metadata = self._workspace.image_processor.probe(content, name=name)
         if metadata.format is not VIDEO_FRAME_FORMAT:
             raise UnsupportedMedia(
                 f"a video frame must be {VIDEO_FRAME_FORMAT.value}, got {metadata.format.value}",
+                name=name,
+            )
+        stored = (selection.stored_width, selection.stored_height)
+        if (metadata.width, metadata.height) != stored:
+            raise UnsupportedMedia(
+                f"this import stores frames at {stored[0]}x{stored[1]} and this one decodes to"
+                f" {metadata.width}x{metadata.height}",
                 name=name,
             )
         if (metadata.width, metadata.height) != (frame.width, frame.height):
@@ -473,7 +745,7 @@ class VideoImportService:
             thumbnail_hash=self._preview(content, name=name),
         )
 
-    def _preview(self, content: BytesIO, *, name: str) -> str | None:
+    def _preview(self, content: BinaryIO, *, name: str) -> str | None:
         """A thumbnail, or NULL and carry on — ``IngestService._cache_thumbnail``'s rule.
 
         Rendered at append rather than at commit so the commit transaction is

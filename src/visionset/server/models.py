@@ -731,7 +731,7 @@ class SchemaVersionCreate(BaseModel):
 class ClipRange(BaseModel):
     """One stretch of a clip to extract, half-open: start_seconds <= t < end_seconds."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     start_seconds: float
     end_seconds: float
@@ -837,7 +837,9 @@ class SourcePage(Page[SourceOut]):
 # rather than tidiness: ``VideoMetadata`` refuses a non-positive duration with a
 # *pydantic* ``ValidationError``, which is neither a ``VisionSetError`` nor a
 # ``RequestValidationError`` and so answers 500. Declared here, the same refusal
-# is the ordinary 422 every other malformed body gets.
+# is the ordinary 422 every other malformed body gets. ``allow_inf_nan`` is that
+# rule applied to the bound nobody writes down: JSON's ``1e400`` parses to
+# ``inf``, which passes ``gt=0`` and dies in the first multiplication after it.
 class VideoMetadataBody(BaseModel):
     """What a client's decoder read off the clip, as displayed.
 
@@ -848,7 +850,7 @@ class VideoMetadataBody(BaseModel):
     would record a property the clip does not have.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     width: int = Field(ge=1)
     height: int = Field(ge=1)
@@ -878,7 +880,7 @@ class VideoImportStart(BaseModel):
     somebody's frames end up somewhere they did not choose.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     display_name: str
     metadata: VideoMetadataBody
@@ -912,7 +914,7 @@ class VideoImportStart(BaseModel):
 class FrameDescriptor(BaseModel):
     """Where one uploaded frame sits in the clip, and what size it claims to be."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     ordinal: int = Field(ge=0)
     requested_timestamp: float = Field(ge=0)

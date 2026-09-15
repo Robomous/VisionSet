@@ -6,7 +6,8 @@ import type {
 } from "../index.js";
 
 /**
- * The main-thread ↔ worker message contract (`browser-video-import.tmp.md` §6.1).
+ * The main-thread ↔ worker message contract, described in prose in
+ * `docs/content/architecture/frontend/media.md`.
  *
  * Type-only, so importing it adds no runtime edge between the two bundles.
  *

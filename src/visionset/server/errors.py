@@ -126,6 +126,7 @@ from visionset.kernel import (
     ThumbnailNotCached,
     TokenNameTaken,
     TokenNotFound,
+    TooManyOpenVideoImports,
     UnknownAttribute,
     UnknownJobType,
     UnserializableManifest,
@@ -135,6 +136,7 @@ from visionset.kernel import (
     VideoImportIncomplete,
     VideoImportNotFound,
     VideoImportNotOpen,
+    VideoImportTooLarge,
     VisionSetError,
     WeightsDamaged,
     WorkspaceAlreadyExists,
@@ -245,6 +247,9 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # did not move under the caller — the grid it was opened with has not
     # changed and will not, so there is no conflict to re-read and resolve.
     FrameOrdinalOutOfRange: ErrorRule(422, "FRAME_ORDINAL_OUT_OF_RANGE"),
+    # 422 for the same reason, one level up: the cut is a field of the payload
+    # and nothing about the project refuses it, so there is no state to re-read.
+    VideoImportTooLarge: ErrorRule(422, "VIDEO_IMPORT_TOO_LARGE"),
     AssetNotInJob: ErrorRule(404, "ASSET_NOT_IN_JOB"),
     AssetNotInDataset: ErrorRule(404, "ASSET_NOT_IN_DATASET"),
     # Not a 409: a release is immutable, so its state will never change and
@@ -293,6 +298,10 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     VideoImportNotOpen: ErrorRule(409, "VIDEO_IMPORT_NOT_OPEN"),
     VideoImportIncomplete: ErrorRule(409, "VIDEO_IMPORT_INCOMPLETE"),
     FrameContentConflict: ErrorRule(409, "FRAME_CONTENT_CONFLICT"),
+    # 409 rather than 429: nothing is rate-limited here and no wait is being
+    # asked for. The project holds as many open sessions as it may, which is a
+    # state the caller resolves by committing or aborting one of its own.
+    TooManyOpenVideoImports: ErrorRule(409, "TOO_MANY_OPEN_VIDEO_IMPORTS"),
     BatchNotEditable: ErrorRule(409, "BATCH_NOT_EDITABLE"),
     # No route reaches this yet — batch delete is SDK-only. Mapped anyway,
     # because the exact-correspondence test is what keeps the table honest, and

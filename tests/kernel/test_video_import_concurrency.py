@@ -32,6 +32,7 @@ from PIL import Image
 from visionset.kernel.adapters import _mappers as m
 from visionset.kernel.adapters.sqlite_metadata_store import SqlRepository
 from visionset.kernel.domain import IncomingFrame, VideoImportState, VideoMetadata
+from visionset.kernel.errors import ConstraintViolated, FrameContentConflict
 from visionset.kernel.services import ProjectService, VideoImportService, WorkspaceService
 
 #: `test_concurrent_membership.py`'s number, for its reason: long enough that a
@@ -43,13 +44,16 @@ WRITERS = 2
 PER_WRITER = 2
 
 
-def _frame(ordinal: int) -> IncomingFrame:
+def _frame(ordinal: int, *, seed: int | None = None) -> IncomingFrame:
+    """One frame. Equal `(ordinal, seed)` pairs give equal bytes, which is what
+    lets a test say "the same frame again" and "a different frame here"."""
     width, height = FRAME_SIZE
+    tint = ordinal if seed is None else seed
     pixels = bytes(
         channel
         for y in range(height)
         for x in range(width)
-        for channel in ((x * 7 + ordinal * 13) % 256, (y * 5) % 256, (ordinal * 47) % 256)
+        for channel in ((x * 7 + tint * 13) % 256, (y * 5) % 256, (tint * 47) % 256)
     )
     buffer = BytesIO()
     Image.frombytes("RGB", FRAME_SIZE, pixels).save(buffer, format="PNG")
@@ -58,7 +62,7 @@ def _frame(ordinal: int) -> IncomingFrame:
         requested_timestamp=float(ordinal),
         width=FRAME_SIZE[0],
         height=FRAME_SIZE[1],
-        content=buffer.getvalue(),
+        content=buffer,
     )
 
 
@@ -109,6 +113,28 @@ def _append(
 ) -> Callable[[], None]:
     def work() -> None:
         service.append_frames(import_id, frames)
+
+    return work
+
+
+def _collecting(
+    service: VideoImportService,
+    import_id: UUID,
+    frames: list[IncomingFrame],
+    raised: list[BaseException],
+) -> Callable[[], None]:
+    """`_append`, with whatever it raised kept for the assertions.
+
+    A thread that dies on an exception still joins, so a test that only joins
+    cannot tell a refusal from a success — which is precisely the difference
+    these two cases are about.
+    """
+
+    def work() -> None:
+        try:
+            service.append_frames(import_id, frames)
+        except BaseException as exc:  # noqa: BLE001 - the assertion is what it was
+            raised.append(exc)
 
     return work
 
@@ -182,3 +208,87 @@ def test_a_session_filled_by_two_writers_still_commits(
     batch = imports.commit(fixture.import_id)
     assert len(batch.asset_ids) == WRITERS * PER_WRITER
     assert imports.get(fixture.import_id).state is VideoImportState.COMMITTED
+
+
+def _gate_once_on_the_staged_frames(
+    monkeypatch: pytest.MonkeyPatch, barrier: threading.Barrier
+) -> None:
+    """Hold each appender's **first** read of the staged rows, and only that one.
+
+    The gate above reuses a cyclic barrier, which is right while every append
+    reads exactly once. An append whose insert collides reads a second time —
+    the re-read *is* the adjudication — and a second wait on a two-party barrier
+    nobody else is coming to is a thirty-second timeout dressed up as a
+    deadlock. So this one releases each writer once and then stands aside.
+    """
+    original = SqlRepository.list
+    lock = threading.Lock()
+    waited = 0
+
+    def gated(self: SqlRepository[object], parent_id: UUID | None = None) -> list[object]:
+        nonlocal waited
+        rows = original(self, parent_id)
+        if self._mapping is m.VIDEO_IMPORT_FRAMES:  # noqa: SLF001
+            with lock:
+                first = waited < WRITERS
+                waited += 1
+            if first:
+                barrier.wait()
+        return rows
+
+    monkeypatch.setattr(SqlRepository, "list", gated)
+
+
+def test_two_concurrent_appends_at_one_ordinal_with_one_content_are_a_retry(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The documented answer, held to under a real race.
+
+    Both writers find the ordinal free, and the unique index refuses the
+    loser's insert. Unadjudicated that is a `ConstraintViolated` — a 500 — for
+    what the contract calls the ordinary case: a chunked upload that lost its
+    connection and sent the same bytes again.
+    """
+    _gate_once_on_the_staged_frames(
+        monkeypatch, threading.Barrier(WRITERS, timeout=TIMEOUT_SECONDS)
+    )
+    here, there = fixture.writers()
+    raised: list[BaseException] = []
+
+    _run(
+        _collecting(here, fixture.import_id, [_frame(0)], raised),
+        _collecting(there, fixture.import_id, [_frame(0)], raised),
+    )
+
+    monkeypatch.undo()
+    assert raised == []
+    session = VideoImportService(fixture.workspace).get(fixture.import_id)
+    with fixture.workspace.unit_of_work() as uow:
+        staged = uow.video_import_frames.list(fixture.import_id)
+    assert session.received_frame_count == len(staged) == 1
+
+
+def test_two_concurrent_appends_at_one_ordinal_with_different_content_conflict(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other half: the loser is refused by the session's own rule, not by the index.
+
+    `FrameContentConflict` is a 409 a client can act on — abort and start again
+    — where `ConstraintViolated` is a 500 that names a table.
+    """
+    _gate_once_on_the_staged_frames(
+        monkeypatch, threading.Barrier(WRITERS, timeout=TIMEOUT_SECONDS)
+    )
+    here, there = fixture.writers()
+    raised: list[BaseException] = []
+
+    _run(
+        _collecting(here, fixture.import_id, [_frame(0, seed=1)], raised),
+        _collecting(there, fixture.import_id, [_frame(0, seed=2)], raised),
+    )
+
+    monkeypatch.undo()
+    assert [type(exc) for exc in raised] == [FrameContentConflict]
+    assert not any(isinstance(exc, ConstraintViolated) for exc in raised)
+    with fixture.workspace.unit_of_work() as uow:
+        assert len(uow.video_import_frames.list(fixture.import_id)) == 1

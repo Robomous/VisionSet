@@ -11,6 +11,87 @@ nothing was being distributed. This is the first version that is.
 
 ## [Unreleased]
 
+### Changed
+
+- **Video is imported in the browser, and this process no longer decodes one at all.** A clip is
+  demuxed and decoded where it already lives - the browser, with its own `WebCodecs` support, via
+  the new `@visionset/media` package - and only PNG frames and the provenance describing them ever
+  reach the server. The clip itself is never uploaded. That replaces the whole server-side path:
+  `POST /projects/{id}/sources/video` is gone and a `VIDEO` source is now opened through a session
+  with a middle to it -
+
+  ```
+  POST   /projects/{project_id}/video-imports    declare the clip, open the session
+  GET    /video-imports/{import_id}              the session's progress
+  POST   /video-imports/{import_id}/frames       stage a bounded chunk of frames (multipart)
+  POST   /video-imports/{import_id}/commit       every expected frame arrived → the batch
+  DELETE /video-imports/{import_id}              throw the session away
+  ```
+
+  The invariant the session exists for: **nothing staged is a project asset before `commit`**. A
+  closed tab, a crashed decoder or an aborted import leaves the project exactly as it was, where a
+  half-finished server-side extraction used to leave frames in a batch and a report explaining the
+  rest. `commit` refuses with `VIDEO_IMPORT_INCOMPLETE` until every expected ordinal has arrived,
+  is idempotent, and answers the batch it made; `FRAME_CONTENT_CONFLICT`,
+  `FRAME_ORDINAL_OUT_OF_RANGE`, `VIDEO_IMPORT_NOT_FOUND` and `VIDEO_IMPORT_NOT_OPEN` are the
+  session's other refusals. Opening a session is bounded as well as gated: a cut whose grid holds
+  more frames than one session may stage is `VIDEO_IMPORT_TOO_LARGE`, a project already holding the
+  most open sessions it may is `TOO_MANY_OPEN_VIDEO_IMPORTS`, and `start` sweeps sessions nothing
+  has touched for a day — deleting each through its source, so the `VIDEO` source it declared goes
+  with it. A frame must also decode to the geometry the session declared, the clip's size after
+  `scale_percent`, rather than merely agree with its own descriptor - and a part heavier than that
+  geometry's own raster is refused off its weight before anything decodes it, since
+  `FRAMES_PER_REQUEST` bounds how many parts a request carries and never how big one is. Frame
+  parts are streamed from the handle the server already spooled rather than read whole. Workspace format version 19
+  adds the `video_import` and `video_import_frame` tables.
+
+  A `VIDEO` source's locator is now an opaque `video-import:<uuid4>`, so importing the same clip
+  twice creates two sources rather than deduplicating onto one; content addressing still collapses
+  identical frames into one asset. `VideoProvenance` gains `policy_version` and `materializer`, so
+  which sampling rules and which decoder produced a set of frames is legible in the data.
+
+  In the browser, the ingest screen picks between `ImageIngestFlow` and `VideoImportFlow` by the
+  chosen file's kind. A clip is inspected locally **before** anything is registered - container,
+  codec, size, duration and source rate, or one of a closed set of refusals naming why this
+  browser will not decode it - and the import shows materialized against expected frames with a
+  Cancel that costs nothing, because nothing has landed yet.
+
+- **`ffmpeg` is no longer a prerequisite for anything.** It is not installed, not shipped, not
+  pinned and not documented as a dependency, and the `MediaToolUnavailable` error it was the only
+  cause of is gone with it. A machine with no media binary at all now does everything VisionSet does, video included. There
+  is deliberately **no fallback decoder**: a browser that cannot decode a codec says so, in the
+  browser, rather than handing the file to a server that would have decoded it instead. A gate,
+  `tests/scripts/no_server_video_decode.test.mjs`, refuses the reintroduction.
+
+### Removed
+
+- **`POST /projects/{id}/sources/video`.** There is no route that takes a video file.
+
+- **The CLI's video path.** `visionset ingest` takes a directory of still images and only that;
+  pointed at a clip it is a usage error (exit 2) naming where video import actually happens.
+  `--fps`, `--range` and `--scale` are gone with it.
+
+- **The MCP video path.** No tool in the stdio server decodes video or registers a clip: `ingest`
+  takes `project`, `path` and `batch_name`, refuses anything that is not a directory, and there is
+  no `register_video_source` and no `extraction_fps` parameter anywhere. A stdio agent has no way
+  to perform a browser capability, so nothing stands in for it.
+
+- **Three fields from the wire, all part of the same removal.** `IngestFailureOut.frames_produced`
+  and `IngestFailureOut.frames_expected_estimate` are gone, and so is the `IngestFailureKind`
+  enum member `"partial"`. They existed for one case - a clip whose bytes ran out part-way through
+  a server-side extraction - and there is no longer a decode running inside `IngestService` long
+  enough to stop partway. `IngestFailureKind` has two members, `unsupported` and `corrupt`, both a
+  total loss for the file they name. **A client branching on `"partial"`, or reading either
+  count, must be updated**: the interrupted-import case now surfaces as a `VIDEO_IMPORT_*` refusal
+  on a session holding zero assets, not as a batch with a footnote. **Workspace format version 20
+  rewrites the reports already on disk**: every entry a previous release wrote carries both retired
+  keys, so the model that forbids extras would refuse to read one. The migration strips them, and
+  folds a `partial` entry's counts into its `reason` before recording it as `corrupt`, so what a
+  damaged clip actually contributed is still legible.
+
+- **`VideoProcessor`, `FfmpegVideoProcessor` and `MediaToolUnavailable`.** The kernel declares no
+  video-decoding port at all; the browser-side contract is `VideoMaterializer`.
+
 ## [0.0.1b3] — 2026-09-14
 
 ### Added

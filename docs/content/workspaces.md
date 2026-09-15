@@ -350,9 +350,10 @@ are honest answers, and both are now domain errors.
 Opening the same path twice yields two independent engines with no shared cache and no
 in-process lock: **VisionSet is single-writer by convention, not by enforcement.** A long
 write transaction is therefore still a thing to avoid rather than a thing the store defends
-against - which is why, for example, `SourceService` probes a clip *outside* its write
-transaction. `busy_timeout` shortens the window; it does not make holding a transaction
-across a subprocess acceptable.
+against - which is why, for example, `IngestService` reads, hashes and probes each file
+*outside* the transaction that records it, committing between items rather than across them.
+`busy_timeout` shortens the window; it does not make holding a transaction across a decode
+acceptable.
 
 Two hardenings remain untaken, and one of them is declined rather than merely pending.
 `BEGIN IMMEDIATE` for write transactions would make every contended write wait instead of

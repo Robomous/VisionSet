@@ -420,11 +420,20 @@ canonicalized and counted server-side, the same `expected_frames` arithmetic
 computed rather than a client's claim.
 
 `append_frames` decodes what it is handed, through the same `ImageProcessor` an image-directory
-ingest uses - see [media.md](media.md) - so a frame that is not a PNG, or one whose declared size
-disagrees with its own bytes, is refused on the spot rather than stored and discovered later. It
-is also **idempotent by content**: the same ordinal carrying the same bytes is an ordinary retry
-and writes nothing; the same ordinal carrying different bytes is `FRAME_CONTENT_CONFLICT`, a
-session cannot resolve on its own and has to be aborted and restarted.
+ingest uses - see [media.md](media.md) - so a frame that is not a PNG is refused on the spot
+rather than stored and discovered later. What it is checked *against* is the session's own
+declaration: a frame must decode to the clip's width and height after `scale_percent`, the same
+`scaled_dimension` arithmetic the materializer runs. Comparing a frame only with its own
+descriptor would be circular, both halves being the client's, and would let a session declare one
+geometry and hold assets of another. Those are display dimensions, so a clip the container rotates
+needs nothing special, and a part is refused off its **weight** before any of that: the ceiling is
+that geometry's own raster, which no honest encoding of it exceeds, and it is read off the handle
+rather than after a decode. Parts are streamed, never read whole - `FRAMES_PER_REQUEST` bounds how
+many arrive and never how big one is. It is also **idempotent by content**: the same ordinal carrying the same
+bytes is an ordinary retry and writes nothing; the same ordinal carrying different bytes is
+`FRAME_CONTENT_CONFLICT`, which a session cannot resolve on its own and has to be aborted and
+restarted - and that adjudication holds under two genuinely concurrent appends at one ordinal,
+where the unique index refuses the loser's insert and the re-read settles it.
 
 **The invariant the whole session exists to protect: nothing staged is a project `Asset` before
 `commit`.** Between `start` and `commit`, frames sit in the blob store and in `video_import_frame`
@@ -439,12 +448,24 @@ one transaction, and idempotent, so a retried commit answers the batch the first
 than making a second. The batch is the draft `start` was given as `batch_id`, or one created here
 named by `batch_name` and failing that after the clip; a target that was approved or deleted while
 the clip decoded is refused - `BATCH_NOT_EDITABLE`, `BATCH_NOT_FOUND` - rather than replaced with
-a batch nobody chose.
+a batch nobody chose. The staged rows go at commit, exactly as they go at abort: they are assets
+now, and a terminal session's frames are rows nothing will read again.
 
-`abort` throws a session away: its frame rows go with it (`ON DELETE CASCADE`), its blobs do not
-(content-addressed, and an orphan one is unreachable rather than wrong, the same policy an ingest
-that refuses a file after storing part of it already lives with), and the `VIDEO` source it
-declared stays, because aborting does not un-declare that somebody offered this clip.
+`abort` throws a session away: its frame rows go with it, its blobs do not (content-addressed, and
+an orphan one is unreachable rather than wrong, the same policy an ingest that refuses a file after
+storing part of it already lives with), and the `VIDEO` source it declared stays for the moment,
+because aborting does not un-declare that somebody offered this clip.
+
+**A session is a row somebody can ask for, so two bounds sit on `start`.** A project may hold only
+so many sessions `open` at once - `TOO_MANY_OPEN_VIDEO_IMPORTS` past that, resolved by committing
+or aborting one - and a declaration whose whole-clip grid holds more frames than a session may
+stage is `VIDEO_IMPORT_TOO_LARGE`, which is how a duration and a rate that are each individually
+in bounds are caught - as is a declared frame geometry no decoder here could open, which is also
+what keeps the per-part weight ceiling a number rather than whatever a caller declared. The same call sweeps what was genuinely abandoned: a session neither
+committed nor touched for a day is deleted *through its source*, which cascades the session and
+every frame staged under it away together. Deleting the session alone would leave one `VIDEO`
+source per abandoned attempt behind forever, which is the same unbounded growth one table over. A
+committed session is never swept - its source is the provenance of assets somebody is annotating.
 
 ## In the browser
 

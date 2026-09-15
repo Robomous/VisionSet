@@ -51,7 +51,9 @@ not a `tsconfig` lib, not a skipped test. Restructure the change instead.
 
 - `openapi.json` and `frontend/ui-core/src/generated/` are generated. Regenerate; never
   hand-edit, and commit the regenerated diff in the same change.
-- Never commit fixture or workspace media. `**/workspace-data/` stays git-ignored.
+- Never commit fixture or workspace media. `**/workspace-data/` stays git-ignored. The one
+  written exception is `frontend/media/test-fixtures/`, and `CONTRIBUTING.md` states its
+  limits — no second exception is taken without amending that page first.
 - The repo-root `VERSION` file is the single source of truth for every version in the
   repository. Never hand-edit a version anywhere else.
 

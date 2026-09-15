@@ -63,8 +63,10 @@ the door instead.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any, Final
 
 from sqlalchemy import Connection, inspect, text
 from sqlalchemy.schema import CreateColumn, CreateIndex
@@ -440,6 +442,74 @@ def _add_video_imports(connection: Connection) -> None:
     )
 
 
+_RETIRED_FAILURE_COUNTS: Final = ("frames_produced", "frames_expected_estimate")
+"""The two fields ``IngestFailure`` carried for a partial read, and no longer has."""
+
+
+def _failure_without_retired_counts(entry: dict[str, Any]) -> dict[str, Any]:
+    """One stored report entry, rewritten to the shape the model declares today.
+
+    The counts are read before they are dropped, because a ``partial`` entry is
+    the one place they said something: ``reason`` becomes the sentence it was
+    plus what the run actually kept, so the evidence survives the key that used
+    to hold it. Every other entry loses two ``null``s and nothing else.
+    """
+    carried = {key: value for key, value in entry.items() if key not in _RETIRED_FAILURE_COUNTS}
+    if entry.get("kind") != "partial":
+        return carried
+    produced = entry.get("frames_produced")
+    expected = entry.get("frames_expected_estimate")
+    kept = (
+        f"{produced} frames were kept"
+        if expected is None
+        else f"{produced} of about {expected} frames were kept"
+    )
+    carried["kind"] = "corrupt"
+    carried["reason"] = f"{entry.get('reason', '')}; {kept}".lstrip("; ")
+    return carried
+
+
+def _retire_partial_ingest_failures(connection: Connection) -> None:
+    """``ingest_job.failures``: the two frame counts go, and ``partial`` with them.
+
+    Server-side decoding was the only thing that could read one item in part, so
+    ``IngestFailureKind.PARTIAL`` and the counts that travelled with it left the
+    domain when it did. ``IngestFailure`` forbids extra keys and the mapper
+    dumps every field of it, so **every** blob a previous release wrote carries
+    ``frames_produced`` and ``frames_expected_estimate`` — as ``null`` on the
+    ``unsupported`` and ``corrupt`` entries too, not only on the partial ones —
+    and validating one now raises a ``ValidationError`` where a report used to
+    be read. That is neither a ``VisionSetError`` nor a request error, so it is
+    a 500 on every route that reads an ingest job.
+
+    **Removing a field from a persisted model that forbids extras is a
+    migration**, and this is it. The model is deliberately left strict rather
+    than taught to ignore what it no longer declares: a store is only ever
+    opened through this chain — a file stamped behind runs it, one stamped ahead
+    is refused — so there is exactly one door, and a model that shrugged at keys
+    it does not know would accept the next drift silently instead of here.
+
+    **A partial entry keeps its evidence.** Its kind becomes ``corrupt`` — a
+    partial read was always a refinement of *these bytes will not decode*, and
+    the remaining kind, ``unsupported``, is the opposite claim — and the counts
+    are folded into ``reason`` rather than dropped. They are the only record
+    that some of that clip did reach the batch, and the assets they describe are
+    still in somebody's dataset; discarding them would leave a sentence saying
+    the file was a total loss about a run that had just filled one.
+
+    Idempotent for the ordinary reason: a rewritten row holds neither retired
+    key nor a ``partial`` kind, so a second pass finds nothing to change.
+    """
+    for job_id, stored in connection.execute(text("select id, failures from ingest_job")).all():
+        entries: list[dict[str, Any]] = json.loads(stored) if stored else []
+        rewritten = [_failure_without_retired_counts(entry) for entry in entries]
+        if rewritten != entries:
+            connection.execute(
+                text("update ingest_job set failures = :failures where id = :id"),
+                {"failures": json.dumps(rewritten), "id": job_id},
+            )
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -460,6 +530,11 @@ MIGRATIONS: list[Migration] = [
     Migration(version=17, name="preprocessing_recipes", upgrade=_add_preprocessing_recipes),
     Migration(version=18, name="source_scale", upgrade=_add_source_scale),
     Migration(version=19, name="video_imports", upgrade=_add_video_imports),
+    Migration(
+        version=20,
+        name="retire_partial_ingest_failures",
+        upgrade=_retire_partial_ingest_failures,
+    ),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

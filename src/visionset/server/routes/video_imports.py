@@ -11,6 +11,11 @@ and these five routes are that middle.
 Two routers, for the reason ``sources.py`` has two: opening a session hangs off
 the project it is for, and the session is addressable on its own afterwards.
 
+**No part is ever held whole.** Starlette spools an ``UploadFile`` to disk and
+hands over a plain synchronous file object; this module passes that handle
+through to the kernel rather than reading it back, which is ``uploads.py``'s rule
+one route over. ``upload.read()`` must not appear here either.
+
 **Nothing staged is in the project.** Between the first route and ``commit`` the
 frames exist only as blobs and session rows, and no listing, batch or dataset can
 see any of them — a client that closes its tab leaves the project exactly as it
@@ -23,7 +28,7 @@ Reading a spooled upload is blocking I/O too.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Annotated, Final
+from typing import Annotated, BinaryIO, Final
 from uuid import UUID
 
 from fastapi import File, Form, UploadFile, status
@@ -57,10 +62,15 @@ FRAMES_PER_REQUEST: Final = 32
 
 A bound rather than a preference. ``VideoImportService.append_frames`` decodes
 the whole chunk before it opens its transaction, so an unbounded request is an
-unbounded amount of image data held at once; and one multipart body carrying a
-whole extraction is a single point of failure a client has to redo from the
-start. Thirty-two frames is half a minute of clip at the default rate — tens of
-megabytes at ordinary frame sizes, and often enough that a progress bar moves.
+unbounded amount of decoding held between one write and the next; and one
+multipart body carrying a whole extraction is a single point of failure a client
+has to redo from the start. Thirty-two frames is half a minute of clip at the
+default rate — tens of megabytes at ordinary frame sizes, and often enough that a
+progress bar moves.
+
+It bounds the **count** and never the size, which is a different question with a
+different answer: parts arrive as streams and each one is refused off its own
+weight before it is read, in ``VideoImportService._stage``.
 """
 
 _DESCRIPTORS: Final = TypeAdapter(tuple[FrameDescriptor, ...])
@@ -77,15 +87,23 @@ def _promoted(workspace: WorkspaceDep, project_id: UUID) -> frozenset[UUID]:
     return DatasetService(workspace).member_asset_ids(dataset.id)
 
 
-def _bytes(upload: UploadFile) -> bytes:
-    """One part, read whole.
+def _stream(upload: UploadFile) -> BinaryIO:
+    """One part, as the handle it already is.
 
-    ``upload.file`` rather than ``await upload.read()`` because the handler is
-    ``def``; the seek is for ``uploads.stage``'s reason — a handle is read from
-    wherever it happens to sit.
+    **Never ``read()``.** Starlette has already spooled this part to disk, and
+    reading it back turns a file on disk into a copy in memory — thirty-two of
+    them per request, then copied again through the decoder. The rule is
+    ``uploads.py``'s, stated in that module's own docstring for the image path;
+    this route opted out of ``uploads.stage`` because a frame is not a source's
+    origin, which is a reason not to *stage* the part, never a reason to stop
+    streaming it. ``IncomingFrame`` takes a stream for exactly this, and every
+    port that reads a frame — ``ImageProcessor``, ``BlobStore`` — reads in chunks.
+
+    The seek is for ``uploads.stage``'s reason: a handle is read from wherever it
+    happens to sit, and the kernel seeks again before each of its own passes.
     """
     upload.file.seek(0)
-    return upload.file.read()
+    return upload.file
 
 
 def _incoming(files: Sequence[UploadFile], descriptors: str) -> list[IncomingFrame]:
@@ -124,7 +142,7 @@ def _incoming(files: Sequence[UploadFile], descriptors: str) -> list[IncomingFra
             ]
         )
     return [
-        IncomingFrame(**descriptor.model_dump(), content=_bytes(upload))
+        IncomingFrame(**descriptor.model_dump(), content=_stream(upload))
         for descriptor, upload in zip(described, files, strict=True)
     ]
 
@@ -168,6 +186,14 @@ def start_video_import(
     Every import registers a source of its own, so starting twice over one file
     is two sources and never a collision. Identical frames still deduplicate by
     content, which is the only thing that deduplicates them.
+
+    **Opening a session writes rows, so two limits guard it.** A cut whose
+    whole-clip grid holds more frames than one session may stage is 422
+    `VIDEO_IMPORT_TOO_LARGE` — every field of such a body is individually in
+    bounds, and it is their product that is not. A project already holding the
+    most open sessions it may is 409 `TOO_MANY_OPEN_VIDEO_IMPORTS`; commit or
+    abort one of them, or leave it to the sweep that this same call runs over
+    sessions nothing has touched for a day.
     """
     try:
         session = VideoImportService(workspace).start(
@@ -237,12 +263,25 @@ def append_video_import_frames(
     A descriptor count that does not match the part count is 422 — the two
     arrays have drifted apart, and nothing here could pick which to believe.
 
-    Every frame is decoded before it is stored, so a part that is not a PNG, or
-    one whose bytes disagree with the size its descriptor declares, is 422
-    `UNSUPPORTED_MEDIA` and one that will not decode at all is 422
-    `CORRUPT_MEDIA`. A descriptor that does not describe its own bytes is not a
-    frame with bad metadata; it is evidence a client's grid and this session's
-    have diverged, which is worth finding out now rather than in a training run.
+    Every frame is decoded before it is stored, so a part that is not a PNG is
+    422 `UNSUPPORTED_MEDIA` and one that will not decode at all is 422
+    `CORRUPT_MEDIA`.
+
+    **A part heavier than a frame of this session could be is 422
+    `UNSUPPORTED_MEDIA` before it is decoded at all** — the ceiling is that
+    geometry's own raster, which no honest encoding of it exceeds. Parts are
+    streamed rather than read whole, so a chunk costs one decoded frame rather
+    than thirty-two.
+
+    **A frame must decode to the geometry the session declared** — the clip's
+    `width`/`height` after `scale_percent` — and anything else is 422
+    `UNSUPPORTED_MEDIA`. Those are display dimensions, so a clip the container
+    rotates is already described the way its decoder draws it and needs nothing
+    special. Comparing a part with its own descriptor is the same check between
+    two halves of one claim, and it is also made: a descriptor that does not
+    describe its own bytes is not a frame with bad metadata, it is evidence a
+    client's grid and this session's have diverged, which is worth finding out
+    now rather than in a training run.
 
     **Re-sending a frame is free.** The same ordinal carrying the same bytes is a
     retry — a chunked upload that lost its connection is the ordinary case — so
@@ -272,6 +311,9 @@ def commit_video_import(workspace: WorkspaceDep, import_id: UUID) -> BatchOut:
     partway would otherwise produce a batch silently short of a stretch of its
     clip, and nothing downstream could detect it — the assets are perfectly good
     images and the batch looks like any other.
+
+    The staged rows are disposed of here, exactly as an abort disposes of them:
+    they are assets now, and the session is terminal either way.
 
     **Idempotent.** A repeated commit answers the batch the first one created and
     writes nothing, so a client that retried a timed-out request never gets a

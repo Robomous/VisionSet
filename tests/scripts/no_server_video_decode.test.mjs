@@ -16,6 +16,27 @@
 // removed ffmpeg has to remain documentable: `docs/content/media.md` and `CHANGELOG.md` both
 // need to say the word, and a gate that made the history unwritable would be traded away the
 // first time someone needed to explain why video import works the way it does.
+//
+// ## What this gate does not catch
+//
+// Stated plainly, because a gate trusted for more than it does is worse than one whose limit is
+// written down. Everything here is a **literal match on one line of one tracked file**, so it
+// cannot see:
+//
+//   - **a name that is assembled rather than written.** `"ff" + "mpeg"`, a binary read out of
+//     `os.environ`, a `shutil.which(TOOL)` whose `TOOL` came from config — none of them contain
+//     the banned string, and no name-based check ever will. `shutil.which` itself is not banned
+//     because this repository uses it legitimately to find its own console script.
+//   - **a decoder nobody has named yet.** The list below is the libraries that exist today. A new
+//     one arrives unlisted, and adding it here is part of noticing it.
+//   - **a call split over several lines.** The scan is line-by-line, so `predict(\n  source=…)`
+//     slips through where `predict(source=…)` does not.
+//   - **a transitive dependency that decodes without saying so.** Lockfiles are scanned by name,
+//     which catches a decoder that arrives under its own, and nothing else.
+//
+// So this is a tripwire against the *convenient* reintroduction — the one that arrives as a
+// one-line install, a new dependency, or an import somebody reached for without thinking — and
+// not a sandbox. Deliberate evasion is out of scope; review is what covers that.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -64,12 +85,39 @@ const BANNED = [
     why: "a native decoding library is the same regression wearing a different name",
   },
   {
+    // PyAV's *import* is banned above, but a dependency never arrives spelled that way: the
+    // distribution is called `av`, so `"av>=13"` in a manifest and `name = "av"` in a lockfile
+    // are what a reintroduction actually looks like — and both used to sail past a ban on the
+    // project's marketing name, which defeated the stated reason for scanning lockfiles at all.
+    pattern: /\bname\s*=\s*["']av["']|["']av["']|["']av\s*[><=!~]|^av\s*[><=!~]/,
+    why: "`av` is PyAV's distribution name — a manifest or lockfile entry for it is a native decoder arriving",
+  },
+  {
+    // The decoder libraries that exist today and are not spelled ffmpeg. Every one of them will
+    // read a clip on this machine; several ship their own bundled ffmpeg, which is the same
+    // regression with the install step hidden inside a wheel.
+    pattern: /\btorchcodec\b|\bmoviepy\b|\bskvideo\b|\bvidgear\b|\bimageio\b/i,
+    why: "a Python video-reading library is a server-side decoder, bundled ffmpeg or not",
+  },
+  {
+    pattern: /\btorchvision\.io\b|\bread_video\b|\bVideoReader\b|\bvideo_reader\b/,
+    why: "torchvision's video readers decode a clip in this process",
+  },
+  {
     // The likeliest accidental reintroduction, and the one a name-based ban misses: OpenCV
     // is already resolvable here through the local-inference extra, and `cv2.VideoCapture`
     // is a complete server-side decoder. Nothing bans importing a package that is installed,
     // so the capability has to be banned by name at its call site.
     pattern: /\bVideoCapture\b|\bcv2\.Video/,
     why: "cv2.VideoCapture is a server-side video decoder, whatever package it arrived in",
+  },
+  {
+    // The same shape one level up. `ultralytics` is a legitimate dependency here — it is how
+    // releases are exported — so it cannot be banned by name; what is banned is the one call
+    // that makes it a decoder. `model.predict(source="clip.mp4")` hands the path to cv2
+    // internally and never writes `VideoCapture` anywhere a reader would see it.
+    pattern: /\.(?:predict|track)\s*\(\s*(?:[^)]*,\s*)?source\s*=/,
+    why: "a `source=` prediction decodes whatever it is pointed at, which is how a clip gets read without naming a decoder",
   },
 ];
 
@@ -121,7 +169,21 @@ test("the gate actually fires", () => {
     '"@mediabunny/server": "^1.0.0"',
     "import av",
     "from av import VideoFrame",
+    'av = require("av")',
     "cap = cv2.VideoCapture(path)",
+    // One probe per hole this gate used to have, each verified against the real pattern rather
+    // than assumed: the distribution name, an unlisted library, and the decoding call that
+    // names no decoder.
+    '    "av>=13",',
+    'name = "av"',
+    "av==13.1.0",
+    '    "torchcodec",',
+    "from torchcodec.decoders import VideoDecoder",
+    "clip = moviepy.VideoFileClip(path)",
+    "frames, _, _ = torchvision.io.read_video(path)",
+    "for frame in imageio.v3.imiter(path):",
+    'results = model.predict(source="clip.mp4")',
+    'for r in model.track(stream=True, source=path):',
   ];
   for (const probe of probes) {
     assert.ok(
@@ -138,6 +200,13 @@ test("the migration stays documentable and the browser stack stays allowed", () 
     "import { Input, BlobSource, CanvasSink } from 'mediabunny';",
     "export class MediabunnyVideoMaterializer implements VideoMaterializer {",
     '"mediabunny": "1.56.1"',
+    // WebCodecs is the browser's own decoder and shares vocabulary with the banned libraries;
+    // so does the repository's one legitimate `predict` call. Both would be caught by a
+    // lazier spelling of the patterns above, which is why each has a probe here.
+    "const decoder = new VideoDecoder({ output, error });",
+    "const track = await input.getPrimaryVideoTrack();",
+    "answer = next(iter(runner.predict(request)), None)",
+    "def predict(self, request: PredictionRequest) -> Iterator[AssetPrediction]:",
   ];
   for (const line of allowed.slice(1)) {
     assert.ok(

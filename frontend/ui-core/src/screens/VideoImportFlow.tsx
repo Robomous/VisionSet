@@ -35,7 +35,14 @@
  * rather than a batch silently short of a stretch of its clip. That is what
  * `Cancel` has to honour on both sides: abort the materializer so decoding stops,
  * and `DELETE` the session so the staged frames go with it. Aborting only the
- * first would leave bytes on the server nobody will ever claim.
+ * first would leave bytes on the server nobody will ever claim. Leaving the
+ * screen is the same act and takes the same path, because a run nobody can see
+ * is a run nobody can cancel.
+ *
+ * The window closes at the commit, and that is why `Cancel` goes disabled there:
+ * one transaction turns every staged frame into an asset, aborting its request
+ * would not roll it back, and a control that accepted the click would answer it
+ * with the batch.
  *
  * ## Where the frames actually go is not this package's business
  *
@@ -73,6 +80,7 @@ import {
   SelectValue,
 } from "@robomous/ui-core";
 
+import { BATCH_ACTION, declares } from "../data/capabilities";
 import { ApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { formatBytes, formatCount } from "../lib/format";
@@ -141,6 +149,20 @@ export function VideoImportFlow({
   onOpenSchema,
 }: VideoImportFlowProps): JSX.Element {
   const { materializer } = runtime;
+  /**
+   * The decoder this screen keeps — identified by its name, not by its address.
+   *
+   * `VisionSetMediaRuntime` is the host's value, and `media/port.ts` asks the
+   * host to hold one adapter per name rather than promising it will hand over
+   * the same object twice. A host that builds its runtime inline in JSX honours
+   * that and still hands a fresh materializer on every render it does, so an
+   * effect keyed on the object would re-inspect for each one: a worker spawned
+   * and torn down, and the ranges and the scale the person just chose thrown
+   * away, for a decoder that did not change. `name` is the decoder and its exact
+   * version, which is the only thing that can change what `inspect` answers.
+   */
+  const [decoder, setDecoder] = useState(materializer);
+  if (decoder.name !== materializer.name) setDecoder(materializer);
   const [inspection, setInspection] = useState<VideoInspection | null>(null);
   // The inspection itself throwing — not a refusal the decoder described, but
   // the decoder failing to answer at all.
@@ -166,11 +188,15 @@ export function VideoImportFlow({
   const abort = useAbortVideoImport();
   const batches = useBatches(projectId);
 
-  // Only a draft batch may take frames — an approved one has been cut into jobs
-  // already — so anything else would be offering a refusal. The session refuses
-  // it at `start`, before any decoding, which is why this list is worth getting
-  // right rather than leaving to the server.
-  const draftBatches = (batches.data?.items ?? []).filter((batch) => batch.state === "draft");
+  // Which batches may take frames, read off the wire's own declaration. Only a
+  // draft one can — an approved batch has been cut into jobs already — but
+  // `state === "draft"` is the client re-deriving that rule, and the mirror
+  // `FrameGrid` was rewritten to remove. The session refuses a closed batch at
+  // `start`, before any decoding, so what is worth getting right here is the
+  // offer, and `edit_membership` is the kernel's own answer to it.
+  const editableBatches = (batches.data?.items ?? []).filter((batch) =>
+    declares(batch, BATCH_ACTION.editMembership),
+  );
 
   // Ask the host's decoder what this file is. The stale flag is the whole
   // cancellation story: an answer that arrives after the selection changed must
@@ -182,7 +208,7 @@ export function VideoImportFlow({
     setUnreadable(null);
     setRanges([]);
     setScalePercent(100);
-    void materializer.inspect(file, controller.signal).then(
+    void decoder.inspect(file, controller.signal).then(
       (found) => {
         if (!stale) setInspection(found);
       },
@@ -194,7 +220,17 @@ export function VideoImportFlow({
       stale = true;
       controller.abort();
     };
-  }, [file, materializer]);
+  }, [file, decoder]);
+
+  // Leaving the screen is a cancel. Without this, `run` goes on awaiting a
+  // materialization nobody can see any more: the sink keeps POSTing frames and
+  // the commit then makes a batch that no progress bar, no cancel and no outcome
+  // ever described. Aborting the controller is the whole fix, because an aborted
+  // signal is already the path `run` answers by deleting the session — so the
+  // staged frames go with it rather than being left open on the server. A commit
+  // already in flight is past that door and still lands: it is one transaction,
+  // and aborting its request would not roll it back.
+  useEffect(() => () => running.current?.abort(), []);
 
   // The preview player's source. Null where the platform has no object URLs
   // (jsdom), so the timeline renders no player.
@@ -213,14 +249,25 @@ export function VideoImportFlow({
   // and open a session at `extraction_fps=NaN`.
   const usableRate = Number.isFinite(rate) && rate > 0;
   const decodable = inspection !== null && inspection.decodable;
-  const duration = inspection?.durationSeconds ?? 0;
+  // A container a decoder parses but cannot time answers `NaN` here, and every
+  // comparison with NaN is false — so an unsanitized duration reaches the
+  // readouts as `NaN:NaN` and every guard below as "not zero". Zero is the
+  // honest reading: no duration is known, so no frame count is either.
+  const duration =
+    inspection !== null && Number.isFinite(inspection.durationSeconds)
+      ? inspection.durationSeconds
+      : 0;
   const merged = decodable ? mergedRanges(ranges, duration) : [];
   const expected = decodable && usableRate ? expectedFrames(merged, duration, rate) : 0;
+  // `expected > 0` and never `expected !== 0`: the same NaN that a bad duration
+  // produces would pass a `!== 0` gate and open a session posting
+  // `duration_seconds: null` — JSON has no NaN — for a raw 422.
+  const importable = decodable && usableRate && expected > 0;
 
   const step = batch !== null || inFlight || progress !== null ? 2 : 1;
 
   async function run(): Promise<void> {
-    if (inspection === null || !decodable || !usableRate || inFlight) return;
+    if (inspection === null || !importable || inFlight) return;
     const controller = new AbortController();
     running.current = controller;
     setFailure(null);
@@ -254,7 +301,7 @@ export function VideoImportFlow({
         // What drew these frames, from the materializer itself rather than from
         // a string typed here: a host that swaps its decoder must not leave this
         // screen naming the old one.
-        materializer: materializer.name,
+        materializer: decoder.name,
         ...(batchChoice !== NEW_BATCH
           ? { batch_id: batchChoice }
           : batchName.trim() === ""
@@ -262,7 +309,7 @@ export function VideoImportFlow({
             : { batch_name: batchName.trim() }),
       });
       session = opened.id;
-      await materializer.materialize(
+      await decoder.materialize(
         file,
         {
           extractionFps: rate,
@@ -392,7 +439,7 @@ export function VideoImportFlow({
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value={NEW_BATCH}>New batch</SelectItem>
-                                  {draftBatches.map((batch) => (
+                                  {editableBatches.map((batch) => (
                                     <SelectItem key={batch.id} value={batch.id}>
                                       {batch.name} ({batch.asset_count})
                                     </SelectItem>
@@ -428,7 +475,7 @@ export function VideoImportFlow({
                               )}
                               <dt className="text-muted-foreground">Selection</dt>
                               <dd className="tabular-nums" data-testid="selection-readout">
-                                {selectionSummary(ranges, inspection.durationSeconds)}
+                                {selectionSummary(ranges, duration)}
                               </dd>
                             </dl>
                             <FieldDescription>
@@ -451,7 +498,7 @@ export function VideoImportFlow({
                 data-testid="start-video-import"
                 // Explained by adjacency (`DESIGN.md` principle 9): a refusal or
                 // a bad rate is stated in the panel directly above.
-                disabled={!decodable || !usableRate || expected === 0 || inFlight}
+                disabled={!importable || inFlight}
                 onClick={() => void run()}
               >
                 {inFlight ? "Importing…" : "Import frames"}
@@ -490,13 +537,26 @@ export function VideoImportFlow({
 
             {inFlight && (
               <div>
-                <Button variant="outline" data-testid="cancel-video-import" onClick={cancel}>
+                <Button
+                  variant="outline"
+                  data-testid="cancel-video-import"
+                  // There is nothing left to cancel once the commit is in flight: the
+                  // transaction that turns the staged frames into assets has been asked
+                  // for, aborting its request would not roll it back, and a control that
+                  // took the click anyway would answer it with the batch the person just
+                  // asked to throw away. Disabled with the reason beside it — the
+                  // `ui-capabilities` reading for an action that is meaningful on this
+                  // screen but not available at this moment.
+                  disabled={commit.isPending}
+                  onClick={cancel}
+                >
                   <X aria-hidden="true" />
                   Cancel
                 </Button>
                 <FieldDescription>
-                  Stops decoding and throws the staged frames away. Nothing has reached the
-                  project yet, so there is nothing to undo afterwards.
+                  {commit.isPending
+                    ? "Too late to cancel: these frames are being turned into assets now, in one transaction that cannot be taken back."
+                    : "Stops decoding and throws the staged frames away. Nothing has reached the project yet, so there is nothing to undo afterwards."}
                 </FieldDescription>
               </div>
             )}

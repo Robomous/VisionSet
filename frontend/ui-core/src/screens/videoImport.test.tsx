@@ -17,15 +17,16 @@
  * happens.
  */
 
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, type RenderResult } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReactNode } from "react";
+import { useState, type JSX, type ReactNode } from "react";
 import type {
   FrameSink,
   VideoInspection,
   VideoMaterializer,
   VideoRefusal,
+  VideoSelection,
 } from "@visionset/media";
 
 import { IngestScreen } from "./IngestScreen";
@@ -39,7 +40,8 @@ const SOURCE = "22222222-2222-4222-8222-222222222222";
 const IMPORT = "55555555-5555-4555-8555-555555555555";
 const BATCH = "44444444-4444-4444-8444-444444444444";
 
-type Answer = { status: number; body?: unknown };
+/** `wait` parks the answer until a test lets it go — see `park`. */
+type Answer = { status: number; body?: unknown; wait?: Promise<void> };
 type Handler = (request: Request) => Answer | undefined;
 
 let handlers: Handler[] = [];
@@ -56,6 +58,7 @@ beforeEach(() => {
     for (const handler of handlers) {
       const answer = handler(request);
       if (answer !== undefined) {
+        if (answer.wait !== undefined) await answer.wait;
         return new Response(answer.status === 204 ? null : JSON.stringify(answer.body ?? null), {
           status: answer.status,
           headers: { "content-type": "application/json" },
@@ -78,6 +81,23 @@ function on(method: string, pattern: RegExp, answer: Answer): void {
   handlers.push((request) =>
     request.method === method && pattern.test(new URL(request.url).pathname) ? answer : undefined,
   );
+}
+
+/**
+ * Like `on`, but the answer parks until the returned release is called — the only
+ * way to observe the screen *during* a request rather than after it.
+ */
+function park(method: string, pattern: RegExp, answer: Answer): () => void {
+  let release!: () => void;
+  const parked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  handlers.unshift((request) =>
+    request.method === method && pattern.test(new URL(request.url).pathname)
+      ? { ...answer, wait: parked }
+      : undefined,
+  );
+  return release;
 }
 
 const SESSION = {
@@ -145,6 +165,8 @@ function refused(refusal: VideoRefusal, over: Partial<VideoInspection> = {}): Vi
 interface Recording {
   readonly runtime: VisionSetMediaRuntime;
   readonly sinks: { projectId: string; importId: string }[];
+  /** What the decoder was told to walk. The server counted from the same choice. */
+  selection: VideoSelection | null;
   /** Resolves the in-flight `materialize`. Set once one is running. */
   release: (() => void) | null;
   aborted: boolean;
@@ -164,13 +186,15 @@ function fakeRuntime(
   const record: Recording = {
     runtime: null as unknown as VisionSetMediaRuntime,
     sinks: [],
+    selection: null,
     release: null,
     aborted: false,
   };
   const materializer: VideoMaterializer = {
     name: "fake/1.0.0",
     inspect: () => Promise.resolve(inspection),
-    materialize: async (_file, _selection, _sink, opts) => {
+    materialize: async (_file, selection, _sink, opts) => {
+      record.selection = selection;
       opts?.onProgress?.({ materialized: 0, expected: 10 });
       await new Promise<void>((resolve) => {
         record.release = resolve;
@@ -193,8 +217,8 @@ function fakeRuntime(
   });
 }
 
-function mount(runtime: VisionSetMediaRuntime | undefined, ui?: ReactNode): void {
-  renderWithData(
+function mount(runtime: VisionSetMediaRuntime | undefined, ui?: ReactNode): RenderResult {
+  return renderWithData(
     <VisionSetMediaProvider {...(runtime === undefined ? {} : { runtime })}>
       {ui ?? <IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />}
     </VisionSetMediaProvider>,
@@ -302,8 +326,21 @@ describe("choosing where the frames land", () => {
     on("GET", /\/batches$/, {
       status: 200,
       body: {
-        items: [draft, { ...draft, id: "b2", name: "frozen", state: "in_annotation" }],
-        total: 2,
+        items: [
+          draft,
+          {
+            ...draft,
+            id: "b2",
+            name: "frozen",
+            state: "in_annotation",
+            allowed_actions: batchActions("in_annotation"),
+          },
+          // A batch the wire says can be asked for nothing. Its *state* still
+          // reads "draft", which is exactly what a client re-deriving legality
+          // would offer.
+          { ...draft, id: "b3", name: "sealed", allowed_actions: [] },
+        ],
+        total: 3,
       },
     });
     on("POST", /\/video-imports$/, { status: 201, body: SESSION });
@@ -326,6 +363,17 @@ describe("choosing where the frames land", () => {
     // A batch past `draft` answers 409 `BATCH_NOT_EDITABLE` at `start`, before
     // any decoding, so offering it would be offering a refusal.
     expect(screen.queryByRole("option", { name: /frozen/ })).toBeNull();
+  });
+
+  it("reads the offer off `edit_membership`, never off the batch's state", async () => {
+    await ready();
+    await userEvent.click(screen.getByTestId("target-batch"));
+
+    // `state === "draft"` is the mirror `FrameGrid` was rewritten to remove: it
+    // reproduces one dimension of the kernel's rule and drops whatever else the
+    // kernel weighed, and the dropped part is invisible until somebody meets it.
+    expect(screen.queryByRole("option", { name: /sealed/ })).toBeNull();
+    expect(screen.queryByRole("option", { name: /night drive/ })).not.toBeNull();
   });
 
   it("sends the chosen batch instead of a name, and hides the name field", async () => {
@@ -486,6 +534,143 @@ describe("importing a clip", () => {
     expect(screen.queryByTestId("import-outcome")).toBeNull();
   });
 
+  /** The whole clip is ten seconds wide over two hundred pixels: one second, ten pixels. */
+  function measureTrack(): HTMLElement {
+    const track = screen.getByTestId("range-track");
+    vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 200,
+      bottom: 40,
+      width: 200,
+      height: 40,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    return track;
+  }
+
+  it("carries the chosen rate and scale into the session, not the defaults", async () => {
+    const fake = fakeRuntime(READABLE);
+    mount(fake.runtime);
+    await choose(clip());
+    await screen.findByTestId("clip-report");
+
+    await userEvent.clear(screen.getByTestId("extraction-fps"));
+    await userEvent.type(screen.getByTestId("extraction-fps"), "2");
+    fireEvent.change(screen.getByTestId("scale-percent"), { target: { value: "50" } });
+    // The readout states what will be stored before anything is decoded.
+    expect(screen.getByTestId("stored-size").textContent).toContain("960×540");
+
+    await userEvent.click(screen.getByTestId("start-video-import"));
+    await waitFor(() => expect(fake.release).not.toBeNull());
+
+    expect(startBody().extraction_fps).toBe(2);
+    expect(startBody().scale_percent).toBe(50);
+    // And the decoder walks the same choice: the server counts the frames it
+    // expects from this body, so a materializer told something else would leave
+    // the commit refusing an import that can never complete.
+    expect(fake.selection).toEqual({ extractionFps: 2, ranges: [], scalePercent: 50 });
+  });
+
+  it("carries the timeline selection, canonicalized the way the server counts it", async () => {
+    const fake = fakeRuntime(READABLE);
+    mount(fake.runtime);
+    await choose(clip());
+    await screen.findByTestId("clip-report");
+
+    const track = measureTrack();
+    fireEvent.pointerDown(track, { clientX: 20 });
+    fireEvent.pointerMove(track, { clientX: 100 });
+    fireEvent.pointerUp(track, { clientX: 100 });
+
+    // [1, 5) at one frame per second is four grid points.
+    expect(screen.getByTestId("frames-estimate").textContent?.trim()).toContain("4");
+    expect(screen.getByTestId("selection-readout").textContent).toContain("0:01–0:05");
+
+    await userEvent.click(screen.getByTestId("start-video-import"));
+    await waitFor(() => expect(fake.release).not.toBeNull());
+
+    // Merged, not raw: the materializer walks these bounds directly, so an
+    // overlapping pair would decode the overlap twice and disagree with the
+    // count the server made from the same list.
+    expect(startBody().ranges).toEqual([{ start_seconds: 1, end_seconds: 5 }]);
+    expect(fake.selection?.ranges).toEqual([{ startSeconds: 1, endSeconds: 5 }]);
+  });
+
+  it("cannot start an import of a clip whose duration the container did not carry", async () => {
+    // A container the decoder parses but cannot time. Every comparison with NaN
+    // is false, so `expected === 0` waved this through — to a session posting
+    // `duration_seconds: null`, since JSON has no NaN, for a raw 422.
+    mount(fakeRuntime({ ...READABLE, durationSeconds: Number.NaN }).runtime);
+    await choose(clip());
+    await screen.findByTestId("clip-report");
+
+    expect((screen.getByTestId("start-video-import") as HTMLButtonElement).disabled).toBe(true);
+    // And nothing on the screen says `NaN` at somebody.
+    expect(screen.getByTestId("selection-readout").textContent).not.toContain("NaN");
+    expect(screen.getByTestId("frames-estimate").textContent).not.toContain("NaN");
+    expect(screen.getByTestId("step-1").textContent).not.toContain("NaN");
+  });
+
+  it("aborts the run the screen was navigated away from, session and all", async () => {
+    const fake = fakeRuntime(READABLE);
+    const view = mount(fake.runtime);
+    await choose(clip());
+    await screen.findByTestId("clip-report");
+    await userEvent.click(screen.getByTestId("start-video-import"));
+    await waitFor(() => expect(fake.release).not.toBeNull());
+
+    // Any route change out of the ingest screen. Nothing else stops the run:
+    // the sink would go on POSTing chunks into a screen nobody can see, and the
+    // commit would then put a batch in the project that no progress, no cancel
+    // and no outcome ever described.
+    view.unmount();
+    fake.release?.();
+
+    await waitFor(() => expect(fake.aborted).toBe(true));
+    await waitFor(() =>
+      expect(
+        sent.some((one) => one.method === "DELETE" && one.url.includes("/video-imports/")),
+      ).toBe(true),
+    );
+    expect(sent.some((one) => one.url.endsWith("/commit"))).toBe(false);
+  });
+
+  it("stops offering a cancel once the commit is in flight, and says why", async () => {
+    const releaseCommit = park("POST", /\/video-imports\/.*\/commit$/, {
+      status: 200,
+      body: COMMITTED_BATCH,
+    });
+    const fake = fakeRuntime(READABLE);
+    mount(fake.runtime);
+    await choose(clip());
+    await screen.findByTestId("clip-report");
+    await userEvent.click(screen.getByTestId("start-video-import"));
+    await waitFor(() => expect(fake.release).not.toBeNull());
+    fake.release?.();
+
+    // Decoding is done and the one transaction that makes the assets is running.
+    // A live Cancel here aborts a controller nobody is listening to: the commit
+    // lands anyway and the person who asked to throw the work away is handed the
+    // batch. Disabled with the reason beside it instead.
+    const button = await waitFor(() => {
+      const found = screen.getByTestId("cancel-video-import") as HTMLButtonElement;
+      expect(found.disabled).toBe(true);
+      return found;
+    });
+    expect(screen.getByTestId("import-card").textContent).toContain("Too late to cancel");
+    fireEvent.click(button);
+
+    releaseCommit();
+    await screen.findByTestId("import-outcome");
+    // The click changed nothing, in either direction: no session was discarded
+    // behind the batch that was just made.
+    expect(screen.queryByTestId("import-cancelled")).toBeNull();
+    expect(sent.some((one) => one.method === "DELETE")).toBe(false);
+  });
+
   it("cannot start an import at a rate the request could not carry", async () => {
     mount(fakeRuntime(READABLE).runtime);
     await choose(clip());
@@ -503,5 +688,56 @@ describe("importing a clip", () => {
     await userEvent.type(screen.getByTestId("extraction-fps"), "2");
     expect(button().disabled).toBe(false);
     expect(screen.getByTestId("frames-estimate").textContent).toContain("20");
+  });
+});
+
+describe("a host that does not memoize its runtime", () => {
+  beforeEach(() => {
+    on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
+  });
+
+  it("reads the clip once, however many times the host rebuilds its runtime", async () => {
+    let inspected = 0;
+
+    // The obvious inline spelling, and the one `@visionset/media`'s port is
+    // published for: a fresh runtime object, holding a fresh materializer, on
+    // every render this host does. The OSS app memoizes, so only a second host
+    // meets this — which is precisely the case the package exists to serve.
+    function Host(): JSX.Element {
+      const [tick, setTick] = useState(0);
+      const runtime: VisionSetMediaRuntime = {
+        materializer: {
+          name: "fake/1.0.0",
+          inspect: () => {
+            inspected += 1;
+            return Promise.resolve(READABLE);
+          },
+          materialize: () => Promise.resolve({ materialized: 0, expected: 0, skipped: [] }),
+        },
+        createFrameSink: () => ({ append: () => Promise.resolve() }),
+      };
+      return (
+        <VisionSetMediaProvider runtime={runtime}>
+          <button type="button" data-testid="host-render" onClick={() => setTick(tick + 1)}>
+            {tick}
+          </button>
+          <IngestScreen projectId={PROJECT} />
+        </VisionSetMediaProvider>
+      );
+    }
+
+    renderWithData(<Host />);
+    await choose(clip());
+    await screen.findByTestId("clip-report");
+    expect(inspected).toBe(1);
+
+    fireEvent.change(screen.getByTestId("scale-percent"), { target: { value: "50" } });
+    await userEvent.click(screen.getByTestId("host-render"));
+    await userEvent.click(screen.getByTestId("host-render"));
+
+    // No second worker, and — the part a person would actually feel — the cut
+    // they chose is still theirs. Re-running the inspection resets it.
+    expect(inspected).toBe(1);
+    expect(screen.getByTestId("stored-size").textContent).toContain("960×540");
   });
 });

@@ -9,16 +9,20 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator, Sequence
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 from tests.fixtures.media import write_image
 from tests.server._api import api_client
 from tests.server._openapi import operations
 
+from visionset.kernel.services.video_import_service import MAX_OPEN_IMPORTS
 from visionset.server.main import app
 from visionset.server.routes.video_imports import FRAMES_PER_REQUEST
 
@@ -68,6 +72,21 @@ def session(client: TestClient, project: str) -> str:
 def png(tmp_path: Path, *, seed: int, size: tuple[int, int] = FRAME_SIZE) -> bytes:
     path = tmp_path / "made" / f"{seed}-{size[0]}x{size[1]}.png"
     return write_image(path, size=size, seed=seed).read_bytes()
+
+
+def padded_png(padding: int) -> bytes:
+    """A frame of the ordinary geometry, made heavy by a text chunk and nothing else.
+
+    `tEXt` is ancillary, so every decoder skips it and the image is exactly what
+    an unpadded one would be — which is the point: the only thing wrong with this
+    part is its size.
+    """
+    image = Image.new("RGB", FRAME_SIZE, (10, 20, 30))
+    info = PngInfo()
+    info.add_text("pad", "x" * padding, zip=False)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG", pnginfo=info)
+    return buffer.getvalue()
 
 
 def described(ordinal: int, **over: Any) -> dict[str, Any]:
@@ -206,6 +225,97 @@ def test_a_selection_that_holds_no_frame_is_422_rather_than_an_empty_batch(
 
     assert response.status_code == 422, response.text
     assert response.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_a_non_finite_number_in_the_body_is_422_rather_than_a_500(
+    client: TestClient, project: str
+) -> None:
+    """`1e400` is valid JSON and parses to `inf`, which satisfies `gt=0`.
+
+    Sent raw, because `json.dumps` refuses to write it: a client that is not
+    Python's own serializer has no such scruple, and this is what such a body
+    used to do — reach `expected_frames` and raise `OverflowError`, which is
+    neither a kernel error nor a request error and so answers 500.
+    """
+    body = json.dumps({"display_name": "drive.mp4", "metadata": METADATA}).replace(
+        '"duration_seconds": 4.0', '"duration_seconds": 1e400'
+    )
+
+    response = client.post(
+        f"/projects/{project}/video-imports",
+        content=body,
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_a_cut_that_would_stage_an_absurd_number_of_frames_is_422(
+    client: TestClient, project: str
+) -> None:
+    """Every field in bounds, their product not: the ceiling is the only thing that sees it."""
+    response = start(
+        client,
+        project,
+        metadata={**METADATA, "duration_seconds": 1e18},
+        extraction_fps=1e5,
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "VIDEO_IMPORT_TOO_LARGE"
+
+
+def test_a_project_may_not_hold_more_open_sessions_than_the_cap(
+    client: TestClient, project: str
+) -> None:
+    """Opening a session writes rows; without a cap that is an unbounded write."""
+    for _ in range(MAX_OPEN_IMPORTS):
+        assert start(client, project).status_code == 201
+
+    response = start(client, project)
+
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "TOO_MANY_OPEN_VIDEO_IMPORTS"
+
+
+def test_a_frame_that_is_not_the_size_the_session_declared_is_refused(
+    client: TestClient, session: str, tmp_path: Path
+) -> None:
+    """Frame and descriptor agree perfectly; what they disagree with is the session."""
+    bigger = (FRAME_SIZE[0] * 2, FRAME_SIZE[1] * 2)
+
+    response = post_frames(
+        client,
+        session,
+        [png(tmp_path, seed=0, size=bigger)],
+        [described(0, width=bigger[0], height=bigger[1])],
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "UNSUPPORTED_MEDIA"
+
+
+def test_a_part_too_heavy_to_be_a_frame_of_this_session_is_refused(
+    client: TestClient, session: str
+) -> None:
+    """`FRAMES_PER_REQUEST` bounds how many parts arrive, and never how big one is.
+
+    Thirty-two unbounded parts spool to disk and then load whole; nothing in the
+    stack said otherwise, because Starlette's `max_part_size` bounds only the
+    non-file fields — `on_part_data` skips the check for anything with a file
+    behind it, which is every `files` part.
+
+    The part is a **valid** PNG of exactly the geometry this session stores, made
+    heavy by a padding chunk, so nothing else in the chain has a reason to refuse
+    it: without the weight ceiling it is accepted. What is asserted at this layer
+    is the status and the code; that the refusal comes before the decode is
+    `tests/kernel/test_video_import_service.py`'s.
+    """
+    response = post_frames(client, session, [padded_png(200_000)], [described(0)])
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "UNSUPPORTED_MEDIA"
 
 
 def test_a_blank_name_is_the_kernels_own_422(client: TestClient, project: str) -> None:
