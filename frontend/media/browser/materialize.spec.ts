@@ -21,7 +21,13 @@ interface Run {
     format: string;
     size: number;
     type: string;
-    png: { width: number; height: number; rgb: [number, number, number] };
+    image: {
+      width: number;
+      height: number;
+      rgb: [number, number, number];
+      head: string;
+      tail: string;
+    };
   }[];
 }
 
@@ -51,7 +57,7 @@ function materialize(page: Page, file: string, chosen: Selection): Promise<Run> 
           format: frame.format,
           size: frame.bytes.size,
           type: frame.bytes.type,
-          png: await h.inspectPng(frame.bytes),
+          image: await h.inspectImage(frame.bytes),
         });
       }
       return { result, progress, chunks: sink.chunks, frames };
@@ -78,10 +84,14 @@ for (const codec of ["vp8", "vp9"]) {
     expect(run.result).toEqual({ materialized: 8, expected: 8, skipped: [] });
     expect(run.frames.map((frame) => frame.ordinal)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
     run.frames.forEach((frame, index) => {
-      expectColour(frame.png.rgb, MANIFEST.colours[index]);
-      expect(frame.format).toBe("png");
-      expect(frame.type).toBe("image/png");
-      expect(frame.png).toMatchObject({ width: 64, height: 64 });
+      expectColour(frame.image.rgb, MANIFEST.colours[index]);
+      expect(frame.format).toBe("jpeg");
+      expect(frame.type).toBe("image/jpeg");
+      // The markers, not the MIME type: a `Blob` says whatever it was constructed
+      // with, and what this has to prove is what the encoder actually wrote.
+      expect(frame.image.head).toBe("ffd8");
+      expect(frame.image.tail).toBe("ffd9");
+      expect(frame.image).toMatchObject({ width: 64, height: 64 });
       expect(frame).toMatchObject({ width: 64, height: 64 });
     });
   });
@@ -94,7 +104,7 @@ test("a lower extraction rate picks the grid's frames, not the first few", async
   expect(run.frames.map((frame) => frame.requestedTimestamp)).toEqual([0, 0.25, 0.5, 0.75]);
   // Source frames 0, 2, 4 and 6 — which is what their colours say.
   [0, 2, 4, 6].forEach((source, index) => {
-    expectColour(run.frames[index].png.rgb, MANIFEST.colours[source]);
+    expectColour(run.frames[index].image.rgb, MANIFEST.colours[source]);
   });
 });
 
@@ -107,8 +117,8 @@ test("a range selects a half-open span of the grid", async ({ page }) => {
   expect(run.result).toMatchObject({ materialized: 2, expected: 2, skipped: [] });
   // Ordinals are grid indices, so a range keeps the numbering of the whole clip.
   expect(run.frames.map((frame) => frame.ordinal)).toEqual([2, 3]);
-  expectColour(run.frames[0].png.rgb, MANIFEST.colours[2]);
-  expectColour(run.frames[1].png.rgb, MANIFEST.colours[3]);
+  expectColour(run.frames[0].image.rgb, MANIFEST.colours[2]);
+  expectColour(run.frames[1].image.rgb, MANIFEST.colours[3]);
 });
 
 test("requested and source timestamps are reported separately", async ({ page }) => {
@@ -119,7 +129,7 @@ test("requested and source timestamps are reported separately", async ({ page })
   // at 3 fps against an 8 fps clip that is a different number for two of the three.
   expect(run.frames.map((frame) => frame.sourceTimestamp)).toEqual([0, 0.25, 0.625]);
   [0, 2, 5].forEach((source, index) => {
-    expectColour(run.frames[index].png.rgb, MANIFEST.colours[source]);
+    expectColour(run.frames[index].image.rgb, MANIFEST.colours[source]);
   });
 });
 
@@ -127,7 +137,7 @@ test("scale is applied to the display dimensions, half-up", async ({ page }) => 
   const run = await materialize(page, "vp8.webm", selection({ scalePercent: 50 }));
   for (const frame of run.frames) {
     expect(frame).toMatchObject({ width: 32, height: 32 });
-    expect(frame.png).toMatchObject({ width: 32, height: 32 });
+    expect(frame.image).toMatchObject({ width: 32, height: 32 });
   }
 });
 
@@ -137,7 +147,7 @@ test("a rotated track materializes at its display dimensions", async ({ page }) 
   const run = await materialize(page, "rotated.mp4", selection({ scalePercent: 75 }));
   expect(run.frames).not.toHaveLength(0);
   for (const frame of run.frames) {
-    expect(frame.png).toMatchObject({ width: 24, height: 48 });
+    expect(frame.image).toMatchObject({ width: 24, height: 48 });
   }
 });
 

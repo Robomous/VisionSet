@@ -396,7 +396,7 @@ for them. See [batches.md](batches.md).
 `IngestService.ingest` is one call because a directory can be listed and read to completion in
 one process, one blocking pass. A video cannot be, for a reason that has nothing to do with
 performance: **the server never receives the clip.** A browser demuxes and decodes it locally,
-one PNG frame at a time, and posts each frame across however many requests that takes - which
+one JPEG frame at a time, and posts each frame across however many requests that takes - which
 means the work now has a *middle*, an arbitrary stretch of time between "here is what I am about
 to send" and "that was all of it", and a single synchronous call has nowhere to put that. So
 `VideoImportService` is a service of its own rather than a second branch in `IngestService`, with
@@ -420,7 +420,7 @@ canonicalized and counted server-side, the same `expected_frames` arithmetic
 computed rather than a client's claim.
 
 `append_frames` decodes what it is handed, through the same `ImageProcessor` an image-directory
-ingest uses - see [media.md](media.md) - so a frame that is not a PNG is refused on the spot
+ingest uses - see [media.md](media.md) - so a frame that is not a JPEG is refused on the spot
 rather than stored and discovered later. What it is checked *against* is the session's own
 declaration: a frame must decode to the clip's width and height after `scale_percent`, the same
 `scaled_dimension` arithmetic the materializer runs. Comparing a frame only with its own

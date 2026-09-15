@@ -2,7 +2,7 @@
 """A browser-driven video import: the durable session, and the frames staged in it.
 
 The server does not decode video. A client materializes frames from a file that
-never leaves the machine it is on, and posts them here as ordinary PNG bytes —
+never leaves the machine it is on, and posts them here as ordinary JPEG bytes —
 so what used to be one synchronous ingest becomes a **session** with a middle:
 open it, stream frames into it, and commit the lot or throw it away.
 
@@ -32,12 +32,19 @@ from pydantic import BaseModel, ConfigDict, Field, SkipValidation, field_validat
 
 from visionset.kernel.domain.media import ImageFormat
 
-VIDEO_FRAME_FORMAT: Final = ImageFormat.PNG
+VIDEO_FRAME_FORMAT: Final = ImageFormat.JPEG
 """What every frame of a video import is, and the only encoding accepted.
 
-Lossless, and fixed rather than negotiated: a frame is the ground truth a
-dataset is built on, and a client choosing JPEG would quietly bake its quantizer
-into somebody's training set. ``VideoImportService`` decodes what it is handed
+High-quality JPEG, at the same quality this project's still-image normalization
+already uses. A video frame is not an original: it is decoded pixels a lossy
+codec — H.264, HEVC, VP9, AV1 — has already reconstructed, and encoding those
+losslessly restores nothing while multiplying what the import costs. Five hours
+at one frame a second is eighteen thousand frames, and the difference between
+the two encodings there is the difference between a dataset somebody can move
+and one they cannot. This is about video materialization; it says nothing about
+what a still image arriving through ingest should be.
+
+Fixed rather than negotiated: ``VideoImportService`` decodes what it is handed
 and refuses anything else, so this is a rule the server checks rather than a
 convention the client is asked to honour.
 """

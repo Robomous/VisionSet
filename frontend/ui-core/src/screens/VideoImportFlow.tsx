@@ -5,7 +5,7 @@
  *
  * The server holds no decoder. A clip is therefore never uploaded, never probed
  * remotely and never "ingested whole" by a decoder on the server — the host's
- * materializer reads the container in this browser, and what travels is PNG
+ * materializer reads the container in this browser, and what travels is JPEG
  * frames. **There is no backend fallback, so this screen never offers one**: a
  * refusal here is the end of the road for that file in this browser, and saying
  * otherwise would promise a path that does not exist.

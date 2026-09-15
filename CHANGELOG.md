@@ -15,7 +15,7 @@ nothing was being distributed. This is the first version that is.
 
 - **Video is imported in the browser, and this process no longer decodes one at all.** A clip is
   demuxed and decoded where it already lives - the browser, with its own `WebCodecs` support, via
-  the new `@visionset/media` package - and only PNG frames and the provenance describing them ever
+  the new `@visionset/media` package - and only JPEG frames and the provenance describing them ever
   reach the server. The clip itself is never uploaded. That replaces the whole server-side path:
   `POST /projects/{id}/sources/video` is gone and a `VIDEO` source is now opened through a session
   with a middle to it -

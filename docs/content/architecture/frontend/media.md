@@ -1,7 +1,7 @@
 # @visionset/media
 
 [`frontend/media/`](../../../../frontend/media/) is where a video stops being a file
-and becomes PNG assets, and it does that entirely in the browser. There is no
+and becomes JPEG assets, and it does that entirely in the browser. There is no
 server-side decoder anywhere in this repository and no fallback to one - see
 [backend/kernel.md](../backend/kernel.md) and the root
 [architecture diagram](../README.md), which no longer name one.
@@ -92,6 +92,30 @@ it decodes ahead of delivery by up to one chunk and a `cancel` throws that lead 
 so a number it sent would describe frames the sink may never be handed. Progress is
 therefore derived on the main thread - `expected` from the worker, the delivered count
 from the chunks the sink actually took - which is the only place both halves are known.
+
+## Frames are JPEG, and the quality is 0.95
+
+`VIDEO_FRAME_MEDIA_TYPE` and `VIDEO_FRAME_QUALITY` in the core entrypoint are the
+whole of it: one encoding, not a choice, and the server refuses anything else
+(`VIDEO_FRAME_FORMAT` in the kernel).
+
+The pixels leaving a decoder have already been through H.264, HEVC, VP9 or AV1. A
+lossless encoding of them restores nothing those codecs took, and it costs a great
+deal to keep: five hours at one frame a second is eighteen thousand frames, and at
+five it is ninety thousand. Quality 95 is the same number
+[`preprocessing.md`](../../preprocessing.md) already normalizes dataset stills at,
+so the video path is not inventing a second standard.
+
+**The bytes are not promised to be reproducible.** Browsers do not share a JPEG
+encoder, so the same frame is not the same bytes on two of them - but that was
+already true of the decoders upstream, which is why a source records its
+`materializer` and `policy_version` and why identity is the content hash of the
+bytes actually stored. The output is also *not* byte-identical to this project's
+own Pillow normalization, and nothing depends on its being so.
+
+Everything else keeps its own answer: a native JPEG or PNG still passes through
+untouched, and a decomposed animation frame is still PNG
+([`media.md`](../../media.md)).
 
 ## Related
 

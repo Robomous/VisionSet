@@ -40,7 +40,7 @@
  *    base64- or hex-encoded;
  *  - nothing, at request level or field level, declares a `video/*` content type;
  *  - every body is either JSON that parses, or a form whose fields are exactly
- *    `files` fields each beginning with the PNG signature plus one `descriptors`
+ *    `files` fields whose own bytes open and close as JPEG plus one `descriptors`
  *    field that parses to the frame descriptors those bytes describe.
  *
  * Nothing else is permitted to travel, so a reintroduced upload fails all three
@@ -59,7 +59,7 @@
  *
  * A size threshold deliberately is not one of the checks, and the reason is worth
  * recording: these fixtures are 842 bytes, which is *smaller* than one bounded chunk
- * of the PNG frames they are cut into. Byte length cannot separate the two here, so
+ * of the frames they are cut into. Byte length cannot separate the two here, so
  * the digest does it instead — and it is the stronger claim anyway, because it
  * holds at any fixture size.
  */
@@ -107,15 +107,21 @@ const CLIP_HEX = CLIP_BYTES.toString("hex");
  */
 const DURATION = MANIFEST.frames / MANIFEST.fps;
 
-/** PNG's eight-byte signature: what every uploaded field has to begin with. */
-const PNG_HEAD = "89504e470d0a1a0a";
+/**
+ * What a JPEG's own bytes look like at each end: `FF D8` opening it, the next
+ * marker immediately after, and `FF D9` closing it. Read off the payload rather
+ * than off its declared type, because a part's content type is whatever the page
+ * put in the form and proves nothing about what it is carrying.
+ */
+const JPEG_HEAD = /^ffd8ff/;
+const JPEG_TAIL = "ffd9";
 
 /**
  * Cut at the clip's own rate, so every grid point lands on a distinct source frame.
  *
  * It is the one rate at which the asset count is the frame count: ingest is
  * content-addressed, so a rate above the source's would resolve several grid points
- * to the same sample, emit byte-identical PNGs and collapse them into one asset —
+ * to the same sample, emit byte-identical frames and collapse them into one asset —
  * which the screen says on the outcome and which is true, but is not a number this
  * walk could derive from the grid alone.
  */
@@ -145,6 +151,8 @@ interface Field {
   readonly size: number;
   /** First eight bytes, hex — enough to say what a payload *is*. */
   readonly head: string;
+  /** Last two bytes, hex: an encoding's own end marker, which a prefix cannot fake. */
+  readonly tail: string;
   readonly digest: string;
   readonly text: string | null;
 }
@@ -199,7 +207,15 @@ async function watch(page: Page): Promise<Log> {
           if (/multipart\/form-data/i.test(probe.headers.get("content-type") ?? "")) {
             for (const [name, value] of (await probe.formData()).entries()) {
               if (typeof value === "string") {
-                fields.push({ name, type: "", size: value.length, head: "", digest: "", text: value });
+                fields.push({
+                  name,
+                  type: "",
+                  size: value.length,
+                  head: "",
+                  tail: "",
+                  digest: "",
+                  text: value,
+                });
               } else {
                 const bytes = await value.arrayBuffer();
                 fields.push({
@@ -207,6 +223,7 @@ async function watch(page: Page): Promise<Log> {
                   type: value.type,
                   size: bytes.byteLength,
                   head: hex(bytes.slice(0, 8)),
+                  tail: hex(bytes.slice(Math.max(0, bytes.byteLength - 2))),
                   digest: hex(await crypto.subtle.digest("SHA-256", bytes)),
                   text: null,
                 });
@@ -287,8 +304,10 @@ async function expectNoClipUpload(log: Log): Promise<void> {
         CLIP_DIGEST,
       );
       if (field.name === "files") {
-        expect(field.type, `${where} uploaded a "files" field that is not a PNG`).toBe("image/png");
-        expect(field.head, `${where} uploaded a "files" field that is not a PNG`).toBe(PNG_HEAD);
+        const why = `${where} uploaded a "files" field that is not a JPEG`;
+        expect(field.type, why).toBe("image/jpeg");
+        expect(field.head, why).toMatch(JPEG_HEAD);
+        expect(field.tail, why).toBe(JPEG_TAIL);
       } else {
         expect(field.name, `${where} carried an unexpected field`).toBe("descriptors");
         expect(field.text, `${where} descriptors were binary`).not.toBeNull();

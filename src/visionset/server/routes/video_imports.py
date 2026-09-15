@@ -236,7 +236,7 @@ def append_video_import_frames(
     import_id: UUID,
     files: Annotated[
         list[UploadFile],
-        File(description="The frames, as one multipart part each, PNG."),
+        File(description="The frames, as one multipart part each, JPEG."),
     ],
     descriptors: Annotated[
         str,
@@ -263,7 +263,7 @@ def append_video_import_frames(
     A descriptor count that does not match the part count is 422 — the two
     arrays have drifted apart, and nothing here could pick which to believe.
 
-    Every frame is decoded before it is stored, so a part that is not a PNG is
+    Every frame is decoded before it is stored, so a part that is not a JPEG is
     422 `UNSUPPORTED_MEDIA` and one that will not decode at all is 422
     `CORRUPT_MEDIA`.
 

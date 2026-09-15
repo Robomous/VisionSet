@@ -206,7 +206,7 @@ def get_asset_content(
     """The asset's own bytes, streamed.
 
     The original that was ingested, not a re-encode — for a video frame that is
-    the PNG extraction wrote, which is the picture an annotator drew on and the
+    the JPEG the materializer wrote, which is the picture an annotator drew on and the
     picture an exporter ships.
 
     `Content-Type` comes from what the ingest actually probed. An asset written

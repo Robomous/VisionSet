@@ -435,7 +435,7 @@ class WorkspaceService:
 
         It is the only decoder a workspace has. Video never reaches this process:
         a client materializes frames from a clip that stays on its own machine
-        and posts them as ordinary PNGs, which arrive here as images like any
+        and posts them as ordinary JPEGs, which arrive here as images like any
         other — see ``VideoImportService``.
 
         Nothing in the workspace layout corresponds to it. Like the event bus it

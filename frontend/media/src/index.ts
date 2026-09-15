@@ -168,13 +168,33 @@ export interface VideoSelection {
   readonly scalePercent: number;
 }
 
+/**
+ * What a materialized frame is encoded as. One value, not a choice: the pixels
+ * come out of a decoder that has already reconstructed them from a lossy codec,
+ * so re-encoding them losslessly preserves nothing the source still had while
+ * multiplying what a long clip costs to send and to keep.
+ */
+export const VIDEO_FRAME_MEDIA_TYPE = "image/jpeg";
+
+/**
+ * The quality the encoder is asked for, matching the 95 this project's Pillow
+ * normalization already uses for dataset stills.
+ *
+ * Asked for, not promised: browsers do not share one JPEG encoder, so the same
+ * frame is not the same bytes on two of them. That is already the architecture
+ * here — a source records the materializer that drew its frames and the policy
+ * version it drew them under, and the content hash names the bytes actually
+ * stored, because frame bytes were never reproducible across decoders either.
+ */
+export const VIDEO_FRAME_QUALITY = 0.95;
+
 export interface MaterializedFrame {
   readonly ordinal: number;
   readonly requestedTimestamp: number;
   readonly sourceTimestamp: number | null;
   readonly width: number;
   readonly height: number;
-  readonly format: "png";
+  readonly format: "jpeg";
   readonly bytes: BlobLike;
 }
 

@@ -17,7 +17,7 @@ with WorkspaceService.open("./road-signs") as workspace:
 
 `ImageProcessor` is the only media port `WorkspaceService` composes, and it is named for stills
 rather than for media because that is all it ever reads. This process never decodes video: a
-client materializes a clip into PNG frames on its own machine and posts them here, and from that
+client materializes a clip into JPEG frames on its own machine and posts them here, and from that
 point on each one is an ordinary image - decoded, hashed and thumbnailed by exactly the same
 `ImageProcessor` a directory of photos goes through. See [ingest.md](ingest.md) for the session
 that stages those frames, and [sources.md](sources.md) for what a video source records once they
@@ -40,7 +40,7 @@ into them at ingest, so a dataset consumer never needs a third decoder.
 | JPG / JPEG, PNG | your exact bytes, untouched |
 | WebP, HEIC / HEIF, BMP, TIFF, anything else Pillow decodes | a JPEG, re-encoded at ingest |
 | animated GIF, animated WebP | one PNG per frame, `anim.gif#frame=3` |
-| MP4, MOV, AVI, WebM, MKV, or anything a browser can demux | one PNG per extracted frame, materialized client-side |
+| MP4, MOV, AVI, WebM, MKV, or anything a browser can demux | one JPEG per extracted frame, materialized client-side |
 
 A converted or decomposed still keeps the original path in its `uri`, so provenance stays
 legible: an asset at `photo.heic` whose `format` reads `jpeg` was transcoded on the way in, and
@@ -72,7 +72,7 @@ maintains.
 
 The asymmetry is the argument. **An image is an asset; a video is a source.** Curating
 `ImageFormat` buys something real, because those exact bytes enter the dataset and the promise
-above is made about them. A video's bytes never do - they leave the decoder as PNG frames - so a
+above is made about them. A video's bytes never do - they leave the decoder as JPEG frames - so a
 closed list of codecs would gate nothing while going stale every time a camera vendor ships a new
 profile. `codec` therefore *records* what was read instead of *deciding* what may be read, which
 is the same split as `DatasetChange.operation` being a `str` while `DatasetOperation` is the enum
@@ -101,7 +101,7 @@ It is **modality-independent** too, in the sense that a video frame arriving her
 the same problem solved before it ever reached `ImageProcessor`: a clip carries its turn in a
 display matrix rather than in an EXIF tag, a phone held upright writes a landscape stream plus a
 quarter turn, and the client materializing the clip applies that matrix before it ever encodes a
-frame to PNG. What lands on the asset is the swapped edges, on the same terms as `VideoMetadata`
+frame to JPEG. What lands on the asset is the swapped edges, on the same terms as `VideoMetadata`
 reports them - see [sources.md](sources.md).
 
 ## Thumbnails: one encoding, pinned
@@ -248,7 +248,7 @@ pinned encoder arguments and all, so that identical input produced identical out
 installed ffmpeg build. None of that runs in this process any more. The kernel declares no
 video-decoding port at all, ffmpeg is not a dependency of anything this distribution ships, and a
 video's bytes never reach this server - a client demuxes and decodes the clip on the machine it
-already sits on, and posts the PNG frames it produced through the session `VideoImportService`
+already sits on, and posts the JPEG frames it produced through the session `VideoImportService`
 manages. See [ingest.md](ingest.md) for that session and [sources.md](sources.md) for what a video
 source records about the client that produced its frames.
 

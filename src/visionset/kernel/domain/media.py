@@ -27,7 +27,7 @@ encodings only, and a dataset consumer never needs a third decoder. What can be
 point: an image is an asset, a video is a source. Curating :class:`ImageFormat`
 buys something, because those exact bytes enter the dataset and the promise above
 is made about them. A video's bytes never do — they leave the decoder as frames,
-which are :attr:`ImageFormat.PNG` like any other still — so a closed list of
+which are :attr:`ImageFormat.JPEG` like any other still — so a closed list of
 codecs would gate nothing while going stale every time a camera vendor ships a
 profile. :attr:`VideoMetadata.codec` therefore *records* what was read instead of
 *deciding* what may be read, the way ``DatasetChange.operation`` is a ``str``

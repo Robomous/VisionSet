@@ -38,7 +38,7 @@ export function clip(file: string): Clip {
   return found;
 }
 
-/** `#rrggbb` as the three channels `inspectPng` reports. */
+/** `#rrggbb` as the three channels `inspectImage` reports. */
 export function rgb(hex: string): [number, number, number] {
   const value = Number.parseInt(hex.slice(1), 16);
   return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];

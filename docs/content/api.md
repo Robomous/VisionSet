@@ -377,7 +377,7 @@ to answer.
 
 **Uploads are multipart, and the only non-JSON request shape.** Registering an image source
 means sending the bytes: one `files` part per image. A clip is never one of them - the server has
-no decoder, so no route takes a video file; `POST /video-imports/{id}/frames` takes the PNG frames
+no decoder, so no route takes a video file; `POST /video-imports/{id}/frames` takes the JPEG frames
 a browser already cut the clip into, one `files` part each beside a `descriptors` form field
 naming, in the same order, the grid ordinal and timestamps of every part. VisionSet sets **no size limit of its own** - parts are spooled to disk past 1 MiB
 and streamed from there, so memory does not grow with the file - which means the real ceilings

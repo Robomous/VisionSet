@@ -2003,7 +2003,7 @@ export interface paths {
          * @description The asset's own bytes, streamed.
          *
          *     The original that was ingested, not a re-encode — for a video frame that is
-         *     the PNG extraction wrote, which is the picture an annotator drew on and the
+         *     the JPEG the materializer wrote, which is the picture an annotator drew on and the
          *     picture an exporter ships.
          *
          *     `Content-Type` comes from what the ingest actually probed. An asset written
@@ -3185,7 +3185,7 @@ export interface paths {
          *     A descriptor count that does not match the part count is 422 — the two
          *     arrays have drifted apart, and nothing here could pick which to believe.
          *
-         *     Every frame is decoded before it is stored, so a part that is not a PNG is
+         *     Every frame is decoded before it is stored, so a part that is not a JPEG is
          *     422 `UNSUPPORTED_MEDIA` and one that will not decode at all is 422
          *     `CORRUPT_MEDIA`.
          *
@@ -3881,7 +3881,7 @@ export interface components {
             descriptors: string;
             /**
              * Files
-             * @description The frames, as one multipart part each, PNG.
+             * @description The frames, as one multipart part each, JPEG.
              */
             files: string[];
         };

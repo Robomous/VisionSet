@@ -6,10 +6,12 @@ a piece of it: a session that cannot count its own frames, cannot tell a retry
 from a conflict, or cannot be thrown away cleanly is a session that eventually
 leaks half a clip into somebody's dataset.
 
-**No decoder anywhere**, which is the point of the whole design: frames are PNG
+**No decoder anywhere**, which is the point of the whole design: frames are JPEG
 bytes a client produced, so a test produces them with Pillow and the server does
 exactly what it would do in production — decode them and refuse what does not
-decode.
+decode. Nothing here asks Pillow's JPEG to be the browser's; the server checks
+that what arrived is a valid JPEG of the declared geometry, and that is all it
+could check across two encoders.
 """
 
 from __future__ import annotations
@@ -72,27 +74,31 @@ from visionset.kernel.services.video_import_service import (
 FRAME_SIZE = (16, 12)
 
 
-def _png(seed: int, size: tuple[int, int] = FRAME_SIZE) -> bytes:
-    """A tiny PNG. Equal seeds give equal bytes, which is what makes dedup testable."""
+def _pixels(seed: int, size: tuple[int, int]) -> bytes:
     width, height = size
-    pixels = bytes(
+    return bytes(
         channel
         for y in range(height)
         for x in range(width)
         for channel in ((x * 7 + seed * 13) % 256, (y * 5 + seed * 29) % 256, (seed * 47) % 256)
     )
+
+
+def _jpeg(seed: int, size: tuple[int, int] = FRAME_SIZE) -> bytes:
+    """A tiny frame, at the quality a materializer uses.
+
+    Equal seeds give equal bytes, which is what makes dedup testable — within one
+    Pillow build, which is all a test needs and more than the wire promises.
+    """
     buffer = BytesIO()
-    Image.frombytes("RGB", size, pixels).save(buffer, format="PNG")
+    Image.frombytes("RGB", size, _pixels(seed, size)).save(buffer, format="JPEG", quality=95)
     return buffer.getvalue()
 
 
-def _jpeg(seed: int) -> bytes:
+def _png(seed: int = 0, size: tuple[int, int] = FRAME_SIZE) -> bytes:
+    """A frame in the wrong encoding: a real image, and not one this route takes."""
     buffer = BytesIO()
-    width, height = FRAME_SIZE
-    pixels = bytes(
-        (x + y + seed) % 256 for y in range(height) for x in range(width) for _ in range(3)
-    )
-    Image.frombytes("RGB", FRAME_SIZE, pixels).save(buffer, format="JPEG")
+    Image.frombytes("RGB", size, _pixels(seed, size)).save(buffer, format="PNG")
     return buffer.getvalue()
 
 
@@ -116,7 +122,7 @@ def _frame(
         # `BytesIO` stands in for the spooled handle the route hands over, and
         # every pass the service makes seeks it itself.
         content=BytesIO(
-            _png(ordinal if seed is None else seed, size) if content is None else content
+            _jpeg(ordinal if seed is None else seed, size) if content is None else content
         ),
     )
 
@@ -651,15 +657,15 @@ def test_a_multi_range_selection_stages_the_indices_of_every_range(fixture: Fixt
     assert [a.frame_index for a in fixture.ingest.assets(fixture.project.id)] == [0, 1, 5, 6]
 
 
-def test_a_frame_that_is_not_png_is_refused(fixture: Fixture) -> None:
+def test_a_frame_that_is_not_jpeg_is_refused(fixture: Fixture) -> None:
     import_id = fixture.start()
-    with pytest.raises(UnsupportedMedia, match="png"):
-        fixture.imports.append_frames(import_id, [_frame(0, content=_jpeg(3))])
+    with pytest.raises(UnsupportedMedia, match="jpeg"):
+        fixture.imports.append_frames(import_id, [_frame(0, content=_png(3))])
     assert fixture.imports.get(import_id).received_frame_count == 0
 
 
 def test_a_corrupt_frame_is_refused(fixture: Fixture) -> None:
-    truncated = _png(0)[:40]
+    truncated = _jpeg(0)[:40]
     import_id = fixture.start()
     with pytest.raises((CorruptMedia, UnsupportedMedia)):
         fixture.imports.append_frames(import_id, [_frame(0, content=truncated)])
@@ -670,7 +676,7 @@ def test_a_descriptor_that_lies_about_its_size_is_refused(fixture: Fixture) -> N
     """A descriptor and its bytes disagreeing means the two grids have drifted."""
     import_id = fixture.start()
     lying = IncomingFrame(
-        ordinal=0, requested_timestamp=0.0, width=999, height=999, content=BytesIO(_png(0))
+        ordinal=0, requested_timestamp=0.0, width=999, height=999, content=BytesIO(_jpeg(0))
     )
     with pytest.raises(UnsupportedMedia, match="declares"):
         fixture.imports.append_frames(import_id, [lying])
@@ -708,7 +714,7 @@ def test_a_requested_timestamp_that_is_not_the_ordinals_grid_point_is_refused(
         requested_timestamp=9000.0,
         width=FRAME_SIZE[0],
         height=FRAME_SIZE[1],
-        content=BytesIO(_png(1)),
+        content=BytesIO(_jpeg(1)),
     )
 
     with pytest.raises(FrameTimestampOffGrid):
@@ -765,7 +771,7 @@ def test_a_grid_point_reached_by_another_arithmetic_route_is_accepted(
                 requested_timestamp=nudged,
                 width=FRAME_SIZE[0],
                 height=FRAME_SIZE[1],
-                content=BytesIO(_png(1)),
+                content=BytesIO(_jpeg(1)),
             )
         ],
     )
@@ -847,7 +853,7 @@ def test_a_cut_from_a_non_zero_start_carries_its_own_grid_points(fixture: Fixtur
                     requested_timestamp=0.0,
                     width=FRAME_SIZE[0],
                     height=FRAME_SIZE[1],
-                    content=BytesIO(_png(5)),
+                    content=BytesIO(_jpeg(5)),
                 )
             ],
         )
@@ -1075,7 +1081,7 @@ def test_a_complete_session_commits_to_a_draft_batch(fixture: Fixture) -> None:
 
     assets = fixture.ingest.assets(fixture.project.id)
     assert [asset.frame_index for asset in assets] == [0, 1, 2]
-    assert {asset.format for asset in assets} == {ImageFormat.PNG}
+    assert {asset.format for asset in assets} == {ImageFormat.JPEG}
     assert all(asset.uri.startswith("video-import:") for asset in assets)
     assert all(asset.ingested_at is not None for asset in assets)
     assert all(asset.source_id == session.source_id for asset in assets)

@@ -56,7 +56,7 @@ def _frame(ordinal: int, *, seed: int | None = None) -> IncomingFrame:
         for channel in ((x * 7 + tint * 13) % 256, (y * 5) % 256, (tint * 47) % 256)
     )
     buffer = BytesIO()
-    Image.frombytes("RGB", FRAME_SIZE, pixels).save(buffer, format="PNG")
+    Image.frombytes("RGB", FRAME_SIZE, pixels).save(buffer, format="JPEG", quality=95)
     return IncomingFrame(
         ordinal=ordinal,
         requested_timestamp=float(ordinal),

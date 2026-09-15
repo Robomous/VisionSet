@@ -3,7 +3,7 @@
 **A separate use case, not a branch inside ingest.** ``IngestService`` reads an
 origin this process can open and turns it into assets in one call; nothing about
 its shape survives here. A video never reaches the server at all — a client
-decodes it locally and posts PNG frames — so the work has a *middle*: an
+decodes it locally and posts JPEG frames — so the work has a *middle*: an
 arbitrary number of calls between "this is what I am about to send" and "that
 was all of it". Putting that middle behind a conditional in a run-shaped service
 would have made every one of its invariants conditional too.
@@ -183,16 +183,18 @@ _BYTES_PER_PIXEL: Final = 4
 """What one pixel of a decoded frame costs: 8-bit RGBA, which is what a canvas holds.
 
 The multiplier in :func:`frame_byte_ceiling`, and deliberately the *decoded*
-cost rather than a guess at a compressed one. A PNG larger than its own raster
-is not a frame somebody encoded badly; it is not a plausible encoding of that
-geometry at all.
+cost rather than a guess at a compressed one. How well a frame compresses is a
+property of what is in it, not of its geometry, so an average is not a bound.
+What the raster costs is: a compressed frame heavier than the pixels it decodes
+to is not a plausible encoding of that geometry at all.
 """
 
-_PNG_ENVELOPE: Final = 64 * 1024
-"""Slack over the raster: the signature, the chunk headers, the per-row filter
-byte, and zlib's own framing on data that will not compress. Fixed rather than
-proportional, because every one of those is a constant or a function of height
-that a fixed sixty-four kilobytes covers for any geometry this service accepts.
+_ENVELOPE_SLACK: Final = 64 * 1024
+"""Slack over the raster for whatever the container puts around the pixels —
+markers, tables, metadata, and a codec's own framing on data that will not
+compress. Fixed rather than proportional, because all of that is a constant or a
+function of height that sixty-four kilobytes covers for any geometry this
+service accepts.
 """
 
 
@@ -220,12 +222,14 @@ def frame_byte_ceiling(selection: VideoProvenance) -> int:
     this one — so a part heavier than that geometry's own raster cannot be one.
 
     A ceiling rather than an estimate, and nothing here tries to guess how well a
-    real frame compresses. A photograph lands ten or twenty times under this; the
-    number exists to refuse the part that is a thousand times over it, before
-    anything has read a byte of it.
+    real frame compresses — a JPEG's size is a property of what is in it, and a
+    bound drawn from an average would refuse the high-entropy frames that are the
+    whole point of a training set. A photograph lands ten or twenty times under
+    this; the number exists to refuse the part that is a thousand times over it,
+    before anything has read a byte of it.
     """
     pixels = selection.stored_width * selection.stored_height
-    return pixels * _BYTES_PER_PIXEL + _PNG_ENVELOPE
+    return pixels * _BYTES_PER_PIXEL + _ENVELOPE_SLACK
 
 
 class VideoImportService:
@@ -437,7 +441,7 @@ class VideoImportService:
         **Every frame is decoded before it is stored.** The descriptor a client
         sends is a claim about bytes this process has in hand, so checking it
         costs one decode and buys the only thing that makes the session's count
-        mean anything: a frame staged at ordinal *i* really is a PNG of the
+        mean anything: a frame staged at ordinal *i* really is a JPEG of the
         declared size. A descriptor that disagrees with its bytes is not a frame
         with bad metadata — it is evidence the client's grid and this session's
         have drifted — so it is refused rather than corrected.
@@ -480,9 +484,9 @@ class VideoImportService:
                 its ordinal's own grid point, or its ``source_timestamp`` is
                 after that point.
             FrameContentConflict: an ordinal already holds different bytes.
-            UnsupportedMedia: a frame is not PNG, is not the geometry this
+            UnsupportedMedia: a frame is not JPEG, is not the geometry this
                 session stores, or weighs more than that geometry can.
-            CorruptMedia: a frame is a PNG whose bytes will not decode.
+            CorruptMedia: a frame is a JPEG whose bytes will not decode.
         """
         with self._workspace.unit_of_work() as uow:
             session = self.require_import(uow, import_id)

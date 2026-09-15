@@ -17,7 +17,6 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
-from PIL.PngImagePlugin import PngInfo
 from tests.fixtures.media import write_image
 from tests.server._api import api_client
 from tests.server._openapi import operations
@@ -69,24 +68,32 @@ def session(client: TestClient, project: str) -> str:
     return import_id
 
 
-def png(tmp_path: Path, *, seed: int, size: tuple[int, int] = FRAME_SIZE) -> bytes:
-    path = tmp_path / "made" / f"{seed}-{size[0]}x{size[1]}.png"
+def jpeg(tmp_path: Path, *, seed: int, size: tuple[int, int] = FRAME_SIZE) -> bytes:
+    path = tmp_path / "made" / f"{seed}-{size[0]}x{size[1]}.jpg"
     return write_image(path, size=size, seed=seed).read_bytes()
 
 
-def padded_png(padding: int) -> bytes:
-    """A frame of the ordinary geometry, made heavy by a text chunk and nothing else.
+#: The most one JPEG comment segment's payload may hold: the length field is two
+#: bytes and counts itself.
+_COMMENT_PAYLOAD = 0xFFFF - 2
 
-    `tEXt` is ancillary, so every decoder skips it and the image is exactly what
-    an unpadded one would be — which is the point: the only thing wrong with this
-    part is its size.
+
+def padded_jpeg(padding: int) -> bytes:
+    """A frame of the ordinary geometry, made heavy by comment segments and nothing else.
+
+    `COM` carries no image data, so every decoder skips it and the picture is
+    exactly what an unpadded one would be — which is the point: the only thing
+    wrong with this part is its size.
     """
-    image = Image.new("RGB", FRAME_SIZE, (10, 20, 30))
-    info = PngInfo()
-    info.add_text("pad", "x" * padding, zip=False)
     buffer = BytesIO()
-    image.save(buffer, format="PNG", pnginfo=info)
-    return buffer.getvalue()
+    Image.new("RGB", FRAME_SIZE, (10, 20, 30)).save(buffer, format="JPEG", quality=95)
+    body = buffer.getvalue()
+    segments = b""
+    while padding > 0:
+        take = min(padding, _COMMENT_PAYLOAD)
+        segments += b"\xff\xfe" + (take + 2).to_bytes(2, "big") + b"x" * take
+        padding -= take
+    return body[:2] + segments + body[2:]
 
 
 def described(ordinal: int, **over: Any) -> dict[str, Any]:
@@ -110,7 +117,8 @@ def post_frames(
     return client.post(
         f"/video-imports/{import_id}/frames",
         files=[
-            ("files", (f"frame-{index}.png", part, "image/png")) for index, part in enumerate(parts)
+            ("files", (f"frame-{index}.jpg", part, "image/jpeg"))
+            for index, part in enumerate(parts)
         ],
         data={"descriptors": payload},
     )
@@ -134,7 +142,7 @@ def send(client: TestClient, import_id: str, tmp_path: Path, *ordinals: int) -> 
     return post_frames(
         client,
         import_id,
-        [png(tmp_path, seed=ordinal) for ordinal in ordinals],
+        [jpeg(tmp_path, seed=ordinal) for ordinal in ordinals],
         [described(ordinal) for ordinal in ordinals],
     )
 
@@ -288,7 +296,7 @@ def test_a_frame_that_is_not_the_size_the_session_declared_is_refused(
     response = post_frames(
         client,
         session,
-        [png(tmp_path, seed=0, size=bigger)],
+        [jpeg(tmp_path, seed=0, size=bigger)],
         [described(0, width=bigger[0], height=bigger[1])],
     )
 
@@ -306,13 +314,13 @@ def test_a_part_too_heavy_to_be_a_frame_of_this_session_is_refused(
     non-file fields — `on_part_data` skips the check for anything with a file
     behind it, which is every `files` part.
 
-    The part is a **valid** PNG of exactly the geometry this session stores, made
-    heavy by a padding chunk, so nothing else in the chain has a reason to refuse
+    The part is a **valid** JPEG of exactly the geometry this session stores, made
+    heavy by padding segments, so nothing else in the chain has a reason to refuse
     it: without the weight ceiling it is accepted. What is asserted at this layer
     is the status and the code; that the refusal comes before the decode is
     `tests/kernel/test_video_import_service.py`'s.
     """
-    response = post_frames(client, session, [padded_png(200_000)], [described(0)])
+    response = post_frames(client, session, [padded_jpeg(200_000)], [described(0)])
 
     assert response.status_code == 422, response.text
     assert response.json()["code"] == "UNSUPPORTED_MEDIA"
@@ -419,7 +427,7 @@ def test_the_same_ordinal_with_different_bytes_is_a_conflict(
 ) -> None:
     send(client, session, tmp_path, 0)
 
-    response = post_frames(client, session, [png(tmp_path, seed=99)], [described(0)])
+    response = post_frames(client, session, [jpeg(tmp_path, seed=99)], [described(0)])
 
     assert response.status_code == 409, response.text
     assert response.json()["code"] == "FRAME_CONTENT_CONFLICT"
@@ -437,10 +445,10 @@ def test_an_ordinal_past_the_expected_count_is_refused(
 def test_a_part_in_another_image_format_is_refused(
     client: TestClient, session: str, tmp_path: Path
 ) -> None:
-    """PNG is the format of a frame, checked rather than asked for politely."""
-    jpeg = write_image(tmp_path / "made" / "frame.jpg", size=FRAME_SIZE, seed=0).read_bytes()
+    """JPEG is the format of a frame, checked rather than asked for politely."""
+    png = write_image(tmp_path / "made" / "frame.png", size=FRAME_SIZE, seed=0).read_bytes()
 
-    response = post_frames(client, session, [jpeg], [described(0)])
+    response = post_frames(client, session, [png], [described(0)])
 
     assert response.status_code == 422, response.text
     assert response.json()["code"] == "UNSUPPORTED_MEDIA"
@@ -458,7 +466,7 @@ def test_a_descriptor_that_disagrees_with_its_bytes_is_refused(
 ) -> None:
     """A declaration checked against the decode: the two grids have drifted apart."""
     response = post_frames(
-        client, session, [png(tmp_path, seed=0)], [described(0, width=FRAME_SIZE[0] * 2)]
+        client, session, [jpeg(tmp_path, seed=0)], [described(0, width=FRAME_SIZE[0] * 2)]
     )
 
     assert response.status_code == 422, response.text
@@ -474,7 +482,7 @@ def test_a_timestamp_that_contradicts_its_ordinal_is_refused(
     written straight onto the asset as the moment it came from.
     """
     response = post_frames(
-        client, session, [png(tmp_path, seed=1)], [described(1, requested_timestamp=9000.0)]
+        client, session, [jpeg(tmp_path, seed=1)], [described(1, requested_timestamp=9000.0)]
     )
 
     assert response.status_code == 422, response.text
@@ -486,7 +494,7 @@ def test_a_source_timestamp_after_the_grid_point_is_refused(
 ) -> None:
     """The sample drawn for a grid point is the last one at or before it, never a later one."""
     response = post_frames(
-        client, session, [png(tmp_path, seed=1)], [described(1, source_timestamp=1.5)]
+        client, session, [jpeg(tmp_path, seed=1)], [described(1, source_timestamp=1.5)]
     )
 
     assert response.status_code == 422, response.text
@@ -498,7 +506,7 @@ def test_a_source_timestamp_past_the_declared_duration_is_refused(
 ) -> None:
     """Outside the clip is a special case of after the grid point; one rule answers both."""
     response = post_frames(
-        client, session, [png(tmp_path, seed=1)], [described(1, source_timestamp=99.0)]
+        client, session, [jpeg(tmp_path, seed=1)], [described(1, source_timestamp=99.0)]
     )
 
     assert response.status_code == 422, response.text
@@ -520,7 +528,7 @@ def test_more_parts_than_the_cap_are_refused(
 ) -> None:
     """A whole extraction in one request is what this route exists not to accept."""
     over = FRAMES_PER_REQUEST + 1
-    frame = png(tmp_path, seed=0)
+    frame = jpeg(tmp_path, seed=0)
 
     response = post_frames(
         client, session, [frame] * over, [described(index) for index in range(over)]
@@ -535,7 +543,7 @@ def test_fewer_descriptors_than_parts_is_refused(
     client: TestClient, session: str, tmp_path: Path
 ) -> None:
     response = post_frames(
-        client, session, [png(tmp_path, seed=0), png(tmp_path, seed=1)], [described(0)]
+        client, session, [jpeg(tmp_path, seed=0), jpeg(tmp_path, seed=1)], [described(0)]
     )
 
     assert response.status_code == 422, response.text
@@ -550,7 +558,7 @@ def test_fewer_descriptors_than_parts_is_refused(
 def test_a_malformed_descriptor_array_is_refused(
     client: TestClient, session: str, tmp_path: Path, bad: str
 ) -> None:
-    response = post_frames(client, session, [png(tmp_path, seed=0)], bad)
+    response = post_frames(client, session, [jpeg(tmp_path, seed=0)], bad)
 
     assert response.status_code == 422, response.text
     assert response.json()["code"] == "VALIDATION_ERROR"
@@ -612,7 +620,7 @@ def test_committing_adds_to_the_draft_the_import_named(
     post_frames(
         client,
         second,
-        [png(tmp_path, seed=100 + ordinal) for ordinal in range(EXPECTED)],
+        [jpeg(tmp_path, seed=100 + ordinal) for ordinal in range(EXPECTED)],
         [described(ordinal) for ordinal in range(EXPECTED)],
     )
     batch = client.post(f"/video-imports/{second}/commit").json()
@@ -639,7 +647,7 @@ def test_committing_into_a_deleted_target_batch_is_404(
     post_frames(
         client,
         second,
-        [png(tmp_path, seed=200 + ordinal) for ordinal in range(EXPECTED)],
+        [jpeg(tmp_path, seed=200 + ordinal) for ordinal in range(EXPECTED)],
         [described(ordinal) for ordinal in range(EXPECTED)],
     )
     assert client.delete(f"/batches/{existing}?confirm=true").status_code == 204
@@ -669,7 +677,7 @@ def test_a_clip_range_that_does_not_start_at_zero_is_importable(
     response = post_frames(
         client,
         import_id,
-        [png(tmp_path, seed=ordinal) for ordinal in (2, 3)],
+        [jpeg(tmp_path, seed=ordinal) for ordinal in (2, 3)],
         [described(ordinal) for ordinal in (2, 3)],
     )
 
@@ -686,7 +694,7 @@ def test_an_ordinal_the_selection_does_not_hold_is_refused(
         "id"
     ]
 
-    response = post_frames(client, import_id, [png(tmp_path, seed=0)], [described(0)])
+    response = post_frames(client, import_id, [jpeg(tmp_path, seed=0)], [described(0)])
 
     assert response.status_code == 422, response.text
     assert response.json()["code"] == "FRAME_ORDINAL_OUT_OF_RANGE"

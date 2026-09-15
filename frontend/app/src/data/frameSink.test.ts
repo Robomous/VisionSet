@@ -52,8 +52,8 @@ function frame(ordinal: number): MaterializedFrame {
     sourceTimestamp: ordinal === 0 ? null : ordinal / 4 + 0.01,
     width: 64,
     height: 32,
-    format: "png",
-    bytes: new Blob([`frame-${ordinal}`], { type: "image/png" }),
+    format: "jpeg",
+    bytes: new Blob([`frame-${ordinal}`], { type: "image/jpeg" }),
   };
 }
 

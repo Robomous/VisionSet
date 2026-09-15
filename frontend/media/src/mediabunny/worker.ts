@@ -9,6 +9,8 @@ import {
 
 import {
   FRAME_CHUNK_SIZE,
+  VIDEO_FRAME_MEDIA_TYPE,
+  VIDEO_FRAME_QUALITY,
   canonicalRanges,
   expectedFrames,
   gridTimestamps,
@@ -142,14 +144,17 @@ async function materialize(file: File, selection: VideoSelection): Promise<numbe
         skipped.push(ordinal);
         continue;
       }
-      const bytes = await next.value.canvas.convertToBlob({ type: "image/png" });
+      const bytes = await next.value.canvas.convertToBlob({
+        type: VIDEO_FRAME_MEDIA_TYPE,
+        quality: VIDEO_FRAME_QUALITY,
+      });
       chunk.push({
         ordinal,
         requestedTimestamp,
         sourceTimestamp: next.value.timestamp - first,
         width,
         height,
-        format: "png",
+        format: "jpeg",
         bytes,
       });
       if (chunk.length === FRAME_CHUNK_SIZE) await flush();

@@ -11,7 +11,7 @@ Run it::
     uv run python examples/ingest_end_to_end.py [DESTINATION]
 
 Video is not a source this example touches. Importing a video is a **browser**
-capability now — Mediabunny decodes it client-side and hands VisionSet PNG frames
+capability now — Mediabunny decodes it client-side and hands VisionSet JPEG frames
 it has already materialized, so there is no server-side decoder left to demonstrate
 from a script (see [`docs/content/ingest.md`](../docs/content/ingest.md)).
 

@@ -2,7 +2,7 @@
 
 **The only decoder the kernel has**, and it is named for stills rather than for
 media because that is all it ever reads. Video is not decoded in this process at
-all: a client materializes a clip into PNG frames and posts them, and they arrive
+all: a client materializes a clip into JPEG frames and posts them, and they arrive
 here as images like any other — see ``VideoImportService``. A protocol covering
 both modalities would have had to declare methods each implementation raises
 from, which is a runtime failure where a compile-time absence was available.
@@ -33,8 +33,11 @@ THUMBNAIL_FORMAT: Final = ImageFormat.JPEG
 #: a dataset consumer decodes JPEG and PNG and nothing else.
 CONVERTED_STILL_FORMAT: Final = ImageFormat.JPEG
 
-#: What one frame of a decomposed animation becomes — the same answer the video
-#: pipeline gives, so decomposed motion is PNG wherever it came from.
+#: What one frame of a decomposed animation becomes. Not the same answer video
+#: materialization gives — see ``VIDEO_FRAME_FORMAT`` — and deliberately not the
+#: same question: an animation is decomposed here, from bytes this process was
+#: handed, where a clip is materialized in a browser and only its frames are ever
+#: sent.
 DECOMPOSED_FRAME_FORMAT: Final = ImageFormat.PNG
 
 
