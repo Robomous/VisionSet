@@ -28,8 +28,15 @@ on:
 # pull request itself can edit, and the suites, the Playwright specs and the docker
 # build all run contributor code by design. That is correct for CI and it is why
 # the token in the same job must not be able to write anything.
+#
+# `pull-requests: read` joins it for `dorny/paths-filter`, used throughout this
+# file to skip a job's expensive steps when nothing in its own path group
+# changed. It needs this scope to list a pull request's changed files from the
+# API rather than from git history, which is also what lets it work without a
+# checkout and without caring how shallow one is. Still read-only.
 permissions:
   contents: read
+  pull-requests: read
 
 # A pull request that is pushed to three times in a minute currently starts three
 # full copies of this workflow — twelve jobs each, two of which download a browser
@@ -60,7 +67,32 @@ jobs:
         with:
           persist-credentials: false
 
+      # Required (every rendered context here is), so this job must always
+      # complete and report — never be skipped at the job level, which is a
+      # contract with the ruleset's own read of "did every required check
+      # answer" (see inference-smoke's comment below, and CONTRIBUTING.md's
+      # release-gate section). What varies is whether the steps below it do
+      # anything: a PR touching only `frontend/**` or `docs/**` has nothing
+      # for this job to say, and this filter is how it says "nothing changed"
+      # in a few seconds instead of after a full `uv sync` and test run. A
+      # broken filter step *fails* — loudly, on a required check — rather
+      # than silently skipping everything after it.
+      - name: Detect whether Python-relevant files changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # 'some' (paths-filter's default) matches a file against every listed
+          # pattern independently of the `!` ones — the exclusions below are
+          # inert without this, and `relevant` would be `true` on every push.
+          predicate-quantifier: some-with-excludes
+          filters: |
+            relevant:
+              - '**'
+              - '!frontend/**'
+              - '!docs/**'
+
       - name: Install uv
+        if: steps.filter.outputs.relevant == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -72,9 +104,11 @@ jobs:
       # pyproject.toml, so an uncommitted lock is a named red step rather than a
       # silent re-lock that makes CI test a set no reviewer chose.
       - name: Sync environment
+        if: steps.filter.outputs.relevant == 'true'
         run: uv sync --locked
 
       - name: Ruff (lint + format)
+        if: steps.filter.outputs.relevant == 'true'
         run: |
           uv run ruff check .
           uv run ruff format --check .
@@ -82,15 +116,19 @@ jobs:
       # One invocation: the kernel's strict flags are per-module config in
       # pyproject.toml, so `mypy src/visionset` already checks the kernel strictly.
       - name: Mypy (strict kernel, full src)
+        if: steps.filter.outputs.relevant == 'true'
         run: uv run mypy src/visionset
 
       - name: Import contracts (import-linter)
+        if: steps.filter.outputs.relevant == 'true'
         run: uv run lint-imports
 
       - name: MCP tool reference drift gate
+        if: steps.filter.outputs.relevant == 'true'
         run: uv run python scripts/export_mcp_tools.py --check
 
       - name: Export target catalog drift gate
+        if: steps.filter.outputs.relevant == 'true'
         run: uv run python scripts/export_target_catalog.py --check
 
       # `-n auto` resolves to the runner's core count. The suite has no expensive
@@ -98,16 +136,19 @@ jobs:
       # thing that makes this step faster, and it is ~90% of the run's critical
       # path when serial.
       - name: Pytest
+        if: steps.filter.outputs.relevant == 'true'
         run: uv run pytest -n auto
 
       # The smoke test above already calls into the example; this proves it also
       # runs as a script from a clean checkout, images and all.
       - name: SDK end-to-end example
+        if: steps.filter.outputs.relevant == 'true'
         run: uv run python examples/sdk_end_to_end.py
 
       # The ingest half of the same argument: stills only, so it needs nothing this
       # job does not already have.
       - name: Ingest end-to-end example
+        if: steps.filter.outputs.relevant == 'true'
         run: uv run python examples/ingest_end_to_end.py
 
   # M3's exit criterion: the same cycle — ingest, annotate, release — driven three
@@ -139,18 +180,38 @@ jobs:
         with:
           persist-credentials: false
 
+      # Same reasoning as the `python` job's own filter step: this stays a
+      # required, always-completing job, and the filter decides whether the
+      # steps after it do anything.
+      - name: Detect whether Python-relevant files changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # 'some' (paths-filter's default) matches a file against every listed
+          # pattern independently of the `!` ones — the exclusions below are
+          # inert without this, and `relevant` would be `true` on every push.
+          predicate-quantifier: some-with-excludes
+          filters: |
+            relevant:
+              - '**'
+              - '!frontend/**'
+              - '!docs/**'
+
       - name: Install uv
+        if: steps.filter.outputs.relevant == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Sync environment
+        if: steps.filter.outputs.relevant == 'true'
         run: uv sync --locked
 
       # `uv run` puts the virtualenv's bin/ on PATH, so `visionset` is the
       # installation under test — which the HTTP leg starts a server with and the
       # MCP leg spawns a server with.
       - name: Drive the cycle over ${{ matrix.surface }}
+        if: steps.filter.outputs.relevant == 'true'
         run: ${{ matrix.run }}
 
   frontend:
@@ -161,23 +222,48 @@ jobs:
         with:
           persist-credentials: false
 
+      # Same reasoning as the `python` job's own filter step. `openapi.json` and
+      # `VERSION` are in scope alongside `frontend/**` and the root pnpm
+      # manifests: the generated-client gate reads the former and the
+      # version-sync gate reads the latter, so a PR that only touches one of
+      # those two files still has something for this job to check.
+      - name: Detect whether frontend-relevant files changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            relevant:
+              - 'frontend/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'package.json'
+              - '.nvmrc'
+              - 'openapi.json'
+              - 'VERSION'
+              - '.github/workflows/ci.yml'
+
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
+        if: steps.filter.outputs.relevant == 'true'
 
       - uses: actions/setup-node@v7
+        if: steps.filter.outputs.relevant == 'true'
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Version sync gate
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm version:check
 
       # The spec this reads is kept fresh by the `openapi` job and by the pytest gate in the
       # `python` job, so this one needs no Python. Two independent links: spec matches the app,
       # client matches the spec.
       - name: Generated client drift gate
+        if: steps.filter.outputs.relevant == 'true'
         run: |
           pnpm generate:client
           git diff --exit-code frontend/ui-core/src/generated || {
@@ -194,6 +280,7 @@ jobs:
       # shape, and `pnpm run typecheck:e2e` answered TS2307 for a module that is
       # right there in the workspace.
       - name: Build
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm -r build
 
       # `pnpm -r build` above proves the workspace compiles; it says nothing about
@@ -204,12 +291,15 @@ jobs:
       # Node-unresolvable relative import ship for a release. This packs both
       # tarballs and imports them in a throwaway npm project outside the workspace.
       - name: Verify published-package tarballs (Node ESM + TypeScript consumer)
+        if: steps.filter.outputs.relevant == 'true'
         run: bash scripts/verify_npm_packages.sh
 
       - name: Lint
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm -r lint
 
       - name: Test
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm test
 
   # M4's behavioural contract: v1's Playwright specs, re-pointed at the annotator
@@ -227,14 +317,33 @@ jobs:
         with:
           persist-credentials: false
 
+      # Same filter and reasoning as the `frontend` job's own step.
+      - name: Detect whether frontend-relevant files changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            relevant:
+              - 'frontend/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'package.json'
+              - '.nvmrc'
+              - 'openapi.json'
+              - 'VERSION'
+              - '.github/workflows/ci.yml'
+
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
+        if: steps.filter.outputs.relevant == 'true'
 
       - uses: actions/setup-node@v7
+        if: steps.filter.outputs.relevant == 'true'
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm install --frozen-lockfile
 
       # Keyed on the version the lockfile actually resolved, never on the range in
@@ -242,12 +351,14 @@ jobs:
       # stayed still would restore a cache for the wrong revision, and Playwright
       # refuses to run against one.
       - name: Resolve the Playwright version
+        if: steps.filter.outputs.relevant == 'true'
         id: playwright
         run: |
           version=$(node -p "require('./frontend/app/node_modules/@playwright/test/package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Cache browsers
+        if: steps.filter.outputs.relevant == 'true'
         id: browsers
         uses: actions/cache@v6
         with:
@@ -270,7 +381,7 @@ jobs:
       # below and says so. That is a loud failure at a named step, which is the kind
       # worth having; the alternative was a silent stall with no output at all.
       - name: Install chromium
-        if: steps.browsers.outputs.cache-hit != 'true'
+        if: steps.filter.outputs.relevant == 'true' && steps.browsers.outputs.cache-hit != 'true'
         run: pnpm --filter @visionset/app exec playwright install chromium
 
       # `frontend/app` resolves `@visionset/annotator` and `@visionset/ui-core`
@@ -281,6 +392,7 @@ jobs:
       # step instead of inside a web-server log. Dependency order: `ui-core`
       # re-exports `classColor` from the annotator.
       - name: Build the workspace packages
+        if: steps.filter.outputs.relevant == 'true'
         run: |
           pnpm --filter @visionset/annotator build
           pnpm --filter @visionset/media build
@@ -289,6 +401,7 @@ jobs:
       # Four workers to match the runner's four cores; the config's own CI
       # fallback is two, sized for a smaller runner generation.
       - name: Drive the demo
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm --filter @visionset/app e2e
         env:
           VISIONSET_PW_WORKERS: "4"
@@ -316,25 +429,46 @@ jobs:
         with:
           persist-credentials: false
 
+      # Same filter and reasoning as the `frontend` job's own step.
+      - name: Detect whether frontend-relevant files changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            relevant:
+              - 'frontend/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'package.json'
+              - '.nvmrc'
+              - 'openapi.json'
+              - 'VERSION'
+              - '.github/workflows/ci.yml'
+
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
+        if: steps.filter.outputs.relevant == 'true'
 
       - uses: actions/setup-node@v7
+        if: steps.filter.outputs.relevant == 'true'
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm install --frozen-lockfile
 
       # Keyed on the version the lockfile actually resolved — the same reasoning as
       # the annotator e2e job's own cache key.
       - name: Resolve the Playwright version
+        if: steps.filter.outputs.relevant == 'true'
         id: playwright
         run: |
           version=$(node -p "require('./frontend/media/node_modules/@playwright/test/package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Cache browsers
+        if: steps.filter.outputs.relevant == 'true'
         id: browsers
         uses: actions/cache@v6
         with:
@@ -344,10 +478,11 @@ jobs:
       # No `--with-deps` — the annotator e2e job's install step carries the full
       # reasoning; it applies unchanged here.
       - name: Install chromium
-        if: steps.browsers.outputs.cache-hit != 'true'
+        if: steps.filter.outputs.relevant == 'true' && steps.browsers.outputs.cache-hit != 'true'
         run: pnpm --filter @visionset/media exec playwright install chromium
 
       - name: Run the media browser suite
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm --filter @visionset/media test:browser
 
       - uses: actions/upload-artifact@v7
@@ -376,33 +511,56 @@ jobs:
         with:
           persist-credentials: false
 
+      # This job needs both toolchains, so its filter is the union of the
+      # `python` and `frontend` jobs' own: relevant to everything except
+      # `docs/**`, which neither the server under test nor the bundle it
+      # serves reads.
+      - name: Detect whether this job's inputs changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # Same reasoning as the `python` job's filter step: 'some' (the
+          # default) leaves `!`-exclusions inert.
+          predicate-quantifier: some-with-excludes
+          filters: |
+            relevant:
+              - '**'
+              - '!docs/**'
+
       - name: Install uv
+        if: steps.filter.outputs.relevant == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Sync environment
+        if: steps.filter.outputs.relevant == 'true'
         run: uv sync --locked
 
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
+        if: steps.filter.outputs.relevant == 'true'
 
       - uses: actions/setup-node@v7
+        if: steps.filter.outputs.relevant == 'true'
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm install --frozen-lockfile
 
       # Keyed on the resolved version, never the range — the same reasoning as the
       # annotator's job, and the same cache.
       - name: Resolve the Playwright version
+        if: steps.filter.outputs.relevant == 'true'
         id: playwright
         run: |
           version=$(node -p "require('./frontend/app/node_modules/@playwright/test/package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Cache browsers
+        if: steps.filter.outputs.relevant == 'true'
         id: browsers
         uses: actions/cache@v6
         with:
@@ -412,7 +570,7 @@ jobs:
       # No `--with-deps`, deliberately — the annotator e2e job's install step
       # carries the full reasoning; it applies unchanged here.
       - name: Install chromium
-        if: steps.browsers.outputs.cache-hit != 'true'
+        if: steps.filter.outputs.relevant == 'true' && steps.browsers.outputs.cache-hit != 'true'
         run: pnpm --filter @visionset/app exec playwright install chromium
 
       # The config's own webServer builds the engine, the design system and the
@@ -420,6 +578,7 @@ jobs:
       # starts `visionset server`. One command, so a failure in any of those steps is
       # reported at this step rather than inside a server log.
       - name: Drive the whole cycle
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm --filter @visionset/app cycle
 
       - uses: actions/upload-artifact@v7
@@ -450,31 +609,58 @@ jobs:
         with:
           persist-credentials: false
 
+      # This job needs both toolchains too — same filter as `cycle-e2e`.
+      # `wheel-python-versions` below carries its own copy rather than
+      # inheriting this one: it does not `if:`-skip its whole job (a required
+      # job here must always complete, never be job-skipped — see
+      # inference-smoke's comment), so if this job's build is skipped, that
+      # job's own filter step independently reaches the same answer from the
+      # same diff and skips its download-and-install steps in step, rather
+      # than failing on a `visionset-dist` artifact that was never uploaded.
+      - name: Detect whether this job's inputs changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # Same reasoning as the `python` job's filter step: 'some' (the
+          # default) leaves `!`-exclusions inert.
+          predicate-quantifier: some-with-excludes
+          filters: |
+            relevant:
+              - '**'
+              - '!docs/**'
+
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
+        if: steps.filter.outputs.relevant == 'true'
 
       - uses: actions/setup-node@v7
+        if: steps.filter.outputs.relevant == 'true'
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install uv
+        if: steps.filter.outputs.relevant == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Install
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm install --frozen-lockfile
 
       # The whole pipeline in one script rather than a chain here, because the
       # ordering is load-bearing: `uv build` copies `_static/` at the moment it
       # runs, so a build before `bundle:static` ships no app and says nothing.
       - name: Build the wheel and sdist
+        if: steps.filter.outputs.relevant == 'true'
         run: bash scripts/build_dist.sh
 
       - name: Install it in a clean venv and serve the app
+        if: steps.filter.outputs.relevant == 'true'
         run: uv run pytest tests/packaging -q
 
       - name: Upload the distribution
+        if: steps.filter.outputs.relevant == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: visionset-dist
@@ -519,21 +705,40 @@ jobs:
         with:
           persist-credentials: false
 
+      # Independent copy of the `wheel` job's own filter, evaluated fresh
+      # against the same diff — see that job's comment for why this leg
+      # cannot inherit an `if:`-based skip from it instead.
+      - name: Detect whether this job's inputs changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # Same reasoning as the `python` job's filter step: 'some' (the
+          # default) leaves `!`-exclusions inert.
+          predicate-quantifier: some-with-excludes
+          filters: |
+            relevant:
+              - '**'
+              - '!docs/**'
+
       - name: Install uv
+        if: steps.filter.outputs.relevant == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Download the distribution the `wheel` job already built
+        if: steps.filter.outputs.relevant == 'true'
         uses: actions/download-artifact@v7
         with:
           name: visionset-dist
           path: dist
 
       - name: Sync a dev environment for this Python version
+        if: steps.filter.outputs.relevant == 'true'
         run: uv sync --locked
 
       - name: Install the wheel into a clean venv and serve the app
+        if: steps.filter.outputs.relevant == 'true'
         run: uv run pytest tests/packaging -q
 
   # #67: the vision document's success metric, automated — install → project →
@@ -565,22 +770,41 @@ jobs:
         with:
           persist-credentials: false
 
+      # This job builds its own wheel from both toolchains — same filter as
+      # `wheel` and `cycle-e2e`.
+      - name: Detect whether this job's inputs changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # Same reasoning as the `python` job's filter step: 'some' (the
+          # default) leaves `!`-exclusions inert.
+          predicate-quantifier: some-with-excludes
+          filters: |
+            relevant:
+              - '**'
+              - '!docs/**'
+
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
+        if: steps.filter.outputs.relevant == 'true'
 
       - uses: actions/setup-node@v7
+        if: steps.filter.outputs.relevant == 'true'
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install uv
+        if: steps.filter.outputs.relevant == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Install
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Build the wheel
+        if: steps.filter.outputs.relevant == 'true'
         run: bash scripts/build_dist.sh
 
       # A venv with the wheel and the trainer in it, and **nothing else** — in
@@ -595,6 +819,7 @@ jobs:
       # The local wheel is a path, and a path has no upload date, so the cutoff
       # cannot touch the artifact under test.
       - name: Install the wheel into a clean environment
+        if: steps.filter.outputs.relevant == 'true'
         run: |
           uv venv /tmp/flow-venv
           bash scripts/cooldown.sh \
@@ -604,6 +829,7 @@ jobs:
       # script is named by absolute path and runs with the repository *not* on
       # its working directory.
       - name: Run the thirty-minute flow
+        if: steps.filter.outputs.relevant == 'true'
         run: |
           cd /tmp
           /tmp/flow-venv/bin/python "$GITHUB_WORKSPACE/examples/thirty_minute_flow.py" /tmp/flow
@@ -671,12 +897,34 @@ jobs:
         with:
           persist-credentials: false
 
+      # The comment above this job is explicit: an `if:` on the *job* — or a
+      # workflow-level `paths:` — would let it stop reporting on some pull
+      # requests and wedge every merge. This filter only gates the steps
+      # below it; the job itself always runs to completion and always
+      # reports pass or fail, same as the `python` job's own copy of this
+      # step.
+      - name: Detect whether Python-relevant files changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # 'some' (paths-filter's default) matches a file against every listed
+          # pattern independently of the `!` ones — the exclusions below are
+          # inert without this, and `relevant` would be `true` on every push.
+          predicate-quantifier: some-with-excludes
+          filters: |
+            relevant:
+              - '**'
+              - '!frontend/**'
+              - '!docs/**'
+
       - name: Install uv
+        if: steps.filter.outputs.relevant == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Sync environment with the local-inference extra
+        if: steps.filter.outputs.relevant == 'true'
         run: uv sync --locked --extra local-inference
 
       # The inference surface, named directory by directory rather than left to
@@ -688,6 +936,7 @@ jobs:
       # No `-q`: `addopts` in pyproject.toml already carries one, and a second
       # suppresses the count line this job exists to put on the record.
       - name: The inference surface, with the runtime present
+        if: steps.filter.outputs.relevant == 'true'
         run: |
           uv run pytest \
             tests/inference \
@@ -732,18 +981,37 @@ jobs:
         with:
           persist-credentials: false
 
+      # Same reasoning as `inference-smoke`'s own filter step: gates the
+      # steps, never the job.
+      - name: Detect whether Python-relevant files changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # 'some' (paths-filter's default) matches a file against every listed
+          # pattern independently of the `!` ones — the exclusions below are
+          # inert without this, and `relevant` would be `true` on every push.
+          predicate-quantifier: some-with-excludes
+          filters: |
+            relevant:
+              - '**'
+              - '!frontend/**'
+              - '!docs/**'
+
       - name: Install uv
+        if: steps.filter.outputs.relevant == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Sync environment with the format groups
+        if: steps.filter.outputs.relevant == 'true'
         run: uv sync --locked --group yolo --group coco
 
       # No `-q`: `addopts` in pyproject.toml already carries one, and a second
       # suppresses the count line — which is the line that would show this job
       # quietly shrinking to nothing.
       - name: The reference readers load the exports
+        if: steps.filter.outputs.relevant == 'true'
         run: uv run pytest tests/formats/test_ultralytics_roundtrip.py tests/formats/test_coco_smoke.py
 
   # #49's performance benchmark: frame times during pan, zoom and drag over 200
@@ -861,15 +1129,36 @@ jobs:
         with:
           persist-credentials: false
 
+      # Same reasoning as the `python` job's own filter step. `openapi.json`
+      # itself is already inside the catch-all pattern below (it lives at the
+      # repo root, outside both `frontend/**` and `docs/**`), so a hand-edit
+      # to the committed file with no source change still trips this gate.
+      - name: Detect whether Python-relevant files changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # 'some' (paths-filter's default) matches a file against every listed
+          # pattern independently of the `!` ones — the exclusions below are
+          # inert without this, and `relevant` would be `true` on every push.
+          predicate-quantifier: some-with-excludes
+          filters: |
+            relevant:
+              - '**'
+              - '!frontend/**'
+              - '!docs/**'
+
       - name: Install uv
+        if: steps.filter.outputs.relevant == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Sync environment
+        if: steps.filter.outputs.relevant == 'true'
         run: uv sync --locked
 
       - name: Regenerate openapi.json and fail on drift
+        if: steps.filter.outputs.relevant == 'true'
         run: |
           uv run python scripts/export_openapi.py
           git diff --exit-code openapi.json || {
@@ -906,9 +1195,20 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Detect whether docs-relevant files changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            relevant:
+              - 'docs/**'
+              - '.github/workflows/ci.yml'
+
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
+        if: steps.filter.outputs.relevant == 'true'
 
       - uses: actions/setup-node@v7
+        if: steps.filter.outputs.relevant == 'true'
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -920,18 +1220,22 @@ jobs:
       # build that silently resolves something the lockfile does not name is one
       # nobody reviewed, and it is what the three-day cool-down exists to prevent.
       - name: Install
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm --dir docs install --frozen-lockfile
 
       # The `docsSource()` integration projects `content/` into the content collection
       # as part of this command, so there is no separate sync step to forget and no
       # way for the build to be reading a stale copy.
       - name: Build
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm --dir docs build
 
       - name: Projection is deterministic
+        if: steps.filter.outputs.relevant == 'true'
         run: pnpm --dir docs sync:check
 
       - name: Internal links resolve
+        if: steps.filter.outputs.relevant == 'true'
         run: node docs/scripts/check-links.mjs
 
   # The only job that touches docker/. Every other job installs the environment its
@@ -951,9 +1255,33 @@ jobs:
         with:
           persist-credentials: false
 
+      # "docker/" in the job's own name names its *topic*, not its full input
+      # set: the Dockerfile `COPY`s `pyproject.toml`, `uv.lock`, `VERSION`,
+      # `README.md` and `src/visionset/` and installs against them, and this
+      # job's own comment above explains it exists precisely because a
+      # Python-source change once broke this image with no `docker/` file
+      # touched at all. Narrowing this filter to `docker/**` alone would
+      # reopen exactly that gap, so it stays as broad as the image's real
+      # build context.
+      - name: Detect whether this image's inputs changed
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            relevant:
+              - 'docker/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'VERSION'
+              - 'README.md'
+              - 'src/visionset/**'
+              - '.github/workflows/ci.yml'
+
       - uses: docker/setup-buildx-action@v4
+        if: steps.filter.outputs.relevant == 'true'
 
       - name: Build the api dev image
+        if: steps.filter.outputs.relevant == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -985,6 +1313,7 @@ jobs:
       # deliberately as well as in the `python` job: it was already the discovery
       # test, and *where* it ran was the whole of what it was missing.
       - name: The image can see its own distribution metadata
+        if: steps.filter.outputs.relevant == 'true'
         run: |
           docker run --rm \
             --user "$(id -u):$(id -g)" \
@@ -999,4 +1328,5 @@ jobs:
       # `visionset init` and `visionset token create` on first boot, so an image
       # where this is missing is one that cannot start a fresh workspace.
       - name: The console script is on PATH
+        if: steps.filter.outputs.relevant == 'true'
         run: docker run --rm visionset-api-dev:ci visionset --help
