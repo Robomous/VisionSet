@@ -238,6 +238,16 @@ jobs:
       - name: Build
         run: pnpm -r build
 
+      # `pnpm -r build` above proves the workspace compiles; it says nothing about
+      # what a real `npm install` of the published tarball can resolve, because
+      # `frontend/app` reaches `@visionset/annotator` and `@visionset/ui-core`
+      # through a pnpm symlink straight into their `dist/`, never through package
+      # `exports` the way an external consumer would. #839: exactly that gap let a
+      # Node-unresolvable relative import ship for a release. This packs both
+      # tarballs and imports them in a throwaway npm project outside the workspace.
+      - name: Verify published-package tarballs (Node ESM + TypeScript consumer)
+        run: bash scripts/verify_npm_packages.sh
+
       - name: Lint
         run: pnpm -r lint
 

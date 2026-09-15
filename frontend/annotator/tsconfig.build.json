@@ -4,5 +4,12 @@
   // here is also what keeps `node:fs` out of the shipped engine and out of
   // tsconfig.core.json's boundary gate, which inherits this list.
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // tsup's declaration bundler (rollup-plugin-dts) builds its own TS program
+    // and unconditionally passes `baseUrl: compilerOptions.baseUrl || "."`,
+    // which TypeScript 6 treats as deprecated-and-erroring without this. Not a
+    // baseUrl this project actually uses — nothing here resolves against it.
+    "ignoreDeprecations": "6.0"
+  },
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/_*.ts"]
 }

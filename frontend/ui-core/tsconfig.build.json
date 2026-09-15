@@ -4,5 +4,10 @@
   // reason, and a consumer resolving `@visionset/ui-core` should never be one
   // `import` away from a testing-library dependency.
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // See frontend/annotator/tsconfig.build.json — same tsup/rollup-plugin-dts
+    // forced baseUrl, same reason.
+    "ignoreDeprecations": "6.0"
+  },
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/testing"]
 }
