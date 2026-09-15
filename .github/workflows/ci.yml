@@ -754,6 +754,45 @@ jobs:
           path: frontend/app/bench-results.json
           retention-days: 30
 
+  # Known vulnerabilities in the dependencies a pull request adds or moves.
+  #
+  # The gap this fills is narrow, and worth naming precisely because Dependabot
+  # already covers most of it. Dependabot security updates watch the locked set on
+  # `main` continuously, against the same advisory data, and open the fix — they
+  # have found and closed advisories in all three lockfiles here. The one thing
+  # they cannot do is **refuse a merge**: an alert on a vulnerable dependency
+  # arrives after the pull request that introduced it is already in. This asks the
+  # same question at the one moment nobody has committed to the answer yet.
+  #
+  # Scoped to what the diff changes, and that is the point rather than a
+  # limitation: anything already on `main` is Dependabot's, and re-reporting it
+  # here would fail pull requests for something their author did not do.
+  #
+  # It reads GitHub's dependency graph rather than the lockfiles directly, so it
+  # covers every manifest the graph does — the two pnpm lockfiles, `uv.lock`, and
+  # the action versions in this directory — with no per-ecosystem parsing to keep
+  # working as those formats move.
+  dependency-review:
+    name: dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The action compares the dependency graph at two commits, so there is nothing
+    # for it to compare on a push to `main`.
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # An exact version rather than a floating major, because this action
+      # publishes no `v5` tag — only the full versions. Dependabot's
+      # github-actions cool-down in .github/dependabot.yml governs the bump.
+      #
+      # No `fail-on-severity`: the default is `low`, which fails on any advisory
+      # at all. That is the strict end on purpose — a threshold here would be a
+      # gate that lets some known vulnerabilities through by configuration.
+      - uses: actions/dependency-review-action@v5.0.0
+
   openapi:
     name: OpenAPI contract drift gate
     runs-on: ubuntu-latest
